@@ -2004,7 +2004,49 @@ BASE_HTML = r"""
 .rowMenuPanel.open{ display:block; }
 .rowMenuPanel .btn{ width:100%; justify-content:flex-start; }
 
-  </style>
+  
+/* Strat checklist polish */
+.checklist{
+  display:grid;
+  gap:10px;
+  max-width: 900px;
+}
+
+.checkRow{
+  display:grid;
+  grid-template-columns: 22px 1fr;
+  gap:12px;
+  align-items:start;
+  padding:12px 14px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.03);
+  cursor:pointer;
+  transition: transform .08s ease, border-color .15s ease, background .15s ease;
+}
+
+.checkRow:hover{
+  border-color: rgba(255,255,255,.18);
+  background: rgba(255,255,255,.05);
+  transform: translateY(-1px);
+}
+
+.checkRow input[type="checkbox"]{
+  width:18px;
+  height:18px;
+  margin-top:2px;
+  accent-color: #35d07f;
+}
+
+.checkRow:has(input:checked){
+  border-color: rgba(53,208,127,.45);
+  background: rgba(53,208,127,.08);
+}
+
+.checkText{
+  line-height: 1.55;
+}
+</style>
 </head>
 
 <body>
@@ -2040,8 +2082,9 @@ BASE_HTML = r"""
     </button>
 
     <div id="moreMenu" class="moreMenu" role="menu">
-      <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">📌 Strategies</a>
-      <a class="btn {% if active=='books' %}active{% endif %}" href="/books">📚 Books</a>
+      <a class=\"btn {% if active=='strategies' %}active{% endif %}\" href=\"/strategies\">📌 Strategies</a>
+      <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">🧠 The Strat</a>
+      <a class=\"btn {% if active=='books' %}active{% endif %}\" href=\"/books\">📚 Books</a>
       <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">💸 Payouts</a>
       <div class="hr"></div>
       <a class="btn" href="https://www.tradingview.com/chart" target="_blank" rel="noopener">📈 Charts</a>
@@ -2077,8 +2120,9 @@ BASE_HTML = r"""
         <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅 Trades</a>
         <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸 Payouts</a>
         <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">🧮 Calculator</a>
-        <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">📌 Strategies</a>
-        <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">📚 Books</a>
+        <a class=\"btn {% if active=='strategies' %}primary{% endif %}\" href=\"/strategies\">📌 Strategies</a>
+        <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">🧠 The Strat</a>
+        <a class=\"btn {% if active=='books' %}primary{% endif %}\" href=\"/books\">📚 Books</a>
         <a class="btn" href="https://www.tradingview.com/chart" target="_blank" rel="noopener">📈 Charts</a>
         <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
       </div>
@@ -2262,12 +2306,12 @@ document.addEventListener('keydown', (e) => {
 """
 
 
-def render_page(content_html: str, *, active: str):
+def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
     logo_exists = os.path.exists(os.path.join(app.static_folder or "static", "logo.png"))
     favicon_exists = os.path.exists(os.path.join(app.static_folder or "static", "favicon.ico"))
     return render_template_string(
         BASE_HTML,
-        title=APP_TITLE,
+        title=title,
         logo_exists=logo_exists,
         favicon_exists=favicon_exists,
         content=content_html,
@@ -4653,6 +4697,190 @@ def books_page():
     )
     return render_page(content, active="books")
 
+
+@app.get("/strat")
+def strat_page():
+    """Dedicated reference page for The Strat trading framework."""
+    content = r"""
+    <div class="section-title">🧠 The Strat — Core Playbook</div>
+    <div class="muted" style="margin-bottom:14px;">
+      A quick-reference page for <b>candle types</b>, <b>combo patterns</b>, <b>universal truths</b>, and <b>stop loss structure</b>.
+      Use it as a pre-trade checklist before you click buy/sell. ✅
+    </div>
+
+    <div class="grid grid-3" style="margin-bottom:16px;">
+      <div class="card">
+        <div class="h2">🕯️ Candle Types</div>
+        <div class="muted">The 1-2-3 language</div>
+        <ul style="margin:10px 0 0 18px; line-height:1.6;">
+          <li><b>1</b> = inside bar (range contraction)</li>
+          <li><b>2</b> = directional break (higher high or lower low)</li>
+          <li><b>3</b> = outside bar (breaks both sides)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="h2">🔁 Core Combos</div>
+        <div class="muted">Common setups</div>
+        <ul style="margin:10px 0 0 18px; line-height:1.6;">
+          <li><b>2-1-2</b> continuation after pause</li>
+          <li><b>3-1-2</b> volatility → pause → break</li>
+          <li><b>2-2</b> reversal (your main trigger)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="h2">🧭 Timeframe Continuity</div>
+        <div class="muted">Context matters</div>
+        <ul style="margin:10px 0 0 18px; line-height:1.6;">
+          <li>Trade <b>with</b> higher timeframe intent</li>
+          <li>Expect cleaner moves when HTF aligns</li>
+          <li>Be selective when HTF disagrees</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-bottom:16px;">
+      <div class="card">
+        <div class="h2">🌎 Universal Truths</div>
+        <div class="muted">Keep these on your screen</div>
+        <ul style="margin:10px 0 0 18px; line-height:1.65;">
+          <li><b>Location is king:</b> levels & liquidity drive decisions.</li>
+          <li><b>Direction needs proof:</b> break + follow-through beats “hoping”.</li>
+          <li><b>Range = risk:</b> mid-range trades are hardest to manage.</li>
+          <li><b>Losses are part of the plan:</b> define risk before entry.</li>
+          <li><b>Your edge is repetition:</b> same process, same sizing.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="h2">🛡️ Stop Loss Structure</div>
+        <div class="muted">Simple, consistent, non-negotiable</div>
+
+        <div style="margin-top:10px; line-height:1.6;">
+          <div><b>Default rule:</b> stop goes beyond the level that invalidates the setup.</div>
+          <div class="muted" style="margin-top:6px;">
+            Examples: beyond the reversal candle extreme, beyond the key level (PDH/PDL), or beyond the HTF swing.
+          </div>
+
+          <div style="margin-top:12px;">
+            <div><b>Options risk cap:</b> keep premium risk within your plan (e.g., 20–25%).</div>
+            <div class="muted" style="margin-top:6px;">
+              If your “real stop” requires more than your cap, reduce size or pass.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="h2">✅ Pre‑Trade Checklist</div>
+      <div class="muted">Tick these before you enter. Saved locally in your browser.</div>
+
+      <div class="checklist" style="margin-top:10px;">
+        <label class="checkRow">
+          <input type="checkbox" class="strat-check" data-key="level" />
+          <div class="checkText"><b>Location:</b> at PDH/PDL, CDH/CDL, HTF swing, or VWAP zone</div>
+        </label>
+
+        <label class="checkRow">
+          <input type="checkbox" class="strat-check" data-key="htf" />
+          <div class="checkText"><b>HTF intent:</b> 45m/1h agrees (or I’m explicitly fading at a major level)</div>
+        </label>
+
+        <label class="checkRow">
+          <input type="checkbox" class="strat-check" data-key="structure" />
+          <div class="checkText"><b>Structure:</b> 30m defines the box / range / pivots clearly</div>
+        </label>
+
+        <label class="checkRow">
+          <input type="checkbox" class="strat-check" data-key="trigger" />
+          <div class="checkText"><b>Trigger:</b> 15m 2-2 reversal + 5m expansion confirmation</div>
+        </label>
+
+        <label class="checkRow">
+          <input type="checkbox" class="strat-check" data-key="risk" />
+          <div class="checkText"><b>Risk:</b> stop defined, position size fixed, premium cap respected</div>
+        </label>
+
+        <label class="checkRow">
+          <input type="checkbox" class="strat-check" data-key="plan" />
+          <div class="checkText"><b>Plan:</b> targets chosen (TP1/TP2), and “no re‑entry revenge” rule acknowledged</div>
+        </label>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+        <button class="btn" type="button" onclick="stratChecklistClear()">🧹 Clear</button>
+        <button class="btn primary" type="button" onclick="window.location.href='/trades'">📒 Go to Trades</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="h2">🧩 Combo Quick Reference</div>
+      <div class="muted">Use this like a decision tree.</div>
+
+      <div style="overflow:auto; margin-top:10px;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Pattern</th>
+              <th>Meaning</th>
+              <th>What you want to see</th>
+              <th>Invalidation / stop anchor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>2-1-2</b></td>
+              <td>Continuation after contraction</td>
+              <td>Break → inside → break in same direction</td>
+              <td>Beyond the <b>1</b> range / setup level</td>
+            </tr>
+            <tr>
+              <td><b>3-1-2</b></td>
+              <td>Expansion then decision</td>
+              <td>Outside bar sets both sides → inside bar → break with intent</td>
+              <td>Beyond the inside bar / opposite side of 3</td>
+            </tr>
+            <tr>
+              <td><b>2-2</b></td>
+              <td>Reversal / failed direction</td>
+              <td>Push fails at key level → reverse break + follow-through</td>
+              <td>Beyond the reversal extreme (the “failed direction” point)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      (function initStratChecklist(){
+        try{
+          const key = "strat_checklist_v1";
+          const saved = JSON.parse(localStorage.getItem(key) || "{}");
+          document.querySelectorAll(".strat-check").forEach(cb=>{
+            const k = cb.getAttribute("data-key");
+            cb.checked = !!saved[k];
+            cb.addEventListener("change", ()=>{
+              const next = JSON.parse(localStorage.getItem(key) || "{}");
+              next[k] = cb.checked;
+              localStorage.setItem(key, JSON.stringify(next));
+            });
+          });
+          window.stratChecklistClear = function(){
+            localStorage.removeItem(key);
+            document.querySelectorAll(".strat-check").forEach(cb=>cb.checked=false);
+          }
+        }catch(e){
+          // ignore localStorage issues
+          window.stratChecklistClear = function(){
+            document.querySelectorAll(".strat-check").forEach(cb=>cb.checked=false);
+          }
+        }
+      })();
+    </script>
+    """
+    return render_page(content, active="strat", title="🧠 The Strat")
 
 @app.route("/books/open/<path:name>")
 def books_open(name: str):
