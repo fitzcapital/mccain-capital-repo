@@ -1,0 +1,40 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Containerfile
+    image: mccain-capital-app:latest
+    container_name: mccain-capital-app
+    restart: unless-stopped
+    environment:
+      PORT: "5001"
+      DB_PATH: /data/journal.db
+      UPLOAD_DIR: /data/uploads
+      BOOKS_DIR: /data/books
+    volumes:
+      - ../podman_data:/data:Z
+    expose:
+      - "5001"
+
+  tailscale:
+    image: tailscale/tailscale:stable
+    container_name: mccain-capital-tailscale
+    restart: unless-stopped
+    network_mode: "service:app"
+    depends_on:
+      - app
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_HOSTNAME: mccain-capital
+      TS_EXTRA_ARGS: --reset
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+
+volumes:
+  tailscale-state:

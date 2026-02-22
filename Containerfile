@@ -24,4 +24,4 @@ ENV PORT=5001
 EXPOSE 5001
 
 # Gunicorn for production
-CMD ["gunicorn", "-b", "0.0.0.0:5001", "app:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:5001", "mccain_capital.wsgi:app"]
