@@ -70,7 +70,7 @@
 ## ⚡ Quickstart (Local)
 
 ```bash
-cd /Users/kurtmccain/mccainc/mccain-capital-repo
+cd /mccain-capital-repo
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -84,7 +84,7 @@ Open: `http://localhost:5001`
 ## 🐳 Quickstart (Podman)
 
 ```bash
-cd /Users/kurtmccain/mccainc/mccain-capital-repo
+cd /mccain-capital-repo
 podman build -t mccain-capital-app:latest -f Containerfile .
 podman rm -f mccain-capital-app 2>/dev/null || true
 podman run -d --name mccain-capital-app -p 5001:5001 mccain-capital-app:latest
@@ -98,7 +98,7 @@ Open: `http://localhost:5001`
 ## 🔐 Private VPN Mode (Tailscale + Podman)
 
 ```bash
-cd /Users/kurtmccain/mccainc/mccain-capital-repo
+cd /mccain-capital-repo
 export TS_AUTHKEY=tskey-xxxxxxxx
 podman compose -f services/podman-compose.tailscale.yml up -d --build
 podman compose -f services/podman-compose.tailscale.yml ps
