@@ -2282,6 +2282,12 @@ BASE_HTML = r"""
     .metric .sub{font-size:11px;color:var(--muted);margin-top:4px}
 
     .rightActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .calendarHead{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    }
+    .calendarNav{
+      display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;
+    }
 
     .heat{width:100%;border:1px solid rgba(0,229,255,.15);border-radius:16px;overflow:hidden}
     .heat table{border:none;border-radius:0}
@@ -2296,7 +2302,7 @@ BASE_HTML = r"""
     .clockPill{
       display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
       border:1px solid rgba(0,229,255,.4);background: rgba(0,229,255,.1);color:var(--gold);
-      font-size:12px;font-weight:800;white-space:nowrap;min-width:180px;justify-content:center;
+      font-size:12px;font-weight:800;white-space:nowrap;min-width:160px;justify-content:center;
     }
     .clockTime{
       color:var(--text);font-weight:900;letter-spacing:.2px;
@@ -2329,7 +2335,7 @@ BASE_HTML = r"""
     }
 
     .hamburger{
-      display:none;width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.10);
+      display:none;width:46px;height:46px;border-radius:14px;border:1px solid rgba(255,255,255,.10);
       background: rgba(255,255,255,.03);box-shadow: var(--shadow);
       align-items:center;justify-content:center;cursor:pointer;
     }
@@ -2358,7 +2364,25 @@ BASE_HTML = r"""
   .drawerGrid a{ padding: 14px; }
 }
 
-    .drawerGrid a{ justify-content:flex-start; padding:12px; }
+    .drawerGrid{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap:8px;
+      margin-top:10px;
+    }
+    .drawerGrid a{
+      justify-content:flex-start;
+      padding:12px;
+      min-height:44px;
+    }
+    .drawerSectionTitle{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:11px;
+      letter-spacing:.35px;
+      text-transform:uppercase;
+      font-weight:800;
+    }
     .mobileDock{
       display:none;
       position:fixed;
@@ -2375,17 +2399,36 @@ BASE_HTML = r"""
     .mobileDock .btn{padding:9px 8px;font-size:12px}
 
     @media (max-width: 640px){
-      .wrap{padding:14px 10px 60px}
+      .wrap{padding:14px 10px 108px}
       .nav{display:none}
       .hamburger{display:flex}
       .sub{display:none}
       .logo{width:34px;height:34px}
       h1{font-size:15px}
-      .topbar{padding:6px 0; margin-bottom:10px}
+      .topbar{padding:6px 0; margin-bottom:10px; display:grid; grid-template-columns:1fr; gap:10px}
+      .brand{width:100%}
+      .topRight{width:100%; display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center}
+      .topRight .userPill{display:none}
+      #modePill{grid-column:1 / 2; min-width:0; width:100%; justify-content:center}
+      .topRight .clockPill{min-width:0; width:100%; justify-content:center; padding:10px 12px}
+      .topRight .hamburger{grid-column:2 / 3; grid-row:1 / span 2; align-self:stretch; height:100%; min-height:108px}
       .glow-green,.glow-red{animation-duration:3.4s}
       .mobileDock{display:grid}
       .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}
       .metric .value{font-size:18px}
+      .calendarHead{display:grid;grid-template-columns:1fr;gap:10px}
+      .calendarNav{display:grid;grid-template-columns: repeat(3, minmax(0, 1fr));width:100%;gap:8px}
+      .calendarNav .btn{padding:10px 8px;font-size:12px}
+      .drawer{
+        right:-100vw;
+        width:100vw;
+        max-width:100vw;
+        padding:14px 12px calc(20px + env(safe-area-inset-bottom));
+        border-left:0;
+      }
+      .drawerHead{position:sticky;top:0;padding:2px 0 10px;background:linear-gradient(180deg, rgba(3,7,12,.96), rgba(3,7,12,.86));backdrop-filter: blur(8px);z-index:2}
+      .drawerGrid{grid-template-columns: 1fr}
+      .drawerGrid a{padding:14px 12px}
     }
 
     .calcGrid{
@@ -2484,7 +2527,7 @@ BASE_HTML = r"""
 
       <div class="topRight">
         {% if auth_enabled %}
-          <div class="clockPill">👤 {{ auth_username }}</div>
+          <div class="clockPill userPill">👤 {{ auth_username }}</div>
         {% endif %}
         <div id="modePill" class="clockPill">⏳ Loading…</div>
         <div class="clockPill">🕒 <span id="etClock" class="clockTime">--:--:--</span> ET</div>
@@ -2516,7 +2559,7 @@ BASE_HTML = r"""
 </div>
 
 
-        <button class="hamburger" type="button" aria-label="Open menu" onclick="openDrawer()">
+        <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round">
             <line x1="4" y1="6" x2="20" y2="6"></line>
@@ -2535,17 +2578,26 @@ BASE_HTML = r"""
       </div>
 
       <div class="tiny">Quick navigation</div>
+      <div class="drawerSectionTitle">Core</div>
 
       <div class="drawerGrid">
         <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊 Calendar</a>
         <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝 Journal</a>
         <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅 Trades</a>
         <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸 Payouts</a>
+      </div>
+
+      <div class="drawerSectionTitle">Tools</div>
+      <div class="drawerGrid">
         <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">🧮 Calculator</a>
         <a class=\"btn {% if active=='strategies' %}primary{% endif %}\" href=\"/strategies\">📌 Strategies</a>
         <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">📈 Analytics</a>
         <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">🧠 The Strat</a>
         <a class=\"btn {% if active=='books' %}primary{% endif %}\" href=\"/books\">📚 Books</a>
+      </div>
+
+      <div class="drawerSectionTitle">External</div>
+      <div class="drawerGrid">
         <a class="btn" href="{{ url_for('chart') }}" target="_blank" rel="noopener">📈 Charts</a>
         <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
         {% if auth_enabled %}<a class="btn danger" href="/logout">Sign Out</a>{% endif %}
@@ -2684,15 +2736,24 @@ document.addEventListener('keydown', (e) => {
     function openDrawer(){
       document.getElementById('drawer').classList.add('open');
       document.getElementById('drawerOverlay').classList.add('open');
+      const t = document.getElementById('menuToggleBtn');
+      if(t) t.setAttribute('aria-expanded', 'true');
       document.body.style.overflow = "hidden";
     }
     function closeDrawer(){
       document.getElementById('drawer').classList.remove('open');
       document.getElementById('drawerOverlay').classList.remove('open');
+      const t = document.getElementById('menuToggleBtn');
+      if(t) t.setAttribute('aria-expanded', 'false');
       document.body.style.overflow = "";
     }
     window.openDrawer = openDrawer;
     window.closeDrawer = closeDrawer;
+
+    document.addEventListener('click', (e)=>{
+      const link = e.target.closest && e.target.closest('#drawer a');
+      if(link) closeDrawer();
+    });
 
     function updateETClock(){
       try{
@@ -5079,12 +5140,12 @@ def dashboard():
 
         <div class="twoCol">
           <div class="card"><div class="toolbar">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div class="calendarHead">
               <div>
                 <div class="pill">📊 P/L Calendar</div>
                 <div class="tiny" style="margin-top:8px">Tap a weekday to open that day’s trades 🧲</div>
               </div>
-              <div class="rightActions">
+              <div class="calendarNav">
                 <a class="btn" href="/dashboard?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
                 <a class="btn" href="/dashboard">🎯 This Month</a>
                 <a class="btn" href="/dashboard?y={{ next_y }}&m={{ next_m }}">Next ➡️</a>
@@ -6061,6 +6122,92 @@ def strat_page():
       .checkRow.checked{
         border-color: rgba(53,208,127,.45);
         background: rgba(53,208,127,.08);
+      }
+      @media (max-width: 720px){
+        .stratWrap{gap:10px}
+        .stratHero{
+          padding:12px;
+          border-radius:14px;
+        }
+        .stratTitle{
+          font-size:21px;
+          line-height:1.2;
+          letter-spacing:.1px;
+        }
+        .stratSub{
+          font-size:13px;
+          line-height:1.5;
+          margin-top:6px;
+        }
+        .stratPills{margin-top:10px;gap:6px}
+        .stratPill{font-size:11px;padding:5px 8px}
+        .stratCard{
+          padding:12px;
+          border-radius:14px;
+        }
+        .stratCard h3{font-size:16px}
+        .stratCard ul{
+          margin-top:8px;
+          margin-left:16px;
+          line-height:1.6;
+        }
+        .stratChecklistTop{
+          display:grid;
+          grid-template-columns:1fr;
+          gap:8px;
+        }
+        .stratProgress{
+          justify-content:space-between;
+          width:100%;
+        }
+        .stratProgressBar{
+          width:100%;
+          max-width:none;
+          flex:1 1 auto;
+          min-width:0;
+        }
+        .stratProgressText{
+          min-width:auto;
+          text-align:right;
+          padding-left:8px;
+          font-size:11px;
+          white-space:nowrap;
+        }
+        .checklist{
+          gap:8px;
+          max-width:none;
+        }
+        .checkRow{
+          grid-template-columns:20px 1fr;
+          gap:10px;
+          padding:12px;
+          border-radius:12px;
+        }
+        .checkRow input[type="checkbox"]{
+          width:20px;
+          height:20px;
+          margin-top:1px;
+        }
+        .checkText{font-size:13px;line-height:1.45}
+        .stratActions{
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:8px;
+        }
+        .stratActions .btn{
+          width:100%;
+          padding:11px 10px;
+          font-size:13px;
+        }
+        .stratTableWrap{
+          margin-left:-4px;
+          margin-right:-4px;
+          padding:0 4px 2px;
+        }
+        .stratTableWrap table{
+          min-width:680px;
+          font-size:12px;
+        }
       }
     </style>
 
