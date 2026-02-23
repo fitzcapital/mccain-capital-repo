@@ -7,6 +7,10 @@ def home():
     return legacy.home()
 
 
+def setup_page():
+    return legacy.setup_page()
+
+
 def login_page():
     return legacy.login_page()
 
@@ -45,6 +49,14 @@ def links_page():
 
 def export_json():
     return legacy.export_json()
+
+
+def backup_data():
+    return legacy.backup_data()
+
+
+def restore_data():
+    return legacy.restore_data()
 
 
 def payouts_page():

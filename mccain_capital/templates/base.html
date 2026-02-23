@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}">
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">
+          <img src="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}" alt="logo"/>
+        </div>
+        <div class="brandText">
+          <h1>{{ title }}</h1>
+          <div class="sub">{% if active == 'dashboard' %}Journal • Trades • Calendar{% else %}Trading Workspace{% endif %}</div>
+        </div>
+      </div>
+
+      <div class="topRight">
+        <div id="modePill" class="clockPill">⏳ Loading…</div>
+        <div class="clockPill">🕒 <span id="etClock" class="clockTime">--:--:--</span> ET</div>
+
+        <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="18" x2="20" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="nav">
+        <div class="navGroup">
+          <span class="navLabel">Core</span>
+          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">📊 Calendar</a>
+          <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">📝 Journal</a>
+          <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">📅 Trades</a>
+        </div>
+        <div class="navDivider"></div>
+        <div class="navGroup">
+          <span class="navLabel">Tools</span>
+          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">🧮 Calc</a>
+          <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">🎯 Goals</a>
+        </div>
+
+        <div class="menuMore">
+          <button class="btn moreBtn" type="button" onclick="toggleMoreMenu()" aria-haspopup="true" aria-expanded="false">
+            More ▾
+          </button>
+
+          <div id="moreMenu" class="moreMenu" role="menu">
+            {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
+            <div class="menuTitle">Workspace</div>
+            <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">📌 Strategies</a>
+            <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">📈 Analytics</a>
+            <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">🧠 The Strat</a>
+            <a class="btn {% if active=='books' %}active{% endif %}" href="/books">📚 Books</a>
+            <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">💸 Payouts</a>
+            <div class="hr"></div>
+            <div class="menuTitle">Data</div>
+            <a class="btn" href="/admin/backup">💾 Download Backup</a>
+            <a class="btn" href="/admin/restore">♻️ Restore Backup</a>
+            <a class="btn" href="/setup">🔐 Setup Login</a>
+            <div class="hr"></div>
+            <div class="menuTitle">External</div>
+            <a class="btn" href="{{ url_for('chart') }}" target="_blank" rel="noopener">📈 Charts</a>
+            <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
+            {% if auth_enabled %}
+              <div class="hr"></div>
+              {% if authenticated %}
+                <a class="btn danger" href="/logout">Sign Out</a>
+              {% else %}
+                <a class="btn primary" href="/login">Sign In</a>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>
+    <aside id="drawer" class="drawer" aria-label="Menu">
+      <div class="drawerHead">
+        <div class="drawerTitle">Menu</div>
+        <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
+      </div>
+
+      <div class="tiny">Quick navigation</div>
+      <div class="drawerSectionTitle">Core</div>
+
+      <div class="drawerGrid">
+        <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊 Calendar</a>
+        <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝 Journal</a>
+        <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅 Trades</a>
+        <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸 Payouts</a>
+      </div>
+
+      <div class="drawerSectionTitle">Tools</div>
+      <div class="drawerGrid">
+        <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">🧮 Calculator</a>
+        <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">📌 Strategies</a>
+        <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">📈 Analytics</a>
+        <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">🧠 The Strat</a>
+        <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">📚 Books</a>
+        <a class="btn" href="/admin/backup">💾 Backup</a>
+        <a class="btn" href="/admin/restore">♻️ Restore</a>
+        <a class="btn" href="/setup">🔐 Setup Login</a>
+      </div>
+
+      <div class="drawerSectionTitle">External</div>
+      <div class="drawerGrid">
+        <a class="btn" href="{{ url_for('chart') }}" target="_blank" rel="noopener">📈 Charts</a>
+        <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
+        {% if auth_enabled %}
+          {% if authenticated %}
+            <a class="btn danger" href="/logout">Sign Out</a>
+          {% else %}
+            <a class="btn primary" href="/login">Sign In</a>
+          {% endif %}
+        {% endif %}
+      </div>
+
+      <div class="hr"></div>
+      <div class="tiny">Tip: Keep your journal precise. Your edge compounds through consistency.</div>
+    </aside>
+
+    {{ content|safe }}
+
+    <nav class="mobileDock" aria-label="Quick navigation">
+      <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊</a>
+      <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅</a>
+      <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝</a>
+      <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸</a>
+    </nav>
+
+    <div style="margin-top:14px" class="tiny">
+      Tip: Keep your journal precise. Your edge compounds through consistency.
+      <span class="kbd">Ctrl</span> + <span class="kbd">K</span> focuses Search.
+    </div>
+  </div>
+    <script>
+  function toggleMoreMenu(){
+    const m = document.getElementById("moreMenu");
+    const btn = document.querySelector(".moreBtn");
+    if(!m) return;
+    m.classList.toggle("open");
+    if(btn) btn.setAttribute("aria-expanded", m.classList.contains("open") ? "true" : "false");
+  }
+  window.toggleMoreMenu = toggleMoreMenu;
+
+  window.addEventListener("click", (e)=>{
+    const menu = document.getElementById("moreMenu");
+    if(!menu) return;
+
+    const isButton = e.target.closest && e.target.closest(".moreBtn");
+    const isInside = e.target.closest && e.target.closest("#moreMenu");
+    if(!isButton && !isInside){
+      menu.classList.remove("open");
+      const btn = document.querySelector(".moreBtn");
+      if(btn) btn.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  window.addEventListener("keydown", (e)=>{
+    if(e.key === "Escape"){
+      const menu = document.getElementById("moreMenu");
+      if(menu) menu.classList.remove("open");
+      const btn = document.querySelector(".moreBtn");
+      if(btn) btn.setAttribute("aria-expanded", "false");
+    }
+  });
+</script>
+<script>
+function toggleRowMenu(tradeId, ev) {
+  ev.preventDefault();
+  ev.stopPropagation();
+
+  const menu = document.getElementById(`rowMenu-${tradeId}`);
+  const btn  = ev.currentTarget;
+
+  // Close any other open menus
+  document.querySelectorAll('.rowMoreMenu.open').forEach(m => {
+    if (m !== menu) m.classList.remove('open');
+  });
+
+  // Toggle this menu
+  menu.classList.toggle('open');
+
+  if (menu.classList.contains('open')) {
+    // Make it immune to overflow clipping
+    menu.style.position = 'fixed';
+    menu.style.zIndex = '999999';
+
+    // Need it visible to measure height
+    menu.style.visibility = 'hidden';
+    menu.style.display = 'block';
+
+    const btnRect = btn.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+
+    // Default: open downward
+    let top = btnRect.bottom + 6;
+
+    // If it would go off-screen, open upward
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = btnRect.top - menuRect.height - 6;
+    }
+
+    // Keep inside viewport horizontally
+    let left = btnRect.right - menuRect.width;
+    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+
+    menu.style.visibility = 'visible';
+  }
+}
+
+// Close menus when clicking elsewhere
+document.addEventListener('click', () => {
+  document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
+});
+
+// Close on ESC
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
+  }
+});
+</script>
+
+
+
+
+  <script>
+    window.addEventListener('keydown', (e)=>{
+      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='k'){
+        const s = document.getElementById('search');
+        if(s){ e.preventDefault(); s.focus(); }
+      }
+      if(e.key === "Escape"){ closeDrawer(); }
+    });
+
+    function confirmDelete(formId){
+      if(confirm("Delete this? This can't be undone.")){
+        document.getElementById(formId).submit();
+      }
+    }
+    window.confirmDelete = confirmDelete;
+
+    function confirmClear(formId){
+      if(confirm("Clear ALL trade data? This wipes the trades table.")){
+        document.getElementById(formId).submit();
+      }
+    }
+    window.confirmClear = confirmClear;
+
+    function openDrawer(){
+      document.getElementById('drawer').classList.add('open');
+      document.getElementById('drawerOverlay').classList.add('open');
+      const t = document.getElementById('menuToggleBtn');
+      if(t) t.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = "hidden";
+    }
+    function closeDrawer(){
+      document.getElementById('drawer').classList.remove('open');
+      document.getElementById('drawerOverlay').classList.remove('open');
+      const t = document.getElementById('menuToggleBtn');
+      if(t) t.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = "";
+    }
+    window.openDrawer = openDrawer;
+    window.closeDrawer = closeDrawer;
+
+    document.addEventListener('click', (e)=>{
+      const link = e.target.closest && e.target.closest('#drawer a');
+      if(link) closeDrawer();
+    });
+
+    function updateETClock(){
+      try{
+        const now = new Date();
+        const timeStr = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          hour: "2-digit", minute:"2-digit", second:"2-digit",
+          hour12:true
+        }).format(now);
+
+        const weekday = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          weekday: "short"
+        }).format(now);
+
+        const hour24 = Number(new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          hour: "2-digit",
+          hour12: false
+        }).format(now));
+
+        const clock = document.getElementById("etClock");
+        const mode = document.getElementById("modePill");
+        if(clock) clock.textContent = timeStr;
+
+        if(mode){
+          const isWeekend = (weekday === "Sat" || weekday === "Sun");
+          if(isWeekend) mode.textContent = "🧠 Weekend Mode";
+          else if(hour24 >= 16) mode.textContent = "📚 Study Mode";
+          else mode.textContent = "📈 Trading Day";
+        }
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    setInterval(updateETClock, 1000);
+    updateETClock();
+  </script>
+</body>
+</html>

@@ -11,6 +11,7 @@ import re
 import sqlite3
 import tempfile
 import calendar
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Callable
@@ -19,6 +20,7 @@ from flask import (
     Flask,
     abort,
     redirect,
+    render_template,
     render_template_string,
     request,
     session,
@@ -63,17 +65,21 @@ APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "")
 
 _ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _STATIC_DIR = os.path.join(_ROOT_DIR, "static")
+_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
-app = Flask(__name__, static_folder=_STATIC_DIR, static_url_path="/static")
+app = Flask(__name__, static_folder=_STATIC_DIR, static_url_path="/static", template_folder=_TEMPLATE_DIR)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 
 def auth_enabled() -> bool:
-    return bool(APP_PASSWORD_HASH or APP_PASSWORD)
+    return bool(_effective_password_hash())
 
 
 def _effective_password_hash() -> str:
+    db_hash = (get_setting_value("auth_password_hash", "") or "").strip()
+    if db_hash:
+        return db_hash
     if APP_PASSWORD_HASH:
         return APP_PASSWORD_HASH
     if APP_PASSWORD:
@@ -81,8 +87,15 @@ def _effective_password_hash() -> str:
     return ""
 
 
+def _effective_username() -> str:
+    db_user = (get_setting_value("auth_username", "") or "").strip()
+    if db_user:
+        return db_user
+    return APP_USERNAME
+
+
 def is_authenticated() -> bool:
-    return bool(session.get("auth_ok")) and session.get("auth_user") == APP_USERNAME
+    return bool(session.get("auth_ok")) and session.get("auth_user") == _effective_username()
 
 
 # ============================================================
@@ -159,6 +172,23 @@ def get_setting_float(key: str, default: float = 0.0) -> float:
         return float(default)
 
 
+def set_setting_value(key: str, value: str) -> None:
+    """Insert or update a setting in DB."""
+    with db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+
+
 def now_et() -> datetime:
     return datetime.now(TZ)
 
@@ -173,6 +203,14 @@ def today_iso() -> str:
 
 def init_db() -> None:
     with db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+            """
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS entries (
@@ -2036,767 +2074,8 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
 
 
 # ============================================================
-# UI (HTML) — kept as-is except removed duplicate clock script
+# UI Template
 # ============================================================
-BASE_HTML = r"""
-<!doctype html>
-<html lang="en">
-<head>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}">
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>{{ title }}</title>
-  <style>
-@import url("https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap");
-@media (max-width: 720px){
-  .wrap{ padding: 14px 10px 50px; }
-  .heat{ border-radius: 14px; }
-  .heat table{ table-layout: fixed; width: 100%; }
-  th{ font-size: 11px; padding: 8px 6px; }
-  .daycell{ height: 56px; padding: 8px 8px; }
-  .daynum{ font-size: 11px; opacity: .9; }
-  .daypnl{
-    position: absolute;
-    bottom: 6px;
-    left: 8px;
-    font-weight: 900;
-    font-size: 11px;
-    line-height: 1;
-    max-width: calc(100% - 16px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .daybal{ display:none; }
-}
-
-    :root{
-      --bg:#030407;
-      --panel:#090d14;
-      --panel2:#060910;
-      --surface:#090d14;
-      --surface2:#0d131d;
-      --surface3:#101a27;
-      --text:#f3f8ff;
-      --muted:#8ca0b6;
-      --gold:#00e5ff;
-      --border:rgba(0,229,255,.22);
-      --shadow: 0 12px 34px rgba(0,0,0,.55);
-      --shadow-soft: 0 10px 24px rgba(0,0,0,.35);
-      --ring: 0 0 0 3px rgba(0,229,255,.25);
-      --overlay: rgba(0,0,0,.68);
-      --green: 46, 204, 113;
-      --red: 231, 76, 60;
-    }
-
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family: "Space Grotesk", "Sora", "Segoe UI", system-ui, sans-serif;
-      background: radial-gradient(1200px 800px at 15% -10%, rgba(0,229,255,.14), transparent 60%),
-                  radial-gradient(1000px 700px at 95% 10%, rgba(0,120,255,.12), transparent 58%),
-                  linear-gradient(180deg, #020305 0%, #030407 100%);
-      color:var(--text);
-    }
-
-    .wrap{max-width:1240px;margin:0 auto;padding:24px 16px 78px}
-    .topbar{
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      margin-bottom:14px;
-      flex-wrap:wrap;
-      padding:10px 0;
-      backdrop-filter: blur(8px);
-    }
-    .brand{display:flex;align-items:center;gap:12px;justify-content:flex-start;min-width:0}
-    .brandText{min-width:0}
-
-    .logo{
-      width:44px;height:44px;border-radius:999px;border:1px solid var(--border);
-      background: linear-gradient(145deg, rgba(0,229,255,.08), rgba(0,0,0,0));
-      display:grid;place-items:center;overflow:hidden;box-shadow:var(--shadow);
-      flex:0 0 auto;
-    }
-    .logo img{width:100%;height:100%;object-fit:cover;display:block}
-    .logo .fallback{font-weight:900;color:var(--gold);letter-spacing:.5px}
-
-    h1{
-      font-size:18px;margin:0;letter-spacing:.3px;
-      text-align:left;
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    }
-    .sub{color:var(--muted);font-size:12px;margin-top:2px}
-
-    .nav{display:flex;gap:10px;flex-wrap:wrap}
-
-    .card{
-      background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(0,0,0,0) 70%), var(--panel);
-      border:1px solid var(--border);
-      border-radius:16px;
-      box-shadow: var(--shadow);
-    }
-    .card:hover{ box-shadow: var(--shadow-soft); border-color: rgba(0,229,255,.3); }
-        .nav{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-
-.btn.active{
-  background: linear-gradient(180deg, rgba(0,229,255,.22), rgba(0,229,255,.05));
-  border-color: rgba(0,229,255,.52);
-  box-shadow: 0 0 0 1px rgba(0,229,255,.22), 0 0 18px rgba(0,229,255,.15);
-}
-
-.menuMore{ position: relative; display:inline-flex; }
-.moreMenu{
-  position:absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  width: 240px;
-  padding: 10px;
-  border-radius: 16px;
-  border: 1px solid rgba(0,229,255,.18);
-  background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(0,0,0,0) 70%), var(--panel);
-  box-shadow: var(--shadow);
-  display:none;
-  z-index: 120;
-}
-.moreMenu.open{ display:block; }
-.moreMenu .btn{ width:100%; justify-content:flex-start; }
-.moreMenu .hr{ margin: 8px 0; }
-
-.moreBtn{ padding-left: 14px; padding-right: 14px; }
-
-
-    .toolbar{padding:14px}
-
-    label{font-size:12px;color:var(--muted)}
-    input, select, textarea{
-      width:100%;
-      background: var(--panel2);
-      border:1px solid rgba(255,255,255,.08);
-      color:var(--text);
-      padding:10px 12px;
-      border-radius:12px;
-      outline:none;
-    }
-    textarea{min-height:130px;resize:vertical}
-    input:focus,select:focus,textarea:focus{box-shadow:var(--ring);border-color:rgba(0,229,255,.35)}
-    input[type="checkbox"],
-    input[type="radio"]{
-      width:auto;
-      padding:0;
-      border:0;
-      background:transparent;
-      box-shadow:none;
-      flex: 0 0 auto;
-      accent-color: var(--gold);
-    }
-
-    .btn{
-      display:inline-flex;align-items:center;justify-content:center;gap:8px;
-      padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.03);color:var(--text);cursor:pointer;text-decoration:none;white-space:nowrap;
-    }
-    .btn:hover{border-color:rgba(0,229,255,.35)}
-    .btn.primary{
-      background: linear-gradient(180deg, rgba(0,229,255,.24), rgba(0,229,255,.08));
-      border-color: rgba(0,229,255,.4);
-      color:#e8fdff;
-    }
-    .btn.danger{border-color: rgba(255,90,90,.35)}
-    .btn.danger:hover{box-shadow:0 0 0 3px rgba(255,90,90,.10)}
-
-    .pill{
-      display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;
-      border:1px solid rgba(0,229,255,.3);
-      background: rgba(0,229,255,.1);
-      color:var(--gold);
-      font-size:12px;
-    }
-
-    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
-    .row>div{flex:1 1 220px}
-
-    .twoCol{display:grid;grid-template-columns:1fr;gap:12px}
-    @media(min-width:880px){.twoCol{grid-template-columns:1.1fr .9fr}}
-
-    .hr{height:1px;background: rgba(0,229,255,.12);margin:12px 0}
-    .meta{color:var(--muted);font-size:12px}
-    .grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
-
-    .entry{padding:14px}
-    .entryTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
-    .notes{white-space:pre-wrap;line-height:1.45;margin-top:10px}
-
-    table{
-      width:100%;
-      border-collapse:separate;
-      border-spacing:0;
-      overflow:hidden;
-      border-radius:14px;
-      border:1px solid rgba(0,229,255,.15)
-    }
-    th,td{
-      padding:10px 10px;
-      font-size:12px;
-      border-bottom:1px solid rgba(0,229,255,.10)
-    }
-    th{
-      color:var(--muted);
-      text-align:left;
-      background: rgba(0,0,0,.18)
-    }
-    tr:last-child td{border-bottom:none}
-    @media (max-width: 920px){
-      table{display:block;overflow-x:auto;white-space:nowrap}
-    }
-
-    .statRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .stat{
-      flex:1 1 160px;
-      padding:12px;
-      border-radius:14px;
-      border:1px solid rgba(0,229,255,.15);
-      background: rgba(0,0,0,.18);
-    }
-    .stat .k{font-size:12px;color:var(--muted)}
-    .stat .v{font-size:18px;font-weight:900;margin-top:6px}
-    .metricStrip{
-      display:grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap:10px;
-      margin-bottom:12px;
-    }
-    .metric{
-      padding:12px;
-      border-radius:14px;
-      border:1px solid rgba(0,229,255,.18);
-      background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(255,255,255,.01));
-      min-height:78px;
-    }
-    .metric .label{font-size:12px;color:var(--muted)}
-    .metric .value{font-size:22px;font-weight:800;letter-spacing:.2px;margin-top:6px}
-    .metric .sub{font-size:11px;color:var(--muted);margin-top:4px}
-
-    .rightActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
-    .calendarHead{
-      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-    }
-    .calendarNav{
-      display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;
-    }
-
-    .heat{width:100%;border:1px solid rgba(0,229,255,.15);border-radius:16px;overflow:hidden}
-    .heat table{border:none;border-radius:0}
-    .daycell{height:78px;vertical-align:top;padding:10px;position:relative}
-    .daynum{font-size:12px;color:var(--muted)}
-    .daypnl{position:absolute;bottom:10px;left:10px;font-weight:900}
-
-    .tiny{font-size:12px;color:var(--muted)}
-    .kbd{border:1px solid rgba(255,255,255,.14);padding:2px 6px;border-radius:6px;font-size:12px;color:var(--muted)}
-
-    .topRight{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
-    .clockPill{
-      display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
-      border:1px solid rgba(0,229,255,.4);background: rgba(0,229,255,.1);color:var(--gold);
-      font-size:12px;font-weight:800;white-space:nowrap;min-width:160px;justify-content:center;
-    }
-    .clockTime{
-      color:var(--text);font-weight:900;letter-spacing:.2px;
-      font-variant-numeric: tabular-nums;
-      font-feature-settings: "tnum" 1;
-      min-width: 106px;
-      display: inline-block;
-      text-align: center;
-    }
-
-    @keyframes pulseGreen {
-      0%   { box-shadow: 0 0 0 rgba(var(--green), 0); }
-      50%  { box-shadow: 0 0 22px rgba(var(--green), .55); }
-      100% { box-shadow: 0 0 0 rgba(var(--green), 0); }
-    }
-    @keyframes pulseRed {
-      0%   { box-shadow: 0 0 0 rgba(var(--red), 0); }
-      50%  { box-shadow: 0 0 22px rgba(var(--red), .55); }
-      100% { box-shadow: 0 0 0 rgba(var(--red), 0); }
-    }
-    .glow-green{
-      border-color: rgba(var(--green), .55) !important;
-      box-shadow: 0 0 16px rgba(var(--green), .45), inset 0 0 16px rgba(var(--green), .15);
-      animation: pulseGreen 2.6s ease-in-out infinite;
-    }
-    .glow-red{
-      border-color: rgba(var(--red), .55) !important;
-      box-shadow: 0 0 16px rgba(var(--red), .45), inset 0 0 16px rgba(var(--red), .15);
-      animation: pulseRed 2.6s ease-in-out infinite;
-    }
-
-    .hamburger{
-      display:none;width:46px;height:46px;border-radius:14px;border:1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.03);box-shadow: var(--shadow);
-      align-items:center;justify-content:center;cursor:pointer;
-    }
-    .hamburger:hover{border-color:rgba(0,229,255,.35)}
-    .hamburger svg{width:22px;height:22px;opacity:.95}
-
-    .drawerOverlay{display:none;position:fixed; inset:0;background: rgba(0,0,0,.55);z-index: 80;}
-    .drawer{
-      position:fixed;top:0; right:-340px;height:100%;width:340px;max-width: 88vw;
-      background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(0,0,0,0) 70%), var(--panel);
-      border-left: 1px solid rgba(0,229,255,.18);box-shadow: var(--shadow);
-      z-index: 90;transition: right .22s ease;padding: 14px;overflow:auto;
-    }
-    .drawer.open{ right: 0; }
-    .drawerOverlay.open{ display:block; }
-
-    .drawerHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom: 10px;}
-    .drawerTitle{font-weight:900;color: var(--text);font-size: 14px;letter-spacing: .2px;}
-    .drawerClose{
-      width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.03);display:flex;align-items:center;justify-content:center;cursor:pointer;
-    }
-    .drawerClose:hover{border-color:rgba(0,229,255,.35)}
-    @media (max-width: 640px){
-  .drawerGrid{ grid-template-columns: 1fr; }
-  .drawerGrid a{ padding: 14px; }
-}
-
-    .drawerGrid{
-      display:grid;
-      grid-template-columns: repeat(2, minmax(0,1fr));
-      gap:8px;
-      margin-top:10px;
-    }
-    .drawerGrid a{
-      justify-content:flex-start;
-      padding:12px;
-      min-height:44px;
-    }
-    .drawerSectionTitle{
-      margin-top:10px;
-      color:var(--muted);
-      font-size:11px;
-      letter-spacing:.35px;
-      text-transform:uppercase;
-      font-weight:800;
-    }
-    .mobileDock{
-      display:none;
-      position:fixed;
-      left:10px; right:10px; bottom:10px;
-      z-index:95;
-      padding:8px;
-      border-radius:14px;
-      border:1px solid rgba(0,229,255,.26);
-      background: rgba(4,8,14,.92);
-      backdrop-filter: blur(8px);
-      gap:8px;
-      grid-template-columns: repeat(4,1fr);
-    }
-    .mobileDock .btn{padding:9px 8px;font-size:12px}
-
-    @media (max-width: 640px){
-      .wrap{padding:14px 10px 108px}
-      .nav{display:none}
-      .hamburger{display:flex}
-      .sub{display:none}
-      .logo{width:34px;height:34px}
-      h1{font-size:15px}
-      .topbar{padding:6px 0; margin-bottom:10px; display:grid; grid-template-columns:1fr; gap:10px}
-      .brand{width:100%}
-      .topRight{width:100%; display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center}
-      .topRight .userPill{display:none}
-      #modePill{grid-column:1 / 2; min-width:0; width:100%; justify-content:center}
-      .topRight .clockPill{min-width:0; width:100%; justify-content:center; padding:10px 12px}
-      .topRight .hamburger{grid-column:2 / 3; grid-row:1 / span 2; align-self:stretch; height:100%; min-height:108px}
-      .glow-green,.glow-red{animation-duration:3.4s}
-      .mobileDock{display:grid}
-      .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}
-      .metric .value{font-size:18px}
-      .calendarHead{display:grid;grid-template-columns:1fr;gap:10px}
-      .calendarNav{display:grid;grid-template-columns: repeat(3, minmax(0, 1fr));width:100%;gap:8px}
-      .calendarNav .btn{padding:10px 8px;font-size:12px}
-      .drawer{
-        right:-100vw;
-        width:100vw;
-        max-width:100vw;
-        padding:14px 12px calc(20px + env(safe-area-inset-bottom));
-        border-left:0;
-      }
-      .drawerHead{position:sticky;top:0;padding:2px 0 10px;background:linear-gradient(180deg, rgba(3,7,12,.96), rgba(3,7,12,.86));backdrop-filter: blur(8px);z-index:2}
-      .drawerGrid{grid-template-columns: 1fr}
-      .drawerGrid a{padding:14px 12px}
-    }
-
-    .calcGrid{
-      display:grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap:10px;
-      margin-top:12px;
-    }
-    @media(min-width:900px){ .calcGrid{ grid-template-columns: repeat(3, 1fr); } }
-    .calcCard{
-      padding:12px;border-radius:14px;border:1px solid rgba(0,229,255,.15);
-      background: rgba(0,0,0,.18);
-    }
-    .calcCard .k{font-size:12px;color:var(--muted)}
-    .calcCard .v{font-size:18px;font-weight:900;margin-top:6px}
-
-    .rowMenu{ position: relative; display:inline-flex; }
-.rowMenuBtn{
-  width:36px;height:36px;padding:0;
-  border-radius:12px;
-  display:inline-flex;align-items:center;justify-content:center;
-}
-.rowMenuPanel{
-  position:absolute;
-  right:0;
-  top: calc(100% + 8px);
-  min-width: 160px;
-  padding: 8px;
-  border-radius: 14px;
-  border: 1px solid rgba(0,229,255,.18);
-  background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(0,0,0,0) 70%), var(--panel);
-  box-shadow: var(--shadow);
-  display:none;
-  z-index: 200;
-}
-.rowMenuPanel.open{ display:block; }
-.rowMenuPanel .btn{ width:100%; justify-content:flex-start; }
-
-
-/* Strat checklist polish */
-.checklist{
-  display:grid;
-  gap:10px;
-  max-width: 900px;
-}
-
-.checkRow{
-  display:grid;
-  grid-template-columns: 22px 1fr;
-  gap:12px;
-  align-items:start;
-  padding:12px 14px;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.10);
-  background: rgba(255,255,255,.03);
-  cursor:pointer;
-  transition: transform .08s ease, border-color .15s ease, background .15s ease;
-}
-
-.checkRow:hover{
-  border-color: rgba(255,255,255,.18);
-  background: rgba(255,255,255,.05);
-  transform: translateY(-1px);
-}
-
-.checkRow input[type="checkbox"]{
-  width:18px;
-  height:18px;
-  margin-top:2px;
-  accent-color: #35d07f;
-}
-
-.checkRow:has(input:checked){
-  border-color: rgba(53,208,127,.45);
-  background: rgba(53,208,127,.08);
-}
-
-.checkText{
-  line-height: 1.55;
-}
-</style>
-</head>
-
-<body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <div class="logo">
-          <img src="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}" alt="logo"/>
-        </div>
-        <div class="brandText">
-          <h1>{{ title }}</h1>
-          <div class="sub">Journal • Trades • Calendar</div>
-        </div>
-      </div>
-
-      <div class="topRight">
-        {% if auth_enabled %}
-          <div class="clockPill userPill">👤 {{ auth_username }}</div>
-        {% endif %}
-        <div id="modePill" class="clockPill">⏳ Loading…</div>
-        <div class="clockPill">🕒 <span id="etClock" class="clockTime">--:--:--</span> ET</div>
-
-        <div class="nav">
-            <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">📊 Calendar</a>
-            <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">📝 Journal</a>
-            <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">📅 Trades</a>
-            <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">🧮 Calc</a>
-            <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">🎯 Goals</a>
-
-  <div class="menuMore">
-    <button class="btn moreBtn" type="button" onclick="toggleMoreMenu()" aria-haspopup="true" aria-expanded="false">
-      More ▾
-    </button>
-
-    <div id="moreMenu" class="moreMenu" role="menu">
-      <a class=\"btn {% if active=='strategies' %}active{% endif %}\" href=\"/strategies\">📌 Strategies</a>
-      <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">📈 Analytics</a>
-      <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">🧠 The Strat</a>
-      <a class=\"btn {% if active=='books' %}active{% endif %}\" href=\"/books\">📚 Books</a>
-      <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">💸 Payouts</a>
-      <div class="hr"></div>
-      <a class="btn" href="{{ url_for('chart') }}" target="_blank" rel="noopener">📈 Charts</a>
-      <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
-      {% if auth_enabled %}<div class="hr"></div><a class="btn danger" href="/logout">Sign Out</a>{% endif %}
-    </div>
-  </div>
-</div>
-
-
-        <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="6" x2="20" y2="6"></line>
-            <line x1="4" y1="12" x2="20" y2="12"></line>
-            <line x1="4" y1="18" x2="20" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>
-    <aside id="drawer" class="drawer" aria-label="Menu">
-      <div class="drawerHead">
-        <div class="drawerTitle">Menu</div>
-        <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
-      </div>
-
-      <div class="tiny">Quick navigation</div>
-      <div class="drawerSectionTitle">Core</div>
-
-      <div class="drawerGrid">
-        <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊 Calendar</a>
-        <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝 Journal</a>
-        <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅 Trades</a>
-        <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸 Payouts</a>
-      </div>
-
-      <div class="drawerSectionTitle">Tools</div>
-      <div class="drawerGrid">
-        <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">🧮 Calculator</a>
-        <a class=\"btn {% if active=='strategies' %}primary{% endif %}\" href=\"/strategies\">📌 Strategies</a>
-        <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">📈 Analytics</a>
-        <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">🧠 The Strat</a>
-        <a class=\"btn {% if active=='books' %}primary{% endif %}\" href=\"/books\">📚 Books</a>
-      </div>
-
-      <div class="drawerSectionTitle">External</div>
-      <div class="drawerGrid">
-        <a class="btn" href="{{ url_for('chart') }}" target="_blank" rel="noopener">📈 Charts</a>
-        <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
-        {% if auth_enabled %}<a class="btn danger" href="/logout">Sign Out</a>{% endif %}
-      </div>
-
-      <div class="hr"></div>
-      <div class="tiny">Tip: Keep your journal precise. Your edge compounds through consistency.</div>
-    </aside>
-
-    {{ content|safe }}
-
-    <nav class="mobileDock" aria-label="Quick navigation">
-      <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊</a>
-      <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅</a>
-      <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝</a>
-      <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸</a>
-    </nav>
-
-    <div style="margin-top:14px" class="tiny">
-      Tip: Keep your journal precise. Your edge compounds through consistency.
-      <span class="kbd">Ctrl</span> + <span class="kbd">K</span> focuses Search.
-    </div>
-  </div>
-    <script>
-  function toggleMoreMenu(){
-    const m = document.getElementById("moreMenu");
-    if(!m) return;
-    m.classList.toggle("open");
-  }
-  window.toggleMoreMenu = toggleMoreMenu;
-
-  window.addEventListener("click", (e)=>{
-    const menu = document.getElementById("moreMenu");
-    if(!menu) return;
-
-    const isButton = e.target.closest && e.target.closest(".moreBtn");
-    const isInside = e.target.closest && e.target.closest("#moreMenu");
-    if(!isButton && !isInside){
-      menu.classList.remove("open");
-    }
-  });
-
-  window.addEventListener("keydown", (e)=>{
-    if(e.key === "Escape"){
-      const menu = document.getElementById("moreMenu");
-      if(menu) menu.classList.remove("open");
-    }
-  });
-</script>
-<script>
-function toggleRowMenu(tradeId, ev) {
-  ev.preventDefault();
-  ev.stopPropagation();
-
-  const menu = document.getElementById(`rowMenu-${tradeId}`);
-  const btn  = ev.currentTarget;
-
-  // Close any other open menus
-  document.querySelectorAll('.rowMoreMenu.open').forEach(m => {
-    if (m !== menu) m.classList.remove('open');
-  });
-
-  // Toggle this menu
-  menu.classList.toggle('open');
-
-  if (menu.classList.contains('open')) {
-    // Make it immune to overflow clipping
-    menu.style.position = 'fixed';
-    menu.style.zIndex = '999999';
-
-    // Need it visible to measure height
-    menu.style.visibility = 'hidden';
-    menu.style.display = 'block';
-
-    const btnRect = btn.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-
-    // Default: open downward
-    let top = btnRect.bottom + 6;
-
-    // If it would go off-screen, open upward
-    if (top + menuRect.height > window.innerHeight - 8) {
-      top = btnRect.top - menuRect.height - 6;
-    }
-
-    // Keep inside viewport horizontally
-    let left = btnRect.right - menuRect.width;
-    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
-
-    menu.style.top = `${top}px`;
-    menu.style.left = `${left}px`;
-
-    menu.style.visibility = 'visible';
-  }
-}
-
-// Close menus when clicking elsewhere
-document.addEventListener('click', () => {
-  document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
-});
-
-// Close on ESC
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
-  }
-});
-</script>
-
-
-
-
-  <script>
-    window.addEventListener('keydown', (e)=>{
-      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='k'){
-        const s = document.getElementById('search');
-        if(s){ e.preventDefault(); s.focus(); }
-      }
-      if(e.key === "Escape"){ closeDrawer(); }
-    });
-
-    function confirmDelete(formId){
-      if(confirm("Delete this? This can't be undone.")){
-        document.getElementById(formId).submit();
-      }
-    }
-    window.confirmDelete = confirmDelete;
-
-    function confirmClear(formId){
-      if(confirm("Clear ALL trade data? This wipes the trades table.")){
-        document.getElementById(formId).submit();
-      }
-    }
-    window.confirmClear = confirmClear;
-
-    function openDrawer(){
-      document.getElementById('drawer').classList.add('open');
-      document.getElementById('drawerOverlay').classList.add('open');
-      const t = document.getElementById('menuToggleBtn');
-      if(t) t.setAttribute('aria-expanded', 'true');
-      document.body.style.overflow = "hidden";
-    }
-    function closeDrawer(){
-      document.getElementById('drawer').classList.remove('open');
-      document.getElementById('drawerOverlay').classList.remove('open');
-      const t = document.getElementById('menuToggleBtn');
-      if(t) t.setAttribute('aria-expanded', 'false');
-      document.body.style.overflow = "";
-    }
-    window.openDrawer = openDrawer;
-    window.closeDrawer = closeDrawer;
-
-    document.addEventListener('click', (e)=>{
-      const link = e.target.closest && e.target.closest('#drawer a');
-      if(link) closeDrawer();
-    });
-
-    function updateETClock(){
-      try{
-        const now = new Date();
-        const timeStr = new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          hour: "2-digit", minute:"2-digit", second:"2-digit",
-          hour12:true
-        }).format(now);
-
-        const weekday = new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          weekday: "short"
-        }).format(now);
-
-        const hour24 = Number(new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          hour: "2-digit",
-          hour12: false
-        }).format(now));
-
-        const clock = document.getElementById("etClock");
-        const mode = document.getElementById("modePill");
-        if(clock) clock.textContent = timeStr;
-
-        if(mode){
-          const isWeekend = (weekday === "Sat" || weekday === "Sun");
-          if(isWeekend) mode.textContent = "🧠 Weekend Mode";
-          else if(hour24 >= 16) mode.textContent = "📚 Study Mode";
-          else mode.textContent = "📈 Trading Day";
-        }
-      }catch(e){
-        console.error(e);
-      }
-    }
-
-    setInterval(updateETClock, 1000);
-    updateETClock();
-  </script>
-</body>
-</html>
-"""
-
 
 def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
     logo_path = os.path.join(app.static_folder or "static", "logo.png")
@@ -2808,15 +2087,15 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
         static_v = str(int(max(os.path.getmtime(logo_path), os.path.getmtime(favicon_path))))
     except Exception:
         static_v = BUILD_MARKER
-    return render_template_string(
-        BASE_HTML,
+    return render_template(
+        "base.html",
         title=title,
         logo_exists=logo_exists,
         favicon_exists=favicon_exists,
         static_v=static_v,
         auth_enabled=auth_enabled(),
         authenticated=is_authenticated(),
-        auth_username=APP_USERNAME,
+        auth_username=_effective_username(),
         content=content_html,
         active=active,
     )
@@ -2841,9 +2120,76 @@ def _simple_msg(msg: str) -> str:
 # ============================================================
 # Routes – Home + favicon
 # ============================================================
+def setup_page():
+    """First-run auth setup from the web UI."""
+    if auth_enabled() and not is_authenticated():
+        return redirect(url_for("login_page"))
+
+    err = ""
+    msg = ""
+    default_user = _effective_username() if auth_enabled() else APP_USERNAME
+
+    if request.method == "POST":
+        user = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        confirm = request.form.get("confirm_password") or ""
+
+        if len(user) < 3:
+            err = "Username must be at least 3 characters."
+        elif len(password) < 8:
+            err = "Password must be at least 8 characters."
+        elif password != confirm:
+            err = "Passwords do not match."
+        else:
+            set_setting_value("auth_username", user)
+            set_setting_value("auth_password_hash", generate_password_hash(password))
+            session["auth_ok"] = True
+            session["auth_user"] = user
+            session.permanent = True
+            msg = "Login credentials saved."
+            return redirect(url_for("dashboard"))
+
+    return render_page(
+        render_template_string(
+            """
+            <div class="card"><div class="toolbar" style="max-width:560px;margin:18px auto;">
+              <div class="pill">🔐 Setup Login</div>
+              <div class="tiny" style="margin-top:10px;line-height:1.6">
+                Create your app login. You can change it later from this same page.
+              </div>
+              {% if err %}<div class="hr"></div><div class="tiny" style="color:#ff8f8f">{{ err }}</div>{% endif %}
+              {% if msg %}<div class="hr"></div><div class="tiny" style="color:#9fd6ff">{{ msg }}</div>{% endif %}
+              <div class="hr"></div>
+              <form method="post">
+                <div class="row">
+                  <div><label>Username</label><input name="username" value="{{ default_user }}" autocomplete="username" required></div>
+                </div>
+                <div class="row" style="margin-top:10px">
+                  <div><label>Password</label><input type="password" name="password" autocomplete="new-password" required></div>
+                </div>
+                <div class="row" style="margin-top:10px">
+                  <div><label>Confirm Password</label><input type="password" name="confirm_password" autocomplete="new-password" required></div>
+                </div>
+                <div class="hr"></div>
+                <div class="rightActions">
+                  <button class="btn primary" type="submit">Save Login</button>
+                  <a class="btn" href="/dashboard">Cancel</a>
+                </div>
+              </form>
+            </div></div>
+            """,
+            err=err,
+            msg=msg,
+            default_user=default_user,
+        ),
+        active="auth",
+        title=f"{APP_TITLE} · Setup Login",
+    )
+
+
 def login_page():
     if not auth_enabled():
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("setup_page"))
     if is_authenticated():
         return redirect(url_for("dashboard"))
 
@@ -2851,9 +2197,10 @@ def login_page():
     if request.method == "POST":
         user = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-        if user == APP_USERNAME and check_password_hash(_effective_password_hash(), password):
+        effective_user = _effective_username()
+        if user == effective_user and check_password_hash(_effective_password_hash(), password):
             session["auth_ok"] = True
-            session["auth_user"] = APP_USERNAME
+            session["auth_user"] = effective_user
             session.permanent = True
             nxt = (request.args.get("next") or request.form.get("next") or "").strip()
             if nxt.startswith("/") and not nxt.startswith("//"):
@@ -6481,6 +5828,109 @@ def export_json():
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     return send_file(out_path, as_attachment=True, download_name="mccain_capital_export.json")
+
+
+def backup_data():
+    """Download a zip backup containing DB + uploads."""
+    stamp = now_et().strftime("%Y%m%d_%H%M%S")
+    fd, out_path = tempfile.mkstemp(prefix="mccain_backup_", suffix=".zip")
+    os.close(fd)
+    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        if os.path.exists(DB_PATH):
+            zf.write(DB_PATH, arcname="data/journal.db")
+
+        if os.path.isdir(UPLOAD_DIR):
+            for root, _, files in os.walk(UPLOAD_DIR):
+                for name in files:
+                    full = os.path.join(root, name)
+                    rel = os.path.relpath(full, UPLOAD_DIR)
+                    zf.write(full, arcname=f"data/uploads/{rel}")
+
+        meta = {
+            "exported_at": now_iso(),
+            "db_path": DB_PATH,
+            "upload_dir": UPLOAD_DIR,
+            "app": "mccain-capital",
+        }
+        zf.writestr("data/meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
+
+    return send_file(
+        out_path,
+        as_attachment=True,
+        download_name=f"mccain_capital_backup_{stamp}.zip",
+        mimetype="application/zip",
+    )
+
+
+def restore_data():
+    """Restore DB + uploads from a backup zip."""
+    if request.method == "GET":
+        content = render_template_string(
+            """
+            <div class="card"><div class="toolbar">
+              <div class="pill">♻️ Restore Backup</div>
+              <div class="tiny" style="margin-top:10px;line-height:1.6">
+                Upload a backup zip created from <b>/admin/backup</b>.<br>
+                This will replace <b>{{ db_path }}</b> and merge files into <b>{{ upload_dir }}</b>.
+              </div>
+              <div class="hr"></div>
+              <form method="post" enctype="multipart/form-data">
+                <label>Backup ZIP</label>
+                <input type="file" name="backup_zip" accept=".zip,application/zip" required />
+                <div class="hr"></div>
+                <div class="rightActions">
+                  <button class="btn danger" type="submit">Restore</button>
+                  <a class="btn" href="/dashboard">Cancel</a>
+                </div>
+              </form>
+            </div></div>
+            """,
+            db_path=DB_PATH,
+            upload_dir=UPLOAD_DIR,
+        )
+        return render_page(content, active="dashboard")
+
+    f = request.files.get("backup_zip")
+    if not f or not f.filename:
+        return render_page(_simple_msg("Please choose a backup zip file."), active="dashboard")
+
+    try:
+        with zipfile.ZipFile(f.stream) as zf:
+            names = zf.namelist()
+            if not names:
+                return render_page(_simple_msg("Backup zip is empty."), active="dashboard")
+
+            allowed_prefixes = ("data/journal.db", "data/uploads/", "data/meta.json")
+            for n in names:
+                if n.startswith("/") or ".." in n:
+                    return render_page(_simple_msg("Backup zip contains unsafe paths."), active="dashboard")
+                if not any(n == p or n.startswith(p) for p in allowed_prefixes):
+                    return render_page(_simple_msg("Backup zip contains unsupported files."), active="dashboard")
+
+            db_member = "data/journal.db"
+            if db_member in names:
+                os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+                with zf.open(db_member) as src, open(DB_PATH, "wb") as dst:
+                    dst.write(src.read())
+
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
+            for n in names:
+                if not n.startswith("data/uploads/") or n.endswith("/"):
+                    continue
+                rel = n[len("data/uploads/"):]
+                out_path = os.path.join(UPLOAD_DIR, rel)
+                out_dir = os.path.dirname(out_path)
+                if out_dir:
+                    os.makedirs(out_dir, exist_ok=True)
+                with zf.open(n) as src, open(out_path, "wb") as dst:
+                    dst.write(src.read())
+
+    except zipfile.BadZipFile:
+        return render_page(_simple_msg("Invalid zip file."), active="dashboard")
+    except Exception as e:
+        return render_page(_simple_msg(f"Restore failed: {e}"), active="dashboard")
+
+    return render_page(_simple_msg("Backup restore completed."), active="dashboard")
 
 
 # ============================================================
