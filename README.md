@@ -40,6 +40,23 @@
 ### 💸 Payouts
 ![Payouts](docs/images/payout.png)
 
+### 📱 Mobile Showcase
+
+#### 📊 Dashboard (Mobile)
+![Dashboard Mobile](docs/images/mobile-dashboard.png)
+
+#### 📋 Trades (Mobile)
+![Trades Mobile](docs/images/mobile-trades.png)
+
+#### 📝 Journal (Mobile)
+![Journal Mobile](docs/images/mobile-journal.png)
+
+#### 🧮 Calculator (Mobile)
+![Calculator Mobile](docs/images/mobile-calculator.png)
+
+#### 💸 Payouts (Mobile)
+![Payouts Mobile](docs/images/mobile-payout.png)
+
 ---
 
 ## 🧱 Architecture
