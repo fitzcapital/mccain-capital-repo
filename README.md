@@ -26,19 +26,19 @@
 ## 🖼️ Product Showcase
 
 ### 📊 Dashboard
-![Dashboard](docs/images/dashboard.png)
+![Dashboard](uploads/dashboard.png)
 
 ### 📋 Trades
-![Trades](docs/images/trades.png)
+![Trades](uploads/trades.png)
 
 ### 📝 Journal
-![Journal](docs/images/journal.png)
+![Journal](uploads/journal.png)
 
 ### 🧮 Calculator
-![Calculator](docs/images/calculator.png)
+![Calculator](uploads/calculator.png)
 
 ### 💸 Payouts
-![Payouts](docs/images/payout.png)
+![Payouts](uploads/payout.png)
 
 ---
 
