@@ -11,3 +11,17 @@ build/
 *.sqlite
 *.log
 .DS_Store
+
+# IDE/editor local state
+.idea/
+.vscode/
+
+# Runtime/generated app data
+uploads/
+books/
+podman_data/
+
+# OS and cache noise
+*.swp
+*.swo
+.pytest_cache/

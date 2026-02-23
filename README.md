@@ -1,65 +1,48 @@
 # McCain Capital 🏛️📈
 
-> A futuristic personal trading operating system built with Flask + SQLite.
-> Log trades, review execution, track consistency, enforce risk, and learn faster.
+<p align="center">
+  <img src="docs/images/logo.png" alt="McCain Capital Logo" width="180" />
+</p>
 
-## Why this app exists 🚀
-Most trading journals track outcomes.
-**McCain Capital tracks behavior + outcomes** so you can improve process, not just profit.
+<p align="center">
+  <b>Your personal trading operating system</b><br/>
+  Built with Flask + SQLite for journaling, trade review, risk discipline, and execution consistency.
+</p>
 
-This is designed as a personal edge engine:
-- 📊 Performance dashboard
-- 🧠 Trade reviews + checklist scoring
-- 🛡️ Risk lockout controls
-- 📈 Setup/session analytics
-- 📝 Journal workflow
+---
 
-## Product Showcase ✨
+## ✨ What This App Does
 
-### Core modules
-- 📅 **Trades**: import broker fills, manual entries, batch actions, review tags
-- 📊 **Calendar Dashboard**: month heatmap + weekly/monthly/YTD rollups
-- 🧠 **Analytics**: setup/session/time-of-day breakdowns + average checklist score
-- 🛡️ **Risk Controls**: daily max-loss + optional lockout enforcement
-- 📝 **Journal**: notes, mood, setup reflections
-- 🧮 **Calculator**: options risk/reward planning
+- 📅 **Dashboard**: daily/weekly/monthly performance snapshot
+- 📋 **Trades**: import broker-style fills, manage trades, bulk actions
+- 🧠 **Reviews**: checklist score, setup tags, session analysis
+- 🛡️ **Risk Controls**: enforce max-loss behavior and discipline
+- 📝 **Journal**: daily context + reflection workflow
+- 🧮 **Calculator**: plan risk/reward before entering a trade
+- 🎯 **Goals + Payouts**: track progress and payout readiness
 
-### Visual identity
-- 🌌 Deep-black futuristic theme
-- 💠 Cyan accent system for hierarchy and interactive states
-- 📱 Mobile-aware layouts (quick dock + mobile trade cards)
-- 🧊 Glass/elevated card UI for dashboard readability
+---
 
-## Feature highlights 🎯
+## 🖼️ Product Showcase
 
-### 1) Import-first trade workflow (built for statements)
-- Supports broker-style and statement conversion flows
-- Automatically creates review metadata for imported trades
-- Auto-score is assigned so analytics works even without manual entry
+### 📊 Dashboard
+![Dashboard](docs/images/dashboard.png)
 
-### 2) Review & scoring engine
-- Per-trade review fields:
-  - setup tag
-  - session tag
-  - checklist score (0-100)
-  - rule-break tags
-  - review note
-- Auto-score heuristic for imported trades
-- `Avg Score` appears in analytics by setup/session/time bucket
+### 📋 Trades
+![Trades](docs/images/trades.png)
 
-### 3) Guardrails (discipline protection)
-- Configure daily max loss
-- Enable lockout when threshold is breached
-- Trade-entry paths honor lockout state
+### 📝 Journal
+![Journal](docs/images/journal.png)
 
-### 4) Security + deploy readiness
-- Optional single-user login
-- Security headers (CSP, frame/content/referrer protection)
-- Health check endpoint (`/healthz`)
-- Podman-ready container deployment
-- Tailscale private network support
+### 🧮 Calculator
+![Calculator](docs/images/calculator.png)
 
-## Architecture 🧱
+### 💸 Payouts
+![Payouts](docs/images/payout.png)
+
+---
+
+## 🧱 Architecture
 
 - `app.py`: compatibility entrypoint
 - `mccain_capital/legacy_app.py`: core app logic + templates
@@ -69,9 +52,23 @@ This is designed as a personal edge engine:
 - `mccain_capital/config.py`: runtime config profiles
 - `services/podman-compose.tailscale.yml`: app + private VPN sidecar
 
-## Quickstart ⚡
+---
 
-### Local
+## 🗂️ Repo Layout
+
+- `mccain_capital/` -> application code
+- `static/` -> logos/icons/favicon + static assets
+- `docs/images/` -> README screenshots and branding
+- `docs/indicators/` -> indicator reference files
+- `services/` -> deployment manifests
+- `books/` -> local PDFs for `/books` (not tracked)
+- `uploads/` -> runtime import files (not tracked)
+- `podman_data/` -> runtime container data (not tracked)
+
+---
+
+## ⚡ Quickstart (Local)
+
 ```bash
 cd /Users/kurtmccain/mccainc/mccain-capital-repo
 python -m venv .venv
@@ -80,7 +77,12 @@ pip install -r requirements.txt
 python -m mccain_capital.cli
 ```
 
-### Container (Podman)
+Open: `http://localhost:5001`
+
+---
+
+## 🐳 Quickstart (Podman)
+
 ```bash
 cd /Users/kurtmccain/mccainc/mccain-capital-repo
 podman build -t mccain-capital-app:latest -f Containerfile .
@@ -91,7 +93,9 @@ podman logs -f mccain-capital-app
 
 Open: `http://localhost:5001`
 
-## Private VPN mode (Tailscale + Podman) 🔐
+---
+
+## 🔐 Private VPN Mode (Tailscale + Podman)
 
 ```bash
 cd /Users/kurtmccain/mccainc/mccain-capital-repo
@@ -100,7 +104,9 @@ podman compose -f services/podman-compose.tailscale.yml up -d --build
 podman compose -f services/podman-compose.tailscale.yml ps
 ```
 
-## Environment variables 🛠️
+---
+
+## 🛠️ Environment Variables
 
 - `SECRET_KEY`
 - `DB_PATH`
@@ -111,11 +117,17 @@ podman compose -f services/podman-compose.tailscale.yml ps
 - `SESSION_LIFETIME_MIN`
 - `APP_ENV` (`dev` or `prod`)
 
-## Roadmap ideas 🔭
-- Score breakdown tooltip per trade
-- Migration framework for schema evolution
-- Automated weekly report generation
-- Broker connectors for direct sync
+---
 
-## License / Usage
-Personal project and portfolio build by Kurt McCain.
+## 🧭 Roadmap
+
+- 📌 Richer review analytics
+- 🔄 Schema migrations
+- 📈 Weekly auto-reports
+- 🔌 Broker integrations
+
+---
+
+## 👤 Author
+
+Built by **Kurt McCain** as a personal trading discipline platform and portfolio project.
