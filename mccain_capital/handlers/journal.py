@@ -1,19 +1,19 @@
-"""Journal endpoint handlers (delegating to legacy implementation)."""
+"""Journal endpoint handlers (delegating to service layer)."""
 
-from mccain_capital import legacy_app as legacy
+from mccain_capital.services import journal as svc
 
 
 def journal_home():
-    return legacy.journal_home()
+    return svc.journal_home()
 
 
 def new_entry():
-    return legacy.new_entry()
+    return svc.new_entry()
 
 
 def edit_entry(entry_id: int):
-    return legacy.edit_entry(entry_id)
+    return svc.edit_entry(entry_id)
 
 
 def delete_entry_route(entry_id: int):
-    return legacy.delete_entry_route(entry_id)
+    return svc.delete_entry_route(entry_id)

@@ -5,13 +5,13 @@ from datetime import timedelta
 from flask import redirect, request, url_for
 
 from mccain_capital.config import select_config
-from mccain_capital import legacy_app as legacy
+from mccain_capital import app_core as core
 from mccain_capital.routes import register_all_routes
 
 
 def create_app():
     """Return configured Flask app with all routes registered."""
-    app = legacy.app
+    app = core.app
     app.config.from_object(select_config())
     app.secret_key = app.config["SECRET_KEY"]
     app.permanent_session_lifetime = timedelta(minutes=app.config["PERMANENT_SESSION_LIFETIME_MINUTES"])
@@ -23,12 +23,12 @@ def create_app():
     if not getattr(app, "_security_hooks_registered", False):
         @app.before_request
         def _auth_gate():
-            if not legacy.auth_enabled():
+            if not core.auth_enabled():
                 return None
             allow = {"login_page", "logout_page", "healthz", "favicon", "static"}
             if request.endpoint in allow:
                 return None
-            if legacy.is_authenticated():
+            if core.is_authenticated():
                 return None
             nxt = request.full_path if request.query_string else request.path
             return redirect(url_for("login_page", next=nxt))
@@ -48,5 +48,5 @@ def create_app():
             return resp
 
         app._security_hooks_registered = True
-    legacy.init_db()
+    core.init_db()
     return app

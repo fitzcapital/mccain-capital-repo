@@ -557,7 +557,7 @@ plotshape(show2FREV and is2FRevBull and not isTier1Event,
      location=location.bottom,
      color=bullColor,
      text=bullIcon + "Failed 2D Bullish\nReversal",
-     textcolor=color.rgb(225, 0, 0),
+     textcolor=color.rgb(18, 186, 88),
      offset=comboOffset,
      size=size.tiny,
      show_last=1)
@@ -584,8 +584,8 @@ if showActiveLevels
             isBullSig = anyBullCombo
             lenBars   = (is22BullRev or is22BearRev) ? 2 : 3
 
-            minLow   = lenBars == 2 ? math.min(low, low[1]) : math.min(low, low[1], low[2])
-            maxHigh  = lenBars == 2 ? math.max(high, high[1]) : math.max(high, high[1], high[2])
+            minLow   = lenBars == 2 ? math.min(low, low[1]) : math.min(math.min(low, low[1]), low[2])
+            maxHigh  = lenBars == 2 ? math.max(high, high[1]) : math.max(math.max(high, high[1]), high[2])
             patRange = maxHigh - minLow
 
             target = isBullSig ? (maxHigh + patRange) : (minLow - patRange)

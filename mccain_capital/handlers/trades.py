@@ -1,55 +1,55 @@
-"""Trades endpoint handlers (delegating to legacy implementation)."""
+"""Trades endpoint handlers (delegating to service layer)."""
 
-from mccain_capital import legacy_app as legacy
+from mccain_capital.services import trades as svc
 
 
 def trades_page():
-    return legacy.trades_page()
+    return svc.trades_page()
 
 
 def trades_duplicate(trade_id: int):
-    return legacy.trades_duplicate(trade_id)
+    return svc.trades_duplicate(trade_id)
 
 
 def trades_delete(trade_id: int):
-    return legacy.trades_delete(trade_id)
+    return svc.trades_delete(trade_id)
 
 
 def trades_delete_many():
-    return legacy.trades_delete_many()
+    return svc.trades_delete_many()
 
 
 def trades_copy_many():
-    return legacy.trades_copy_many()
+    return svc.trades_copy_many()
 
 
 def trades_edit(trade_id: int):
-    return legacy.trades_edit(trade_id)
+    return svc.trades_edit(trade_id)
 
 
 def trades_review(trade_id: int):
-    return legacy.trades_review(trade_id)
+    return svc.trades_review(trade_id)
 
 
 def trades_clear():
-    return legacy.trades_clear()
+    return svc.trades_clear()
 
 
 def trades_paste():
-    return legacy.trades_paste()
+    return svc.trades_paste()
 
 
 def trades_new_manual():
-    return legacy.trades_new_manual()
+    return svc.trades_new_manual()
 
 
 def trades_paste_broker():
-    return legacy.trades_paste_broker()
+    return svc.trades_paste_broker()
 
 
 def trades_upload_pdf():
-    return legacy.trades_upload_pdf()
+    return svc.trades_upload_pdf()
 
 
 def trades_risk_controls():
-    return legacy.trades_risk_controls()
+    return svc.trades_risk_controls()

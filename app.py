@@ -1,7 +1,7 @@
 """Compatibility entrypoint.
 
-Keeps `python app.py` and legacy imports working while the app is packaged
-under `mccain_capital`.
+Keeps `python app.py` working while the app is packaged under
+`mccain_capital`.
 """
 
 from mccain_capital.wsgi import app

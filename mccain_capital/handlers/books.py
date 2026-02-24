@@ -1,11 +1,11 @@
-"""Books endpoint handlers (delegating to legacy implementation)."""
+"""Books endpoint handlers (delegating to service layer)."""
 
-from mccain_capital import legacy_app as legacy
+from mccain_capital.services import books as svc
 
 
 def books_page():
-    return legacy.books_page()
+    return svc.books_page()
 
 
 def books_open(name: str):
-    return legacy.books_open(name)
+    return svc.books_open(name)

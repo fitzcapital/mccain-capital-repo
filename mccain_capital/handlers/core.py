@@ -1,67 +1,68 @@
-"""Core endpoint handlers (delegating to legacy implementation)."""
+"""Core endpoint handlers (delegating to service layer)."""
 
-from mccain_capital import legacy_app as legacy
+from mccain_capital.services import core as svc
+from mccain_capital.services import goals as goals_svc
 
 
 def home():
-    return legacy.home()
+    return svc.home()
 
 
 def setup_page():
-    return legacy.setup_page()
+    return svc.setup_page()
 
 
 def login_page():
-    return legacy.login_page()
+    return svc.login_page()
 
 
 def logout_page():
-    return legacy.logout_page()
+    return svc.logout_page()
 
 
 def healthz():
-    return legacy.healthz()
+    return svc.healthz()
 
 
 def favicon():
-    return legacy.favicon()
+    return svc.favicon()
 
 
 def dashboard():
-    return legacy.dashboard()
+    return svc.dashboard()
 
 
 def analytics_page():
-    return legacy.analytics_page()
+    return svc.analytics_page()
 
 
 def calculator():
-    return legacy.calculator()
+    return svc.calculator()
 
 
 def goals_tracker():
-    return legacy.goals_tracker()
+    return goals_svc.goals_tracker()
 
 
 def links_page():
-    return legacy.links_page()
+    return svc.links_page()
 
 
 def export_json():
-    return legacy.export_json()
+    return svc.export_json()
 
 
 def backup_data():
-    return legacy.backup_data()
+    return svc.backup_data()
 
 
 def restore_data():
-    return legacy.restore_data()
+    return svc.restore_data()
 
 
 def payouts_page():
-    return legacy.payouts_page()
+    return goals_svc.payouts_page()
 
 
 def chart():
-    return legacy.chart()
+    return svc.chart()

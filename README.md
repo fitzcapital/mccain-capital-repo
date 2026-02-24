@@ -62,7 +62,7 @@
 ## 🧱 Architecture
 
 - `app.py`: compatibility entrypoint
-- `mccain_capital/legacy_app.py`: core app logic + templates
+- `mccain_capital/app_core.py`: core app logic + templates
 - `mccain_capital/__init__.py`: app factory + hooks
 - `mccain_capital/routes/`: route registration
 - `mccain_capital/handlers/`: endpoint handlers
