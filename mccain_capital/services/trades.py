@@ -10,39 +10,42 @@ from typing import Any, List, Optional
 from flask import abort, flash, jsonify, redirect, render_template_string, request, url_for
 from werkzeug.utils import secure_filename
 
-from mccain_capital import app_core as core
+from mccain_capital.repositories import trades as repo
+from mccain_capital.runtime import (
+    UPLOAD_DIR,
+    db,
+    default_starting_balance,
+    detect_paste_format,
+    latest_balance_overall,
+    money,
+    next_trading_day_iso,
+    now_iso,
+    normalize_opt_type,
+    parse_float,
+    parse_int,
+    pct,
+    prev_trading_day_iso,
+    today_iso,
+)
+from mccain_capital.services import trades_importing as importing
+from mccain_capital.services.ui import render_page, simple_msg
 
 # Compatibility aliases used by extracted route bodies.
-today_iso = core.today_iso
-prev_trading_day_iso = core.prev_trading_day_iso
-next_trading_day_iso = core.next_trading_day_iso
-fetch_trades = core.fetch_trades
-fetch_trade_reviews_map = core.fetch_trade_reviews_map
-trade_day_stats = core.trade_day_stats
-calc_consistency = core.calc_consistency
-trade_lockout_state = core.trade_lockout_state
-week_total_net = core.week_total_net
-last_balance_in_list = core.last_balance_in_list
-latest_balance_overall = core.latest_balance_overall
-render_page = core.render_page
-money = core.money
-pct = core.pct
-default_starting_balance = core.default_starting_balance
-detect_paste_format = core.detect_paste_format
-insert_trades_from_broker_paste = core.insert_trades_from_broker_paste
-insert_trades_from_paste = core.insert_trades_from_paste
-parse_float = core.parse_float
-UPLOAD_DIR = core.UPLOAD_DIR
-parse_statement_html_to_broker_paste = core.parse_statement_html_to_broker_paste
-insert_balance_snapshot = core.insert_balance_snapshot
-ocr_pdf_to_broker_paste = core.ocr_pdf_to_broker_paste
-_load_ocr_deps = core._load_ocr_deps
-_prep_for_ocr = core._prep_for_ocr
-normalize_ocr = core.normalize_ocr
-stitch_ocr_rows = core.stitch_ocr_rows
-ocr_pdf_to_text = core.ocr_pdf_to_text
-extract_statement_balance = core.extract_statement_balance
-_simple_msg = core._simple_msg
+fetch_trades = repo.fetch_trades
+fetch_trade_reviews_map = repo.fetch_trade_reviews_map
+trade_day_stats = repo.trade_day_stats
+calc_consistency = repo.calc_consistency
+week_total_net = repo.week_total_net
+last_balance_in_list = repo.last_balance_in_list
+
+
+def trade_lockout_state(day_iso: str):
+    rc = repo.get_risk_controls()
+    return repo.trade_lockout_state(
+        day_iso,
+        daily_max_loss=float(rc.get("daily_max_loss", 0.0) or 0.0),
+        enforce_lockout=int(rc.get("enforce_lockout", 0) or 0),
+    )
 
 
 def trades_page():
@@ -690,7 +693,7 @@ if (bulkCopyBtn) {
 
 
 def get_trade(trade_id: int) -> Optional[sqlite3.Row]:
-    with core.db() as conn:
+    with db() as conn:
         return conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
 
 
@@ -738,9 +741,9 @@ def trades_duplicate(trade_id: int):
         abort(404)
 
     net_pl = float(src["net_pl"] or 0.0)
-    new_balance = (core.latest_balance_overall() or 50000.0) + net_pl
+    new_balance = (latest_balance_overall() or 50000.0) + net_pl
 
-    with core.db() as conn:
+    with db() as conn:
         conn.execute(
             """
             INSERT INTO trades (
@@ -773,7 +776,7 @@ def trades_duplicate(trade_id: int):
                 src["result_pct"],
                 new_balance,
                 f"DUPLICATE OF #{trade_id}",
-                core.now_iso(),
+                now_iso(),
             ),
         )
 
@@ -783,7 +786,7 @@ def trades_duplicate(trade_id: int):
 
 
 def trades_delete(trade_id: int):
-    with core.db() as conn:
+    with db() as conn:
         conn.execute("DELETE FROM trades WHERE id = ?", (trade_id,))
     d = request.args.get("d", "")
     q = request.args.get("q", "")
@@ -801,7 +804,7 @@ def trades_delete_many():
         )
 
     placeholders = ",".join(["?"] * len(ids))
-    with core.db() as conn:
+    with db() as conn:
         cur = conn.execute(f"DELETE FROM trades WHERE id IN ({placeholders})", ids)
         deleted = cur.rowcount if cur.rowcount is not None else 0
 
@@ -840,7 +843,7 @@ def trades_copy_many():
             url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
         )
 
-    with core.db() as conn:
+    with db() as conn:
         cols = _trades_table_columns(conn)
         insert_cols = [c for c in cols if c != "id"]
         select_cols = ",".join([f"{c}" for c in insert_cols])
@@ -883,18 +886,18 @@ def trades_edit(trade_id: int):
     if request.method == "POST":
         f = request.form
 
-        trade_date = (f.get("trade_date") or core.today_iso()).strip()
+        trade_date = (f.get("trade_date") or today_iso()).strip()
         entry_time = (f.get("entry_time") or "").strip()
         exit_time = (f.get("exit_time") or "").strip()
 
         ticker = (f.get("ticker") or "").strip().upper()
-        opt_type = core.normalize_opt_type(f.get("opt_type") or "")
-        strike = core.parse_float(f.get("strike") or "")
+        opt_type = normalize_opt_type(f.get("opt_type") or "")
+        strike = parse_float(f.get("strike") or "")
 
-        contracts = core.parse_int(f.get("contracts") or "") or 0
-        entry_price = core.parse_float(f.get("entry_price") or "")
-        exit_price = core.parse_float(f.get("exit_price") or "")
-        comm = core.parse_float(f.get("comm") or "") or 0.0
+        contracts = parse_int(f.get("contracts") or "") or 0
+        entry_price = parse_float(f.get("entry_price") or "")
+        exit_price = parse_float(f.get("exit_price") or "")
+        comm = parse_float(f.get("comm") or "") or 0.0
 
         if (
             not ticker
@@ -903,8 +906,8 @@ def trades_edit(trade_id: int):
             or entry_price is None
             or exit_price is None
         ):
-            return core.render_page(
-                core._simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
+            return render_page(
+                simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
                 active="trades",
             )
 
@@ -913,7 +916,7 @@ def trades_edit(trade_id: int):
         total_spent = entry_price * 100.0 * contracts
         result_pct = (net_pl / total_spent * 100.0) if total_spent > 0 else None
 
-        with core.db() as conn:
+        with db() as conn:
             conn.execute(
                 """
                 UPDATE trades
@@ -941,7 +944,7 @@ def trades_edit(trade_id: int):
                 ),
             )
 
-        core.recompute_balances()
+        repo.recompute_balances()
         return redirect(
             url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page", d=trade_date)
         )
@@ -994,7 +997,7 @@ def trades_edit(trade_id: int):
         d=d,
         q=q,
     )
-    return core.render_page(content, active="trades")
+    return render_page(content, active="trades")
 
 
 def trades_review(trade_id: int):
@@ -1004,17 +1007,17 @@ def trades_review(trade_id: int):
 
     d = request.args.get("d", "")
     q = request.args.get("q", "")
-    rv = core.get_trade_review(trade_id) or {}
+    rv = repo.get_trade_review(trade_id) or {}
 
     if request.method == "POST":
         f = request.form
         setup_tag = (f.get("setup_tag") or "").strip()
         session_tag = (f.get("session_tag") or "").strip()
         score_raw = (f.get("checklist_score") or "").strip()
-        checklist_score = core.parse_int(score_raw) if score_raw else None
+        checklist_score = parse_int(score_raw) if score_raw else None
         rule_break_tags = (f.get("rule_break_tags") or "").strip()
         review_note = (f.get("review_note") or "").strip()
-        core.upsert_trade_review(
+        repo.upsert_trade_review(
             trade_id=trade_id,
             setup_tag=setup_tag,
             session_tag=session_tag,
@@ -1069,18 +1072,18 @@ def trades_review(trade_id: int):
         d=d,
         q=q,
     )
-    return core.render_page(content, active="trades")
+    return render_page(content, active="trades")
 
 
 def trades_risk_controls():
     if request.method == "POST":
-        daily_max_loss = core.parse_float(request.form.get("daily_max_loss", "")) or 0.0
+        daily_max_loss = parse_float(request.form.get("daily_max_loss", "")) or 0.0
         enforce_lockout = 1 if request.form.get("enforce_lockout") == "1" else 0
-        core.save_risk_controls(daily_max_loss, enforce_lockout)
+        repo.save_risk_controls(daily_max_loss, enforce_lockout)
         return redirect(url_for("trades_risk_controls"))
 
-    rc = core.get_risk_controls()
-    state = core.trade_lockout_state(core.today_iso())
+    rc = repo.get_risk_controls()
+    state = trade_lockout_state(today_iso())
     content = render_template_string(
         """
         <div class="card"><div class="toolbar">
@@ -1111,41 +1114,40 @@ def trades_risk_controls():
         """,
         rc=rc,
         state=state,
-        money=core.money,
+        money=money,
     )
-    return core.render_page(content, active="trades")
+    return render_page(content, active="trades")
 
 
 def trades_clear():
-    core.clear_trades()
+    repo.clear_trades()
     return redirect(url_for("trades_page"))
 
 
 def trades_paste():
     if request.method == "POST":
-        guardrail = core.trade_lockout_state(core.today_iso())
+        guardrail = trade_lockout_state(today_iso())
         if guardrail["locked"]:
-            return core.render_page(
-                core._simple_msg(
+            return render_page(
+                simple_msg(
                     f"Daily max-loss guardrail is active for {guardrail['day']}. "
-                    f"Day net {core.money(guardrail['day_net'])} reached limit {core.money(guardrail['daily_max_loss'])}. "
+                    f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}. "
                     "Unlock in Risk Controls to continue."
                 ),
                 active="trades",
             )
         text = request.form.get("text", "")
         starting_balance = (
-            core.parse_float(request.form.get("starting_balance", ""))
-            or core.default_starting_balance()
+            parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
         )
-        fmt = core.detect_paste_format(text)
+        fmt = detect_paste_format(text)
 
         if fmt == "broker":
-            inserted, errors = core.insert_trades_from_broker_paste(
+            inserted, errors = importing.insert_trades_from_broker_paste(
                 text, starting_balance=starting_balance
             )
         else:
-            inserted, errors = core.insert_trades_from_paste(text)
+            inserted, errors = importing.insert_trades_from_paste(text)
 
         content = render_template_string(
             """
@@ -1170,7 +1172,7 @@ def trades_paste():
             inserted=inserted,
             errors=errors,
         )
-        return core.render_page(content, active="trades")
+        return render_page(content, active="trades")
 
     example = "1/29\t9:35 AM\t9:37 AM\tSPX\tPUT\t6940\t$6.20\t$7.30\t3\t$1,860.00\t20\t30\t$4.96\t$8.06\t$374.10\t$2.10\t$330.00\t$327.90\t17.74%\t$50,924.40"
     content = render_template_string(
@@ -1204,31 +1206,31 @@ def trades_paste():
         """,
         example=example,
     )
-    return core.render_page(content, active="trades")
+    return render_page(content, active="trades")
 
 
 def trades_new_manual():
     if request.method == "POST":
         f = request.form
-        trade_date = (f.get("trade_date") or core.today_iso()).strip()
-        guardrail = core.trade_lockout_state(trade_date)
+        trade_date = (f.get("trade_date") or today_iso()).strip()
+        guardrail = trade_lockout_state(trade_date)
         if guardrail["locked"]:
-            return core.render_page(
-                core._simple_msg(
+            return render_page(
+                simple_msg(
                     f"Daily max-loss lockout active for {trade_date}. "
-                    f"Day net {core.money(guardrail['day_net'])} hit limit {core.money(guardrail['daily_max_loss'])}."
+                    f"Day net {money(guardrail['day_net'])} hit limit {money(guardrail['daily_max_loss'])}."
                 ),
                 active="trades",
             )
         entry_time = (f.get("entry_time") or "").strip()
         exit_time = (f.get("exit_time") or "").strip()
         ticker = (f.get("ticker") or "").strip().upper()
-        opt_type = core.normalize_opt_type(f.get("opt_type") or "")
-        strike = core.parse_float(f.get("strike") or "")
-        contracts = core.parse_int(f.get("contracts") or "") or 0
-        entry_price = core.parse_float(f.get("entry_price") or "")
-        exit_price = core.parse_float(f.get("exit_price") or "")
-        comm = core.parse_float(f.get("comm") or "") or 0.0
+        opt_type = normalize_opt_type(f.get("opt_type") or "")
+        strike = parse_float(f.get("strike") or "")
+        contracts = parse_int(f.get("contracts") or "") or 0
+        entry_price = parse_float(f.get("entry_price") or "")
+        exit_price = parse_float(f.get("exit_price") or "")
+        comm = parse_float(f.get("comm") or "") or 0.0
 
         if (
             not ticker
@@ -1237,8 +1239,8 @@ def trades_new_manual():
             or entry_price is None
             or exit_price is None
         ):
-            return core.render_page(
-                core._simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
+            return render_page(
+                simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
                 active="trades",
             )
 
@@ -1246,9 +1248,9 @@ def trades_new_manual():
         net_pl = gross_pl - comm
         total_spent = entry_price * 100.0 * contracts
         result_pct = (net_pl / total_spent * 100.0) if total_spent > 0 else None
-        balance = (core.latest_balance_overall() or 50000.0) + net_pl
+        balance = (latest_balance_overall() or 50000.0) + net_pl
 
-        with core.db() as conn:
+        with db() as conn:
             conn.execute(
                 """
                 INSERT INTO trades (
@@ -1275,7 +1277,7 @@ def trades_new_manual():
                     result_pct,
                     balance,
                     "MANUAL ENTRY",
-                    core.now_iso(),
+                    now_iso(),
                 ),
             )
         return redirect(url_for("trades_page", d=trade_date))
@@ -1315,28 +1317,27 @@ def trades_new_manual():
           </form>
         </div></div>
         """,
-        today=core.today_iso(),
+        today=today_iso(),
     )
-    return core.render_page(content, active="trades")
+    return render_page(content, active="trades")
 
 
 def trades_paste_broker():
     if request.method == "POST":
-        guardrail = core.trade_lockout_state(core.today_iso())
+        guardrail = trade_lockout_state(today_iso())
         if guardrail["locked"]:
-            return core.render_page(
-                core._simple_msg(
+            return render_page(
+                simple_msg(
                     f"Daily max-loss guardrail is active for {guardrail['day']}. "
-                    f"Day net {core.money(guardrail['day_net'])} reached limit {core.money(guardrail['daily_max_loss'])}."
+                    f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
                 ),
                 active="trades",
             )
         text = request.form.get("text", "")
         starting_balance = (
-            core.parse_float(request.form.get("starting_balance", ""))
-            or core.default_starting_balance()
+            parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
         )
-        inserted, errors = core.insert_trades_from_broker_paste(
+        inserted, errors = importing.insert_trades_from_broker_paste(
             text, starting_balance=starting_balance
         )
         content = render_template_string(
@@ -1358,7 +1359,7 @@ def trades_paste_broker():
             inserted=inserted,
             errors=errors,
         )
-        return core.render_page(content, active="trades")
+        return render_page(content, active="trades")
 
     content = render_template_string(
         """
@@ -1383,7 +1384,7 @@ def trades_paste_broker():
         </div></div>
         """
     )
-    return core.render_page(content, active="trades")
+    return render_page(content, active="trades")
 
 
 def trades_upload_pdf():
@@ -1391,7 +1392,7 @@ def trades_upload_pdf():
         guardrail = trade_lockout_state(today_iso())
         if guardrail["locked"]:
             return render_page(
-                _simple_msg(
+                simple_msg(
                     f"Daily max-loss guardrail is active for {guardrail['day']}. "
                     f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
                 ),
@@ -1402,20 +1403,20 @@ def trades_upload_pdf():
         starting_balance = parse_float(request.form.get("starting_balance", "")) or 50000.0
 
         if not f or not f.filename:
-            return render_page(_simple_msg("Please upload a file."), active="trades")
+            return render_page(simple_msg("Please upload a file."), active="trades")
 
         filename = secure_filename(f.filename)
         _, ext = os.path.splitext(filename.lower())
 
         if ext not in {".pdf", ".html", ".htm"}:
-            return render_page(_simple_msg("Please upload a .pdf or .html file."), active="trades")
+            return render_page(simple_msg("Please upload a .pdf or .html file."), active="trades")
 
         path = os.path.join(UPLOAD_DIR, filename)
         f.save(path)
 
         # ✅ HTML path (no OCR)
         if ext in (".html", ".htm"):
-            paste_text, balance_val, warns = parse_statement_html_to_broker_paste(path)
+            paste_text, balance_val, warns = importing.parse_statement_html_to_broker_paste(path)
 
             if mode == "broker":
                 if not paste_text:
@@ -1437,7 +1438,7 @@ def trades_upload_pdf():
                         active="trades",
                     )
 
-                inserted, errors = insert_trades_from_broker_paste(
+                inserted, errors = importing.insert_trades_from_broker_paste(
                     paste_text, starting_balance=starting_balance
                 )
                 msgs = (warns or []) + (errors or [])
@@ -1485,27 +1486,33 @@ def trades_upload_pdf():
                     active="trades",
                 )
 
-            insert_balance_snapshot(today_iso(), balance_val, raw_line="STATEMENT HTML UPLOAD")
+            importing.insert_balance_snapshot(
+                today_iso(), balance_val, raw_line="STATEMENT HTML UPLOAD"
+            )
             return redirect(url_for("trades_page"))
 
         # --- PDF path (keep your OCR behavior for now) ---
         if mode == "broker":
-            paste_text, ocr_warns = ocr_pdf_to_broker_paste(path)
+            paste_text, ocr_warns = importing.ocr_pdf_to_broker_paste(path)
             if not paste_text:
                 stitched = []
                 try:
-                    convert_from_path, pytesseract, _, _, _, dep_error = _load_ocr_deps()
+                    convert_from_path, pytesseract, _, _, _, dep_error = importing.load_ocr_deps()
                     if dep_error:
                         raise RuntimeError(dep_error)
                     pages = convert_from_path(path, dpi=250)
                     all_lines = []
                     for page_img in pages:
-                        img = _prep_for_ocr(page_img)
+                        img = importing.prep_for_ocr(page_img)
                         txt = pytesseract.image_to_string(img, config="--oem 3 --psm 6")
                         all_lines.extend(
-                            [normalize_ocr(ln) for ln in txt.splitlines() if normalize_ocr(ln)]
+                            [
+                                importing.normalize_ocr(ln)
+                                for ln in txt.splitlines()
+                                if importing.normalize_ocr(ln)
+                            ]
                         )
-                    stitched = stitch_ocr_rows("\n".join(all_lines))
+                    stitched = importing.stitch_ocr_rows("\n".join(all_lines))
                 except Exception as e:
                     ocr_warns = (ocr_warns or []) + [f"OCR debug error: {e}"]
 
@@ -1533,7 +1540,7 @@ def trades_upload_pdf():
                     active="trades",
                 )
 
-            inserted, errors = insert_trades_from_broker_paste(
+            inserted, errors = importing.insert_trades_from_broker_paste(
                 paste_text, starting_balance=starting_balance
             )
             msgs = (ocr_warns or []) + (errors or [])
@@ -1561,8 +1568,8 @@ def trades_upload_pdf():
             )
 
         # mode == balance (PDF OCR)
-        text, warns = ocr_pdf_to_text(path)
-        bal = extract_statement_balance(text)
+        text, warns = importing.ocr_pdf_to_text(path)
+        bal = importing.extract_statement_balance(text)
         if bal is None:
             return render_page(
                 render_template_string(
@@ -1579,7 +1586,7 @@ def trades_upload_pdf():
                 active="trades",
             )
 
-        insert_balance_snapshot(today_iso(), bal, raw_line="STATEMENT PDF UPLOAD")
+        importing.insert_balance_snapshot(today_iso(), bal, raw_line="STATEMENT PDF UPLOAD")
         return redirect(url_for("trades_page"))
 
     # GET

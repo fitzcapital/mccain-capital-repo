@@ -21,6 +21,18 @@ BASE_MONTHLY_INCOME = float(os.environ.get("BASE_MONTHLY_INCOME", "7800"))
 DEFAULT_PROTECT_BUFFER = float(os.environ.get("PAYOUT_PROTECT_BUFFER", "1000"))
 PROFIT_BUFFER_LEVEL_50K = 52875.0
 FIXED_LOSS_LIMIT_50K = 50375.0
+_HEADER_HINTS = {
+    "date",
+    "entry",
+    "exit",
+    "ticker",
+    "type",
+    "strike",
+    "contracts",
+    "net",
+    "p/l",
+    "balance",
+}
 
 
 def db() -> sqlite3.Connection:
@@ -77,6 +89,20 @@ def today_iso() -> str:
     return now_et().date().isoformat()
 
 
+def prev_trading_day_iso(d_iso: str) -> str:
+    d = datetime.strptime(d_iso, "%Y-%m-%d").date() - timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d.isoformat()
+
+
+def next_trading_day_iso(d_iso: str) -> str:
+    d = datetime.strptime(d_iso, "%Y-%m-%d").date() + timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d.isoformat()
+
+
 def money(val: Any) -> str:
     if val is None or val == "":
         return ""
@@ -128,6 +154,60 @@ def month_bounds(d: date) -> Tuple[date, date]:
     return first, (nxt - timedelta(days=1))
 
 
+def normalize_opt_type(s: str) -> str:
+    s = (s or "").strip().upper()
+    if s in ("CALL", "C"):
+        return "CALL"
+    if s in ("PUT", "P"):
+        return "PUT"
+    return s
+
+
+def looks_like_header(line: str) -> bool:
+    low = (line or "").lower()
+    hits = sum(1 for h in _HEADER_HINTS if h in low)
+    return hits >= 3
+
+
+def split_row(line: str) -> List[str]:
+    if "\t" in line:
+        return [c.strip() for c in line.split("\t")]
+    return [c.strip() for c in re.split(r"\s{2,}", line.strip())]
+
+
+def detect_paste_format(text: str) -> str:
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    if not lines:
+        return "table"
+
+    if (
+        ("Instrument" in lines[0])
+        and ("Transaction Time" in lines[0])
+        and ("Direction" in lines[0])
+    ):
+        return "vanquish_statement"
+
+    if looks_like_header(lines[0]):
+        lines = lines[1:]
+    if not lines:
+        return "table"
+
+    sample = lines[:3]
+    broker_hits = 0
+    for ln in sample:
+        joined = " ".join(split_row(ln)).upper()
+        if re.search(r"\b(BUY|SELL)\b", joined):
+            broker_hits += 1
+        if re.search(r"\b\d{1,2}/\d{1,2}/\d{2},\s*\d{1,2}:\d{2}\s*(AM|PM)\b", ln):
+            broker_hits += 1
+        if re.match(
+            r"^[A-Z]{1,6}\s+[A-Z]{3}/\d{1,2}/\d{2}\s+\d+(\.\d+)?\s+(PUT|CALL)\b", ln.upper()
+        ):
+            broker_hits += 2
+
+    return "broker" if broker_hits >= 3 else "table"
+
+
 def _safe_col(col: str) -> str:
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", col):
         raise ValueError(f"Unsafe column name: {col}")
@@ -160,6 +240,10 @@ def latest_balance_overall(as_of: Optional[str] = None) -> float:
         row = conn.execute(f"SELECT COALESCE(SUM(CAST({pnl_q} AS REAL)), 0) FROM trades").fetchone()
 
     return float(starting + float(row[0] or 0.0))
+
+
+def default_starting_balance() -> float:
+    return latest_balance_overall() or 50000.0
 
 
 def month_total_net(year: int, month: int) -> float:
