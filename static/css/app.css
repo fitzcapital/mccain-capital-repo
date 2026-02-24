@@ -626,11 +626,6 @@
       flex-wrap:wrap;
       margin: 0 0 10px;
     }
-    .miniChartGrid{
-      display:grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap:10px;
-    }
     .trendChip{
       display:inline-flex;
       align-items:center;
@@ -713,9 +708,6 @@
         grid-template-columns:1fr 1fr;
       }
       .insightGrid{
-        grid-template-columns:1fr;
-      }
-      .miniChartGrid{
         grid-template-columns:1fr;
       }
       .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}

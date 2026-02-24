@@ -1849,73 +1849,6 @@ def projections_from_daily(
     return {"avg": avg, "base_balance": b0, "p5": proj(5), "p10": proj(10), "p20": proj(20)}
 
 
-def _mini_line_svg(values: List[float], stroke: str) -> str:
-    if len(values) < 2:
-        return '<div class="chartEmpty">Not enough data for mini chart.</div>'
-
-    width = 420.0
-    height = 120.0
-    pad = 10.0
-    min_v = min(values)
-    max_v = max(values)
-    if abs(max_v - min_v) < 1e-9:
-        max_v = min_v + 1.0
-
-    def sx(i: int) -> float:
-        return pad + (i / (len(values) - 1)) * (width - (2 * pad))
-
-    def sy(v: float) -> float:
-        return height - pad - ((v - min_v) / (max_v - min_v)) * (height - (2 * pad))
-
-    points = " ".join(f"{sx(i):.2f},{sy(v):.2f}" for i, v in enumerate(values))
-    return f"""
-    <svg viewBox="0 0 {int(width)} {int(height)}" role="img" aria-label="mini trend chart" style="width:100%;height:auto;display:block">
-      <rect x="0" y="0" width="{int(width)}" height="{int(height)}" fill="rgba(4,10,20,.35)" rx="10" />
-      <polyline fill="none" stroke="{stroke}" stroke-width="2.8" points="{points}" />
-      <circle cx="{sx(len(values) - 1):.2f}" cy="{sy(values[-1]):.2f}" r="3.8" fill="{stroke}" />
-    </svg>
-    """
-
-
-def _dashboard_mini_charts(daily_vals: List[float]) -> Dict[str, Any]:
-    if not daily_vals:
-        empty = '<div class="chartEmpty">No trading-day series yet.</div>'
-        return {
-            "equity_svg": empty,
-            "drawdown_svg": empty,
-            "equity_latest": 0.0,
-            "equity_delta": 0.0,
-            "drawdown_latest": 0.0,
-            "drawdown_delta": 0.0,
-        }
-
-    running = 0.0
-    equity_curve: List[float] = []
-    for v in daily_vals:
-        running += float(v or 0.0)
-        equity_curve.append(running)
-
-    peak = float("-inf")
-    drawdown_curve: List[float] = []
-    for v in equity_curve:
-        peak = max(peak, v)
-        drawdown_curve.append(peak - v)
-
-    eq_latest = equity_curve[-1] if equity_curve else 0.0
-    eq_prev = equity_curve[-2] if len(equity_curve) > 1 else eq_latest
-    dd_latest = drawdown_curve[-1] if drawdown_curve else 0.0
-    dd_prev = drawdown_curve[-2] if len(drawdown_curve) > 1 else dd_latest
-
-    return {
-        "equity_svg": _mini_line_svg(equity_curve, stroke="#35d4ff"),
-        "drawdown_svg": _mini_line_svg(drawdown_curve, stroke="#ff5c7a"),
-        "equity_latest": eq_latest,
-        "equity_delta": eq_latest - eq_prev,
-        "drawdown_latest": dd_latest,
-        "drawdown_delta": dd_latest - dd_prev,
-    }
-
-
 # ============================================================
 # Calculator (simple + fast) ✅
 # ============================================================
@@ -3596,8 +3529,6 @@ def dashboard():
 
     daily20 = last_n_trading_day_totals(20)
     proj = projections_from_daily(daily20, overall_balance)
-    daily7 = list(reversed(daily20[:7]))
-    mini = _dashboard_mini_charts(daily7)
 
     # ✅ YTD ONLY: Consistency + threshold line
     # Ratio is assumed: biggest / denom (lower is better)
@@ -3654,29 +3585,6 @@ def dashboard():
             <div class="value">{{ money(overall_balance) }}</div>
             <div class="sub">Snapshot as of latest recorded trade</div>
           </div>
-        </div>
-
-        <div class="miniChartGrid stack12">
-          <div class="card"><div class="toolbar">
-            <div class="pill">📈 7-Day Equity Trend</div>
-            <div class="trendChips">
-              <span class="trendChip">Latest {{ money(mini.equity_latest) }}</span>
-              <span class="trendChip {% if mini.equity_delta > 0 %}positive{% elif mini.equity_delta < 0 %}negative{% endif %}">
-                Δ {{ money(mini.equity_delta) }}
-              </span>
-            </div>
-            {{ mini.equity_svg|safe }}
-          </div></div>
-          <div class="card"><div class="toolbar">
-            <div class="pill">📉 7-Day Drawdown Trend</div>
-            <div class="trendChips">
-              <span class="trendChip">Latest {{ money(mini.drawdown_latest) }}</span>
-              <span class="trendChip {% if mini.drawdown_delta < 0 %}positive{% elif mini.drawdown_delta > 0 %}negative{% endif %}">
-                Δ {{ money(mini.drawdown_delta) }}
-              </span>
-            </div>
-            {{ mini.drawdown_svg|safe }}
-          </div></div>
         </div>
 
         <div class="twoCol">
@@ -3861,7 +3769,6 @@ def dashboard():
         today_net=today_net,
         today_win_rate=today_win_rate,
         today_count=today_count,
-        mini=mini,
         proj=proj,
         money=money,
         money_compact=money_compact,
