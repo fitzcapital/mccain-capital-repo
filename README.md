@@ -1,79 +1,90 @@
-# McCain Capital 🏛️📈
+# McCain Capital
 
 <p align="center">
   <img src="docs/images/logo.png" alt="McCain Capital Logo" width="180" />
 </p>
 
 <p align="center">
-  <b>A personal trading operating system</b><br/>
-  Flask + SQLite app for journaling, trade review, risk controls, and consistent execution.
+  <b>Private Trading Workspace</b><br/>
+  A personal trading operating system for execution, review, discipline, and growth.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/stack-Flask%20%2B%20SQLite-0b1320?style=for-the-badge" alt="Flask + SQLite" />
+  <img src="https://img.shields.io/badge/runtime-Python%203.11-0b1320?style=for-the-badge" alt="Python 3.11" />
+  <img src="https://img.shields.io/badge/status-Active%20Development-0b1320?style=for-the-badge" alt="Active Development" />
 </p>
 
 ---
 
-## 🚀 Highlights
+## Product Overview
 
-- 📊 **Dashboard**: live today/MTD/YTD stats, weekday P/L heatmap, projections
-- 📋 **Trades**: paste/import flows, statement upload, trade-level editing
-- 📝 **Journal**: daily process logging and review discipline
-- 🧮 **Calculator**: pre-trade risk/reward planning
-- 🎯 **Goals + Payouts**: progress tracking and payout readiness
-- 📈 **Analytics**: setup/session/hour performance breakdown
-- 🔐 **Auth + Guardrails**: login + risk lockouts to enforce discipline
-- 🏛️ **Luxury Brand UI**: McCain iconography set + premium showcase panels
+McCain Capital is a purpose-built platform for a discretionary trader to run the full daily loop:
+plan risk, execute trades, journal decisions, review behavior, and monitor consistency.
+
+## Core Capabilities
+
+- Dashboard control center with live today/MTD/YTD visibility
+- Trade logging, statement upload, paste import, and reconciliation
+- Journal with linked-trade workflow and weekly review
+- Analytics by setup/session/hour with expectancy and drawdown diagnostics
+- Calculator for pre-trade risk/reward planning
+- Goals and payouts module for consistency and withdrawal readiness
+- Guardrails + auth for disciplined operational flow
+- Branded premium UI with custom McCain iconography and showcase panels
 
 ---
 
-## 🖼️ Screenshots
+## Featured Screenshots
 
-### Desktop
+### Desktop Showcase
 
-#### 📊 Dashboard (Updated)
+#### Dashboard
 ![Dashboard](docs/images/dashboard.png)
 
-#### 📋 Trades
+#### Trades
 ![Trades](docs/images/trades.png)
 
-#### 📝 Journal
+#### Journal
 ![Journal](docs/images/journal.png)
 
-#### 📈 Analytics
+#### Analytics
 ![Analytics](docs/images/analytics.png)
 
-#### 🧮 Calculator
+#### Calculator
 ![Calculator](docs/images/calculator.png)
 
-#### 💸 Payouts
+#### Payouts
 ![Payouts](docs/images/payout.png)
 
-### Mobile
+### Mobile Showcase
 
-#### 📊 Dashboard (Updated)
+#### Dashboard
 ![Dashboard Mobile](docs/images/mobile-dashboard.png)
 
-#### 📋 Trades
+#### Trades
 ![Trades Mobile](docs/images/mobile-trades.png)
 
-#### 📝 Journal
+#### Journal
 ![Journal Mobile](docs/images/mobile-journal.png)
 
-#### 📈 Analytics
+#### Analytics
 ![Analytics Mobile](docs/images/mobile-analytics.png)
 
-#### 🧮 Calculator
+#### Calculator
 ![Calculator Mobile](docs/images/mobile-calculator.png)
 
-#### 💸 Payouts
+#### Payouts
 ![Payouts Mobile](docs/images/mobile-payout.png)
 
 ---
 
-## 🧱 Architecture At A Glance
+## Architecture At A Glance
 
 - Study guide: `docs/ARCHITECTURE.md`
 - Database architecture: `docs/DB_ARCHITECTURE.md`
 - Entrypoints: `app.py`, `mccain_capital/__init__.py`, `mccain_capital/wsgi.py`
-- Core module: `mccain_capital/app_core.py` (legacy-compatible service surface)
+- Core module: `mccain_capital/app_core.py`
 - Routing: `mccain_capital/routes/`
 - Request handlers: `mccain_capital/handlers/`
 - Services/business logic: `mccain_capital/services/`
@@ -82,20 +93,7 @@
 
 ---
 
-## 🗂️ Repo Layout
-
-- `mccain_capital/` -> application code
-- `static/` -> static assets (CSS, icons, logo)
-- `docs/images/` -> README screenshots + branding
-- `docs/` -> architecture and planning docs
-- `services/` -> deployment manifests
-- `books/` -> local PDFs for `/books` (not tracked)
-- `uploads/` -> runtime import files (not tracked)
-- `podman_data/` -> runtime container data (not tracked)
-
----
-
-## ⚡ Quickstart (Local)
+## Quickstart (Local)
 
 ```bash
 cd /mccain-capital-repo
@@ -105,17 +103,15 @@ pip install -r requirements.txt
 python -m mccain_capital.cli
 ```
 
-Open `http://localhost:5001`
+Open: `http://localhost:5001`
 
-Run migrations explicitly (optional):
+Optional explicit migration run:
 
 ```bash
 python migrate.py
 ```
 
----
-
-## 🐳 Quickstart (Podman)
+## Quickstart (Podman)
 
 ```bash
 cd /mccain-capital-repo
@@ -125,56 +121,37 @@ podman run -d --name mccain-capital-app -p 5001:5001 mccain-capital-app:latest
 podman logs -f mccain-capital-app
 ```
 
-Open `http://localhost:5001`
+Open: `http://localhost:5001`
 
 ---
 
-## 🔐 Private VPN Mode (Tailscale + Podman)
-
-```bash
-cd /mccain-capital-repo
-export TS_AUTHKEY=tskey-xxxxxxxx
-podman compose -f services/podman-compose.tailscale.yml up -d --build
-podman compose -f services/podman-compose.tailscale.yml ps
-```
-
----
-
-## 🛠️ Environment Variables
-
-- `SECRET_KEY`
-- `DB_PATH`
-- `UPLOAD_DIR`
-- `BOOKS_DIR`
-- `APP_USERNAME`
-- `APP_PASSWORD` or `APP_PASSWORD_HASH`
-- `SESSION_LIFETIME_MIN`
-- `APP_ENV` (`dev` or `prod`)
-
-## 🔁 CI / Guardrails / Monitoring
+## CI, Guardrails, Monitoring
 
 - CI workflow: `.github/workflows/ci.yml`
   - lint + format checks
-  - migration idempotency step (`python migrate.py` twice)
+  - migration idempotency (`python migrate.py` twice)
   - tests
   - container smoke checks (`/healthz`, `/dashboard`, `/journal`, `/analytics`)
   - deploy guardrail gate on `push` to `main`
-
 - Monitoring workflow: `.github/workflows/monitoring.yml`
   - scheduled health probe every 30 minutes
-  - requires secret: `APP_HEALTH_URL` (for example `https://your-domain/healthz`)
+  - requires secret: `APP_HEALTH_URL`
 
 ---
 
-## 🧭 Roadmap
+## Repo Layout
 
-- 📌 Deeper review analytics
-- 🔄 Schema migrations
-- 📈 Weekly auto-reports
-- 🔌 Broker integrations
+- `mccain_capital/` application code
+- `static/` CSS, icons, logo
+- `docs/images/` README screenshots and branding assets
+- `docs/` architecture and planning docs
+- `services/` deployment manifests
+- `books/` local PDFs for `/books` (not tracked)
+- `uploads/` runtime import files (not tracked)
+- `podman_data/` runtime container data (not tracked)
 
 ---
 
-## 👤 Author
+## Author
 
-Built by **Kurt McCain** as a trading discipline platform and portfolio project.
+Built by **Kurt McCain**.
