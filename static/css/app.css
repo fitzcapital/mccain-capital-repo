@@ -42,6 +42,10 @@
       --radius-md: 14px;
       --radius-lg: 18px;
       --radius-xl: 22px;
+      --space-1: 8px;
+      --space-2: 12px;
+      --space-3: 16px;
+      --space-4: 20px;
     }
 
     *{box-sizing:border-box}
@@ -52,11 +56,11 @@
                   radial-gradient(1000px 700px at 95% 10%, rgba(0,120,255,.12), transparent 58%),
                   linear-gradient(180deg, #020305 0%, #030407 100%);
       color:var(--text);
-      line-height: 1.42;
+      line-height: 1.48;
       letter-spacing: .01em;
     }
 
-    .wrap{max-width:1260px;margin:0 auto;padding:20px 16px 84px}
+    .wrap{max-width:1280px;margin:0 auto;padding:22px 18px 96px}
     .topbar{
       position: relative;
       z-index: 50;
@@ -135,7 +139,11 @@
       box-shadow: var(--shadow);
       transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
     }
-    .card:hover{ box-shadow: var(--shadow-soft); border-color: rgba(0,229,255,.34); }
+    .card:hover{
+      box-shadow: var(--shadow-soft);
+      border-color: rgba(0,229,255,.34);
+      transform: translateY(-1px);
+    }
 
 .btn.active{
   background: linear-gradient(180deg, rgba(0,229,255,.14), rgba(0,229,255,.04));
@@ -188,7 +196,7 @@
 .moreBtn{ padding-left: 14px; padding-right: 14px; min-width: 96px; }
 
 
-    .toolbar{padding:12px}
+    .toolbar{padding:14px}
 
     label{font-size:12px;color:var(--muted)}
     input, select, textarea{
@@ -196,7 +204,7 @@
       background: var(--panel2);
       border:1px solid rgba(255,255,255,.12);
       color:var(--text);
-      padding:10px 12px;
+      padding:11px 12px;
       border-radius:var(--radius-sm);
       outline:none;
       transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease;
@@ -218,6 +226,8 @@
       display:inline-flex;align-items:center;justify-content:center;gap:8px;
       padding:10px 12px;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,.14);
       background: rgba(255,255,255,.03);color:var(--text);cursor:pointer;text-decoration:none;white-space:nowrap;
+      font-weight:700;
+      letter-spacing:.01em;
       transition: transform .12s ease, border-color .12s ease, background-color .12s ease, box-shadow .12s ease;
     }
     .btn:hover{border-color:rgba(0,229,255,.42);transform: translateY(-1px)}
@@ -245,7 +255,7 @@
     .desktopOnly{display:block}
     .mobileOnly{display:none}
     .pageHero{
-      margin-bottom:12px;
+      margin-bottom:14px;
       border-color: rgba(0,229,255,.3);
       background:
         radial-gradient(720px 220px at 0% -20%, rgba(0,229,255,.16), transparent 62%),
@@ -273,10 +283,13 @@
       line-height:1.55;
       max-width:760px;
     }
-    .actionRow{display:flex;gap:10px;flex-wrap:wrap}
-    .stack8{margin-top:8px}
-    .stack10{margin-top:10px}
-    .stack12{margin-top:12px}
+    .actionRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .actionRow .btn,
+    .rightActions .btn,
+    .leftActions .btn{min-height:40px}
+    .stack8{margin-top:var(--space-1)}
+    .stack10{margin-top:var(--space-2)}
+    .stack12{margin-top:var(--space-3)}
     .line15{line-height:1.5}
     .line16{line-height:1.6}
     .mb6{margin-bottom:6px}
@@ -300,11 +313,16 @@
     .twoCol{display:grid;grid-template-columns:1fr;gap:12px}
     @media(min-width:880px){.twoCol{grid-template-columns:1.1fr .9fr}}
 
-    .hr{height:1px;background: rgba(0,229,255,.14);margin:12px 0}
+    .hr{height:1px;background: rgba(0,229,255,.14);margin:14px 0}
     .meta{color:var(--muted);font-size:12px;line-height:1.5}
     .grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
 
-    .entry{padding:12px}
+    .entry{
+      padding:12px;
+      border-radius:var(--radius-md);
+      border:1px solid rgba(0,229,255,.18);
+      background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(255,255,255,.01));
+    }
     .entryTop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
     .notes{white-space:pre-wrap;line-height:1.45;margin-top:10px}
 
@@ -334,13 +352,18 @@
     @media (max-width: 920px){
       table{display:block;overflow-x:auto;white-space:nowrap}
     }
-    .tableWrap{overflow:auto}
+    .tableWrap{overflow:auto;border-radius:12px}
     .tableDense th, .tableDense td{
       padding:8px 10px;
       font-size:12px;
+      line-height:1.35;
+      font-variant-numeric: tabular-nums;
     }
     .tableDense tbody tr:nth-child(even) td{
       background: rgba(255,255,255,.015);
+    }
+    .tableDense tbody tr:hover td{
+      background: rgba(0,229,255,.06);
     }
     .thSelect{width:42px}
     .thActions{width:90px;text-align:right}
@@ -356,7 +379,12 @@
     }
     .chartEmpty{opacity:.8}
 
-    .statRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .statRow{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap:10px;
+      margin-top:10px;
+    }
     .stat{
       flex:1 1 160px;
       padding:12px;
@@ -368,9 +396,9 @@
     .stat .v{font-size:18px;font-weight:900;margin-top:6px}
     .metricStrip{
       display:grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap:10px;
-      margin-bottom:12px;
+      margin-bottom:14px;
     }
     .dashboardHero{
       margin-bottom:12px;
@@ -394,15 +422,15 @@
       max-width:720px;
     }
     .metric{
-      padding:12px;
+      padding:13px;
       border-radius:var(--radius-sm);
       border:1px solid rgba(0,229,255,.18);
       background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(255,255,255,.01));
-      min-height:78px;
+      min-height:88px;
     }
     .metric .label{font-size:12px;color:var(--muted)}
-    .metric .value{font-size:22px;font-weight:800;letter-spacing:.2px;margin-top:6px}
-    .metric .sub{font-size:11px;color:var(--muted);margin-top:4px}
+    .metric .value{font-size:23px;font-weight:800;letter-spacing:.2px;margin-top:6px;line-height:1.15}
+    .metric .sub{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.35}
 
     .rightActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
     .leftActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start}
@@ -605,7 +633,7 @@
       border-radius:14px;
       border:1px solid rgba(0,229,255,.18);
       background:linear-gradient(180deg, rgba(0,229,255,.08), rgba(255,255,255,.01));
-      padding:12px;
+      padding:13px;
     }
     .insightTitle{
       font-size:12px;
@@ -652,7 +680,7 @@
       font-size:24px;
       font-weight:800;
       letter-spacing:.2px;
-      margin:0 0 10px;
+      margin:0 0 12px;
     }
     .h2{
       font-size:18px;
@@ -672,7 +700,7 @@
     }
 
     @media (max-width: 640px){
-      .wrap{padding:14px 10px 108px}
+      .wrap{padding:14px 10px 112px}
       .nav{display:none}
       .hamburger{display:flex}
       .sub{display:none}
@@ -713,10 +741,6 @@
       .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}
       .dashboardHero .rightActions{width:100%}
       .dashboardHero .rightActions .btn{flex:1 1 0}
-      .metricStrip .metric:nth-child(1){order:2}
-      .metricStrip .metric:nth-child(2){order:4}
-      .metricStrip .metric:nth-child(3){order:3}
-      .metricStrip .metric:nth-child(4){order:1}
       .metric .value{font-size:18px}
       .metric .sub{line-height:1.35}
       .desktopOnly{display:none !important}
@@ -726,6 +750,21 @@
       .calendarHead{display:grid;grid-template-columns:1fr;gap:10px}
       .calendarNav{display:grid;grid-template-columns: repeat(3, minmax(0, 1fr));width:100%;gap:8px}
       .calendarNav .btn{padding:10px 8px;font-size:12px}
+      .actionRow{
+        display:grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width:100%;
+      }
+      .actionRow .btn,
+      .actionRow button{width:100%}
+      .rightActions,
+      .leftActions{
+        display:grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width:100%;
+      }
+      .rightActions .btn,
+      .leftActions .btn{width:100%}
       .drawer{
         right:-100vw;
         width:100vw;
