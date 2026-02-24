@@ -18,3 +18,4 @@ backup_data = core.backup_data
 restore_data = core.restore_data
 payouts_page = core.payouts_page
 chart = core.chart
+strat_page = core.strat_page

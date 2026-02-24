@@ -5,27 +5,30 @@ from __future__ import annotations
 from datetime import datetime
 from flask import flash, get_flashed_messages, redirect, render_template_string, request, url_for
 
-from mccain_capital import app_core as core
+from mccain_capital.repositories import goals as repo
+from mccain_capital.runtime import (
+    BASE_MONTHLY_INCOME,
+    DEFAULT_PROTECT_BUFFER,
+    last_30d_total_net,
+    last_n_trading_day_totals,
+    latest_balance_overall,
+    money,
+    month_bounds,
+    month_total_net,
+    now_et,
+    parse_float,
+    parse_int,
+    payout_summary,
+    projections_from_daily,
+    today_iso,
+)
+from mccain_capital.services.ui import render_page
 
 # Compatibility aliases used by extracted route bodies.
-today_iso = core.today_iso
-now_et = core.now_et
-parse_float = core.parse_float
-parse_int = core.parse_int
-upsert_daily_goal = core.upsert_daily_goal
-fetch_daily_goals = core.fetch_daily_goals
-fetch_daily_goal = core.fetch_daily_goal
-_month_bounds = core._month_bounds
-BASE_MONTHLY_INCOME = core.BASE_MONTHLY_INCOME
-money = core.money
-render_page = core.render_page
-DEFAULT_PROTECT_BUFFER = core.DEFAULT_PROTECT_BUFFER
-latest_balance_overall = core.latest_balance_overall
-payout_summary = core.payout_summary
-month_total_net = core.month_total_net
-last_30d_total_net = core.last_30d_total_net
-last_n_trading_day_totals = core.last_n_trading_day_totals
-projections_from_daily = core.projections_from_daily
+upsert_daily_goal = repo.upsert_daily_goal
+fetch_daily_goals = repo.fetch_daily_goals
+fetch_daily_goal = repo.fetch_daily_goal
+_month_bounds = month_bounds
 
 
 def goals_tracker():

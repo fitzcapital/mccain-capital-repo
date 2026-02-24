@@ -6,13 +6,9 @@ from typing import Any, Dict, List, Optional
 
 from flask import abort, redirect, render_template_string, request, url_for
 
-from mccain_capital import app_core as core
-
-fetch_entries = core.fetch_entries
-get_entry = core.get_entry
-create_entry = core.create_entry
-update_entry = core.update_entry
-delete_entry = core.delete_entry
+from mccain_capital.repositories import journal as repo
+from mccain_capital.runtime import money, parse_float, today_iso
+from mccain_capital.services.ui import render_page
 
 
 def _entry_form(
@@ -92,7 +88,7 @@ def _entry_form(
 def journal_home():
     q = request.args.get("q", "")
     d = request.args.get("d", "")
-    entries = fetch_entries(q=q, d=d)
+    entries = repo.fetch_entries(q=q, d=d)
 
     content = render_template_string(
         """
@@ -165,24 +161,24 @@ def journal_home():
         q=q,
         d=d,
         entries=entries,
-        money=core.money,
+        money=money,
     )
-    return core.render_page(content, active="journal")
+    return render_page(content, active="journal")
 
 
 def new_entry():
     if request.method == "POST":
         f = request.form
-        pnl = core.parse_float(f.get("pnl", ""))
+        pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
         if not notes:
-            return core.render_page(
+            return render_page(
                 _entry_form("new", dict(f), errors=["Notes is required."]), active="journal"
             )
 
-        entry_id = create_entry(
+        entry_id = repo.create_entry(
             {
-                "entry_date": (f.get("entry_date") or core.today_iso()).strip(),
+                "entry_date": (f.get("entry_date") or today_iso()).strip(),
                 "market": f.get("market"),
                 "setup": f.get("setup"),
                 "grade": f.get("grade"),
@@ -193,30 +189,28 @@ def new_entry():
         )
         return redirect(url_for("edit_entry", entry_id=entry_id))
 
-    return core.render_page(
-        _entry_form("new", {"entry_date": core.today_iso()}, errors=[]), active="journal"
-    )
+    return render_page(_entry_form("new", {"entry_date": today_iso()}, errors=[]), active="journal")
 
 
 def edit_entry(entry_id: int):
-    row = get_entry(entry_id)
+    row = repo.get_entry(entry_id)
     if not row:
         abort(404)
 
     if request.method == "POST":
         f = request.form
-        pnl = core.parse_float(f.get("pnl", ""))
+        pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
         if not notes:
-            return core.render_page(
+            return render_page(
                 _entry_form("edit", dict(f), entry_id=entry_id, errors=["Notes is required."]),
                 active="journal",
             )
 
-        update_entry(
+        repo.update_entry(
             entry_id,
             {
-                "entry_date": (f.get("entry_date") or core.today_iso()).strip(),
+                "entry_date": (f.get("entry_date") or today_iso()).strip(),
                 "market": f.get("market"),
                 "setup": f.get("setup"),
                 "grade": f.get("grade"),
@@ -230,11 +224,9 @@ def edit_entry(entry_id: int):
     values = dict(row)
     if values.get("pnl") is None:
         values["pnl"] = ""
-    return core.render_page(
-        _entry_form("edit", values, entry_id=entry_id, errors=[]), active="journal"
-    )
+    return render_page(_entry_form("edit", values, entry_id=entry_id, errors=[]), active="journal")
 
 
 def delete_entry_route(entry_id: int):
-    delete_entry(entry_id)
+    repo.delete_entry(entry_id)
     return redirect(url_for("journal_home"))

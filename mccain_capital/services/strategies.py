@@ -6,7 +6,8 @@ from typing import List
 
 from flask import abort, redirect, render_template_string, request, url_for
 
-from mccain_capital import app_core as core
+from mccain_capital.services import core as core_svc
+from mccain_capital.services.ui import render_page
 from mccain_capital.repositories import strategies as repo
 
 
@@ -105,7 +106,7 @@ def strategies_page():
         """,
         items=items,
     )
-    return core.render_page(content, active="strategies")
+    return render_page(content, active="strategies")
 
 
 def strategies_new():
@@ -113,13 +114,13 @@ def strategies_new():
         title = (request.form.get("title") or "").strip()
         body = (request.form.get("body") or "").strip()
         if not title or not body:
-            return core.render_page(
+            return render_page(
                 _strategy_form("New Strategy", title, body, ["Title and body required."]),
                 active="strategies",
             )
         repo.create_strategy(title=title, body=body)
         return redirect(url_for("strategies_page"))
-    return core.render_page(_strategy_form("New Strategy", "", "", []), active="strategies")
+    return render_page(_strategy_form("New Strategy", "", "", []), active="strategies")
 
 
 def strategies_edit(sid: int):
@@ -131,14 +132,14 @@ def strategies_edit(sid: int):
         title = (request.form.get("title") or "").strip()
         body = (request.form.get("body") or "").strip()
         if not title or not body:
-            return core.render_page(
+            return render_page(
                 _strategy_form("Edit Strategy", title, body, ["Title and body required."]),
                 active="strategies",
             )
         repo.update_strategy(sid=sid, title=title, body=body)
         return redirect(url_for("strategies_page"))
 
-    return core.render_page(
+    return render_page(
         _strategy_form("Edit Strategy", row["title"], row["body"], []), active="strategies"
     )
 
@@ -149,4 +150,4 @@ def strategies_delete(sid: int):
 
 
 def strat_page():
-    return core.strat_page()
+    return core_svc.strat_page()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from mccain_capital import app_core as core
+from mccain_capital.runtime import db, now_iso
 
 
 def fetch_trades(d: str = "", q: str = ""):
@@ -29,12 +29,12 @@ def fetch_trades(d: str = "", q: str = ""):
 
     sql += " ORDER BY trade_date DESC, id DESC"
 
-    with core.db() as conn:
+    with db() as conn:
         return list(conn.execute(sql, params).fetchall())
 
 
 def fetch_trades_range(start_iso: str, end_iso: str):
-    with core.db() as conn:
+    with db() as conn:
         return list(
             conn.execute(
                 """
@@ -48,7 +48,7 @@ def fetch_trades_range(start_iso: str, end_iso: str):
 
 
 def get_risk_controls() -> Dict[str, Any]:
-    with core.db() as conn:
+    with db() as conn:
         row = conn.execute(
             "SELECT daily_max_loss, enforce_lockout, updated_at FROM risk_controls WHERE id = 1"
         ).fetchone()
@@ -62,7 +62,7 @@ def get_risk_controls() -> Dict[str, Any]:
 
 
 def save_risk_controls(daily_max_loss: float, enforce_lockout: int) -> None:
-    with core.db() as conn:
+    with db() as conn:
         conn.execute(
             """
             INSERT INTO risk_controls (id, daily_max_loss, enforce_lockout, updated_at)
@@ -72,12 +72,12 @@ def save_risk_controls(daily_max_loss: float, enforce_lockout: int) -> None:
               enforce_lockout=excluded.enforce_lockout,
               updated_at=excluded.updated_at
             """,
-            (abs(float(daily_max_loss or 0.0)), 1 if enforce_lockout else 0, core.now_iso()),
+            (abs(float(daily_max_loss or 0.0)), 1 if enforce_lockout else 0, now_iso()),
         )
 
 
 def get_trade_review(trade_id: int) -> Optional[Dict[str, Any]]:
-    with core.db() as conn:
+    with db() as conn:
         row = conn.execute(
             """
             SELECT trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note
@@ -97,9 +97,9 @@ def upsert_trade_review(
     rule_break_tags: str = "",
     review_note: str = "",
 ) -> None:
-    now = core.now_iso()
+    now = now_iso()
     score_val = None if checklist_score is None else max(0, min(100, int(checklist_score)))
-    with core.db() as conn:
+    with db() as conn:
         conn.execute(
             """
             INSERT INTO trade_reviews
@@ -133,7 +133,7 @@ def fetch_trade_reviews_map(trade_ids: List[int]) -> Dict[int, Dict[str, Any]]:
     if not clean_ids:
         return {}
     marks = ",".join(["?"] * len(clean_ids))
-    with core.db() as conn:
+    with db() as conn:
         rows = conn.execute(
             f"""
             SELECT trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from mccain_capital import app_core as core
+from mccain_capital.runtime import db, now_iso
 
 
 def upsert_daily_goal(track_date: str, payload: Dict[str, Any]) -> None:
-    now = core.now_iso()
-    with core.db() as conn:
+    now = now_iso()
+    with db() as conn:
         conn.execute(
             """
             INSERT INTO daily_goals
@@ -45,7 +45,7 @@ def upsert_daily_goal(track_date: str, payload: Dict[str, Any]) -> None:
 
 
 def fetch_daily_goals(start_iso: str, end_iso: str):
-    with core.db() as conn:
+    with db() as conn:
         return conn.execute(
             """
             SELECT * FROM daily_goals
@@ -57,7 +57,7 @@ def fetch_daily_goals(start_iso: str, end_iso: str):
 
 
 def fetch_daily_goal(track_date: str) -> Optional[object]:
-    with core.db() as conn:
+    with db() as conn:
         return conn.execute(
             "SELECT * FROM daily_goals WHERE track_date=? LIMIT 1", (track_date,)
         ).fetchone()

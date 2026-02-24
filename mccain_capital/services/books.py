@@ -6,8 +6,9 @@ import os
 
 from flask import abort, render_template_string, send_file
 
-from mccain_capital import app_core as core
 from mccain_capital.repositories import books as repo
+from mccain_capital.runtime import BOOKS_DIR
+from mccain_capital.services.ui import render_page
 
 
 def books_page():
@@ -61,14 +62,14 @@ def books_page():
         </div></div>
         """,
         books=books,
-        books_dir=core.BOOKS_DIR,
+        books_dir=BOOKS_DIR,
     )
-    return core.render_page(content, active="books")
+    return render_page(content, active="books")
 
 
 def books_open(name: str):
     fn = repo.safe_filename(name)
-    path = os.path.join(core.BOOKS_DIR, fn)
+    path = os.path.join(BOOKS_DIR, fn)
     if not os.path.exists(path) or not fn.lower().endswith(".pdf"):
         abort(404)
     return send_file(path, as_attachment=False)
