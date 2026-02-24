@@ -1974,7 +1974,9 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
     favicon_exists = os.path.exists(favicon_path)
     # Cache-bust static branding assets so icon/logo updates show immediately after deploy.
     try:
-        mtimes = [os.path.getmtime(p) for p in (logo_path, favicon_path, css_path) if os.path.exists(p)]
+        mtimes = [
+            os.path.getmtime(p) for p in (logo_path, favicon_path, css_path) if os.path.exists(p)
+        ]
         static_v = str(int(max(mtimes))) if mtimes else BUILD_MARKER
     except Exception:
         static_v = BUILD_MARKER
