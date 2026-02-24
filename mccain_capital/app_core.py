@@ -3254,7 +3254,7 @@ def trades_paste():
               <div class="hr"></div>
               <div class="rightActions">
                 <a class="btn primary" href="/trades">Trades 📅</a>
-                <a class="btn" href="/dashboard">Calendar 📊</a>
+                <a class="btn" href="/dashboard">Dashboard 📊</a>
                 <a class="btn" href="/calculator">Calculator 🧮</a>
                 <a class="btn" href="/trades/paste">Paste More 🔁</a>
               </div>
@@ -3465,7 +3465,7 @@ def trades_paste_broker():
               <div class="hr"></div>
               <div class="rightActions">
                 <a class="btn primary" href="/trades">Trades 📅</a>
-                <a class="btn" href="/dashboard">Calendar 📊</a>
+                <a class="btn" href="/dashboard">Dashboard 📊</a>
                 <a class="btn" href="/trades/paste/broker">Paste More 🔁</a>
               </div>
             </div></div>
@@ -3670,6 +3670,21 @@ def dashboard():
 
     content = render_template_string(
         """
+        <div class="dashboardHero card">
+          <div class="toolbar">
+            <div class="dashboardHeroHead">
+              <div>
+                <div class="pill">📊 Dashboard Control Center</div>
+                <div class="tiny" style="margin-top:8px">Track execution, review risk posture, then drill into trade days.</div>
+              </div>
+              <div class="rightActions">
+                <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
+                <a class="btn" href="/journal">📝 Open Journal</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="metricStrip">
           <div class="metric">
             <div class="label">Today Net</div>
@@ -3697,7 +3712,7 @@ def dashboard():
           <div class="card"><div class="toolbar">
             <div class="calendarHead">
               <div>
-                <div class="pill">📊 P/L Calendar</div>
+                <div class="pill">📊 P/L Dashboard</div>
                 <div class="tiny" style="margin-top:8px">Tap a weekday to open that day’s trades 🧲</div>
               </div>
               <div class="calendarNav">
@@ -3779,14 +3794,15 @@ def dashboard():
           </div></div>
 
           <div class="card"><div class="toolbar">
-            <div class="pill">⚡ Quick Actions</div>
+            <div class="pill">⚡ Focus Board</div>
             <div class="hr"></div>
             <div class="leftActions">
-              <a class="btn primary" href="/trades/upload/statement">📄 Upload Trades</a>
-              <a class="btn primary" href="/trades">📅 Trades</a>
+              <a class="btn primary" href="/trades">📅 Review Trades</a>
+              <a class="btn" href="/payouts">💸 Check Payouts</a>
+              <a class="btn" href="/calculator">🧮 Position Plan</a>
             </div>
             <div class="tiny" style="margin-top:10px;line-height:1.5">
-              Weekdays only: Mon–Fri. Weekends don’t show $0.00.
+              Workflow: plan risk, execute, journal, then score outcomes by week.
             </div>
           </div></div>
         </div>
@@ -3992,7 +4008,7 @@ def calculator():
               <div class="hr"></div>
               <div class="rightActions">
                 <button class="btn primary" type="submit">⚡ Calculate</button>
-                <a class="btn" href="/dashboard">📊 Calendar</a>
+                <a class="btn" href="/dashboard">📊 Dashboard</a>
                 <a class="btn" href="/trades">📅 Trades</a>
               </div>
             </form>
@@ -4148,7 +4164,7 @@ def strategies_page():
             <div class="hr"></div>
             <div class="rightActions">
               <a class="btn primary" href="/strategies/new">➕ New Strategy</a>
-              <a class="btn" href="/dashboard">📊 Calendar</a>
+              <a class="btn" href="/dashboard">📊 Dashboard</a>
             </div>
           </div></div>
 
@@ -4246,7 +4262,7 @@ def books_page():
             </div>
             <div class="hr"></div>
             <div class="rightActions">
-              <a class="btn" href="/dashboard">📊 Calendar</a>
+              <a class="btn" href="/dashboard">📊 Dashboard</a>
               <a class="btn" href="/links">🔗 Links</a>
             </div>
           </div></div>

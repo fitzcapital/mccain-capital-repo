@@ -281,6 +281,21 @@
       gap:10px;
       margin-bottom:12px;
     }
+    .dashboardHero{
+      margin-bottom:12px;
+      border-color: rgba(0,229,255,.28);
+      background:
+        radial-gradient(760px 220px at 8% -15%, rgba(0,229,255,.16), transparent 62%),
+        linear-gradient(180deg, rgba(0,229,255,.08), rgba(0,0,0,0) 72%),
+        var(--panel);
+    }
+    .dashboardHeroHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+    }
     .metric{
       padding:12px;
       border-radius:12px;
@@ -472,6 +487,8 @@
       .glow-green,.glow-red{animation-duration:3.4s}
       .mobileDock{display:grid}
       .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}
+      .dashboardHero .rightActions{width:100%}
+      .dashboardHero .rightActions .btn{flex:1 1 0}
       .metricStrip .metric:nth-child(1){order:2}
       .metricStrip .metric:nth-child(2){order:4}
       .metricStrip .metric:nth-child(3){order:3}

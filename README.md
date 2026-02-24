@@ -5,79 +5,81 @@
 </p>
 
 <p align="center">
-  <b>Your personal trading operating system</b><br/>
-  Built with Flask + SQLite for journaling, trade review, risk discipline, and execution consistency.
+  <b>A personal trading operating system</b><br/>
+  Flask + SQLite app for journaling, trade review, risk controls, and consistent execution.
 </p>
 
 ---
 
-## ✨ What This App Does
+## 🚀 Highlights
 
-- 📅 **Dashboard**: daily/weekly/monthly performance snapshot
-- 📋 **Trades**: import broker-style fills, manage trades, bulk actions
-- 🧠 **Reviews**: checklist score, setup tags, session analysis
-- 🛡️ **Risk Controls**: enforce max-loss behavior and discipline
-- 📝 **Journal**: daily context + reflection workflow
-- 🧮 **Calculator**: plan risk/reward before entering a trade
-- 🎯 **Goals + Payouts**: track progress and payout readiness
+- 📊 **Dashboard**: live today/MTD/YTD stats, weekday P/L heatmap, projections
+- 📋 **Trades**: paste/import flows, statement upload, trade-level editing
+- 📝 **Journal**: daily process logging and review discipline
+- 🧮 **Calculator**: pre-trade risk/reward planning
+- 🎯 **Goals + Payouts**: progress tracking and payout readiness
+- 📈 **Analytics**: setup/session/hour performance breakdown
+- 🔐 **Auth + Guardrails**: login + risk lockouts to enforce discipline
 
 ---
 
-## 🖼️ Product Showcase
+## 🖼️ Screenshots
 
-### 📊 Dashboard
+### Desktop
+
+#### 📊 Dashboard (Updated)
 ![Dashboard](docs/images/dashboard.png)
 
-### 📋 Trades
+#### 📋 Trades
 ![Trades](docs/images/trades.png)
 
-### 📝 Journal
+#### 📝 Journal
 ![Journal](docs/images/journal.png)
 
-### 🧮 Calculator
+#### 🧮 Calculator
 ![Calculator](docs/images/calculator.png)
 
-### 💸 Payouts
+#### 💸 Payouts
 ![Payouts](docs/images/payout.png)
 
-### 📱 Mobile Showcase
+### Mobile
 
-#### 📊 Dashboard (Mobile)
+#### 📊 Dashboard (Updated)
 ![Dashboard Mobile](docs/images/mobile-dashboard.png)
 
-#### 📋 Trades (Mobile)
+#### 📋 Trades
 ![Trades Mobile](docs/images/mobile-trades.png)
 
-#### 📝 Journal (Mobile)
+#### 📝 Journal
 ![Journal Mobile](docs/images/mobile-journal.png)
 
-#### 🧮 Calculator (Mobile)
+#### 🧮 Calculator
 ![Calculator Mobile](docs/images/mobile-calculator.png)
 
-#### 💸 Payouts (Mobile)
+#### 💸 Payouts
 ![Payouts Mobile](docs/images/mobile-payout.png)
 
 ---
 
-## 🧱 Architecture
+## 🧱 Architecture At A Glance
 
 - Study guide: `docs/ARCHITECTURE.md`
-- `app.py`: compatibility entrypoint
-- `mccain_capital/app_core.py`: core app logic + templates
-- `mccain_capital/__init__.py`: app factory + hooks
-- `mccain_capital/routes/`: route registration
-- `mccain_capital/handlers/`: endpoint handlers
-- `mccain_capital/config.py`: runtime config profiles
-- `services/podman-compose.tailscale.yml`: app + private VPN sidecar
+- Entrypoints: `app.py`, `mccain_capital/__init__.py`, `mccain_capital/wsgi.py`
+- Core module: `mccain_capital/app_core.py` (legacy-compatible service surface)
+- Routing: `mccain_capital/routes/`
+- Request handlers: `mccain_capital/handlers/`
+- Services/business logic: `mccain_capital/services/`
+- Data access: `mccain_capital/repositories/`
+- Deployment stack: `Containerfile`, `services/podman-compose.tailscale.yml`
 
 ---
 
 ## 🗂️ Repo Layout
 
 - `mccain_capital/` -> application code
-- `static/` -> logos/icons/favicon + static assets
-- `docs/images/` -> README screenshots and branding
-- `docs/indicators/` -> indicator reference files
+- `static/` -> static assets (CSS, icons, logo)
+- `docs/images/` -> README screenshots + branding
+- `docs/` -> architecture and planning docs
 - `services/` -> deployment manifests
 - `books/` -> local PDFs for `/books` (not tracked)
 - `uploads/` -> runtime import files (not tracked)
@@ -95,7 +97,7 @@ pip install -r requirements.txt
 python -m mccain_capital.cli
 ```
 
-Open: `http://localhost:5001`
+Open `http://localhost:5001`
 
 ---
 
@@ -109,7 +111,7 @@ podman run -d --name mccain-capital-app -p 5001:5001 mccain-capital-app:latest
 podman logs -f mccain-capital-app
 ```
 
-Open: `http://localhost:5001`
+Open `http://localhost:5001`
 
 ---
 
@@ -139,7 +141,7 @@ podman compose -f services/podman-compose.tailscale.yml ps
 
 ## 🧭 Roadmap
 
-- 📌 Richer review analytics
+- 📌 Deeper review analytics
 - 🔄 Schema migrations
 - 📈 Weekly auto-reports
 - 🔌 Broker integrations
@@ -148,4 +150,4 @@ podman compose -f services/podman-compose.tailscale.yml ps
 
 ## 👤 Author
 
-Built by **Kurt McCain** as a personal trading discipline platform and portfolio project.
+Built by **Kurt McCain** as a trading discipline platform and portfolio project.

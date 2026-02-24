@@ -17,7 +17,7 @@
         </div>
         <div class="brandText">
           <h1>{{ title }}</h1>
-          <div class="sub">{% if active == 'dashboard' %}Journal • Trades • Calendar{% else %}Trading Workspace{% endif %}</div>
+          <div class="sub">{% if active == 'dashboard' %}Journal • Trades • Dashboard{% else %}Trading Workspace{% endif %}</div>
         </div>
       </div>
 
@@ -38,7 +38,7 @@
       <div class="nav">
         <div class="navGroup">
           <span class="navLabel">Core</span>
-          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">📊 Calendar</a>
+          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">📊 Dashboard</a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">📝 Journal</a>
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">📅 Trades</a>
         </div>
@@ -95,7 +95,7 @@
       <div class="drawerSectionTitle">Core</div>
 
       <div class="drawerGrid">
-        <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊 Calendar</a>
+        <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊 Dashboard</a>
         <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝 Journal</a>
         <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅 Trades</a>
         <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸 Payouts</a>
