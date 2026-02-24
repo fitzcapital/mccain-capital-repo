@@ -12,10 +12,8 @@ import sqlite3
 import tempfile
 import calendar
 import zipfile
-from dataclasses import dataclass
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Callable
-BUILD_MARKER = "BUILD_2026-02-21_GOALS"
 from flask import (
     Flask,
     abort,
@@ -27,13 +25,12 @@ from flask import (
     send_file,
     url_for,
     jsonify,
-    make_response,
     flash,
-    get_flashed_messages,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
-from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
+
+BUILD_MARKER = "BUILD_2026-02-21_GOALS"
 
 # ============================================================
 # App config
@@ -1208,7 +1205,7 @@ def insert_trades_from_broker_paste(text: str, starting_balance: float = 50000.0
             inserted += 1
         conn.commit()
 
-    open_count = sum(sum(l["qty"] for l in lots) for lots in open_lots.values() if lots)
+    open_count = sum(sum(lot["qty"] for lot in lots) for lots in open_lots.values() if lots)
     if open_count:
         warnings.append(f"Note: {open_count} contract(s) remain OPEN (unmatched BUY). That’s normal mid-position.")
 

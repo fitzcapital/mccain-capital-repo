@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from flask import abort, flash, jsonify, redirect, render_template_string, request, url_for
 from werkzeug.utils import secure_filename
