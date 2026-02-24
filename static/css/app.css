@@ -248,9 +248,23 @@
     .stack12{margin-top:12px}
     .line15{line-height:1.5}
     .line16{line-height:1.6}
+    .mb6{margin-bottom:6px}
     .nowrap{white-space:nowrap}
     .textRight{text-align:right}
     .inlineForm{display:inline}
+    .overflowAuto{overflow:auto}
+    .fieldGrow1{flex:1 1 160px}
+    .fieldGrow2{flex:2 1 260px}
+    .btnCompact{padding:8px 10px}
+    .metaBlue{color:#9fd6ff}
+    .metaGreen{color:#b8f7c9}
+    .metaRed{color:#ff8f8f}
+    .statusLock{color:#ff8f8f}
+    .statusActive{color:#7ee2ae}
+    .preWrapMuted{white-space:pre-wrap; font-size:12px; color:var(--muted)}
+    .focusList{margin-top:10px;color:var(--muted);line-height:1.5}
+    .metaRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+    .pillRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
     .twoCol{display:grid;grid-template-columns:1fr;gap:12px}
     @media(min-width:880px){.twoCol{grid-template-columns:1.1fr .9fr}}
@@ -297,6 +311,9 @@
     .tableDense tbody tr:nth-child(even) td{
       background: rgba(255,255,255,.015);
     }
+    .thSelect{width:42px}
+    .thActions{width:90px;text-align:right}
+    .tdActions{text-align:right;white-space:nowrap}
     .chartMeta{
       display:flex;
       justify-content:space-between;

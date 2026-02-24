@@ -133,7 +133,7 @@ def goals_tracker():
         <div class="twoCol">
           <div class="card"><div class="toolbar">
             <div class="pill">🎯 Daily Goals Tracker</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
+            <div class="tiny stack10 line16">
               Track *inputs* daily: debt actions + Upwork pipeline. Then let the math bully you into consistency 😈
             </div>
 
@@ -141,7 +141,7 @@ def goals_tracker():
               {% if messages %}
                 <div class="hr"></div>
                 {% for cat,msg in messages %}
-                  <div class="tiny" style="color:#b8f7c9">• {{ msg }}</div>
+                  <div class="tiny metaGreen">• {{ msg }}</div>
                 {% endfor %}
               {% endif %}
             {% endwith %}
@@ -159,12 +159,12 @@ def goals_tracker():
                 </div>
               </div>
 
-              <div style="margin-top:10px">
+              <div class="stack10">
                 <label>🧾 Debt Notes (what did you resolve?)</label>
                 <input name="debt_note" value="{{ vals.debt_note }}" placeholder="e.g. called CBNA, negotiated, paid Zip installment...">
               </div>
 
-              <div class="row" style="margin-top:10px">
+              <div class="row stack10">
                 <div>
                   <label>🧲 Upwork Proposals</label>
                   <input name="upwork_proposals" inputmode="numeric" value="{{ vals.upwork_proposals }}">
@@ -187,7 +187,7 @@ def goals_tracker():
                 </div>
               </div>
 
-              <div style="margin-top:10px">
+              <div class="stack10">
                 <label>📝 Notes</label>
                 <input name="notes" value="{{ vals.notes }}" placeholder="What moved the needle today?">
               </div>
@@ -204,7 +204,7 @@ def goals_tracker():
           <div class="card"><div class="toolbar">
             <div class="pill">📅 This Month: {{ m_first }} → {{ m_last }}</div>
 
-            <div class="calcGrid" style="margin-top:10px">
+            <div class="calcGrid stack10">
               <div class="calcCard"><div class="k">💳 Debt Paid</div><div class="v">{{ money(sum_debt) }}</div></div>
               <div class="calcCard"><div class="k">💵 Upwork Earned</div><div class="v">{{ money(sum_upwork) }}</div></div>
               <div class="calcCard"><div class="k">➕ Other Income</div><div class="v">{{ money(sum_other) }}</div></div>
@@ -214,16 +214,16 @@ def goals_tracker():
             </div>
 
             <div class="hr"></div>
-            <div class="tiny" style="line-height:1.6">
+            <div class="tiny line16">
               Projection is based on <b>days you actually recorded</b> — not wishful calendar math. Record daily. ✅
             </div>
           </div></div>
         </div>
 
-        <div class="twoCol" style="margin-top:12px">
+        <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Income Projection (Goal: $15k–$20k)</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
+            <div class="tiny stack10 line16">
               Your baseline income is set to <b>{{ money(base_income) }}</b> monthly.
               You need <b>{{ money(15000 - base_income) }}</b> to reach $15k and <b>{{ money(20000 - base_income) }}</b> to reach $20k.
             </div>
@@ -250,7 +250,7 @@ def goals_tracker():
                 </div>
               </div>
 
-              <div class="row" style="margin-top:10px">
+              <div class="row stack10">
                 <div>
                   <label>📊 Trading (Monthly)</label>
                   <input name="trading_monthly" inputmode="decimal" value="{{ trading_monthly }}" placeholder="e.g. 3000">
@@ -282,7 +282,7 @@ def goals_tracker():
             </div>
 
             <div class="hr"></div>
-            <div class="tiny" style="line-height:1.6">
+            <div class="tiny line16">
               Reality check: if the gap is big, don't "motivate" yourself — <b>engineer a system</b>:
               proposals/day, follow-ups/day, and a weekly billable-hours target. ✅
             </div>
@@ -290,13 +290,13 @@ def goals_tracker():
 
           <div class="card"><div class="toolbar">
             <div class="pill">🗓️ Month Log</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
+            <div class="tiny stack10 line16">
               Click a date to edit it.
             </div>
             <div class="hr"></div>
 
-            <div style="overflow:auto">
-              <table>
+            <div class="tableWrap">
+              <table class="tableDense">
                 <thead>
                   <tr>
                     <th>📆 Date</th>
@@ -310,7 +310,7 @@ def goals_tracker():
                 <tbody>
                   {% for r in rows %}
                     <tr>
-                      <td><a class="btn" style="padding:6px 10px" href="/goals?date={{ r.track_date }}">{{ r.track_date }}</a></td>
+                      <td><a class="btn btnCompact" href="/goals?date={{ r.track_date }}">{{ r.track_date }}</a></td>
                       <td>{{ money(r.debt_paid) }}</td>
                       <td>{{ money(r.upwork_earnings) }}</td>
                       <td>{{ r.upwork_proposals }}</td>
@@ -384,7 +384,7 @@ def payouts_page():
         <div class="twoCol">
           <div class="card"><div class="toolbar">
             <div class="pill">💸 Payouts</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.5">
+            <div class="tiny stack10 line15">
               Safe payout = protects cushion above the fixed loss limit 🛡️
             </div>
 
@@ -398,7 +398,7 @@ def payouts_page():
                 <label>🎯 Bi-Weekly Goal ($)</label>
                 <input name="biweekly_goal" inputmode="decimal" value="{{ biweekly_goal }}" />
               </div>
-              <div style="display:flex; gap:10px; flex-wrap:wrap">
+              <div class="actionRow">
                 <button class="btn primary" type="submit">🔄 Update</button>
                 <a class="btn" href="/payouts">♻️ Reset</a>
               </div>
@@ -407,7 +407,7 @@ def payouts_page():
 
           <div class="card"><div class="toolbar">
             <div class="pill">📌 Rule Snapshot (50K)</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
+            <div class="tiny stack10 line16">
               • Buffer reached at: <b>{{ money(ps.profit_buffer_level) }}</b><br>
               • Fixed loss limit after buffer: <b>{{ money(ps.fixed_loss_limit) }}</b><br>
               • Safe floor (loss limit + cushion): <b>{{ money(ps.safe_floor) }}</b><br>
@@ -421,7 +421,7 @@ def payouts_page():
           </div></div>
         </div>
 
-        <div class="card" style="margin-top:12px"><div class="toolbar">
+        <div class="card stack12"><div class="toolbar">
           <div class="pill">📊 Current Totals</div>
           <div class="hr"></div>
 

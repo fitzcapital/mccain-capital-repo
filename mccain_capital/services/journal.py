@@ -32,13 +32,13 @@ def _entry_form(
         """
         <div class="card"><div class="toolbar">
           <div class="pill">{{ title }}</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.6">
+          <div class="tiny stack10 line16">
             Document observations, execution, and lessons with clarity.
           </div>
 
           {% if errors %}
             <div class="hr"></div>
-            <div class="tiny" style="color:#ff8f8f">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
+            <div class="tiny metaRed">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
           {% endif %}
 
           <div class="hr"></div>
@@ -58,7 +58,7 @@ def _entry_form(
               </div>
             </div>
 
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div>
                 <label>🧠 Grade</label>
                 <input name="grade" value="{{ values.get('grade','') }}" placeholder="A / B / C...">
@@ -73,7 +73,7 @@ def _entry_form(
               </div>
             </div>
 
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div>
                 <label>🧩 Entry Type</label>
                 <select name="entry_type">
@@ -85,25 +85,25 @@ def _entry_form(
               </div>
               <div>
                 <label>🔁 Day Link Mode</label>
-                <label style="display:flex;gap:8px;align-items:center;margin-top:8px">
+                <label class="pillRow stack8">
                   <input id="journal-link-all-day" type="checkbox" name="link_all_day" value="1" {% if values.get('link_all_day') == '1' %}checked{% endif %}>
                   Link all trades for selected date
                 </label>
               </div>
-              <div style="flex:2 1 260px">
+              <div class="fieldGrow2">
                 <label>🔗 Linked Trade IDs (comma separated)</label>
                 <input name="linked_trade_ids" value="{{ values.get('linked_trade_ids','') }}" placeholder="e.g. 101,102">
               </div>
             </div>
 
-            <div style="margin-top:12px">
+            <div class="stack12">
               <label>📌 Linked Trades (multi-select)</label>
               {% if available_trades|length == 0 %}
-                <div class="tiny" style="margin-bottom:6px">
+                <div class="tiny mb6">
                   No trades found for <b>{{ values.get('entry_date','(no date)') }}</b>. Change date to a trading day or save with Day Link Mode after setting the date.
                 </div>
               {% else %}
-                <div class="tiny" style="margin-bottom:6px">
+                <div class="tiny mb6">
                   Showing {{ available_trades|length }} trade{{ '' if available_trades|length == 1 else 's' }} for <b>{{ values.get('entry_date','') }}</b>.
                 </div>
               {% endif %}
@@ -114,17 +114,17 @@ def _entry_form(
                   </option>
                 {% endfor %}
               </select>
-              <div class="tiny" style="margin-top:6px">
+              <div class="tiny stack8">
                 Tip: Hold Cmd/Ctrl to select multiple trades. For Post-Market Review, enable Day Link Mode to auto-link everything from that date.
               </div>
             </div>
 
-            <div style="margin-top:12px">
+            <div class="stack12">
               <label>🗂️ Template Notes</label>
               <textarea name="template_notes" placeholder="Planned levels, risk model, follow-up checklist...">{{ values.get('template_notes','') }}</textarea>
             </div>
 
-            <div style="margin-top:12px">
+            <div class="stack12">
               <label>📝 Notes</label>
               <textarea name="notes" placeholder="Capture context, execution, and improvement plan...">{{ values.get('notes','') }}</textarea>
             </div>
@@ -196,15 +196,15 @@ def journal_home():
         <div class="twoCol">
           <div class="card"><div class="toolbar">
             <form method="get" action="/journal" class="row">
-              <div style="flex:2 1 260px">
+              <div class="fieldGrow2">
                 <label for="search">🔎 Search Journal 🧠</label>
                 <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
               </div>
-              <div style="flex:1 1 160px">
+              <div class="fieldGrow1">
                 <label>📆 Date</label>
                 <input type="date" name="d" value="{{ d }}" />
               </div>
-              <div style="display:flex; gap:10px; flex-wrap:wrap">
+              <div class="actionRow">
                 <button class="btn" type="submit">🧲 Filter</button>
                 <a class="btn" href="/journal">♻️ Reset</a>
                 <a class="btn primary" href="{{ url_for('new_entry') }}">➕ New Entry</a>
@@ -217,11 +217,11 @@ def journal_home():
 
           <div class="card"><div class="toolbar">
             <div class="pill">🎯 Daily Focus</div>
-            <div style="margin-top:10px; color:var(--muted); line-height:1.5">
+            <div class="focusList">
               <div>✅ Rules first (or it’s gambling 🎰).</div>
               <div>✅ Confirmation > Hope 👀</div>
               <div>✅ Size + stop respected 🛑</div>
-              <div style="margin-top:10px">Journal: <b>what you saw</b> → <b>what you did</b> → <b>what you learned</b> 🧱</div>
+              <div class="stack10">Journal: <b>what you saw</b> → <b>what you did</b> → <b>what you learned</b> 🧱</div>
             </div>
           </div></div>
         </div>
@@ -231,13 +231,13 @@ def journal_home():
             <div class="card entry">
               <div class="entryTop">
                 <div>
-                  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+                  <div class="pillRow">
                     <div class="pill">📆 {{ e['entry_date'] }}</div>
                     <div class="pill">🧩 {{ (e.get('entry_type') or 'post_market').replace('_',' ').title() }}</div>
                     {% if e['market'] %}<div class="meta">🏷️ Market: <b>{{ e['market'] }}</b></div>{% endif %}
                     {% if e['setup'] %}<div class="meta">📌 Setup: <b>{{ e['setup'] }}</b></div>{% endif %}
                   </div>
-                  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px">
+                  <div class="metaRow">
                     {% if e['grade'] %}<span class="meta">🧠 Grade: <b>{{ e['grade'] }}</b></span>{% endif %}
                     {% if e['mood'] %}<span class="meta">😶‍🌫️ Mood: <b>{{ e['mood'] }}</b></span>{% endif %}
                     {% if e['pnl'] is not none %}<span class="meta">💰 PnL: <b>{{ money(e['pnl']) }}</b></span>{% endif %}
@@ -248,7 +248,7 @@ def journal_home():
 
                 <div class="rightActions">
                   <a class="btn" href="{{ url_for('edit_entry', entry_id=e['id']) }}">✏️ Edit</a>
-                  <form id="del-e-{{ e['id'] }}" method="post" action="{{ url_for('delete_entry_route', entry_id=e['id']) }}" style="display:inline"></form>
+                  <form id="del-e-{{ e['id'] }}" method="post" action="{{ url_for('delete_entry_route', entry_id=e['id']) }}" class="inlineForm"></form>
                   <button class="btn danger" type="button" onclick="confirmDelete('del-e-{{ e['id'] }}')">🗑️</button>
                 </div>
               </div>
@@ -447,7 +447,7 @@ def journal_weekly_review():
         <div class="card"><div class="toolbar">
           <form method="get" class="row">
             <div><label>Week Start</label><input type="date" name="week_start" value="{{ week_start }}"></div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <div class="actionRow">
               <button class="btn" type="submit">Apply</button>
               <a class="btn" href="/journal/review/weekly">Current Week</a>
               <a class="btn" href="/journal">Back Journal</a>
@@ -455,11 +455,11 @@ def journal_weekly_review():
           </form>
         </div></div>
 
-        <div class="twoCol" style="margin-top:12px">
+        <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📌 Best Setups (linked trades)</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th></tr></thead>
               <tbody>
               {% for r in setup_stats %}
@@ -467,13 +467,13 @@ def journal_weekly_review():
               {% endfor %}
               {% if setup_stats|length == 0 %}<tr><td colspan="4">No linked-trade setup data this week.</td></tr>{% endif %}
               </tbody>
-            </table>
+            </table></div>
           </div></div>
 
           <div class="card"><div class="toolbar">
             <div class="pill">😶‍🌫️ Mood vs PnL Pattern</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <thead><tr><th>Mood</th><th>Entries</th><th>Win Rate</th><th>Avg PnL</th></tr></thead>
               <tbody>
               {% for r in mood_stats %}
@@ -481,14 +481,14 @@ def journal_weekly_review():
               {% endfor %}
               {% if mood_stats|length == 0 %}<tr><td colspan="4">No mood data this week.</td></tr>{% endif %}
               </tbody>
-            </table>
+            </table></div>
           </div></div>
         </div>
 
-        <div class="card" style="margin-top:12px"><div class="toolbar">
+        <div class="card stack12"><div class="toolbar">
           <div class="pill">⚠️ Repeated Rule Breaks</div>
           <div class="hr"></div>
-          <table>
+          <div class="tableWrap"><table class="tableDense">
             <thead><tr><th>Tag</th><th>Count</th></tr></thead>
             <tbody>
             {% for r in rule_breaks %}
@@ -496,7 +496,7 @@ def journal_weekly_review():
             {% endfor %}
             {% if rule_breaks|length == 0 %}<tr><td colspan="2">No rule-break tags for linked trades this week.</td></tr>{% endif %}
             </tbody>
-          </table>
+          </table></div>
         </div></div>
         """,
         week_start=week_start,

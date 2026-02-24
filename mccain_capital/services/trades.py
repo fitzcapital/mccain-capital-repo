@@ -153,15 +153,15 @@ def trades_page():
         <div class="twoCol">
           <div class="card"><div class="toolbar">
             <form method="get" action="/trades" class="row">
-              <div style="flex:2 1 260px">
+              <div class="fieldGrow2">
                 <label for="search">🔎 Search Trades 🎯</label>
                 <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
               </div>
-              <div style="flex:1 1 160px">
+              <div class="fieldGrow1">
                 <label>📆 Date</label>
                 <input type="date" name="d" value="{{ d }}" />
               </div>
-              <div style="display:flex; gap:10px; flex-wrap:wrap">
+              <div class="actionRow">
                 <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">⬅️ Prev</a>
                 <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next ➡️</a>
                 <button class="btn" type="submit">🧲 Filter</button>
@@ -183,11 +183,11 @@ def trades_page():
               </div>
               <div class="stat">
                 <div class="k">⚙️ Risk Controls</div>
-                <div class="v"><a class="btn primary" style="padding:8px 10px" href="/trades/risk-controls">Configure</a></div>
+                <div class="v"><a class="btn primary btnCompact" href="/trades/risk-controls">Configure</a></div>
               </div>
               <div class="stat">
                 <div class="k">📈 Edge Analytics</div>
-                <div class="v"><a class="btn primary" style="padding:8px 10px" href="/analytics">Open</a></div>
+                <div class="v"><a class="btn primary btnCompact" href="/analytics">Open</a></div>
               </div>
             </div>
 
@@ -249,7 +249,7 @@ def trades_page():
 
             <div class="hr"></div>
             <div class="rightActions">
-              <form id="clear-trades" method="post" action="/trades/clear" style="display:inline"></form>
+              <form id="clear-trades" method="post" action="/trades/clear" class="inlineForm"></form>
               <button class="btn danger" type="button" onclick="confirmClear('clear-trades')">🧼 Clear</button>
               <a class="btn" href="/dashboard">📊 Calendar</a>
               <a class="btn" href="/calculator">🧮 Calculator</a>
@@ -258,20 +258,20 @@ def trades_page():
 
           <div class="card"><div class="toolbar">
             <div class="pill">🧠 Paste Format</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.5">
+            <div class="tiny stack10 line15">
               Table paste = tab-delimited rows. Broker paste = "instrument | dt | side | qty | price | fee". ✅
             </div>
           </div></div>
         </div>
 
-        <div class="card" style="margin-top:12px"><div class="toolbar">
+        <div class="card stack12"><div class="toolbar">
           <div class="pill">🧾 Trades ({{ trades|length }})</div>
           <div class="hr"></div>
 
           <!-- Bulk actions: multi-select delete / copy -->
           <div class="row bulkActions">
             <label class="pill bulkSelectLabel">
-              <input type="checkbox" id="selectAll" style="margin:0;" />
+              <input type="checkbox" id="selectAll" />
               Select all
             </label>
             <span class="meta bulkCount" id="selectedCount">0 selected</span>
@@ -286,11 +286,11 @@ def trades_page():
             <button class="btn" id="bulkCopyBtn" disabled>📋 Copy selected</button>
           </div>
 
-          <div class="tradesDesktop" style="overflow:auto">
-            <table>
+          <div class="tradesDesktop tableWrap">
+            <table class="tableDense">
               <thead>
                 <tr>
-                  <th style="width:42px"></th>
+                  <th class="thSelect"></th>
                   <th>📆 Date</th>
                   <th>⏱️ Time</th>
                   <th>🏷️</th>
@@ -306,7 +306,7 @@ def trades_page():
                   <th>💵 Net</th>
                   <th>📊%</th>
                   <th>🏦 Bal</th>
-                  <th style="width:90px; text-align:right;">Actions</th>
+                  <th class="thActions">Actions</th>
 
                 </tr>
               </thead>
@@ -368,20 +368,19 @@ def trades_page():
 </td>
 
                   <td>{{ money(t['balance']) }}</td>
-                  <td style="text-align:right; white-space:nowrap;">
+                  <td class="tdActions">
                     <div class="rowActions" id="rowActions-{{ t['id'] }}">
                       <button type="button" class="rowMoreBtn" onclick="toggleRowMenu('{{ t['id'] }}', event)" aria-label="Trade actions">▾</button>
                       <div class="rowMoreMenu" id="rowMenu-{{ t['id'] }}">
                         <a class="rowMenuItem" href="/trades/edit/{{ t['id'] }}?d={{ d }}&q={{ q }}">✏️ Edit</a>
                         <a class="rowMenuItem" href="/trades/review/{{ t['id'] }}?d={{ d }}&q={{ q }}">🧠 Review</a>
-                        <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}" style="margin:0;">
+                        <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}">
   <button class="rowMenuItem" type="submit">📄 Duplicate</button>
 </form>
 
                         <form id="del-t-{{ t['id'] }}" method="post"
                               action="/trades/delete/{{ t['id'] }}?d={{ d }}&q={{ q }}"
-                              onsubmit="return confirm('Delete this trade?');"
-                              style="margin:0;">
+                              onsubmit="return confirm('Delete this trade?');">
                           <button class="rowMenuItem danger" type="submit">🗑️ Delete</button>
                         </form>
                       </div>
@@ -432,13 +431,13 @@ def trades_page():
                     </div>
                   </div>
                 </div>
-                <div class="rightActions" style="margin-top:10px;">
+                <div class="rightActions stack10">
                   <a class="btn" href="/trades/edit/{{ t['id'] }}?d={{ d }}&q={{ q }}">✏️ Edit</a>
                   <a class="btn" href="/trades/review/{{ t['id'] }}?d={{ d }}&q={{ q }}">🧠 Review</a>
-                  <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}" style="display:inline;">
+                  <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}" class="inlineForm">
                     <button class="btn" type="submit">📄 Duplicate</button>
                   </form>
-                  <form method="post" action="/trades/delete/{{ t['id'] }}?d={{ d }}&q={{ q }}" onsubmit="return confirm('Delete this trade?');" style="display:inline;">
+                  <form method="post" action="/trades/delete/{{ t['id'] }}?d={{ d }}&q={{ q }}" onsubmit="return confirm('Delete this trade?');" class="inlineForm">
                     <button class="btn danger" type="submit">🗑️ Delete</button>
                   </form>
                 </div>
@@ -1004,7 +1003,7 @@ def trades_edit(trade_id: int):
               <div><label>⏱️ Exit Time</label><input name="exit_time" value="{{ t.exit_time or '' }}"/></div>
             </div>
 
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div><label>🏷️ Ticker</label><input name="ticker" value="{{ t.ticker or '' }}"/></div>
               <div>
                 <label>📌 Type</label>
@@ -1016,13 +1015,13 @@ def trades_edit(trade_id: int):
               <div><label>❌ Strike</label><input name="strike" inputmode="decimal" value="{{ '' if t.strike is none else t.strike }}"/></div>
             </div>
 
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ t.contracts or 1 }}"/></div>
               <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" value="{{ '' if t.entry_price is none else t.entry_price }}"/></div>
               <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" value="{{ '' if t.exit_price is none else t.exit_price }}"/></div>
             </div>
 
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div><label>💵 Fees (total)</label><input name="comm" inputmode="decimal" value="{{ t.comm or 0.70 }}"/></div>
             </div>
 
@@ -1072,7 +1071,7 @@ def trades_review(trade_id: int):
         """
         <div class="card"><div class="toolbar">
           <div class="pill">🧠 Trade Review #{{ t.id }}</div>
-          <div class="tiny" style="margin-top:8px">{{ t.trade_date }} · {{ t.ticker }} {{ t.opt_type }}</div>
+          <div class="tiny stack8">{{ t.trade_date }} · {{ t.ticker }} {{ t.opt_type }}</div>
           <div class="hr"></div>
           <form method="post" action="/trades/review/{{ t.id }}?d={{ d }}&q={{ q }}">
             <div class="row">
@@ -1090,13 +1089,13 @@ def trades_review(trade_id: int):
               </div>
               <div><label>Checklist Score (0-100)</label><input name="checklist_score" inputmode="numeric" value="{{ '' if rv.get('checklist_score') is none else rv.get('checklist_score') }}"></div>
             </div>
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div>
                 <label>Rule-Break Tags (comma separated)</label>
                 <input name="rule_break_tags" value="{{ rv.get('rule_break_tags','') }}" placeholder="oversized, late entry, no stop, revenge trade">
               </div>
             </div>
-            <div style="margin-top:10px">
+            <div class="stack10">
               <label>Review Note</label>
               <textarea name="review_note" placeholder="What to repeat, what to remove next session">{{ rv.get('review_note','') }}</textarea>
             </div>
@@ -1129,9 +1128,9 @@ def trades_risk_controls():
         """
         <div class="card"><div class="toolbar">
           <div class="pill">🛡️ Risk Controls</div>
-          <div class="tiny" style="margin-top:8px">
+          <div class="tiny stack8">
             Today's net: {{ money(state.day_net) }} · Max loss: {{ money(state.daily_max_loss) }} ·
-            Status: {% if state.locked %}<b style="color:#ff8f8f">LOCKED</b>{% else %}<b style="color:#7ee2ae">ACTIVE</b>{% endif %}
+            Status: {% if state.locked %}<b class="statusLock">LOCKED</b>{% else %}<b class="statusActive">ACTIVE</b>{% endif %}
           </div>
           <div class="hr"></div>
           <form method="post">
@@ -1191,10 +1190,10 @@ def trades_paste():
             """
             <div class="card"><div class="toolbar">
               <div class="pill">📋 Paste Trades</div>
-              <div style="margin-top:10px">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }} ✅</div>
+              <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }} ✅</div>
               {% if errors %}
                 <div class="hr"></div>
-                <div class="tiny" style="color:#ff8f8f">
+                <div class="tiny metaRed">
                   {% for e in errors %}• {{ e }}<br/>{% endfor %}
                 </div>
               {% endif %}
@@ -1219,14 +1218,14 @@ def trades_paste():
         """
         <div class="card"><div class="toolbar">
           <div class="pill">📋 Paste Trades (tabs please ✅)</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.5">
+          <div class="tiny stack10 line15">
             Pro tip: copy straight from your sheet/log, keep the tabs.
             <div class="hr"></div>
-            Example:<br/><code style="font-size:12px; color:var(--muted)">{{ example }}</code>
+            Example:<br/><code class="preWrapMuted">{{ example }}</code>
           </div>
           <div class="hr"></div>
           <form method="post">
-            <div style="margin-top:12px">
+            <div class="stack12">
               <label>📎 Paste here</label>
               <textarea name="text" placeholder="Paste your trade rows here…"></textarea>
             </div>
@@ -1327,7 +1326,7 @@ def trades_new_manual():
               <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM"/></div>
               <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM"/></div>
             </div>
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX"/></div>
               <div>
                 <label>📌 Type</label>
@@ -1335,12 +1334,12 @@ def trades_new_manual():
               </div>
               <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940"/></div>
             </div>
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="1"/></div>
               <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20"/></div>
               <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30"/></div>
             </div>
-            <div class="row" style="margin-top:10px">
+            <div class="row stack10">
               <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="0.70"/></div>
             </div>
             <div class="hr"></div>
@@ -1374,9 +1373,9 @@ def trades_paste_broker():
             """
             <div class="card"><div class="toolbar">
               <div class="pill">🏦 Broker Paste Import</div>
-              <div style="margin-top:10px">Inserted <b>{{ inserted }}</b> round-trip trade{{ '' if inserted==1 else 's' }} ✅</div>
+              <div class="stack10">Inserted <b>{{ inserted }}</b> round-trip trade{{ '' if inserted==1 else 's' }} ✅</div>
               {% if errors %}
-                <div class="hr"></div><div class="tiny" style="color:#ff8f8f">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
+                <div class="hr"></div><div class="tiny metaRed">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
               {% endif %}
               {{ reconciliation_html|safe }}
               <div class="hr"></div>
@@ -1397,12 +1396,12 @@ def trades_paste_broker():
         """
         <div class="card"><div class="toolbar">
           <div class="pill">🏦 Paste Broker Fills (BUY/SELL legs)</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.5">
+          <div class="tiny stack10 line15">
             Paste the raw fills. This importer pairs BUY+SELL into one completed trade (FIFO). ✅
           </div>
           <div class="hr"></div>
           <form method="post">
-            <div style="margin-top:12px">
+            <div class="stack12">
               <label>📎 Paste here</label>
               <textarea name="text" placeholder="SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 2 | 18.90 | 0.70"></textarea>
             </div>
@@ -1456,7 +1455,7 @@ def trades_upload_pdf():
                             <div class="card"><div class="toolbar">
                               <div class="pill">⛔ HTML parsed, but no trade rows found</div>
                               <div class="hr"></div>
-                              <div class="tiny" style="color:#9fd6ff; line-height:1.6">
+                              <div class="tiny metaBlue line16">
                                 {% for m in warns %}• {{ m }}<br>{% endfor %}
                               </div>
                               <div class="hr"></div>
@@ -1479,10 +1478,10 @@ def trades_upload_pdf():
                         """
                         <div class="card"><div class="toolbar">
                           <div class="pill">🧾 HTML → Trades ✅</div>
-                          <div style="margin-top:10px">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }}.</div>
+                          <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }}.</div>
                           {% if msgs %}
                             <div class="hr"></div>
-                            <div class="tiny" style="color:#9fd6ff; line-height:1.6">
+                            <div class="tiny metaBlue line16">
                               {% for m in msgs %}• {{ m }}<br>{% endfor %}
                             </div>
                           {% endif %}
@@ -1507,7 +1506,7 @@ def trades_upload_pdf():
                         <div class="card"><div class="toolbar">
                           <div class="pill">⛔ Balance not found in HTML</div>
                           <div class="hr"></div>
-                          <div class="tiny" style="color:#9fd6ff; line-height:1.6">
+                          <div class="tiny metaBlue line16">
                             {% for m in warns %}• {{ m }}<br>{% endfor %}
                           </div>
                           <div class="hr"></div>
@@ -1555,12 +1554,12 @@ def trades_upload_pdf():
                         <div class="card"><div class="toolbar">
                           <div class="pill">⛔ OCR rows not parseable</div>
                           <div class="hr"></div>
-                          <div class="tiny" style="color:#9fd6ff; line-height:1.6">
+                          <div class="tiny metaBlue line16">
                             {% for m in warns %}• {{ m }}<br>{% endfor %}
                           </div>
                           <div class="hr"></div>
                           <div class="tiny">Stitched rows (first 30):</div>
-                          <pre style="white-space:pre-wrap; font-size:12px; color:var(--muted)">{{ dump }}</pre>
+                          <pre class="preWrapMuted">{{ dump }}</pre>
                           <div class="hr"></div>
                           <a class="btn" href="/trades/upload/statement">Back</a>
                         <a class="btn" href="/trades/upload/statement">Upload Another</a>
@@ -1583,10 +1582,10 @@ def trades_upload_pdf():
                     """
                     <div class="card"><div class="toolbar">
                       <div class="pill">📄 PDF → OCR → Trades ✅</div>
-                      <div style="margin-top:10px">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }}.</div>
+                      <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }}.</div>
                       {% if msgs %}
                         <div class="hr"></div>
-                        <div class="tiny" style="color:#9fd6ff; line-height:1.6">
+                        <div class="tiny metaBlue line16">
                           {% for m in msgs %}• {{ m }}<br>{% endfor %}
                         </div>
                       {% endif %}
@@ -1613,7 +1612,7 @@ def trades_upload_pdf():
                        <div class="pill">⛔ Could not find ending balance</div>
                        <div class="hr"></div>
                        <div class="tiny">Dump (first 1200 chars):</div>
-                       <pre style="white-space:pre-wrap; font-size:12px; color:var(--muted)">{{ dump }}</pre>
+                       <pre class="preWrapMuted">{{ dump }}</pre>
                        <div class="hr"></div>
                        <a class="btn" href="/trades/upload/statement">Back</a>
                        </div></div>""",
@@ -1642,10 +1641,10 @@ def trades_upload_pdf():
               </div>
             </div>
 
-            <div style="margin-top:12px">
+            <div class="stack12">
               <label>📎 File</label>
               <input type="file" name="pdf" accept="application/pdf,text/html" />
-              <div class="tiny" style="margin-top:6px">Upload the Vanquish Account Statement HTML if you have it — it’s cleaner than OCR ✅</div>
+              <div class="tiny stack8">Upload the Vanquish Account Statement HTML if you have it — it’s cleaner than OCR ✅</div>
             </div>
 
             <div class="hr"></div>
