@@ -53,3 +53,11 @@ def trades_upload_pdf():
 
 def trades_risk_controls():
     return svc.trades_risk_controls()
+
+
+def trades_open_positions():
+    return svc.trades_open_positions()
+
+
+def trades_rebuild_reviews():
+    return svc.trades_rebuild_reviews()

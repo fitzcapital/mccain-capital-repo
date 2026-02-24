@@ -48,6 +48,31 @@ def fetch_trades_range(start_iso: str, end_iso: str):
         )
 
 
+def fetch_open_positions(as_of: str = "", q: str = "") -> List[Dict[str, Any]]:
+    where: List[str] = [
+        "(COALESCE(exit_time, '') = '' OR exit_price IS NULL OR net_pl IS NULL)",
+        "COALESCE(contracts, 0) > 0",
+    ]
+    params: List[Any] = []
+    if as_of:
+        where.append("trade_date <= ?")
+        params.append(as_of)
+    if q:
+        like = f"%{q.strip()}%"
+        where.append("(ticker LIKE ? OR opt_type LIKE ? OR raw_line LIKE ?)")
+        params.extend([like, like, like])
+
+    sql = f"""
+        SELECT *
+        FROM trades
+        WHERE {" AND ".join(where)}
+        ORDER BY trade_date DESC, id DESC
+    """
+    with db() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_risk_controls() -> Dict[str, Any]:
     with db() as conn:
         row = conn.execute(

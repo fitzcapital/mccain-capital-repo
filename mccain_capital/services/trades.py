@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from flask import abort, flash, jsonify, redirect, render_template_string, request, url_for
 from werkzeug.utils import secure_filename
@@ -251,6 +251,8 @@ def trades_page():
             <div class="rightActions">
               <form id="clear-trades" method="post" action="/trades/clear" class="inlineForm"></form>
               <button class="btn danger" type="button" onclick="confirmClear('clear-trades')">🧼 Clear</button>
+              <a class="btn" href="/trades/open-positions">📂 Open Positions</a>
+              <a class="btn" href="/trades/reviews/rebuild">🛠️ Rebuild Reviews</a>
               <a class="btn" href="/dashboard">📊 Calendar</a>
               <a class="btn" href="/calculator">🧮 Calculator</a>
             </div>
@@ -1655,5 +1657,236 @@ def trades_upload_pdf():
           </form>
         </div></div>
         """
+    )
+    return render_page(content, active="trades")
+
+
+def _fetch_trades_for_rebuild(start_date: str = "", end_date: str = "") -> List[Dict[str, Any]]:
+    where: List[str] = []
+    params: List[Any] = []
+    if start_date:
+        where.append("trade_date >= ?")
+        params.append(start_date)
+    if end_date:
+        where.append("trade_date <= ?")
+        params.append(end_date)
+    sql = "SELECT * FROM trades"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY trade_date ASC, id ASC"
+    with db() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def trades_open_positions():
+    as_of = (request.args.get("as_of") or "").strip()
+    q = (request.args.get("q") or "").strip()
+    rows = repo.fetch_open_positions(as_of=as_of, q=q)
+
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        ticker = (r.get("ticker") or "—").strip() or "—"
+        opt_type = (r.get("opt_type") or "—").strip() or "—"
+        strike = r.get("strike")
+        strike_label = (
+            "—"
+            if strike is None
+            else str(int(strike)) if float(strike).is_integer() else f"{float(strike):.2f}"
+        )
+        key = f"{ticker} {opt_type} {strike_label}"
+        g = grouped.setdefault(
+            key,
+            {
+                "symbol": key,
+                "trades": 0,
+                "contracts": 0,
+                "total_spent": 0.0,
+                "latest_date": "",
+            },
+        )
+        g["trades"] += 1
+        g["contracts"] += int(r.get("contracts") or 0)
+        g["total_spent"] += float(r.get("total_spent") or 0.0)
+        g["latest_date"] = max(g["latest_date"], str(r.get("trade_date") or ""))
+
+    grouped_rows = sorted(
+        grouped.values(), key=lambda x: (x["latest_date"], x["symbol"]), reverse=True
+    )
+    total_contracts = sum(int(r["contracts"]) for r in grouped_rows)
+    total_spent = sum(float(r["total_spent"]) for r in grouped_rows)
+
+    content = render_template_string(
+        """
+        <div class="metricStrip">
+          <div class="metric"><div class="label">Open Buckets</div><div class="value">{{ grouped_rows|length }}</div></div>
+          <div class="metric"><div class="label">Open Contracts</div><div class="value">{{ total_contracts }}</div></div>
+          <div class="metric"><div class="label">Capital In Open Lots</div><div class="value">{{ money(total_spent) }}</div></div>
+          <div class="metric"><div class="label">Candidate Rows</div><div class="value">{{ rows|length }}</div></div>
+        </div>
+
+        <div class="card"><div class="toolbar">
+          <div class="pill">📂 Open Positions (Unmatched / Incomplete)</div>
+          <div class="tiny stack10 line15">Derived from trades missing close info (no exit time, no exit price, or no net P/L).</div>
+          <div class="hr"></div>
+          <form method="get" class="row">
+            <div><label>As of Date</label><input type="date" name="as_of" value="{{ as_of }}"></div>
+            <div class="fieldGrow2"><label>Filter</label><input name="q" value="{{ q }}" placeholder="SPX, CALL, raw note..."></div>
+            <div class="actionRow">
+              <button class="btn" type="submit">Apply</button>
+              <a class="btn" href="/trades/open-positions">Reset</a>
+              <a class="btn" href="/trades">Back Trades</a>
+            </div>
+          </form>
+        </div></div>
+
+        <div class="card stack12"><div class="toolbar">
+          <div class="pill">🧾 Position Summary</div>
+          <div class="hr"></div>
+          <div class="tableWrap"><table class="tableDense">
+            <thead><tr><th>Symbol</th><th>Open Trades</th><th>Contracts</th><th>Capital</th><th>Latest</th></tr></thead>
+            <tbody>
+            {% for r in grouped_rows %}
+              <tr>
+                <td>{{ r.symbol }}</td>
+                <td>{{ r.trades }}</td>
+                <td>{{ r.contracts }}</td>
+                <td>{{ money(r.total_spent) }}</td>
+                <td>{{ r.latest_date }}</td>
+              </tr>
+            {% endfor %}
+            {% if grouped_rows|length == 0 %}
+              <tr><td colspan="5">No open-position candidates found.</td></tr>
+            {% endif %}
+            </tbody>
+          </table></div>
+        </div></div>
+        """,
+        grouped_rows=grouped_rows,
+        total_contracts=total_contracts,
+        total_spent=total_spent,
+        rows=rows,
+        as_of=as_of,
+        q=q,
+        money=money,
+    )
+    return render_page(content, active="trades")
+
+
+def trades_rebuild_reviews():
+    start_date = (request.values.get("start_date") or "").strip()
+    end_date = (request.values.get("end_date") or "").strip()
+    scope = (request.values.get("scope") or "missing").strip().lower()
+    if scope not in {"missing", "all"}:
+        scope = "missing"
+    preserve_manual = (request.values.get("preserve_manual") or "1") == "1"
+
+    if request.method == "POST":
+        trades = _fetch_trades_for_rebuild(start_date=start_date, end_date=end_date)
+        review_map = repo.fetch_trade_reviews_map(
+            [int(t["id"]) for t in trades if t.get("id") is not None]
+        )
+        rebuilt = 0
+        skipped_existing = 0
+
+        for t in trades:
+            tid = int(t["id"])
+            existing = review_map.get(tid)
+            if scope == "missing" and existing:
+                skipped_existing += 1
+                continue
+
+            payload = importing._auto_review_payload(t)
+            if preserve_manual and existing:
+                payload["setup_tag"] = (existing.get("setup_tag") or "").strip() or payload[
+                    "setup_tag"
+                ]
+                payload["session_tag"] = (existing.get("session_tag") or "").strip() or payload[
+                    "session_tag"
+                ]
+                if existing.get("checklist_score") is not None:
+                    payload["checklist_score"] = int(existing["checklist_score"])
+                payload["rule_break_tags"] = (
+                    existing.get("rule_break_tags") or ""
+                ).strip() or payload["rule_break_tags"]
+                payload["review_note"] = (existing.get("review_note") or "").strip() or payload[
+                    "review_note"
+                ]
+
+            repo.upsert_trade_review(
+                trade_id=tid,
+                setup_tag=payload.get("setup_tag", ""),
+                session_tag=payload.get("session_tag", ""),
+                checklist_score=payload.get("checklist_score"),
+                rule_break_tags=payload.get("rule_break_tags", ""),
+                review_note=payload.get("review_note", ""),
+            )
+            rebuilt += 1
+
+        flash(
+            f"Rebuild complete: updated {rebuilt} review(s), skipped {skipped_existing} existing review(s).",
+            "success",
+        )
+        return redirect(
+            url_for(
+                "trades_rebuild_reviews",
+                start_date=start_date,
+                end_date=end_date,
+                scope=scope,
+                preserve_manual="1" if preserve_manual else "0",
+            )
+        )
+
+    preview = _fetch_trades_for_rebuild(start_date=start_date, end_date=end_date)
+    preview_reviews = repo.fetch_trade_reviews_map(
+        [int(t["id"]) for t in preview if t.get("id") is not None]
+    )
+    preview_missing = sum(1 for t in preview if int(t["id"]) not in preview_reviews)
+
+    content = render_template_string(
+        """
+        <div class="metricStrip">
+          <div class="metric"><div class="label">Trades In Scope</div><div class="value">{{ preview|length }}</div></div>
+          <div class="metric"><div class="label">Existing Reviews</div><div class="value">{{ preview_reviews|length }}</div></div>
+          <div class="metric"><div class="label">Missing Reviews</div><div class="value">{{ preview_missing }}</div></div>
+          <div class="metric"><div class="label">Mode</div><div class="value">{{ 'Missing Only' if scope == 'missing' else 'All Trades' }}</div></div>
+        </div>
+
+        <div class="card"><div class="toolbar">
+          <div class="pill">🛠️ Admin: Rebuild Reviews</div>
+          <div class="tiny stack10 line15">Bulk regenerate review metadata (setup/session/score/tags) from trade rows.</div>
+          <div class="hr"></div>
+          <form method="post" class="row">
+            <div><label>Start Date</label><input type="date" name="start_date" value="{{ start_date }}"></div>
+            <div><label>End Date</label><input type="date" name="end_date" value="{{ end_date }}"></div>
+            <div>
+              <label>Scope</label>
+              <select name="scope">
+                <option value="missing" {% if scope == 'missing' %}selected{% endif %}>Only Missing Reviews</option>
+                <option value="all" {% if scope == 'all' %}selected{% endif %}>All Trades (Overwrite)</option>
+              </select>
+            </div>
+            <div>
+              <label>Preserve Manual Fields</label>
+              <select name="preserve_manual">
+                <option value="1" {% if preserve_manual %}selected{% endif %}>Yes (safer)</option>
+                <option value="0" {% if not preserve_manual %}selected{% endif %}>No (fully regenerate)</option>
+              </select>
+            </div>
+            <div class="actionRow">
+              <button class="btn primary" type="submit">Run Rebuild</button>
+              <a class="btn" href="/trades/reviews/rebuild">Reset</a>
+              <a class="btn" href="/trades">Back Trades</a>
+            </div>
+          </form>
+        </div></div>
+        """,
+        preview=preview,
+        preview_reviews=preview_reviews,
+        preview_missing=preview_missing,
+        start_date=start_date,
+        end_date=end_date,
+        scope=scope,
+        preserve_manual=preserve_manual,
     )
     return render_page(content, active="trades")

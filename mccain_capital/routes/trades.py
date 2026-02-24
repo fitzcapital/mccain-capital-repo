@@ -71,3 +71,14 @@ def register(app):
         view_func=h.trades_upload_pdf,
         methods=["GET", "POST"],
     )
+    app.add_url_rule(
+        "/trades/open-positions",
+        endpoint="trades_open_positions",
+        view_func=h.trades_open_positions,
+    )
+    app.add_url_rule(
+        "/trades/reviews/rebuild",
+        endpoint="trades_rebuild_reviews",
+        view_func=h.trades_rebuild_reviews,
+        methods=["GET", "POST"],
+    )
