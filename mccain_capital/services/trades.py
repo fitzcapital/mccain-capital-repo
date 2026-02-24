@@ -549,48 +549,6 @@ def trades_page():
   .rowMenuItem:hover{ background: rgba(255,255,255,0.06); }
   .rowMenuItem.danger{ color: #ff6b6b; }
 
-/* ===== FIX: Allow row action dropdowns to escape table/card ===== */
-
-/* The card that wraps the trades table */
-.tradesCard,
-.tradesTableWrap,
-.tableWrap,
-.tableContainer {
-  overflow: visible !important;
-}
-
-/* If you rely on horizontal scroll */
-.tradesTableWrap {
-  overflow-x: auto !important;
-  overflow-y: visible !important;
-}
-
-/* Ensure table + cells do not clip */
-table,
-thead,
-tbody,
-tr,
-td,
-th {
-  overflow: visible !important;
-}
-
-/* Anchor for dropdown */
-.rowActions {
-  position: relative;
-  overflow: visible !important;
-}
-
-/* Dropdown menu itself */
-.rowMoreMenu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 999999;
-}
-
-
-
 </style>
 
 <script>
