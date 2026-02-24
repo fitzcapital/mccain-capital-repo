@@ -14,13 +14,16 @@ def create_app():
     app = core.app
     app.config.from_object(select_config())
     app.secret_key = app.config["SECRET_KEY"]
-    app.permanent_session_lifetime = timedelta(minutes=app.config["PERMANENT_SESSION_LIFETIME_MINUTES"])
+    app.permanent_session_lifetime = timedelta(
+        minutes=app.config["PERMANENT_SESSION_LIFETIME_MINUTES"]
+    )
 
     if not getattr(app, "_routes_registered", False):
         register_all_routes(app)
         app._routes_registered = True
 
     if not getattr(app, "_security_hooks_registered", False):
+
         @app.before_request
         def _auth_gate():
             if not core.auth_enabled():

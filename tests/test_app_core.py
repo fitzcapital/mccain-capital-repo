@@ -36,4 +36,3 @@ def test_expected_endpoints_registered(app):
         "books_page",
     }
     assert expected.issubset(endpoints)
-

@@ -73,8 +73,12 @@ def trades_page():
     bal_in_day = last_balance_in_list(trades)
     overall_bal = latest_balance_overall(as_of=active_day)
     display_balance = bal_in_day if bal_in_day is not None else overall_bal
-    day_net = float((stats["total"] if isinstance(stats, dict) else getattr(stats, "total", 0.0)) or 0.0)
-    win_rate = float((stats["win_rate"] if isinstance(stats, dict) else getattr(stats, "win_rate", 0.0)) or 0.0)
+    day_net = float(
+        (stats["total"] if isinstance(stats, dict) else getattr(stats, "total", 0.0)) or 0.0
+    )
+    win_rate = float(
+        (stats["win_rate"] if isinstance(stats, dict) else getattr(stats, "win_rate", 0.0)) or 0.0
+    )
     trades_count = len(trades)
 
     content = render_template_string(
@@ -684,6 +688,7 @@ if (bulkCopyBtn) {
 
     return render_page(content, active="trades")
 
+
 def get_trade(trade_id: int) -> Optional[sqlite3.Row]:
     with core.db() as conn:
         return conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
@@ -791,7 +796,9 @@ def trades_delete_many():
         if request.is_json:
             return jsonify({"ok": True, "deleted": 0})
         flash("No trades selected.", "warning")
-        return redirect(url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", "")))
+        return redirect(
+            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
+        )
 
     placeholders = ",".join(["?"] * len(ids))
     with core.db() as conn:
@@ -801,7 +808,9 @@ def trades_delete_many():
     if request.is_json:
         return jsonify({"ok": True, "deleted": int(deleted)})
     flash(f"Deleted {deleted} trade(s).", "success")
-    return redirect(url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", "")))
+    return redirect(
+        url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
+    )
 
 
 def trades_copy_many():
@@ -817,7 +826,9 @@ def trades_copy_many():
         if request.is_json:
             return jsonify({"ok": True, "copied": 0})
         flash("No trades selected.", "warning")
-        return redirect(url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", "")))
+        return redirect(
+            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
+        )
 
     try:
         datetime.strptime(str(target_date), "%Y-%m-%d")
@@ -825,7 +836,9 @@ def trades_copy_many():
         if request.is_json:
             return jsonify({"ok": False, "error": "Invalid target_date. Use YYYY-MM-DD."}), 400
         flash("Invalid target date (use YYYY-MM-DD).", "danger")
-        return redirect(url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", "")))
+        return redirect(
+            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
+        )
 
     with core.db() as conn:
         cols = _trades_table_columns(conn)
@@ -883,9 +896,17 @@ def trades_edit(trade_id: int):
         exit_price = core.parse_float(f.get("exit_price") or "")
         comm = core.parse_float(f.get("comm") or "") or 0.0
 
-        if not ticker or opt_type not in ("CALL", "PUT") or contracts <= 0 or entry_price is None or exit_price is None:
-            return core.render_page(core._simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                                    active="trades")
+        if (
+            not ticker
+            or opt_type not in ("CALL", "PUT")
+            or contracts <= 0
+            or entry_price is None
+            or exit_price is None
+        ):
+            return core.render_page(
+                core._simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
+                active="trades",
+            )
 
         gross_pl = (exit_price - entry_price) * 100.0 * contracts
         net_pl = gross_pl - comm
@@ -921,7 +942,9 @@ def trades_edit(trade_id: int):
             )
 
         core.recompute_balances()
-        return redirect(url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page", d=trade_date))
+        return redirect(
+            url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page", d=trade_date)
+        )
 
     t = dict(row)
     content = render_template_string(
@@ -1111,11 +1134,16 @@ def trades_paste():
                 active="trades",
             )
         text = request.form.get("text", "")
-        starting_balance = core.parse_float(request.form.get("starting_balance", "")) or core.default_starting_balance()
+        starting_balance = (
+            core.parse_float(request.form.get("starting_balance", ""))
+            or core.default_starting_balance()
+        )
         fmt = core.detect_paste_format(text)
 
         if fmt == "broker":
-            inserted, errors = core.insert_trades_from_broker_paste(text, starting_balance=starting_balance)
+            inserted, errors = core.insert_trades_from_broker_paste(
+                text, starting_balance=starting_balance
+            )
         else:
             inserted, errors = core.insert_trades_from_paste(text)
 
@@ -1202,9 +1230,17 @@ def trades_new_manual():
         exit_price = core.parse_float(f.get("exit_price") or "")
         comm = core.parse_float(f.get("comm") or "") or 0.0
 
-        if not ticker or opt_type not in ("CALL", "PUT") or contracts <= 0 or entry_price is None or exit_price is None:
-            return core.render_page(core._simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                                    active="trades")
+        if (
+            not ticker
+            or opt_type not in ("CALL", "PUT")
+            or contracts <= 0
+            or entry_price is None
+            or exit_price is None
+        ):
+            return core.render_page(
+                core._simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
+                active="trades",
+            )
 
         gross_pl = (exit_price - entry_price) * 100.0 * contracts
         net_pl = gross_pl - comm
@@ -1223,9 +1259,21 @@ def trades_new_manual():
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
-                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
-                    entry_price, exit_price, contracts, total_spent,
-                    comm, gross_pl, net_pl, result_pct, balance,
+                    trade_date,
+                    entry_time,
+                    exit_time,
+                    ticker,
+                    opt_type,
+                    strike,
+                    entry_price,
+                    exit_price,
+                    contracts,
+                    total_spent,
+                    comm,
+                    gross_pl,
+                    net_pl,
+                    result_pct,
+                    balance,
                     "MANUAL ENTRY",
                     core.now_iso(),
                 ),
@@ -1284,8 +1332,13 @@ def trades_paste_broker():
                 active="trades",
             )
         text = request.form.get("text", "")
-        starting_balance = core.parse_float(request.form.get("starting_balance", "")) or core.default_starting_balance()
-        inserted, errors = core.insert_trades_from_broker_paste(text, starting_balance=starting_balance)
+        starting_balance = (
+            core.parse_float(request.form.get("starting_balance", ""))
+            or core.default_starting_balance()
+        )
+        inserted, errors = core.insert_trades_from_broker_paste(
+            text, starting_balance=starting_balance
+        )
         content = render_template_string(
             """
             <div class="card"><div class="toolbar">
@@ -1384,7 +1437,9 @@ def trades_upload_pdf():
                         active="trades",
                     )
 
-                inserted, errors = insert_trades_from_broker_paste(paste_text, starting_balance=starting_balance)
+                inserted, errors = insert_trades_from_broker_paste(
+                    paste_text, starting_balance=starting_balance
+                )
                 msgs = (warns or []) + (errors or [])
 
                 return render_page(
@@ -1447,7 +1502,9 @@ def trades_upload_pdf():
                     for page_img in pages:
                         img = _prep_for_ocr(page_img)
                         txt = pytesseract.image_to_string(img, config="--oem 3 --psm 6")
-                        all_lines.extend([normalize_ocr(ln) for ln in txt.splitlines() if normalize_ocr(ln)])
+                        all_lines.extend(
+                            [normalize_ocr(ln) for ln in txt.splitlines() if normalize_ocr(ln)]
+                        )
                     stitched = stitch_ocr_rows("\n".join(all_lines))
                 except Exception as e:
                     ocr_warns = (ocr_warns or []) + [f"OCR debug error: {e}"]
@@ -1476,7 +1533,9 @@ def trades_upload_pdf():
                     active="trades",
                 )
 
-            inserted, errors = insert_trades_from_broker_paste(paste_text, starting_balance=starting_balance)
+            inserted, errors = insert_trades_from_broker_paste(
+                paste_text, starting_balance=starting_balance
+            )
             msgs = (ocr_warns or []) + (errors or [])
             return render_page(
                 render_template_string(

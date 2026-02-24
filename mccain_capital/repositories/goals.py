@@ -61,4 +61,3 @@ def fetch_daily_goal(track_date: str) -> Optional[object]:
         return conn.execute(
             "SELECT * FROM daily_goals WHERE track_date=? LIMIT 1", (track_date,)
         ).fetchone()
-

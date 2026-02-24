@@ -46,4 +46,3 @@ def update_strategy(sid: int, title: str, body: str) -> None:
 def delete_strategy(sid: int) -> None:
     with core.db() as conn:
         conn.execute("DELETE FROM strategies WHERE id = ?", (sid,))
-

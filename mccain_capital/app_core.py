@@ -3,6 +3,7 @@ McCain Capital 🏛️ — Journal + Trades + Calendar + Calculator + Strategies
 ✅ FIXED: syntax errors, duplicate functions, missing helpers, bad indentation, "..." placeholders, missing balance parser,
          duplicate imports, conflicting parsers, and incomplete insert_balance_snapshot.
 """
+
 from __future__ import annotations
 
 import json
@@ -64,7 +65,9 @@ _ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _STATIC_DIR = os.path.join(_ROOT_DIR, "static")
 _TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
-app = Flask(__name__, static_folder=_STATIC_DIR, static_url_path="/static", template_folder=_TEMPLATE_DIR)
+app = Flask(
+    __name__, static_folder=_STATIC_DIR, static_url_path="/static", template_folder=_TEMPLATE_DIR
+)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
@@ -272,8 +275,12 @@ def init_db() -> None:
             );
             """
         )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_reviews_trade_id ON trade_reviews(trade_id);")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_reviews_setup ON trade_reviews(setup_tag);")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_trade_reviews_trade_id ON trade_reviews(trade_id);"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_trade_reviews_setup ON trade_reviews(setup_tag);"
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS risk_controls (
@@ -395,7 +402,18 @@ def pct(val: Any) -> str:
 # ============================================================
 # Parse helpers
 # ============================================================
-_HEADER_HINTS = {"date", "entry", "exit", "ticker", "type", "strike", "contracts", "net", "p/l", "balance"}
+_HEADER_HINTS = {
+    "date",
+    "entry",
+    "exit",
+    "ticker",
+    "type",
+    "strike",
+    "contracts",
+    "net",
+    "p/l",
+    "balance",
+}
 
 
 def parse_float(s: str) -> Optional[float]:
@@ -483,14 +501,29 @@ def clean_ocr_trade_row(s: str) -> str:
     return s
 
 
-def _load_ocr_deps() -> Tuple[Optional[Callable[..., Any]], Optional[Any], Optional[Any], Optional[Any], Optional[Any], Optional[str]]:
+def _load_ocr_deps() -> Tuple[
+    Optional[Callable[..., Any]],
+    Optional[Any],
+    Optional[Any],
+    Optional[Any],
+    Optional[Any],
+    Optional[str],
+]:
     try:
         from pdf2image import convert_from_path as _convert_from_path
         import pytesseract as _pytesseract
         from PIL import Image as _Image, ImageEnhance as _ImageEnhance, ImageOps as _ImageOps
+
         return _convert_from_path, _pytesseract, _Image, _ImageEnhance, _ImageOps, None
     except Exception as e:
-        return None, None, None, None, None, f"OCR dependencies missing/incompatible. Install pdf2image + pytesseract + Pillow. Error: {e}"
+        return (
+            None,
+            None,
+            None,
+            None,
+            None,
+            f"OCR dependencies missing/incompatible. Install pdf2image + pytesseract + Pillow. Error: {e}",
+        )
 
 
 def _prep_for_ocr(img):
@@ -685,7 +718,11 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
     try:
         import pandas as pd  # local import so app can run without pandas until needed
     except Exception as e:
-        return "", None, [f"pandas is required for HTML parsing (pip install pandas lxml). Error: {e}"]
+        return (
+            "",
+            None,
+            [f"pandas is required for HTML parsing (pip install pandas lxml). Error: {e}"],
+        )
 
     try:
         tables = pd.read_html(html_path)
@@ -705,7 +742,13 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
             for _, row in tbl.iterrows():
                 k = str(row.iloc[0]).strip().lower()
                 v = str(row.iloc[1]).strip()
-                if k in ("balance", "ending balance", "account value", "net liquidating value", "net liq"):
+                if k in (
+                    "balance",
+                    "ending balance",
+                    "account value",
+                    "net liquidating value",
+                    "net liq",
+                ):
                     maybe = parse_float(v)
                     if maybe is not None:
                         balance_val = maybe
@@ -835,7 +878,9 @@ def ocr_pdf_to_text(pdf_path: str) -> Tuple[str, List[str]]:
 # ============================================================
 BALANCE_RE_LIST = [
     re.compile(r"\bEnding\s+Balance\b[^0-9$-]*\$?\s*([-–—]?\s*[\d,]+\.\d{2})", re.IGNORECASE),
-    re.compile(r"\bNet\s+Liquidating\s+Value\b[^0-9$-]*\$?\s*([-–—]?\s*[\d,]+\.\d{2})", re.IGNORECASE),
+    re.compile(
+        r"\bNet\s+Liquidating\s+Value\b[^0-9$-]*\$?\s*([-–—]?\s*[\d,]+\.\d{2})", re.IGNORECASE
+    ),
     re.compile(r"\bAccount\s+Value\b[^0-9$-]*\$?\s*([-–—]?\s*[\d,]+\.\d{2})", re.IGNORECASE),
     re.compile(r"\bBalance\b[^0-9$-]*\$?\s*([-–—]?\s*[\d,]+\.\d{2})", re.IGNORECASE),
 ]
@@ -947,7 +992,14 @@ def parse_broker_line_any(ln: str) -> Optional[Dict[str, Any]]:
                 if maybe_fee is not None and 0 <= maybe_fee <= 5:
                     fee = float(maybe_fee)
             if desc and dt and side in ("BUY", "SELL") and qty > 0 and price is not None:
-                return {"desc": desc, "dt": dt, "side": side, "qty": qty, "price": float(price), "fee": float(fee)}
+                return {
+                    "desc": desc,
+                    "dt": dt,
+                    "side": side,
+                    "qty": qty,
+                    "price": float(price),
+                    "fee": float(fee),
+                }
 
     # 1) OCR regex
     m = BROKER_OCR_RE.match(raw.upper())
@@ -981,12 +1033,21 @@ def parse_broker_line_any(ln: str) -> Optional[Dict[str, Any]]:
                 break
 
         if desc and dt and side in ("BUY", "SELL") and qty > 0 and price is not None:
-            return {"desc": desc, "dt": dt, "side": side, "qty": qty, "price": float(price), "fee": float(fee)}
+            return {
+                "desc": desc,
+                "dt": dt,
+                "side": side,
+                "qty": qty,
+                "price": float(price),
+                "fee": float(fee),
+            }
 
     return None
 
 
-def insert_trades_from_broker_paste(text: str, starting_balance: float = 50000.0) -> Tuple[int, List[str]]:
+def insert_trades_from_broker_paste(
+    text: str, starting_balance: float = 50000.0
+) -> Tuple[int, List[str]]:
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
     if not lines:
         return 0, ["Nothing to import."]
@@ -1133,7 +1194,9 @@ def insert_trades_from_broker_paste(text: str, starting_balance: float = 50000.0
                     "comm": comm,
                     "gross_pl": gross_pl,
                     "net_pl": net_pl,
-                    "result_pct": (net_pl / (entry_price * 100.0 * take) * 100.0) if entry_price > 0 else None,
+                    "result_pct": (
+                        (net_pl / (entry_price * 100.0 * take) * 100.0) if entry_price > 0 else None
+                    ),
                     "raw_line": f["raw_line"],
                 }
             )
@@ -1142,7 +1205,9 @@ def insert_trades_from_broker_paste(text: str, starting_balance: float = 50000.0
                 open_lots[key].pop(0)
 
         if remaining > 0:
-            errors.append(f"Line {f['line_no']}: SELL qty exceeds open BUY qty for {key} (extra {remaining})")
+            errors.append(
+                f"Line {f['line_no']}: SELL qty exceeds open BUY qty for {key} (extra {remaining})"
+            )
 
     # 4) Insert completed trades
     inserted = 0
@@ -1173,7 +1238,11 @@ def insert_trades_from_broker_paste(text: str, starting_balance: float = 50000.0
                     tr["exit_price"],
                     tr["contracts"],
                     tr["total_spent"],
-                    None, None, None, None, None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
                     tr["comm"],
                     tr["gross_pl"],
                     tr["net_pl"],
@@ -1207,7 +1276,9 @@ def insert_trades_from_broker_paste(text: str, starting_balance: float = 50000.0
 
     open_count = sum(sum(lot["qty"] for lot in lots) for lots in open_lots.values() if lots)
     if open_count:
-        warnings.append(f"Note: {open_count} contract(s) remain OPEN (unmatched BUY). That’s normal mid-position.")
+        warnings.append(
+            f"Note: {open_count} contract(s) remain OPEN (unmatched BUY). That’s normal mid-position."
+        )
 
     # return inserted + combined messages
     return inserted, (warnings + errors)
@@ -1229,7 +1300,9 @@ def fetch_entries(q: str = "", d: str = "") -> List[sqlite3.Row]:
         params.append(d)
 
     if q:
-        where.append("(notes LIKE ? OR market LIKE ? OR setup LIKE ? OR grade LIKE ? OR mood LIKE ?)")
+        where.append(
+            "(notes LIKE ? OR market LIKE ? OR setup LIKE ? OR grade LIKE ? OR mood LIKE ?)"
+        )
         like = f"%{q}%"
         params.extend([like, like, like, like, like])
 
@@ -1320,12 +1393,16 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
             cols = split_row(ln)
 
             if len(cols) < 10:
-                errors.append(f"Line {i}: too few columns (got {len(cols)}). Use tab-delimited paste.")
+                errors.append(
+                    f"Line {i}: too few columns (got {len(cols)}). Use tab-delimited paste."
+                )
                 continue
 
             trade_date = parse_date_any(cols[0])
             if not trade_date:
-                errors.append(f"Line {i}: bad date '{cols[0]}' (try 1/29 or 01/29/2026 or 2026-01-29).")
+                errors.append(
+                    f"Line {i}: bad date '{cols[0]}' (try 1/29 or 01/29/2026 or 2026-01-29)."
+                )
                 continue
 
             def c(idx: int) -> str:
@@ -1425,16 +1502,19 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
 
 def fetch_trades(d: str = "", q: str = "") -> List[sqlite3.Row]:
     from mccain_capital.repositories import trades as repo
+
     return repo.fetch_trades(d=d, q=q)
 
 
 def get_risk_controls() -> Dict[str, Any]:
     from mccain_capital.repositories import trades as repo
+
     return repo.get_risk_controls()
 
 
 def save_risk_controls(daily_max_loss: float, enforce_lockout: int) -> None:
     from mccain_capital.repositories import trades as repo
+
     repo.save_risk_controls(daily_max_loss=daily_max_loss, enforce_lockout=enforce_lockout)
 
 
@@ -1464,6 +1544,7 @@ def trade_lockout_state(day_iso: Optional[str] = None) -> Dict[str, Any]:
 
 def get_trade_review(trade_id: int) -> Optional[Dict[str, Any]]:
     from mccain_capital.repositories import trades as repo
+
     return repo.get_trade_review(trade_id=trade_id)
 
 
@@ -1476,6 +1557,7 @@ def upsert_trade_review(
     review_note: str = "",
 ) -> None:
     from mccain_capital.repositories import trades as repo
+
     repo.upsert_trade_review(
         trade_id=trade_id,
         setup_tag=setup_tag,
@@ -1488,6 +1570,7 @@ def upsert_trade_review(
 
 def fetch_trade_reviews_map(trade_ids: List[int]) -> Dict[int, Dict[str, Any]]:
     from mccain_capital.repositories import trades as repo
+
     return repo.fetch_trade_reviews_map(trade_ids=trade_ids)
 
 
@@ -1574,7 +1657,9 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
 
 def upsert_trade_review_if_missing(trade_id: int, payload: Dict[str, Any]) -> None:
     with db() as conn:
-        row = conn.execute("SELECT 1 FROM trade_reviews WHERE trade_id = ? LIMIT 1", (trade_id,)).fetchone()
+        row = conn.execute(
+            "SELECT 1 FROM trade_reviews WHERE trade_id = ? LIMIT 1", (trade_id,)
+        ).fetchone()
     if row:
         return
     upsert_trade_review(
@@ -1701,8 +1786,14 @@ def trade_day_stats(trades: List[sqlite3.Row]) -> Dict[str, Any]:
     win_rate = (wins / total_trades * 100.0) if total_trades else 0.0
     wl_ratio = (wins / losses) if losses else (float(wins) if wins else 0.0)
 
-    return {"total": total, "wins": wins, "losses": losses, "total_trades": total_trades, "win_rate": win_rate,
-            "wl_ratio": wl_ratio}
+    return {
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "total_trades": total_trades,
+        "win_rate": win_rate,
+        "wl_ratio": wl_ratio,
+    }
 
 
 def week_range_for(day_iso: Optional[str]) -> Tuple[str, str]:
@@ -1778,8 +1869,14 @@ def month_heatmap(year: int, month: int) -> Dict[str, Any]:
     while len(cells) % 7 != 0:
         cells.append((None, 0.0, "", None))
 
-    weeks = [cells[i: i + 7] for i in range(0, len(cells), 7)]
-    return {"year": year, "month": month, "weeks": weeks, "max_abs": max_abs or 1.0, "daily_balance": daily_balance}
+    weeks = [cells[i : i + 7] for i in range(0, len(cells), 7)]
+    return {
+        "year": year,
+        "month": month,
+        "weeks": weeks,
+        "max_abs": max_abs or 1.0,
+        "daily_balance": daily_balance,
+    }
 
 
 def clear_trades() -> None:
@@ -1799,7 +1896,11 @@ def detect_paste_format(text: str) -> str:
         return "table"
 
     # Vanquish statement table paste
-    if ("Instrument" in lines[0]) and ("Transaction Time" in lines[0]) and ("Direction" in lines[0]):
+    if (
+        ("Instrument" in lines[0])
+        and ("Transaction Time" in lines[0])
+        and ("Direction" in lines[0])
+    ):
         return "vanquish_statement"
 
     # existing logic...
@@ -1816,7 +1917,9 @@ def detect_paste_format(text: str) -> str:
             broker_hits += 1
         if re.search(r"\b\d{1,2}/\d{1,2}/\d{2},\s*\d{1,2}:\d{2}\s*(AM|PM)\b", ln):
             broker_hits += 1
-        if re.match(r"^[A-Z]{1,6}\s+[A-Z]{3}/\d{1,2}/\d{2}\s+\d+(\.\d+)?\s+(PUT|CALL)\b", ln.upper()):
+        if re.match(
+            r"^[A-Z]{1,6}\s+[A-Z]{3}/\d{1,2}/\d{2}\s+\d+(\.\d+)?\s+(PUT|CALL)\b", ln.upper()
+        ):
             broker_hits += 2
 
     return "broker" if broker_hits >= 3 else "table"
@@ -1855,7 +1958,9 @@ def safe_avg(vals: List[float]) -> float:
     return (sum(vals) / len(vals)) if vals else 0.0
 
 
-def projections_from_daily(daily_vals: List[float], base_balance: Optional[float]) -> Dict[str, Any]:
+def projections_from_daily(
+    daily_vals: List[float], base_balance: Optional[float]
+) -> Dict[str, Any]:
     avg = safe_avg(daily_vals)
     b0 = float(base_balance or 0.0)
 
@@ -1875,8 +1980,9 @@ def calc_stop_takeprofit(entry: float, stop_pct: float, target_pct: float) -> Tu
     return stop_price, tp_price
 
 
-def calc_risk_reward(entry: float, contracts: int, stop_price: float, tp_price: float, fee_per_contract: float) -> Dict[
-    str, float]:
+def calc_risk_reward(
+    entry: float, contracts: int, stop_price: float, tp_price: float, fee_per_contract: float
+) -> Dict[str, float]:
     fees = round(contracts * fee_per_contract, 2)
     risk_gross = (entry - stop_price) * MULTIPLIER * contracts
     reward_gross = (tp_price - entry) * MULTIPLIER * contracts
@@ -1891,26 +1997,31 @@ def calc_risk_reward(entry: float, contracts: int, stop_price: float, tp_price: 
 # ============================================================
 def fetch_strategies() -> List[sqlite3.Row]:
     from mccain_capital.repositories import strategies as repo
+
     return repo.fetch_strategies()
 
 
 def get_strategy(sid: int) -> Optional[sqlite3.Row]:
     from mccain_capital.repositories import strategies as repo
+
     return repo.get_strategy(sid=sid)
 
 
 def create_strategy(title: str, body: str) -> int:
     from mccain_capital.repositories import strategies as repo
+
     return repo.create_strategy(title=title, body=body)
 
 
 def update_strategy(sid: int, title: str, body: str) -> None:
     from mccain_capital.repositories import strategies as repo
+
     repo.update_strategy(sid=sid, title=title, body=body)
 
 
 def delete_strategy(sid: int) -> None:
     from mccain_capital.repositories import strategies as repo
+
     repo.delete_strategy(sid=sid)
 
 
@@ -1919,11 +2030,13 @@ def delete_strategy(sid: int) -> None:
 # ============================================================
 def safe_filename(name: str) -> str:
     from mccain_capital.repositories import books as repo
+
     return repo.safe_filename(name)
 
 
 def list_books() -> List[Dict[str, str]]:
     from mccain_capital.repositories import books as repo
+
     return repo.list_books()
 
 
@@ -1973,6 +2086,7 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
 # ============================================================
 # UI Template
 # ============================================================
+
 
 def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
     logo_path = os.path.join(app.static_folder or "static", "logo.png")
@@ -2142,7 +2256,9 @@ def logout_page():
 
 
 def healthz():
-    return jsonify({"status": "ok", "app": "mccain-capital", "build": BUILD_MARKER, "ts": now_iso()})
+    return jsonify(
+        {"status": "ok", "app": "mccain-capital", "build": BUILD_MARKER, "ts": now_iso()}
+    )
 
 
 def home():
@@ -2156,8 +2272,12 @@ def favicon():
 # ============================================================
 # Routes – Journal
 # ============================================================
-def _entry_form(mode: str, values: Dict[str, Any], entry_id: Optional[int] = None,
-                errors: Optional[List[str]] = None) -> str:
+def _entry_form(
+    mode: str,
+    values: Dict[str, Any],
+    entry_id: Optional[int] = None,
+    errors: Optional[List[str]] = None,
+) -> str:
     errors = errors or []
     action = "/new" if mode == "new" else f"/edit/{entry_id}"
     title = "➕ New Entry" if mode == "new" else f"✏️ Edit Entry #{entry_id}"
@@ -2313,7 +2433,9 @@ def new_entry():
         pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
         if not notes:
-            return render_page(_entry_form("new", dict(f), errors=["Notes is required."]), active="journal")
+            return render_page(
+                _entry_form("new", dict(f), errors=["Notes is required."]), active="journal"
+            )
 
         entry_id = create_entry(
             {
@@ -2341,8 +2463,10 @@ def edit_entry(entry_id: int):
         pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
         if not notes:
-            return render_page(_entry_form("edit", dict(f), entry_id=entry_id, errors=["Notes is required."]),
-                               active="journal")
+            return render_page(
+                _entry_form("edit", dict(f), entry_id=entry_id, errors=["Notes is required."]),
+                active="journal",
+            )
 
         update_entry(
             entry_id,
@@ -2392,6 +2516,7 @@ def latest_trade_day() -> Optional[date]:
 
 def fetch_trades_range(start_iso: str, end_iso: str) -> List[sqlite3.Row]:
     from mccain_capital.repositories import trades as repo
+
     return repo.fetch_trades_range(start_iso=start_iso, end_iso=end_iso)
 
 
@@ -2407,6 +2532,7 @@ def month_range(year: int, month: int) -> Tuple[str, str]:
 def trades_page():
     """Compatibility delegator: runtime implementation lives in services.trades."""
     from mccain_capital.services import trades as svc
+
     return svc.trades_page()
 
 
@@ -2516,7 +2642,9 @@ def trades_delete_many():
         if request.is_json:
             return jsonify({"ok": True, "deleted": 0})
         flash("No trades selected.", "warning")
-        return redirect(url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", "")))
+        return redirect(
+            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
+        )
 
     placeholders = ",".join(["?"] * len(ids))
     with db() as conn:
@@ -2526,7 +2654,9 @@ def trades_delete_many():
     if request.is_json:
         return jsonify({"ok": True, "deleted": int(deleted)})
     flash(f"Deleted {deleted} trade(s).", "success")
-    return redirect(url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", "")))
+    return redirect(
+        url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
+    )
 
 
 def trades_copy_many():
@@ -2542,7 +2672,9 @@ def trades_copy_many():
         if request.is_json:
             return jsonify({"ok": True, "copied": 0})
         flash("No trades selected.", "warning")
-        return redirect(url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", "")))
+        return redirect(
+            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
+        )
 
     # validate date
     try:
@@ -2551,7 +2683,9 @@ def trades_copy_many():
         if request.is_json:
             return jsonify({"ok": False, "error": "Invalid target_date. Use YYYY-MM-DD."}), 400
         flash("Invalid target date (use YYYY-MM-DD).", "danger")
-        return redirect(url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", "")))
+        return redirect(
+            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
+        )
 
     with db() as conn:
         cols = _trades_table_columns(conn)
@@ -2646,36 +2780,49 @@ def trades_edit(trade_id: int):
         exit_price = parse_float(f.get("exit_price") or "")
         comm = parse_float(f.get("comm") or "") or 0.0
 
-        if not ticker or opt_type not in ("CALL", "PUT") or contracts <= 0 or entry_price is None or exit_price is None:
-            return render_page(_simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                               active="trades")
+        if (
+            not ticker
+            or opt_type not in ("CALL", "PUT")
+            or contracts <= 0
+            or entry_price is None
+            or exit_price is None
+        ):
+            return render_page(
+                _simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
+                active="trades",
+            )
 
         gross_pl = (exit_price - entry_price) * 100.0 * contracts
         net_pl = gross_pl - comm
         total_spent = entry_price * 100.0 * contracts
         result_pct = (net_pl / total_spent * 100.0) if total_spent > 0 else None
 
-        update_trade(trade_id, {
-            "trade_date": trade_date,
-            "entry_time": entry_time,
-            "exit_time": exit_time,
-            "ticker": ticker,
-            "opt_type": opt_type,
-            "strike": strike,
-            "entry_price": entry_price,
-            "exit_price": exit_price,
-            "contracts": contracts,
-            "comm": comm,
-            "total_spent": total_spent,
-            "gross_pl": gross_pl,
-            "net_pl": net_pl,
-            "result_pct": result_pct,
-        })
+        update_trade(
+            trade_id,
+            {
+                "trade_date": trade_date,
+                "entry_time": entry_time,
+                "exit_time": exit_time,
+                "ticker": ticker,
+                "opt_type": opt_type,
+                "strike": strike,
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "contracts": contracts,
+                "comm": comm,
+                "total_spent": total_spent,
+                "gross_pl": gross_pl,
+                "net_pl": net_pl,
+                "result_pct": result_pct,
+            },
+        )
 
         # IMPORTANT: balances are stored per row. Editing net_pl affects future balances.
         recompute_balances()
 
-        return redirect(url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page", d=trade_date))
+        return redirect(
+            url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page", d=trade_date)
+        )
 
     # GET
     t = dict(row)
@@ -2984,10 +3131,7 @@ def recompute_balances(starting_balance: float = 50000.0) -> None:
             net = r["net_pl"]
             if net is not None:
                 bal += float(net)
-            conn.execute(
-                "UPDATE trades SET balance = ? WHERE id = ?",
-                (bal, r["id"])
-            )
+            conn.execute("UPDATE trades SET balance = ? WHERE id = ?", (bal, r["id"]))
         conn.commit()
 
 
@@ -3082,11 +3226,15 @@ def trades_paste():
                 active="trades",
             )
         text = request.form.get("text", "")
-        starting_balance = parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
+        starting_balance = (
+            parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
+        )
         fmt = detect_paste_format(text)
 
         if fmt == "broker":
-            inserted, errors = insert_trades_from_broker_paste(text, starting_balance=starting_balance)
+            inserted, errors = insert_trades_from_broker_paste(
+                text, starting_balance=starting_balance
+            )
         else:
             inserted, errors = insert_trades_from_paste(text)
 
@@ -3182,9 +3330,17 @@ def trades_new_manual():
         exit_price = parse_float(f.get("exit_price") or "")
         comm = parse_float(f.get("comm") or "") or 0.0
 
-        if not ticker or opt_type not in ("CALL", "PUT") or contracts <= 0 or entry_price is None or exit_price is None:
-            return render_page(_simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                               active="trades")
+        if (
+            not ticker
+            or opt_type not in ("CALL", "PUT")
+            or contracts <= 0
+            or entry_price is None
+            or exit_price is None
+        ):
+            return render_page(
+                _simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
+                active="trades",
+            )
 
         gross_pl = (exit_price - entry_price) * 100.0 * contracts
         net_pl = gross_pl - comm
@@ -3205,9 +3361,21 @@ def trades_new_manual():
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
-                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
-                    entry_price, exit_price, contracts, total_spent,
-                    comm, gross_pl, net_pl, result_pct, balance,
+                    trade_date,
+                    entry_time,
+                    exit_time,
+                    ticker,
+                    opt_type,
+                    strike,
+                    entry_price,
+                    exit_price,
+                    contracts,
+                    total_spent,
+                    comm,
+                    gross_pl,
+                    net_pl,
+                    result_pct,
+                    balance,
                     "MANUAL ENTRY",
                     now_iso(),
                 ),
@@ -3276,7 +3444,9 @@ def trades_paste_broker():
                 active="trades",
             )
         text = request.form.get("text", "")
-        starting_balance = parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
+        starting_balance = (
+            parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
+        )
         inserted, errors = insert_trades_from_broker_paste(text, starting_balance=starting_balance)
 
         content = render_template_string(
@@ -3345,6 +3515,7 @@ def trades_paste_broker():
 def trades_upload_pdf():
     """Compatibility delegator: runtime implementation lives in services.trades."""
     from mccain_capital.services import trades as svc
+
     return svc.trades_upload_pdf()
 
 
@@ -3465,7 +3636,11 @@ def dashboard():
     overall_balance = latest_balance_overall()
 
     # ✅ Week total should match the month view anchor
-    week_anchor = anchor.isoformat() if (y == anchor.year and m == anchor.month) else date(y, m, 1).isoformat()
+    week_anchor = (
+        anchor.isoformat()
+        if (y == anchor.year and m == anchor.month)
+        else date(y, m, 1).isoformat()
+    )
     this_week_total = week_total_net(week_anchor)
 
     mtd_net = month_total_net(y, m)
@@ -3735,7 +3910,9 @@ def calculator():
         vals["contracts"] = (f.get("contracts") or "1").strip()
         vals["stop_pct"] = (f.get("stop_pct") or str(DEFAULT_STOP_PCT)).strip()
         vals["target_pct"] = (f.get("target_pct") or str(DEFAULT_TARGET_PCT)).strip()
-        vals["fee_per_contract"] = (f.get("fee_per_contract") or str(DEFAULT_FEE_PER_CONTRACT)).strip()
+        vals["fee_per_contract"] = (
+            f.get("fee_per_contract") or str(DEFAULT_FEE_PER_CONTRACT)
+        ).strip()
 
         entry = parse_float(vals["entry"])
         contracts = parse_int(vals["contracts"]) or 1
@@ -3889,22 +4066,26 @@ def _month_bounds(d: date) -> Tuple[date, date]:
 
 def upsert_daily_goal(track_date: str, payload: Dict[str, Any]) -> None:
     from mccain_capital.repositories import goals as repo
+
     repo.upsert_daily_goal(track_date=track_date, payload=payload)
 
 
 def fetch_daily_goals(start_iso: str, end_iso: str) -> List[sqlite3.Row]:
     from mccain_capital.repositories import goals as repo
+
     return repo.fetch_daily_goals(start_iso=start_iso, end_iso=end_iso)
 
 
 def fetch_daily_goal(track_date: str) -> Optional[sqlite3.Row]:
     from mccain_capital.repositories import goals as repo
+
     return repo.fetch_daily_goal(track_date=track_date)
 
 
 def goals_tracker():
     """Compatibility delegator: runtime implementation lives in services.goals."""
     from mccain_capital.services import goals as svc
+
     return svc.goals_tracker()
 
 
@@ -4014,8 +4195,10 @@ def strategies_new():
         title = (request.form.get("title") or "").strip()
         body = (request.form.get("body") or "").strip()
         if not title or not body:
-            return render_page(_strategy_form("New Strategy", title, body, ["Title and body required."]),
-                               active="strategies")
+            return render_page(
+                _strategy_form("New Strategy", title, body, ["Title and body required."]),
+                active="strategies",
+            )
         create_strategy(title, body)
         return redirect(url_for("strategies_page"))
     return render_page(_strategy_form("New Strategy", "", "", []), active="strategies")
@@ -4030,12 +4213,16 @@ def strategies_edit(sid: int):
         title = (request.form.get("title") or "").strip()
         body = (request.form.get("body") or "").strip()
         if not title or not body:
-            return render_page(_strategy_form("Edit Strategy", title, body, ["Title and body required."]),
-                               active="strategies")
+            return render_page(
+                _strategy_form("Edit Strategy", title, body, ["Title and body required."]),
+                active="strategies",
+            )
         update_strategy(sid, title, body)
         return redirect(url_for("strategies_page"))
 
-    return render_page(_strategy_form("Edit Strategy", row["title"], row["body"], []), active="strategies")
+    return render_page(
+        _strategy_form("Edit Strategy", row["title"], row["body"], []), active="strategies"
+    )
 
 
 def strategies_delete(sid: int):
@@ -4494,7 +4681,9 @@ def links_page():
 # ============================================================
 def export_all() -> Dict[str, Any]:
     with db() as conn:
-        j = conn.execute("SELECT * FROM entries ORDER BY entry_date DESC, updated_at DESC").fetchall()
+        j = conn.execute(
+            "SELECT * FROM entries ORDER BY entry_date DESC, updated_at DESC"
+        ).fetchall()
         t = conn.execute("SELECT * FROM trades ORDER BY trade_date DESC, id DESC").fetchall()
         s = conn.execute("SELECT * FROM strategies ORDER BY updated_at DESC").fetchall()
     return {
@@ -4589,9 +4778,13 @@ def restore_data():
             allowed_prefixes = ("data/journal.db", "data/uploads/", "data/meta.json")
             for n in names:
                 if n.startswith("/") or ".." in n:
-                    return render_page(_simple_msg("Backup zip contains unsafe paths."), active="dashboard")
+                    return render_page(
+                        _simple_msg("Backup zip contains unsafe paths."), active="dashboard"
+                    )
                 if not any(n == p or n.startswith(p) for p in allowed_prefixes):
-                    return render_page(_simple_msg("Backup zip contains unsupported files."), active="dashboard")
+                    return render_page(
+                        _simple_msg("Backup zip contains unsupported files."), active="dashboard"
+                    )
 
             db_member = "data/journal.db"
             if db_member in names:
@@ -4603,7 +4796,7 @@ def restore_data():
             for n in names:
                 if not n.startswith("data/uploads/") or n.endswith("/"):
                     continue
-                rel = n[len("data/uploads/"):]
+                rel = n[len("data/uploads/") :]
                 out_path = os.path.join(UPLOAD_DIR, rel)
                 out_dir = os.path.dirname(out_path)
                 if out_dir:
@@ -4628,7 +4821,9 @@ FIXED_LOSS_LIMIT_50K = 50375.0
 DEFAULT_PROTECT_BUFFER = float(os.environ.get("PAYOUT_PROTECT_BUFFER", "1000"))
 
 
-def payout_summary(balance: Optional[float], protect_buffer: float = DEFAULT_PROTECT_BUFFER) -> Dict[str, Any]:
+def payout_summary(
+    balance: Optional[float], protect_buffer: float = DEFAULT_PROTECT_BUFFER
+) -> Dict[str, Any]:
     b = float(balance or 0.0)
     protect = float(protect_buffer or 0.0)
     buffer_reached = b >= PROFIT_BUFFER_LEVEL_50K
@@ -4680,6 +4875,7 @@ def last_30d_total_net() -> float:
 def payouts_page():
     """Compatibility delegator: runtime implementation lives in services.goals."""
     from mccain_capital.services import goals as svc
+
     return svc.payouts_page()
 
 
@@ -4690,14 +4886,14 @@ def payouts_page():
 
 
 def chart():
-    '''
+    """
     Full-screen TradingView chart embed.
     Use the chart UI "Compare / Add Symbol" to add additional tickers (overlays).
 
     Query params:
       - symbol (default: AMEX:SPY)
       - interval (default: 5)
-    '''
+    """
     symbol = request.args.get("symbol", "AMEX:SPY")
     interval = request.args.get("interval", "5")
 

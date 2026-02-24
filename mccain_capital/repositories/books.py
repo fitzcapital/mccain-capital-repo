@@ -23,4 +23,3 @@ def list_books() -> List[Dict[str, str]]:
         if fn.lower().endswith(".pdf"):
             files.append({"name": fn, "path": os.path.join(core.BOOKS_DIR, fn)})
     return files
-

@@ -176,7 +176,9 @@ def new_entry():
         pnl = core.parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
         if not notes:
-            return core.render_page(_entry_form("new", dict(f), errors=["Notes is required."]), active="journal")
+            return core.render_page(
+                _entry_form("new", dict(f), errors=["Notes is required."]), active="journal"
+            )
 
         entry_id = create_entry(
             {
@@ -191,7 +193,9 @@ def new_entry():
         )
         return redirect(url_for("edit_entry", entry_id=entry_id))
 
-    return core.render_page(_entry_form("new", {"entry_date": core.today_iso()}, errors=[]), active="journal")
+    return core.render_page(
+        _entry_form("new", {"entry_date": core.today_iso()}, errors=[]), active="journal"
+    )
 
 
 def edit_entry(entry_id: int):
@@ -204,8 +208,10 @@ def edit_entry(entry_id: int):
         pnl = core.parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
         if not notes:
-            return core.render_page(_entry_form("edit", dict(f), entry_id=entry_id, errors=["Notes is required."]),
-                                    active="journal")
+            return core.render_page(
+                _entry_form("edit", dict(f), entry_id=entry_id, errors=["Notes is required."]),
+                active="journal",
+            )
 
         update_entry(
             entry_id,
@@ -224,7 +230,9 @@ def edit_entry(entry_id: int):
     values = dict(row)
     if values.get("pnl") is None:
         values["pnl"] = ""
-    return core.render_page(_entry_form("edit", values, entry_id=entry_id, errors=[]), active="journal")
+    return core.render_page(
+        _entry_form("edit", values, entry_id=entry_id, errors=[]), active="journal"
+    )
 
 
 def delete_entry_route(entry_id: int):

@@ -35,14 +35,16 @@ def fetch_trades(d: str = "", q: str = ""):
 
 def fetch_trades_range(start_iso: str, end_iso: str):
     with core.db() as conn:
-        return list(conn.execute(
-            """
+        return list(
+            conn.execute(
+                """
             SELECT * FROM trades
             WHERE trade_date >= ? AND trade_date < ?
             ORDER BY trade_date ASC, id ASC
             """,
-            (start_iso, end_iso),
-        ).fetchall())
+                (start_iso, end_iso),
+            ).fetchall()
+        )
 
 
 def get_risk_controls() -> Dict[str, Any]:
@@ -125,7 +127,9 @@ def upsert_trade_review(
 
 
 def fetch_trade_reviews_map(trade_ids: List[int]) -> Dict[int, Dict[str, Any]]:
-    clean_ids = [int(i) for i in trade_ids if isinstance(i, int) or (isinstance(i, str) and str(i).isdigit())]
+    clean_ids = [
+        int(i) for i in trade_ids if isinstance(i, int) or (isinstance(i, str) and str(i).isdigit())
+    ]
     if not clean_ids:
         return {}
     marks = ",".join(["?"] * len(clean_ids))
@@ -139,4 +143,3 @@ def fetch_trade_reviews_map(trade_ids: List[int]) -> Dict[int, Dict[str, Any]]:
             clean_ids,
         ).fetchall()
     return {int(r["trade_id"]): dict(r) for r in rows}
-

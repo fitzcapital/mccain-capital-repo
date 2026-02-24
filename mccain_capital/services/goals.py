@@ -27,6 +27,7 @@ last_30d_total_net = core.last_30d_total_net
 last_n_trading_day_totals = core.last_n_trading_day_totals
 projections_from_daily = core.projections_from_daily
 
+
 def goals_tracker():
     # which day are we viewing/editing?
     d_iso = (request.args.get("date") or today_iso()).strip()
@@ -86,8 +87,17 @@ def goals_tracker():
     sum_other = sum(float(r["other_income"] or 0) for r in rows)
 
     # projection based on recorded days (not calendar days) to avoid lying to you
-    recorded_days = len([r for r in rows if (
-                r["upwork_earnings"] is not None or r["other_income"] is not None or r["debt_paid"] is not None)])
+    recorded_days = len(
+        [
+            r
+            for r in rows
+            if (
+                r["upwork_earnings"] is not None
+                or r["other_income"] is not None
+                or r["debt_paid"] is not None
+            )
+        ]
+    )
     recorded_days = max(recorded_days, 1)
     upwork_daily_avg = sum_upwork / recorded_days
     other_daily_avg = sum_other / recorded_days
@@ -103,11 +113,15 @@ def goals_tracker():
     trading_monthly = parse_float(s.get("trading_monthly") or "") or 0.0
     other_monthly = parse_float(s.get("other_monthly") or "") or 0.0
 
-    upwork_from_hourly = round(hourly_rate * hours_per_week * 4.33, 2) if hourly_rate and hours_per_week else 0.0
+    upwork_from_hourly = (
+        round(hourly_rate * hours_per_week * 4.33, 2) if hourly_rate and hours_per_week else 0.0
+    )
     upwork_from_fixed = round(fixed_deals * avg_deal, 2) if fixed_deals and avg_deal else 0.0
     upwork_scenario = round(upwork_from_hourly + upwork_from_fixed, 2)
 
-    total_scenario = round(BASE_MONTHLY_INCOME + upwork_scenario + trading_monthly + other_monthly, 2)
+    total_scenario = round(
+        BASE_MONTHLY_INCOME + upwork_scenario + trading_monthly + other_monthly, 2
+    )
     gap_15 = round(max(15000 - total_scenario, 0), 2)
     gap_20 = round(max(20000 - total_scenario, 0), 2)
 
