@@ -307,3 +307,54 @@ def edge_over_time(
         )
     out.sort(key=lambda x: (x["key"], x["period"]))
     return out
+
+
+def equity_curve_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    running = 0.0
+    for idx, r in enumerate(rows, start=1):
+        running += _safe_float(r.get("net_pl")) or 0.0
+        out.append(
+            {
+                "i": idx,
+                "label": f"{r.get('trade_date', '')} #{r.get('id', idx)}",
+                "v": running,
+            }
+        )
+    return out
+
+
+def drawdown_curve_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    balances = [_safe_float(r.get("balance")) for r in rows]
+    if any(v is not None for v in balances):
+        curve = [float(v) for v in balances if v is not None]
+    else:
+        running = 0.0
+        curve = []
+        for r in rows:
+            running += _safe_float(r.get("net_pl")) or 0.0
+            curve.append(running)
+
+    out: List[Dict[str, Any]] = []
+    peak = float("-inf")
+    for idx, v in enumerate(curve, start=1):
+        peak = max(peak, v)
+        out.append({"i": idx, "label": str(idx), "v": peak - v})
+    return out
+
+
+def expectancy_trend_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    agg: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        d = str(r.get("trade_date") or "")
+        period = d[:7] if len(d) >= 7 else "Unknown"
+        bucket = agg.setdefault(period, {"count": 0, "net": 0.0})
+        bucket["count"] += 1
+        bucket["net"] += _safe_float(r.get("net_pl")) or 0.0
+
+    out: List[Dict[str, Any]] = []
+    for period in sorted(agg.keys()):
+        c = int(agg[period]["count"] or 0)
+        n = float(agg[period]["net"] or 0.0)
+        out.append({"label": period, "v": (n / c) if c else 0.0, "count": c})
+    return out

@@ -2,11 +2,53 @@
 
 from __future__ import annotations
 
+import html
+from typing import Any, Dict, List
+
 from flask import render_template_string, request
 
 from mccain_capital.repositories import analytics as repo
 from mccain_capital.runtime import money
 from mccain_capital.services.ui import render_page
+
+
+def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "$") -> str:
+    if len(series) < 2:
+        return '<div style="opacity:.8">Not enough data to render chart.</div>'
+
+    width = 820.0
+    height = 200.0
+    pad = 18.0
+
+    values = [float(p.get("v") or 0.0) for p in series]
+    min_v = min(values)
+    max_v = max(values)
+    if abs(max_v - min_v) < 1e-9:
+        max_v = min_v + 1.0
+
+    def sx(i: int) -> float:
+        return pad + (i / (len(values) - 1)) * (width - (2 * pad))
+
+    def sy(v: float) -> float:
+        return height - pad - ((v - min_v) / (max_v - min_v)) * (height - (2 * pad))
+
+    points = " ".join(f"{sx(i):.2f},{sy(v):.2f}" for i, v in enumerate(values))
+    zero_in_range = min_v <= 0.0 <= max_v
+    zero_y = sy(0.0) if zero_in_range else None
+    latest_label = html.escape(str(series[-1].get("label") or "latest"))
+
+    return f"""
+    <svg viewBox="0 0 {int(width)} {int(height)}" role="img" aria-label="analytics line chart" style="width:100%;height:auto;display:block">
+      <rect x="0" y="0" width="{int(width)}" height="{int(height)}" fill="rgba(4,10,20,.35)" rx="10" />
+      {f'<line x1="{pad}" y1="{zero_y:.2f}" x2="{width - pad}" y2="{zero_y:.2f}" stroke="rgba(255,255,255,.2)" stroke-dasharray="4 4" />' if zero_y is not None else ""}
+      <polyline fill="none" stroke="{stroke}" stroke-width="3" points="{points}" />
+      <circle cx="{sx(len(values) - 1):.2f}" cy="{sy(values[-1]):.2f}" r="4.5" fill="{stroke}" />
+    </svg>
+    <div style="display:flex;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px;opacity:.86">
+      <span>Range: {y_prefix}{min_v:,.2f} → {y_prefix}{max_v:,.2f}</span>
+      <span>Latest: {latest_label} ({y_prefix}{values[-1]:,.2f})</span>
+    </div>
+    """
 
 
 def analytics_page():
@@ -26,6 +68,13 @@ def analytics_page():
     session_trend_rows = repo.edge_over_time(rows, "session_tag", top_n=3)
     hour_rows = repo.hour_bucket_table(rows)
     rule_breaks = repo.rule_break_counts(rows)
+    equity_chart = _line_chart_svg(repo.equity_curve_series(rows), stroke="#35d4ff", y_prefix="$")
+    drawdown_chart = _line_chart_svg(
+        repo.drawdown_curve_series(rows), stroke="#ff5c7a", y_prefix="$"
+    )
+    expectancy_chart = _line_chart_svg(
+        repo.expectancy_trend_series(rows), stroke="#8cff66", y_prefix="$"
+    )
 
     content = render_template_string(
         """
@@ -60,6 +109,23 @@ def analytics_page():
         </div></div>
 
         {% if tab == 'performance' %}
+        <div class="twoCol" style="margin-top:12px">
+          <div class="card"><div class="toolbar">
+            <div class="pill">📈 Equity Curve</div>
+            <div class="hr"></div>
+            {{ equity_chart|safe }}
+          </div></div>
+          <div class="card"><div class="toolbar">
+            <div class="pill">📉 Drawdown Curve</div>
+            <div class="hr"></div>
+            {{ drawdown_chart|safe }}
+          </div></div>
+        </div>
+        <div class="card" style="margin-top:12px"><div class="toolbar">
+          <div class="pill">🧠 Expectancy Trend (Monthly)</div>
+          <div class="hr"></div>
+          {{ expectancy_chart|safe }}
+        </div></div>
         <div class="twoCol" style="margin-top:12px">
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Performance Summary</div>
@@ -191,6 +257,9 @@ def analytics_page():
         session_trend_rows=session_trend_rows,
         hour_rows=hour_rows,
         rule_breaks=rule_breaks,
+        equity_chart=equity_chart,
+        drawdown_chart=drawdown_chart,
+        expectancy_chart=expectancy_chart,
         start_date=start_date,
         end_date=end_date,
         tab=tab,

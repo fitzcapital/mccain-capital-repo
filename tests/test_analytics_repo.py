@@ -103,3 +103,25 @@ def test_correlation_drawdown_and_edge_over_time(app):
     session_trend = repo.edge_over_time(rows, "session_tag", top_n=2)
     assert len(setup_trend) > 0
     assert len(session_trend) > 0
+
+
+def test_chart_series_builders(app):
+    _seed_trades()
+    rows = repo.fetch_analytics_rows()
+
+    equity = repo.equity_curve_series(rows)
+    assert len(equity) == 5
+    assert equity[0]["v"] == 100.0
+    assert equity[-1]["v"] == 225.0
+
+    drawdown = repo.drawdown_curve_series(rows)
+    assert len(drawdown) == 5
+    assert drawdown[0]["v"] == 0.0
+    assert drawdown[1]["v"] == 50.0
+    assert drawdown[-1]["v"] == 25.0
+
+    expectancy = repo.expectancy_trend_series(rows)
+    assert len(expectancy) == 1
+    assert expectancy[0]["label"] == "2026-01"
+    assert expectancy[0]["count"] == 5
+    assert expectancy[0]["v"] == 45.0
