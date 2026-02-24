@@ -1,0 +1,32 @@
+name: Monitoring
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check monitoring target configured
+        env:
+          APP_HEALTH_URL: ${{ secrets.APP_HEALTH_URL }}
+        run: |
+          if [ -z "${APP_HEALTH_URL}" ]; then
+            echo "APP_HEALTH_URL secret not set; skipping external monitoring check."
+            exit 0
+          fi
+          echo "Monitoring target configured."
+
+      - name: Probe health endpoint
+        env:
+          APP_HEALTH_URL: ${{ secrets.APP_HEALTH_URL }}
+        run: |
+          if [ -z "${APP_HEALTH_URL}" ]; then
+            exit 0
+          fi
+          curl -fsS --max-time 15 "${APP_HEALTH_URL}"

@@ -64,6 +64,7 @@
 ## 🧱 Architecture At A Glance
 
 - Study guide: `docs/ARCHITECTURE.md`
+- Database architecture: `docs/DB_ARCHITECTURE.md`
 - Entrypoints: `app.py`, `mccain_capital/__init__.py`, `mccain_capital/wsgi.py`
 - Core module: `mccain_capital/app_core.py` (legacy-compatible service surface)
 - Routing: `mccain_capital/routes/`
@@ -142,6 +143,19 @@ podman compose -f services/podman-compose.tailscale.yml ps
 - `APP_PASSWORD` or `APP_PASSWORD_HASH`
 - `SESSION_LIFETIME_MIN`
 - `APP_ENV` (`dev` or `prod`)
+
+## 🔁 CI / Guardrails / Monitoring
+
+- CI workflow: `.github/workflows/ci.yml`
+  - lint + format checks
+  - migration idempotency step (`python migrate.py` twice)
+  - tests
+  - container smoke checks (`/healthz`, `/dashboard`, `/journal`, `/analytics`)
+  - deploy guardrail gate on `push` to `main`
+
+- Monitoring workflow: `.github/workflows/monitoring.yml`
+  - scheduled health probe every 30 minutes
+  - requires secret: `APP_HEALTH_URL` (for example `https://your-domain/healthz`)
 
 ---
 
