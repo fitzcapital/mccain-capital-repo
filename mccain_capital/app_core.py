@@ -1969,11 +1969,13 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
 def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
     logo_path = os.path.join(app.static_folder or "static", "logo.png")
     favicon_path = os.path.join(app.static_folder or "static", "favicon.ico")
+    css_path = os.path.join(app.static_folder or "static", "css", "app.css")
     logo_exists = os.path.exists(logo_path)
     favicon_exists = os.path.exists(favicon_path)
     # Cache-bust static branding assets so icon/logo updates show immediately after deploy.
     try:
-        static_v = str(int(max(os.path.getmtime(logo_path), os.path.getmtime(favicon_path))))
+        mtimes = [os.path.getmtime(p) for p in (logo_path, favicon_path, css_path) if os.path.exists(p)]
+        static_v = str(int(max(mtimes))) if mtimes else BUILD_MARKER
     except Exception:
         static_v = BUILD_MARKER
     return render_template(
