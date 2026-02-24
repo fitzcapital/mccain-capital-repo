@@ -450,6 +450,12 @@ def journal_weekly_review():
     setup_stats = repo.weekly_setup_stats(week_start, week_end)
     mood_stats = repo.weekly_mood_stats(week_start, week_end)
     rule_breaks = repo.weekly_rule_break_tags(week_start, week_end)
+    top_setup = setup_stats[0]["setup"] if setup_stats else "No setup data"
+    top_setup_net = float(setup_stats[0]["net"] or 0.0) if setup_stats else 0.0
+    top_mood = mood_stats[0]["mood"] if mood_stats else "No mood data"
+    top_mood_avg = float(mood_stats[0]["avg_pnl"] or 0.0) if mood_stats else 0.0
+    top_break = rule_breaks[0]["tag"] if rule_breaks else "No repeated tags"
+    top_break_count = int(rule_breaks[0]["count"] or 0) if rule_breaks else 0
 
     content = render_template_string(
         """
@@ -482,6 +488,21 @@ def journal_weekly_review():
             </div>
           </form>
         </div></div>
+
+        <div class="insightGrid stack12">
+          <div class="insightCard">
+            <div class="insightTitle">🏁 Best Setup (Week)</div>
+            <div class="insightBody">{{ top_setup }} · Net {{ money(top_setup_net) }}</div>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">😶‍🌫️ Mood Signal</div>
+            <div class="insightBody">{{ top_mood }} · Avg {{ money(top_mood_avg) }}</div>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">⚠️ Most Repeated Break</div>
+            <div class="insightBody">{{ top_break }}{% if top_break_count %} · {{ top_break_count }}x{% endif %}</div>
+          </div>
+        </div>
 
         <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
@@ -580,6 +601,12 @@ def journal_weekly_review():
         setup_stats=setup_stats,
         mood_stats=mood_stats,
         rule_breaks=rule_breaks,
+        top_setup=top_setup,
+        top_setup_net=top_setup_net,
+        top_mood=top_mood,
+        top_mood_avg=top_mood_avg,
+        top_break=top_break,
+        top_break_count=top_break_count,
         money=money,
     )
     return render_page(content, active="journal")

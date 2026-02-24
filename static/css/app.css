@@ -849,6 +849,12 @@
   min-height:42px;
   font-size:12px;
 }
+.mobileActionGrid form{
+  margin:0;
+}
+.mobileActionGrid form .btn{
+  width:100%;
+}
 .rowActions{ position:relative; display:inline-block; }
 .rowMoreBtn{
   background: transparent;

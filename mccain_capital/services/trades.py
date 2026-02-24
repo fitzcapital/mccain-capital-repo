@@ -124,6 +124,33 @@ def trades_page():
         (stats["win_rate"] if isinstance(stats, dict) else getattr(stats, "win_rate", 0.0)) or 0.0
     )
     trades_count = len(trades)
+    avg_net = (day_net / trades_count) if trades_count else 0.0
+    if trades_count == 0:
+        execution_msg = (
+            "No trades logged for the current filter. Start with one clean, rules-based setup."
+        )
+    elif win_rate >= 60 and day_net >= 0:
+        execution_msg = "Execution quality is stable today. Keep sizing disciplined and avoid late-session forcing."
+    elif day_net < 0:
+        execution_msg = "P/L is under pressure. Prioritize A+ entries and reduce pace until process quality improves."
+    else:
+        execution_msg = (
+            "Mixed session so far. Focus on setup clarity and post-trade review accuracy."
+        )
+
+    if guardrail.get("locked"):
+        risk_msg = "Guardrail is locked. New trades should pause until next session or risk controls are adjusted."
+    else:
+        risk_msg = (
+            f"Guardrail active with day net at {money(guardrail.get('day_net') or 0)}. "
+            "Current risk posture is tradable."
+        )
+
+    next_action_msg = (
+        "Tag every trade with setup/session and complete missing review scores before day end."
+        if trades_count
+        else "Import statement or add first trade, then complete setup/session review tags."
+    )
 
     content = render_template_string(
         """
@@ -164,6 +191,21 @@ def trades_page():
             <div class="label">Displayed Balance</div>
             <div class="value">{{ money(display_balance) }}</div>
             <div class="sub">End-of-day if available, otherwise latest</div>
+          </div>
+        </div>
+
+        <div class="insightGrid stack12">
+          <div class="insightCard">
+            <div class="insightTitle">🔎 Execution Read</div>
+            <div class="insightBody">{{ execution_msg }}</div>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">🛡️ Risk State</div>
+            <div class="insightBody">{{ risk_msg }}</div>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">➡️ Next Action</div>
+            <div class="insightBody">{{ next_action_msg }}</div>
           </div>
         </div>
 
@@ -458,7 +500,7 @@ def trades_page():
                     </div>
                   </div>
                 </div>
-                <div class="rightActions stack10">
+                <div class="mobileActionGrid stack10">
                   <a class="btn" href="/trades/edit/{{ t['id'] }}?d={{ d }}&q={{ q }}">✏️ Edit</a>
                   <a class="btn" href="/trades/review/{{ t['id'] }}?d={{ d }}&q={{ q }}">🧠 Review</a>
                   <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}" class="inlineForm">
@@ -625,6 +667,10 @@ if (bulkCopyBtn) {
         day_net=day_net,
         win_rate=win_rate,
         trades_count=trades_count,
+        avg_net=avg_net,
+        execution_msg=execution_msg,
+        risk_msg=risk_msg,
+        next_action_msg=next_action_msg,
         guardrail=guardrail,
     )
 
