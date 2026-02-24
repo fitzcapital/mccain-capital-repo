@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from flask import redirect, request, url_for
 
+from mccain_capital import auth
 from mccain_capital.config import select_config
 from mccain_capital import app_core as core
 from mccain_capital import runtime
@@ -36,12 +37,12 @@ def create_app():
 
         @app.before_request
         def _auth_gate():
-            if not core.auth_enabled():
+            if not auth.auth_enabled():
                 return None
             allow = {"login_page", "logout_page", "healthz", "favicon", "static"}
             if request.endpoint in allow:
                 return None
-            if core.is_authenticated():
+            if auth.is_authenticated():
                 return None
             nxt = request.full_path if request.query_string else request.path
             return redirect(url_for("login_page", next=nxt))
