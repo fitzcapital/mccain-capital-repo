@@ -18,7 +18,15 @@ def test_security_headers_applied(client):
 
 
 def test_core_pages_are_reachable(client):
-    for path in ["/", "/dashboard", "/trades", "/journal", "/calculator", "/payouts"]:
+    for path in [
+        "/",
+        "/dashboard",
+        "/trades",
+        "/journal",
+        "/journal/review/weekly",
+        "/calculator",
+        "/payouts",
+    ]:
         resp = client.get(path, follow_redirects=True)
         assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
 

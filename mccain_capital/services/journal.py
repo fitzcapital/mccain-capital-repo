@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from flask import abort, redirect, render_template_string, request, url_for
@@ -65,6 +67,27 @@ def _entry_form(
               </div>
             </div>
 
+            <div class="row" style="margin-top:10px">
+              <div>
+                <label>🧩 Entry Type</label>
+                <select name="entry_type">
+                  {% set et = values.get('entry_type','post_market') %}
+                  <option value="pre_market" {% if et == 'pre_market' %}selected{% endif %}>Pre-Market Plan</option>
+                  <option value="trade_debrief" {% if et == 'trade_debrief' %}selected{% endif %}>Trade Debrief</option>
+                  <option value="post_market" {% if et == 'post_market' %}selected{% endif %}>Post-Market Review</option>
+                </select>
+              </div>
+              <div style="flex:2 1 260px">
+                <label>🔗 Linked Trade IDs (comma separated)</label>
+                <input name="linked_trade_ids" value="{{ values.get('linked_trade_ids','') }}" placeholder="e.g. 101,102">
+              </div>
+            </div>
+
+            <div style="margin-top:12px">
+              <label>🗂️ Template Notes</label>
+              <textarea name="template_notes" placeholder="Planned levels, risk model, follow-up checklist...">{{ values.get('template_notes','') }}</textarea>
+            </div>
+
             <div style="margin-top:12px">
               <label>📝 Notes</label>
               <textarea name="notes" placeholder="Capture context, execution, and improvement plan...">{{ values.get('notes','') }}</textarea>
@@ -107,6 +130,7 @@ def journal_home():
                 <button class="btn" type="submit">🧲 Filter</button>
                 <a class="btn" href="/journal">♻️ Reset</a>
                 <a class="btn primary" href="{{ url_for('new_entry') }}">➕ New Entry</a>
+                <a class="btn" href="{{ url_for('journal_weekly_review') }}">📅 Weekly Review</a>
               </div>
             </form>
             <div class="hr"></div>
@@ -131,6 +155,7 @@ def journal_home():
                 <div>
                   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
                     <div class="pill">📆 {{ e['entry_date'] }}</div>
+                    <div class="pill">🧩 {{ (e.get('entry_type') or 'post_market').replace('_',' ').title() }}</div>
                     {% if e['market'] %}<div class="meta">🏷️ Market: <b>{{ e['market'] }}</b></div>{% endif %}
                     {% if e['setup'] %}<div class="meta">📌 Setup: <b>{{ e['setup'] }}</b></div>{% endif %}
                   </div>
@@ -138,6 +163,7 @@ def journal_home():
                     {% if e['grade'] %}<span class="meta">🧠 Grade: <b>{{ e['grade'] }}</b></span>{% endif %}
                     {% if e['mood'] %}<span class="meta">😶‍🌫️ Mood: <b>{{ e['mood'] }}</b></span>{% endif %}
                     {% if e['pnl'] is not none %}<span class="meta">💰 PnL: <b>{{ money(e['pnl']) }}</b></span>{% endif %}
+                    {% if e.get('linked_trades', 0) > 0 %}<span class="meta">🔗 Trades: <b>{{ e.get('linked_trades') }}</b></span>{% endif %}
                     <span class="meta">🕒 Updated: {{ e['updated_at'] }}</span>
                   </div>
                 </div>
@@ -171,6 +197,9 @@ def new_entry():
         f = request.form
         pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
+        linked_ids = _parse_linked_trade_ids(f.get("linked_trade_ids", ""))
+        entry_type = (f.get("entry_type") or "post_market").strip()
+        template_notes = (f.get("template_notes") or "").strip()
         if not notes:
             return render_page(
                 _entry_form("new", dict(f), errors=["Notes is required."]), active="journal"
@@ -185,8 +214,11 @@ def new_entry():
                 "pnl": pnl,
                 "mood": f.get("mood"),
                 "notes": notes,
+                "entry_type": entry_type,
+                "template_payload": {"template_notes": template_notes},
             }
         )
+        repo.set_entry_trade_links(entry_id, linked_ids)
         return redirect(url_for("edit_entry", entry_id=entry_id))
 
     return render_page(_entry_form("new", {"entry_date": today_iso()}, errors=[]), active="journal")
@@ -201,6 +233,9 @@ def edit_entry(entry_id: int):
         f = request.form
         pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
+        linked_ids = _parse_linked_trade_ids(f.get("linked_trade_ids", ""))
+        entry_type = (f.get("entry_type") or "post_market").strip()
+        template_notes = (f.get("template_notes") or "").strip()
         if not notes:
             return render_page(
                 _entry_form("edit", dict(f), entry_id=entry_id, errors=["Notes is required."]),
@@ -217,16 +252,144 @@ def edit_entry(entry_id: int):
                 "pnl": pnl,
                 "mood": f.get("mood"),
                 "notes": notes,
+                "entry_type": entry_type,
+                "template_payload": {"template_notes": template_notes},
             },
         )
+        repo.set_entry_trade_links(entry_id, linked_ids)
         return redirect(url_for("journal_home"))
 
     values = dict(row)
     if values.get("pnl") is None:
         values["pnl"] = ""
+    payload = _safe_template_payload(values.get("template_payload"))
+    values["template_notes"] = payload.get("template_notes", "")
+    values["linked_trade_ids"] = ",".join(str(i) for i in repo.fetch_entry_trade_ids(entry_id))
     return render_page(_entry_form("edit", values, entry_id=entry_id, errors=[]), active="journal")
 
 
 def delete_entry_route(entry_id: int):
     repo.delete_entry(entry_id)
     return redirect(url_for("journal_home"))
+
+
+def journal_weekly_review():
+    week_start = (request.args.get("week_start") or "").strip()
+    if not week_start:
+        today = datetime.strptime(today_iso(), "%Y-%m-%d").date()
+        week_start_date = today - timedelta(days=today.weekday())
+        week_start = week_start_date.isoformat()
+    try:
+        start = datetime.strptime(week_start, "%Y-%m-%d").date()
+    except Exception:
+        start = datetime.strptime(today_iso(), "%Y-%m-%d").date()
+        start = start - timedelta(days=start.weekday())
+        week_start = start.isoformat()
+    end = start + timedelta(days=6)
+    week_end = end.isoformat()
+
+    entries = repo.fetch_entries_range(week_start, week_end)
+    setup_stats = repo.weekly_setup_stats(week_start, week_end)
+    mood_stats = repo.weekly_mood_stats(week_start, week_end)
+    rule_breaks = repo.weekly_rule_break_tags(week_start, week_end)
+
+    content = render_template_string(
+        """
+        <div class="metricStrip">
+          <div class="metric"><div class="label">Week</div><div class="value">{{ week_start }} → {{ week_end }}</div></div>
+          <div class="metric"><div class="label">Journal Entries</div><div class="value">{{ entries|length }}</div></div>
+          <div class="metric"><div class="label">Setups Tracked</div><div class="value">{{ setup_stats|length }}</div></div>
+          <div class="metric"><div class="label">Rule-Break Tags</div><div class="value">{{ rule_breaks|length }}</div></div>
+        </div>
+
+        <div class="card"><div class="toolbar">
+          <form method="get" class="row">
+            <div><label>Week Start</label><input type="date" name="week_start" value="{{ week_start }}"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap">
+              <button class="btn" type="submit">Apply</button>
+              <a class="btn" href="/journal/review/weekly">Current Week</a>
+              <a class="btn" href="/journal">Back Journal</a>
+            </div>
+          </form>
+        </div></div>
+
+        <div class="twoCol" style="margin-top:12px">
+          <div class="card"><div class="toolbar">
+            <div class="pill">📌 Best Setups (linked trades)</div>
+            <div class="hr"></div>
+            <table>
+              <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th></tr></thead>
+              <tbody>
+              {% for r in setup_stats %}
+                <tr><td>{{ r.setup }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td></tr>
+              {% endfor %}
+              {% if setup_stats|length == 0 %}<tr><td colspan="4">No linked-trade setup data this week.</td></tr>{% endif %}
+              </tbody>
+            </table>
+          </div></div>
+
+          <div class="card"><div class="toolbar">
+            <div class="pill">😶‍🌫️ Mood vs PnL Pattern</div>
+            <div class="hr"></div>
+            <table>
+              <thead><tr><th>Mood</th><th>Entries</th><th>Win Rate</th><th>Avg PnL</th></tr></thead>
+              <tbody>
+              {% for r in mood_stats %}
+                <tr><td>{{ r.mood }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.avg_pnl) }}</td></tr>
+              {% endfor %}
+              {% if mood_stats|length == 0 %}<tr><td colspan="4">No mood data this week.</td></tr>{% endif %}
+              </tbody>
+            </table>
+          </div></div>
+        </div>
+
+        <div class="card" style="margin-top:12px"><div class="toolbar">
+          <div class="pill">⚠️ Repeated Rule Breaks</div>
+          <div class="hr"></div>
+          <table>
+            <thead><tr><th>Tag</th><th>Count</th></tr></thead>
+            <tbody>
+            {% for r in rule_breaks %}
+              <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
+            {% endfor %}
+            {% if rule_breaks|length == 0 %}<tr><td colspan="2">No rule-break tags for linked trades this week.</td></tr>{% endif %}
+            </tbody>
+          </table>
+        </div></div>
+        """,
+        week_start=week_start,
+        week_end=week_end,
+        entries=entries,
+        setup_stats=setup_stats,
+        mood_stats=mood_stats,
+        rule_breaks=rule_breaks,
+        money=money,
+    )
+    return render_page(content, active="journal")
+
+
+def _parse_linked_trade_ids(raw: str) -> List[int]:
+    out: List[int] = []
+    for token in (raw or "").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            val = int(token)
+        except Exception:
+            continue
+        if val > 0 and val not in out:
+            out.append(val)
+    return out
+
+
+def _safe_template_payload(v: Any) -> Dict[str, Any]:
+    if isinstance(v, dict):
+        return v
+    if not v:
+        return {}
+    try:
+        parsed = json.loads(str(v))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}

@@ -7,6 +7,10 @@ def journal_home():
     return svc.journal_home()
 
 
+def journal_weekly_review():
+    return svc.journal_weekly_review()
+
+
 def new_entry():
     return svc.new_entry()
 
