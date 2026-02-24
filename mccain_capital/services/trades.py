@@ -188,6 +188,14 @@ def trades_page():
                 <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
               </div>
             </form>
+            <div class="tradesMobileActions">
+              <div class="mobileActionGrid">
+                <a class="btn primary" href="/trades/new">➕ Add</a>
+                <a class="btn primary" href="/trades/paste">📋 Paste</a>
+                <a class="btn primary" href="/trades/upload/statement">📄 Upload</a>
+                <a class="btn" href="/trades/open-positions">📂 Open</a>
+              </div>
+            </div>
 
             <div class="hr"></div>
             <div class="statRow">
@@ -464,92 +472,6 @@ def trades_page():
             {% endfor %}
           </div>
         </div></div>
-
-<style>
-/* Net P/L coloring */
-.pl-pos { color: rgb(var(--green)); font-weight: 900; }
-.pl-neg { color: rgb(var(--red));   font-weight: 900; }
-.pl-zero{ color: var(--muted);      font-weight: 900; }
-
-/* cell emphasis */
-.cell-red { color: #dc2626; font-weight: 700; }
-.cell-orange { color: #f97316; font-weight: 700; }
-.cell-green { color: #16a34a; font-weight: 700; }
-
-/* optional: make it pop a bit more without coloring the whole row */
-.cell-red, .cell-orange, .cell-green { white-space: nowrap; }
-.tradesMobileList{ display:none; gap:10px; }
-.tradeCard{
-  border:1px solid rgba(0,229,255,.18);
-  background: linear-gradient(180deg, rgba(0,229,255,.07), rgba(255,255,255,.01));
-  border-radius:14px;
-  padding:12px;
-}
-.tradeCardHead{ display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; }
-.tradeCardGrid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px 12px; }
-.bulkActions{ align-items:center; flex-wrap:wrap; gap:10px; margin:10px 0 2px; }
-.bulkSelectLabel{ cursor:pointer; gap:8px; white-space:nowrap; }
-.bulkCount{ white-space:nowrap; font-weight:700; }
-.bulkSpacer{ flex:1; min-width:40px; }
-.bulkCopyLabel{ display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
-.bulkCopyDate{ width:180px; max-width:180px; }
-.tradesDesktop{
-  overflow:auto;
-  -webkit-overflow-scrolling: touch;
-}
-.tradesDesktop table{ min-width:1400px; }
-.tradesDesktop table thead th{
-  position: sticky;
-  top: 0;
-  background: rgba(8,15,24,.96);
-  z-index: 5;
-}
-@media (max-width: 1200px){
-  .bulkSpacer{ display:none; }
-}
-@media (max-width: 860px){
-  .tradesDesktop{ display:none; }
-  .tradesMobileList{ display:grid; }
-}
-
-  .rowActions{ position:relative; display:inline-block; }
-  .rowMoreBtn{
-    background: transparent; border: 0; cursor: pointer;
-    padding: 6px 10px; border-radius: 10px;
-    color: inherit; font-weight: 800;
-  }
-  .rowMoreBtn:hover{ background: rgba(255,255,255,0.06); }
-  .rowMoreMenu{
-    position:absolute; right:0; top: calc(100% + 6px);
-    min-width: 140px;
-    max-width:140px;
-    background: rgba(10,10,10,0.92);
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 14px;
-    padding: 8px;
-    box-shadow: 0 18px 40px rgba(0,0,0,0.45);
-    display:none;
-    z-index: 50;
-    backdrop-filter: blur(10px);
-  }
-  .rowMoreMenu.open{ display:block; }
-  .rowMenuItem{
-    display:block;
-    width: 100%;
-    text-align:left;
-    padding: 10px 10px;
-    border-radius: 12px;
-    text-decoration:none;
-    background: transparent;
-    border: 0;
-    color: inherit;
-    font-weight: 700;
-    cursor:pointer;
-  }
-  .rowMenuItem:hover{ background: rgba(255,255,255,0.06); }
-  .rowMenuItem.danger{ color: #ff6b6b; }
-
-</style>
 
 <script>
   function closeAllRowMenus() {

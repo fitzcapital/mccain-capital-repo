@@ -413,7 +413,7 @@ def analytics_page():
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Setup Edge Over Time (Monthly)</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap desktopOnly"><table class="tableDense">
               <thead><tr><th>Setup</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
               <tbody>
               {% for r in setup_trend_rows %}
@@ -424,11 +424,29 @@ def analytics_page():
               {% endif %}
               </tbody>
             </table></div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in setup_trend_rows %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">{{ r.key }} · {{ r.period }}</div>
+                    <div class="metaRow">
+                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                      <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+                    </div>
+                  </div></div>
+                {% endfor %}
+                {% if setup_trend_rows|length == 0 %}
+                  <div class="card"><div class="toolbar"><div class="tiny">No setup trend data in range.</div></div></div>
+                {% endif %}
+              </div>
+            </div>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Session Edge Over Time (Monthly)</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap desktopOnly"><table class="tableDense">
               <thead><tr><th>Session</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
               <tbody>
               {% for r in session_trend_rows %}
@@ -439,6 +457,24 @@ def analytics_page():
               {% endif %}
               </tbody>
             </table></div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in session_trend_rows %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">{{ r.key }} · {{ r.period }}</div>
+                    <div class="metaRow">
+                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                      <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+                    </div>
+                  </div></div>
+                {% endfor %}
+                {% if session_trend_rows|length == 0 %}
+                  <div class="card"><div class="toolbar"><div class="tiny">No session trend data in range.</div></div></div>
+                {% endif %}
+              </div>
+            </div>
           </div></div>
         </div>
         {% endif %}
