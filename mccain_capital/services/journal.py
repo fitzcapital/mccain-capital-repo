@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from flask import abort, redirect, render_template_string, request, url_for
 
 from mccain_capital.repositories import journal as repo
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import money, parse_float, today_iso
 from mccain_capital.services.ui import render_page
 
@@ -18,8 +19,13 @@ def _entry_form(
     values: Dict[str, Any],
     entry_id: Optional[int] = None,
     errors: Optional[List[str]] = None,
+    available_trades: Optional[List[Dict[str, Any]]] = None,
+    selected_trade_ids: Optional[List[int]] = None,
 ) -> str:
     errors = errors or []
+    available_trades = available_trades or []
+    selected_trade_ids = selected_trade_ids or []
+    selected_trade_ids_set = {int(i) for i in selected_trade_ids if int(i) > 0}
     action = "/new" if mode == "new" else f"/edit/{entry_id}"
     title = "➕ New Entry" if mode == "new" else f"✏️ Edit Entry #{entry_id}"
     return render_template_string(
@@ -77,9 +83,39 @@ def _entry_form(
                   <option value="post_market" {% if et == 'post_market' %}selected{% endif %}>Post-Market Review</option>
                 </select>
               </div>
+              <div>
+                <label>🔁 Day Link Mode</label>
+                <label style="display:flex;gap:8px;align-items:center;margin-top:8px">
+                  <input type="checkbox" name="link_all_day" value="1" {% if values.get('link_all_day') == '1' %}checked{% endif %}>
+                  Link all trades for selected date
+                </label>
+              </div>
               <div style="flex:2 1 260px">
                 <label>🔗 Linked Trade IDs (comma separated)</label>
                 <input name="linked_trade_ids" value="{{ values.get('linked_trade_ids','') }}" placeholder="e.g. 101,102">
+              </div>
+            </div>
+
+            <div style="margin-top:12px">
+              <label>📌 Linked Trades (multi-select)</label>
+              {% if available_trades|length == 0 %}
+                <div class="tiny" style="margin-bottom:6px">
+                  No trades found for <b>{{ values.get('entry_date','(no date)') }}</b>. Change date to a trading day or save with Day Link Mode after setting the date.
+                </div>
+              {% else %}
+                <div class="tiny" style="margin-bottom:6px">
+                  Showing {{ available_trades|length }} trade{{ '' if available_trades|length == 1 else 's' }} for <b>{{ values.get('entry_date','') }}</b>.
+                </div>
+              {% endif %}
+              <select name="linked_trade_ids_multi" multiple size="8">
+                {% for t in available_trades %}
+                  <option value="{{ t['id'] }}" {% if t['id'] in selected_trade_ids_set %}selected{% endif %}>
+                    #{{ t['id'] }} • {{ t['trade_date'] }} {{ t.get('entry_time') or '' }} • {{ t.get('ticker') or '—' }} {{ t.get('opt_type') or '' }} • Net {{ money(t.get('net_pl') or 0) }}
+                  </option>
+                {% endfor %}
+              </select>
+              <div class="tiny" style="margin-top:6px">
+                Tip: Hold Cmd/Ctrl to select multiple trades. For Post-Market Review, enable Day Link Mode to auto-link everything from that date.
               </div>
             </div>
 
@@ -105,13 +141,16 @@ def _entry_form(
         action=action,
         values=values,
         errors=errors,
+        available_trades=available_trades,
+        selected_trade_ids_set=selected_trade_ids_set,
+        money=money,
     )
 
 
 def journal_home():
     q = request.args.get("q", "")
     d = request.args.get("d", "")
-    entries = repo.fetch_entries(q=q, d=d)
+    entries = [dict(r) for r in repo.fetch_entries(q=q, d=d)]
 
     content = render_template_string(
         """
@@ -195,19 +234,29 @@ def journal_home():
 def new_entry():
     if request.method == "POST":
         f = request.form
+        entry_date = (f.get("entry_date") or today_iso()).strip()
         pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
-        linked_ids = _parse_linked_trade_ids(f.get("linked_trade_ids", ""))
+        linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
         if not notes:
+            values = dict(f)
+            values["entry_date"] = entry_date
             return render_page(
-                _entry_form("new", dict(f), errors=["Notes is required."]), active="journal"
+                _entry_form(
+                    "new",
+                    values,
+                    errors=["Notes is required."],
+                    available_trades=_trade_options_for_date(entry_date),
+                    selected_trade_ids=linked_ids,
+                ),
+                active="journal",
             )
 
         entry_id = repo.create_entry(
             {
-                "entry_date": (f.get("entry_date") or today_iso()).strip(),
+                "entry_date": entry_date,
                 "market": f.get("market"),
                 "setup": f.get("setup"),
                 "grade": f.get("grade"),
@@ -221,7 +270,18 @@ def new_entry():
         repo.set_entry_trade_links(entry_id, linked_ids)
         return redirect(url_for("edit_entry", entry_id=entry_id))
 
-    return render_page(_entry_form("new", {"entry_date": today_iso()}, errors=[]), active="journal")
+    entry_date = _default_entry_date_for_journal()
+    initial_values = {"entry_date": entry_date, "entry_type": "post_market", "link_all_day": "1"}
+    return render_page(
+        _entry_form(
+            "new",
+            initial_values,
+            errors=[],
+            available_trades=_trade_options_for_date(entry_date),
+            selected_trade_ids=_trade_ids_for_date(entry_date),
+        ),
+        active="journal",
+    )
 
 
 def edit_entry(entry_id: int):
@@ -231,21 +291,31 @@ def edit_entry(entry_id: int):
 
     if request.method == "POST":
         f = request.form
+        entry_date = (f.get("entry_date") or today_iso()).strip()
         pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
-        linked_ids = _parse_linked_trade_ids(f.get("linked_trade_ids", ""))
+        linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
         if not notes:
+            values = dict(f)
+            values["entry_date"] = entry_date
             return render_page(
-                _entry_form("edit", dict(f), entry_id=entry_id, errors=["Notes is required."]),
+                _entry_form(
+                    "edit",
+                    values,
+                    entry_id=entry_id,
+                    errors=["Notes is required."],
+                    available_trades=_trade_options_for_date(entry_date),
+                    selected_trade_ids=linked_ids,
+                ),
                 active="journal",
             )
 
         repo.update_entry(
             entry_id,
             {
-                "entry_date": (f.get("entry_date") or today_iso()).strip(),
+                "entry_date": entry_date,
                 "market": f.get("market"),
                 "setup": f.get("setup"),
                 "grade": f.get("grade"),
@@ -264,8 +334,21 @@ def edit_entry(entry_id: int):
         values["pnl"] = ""
     payload = _safe_template_payload(values.get("template_payload"))
     values["template_notes"] = payload.get("template_notes", "")
-    values["linked_trade_ids"] = ",".join(str(i) for i in repo.fetch_entry_trade_ids(entry_id))
-    return render_page(_entry_form("edit", values, entry_id=entry_id, errors=[]), active="journal")
+    linked_ids = repo.fetch_entry_trade_ids(entry_id)
+    values["linked_trade_ids"] = ",".join(str(i) for i in linked_ids)
+    values["link_all_day"] = "0"
+    entry_date = (values.get("entry_date") or today_iso()).strip()
+    return render_page(
+        _entry_form(
+            "edit",
+            values,
+            entry_id=entry_id,
+            errors=[],
+            available_trades=_trade_options_for_date(entry_date),
+            selected_trade_ids=linked_ids,
+        ),
+        active="journal",
+    )
 
 
 def delete_entry_route(entry_id: int):
@@ -381,6 +464,42 @@ def _parse_linked_trade_ids(raw: str) -> List[int]:
         if val > 0 and val not in out:
             out.append(val)
     return out
+
+
+def _trade_options_for_date(day_iso: str) -> List[Dict[str, Any]]:
+    rows = trades_repo.fetch_trades(d=day_iso, q="")
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        if item.get("id") is None:
+            continue
+        out.append(item)
+    return out
+
+
+def _trade_ids_for_date(day_iso: str) -> List[int]:
+    return [int(r["id"]) for r in _trade_options_for_date(day_iso)]
+
+
+def _default_entry_date_for_journal() -> str:
+    today = today_iso()
+    if _trade_ids_for_date(today):
+        return today
+
+    all_trades = trades_repo.fetch_trades(d="", q="")
+    if not all_trades:
+        return today
+    return str(dict(all_trades[0]).get("trade_date") or today)
+
+
+def _linked_trade_ids_from_form(entry_date: str, form: Any) -> List[int]:
+    if (form.get("link_all_day") or "").strip() == "1":
+        return _trade_ids_for_date(entry_date)
+
+    multi_raw = form.getlist("linked_trade_ids_multi")
+    multi_ids = [int(v) for v in multi_raw if str(v).isdigit() and int(v) > 0]
+    comma_ids = _parse_linked_trade_ids(form.get("linked_trade_ids", ""))
+    return sorted(set(multi_ids + comma_ids))
 
 
 def _safe_template_payload(v: Any) -> Dict[str, Any]:

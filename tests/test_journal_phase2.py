@@ -135,3 +135,62 @@ def test_weekly_review_route_and_rule_break_aggregation(client):
     body = resp.get_data(as_text=True)
     assert "Repeated Rule Breaks" in body
     assert "revenge" in body
+
+
+def test_new_entry_can_auto_link_all_trades_for_day(client):
+    repo.ensure_journal_schema()
+    with db() as conn:
+        created = now_iso()
+        for tm, net in [("9:35 AM", 45.0), ("11:10 AM", -20.0)]:
+            conn.execute(
+                """
+                INSERT INTO trades (
+                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                    entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                    net_pl, result_pct, balance, raw_line, created_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    "2026-02-23",
+                    tm,
+                    "11:30 AM",
+                    "SPX",
+                    "CALL",
+                    5000.0,
+                    1.0,
+                    1.2,
+                    1,
+                    100.0,
+                    1.0,
+                    net + 1.0,
+                    net,
+                    0.0,
+                    50000.0 + net,
+                    "seed",
+                    created,
+                ),
+            )
+
+    resp = client.post(
+        "/new",
+        data={
+            "entry_date": "2026-02-23",
+            "market": "SPX",
+            "setup": "PM review",
+            "grade": "B",
+            "mood": "Calm",
+            "pnl": "25",
+            "entry_type": "post_market",
+            "link_all_day": "1",
+            "template_notes": "full day summary",
+            "notes": "Link full trading day",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+
+    entries = repo.fetch_entries(d="2026-02-23")
+    assert len(entries) == 1
+    entry_id = int(entries[0]["id"])
+    linked = repo.fetch_entry_trade_ids(entry_id)
+    assert len(linked) == 2
