@@ -78,6 +78,22 @@ def analytics_page():
 
     content = render_template_string(
         """
+        <div class="card pageHero">
+          <div class="toolbar">
+            <div class="pageHeroHead">
+              <div>
+                <div class="pill">📈 Analytics Workspace</div>
+                <h2 class="pageTitle">Performance Intelligence</h2>
+                <div class="pageSub">Track edge quality over time with expectancy, drawdown, behavior, and setup/session diagnostics.</div>
+              </div>
+              <div class="actionRow">
+                <a class="btn" href="/trades">📅 Trades</a>
+                <a class="btn" href="/journal/review/weekly">📘 Weekly Review</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="metricStrip">
           <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div></div>
           <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div></div>
@@ -161,7 +177,7 @@ def analytics_page():
           <div class="card"><div class="toolbar">
             <div class="pill">🕒 Session Breakdown</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap desktopOnly"><table class="tableDense">
               <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in session_rows %}
@@ -169,11 +185,26 @@ def analytics_page():
               {% endfor %}
               </tbody>
             </table></div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in session_rows %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">{{ r.k }}</div>
+                    <div class="metaRow">
+                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                      <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+                    </div>
+                  </div></div>
+                {% endfor %}
+              </div>
+            </div>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">⚠️ Rule Break Tags</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap desktopOnly"><table class="tableDense">
               <thead><tr><th>Tag</th><th>Count</th></tr></thead>
               <tbody>
               {% for r in rule_breaks %}
@@ -184,6 +215,19 @@ def analytics_page():
               {% endif %}
               </tbody>
             </table></div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in rule_breaks %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">{{ r.tag }}</div>
+                    <div class="meta">Count: <b>{{ r.count }}</b></div>
+                  </div></div>
+                {% endfor %}
+                {% if rule_breaks|length == 0 %}
+                  <div class="card"><div class="toolbar"><div class="tiny">No rule-break tags logged.</div></div></div>
+                {% endif %}
+              </div>
+            </div>
           </div></div>
         </div>
         {% else %}
@@ -191,7 +235,7 @@ def analytics_page():
           <div class="card"><div class="toolbar">
             <div class="pill">📌 Setup Edge</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap desktopOnly"><table class="tableDense">
               <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in setup_rows %}
@@ -199,11 +243,26 @@ def analytics_page():
               {% endfor %}
               </tbody>
             </table></div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in setup_rows %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">{{ r.k }}</div>
+                    <div class="metaRow">
+                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                      <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+                    </div>
+                  </div></div>
+                {% endfor %}
+              </div>
+            </div>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">⏱️ Time of Day Edge</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap desktopOnly"><table class="tableDense">
               <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in hour_rows %}
@@ -211,6 +270,20 @@ def analytics_page():
               {% endfor %}
               </tbody>
             </table></div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in hour_rows %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">{{ r.k }}</div>
+                    <div class="metaRow">
+                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                    </div>
+                  </div></div>
+                {% endfor %}
+              </div>
+            </div>
           </div></div>
         </div>
 

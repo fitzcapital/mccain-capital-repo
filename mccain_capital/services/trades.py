@@ -127,6 +127,23 @@ def trades_page():
 
     content = render_template_string(
         """
+        <div class="card pageHero">
+          <div class="toolbar">
+            <div class="pageHeroHead">
+              <div>
+                <div class="pill">📅 Trades Workspace</div>
+                <h2 class="pageTitle">Execution Log</h2>
+                <div class="pageSub">Log, review, and import trades with fast context on risk, consistency, and current exposure.</div>
+              </div>
+              <div class="actionRow">
+                <a class="btn primary" href="/trades/new">➕ Add Trade</a>
+                <a class="btn" href="/trades/open-positions">📂 Open Positions</a>
+                <a class="btn" href="/trades/reviews/rebuild">🛠️ Rebuild Reviews</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="metricStrip">
           <div class="metric">
             <div class="label">Day Net</div>

@@ -130,6 +130,22 @@ def goals_tracker():
 
     content = render_template_string(
         """
+        <div class="card pageHero">
+          <div class="toolbar">
+            <div class="pageHeroHead">
+              <div>
+                <div class="pill">🎯 Goals Workspace</div>
+                <h2 class="pageTitle">Income & Discipline Tracker</h2>
+                <div class="pageSub">Track daily input actions, project income scenarios, and keep your execution aligned with monthly targets.</div>
+              </div>
+              <div class="actionRow">
+                <a class="btn" href="/payouts">💸 Payouts</a>
+                <a class="btn" href="/calculator">🧮 Calculator</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="twoCol">
           <div class="card"><div class="toolbar">
             <div class="pill">🎯 Daily Goals Tracker</div>
@@ -295,7 +311,7 @@ def goals_tracker():
             </div>
             <div class="hr"></div>
 
-            <div class="tableWrap">
+            <div class="tableWrap desktopOnly">
               <table class="tableDense">
                 <thead>
                   <tr>
@@ -323,6 +339,28 @@ def goals_tracker():
                   {% endif %}
                 </tbody>
               </table>
+            </div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in rows %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">📆 {{ r.track_date }}</div>
+                    <div class="metaRow">
+                      <span class="meta">💳 Debt: <b>{{ money(r.debt_paid) }}</b></span>
+                      <span class="meta">💵 Upwork: <b>{{ money(r.upwork_earnings) }}</b></span>
+                      <span class="meta">🧲 Props: <b>{{ r.upwork_proposals }}</b></span>
+                      <span class="meta">🗣️ Intv: <b>{{ r.upwork_interviews }}</b></span>
+                      <span class="meta">➕ Other: <b>{{ money(r.other_income) }}</b></span>
+                    </div>
+                    <div class="stack10">
+                      <a class="btn btnCompact" href="/goals?date={{ r.track_date }}">Open Day</a>
+                    </div>
+                  </div></div>
+                {% endfor %}
+                {% if not rows %}
+                  <div class="card"><div class="toolbar"><div class="tiny">No entries yet for this month.</div></div></div>
+                {% endif %}
+              </div>
             </div>
           </div></div>
         </div>

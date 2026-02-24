@@ -193,6 +193,22 @@ def journal_home():
 
     content = render_template_string(
         """
+        <div class="card pageHero">
+          <div class="toolbar">
+            <div class="pageHeroHead">
+              <div>
+                <div class="pill">📝 Journal Workspace</div>
+                <h2 class="pageTitle">Reflection & Review</h2>
+                <div class="pageSub">Capture context, decision quality, and lessons with linked trades so patterns are easy to study later.</div>
+              </div>
+              <div class="actionRow">
+                <a class="btn primary" href="{{ url_for('new_entry') }}">➕ New Entry</a>
+                <a class="btn" href="{{ url_for('journal_weekly_review') }}">📅 Weekly Review</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="twoCol">
           <div class="card"><div class="toolbar">
             <form method="get" action="/journal" class="row">
@@ -444,6 +460,18 @@ def journal_weekly_review():
           <div class="metric"><div class="label">Rule-Break Tags</div><div class="value">{{ rule_breaks|length }}</div></div>
         </div>
 
+        <div class="card pageHero">
+          <div class="toolbar">
+            <div class="pageHeroHead">
+              <div>
+                <div class="pill">📘 Weekly Review</div>
+                <h2 class="pageTitle">Behavior Snapshot</h2>
+                <div class="pageSub">Review setup quality, mood outcomes, and repeated rule breaks for the selected week window.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="card"><div class="toolbar">
           <form method="get" class="row">
             <div><label>Week Start</label><input type="date" name="week_start" value="{{ week_start }}"></div>
@@ -459,7 +487,7 @@ def journal_weekly_review():
           <div class="card"><div class="toolbar">
             <div class="pill">📌 Best Setups (linked trades)</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap desktopOnly"><table class="tableDense">
               <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th></tr></thead>
               <tbody>
               {% for r in setup_stats %}
@@ -468,12 +496,29 @@ def journal_weekly_review():
               {% if setup_stats|length == 0 %}<tr><td colspan="4">No linked-trade setup data this week.</td></tr>{% endif %}
               </tbody>
             </table></div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in setup_stats %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">{{ r.setup }}</div>
+                    <div class="metaRow">
+                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                    </div>
+                  </div></div>
+                {% endfor %}
+                {% if setup_stats|length == 0 %}
+                  <div class="card"><div class="toolbar"><div class="tiny">No linked-trade setup data this week.</div></div></div>
+                {% endif %}
+              </div>
+            </div>
           </div></div>
 
           <div class="card"><div class="toolbar">
             <div class="pill">😶‍🌫️ Mood vs PnL Pattern</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap desktopOnly"><table class="tableDense">
               <thead><tr><th>Mood</th><th>Entries</th><th>Win Rate</th><th>Avg PnL</th></tr></thead>
               <tbody>
               {% for r in mood_stats %}
@@ -482,13 +527,30 @@ def journal_weekly_review():
               {% if mood_stats|length == 0 %}<tr><td colspan="4">No mood data this week.</td></tr>{% endif %}
               </tbody>
             </table></div>
+            <div class="mobileOnly">
+              <div class="grid">
+                {% for r in mood_stats %}
+                  <div class="card"><div class="toolbar">
+                    <div class="pill">{{ r.mood }}</div>
+                    <div class="metaRow">
+                      <span class="meta">Entries: <b>{{ r.count }}</b></span>
+                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                      <span class="meta">Avg: <b>{{ money(r.avg_pnl) }}</b></span>
+                    </div>
+                  </div></div>
+                {% endfor %}
+                {% if mood_stats|length == 0 %}
+                  <div class="card"><div class="toolbar"><div class="tiny">No mood data this week.</div></div></div>
+                {% endif %}
+              </div>
+            </div>
           </div></div>
         </div>
 
         <div class="card stack12"><div class="toolbar">
           <div class="pill">⚠️ Repeated Rule Breaks</div>
           <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense">
+          <div class="tableWrap desktopOnly"><table class="tableDense">
             <thead><tr><th>Tag</th><th>Count</th></tr></thead>
             <tbody>
             {% for r in rule_breaks %}
@@ -497,6 +559,19 @@ def journal_weekly_review():
             {% if rule_breaks|length == 0 %}<tr><td colspan="2">No rule-break tags for linked trades this week.</td></tr>{% endif %}
             </tbody>
           </table></div>
+          <div class="mobileOnly">
+            <div class="grid">
+              {% for r in rule_breaks %}
+                <div class="card"><div class="toolbar">
+                  <div class="pill">{{ r.tag }}</div>
+                  <div class="meta">Count: <b>{{ r.count }}</b></div>
+                </div></div>
+              {% endfor %}
+              {% if rule_breaks|length == 0 %}
+                <div class="card"><div class="toolbar"><div class="tiny">No rule-break tags for linked trades this week.</div></div></div>
+              {% endif %}
+            </div>
+          </div>
         </div></div>
         """,
         week_start=week_start,

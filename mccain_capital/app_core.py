@@ -3548,11 +3548,12 @@ def dashboard():
 
     content = render_template_string(
         """
-        <div class="dashboardHero card">
+        <div class="dashboardHero card pageHero">
           <div class="toolbar">
             <div class="dashboardHeroHead">
               <div>
                 <div class="pill">📊 Dashboard Control Center</div>
+                <h2 class="pageTitle">Trading Command Center</h2>
                 <div class="dashboardLead stack8">Track execution, review risk posture, then drill into trade days.</div>
               </div>
               <div class="rightActions">
