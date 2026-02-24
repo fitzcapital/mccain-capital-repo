@@ -20,6 +20,7 @@
 - 🎯 **Goals + Payouts**: progress tracking and payout readiness
 - 📈 **Analytics**: setup/session/hour performance breakdown
 - 🔐 **Auth + Guardrails**: login + risk lockouts to enforce discipline
+- 🏛️ **Luxury Brand UI**: McCain iconography set + premium showcase panels
 
 ---
 
@@ -35,6 +36,9 @@
 
 #### 📝 Journal
 ![Journal](docs/images/journal.png)
+
+#### 📈 Analytics
+![Analytics](docs/images/analytics.png)
 
 #### 🧮 Calculator
 ![Calculator](docs/images/calculator.png)
@@ -52,6 +56,9 @@
 
 #### 📝 Journal
 ![Journal Mobile](docs/images/mobile-journal.png)
+
+#### 📈 Analytics
+![Analytics Mobile](docs/images/mobile-analytics.png)
 
 #### 🧮 Calculator
 ![Calculator Mobile](docs/images/mobile-calculator.png)
