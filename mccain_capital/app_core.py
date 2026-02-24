@@ -3545,6 +3545,13 @@ def dashboard():
     today_net = float(today_stats.get("total", 0.0))
     today_win_rate = float(today_stats.get("win_rate", 0.0))
     today_count = len(today_rows)
+    capital_pulse = max(8.0, min(100.0, 50.0 + ((mtd_net / 3000.0) * 50.0)))
+    discipline_pulse = max(8.0, min(100.0, today_win_rate if today_count else 18.0))
+    discipline_label = (
+        "Locked in"
+        if today_win_rate >= 60 and today_net >= 0
+        else "Stabilize process" if today_count else "No session logged"
+    )
 
     content = render_template_string(
         """
@@ -3584,6 +3591,43 @@ def dashboard():
             <div class="label">Current Balance</div>
             <div class="value">{{ money(overall_balance) }}</div>
             <div class="sub">Snapshot as of latest recorded trade</div>
+          </div>
+        </div>
+
+        <div class="showcaseGrid">
+          <div class="showcaseCard">
+            <div class="showcaseHead">
+              <div class="showcaseTitle">
+                <svg class="mcIcon"><use href="#mc-crest"></use></svg>
+                Capital Trajectory
+              </div>
+              <span class="trendChip">MTD {{ money(mtd_net) }}</span>
+            </div>
+            <div class="showcaseValue">{{ money(overall_balance) }}</div>
+            <div class="showcaseMeta">
+              Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked.
+            </div>
+            <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(capital_pulse) }}%">
+              <div class="showcasePulseFill"></div>
+              <div class="showcaseWave"></div>
+            </div>
+          </div>
+          <div class="showcaseCard">
+            <div class="showcaseHead">
+              <div class="showcaseTitle">
+                <svg class="mcIcon"><use href="#mc-orbit"></use></svg>
+                Discipline Signal
+              </div>
+              <span class="trendChip">{{ discipline_label }}</span>
+            </div>
+            <div class="showcaseValue">{{ '%.1f'|format(today_win_rate) }}%</div>
+            <div class="showcaseMeta">
+              Today {{ today_count }} trades · Net {{ money(today_net) }} · Guardrail-aware execution flow.
+            </div>
+            <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(discipline_pulse) }}%">
+              <div class="showcasePulseFill"></div>
+              <div class="showcaseWave"></div>
+            </div>
           </div>
         </div>
 
@@ -3769,6 +3813,9 @@ def dashboard():
         today_net=today_net,
         today_win_rate=today_win_rate,
         today_count=today_count,
+        capital_pulse=capital_pulse,
+        discipline_pulse=discipline_pulse,
+        discipline_label=discipline_label,
         proj=proj,
         money=money,
         money_compact=money_compact,

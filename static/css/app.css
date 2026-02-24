@@ -105,12 +105,23 @@
     }
     .brandSignature{
       margin-top:3px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px 12px;
       font-size:10px;
-      letter-spacing:.16em;
+      letter-spacing:.14em;
       text-transform:uppercase;
       color:var(--brand-gold);
-      opacity:.9;
+      opacity:.92;
       font-weight:700;
+    }
+    .mcMark{display:inline-flex;align-items:center;gap:6px}
+    .mcIcon{
+      width:12px;
+      height:12px;
+      display:block;
+      color:var(--brand-gold);
+      filter: drop-shadow(0 0 6px rgba(217,181,109,.28));
     }
     .sub{color:var(--muted);font-size:12px;margin-top:4px}
 
@@ -696,6 +707,80 @@
       color:#ff9f9a;
       background:rgba(231,76,60,.12);
     }
+    .showcaseGrid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:10px;
+      margin-bottom:14px;
+    }
+    .showcaseCard{
+      position:relative;
+      overflow:hidden;
+      border-radius:16px;
+      border:1px solid rgba(0,229,255,.24);
+      background:
+        radial-gradient(900px 220px at -15% -40%, rgba(0,229,255,.12), transparent 55%),
+        linear-gradient(120deg, rgba(217,181,109,.08), rgba(0,229,255,.03) 45%, rgba(217,181,109,.03) 100%),
+        var(--panel);
+      padding:13px;
+    }
+    .showcaseHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .showcaseTitle{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      font-size:13px;
+      font-weight:800;
+      letter-spacing:.03em;
+      color:#dcf9ff;
+    }
+    .showcaseValue{
+      margin-top:8px;
+      font-size:30px;
+      line-height:1.08;
+      font-weight:900;
+      letter-spacing:.2px;
+    }
+    .showcaseMeta{
+      margin-top:8px;
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.5;
+    }
+    .showcasePulse{
+      margin-top:10px;
+      height:6px;
+      border-radius:999px;
+      background:rgba(255,255,255,.08);
+      overflow:hidden;
+      position:relative;
+    }
+    .showcasePulseFill{
+      height:100%;
+      width:var(--pulse-w, 42%);
+      border-radius:999px;
+      background:linear-gradient(90deg, rgba(217,181,109,.75), rgba(0,229,255,.78));
+      box-shadow:0 0 10px rgba(0,229,255,.35);
+    }
+    .showcaseWave{
+      position:absolute;
+      top:0;
+      bottom:0;
+      width:26%;
+      background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.42), rgba(255,255,255,0));
+      animation: showcaseSweep 3.6s linear infinite;
+      opacity:.85;
+    }
+    @keyframes showcaseSweep{
+      from{left:-30%}
+      to{left:110%}
+    }
 
     .section-title{
       font-size:24px;
@@ -757,6 +842,9 @@
         grid-template-columns:1fr 1fr;
       }
       .insightGrid{
+        grid-template-columns:1fr;
+      }
+      .showcaseGrid{
         grid-template-columns:1fr;
       }
       .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}

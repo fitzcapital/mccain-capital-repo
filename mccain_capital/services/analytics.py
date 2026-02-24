@@ -158,6 +158,9 @@ def analytics_page():
     drawdown_story = _series_story(drawdown_series, favorable_direction="down")
     expectancy_story = _series_story(expectancy_series, favorable_direction="up")
     insights = _insight_panels(perf, dd, corr)
+    edge_pulse = max(8.0, min(100.0, 50.0 + (float(perf.get("expectancy") or 0.0) * 8.0)))
+    drawdown_now = float(dd.get("current_drawdown") or 0.0)
+    control_pulse = max(8.0, min(100.0, 100.0 - (drawdown_now / 30.0)))
 
     content = render_template_string(
         """
@@ -173,6 +176,44 @@ def analytics_page():
                 <a class="btn" href="/trades">📅 Trades</a>
                 <a class="btn" href="/journal/review/weekly">📘 Weekly Review</a>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="showcaseGrid">
+          <div class="showcaseCard">
+            <div class="showcaseHead">
+              <div class="showcaseTitle">
+                <svg class="mcIcon"><use href="#mc-crown"></use></svg>
+                Edge Intensity
+              </div>
+              <span class="trendChip">{{ perf.total_trades }} trades</span>
+            </div>
+            <div class="showcaseValue">{{ money(perf.expectancy) }}</div>
+            <div class="showcaseMeta">
+              Profit factor {% if perf.profit_factor is not none %}{{ '%.2f'|format(perf.profit_factor) }}{% else %}∞{% endif %}
+              · Win rate {{ '%.1f'|format(perf.win_rate) }}%.
+            </div>
+            <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(edge_pulse) }}%">
+              <div class="showcasePulseFill"></div>
+              <div class="showcaseWave"></div>
+            </div>
+          </div>
+          <div class="showcaseCard">
+            <div class="showcaseHead">
+              <div class="showcaseTitle">
+                <svg class="mcIcon"><use href="#mc-crest"></use></svg>
+                Risk Control State
+              </div>
+              <span class="trendChip">DD streak {{ dd.current_drawdown_streak }}</span>
+            </div>
+            <div class="showcaseValue">{{ money(dd.current_drawdown) }}</div>
+            <div class="showcaseMeta">
+              Max DD {{ money(dd.max_drawdown) }} · Current streak {{ dd.current_drawdown_streak }}.
+            </div>
+            <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(control_pulse) }}%">
+              <div class="showcasePulseFill"></div>
+              <div class="showcaseWave"></div>
             </div>
           </div>
         </div>
@@ -495,6 +536,8 @@ def analytics_page():
         equity_story=equity_story,
         drawdown_story=drawdown_story,
         expectancy_story=expectancy_story,
+        edge_pulse=edge_pulse,
+        control_pulse=control_pulse,
         start_date=start_date,
         end_date=end_date,
         tab=tab,
