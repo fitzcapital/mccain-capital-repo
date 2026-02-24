@@ -242,6 +242,15 @@
 
     .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
     .row>div{flex:1 1 220px}
+    .actionRow{display:flex;gap:10px;flex-wrap:wrap}
+    .stack8{margin-top:8px}
+    .stack10{margin-top:10px}
+    .stack12{margin-top:12px}
+    .line15{line-height:1.5}
+    .line16{line-height:1.6}
+    .nowrap{white-space:nowrap}
+    .textRight{text-align:right}
+    .inlineForm{display:inline}
 
     .twoCol{display:grid;grid-template-columns:1fr;gap:12px}
     @media(min-width:880px){.twoCol{grid-template-columns:1.1fr .9fr}}
@@ -280,6 +289,24 @@
     @media (max-width: 920px){
       table{display:block;overflow-x:auto;white-space:nowrap}
     }
+    .tableWrap{overflow:auto}
+    .tableDense th, .tableDense td{
+      padding:8px 10px;
+      font-size:12px;
+    }
+    .tableDense tbody tr:nth-child(even) td{
+      background: rgba(255,255,255,.015);
+    }
+    .chartMeta{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      margin-top:8px;
+      font-size:12px;
+      opacity:.86;
+      flex-wrap:wrap;
+    }
+    .chartEmpty{opacity:.8}
 
     .statRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
     .stat{
@@ -312,6 +339,12 @@
       gap:12px;
       flex-wrap:wrap;
     }
+    .dashboardLead{
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.55;
+      max-width:720px;
+    }
     .metric{
       padding:12px;
       border-radius:var(--radius-sm);
@@ -324,11 +357,38 @@
     .metric .sub{font-size:11px;color:var(--muted);margin-top:4px}
 
     .rightActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .leftActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start}
     .calendarHead{
       display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
     }
     .calendarNav{
       display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;
+    }
+    .consistencyBar{
+      margin-top:8px;
+      position:relative;
+      height:10px;
+      border-radius:999px;
+      background: rgba(255,255,255,.08);
+      overflow:hidden;
+    }
+    .consistencyFill{
+      height:100%;
+      width: var(--bar-pct, 0%);
+      background: rgba(46, 204, 113, .55);
+    }
+    .consistencyLine{
+      position:absolute;
+      left: var(--line-pct, 0%);
+      top:0;
+      bottom:0;
+      width:2px;
+      background: rgba(255,255,255,.7);
+    }
+    .consistencyAlert{
+      position:absolute;
+      inset:0;
+      background: rgba(231, 76, 60, .18);
     }
 
     .heat{width:100%;border:1px solid rgba(0,229,255,.15);border-radius:16px;overflow:hidden}
@@ -336,6 +396,7 @@
     .daycell{height:78px;vertical-align:top;padding:10px;position:relative}
     .daynum{font-size:12px;color:var(--muted)}
     .daypnl{position:absolute;bottom:10px;left:10px;font-weight:900}
+    .dayLink{position:absolute;inset:0}
 
     .tiny{font-size:12px;color:var(--muted);line-height:1.5}
     .kbd{border:1px solid rgba(255,255,255,.14);padding:2px 6px;border-radius:7px;font-size:12px;color:var(--muted)}

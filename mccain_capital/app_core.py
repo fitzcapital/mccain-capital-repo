@@ -3553,7 +3553,7 @@ def dashboard():
             <div class="dashboardHeroHead">
               <div>
                 <div class="pill">📊 Dashboard Control Center</div>
-                <div class="tiny" style="margin-top:8px">Track execution, review risk posture, then drill into trade days.</div>
+                <div class="dashboardLead stack8">Track execution, review risk posture, then drill into trade days.</div>
               </div>
               <div class="rightActions">
                 <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
@@ -3591,7 +3591,7 @@ def dashboard():
             <div class="calendarHead">
               <div>
                 <div class="pill">📊 P/L Dashboard</div>
-                <div class="tiny" style="margin-top:8px">Tap a weekday to open that day’s trades 🧲</div>
+                <div class="tiny stack8">Tap a weekday to open that day’s trades 🧲</div>
               </div>
               <div class="calendarNav">
                 <a class="btn" href="/dashboard?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
@@ -3625,7 +3625,7 @@ def dashboard():
                   {% endif %}
                 </div>
 
-                <div class="tiny" style="margin-top:6px">
+                <div class="tiny stack8">
                   Max: {{ money(ytd_cons.biggest) }} / {{ money(ytd_cons.denom) }}
                   &nbsp; • &nbsp; Line: {{ '%.0f'|format(cons_threshold * 100) }}%
                 </div>
@@ -3639,22 +3639,15 @@ def dashboard():
                   {% if line_pct < 0 %}{% set line_pct = 0 %}{% endif %}
                   {% if line_pct > 100 %}{% set line_pct = 100 %}{% endif %}
 
-                  <div style="margin-top:8px; position:relative; height:10px; border-radius:999px; background: rgba(255,255,255,.08); overflow:hidden;">
-                    <!-- fill -->
-                    <div style="height:100%; width: {{ bar_pct }}%; background: rgba(46, 204, 113, .55);"></div>
-
-                    <!-- threshold marker line -->
-                    <div title="Threshold"
-                         style="position:absolute; left: {{ line_pct }}%; top:0; bottom:0; width:2px; background: rgba(255,255,255,.7);">
-                    </div>
-
-                    <!-- if failing, overlay red tint -->
+                  <div class="consistencyBar" style="--bar-pct: {{ bar_pct }}%; --line-pct: {{ line_pct }}%;">
+                    <div class="consistencyFill"></div>
+                    <div class="consistencyLine" title="Threshold"></div>
                     {% if ytd_cons.ratio > cons_threshold %}
-                      <div style="position:absolute; inset:0; background: rgba(231, 76, 60, .18);"></div>
+                      <div class="consistencyAlert"></div>
                     {% endif %}
                   </div>
 
-                  <div class="tiny" style="margin-top:6px">
+                  <div class="tiny stack8">
                     {% if ytd_cons.ratio <= cons_threshold %}
                       ✅ Within threshold
                     {% else %}
@@ -3666,7 +3659,7 @@ def dashboard():
 
               <div class="stat">
                 <div class="k">🧮 Calculator</div>
-                <div class="v"><a class="btn primary" style="padding:8px 10px" href="/calculator">Open</a></div>
+                <div class="v"><a class="btn primary" href="/calculator">Open</a></div>
               </div>
             </div>
           </div></div>
@@ -3679,15 +3672,15 @@ def dashboard():
               <a class="btn" href="/payouts">💸 Check Payouts</a>
               <a class="btn" href="/calculator">🧮 Position Plan</a>
             </div>
-            <div class="tiny" style="margin-top:10px;line-height:1.5">
+            <div class="tiny stack10 line15">
               Workflow: plan risk, execute, journal, then score outcomes by week.
             </div>
           </div></div>
         </div>
 
-        <div class="card" style="margin-top:12px"><div class="toolbar">
+        <div class="card stack12"><div class="toolbar">
           <div class="heat">
-            <table>
+            <table class="tableDense">
               <thead>
                 <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
               </thead>
@@ -3716,7 +3709,7 @@ def dashboard():
                             {% else %}
                               <div class="daypnl"></div>
                             {% endif %}
-                            <a href="/trades?d={{ iso }}" style="position:absolute; inset:0;" aria-label="Open day"></a>
+                            <a href="/trades?d={{ iso }}" class="dayLink" aria-label="Open day"></a>
                           {% else %}
                             <div class="daypnl"></div>
                           {% endif %}
@@ -3730,9 +3723,9 @@ def dashboard():
           </div>
         </div></div>
 
-        <div class="card" style="margin-top:12px"><div class="toolbar">
+        <div class="card stack12"><div class="toolbar">
           <div class="pill">📈 Projections (Trading Days: Mon–Fri)</div>
-          <div class="tiny" style="margin-top:10px;line-height:1.5">
+          <div class="tiny stack10 line15">
             Based on recent weekday daily totals (up to 20 days). Planning tool — not a promise.
           </div>
 

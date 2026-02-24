@@ -14,7 +14,7 @@ from mccain_capital.services.ui import render_page
 
 def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "$") -> str:
     if len(series) < 2:
-        return '<div style="opacity:.8">Not enough data to render chart.</div>'
+        return '<div class="chartEmpty">Not enough data to render chart.</div>'
 
     width = 820.0
     height = 200.0
@@ -44,7 +44,7 @@ def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "
       <polyline fill="none" stroke="{stroke}" stroke-width="3" points="{points}" />
       <circle cx="{sx(len(values) - 1):.2f}" cy="{sy(values[-1]):.2f}" r="4.5" fill="{stroke}" />
     </svg>
-    <div style="display:flex;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px;opacity:.86">
+    <div class="chartMeta">
       <span>Range: {y_prefix}{min_v:,.2f} → {y_prefix}{max_v:,.2f}</span>
       <span>Latest: {latest_label} ({y_prefix}{values[-1]:,.2f})</span>
     </div>
@@ -101,7 +101,7 @@ def analytics_page():
                 <option value="edge" {% if tab == 'edge' %}selected{% endif %}>Edge</option>
               </select>
             </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <div class="actionRow">
               <button class="btn" type="submit">Apply</button>
               <a class="btn" href="/analytics">Reset</a>
             </div>
@@ -109,7 +109,7 @@ def analytics_page():
         </div></div>
 
         {% if tab == 'performance' %}
-        <div class="twoCol" style="margin-top:12px">
+        <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Equity Curve</div>
             <div class="hr"></div>
@@ -121,16 +121,16 @@ def analytics_page():
             {{ drawdown_chart|safe }}
           </div></div>
         </div>
-        <div class="card" style="margin-top:12px"><div class="toolbar">
+        <div class="card stack12"><div class="toolbar">
           <div class="pill">🧠 Expectancy Trend (Monthly)</div>
           <div class="hr"></div>
           {{ expectancy_chart|safe }}
         </div></div>
-        <div class="twoCol" style="margin-top:12px">
+        <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Performance Summary</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <tbody>
                 <tr><td>Total Net</td><td>{{ money(perf.total_net) }}</td></tr>
                 <tr><td>Gross Profit</td><td>{{ money(perf.gross_profit) }}</td></tr>
@@ -140,12 +140,12 @@ def analytics_page():
                 <tr><td>Largest Win</td><td>{{ money(perf.max_win) }}</td></tr>
                 <tr><td>Largest Loss</td><td>{{ money(perf.max_loss) }}</td></tr>
               </tbody>
-            </table>
+            </table></div>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">🔥 Streaks</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <tbody>
                 <tr><td>Longest Win Streak</td><td>{{ perf.max_win_streak }}</td></tr>
                 <tr><td>Longest Loss Streak</td><td>{{ perf.max_loss_streak }}</td></tr>
@@ -153,27 +153,27 @@ def analytics_page():
                 <tr><td>Losses</td><td>{{ perf.losses }}</td></tr>
                 <tr><td>Breakeven</td><td>{{ perf.breakeven }}</td></tr>
               </tbody>
-            </table>
+            </table></div>
           </div></div>
         </div>
         {% elif tab == 'behavior' %}
-        <div class="twoCol" style="margin-top:12px">
+        <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">🕒 Session Breakdown</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in session_rows %}
                 <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
               {% endfor %}
               </tbody>
-            </table>
+            </table></div>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">⚠️ Rule Break Tags</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <thead><tr><th>Tag</th><th>Count</th></tr></thead>
               <tbody>
               {% for r in rule_breaks %}
@@ -183,42 +183,42 @@ def analytics_page():
                 <tr><td colspan="2">No rule-break tags logged.</td></tr>
               {% endif %}
               </tbody>
-            </table>
+            </table></div>
           </div></div>
         </div>
         {% else %}
-        <div class="twoCol" style="margin-top:12px">
+        <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📌 Setup Edge</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in setup_rows %}
                 <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
               {% endfor %}
               </tbody>
-            </table>
+            </table></div>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">⏱️ Time of Day Edge</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in hour_rows %}
                 <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
               {% endfor %}
               </tbody>
-            </table>
+            </table></div>
           </div></div>
         </div>
 
-        <div class="twoCol" style="margin-top:12px">
+        <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Setup Edge Over Time (Monthly)</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <thead><tr><th>Setup</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
               <tbody>
               {% for r in setup_trend_rows %}
@@ -228,12 +228,12 @@ def analytics_page():
                 <tr><td colspan="6">No setup trend data in range.</td></tr>
               {% endif %}
               </tbody>
-            </table>
+            </table></div>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Session Edge Over Time (Monthly)</div>
             <div class="hr"></div>
-            <table>
+            <div class="tableWrap"><table class="tableDense">
               <thead><tr><th>Session</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
               <tbody>
               {% for r in session_trend_rows %}
@@ -243,7 +243,7 @@ def analytics_page():
                 <tr><td colspan="6">No session trend data in range.</td></tr>
               {% endif %}
               </tbody>
-            </table>
+            </table></div>
           </div></div>
         </div>
         {% endif %}
