@@ -6,6 +6,11 @@ from mccain_capital.handlers import journal as h
 def register(app):
     app.add_url_rule("/journal", endpoint="journal_home", view_func=h.journal_home)
     app.add_url_rule(
+        "/journal/trades-for-date",
+        endpoint="journal_trades_for_date",
+        view_func=h.journal_trades_for_date,
+    )
+    app.add_url_rule(
         "/journal/review/weekly",
         endpoint="journal_weekly_review",
         view_func=h.journal_weekly_review,

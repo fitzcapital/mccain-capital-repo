@@ -194,3 +194,43 @@ def test_new_entry_can_auto_link_all_trades_for_day(client):
     entry_id = int(entries[0]["id"])
     linked = repo.fetch_entry_trade_ids(entry_id)
     assert len(linked) == 2
+
+
+def test_journal_trades_for_date_endpoint(client):
+    with db() as conn:
+        created = now_iso()
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-18",
+                "9:40 AM",
+                "10:00 AM",
+                "SPX",
+                "CALL",
+                5000.0,
+                1.0,
+                1.3,
+                1,
+                100.0,
+                1.0,
+                31.0,
+                30.0,
+                30.0,
+                50030.0,
+                "seed",
+                created,
+            ),
+        )
+
+    resp = client.get("/journal/trades-for-date?d=2026-02-18", follow_redirects=True)
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert isinstance(payload, dict)
+    assert len(payload.get("trades", [])) == 1
+    assert payload["trades"][0]["trade_date"] == "2026-02-18"

@@ -11,6 +11,10 @@ def journal_weekly_review():
     return svc.journal_weekly_review()
 
 
+def journal_trades_for_date():
+    return svc.journal_trades_for_date()
+
+
 def new_entry():
     return svc.new_entry()
 

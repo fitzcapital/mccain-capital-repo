@@ -595,10 +595,7 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
     exit_dt = _parse_ampm_time(str(trade.get("exit_time") or ""))
     if entry_dt and exit_dt:
         hold_min = int((exit_dt - entry_dt).total_seconds() // 60)
-        if hold_min < 2:
-            score -= 6
-            tags.append("ultra-short-hold")
-        elif hold_min > 120:
+        if hold_min > 120:
             score -= 3
             tags.append("extended-hold")
 

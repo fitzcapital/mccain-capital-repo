@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from flask import abort, redirect, render_template_string, request, url_for
+from flask import abort, jsonify, redirect, render_template_string, request, url_for
 
 from mccain_capital.repositories import journal as repo
 from mccain_capital.repositories import trades as trades_repo
@@ -46,7 +46,7 @@ def _entry_form(
             <div class="row">
               <div>
                 <label>📆 Date</label>
-                <input type="date" name="entry_date" value="{{ values.get('entry_date','') }}">
+                <input id="journal-entry-date" type="date" name="entry_date" value="{{ values.get('entry_date','') }}">
               </div>
               <div>
                 <label>🏷️ Market</label>
@@ -86,7 +86,7 @@ def _entry_form(
               <div>
                 <label>🔁 Day Link Mode</label>
                 <label style="display:flex;gap:8px;align-items:center;margin-top:8px">
-                  <input type="checkbox" name="link_all_day" value="1" {% if values.get('link_all_day') == '1' %}checked{% endif %}>
+                  <input id="journal-link-all-day" type="checkbox" name="link_all_day" value="1" {% if values.get('link_all_day') == '1' %}checked{% endif %}>
                   Link all trades for selected date
                 </label>
               </div>
@@ -107,7 +107,7 @@ def _entry_form(
                   Showing {{ available_trades|length }} trade{{ '' if available_trades|length == 1 else 's' }} for <b>{{ values.get('entry_date','') }}</b>.
                 </div>
               {% endif %}
-              <select name="linked_trade_ids_multi" multiple size="8">
+              <select id="journal-linked-trades" name="linked_trade_ids_multi" multiple size="8">
                 {% for t in available_trades %}
                   <option value="{{ t['id'] }}" {% if t['id'] in selected_trade_ids_set %}selected{% endif %}>
                     #{{ t['id'] }} • {{ t['trade_date'] }} {{ t.get('entry_time') or '' }} • {{ t.get('ticker') or '—' }} {{ t.get('opt_type') or '' }} • Net {{ money(t.get('net_pl') or 0) }}
@@ -136,6 +136,45 @@ def _entry_form(
             </div>
           </form>
         </div></div>
+        <script>
+          (function(){
+            const dateInput = document.getElementById("journal-entry-date");
+            const tradeSelect = document.getElementById("journal-linked-trades");
+            const linkAllDay = document.getElementById("journal-link-all-day");
+            if(!dateInput || !tradeSelect){ return; }
+
+            function fmtMoney(v){
+              const n = Number(v || 0);
+              return n.toLocaleString(undefined, {style:"currency", currency:"USD"});
+            }
+
+            async function refreshTradesForDate(){
+              const d = (dateInput.value || "").trim();
+              if(!d){ tradeSelect.innerHTML = ""; return; }
+              const resp = await fetch(`/journal/trades-for-date?d=${encodeURIComponent(d)}`);
+              if(!resp.ok){ return; }
+              const data = await resp.json();
+              tradeSelect.innerHTML = "";
+              (data.trades || []).forEach((t)=>{
+                const opt = document.createElement("option");
+                opt.value = String(t.id);
+                opt.textContent = `#${t.id} • ${t.trade_date} ${t.entry_time || ""} • ${t.ticker || "—"} ${t.opt_type || ""} • Net ${fmtMoney(t.net_pl || 0)}`;
+                if(linkAllDay && linkAllDay.checked){
+                  opt.selected = true;
+                }
+                tradeSelect.appendChild(opt);
+              });
+            }
+
+            dateInput.addEventListener("change", refreshTradesForDate);
+            if(linkAllDay){
+              linkAllDay.addEventListener("change", ()=>{
+                const on = linkAllDay.checked;
+                Array.from(tradeSelect.options).forEach((o)=>{ o.selected = on; });
+              });
+            }
+          })();
+        </script>
         """,
         title=title,
         action=action,
@@ -229,6 +268,26 @@ def journal_home():
         money=money,
     )
     return render_page(content, active="journal")
+
+
+def journal_trades_for_date():
+    day = (request.args.get("d") or "").strip()
+    if not day:
+        return jsonify({"trades": []})
+    rows = _trade_options_for_date(day)
+    payload = []
+    for r in rows:
+        payload.append(
+            {
+                "id": int(r["id"]),
+                "trade_date": r.get("trade_date", ""),
+                "entry_time": r.get("entry_time", ""),
+                "ticker": r.get("ticker", ""),
+                "opt_type": r.get("opt_type", ""),
+                "net_pl": float(r.get("net_pl") or 0.0),
+            }
+        )
+    return jsonify({"trades": payload})
 
 
 def new_entry():
