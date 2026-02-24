@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from flask import flash, get_flashed_messages, redirect, render_template_string, request, url_for
 
 from mccain_capital import app_core as core
