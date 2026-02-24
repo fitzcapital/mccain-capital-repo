@@ -565,6 +565,88 @@
       grid-template-columns: repeat(4,1fr);
     }
     .mobileDock .btn{padding:9px 8px;font-size:12px}
+    .quickLauncher{
+      position:fixed;
+      right:14px;
+      bottom:18px;
+      z-index:110;
+    }
+    .quickToggle{
+      width:52px;
+      height:52px;
+      border-radius:999px;
+      font-size:24px;
+      line-height:1;
+      padding:0;
+      box-shadow:var(--shadow);
+    }
+    .quickPanel{
+      position:absolute;
+      right:0;
+      bottom:62px;
+      width:260px;
+      padding:10px;
+      border-radius:16px;
+      border:1px solid rgba(0,229,255,.24);
+      background:linear-gradient(180deg, rgba(0,229,255,.1), rgba(0,0,0,.0) 72%), var(--panel);
+      box-shadow:var(--shadow);
+      display:none;
+    }
+    .quickPanel.open{display:block}
+    .quickPanel .menuTitle{margin-bottom:8px}
+    .quickPanel .btn{width:100%;justify-content:flex-start}
+    .quickList{display:grid;gap:8px}
+    .insightGrid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:10px;
+    }
+    .insightCard{
+      border-radius:14px;
+      border:1px solid rgba(0,229,255,.18);
+      background:linear-gradient(180deg, rgba(0,229,255,.08), rgba(255,255,255,.01));
+      padding:12px;
+    }
+    .insightTitle{
+      font-size:12px;
+      color:var(--gold);
+      font-weight:800;
+      letter-spacing:.03em;
+      text-transform:uppercase;
+    }
+    .insightBody{
+      margin-top:8px;
+      font-size:13px;
+      color:var(--text);
+      line-height:1.5;
+    }
+    .trendChips{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin: 0 0 10px;
+    }
+    .trendChip{
+      display:inline-flex;
+      align-items:center;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      padding:5px 9px;
+      font-size:11px;
+      color:var(--muted);
+      background:rgba(255,255,255,.03);
+      font-weight:700;
+    }
+    .trendChip.positive{
+      border-color:rgba(46,204,113,.45);
+      color:#9ff2c7;
+      background:rgba(46,204,113,.12);
+    }
+    .trendChip.negative{
+      border-color:rgba(231,76,60,.45);
+      color:#ff9f9a;
+      background:rgba(231,76,60,.12);
+    }
 
     .section-title{
       font-size:24px;
@@ -611,6 +693,23 @@
       .topRight .hamburger{grid-column:2 / 3; grid-row:1 / span 2; align-self:stretch; height:100%; min-height:108px}
       .glow-green,.glow-red{animation-duration:3.4s}
       .mobileDock{display:grid}
+      .quickLauncher{
+        right:10px;
+        bottom:78px;
+      }
+      .quickPanel{
+        position:fixed;
+        left:10px;
+        right:10px;
+        width:auto;
+        bottom:140px;
+      }
+      .quickPanel .quickList{
+        grid-template-columns:1fr 1fr;
+      }
+      .insightGrid{
+        grid-template-columns:1fr;
+      }
       .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}
       .dashboardHero .rightActions{width:100%}
       .dashboardHero .rightActions .btn{flex:1 1 0}
@@ -638,6 +737,23 @@
       .drawerHead{position:sticky;top:0;padding:2px 0 10px;background:linear-gradient(180deg, rgba(3,7,12,.96), rgba(3,7,12,.86));backdrop-filter: blur(8px);z-index:2}
       .drawerGrid{grid-template-columns: 1fr}
       .drawerGrid a{padding:14px 12px}
+    }
+
+    @media (prefers-reduced-motion: no-preference){
+      .card, .metric, .calcCard, .insightCard{
+        animation: riseIn .34s ease both;
+        animation-delay: calc(var(--stagger, 0) * 60ms);
+      }
+      .btn{
+        transition: transform .16s ease, border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+      }
+      .btn:active{
+        transform: translateY(1px) scale(.98);
+      }
+    }
+    @keyframes riseIn{
+      from{opacity:0; transform: translateY(10px);}
+      to{opacity:1; transform: translateY(0);}
     }
 
     .calcGrid{

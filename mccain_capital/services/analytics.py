@@ -51,6 +51,86 @@ def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "
     """
 
 
+def _series_story(
+    series: List[Dict[str, Any]], *, favorable_direction: str = "up"
+) -> Dict[str, Any]:
+    if not series:
+        return {
+            "latest": 0.0,
+            "prev": None,
+            "delta": 0.0,
+            "pct": None,
+            "direction": "flat",
+            "tone": "neutral",
+            "label": "No data",
+        }
+
+    latest = float(series[-1].get("v") or 0.0)
+    prev = float(series[-2].get("v") or 0.0) if len(series) > 1 else None
+    delta = latest - prev if prev is not None else 0.0
+    pct = ((delta / abs(prev)) * 100.0) if prev not in (None, 0.0) else None
+    if delta > 0:
+        direction = "up"
+    elif delta < 0:
+        direction = "down"
+    else:
+        direction = "flat"
+
+    tone = "neutral"
+    if direction != "flat":
+        improved = direction == favorable_direction
+        tone = "positive" if improved else "negative"
+
+    label = str(series[-1].get("label") or "latest")
+    return {
+        "latest": latest,
+        "prev": prev,
+        "delta": delta,
+        "pct": pct,
+        "direction": direction,
+        "tone": tone,
+        "label": label,
+    }
+
+
+def _insight_panels(
+    perf: Dict[str, Any], dd: Dict[str, Any], corr: Dict[str, Any]
+) -> Dict[str, str]:
+    expectancy = float(perf.get("expectancy") or 0.0)
+    win_rate = float(perf.get("win_rate") or 0.0)
+    drawdown_live = float(dd.get("current_drawdown") or 0.0)
+    drawdown_streak = int(dd.get("current_drawdown_streak") or 0)
+    corr_value = corr.get("r")
+
+    if expectancy > 0 and win_rate >= 50:
+        changed = "Positive expectancy with >=50% win rate. Edge is paying with current execution."
+    elif expectancy > 0:
+        changed = "Expectancy is positive even with mixed hit-rate. Size and loss control are doing heavy lifting."
+    else:
+        changed = (
+            "Expectancy is flat/negative. Recent trade selection or exits are suppressing edge."
+        )
+
+    if drawdown_live > 0:
+        risk_now = (
+            f"Live drawdown is {money(drawdown_live)} over {drawdown_streak} trade(s). "
+            "Prioritize A+ setups and cap size until recovery."
+        )
+    else:
+        risk_now = "No active drawdown streak. Risk posture is stable for planned sizing."
+
+    if corr_value is None:
+        next_action = "Score more trades consistently to unlock quality-vs-PnL feedback loops."
+    elif corr_value >= 0.3:
+        next_action = (
+            "Lean into high-score setups and sessions; quality currently aligns with outcomes."
+        )
+    else:
+        next_action = "Quality score is not aligned with PnL yet. Rebuild review tags and tighten setup/session definitions."
+
+    return {"changed": changed, "risk_now": risk_now, "next_action": next_action}
+
+
 def analytics_page():
     start_date = (request.args.get("start") or "").strip()
     end_date = (request.args.get("end") or "").strip()
@@ -68,13 +148,16 @@ def analytics_page():
     session_trend_rows = repo.edge_over_time(rows, "session_tag", top_n=3)
     hour_rows = repo.hour_bucket_table(rows)
     rule_breaks = repo.rule_break_counts(rows)
-    equity_chart = _line_chart_svg(repo.equity_curve_series(rows), stroke="#35d4ff", y_prefix="$")
-    drawdown_chart = _line_chart_svg(
-        repo.drawdown_curve_series(rows), stroke="#ff5c7a", y_prefix="$"
-    )
-    expectancy_chart = _line_chart_svg(
-        repo.expectancy_trend_series(rows), stroke="#8cff66", y_prefix="$"
-    )
+    equity_series = repo.equity_curve_series(rows)
+    drawdown_series = repo.drawdown_curve_series(rows)
+    expectancy_series = repo.expectancy_trend_series(rows)
+    equity_chart = _line_chart_svg(equity_series, stroke="#35d4ff", y_prefix="$")
+    drawdown_chart = _line_chart_svg(drawdown_series, stroke="#ff5c7a", y_prefix="$")
+    expectancy_chart = _line_chart_svg(expectancy_series, stroke="#8cff66", y_prefix="$")
+    equity_story = _series_story(equity_series, favorable_direction="up")
+    drawdown_story = _series_story(drawdown_series, favorable_direction="down")
+    expectancy_story = _series_story(expectancy_series, favorable_direction="up")
+    insights = _insight_panels(perf, dd, corr)
 
     content = render_template_string(
         """
@@ -105,6 +188,21 @@ def analytics_page():
           <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div></div>
         </div>
 
+        <div class="insightGrid stack12">
+          <div class="insightCard">
+            <div class="insightTitle">🔎 What Changed</div>
+            <div class="insightBody">{{ insights.changed }}</div>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">🛡️ Risk Now</div>
+            <div class="insightBody">{{ insights.risk_now }}</div>
+          </div>
+          <div class="insightCard">
+            <div class="insightTitle">➡️ Next Action</div>
+            <div class="insightBody">{{ insights.next_action }}</div>
+          </div>
+        </div>
+
         <div class="card"><div class="toolbar">
           <form method="get" class="row">
             <div><label>Start</label><input type="date" name="start" value="{{ start_date }}"></div>
@@ -129,17 +227,41 @@ def analytics_page():
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Equity Curve</div>
             <div class="hr"></div>
+            <div class="trendChips">
+              <span class="trendChip {{ equity_story.tone }}">Latest {{ money(equity_story.latest) }}</span>
+              <span class="trendChip {{ equity_story.tone }}">
+                Δ {{ money(equity_story.delta) }}
+                {% if equity_story.pct is not none %}({{ '%.1f'|format(equity_story.pct) }}%){% endif %}
+              </span>
+              <span class="trendChip">{{ equity_story.label }}</span>
+            </div>
             {{ equity_chart|safe }}
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">📉 Drawdown Curve</div>
             <div class="hr"></div>
+            <div class="trendChips">
+              <span class="trendChip {{ drawdown_story.tone }}">Latest {{ money(drawdown_story.latest) }}</span>
+              <span class="trendChip {{ drawdown_story.tone }}">
+                Δ {{ money(drawdown_story.delta) }}
+                {% if drawdown_story.pct is not none %}({{ '%.1f'|format(drawdown_story.pct) }}%){% endif %}
+              </span>
+              <span class="trendChip">{{ drawdown_story.label }}</span>
+            </div>
             {{ drawdown_chart|safe }}
           </div></div>
         </div>
         <div class="card stack12"><div class="toolbar">
           <div class="pill">🧠 Expectancy Trend (Monthly)</div>
           <div class="hr"></div>
+          <div class="trendChips">
+            <span class="trendChip {{ expectancy_story.tone }}">Latest {{ money(expectancy_story.latest) }}</span>
+            <span class="trendChip {{ expectancy_story.tone }}">
+              Δ {{ money(expectancy_story.delta) }}
+              {% if expectancy_story.pct is not none %}({{ '%.1f'|format(expectancy_story.pct) }}%){% endif %}
+            </span>
+            <span class="trendChip">{{ expectancy_story.label }}</span>
+          </div>
           {{ expectancy_chart|safe }}
         </div></div>
         <div class="twoCol stack12">
@@ -324,6 +446,7 @@ def analytics_page():
         perf=perf,
         dd=dd,
         corr=corr,
+        insights=insights,
         setup_rows=setup_rows,
         session_rows=session_rows,
         setup_trend_rows=setup_trend_rows,
@@ -333,6 +456,9 @@ def analytics_page():
         equity_chart=equity_chart,
         drawdown_chart=drawdown_chart,
         expectancy_chart=expectancy_chart,
+        equity_story=equity_story,
+        drawdown_story=drawdown_story,
+        expectancy_story=expectancy_story,
         start_date=start_date,
         end_date=end_date,
         tab=tab,

@@ -132,6 +132,19 @@
 
     {{ content|safe }}
 
+    <div id="quickLauncher" class="quickLauncher" aria-label="Quick actions">
+      <button id="quickToggleBtn" class="btn primary quickToggle" type="button" aria-expanded="false" onclick="toggleQuickPanel()">+</button>
+      <div id="quickPanel" class="quickPanel" role="menu">
+        <div class="menuTitle">Quick Actions</div>
+        <div class="quickList">
+          <a class="btn" href="/trades/new">➕ Add Trade</a>
+          <a class="btn" href="/journal/new">📝 Add Journal</a>
+          <a class="btn" href="/trades/upload/statement">📄 Upload Statement</a>
+          <a class="btn" href="/trades/open-positions">📂 Open Positions</a>
+        </div>
+      </div>
+    </div>
+
     <nav class="mobileDock" aria-label="Quick navigation">
       <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊</a>
       <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅</a>
@@ -173,6 +186,29 @@
       if(menu) menu.classList.remove("open");
       const btn = document.querySelector(".moreBtn");
       if(btn) btn.setAttribute("aria-expanded", "false");
+    }
+  });
+</script>
+<script>
+  function toggleQuickPanel(){
+    const panel = document.getElementById("quickPanel");
+    const btn = document.getElementById("quickToggleBtn");
+    if(!panel || !btn) return;
+    panel.classList.toggle("open");
+    const isOpen = panel.classList.contains("open");
+    btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
+  window.toggleQuickPanel = toggleQuickPanel;
+
+  window.addEventListener("click", (e)=>{
+    const panel = document.getElementById("quickPanel");
+    const btn = document.getElementById("quickToggleBtn");
+    if(!panel || !btn) return;
+    const insidePanel = e.target.closest && e.target.closest("#quickPanel");
+    const toggle = e.target.closest && e.target.closest("#quickToggleBtn");
+    if(!insidePanel && !toggle){
+      panel.classList.remove("open");
+      btn.setAttribute("aria-expanded", "false");
     }
   });
 </script>
@@ -321,6 +357,11 @@ document.addEventListener('keydown', (e) => {
 
     setInterval(updateETClock, 1000);
     updateETClock();
+
+    const staggerTargets = document.querySelectorAll(".card, .metric, .calcCard, .insightCard");
+    staggerTargets.forEach((el, i) => {
+      el.style.setProperty("--stagger", String(i % 8));
+    });
   </script>
 </body>
 </html>
