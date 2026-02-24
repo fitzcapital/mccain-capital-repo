@@ -24,10 +24,10 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Lint (ruff)
-        run: ruff check .
+        run: python -m ruff check .
 
       - name: Format check (black)
-        run: black --check .
+        run: python -m black --check --config pyproject.toml .
 
   test:
     runs-on: ubuntu-latest
