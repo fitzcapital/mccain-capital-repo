@@ -61,6 +61,7 @@
 
 ## 🧱 Architecture
 
+- Study guide: `docs/ARCHITECTURE.md`
 - `app.py`: compatibility entrypoint
 - `mccain_capital/app_core.py`: core app logic + templates
 - `mccain_capital/__init__.py`: app factory + hooks

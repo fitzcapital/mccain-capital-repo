@@ -145,6 +145,30 @@ def parse_int(s: str) -> Optional[int]:
         return None
 
 
+def parse_date_any(s: str) -> Optional[str]:
+    s = (s or "").strip()
+    if not s:
+        return None
+
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            pass
+
+    parts = re.split(r"[/-]", s)
+    parts = [p for p in parts if p]
+    if len(parts) == 2:
+        try:
+            m = int(parts[0])
+            d = int(parts[1])
+            y = now_et().year
+            return date(y, m, d).isoformat()
+        except Exception:
+            return None
+    return None
+
+
 def month_bounds(d: date) -> Tuple[date, date]:
     first = d.replace(day=1)
     if d.month == 12:
