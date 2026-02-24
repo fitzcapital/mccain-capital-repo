@@ -40,42 +40,42 @@ plan risk, execute trades, journal decisions, review behavior, and monitor consi
 ### Desktop Showcase
 
 #### Dashboard
-![Dashboard](docs/images/dashboard.png)
+![Dashboard](docs/images/dashboard-20260224.png)
 
 #### Trades
-![Trades](docs/images/trades.png)
+![Trades](docs/images/trades-20260224.png)
 
 #### Journal
-![Journal](docs/images/journal.png)
+![Journal](docs/images/journal-20260224.png)
 
 #### Analytics
-![Analytics](docs/images/analytics.png)
+![Analytics](docs/images/analytics-20260224.png)
 
 #### Calculator
-![Calculator](docs/images/calculator.png)
+![Calculator](docs/images/calculator-20260224.png)
 
 #### Payouts
-![Payouts](docs/images/payout.png)
+![Payouts](docs/images/payout-20260224.png)
 
 ### Mobile Showcase
 
 #### Dashboard
-![Dashboard Mobile](docs/images/mobile-dashboard.png)
+![Dashboard Mobile](docs/images/mobile-dashboard-20260224.png)
 
 #### Trades
-![Trades Mobile](docs/images/mobile-trades.png)
+![Trades Mobile](docs/images/mobile-trades-20260224.png)
 
 #### Journal
-![Journal Mobile](docs/images/mobile-journal.png)
+![Journal Mobile](docs/images/mobile-journal-20260224.png)
 
 #### Analytics
-![Analytics Mobile](docs/images/mobile-analytics.png)
+![Analytics Mobile](docs/images/mobile-analytics-20260224.png)
 
 #### Calculator
-![Calculator Mobile](docs/images/mobile-calculator.png)
+![Calculator Mobile](docs/images/mobile-calculator-20260224.png)
 
 #### Payouts
-![Payouts Mobile](docs/images/mobile-payout.png)
+![Payouts Mobile](docs/images/mobile-payout-20260224.png)
 
 ---
 
