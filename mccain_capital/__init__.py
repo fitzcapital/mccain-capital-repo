@@ -1,17 +1,27 @@
 """Package entrypoints for McCain Capital app."""
 
+import os
 from datetime import timedelta
 
 from flask import redirect, request, url_for
 
 from mccain_capital.config import select_config
 from mccain_capital import app_core as core
+from mccain_capital import runtime
 from mccain_capital.routes import register_all_routes
 
 
 def create_app():
     """Return configured Flask app with all routes registered."""
     app = core.app
+    # Keep modular runtime helpers on the same storage paths as legacy app_core.
+    runtime.DB_PATH = core.DB_PATH
+    runtime.UPLOAD_DIR = core.UPLOAD_DIR
+    runtime.BOOKS_DIR = core.BOOKS_DIR
+    os.makedirs(os.path.dirname(runtime.DB_PATH) or ".", exist_ok=True)
+    os.makedirs(runtime.UPLOAD_DIR, exist_ok=True)
+    os.makedirs(runtime.BOOKS_DIR, exist_ok=True)
+
     app.config.from_object(select_config())
     app.secret_key = app.config["SECRET_KEY"]
     app.permanent_session_lifetime = timedelta(
