@@ -42,7 +42,9 @@ def dashboard():
 
 
 def analytics_page():
-    return _legacy().analytics_page()
+    from mccain_capital.services import analytics as analytics_svc
+
+    return analytics_svc.analytics_page()
 
 
 def calculator():
