@@ -31,6 +31,10 @@
       --text:#f6fbff;
       --muted:#9fb3c8;
       --gold:#00e5ff;
+      --brand-ink:#02131e;
+      --brand-cyan:#00e5ff;
+      --brand-gold:#d9b56d;
+      --brand-steel:#90a9bf;
       --border:rgba(0,229,255,.24);
       --shadow: 0 14px 34px rgba(0,0,0,.52);
       --shadow-soft: 0 10px 24px rgba(0,0,0,.32);
@@ -74,6 +78,7 @@
       border-radius:var(--radius-lg);
       border:1px solid rgba(0,229,255,.22);
       background:
+        linear-gradient(120deg, rgba(217,181,109,.08), rgba(0,229,255,.02) 35%, rgba(217,181,109,.03) 100%),
         radial-gradient(900px 260px at 8% -20%, rgba(0,229,255,.12), transparent 60%),
         linear-gradient(180deg, rgba(0,229,255,.06), rgba(0,0,0,0) 70%),
         var(--panel);
@@ -96,6 +101,16 @@
       font-size:21px;margin:0;letter-spacing:.2px;font-weight:800;
       text-align:left;
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      text-shadow: 0 0 24px rgba(0,229,255,.18);
+    }
+    .brandSignature{
+      margin-top:3px;
+      font-size:10px;
+      letter-spacing:.16em;
+      text-transform:uppercase;
+      color:var(--brand-gold);
+      opacity:.9;
+      font-weight:700;
     }
     .sub{color:var(--muted);font-size:12px;margin-top:4px}
 
@@ -133,7 +148,10 @@
     }
 
     .card{
-      background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(0,0,0,0) 70%), var(--panel);
+      background:
+        linear-gradient(120deg, rgba(217,181,109,.05), rgba(0,229,255,.03) 45%, rgba(217,181,109,.02) 100%),
+        linear-gradient(180deg, rgba(0,229,255,.06), rgba(0,0,0,0) 70%),
+        var(--panel);
       border:1px solid var(--border);
       border-radius:var(--radius-md);
       box-shadow: var(--shadow);
@@ -155,6 +173,7 @@
   border-radius:var(--radius-sm);
   font-size:13px;
   border-color:rgba(0,229,255,.14);
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
 }
 .nav .btn.active{
   position:relative;
@@ -232,9 +251,10 @@
     }
     .btn:hover{border-color:rgba(0,229,255,.42);transform: translateY(-1px)}
     .btn.primary{
-      background: linear-gradient(180deg, rgba(0,229,255,.24), rgba(0,229,255,.08));
+      background: linear-gradient(180deg, rgba(0,229,255,.28), rgba(0,229,255,.09));
       border-color: rgba(0,229,255,.4);
       color:#e8fdff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.16);
     }
     .btn.danger{border-color: rgba(255,90,90,.35)}
     .btn.danger:hover{box-shadow:0 0 0 3px rgba(255,90,90,.10)}
@@ -242,7 +262,7 @@
     .pill{
       display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;
       border:1px solid rgba(0,229,255,.34);
-      background: rgba(0,229,255,.12);
+      background: linear-gradient(180deg, rgba(0,229,255,.16), rgba(0,229,255,.07));
       color:var(--gold);
       font-size:11px;
       font-weight:800;
@@ -258,6 +278,7 @@
       margin-bottom:14px;
       border-color: rgba(0,229,255,.3);
       background:
+        linear-gradient(120deg, rgba(217,181,109,.08), rgba(0,229,255,.02) 40%, rgba(217,181,109,.04) 100%),
         radial-gradient(720px 220px at 0% -20%, rgba(0,229,255,.16), transparent 62%),
         linear-gradient(180deg, rgba(0,229,255,.08), rgba(0,0,0,0) 72%),
         var(--panel);
