@@ -32,3 +32,24 @@ def test_broker_import_is_idempotent_and_uses_statement_ending_balance(app):
     inserted_2, msgs_2 = importing.insert_trades_from_broker_paste(text, ending_balance=50198.60)
     assert inserted_2 == 0
     assert any("duplicate" in m.lower() for m in msgs_2)
+
+
+def test_broker_import_reconciliation_report_fields(app):
+    text = "\n".join(
+        [
+            "SPX JAN/30/26 6935 PUT | 1/30/26, 10:00 AM | BUY | 1 | 10.00 | 0.70",
+            "SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 1 | 12.00 | 0.70",
+        ]
+    )
+    inserted, messages, report = importing.insert_trades_from_broker_paste_with_report(
+        text, ending_balance=50198.60
+    )
+    assert inserted == 1
+    assert isinstance(messages, list)
+    assert report["fills_parsed"] == 2
+    assert report["pairs_completed"] == 1
+    assert report["inserted_trades"] == 1
+    assert report["duplicates_skipped"] == 0
+    assert report["open_contracts"] == 0
+    assert report["statement_ending_balance"] == 50198.60
+    assert report["ledger_ending_balance"] is not None

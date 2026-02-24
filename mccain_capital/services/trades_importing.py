@@ -613,12 +613,27 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def insert_trades_from_broker_paste(
+def insert_trades_from_broker_paste_with_report(
     text: str, ending_balance: Optional[float] = None
-) -> Tuple[int, List[str]]:
+) -> Tuple[int, List[str], Dict[str, Any]]:
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
     if not lines:
-        return 0, ["Nothing to import."]
+        return (
+            0,
+            ["Nothing to import."],
+            {
+                "fills_parsed": 0,
+                "pairs_completed": 0,
+                "inserted_trades": 0,
+                "duplicates_skipped": 0,
+                "open_contracts": 0,
+                "errors_count": 0,
+                "warnings_count": 1,
+                "statement_ending_balance": ending_balance,
+                "ledger_ending_balance": None,
+                "balance_delta": None,
+            },
+        )
 
     created = now_iso()
     errors: List[str] = []
@@ -687,7 +702,19 @@ def insert_trades_from_broker_paste(
         )
 
     if not fills:
-        return 0, (errors or ["No valid fills to import."])
+        report = {
+            "fills_parsed": 0,
+            "pairs_completed": 0,
+            "inserted_trades": 0,
+            "duplicates_skipped": 0,
+            "open_contracts": 0,
+            "errors_count": len(errors or ["No valid fills to import."]),
+            "warnings_count": len(warnings),
+            "statement_ending_balance": ending_balance,
+            "ledger_ending_balance": None,
+            "balance_delta": None,
+        }
+        return 0, (errors or ["No valid fills to import."]), report
 
     def side_rank(s: str) -> int:
         return 0 if s == "BUY" else 1
@@ -918,7 +945,50 @@ def insert_trades_from_broker_paste(
     if skipped_duplicates:
         warnings.append(f"Skipped {skipped_duplicates} duplicate trade(s) already imported.")
 
-    return inserted, (warnings + errors)
+    import_end_date = max((str(tr["trade_date"]) for tr in completed), default="")
+    ledger_ending_balance = None
+    if import_end_date:
+        with db() as conn:
+            row = conn.execute(
+                """
+                SELECT balance
+                FROM trades
+                WHERE trade_date <= ? AND balance IS NOT NULL
+                ORDER BY trade_date DESC, id DESC
+                LIMIT 1
+                """,
+                (import_end_date,),
+            ).fetchone()
+            if row and row["balance"] is not None:
+                ledger_ending_balance = float(row["balance"])
+
+    balance_delta = None
+    if ending_balance is not None and ledger_ending_balance is not None:
+        balance_delta = ledger_ending_balance - float(ending_balance)
+
+    report = {
+        "fills_parsed": len(fills),
+        "pairs_completed": len(completed),
+        "inserted_trades": inserted,
+        "duplicates_skipped": skipped_duplicates,
+        "open_contracts": int(open_count),
+        "errors_count": len(errors),
+        "warnings_count": len(warnings),
+        "statement_ending_balance": ending_balance,
+        "ledger_ending_balance": ledger_ending_balance,
+        "balance_delta": balance_delta,
+    }
+
+    return inserted, (warnings + errors), report
+
+
+def insert_trades_from_broker_paste(
+    text: str, ending_balance: Optional[float] = None
+) -> Tuple[int, List[str]]:
+    inserted, messages, _ = insert_trades_from_broker_paste_with_report(
+        text, ending_balance=ending_balance
+    )
+    return inserted, messages
 
 
 def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:

@@ -38,6 +38,48 @@ week_total_net = repo.week_total_net
 last_balance_in_list = repo.last_balance_in_list
 
 
+def _reconciliation_block(report: Optional[dict]) -> str:
+    if not report:
+        return ""
+    return render_template_string(
+        """
+        <div class="hr"></div>
+        <div class="pill">🧾 Import Reconciliation</div>
+        <div class="hr"></div>
+        <table>
+          <tbody>
+            <tr><td>Fills Parsed</td><td>{{ report.fills_parsed }}</td></tr>
+            <tr><td>Round-Trips Paired</td><td>{{ report.pairs_completed }}</td></tr>
+            <tr><td>Inserted Trades</td><td>{{ report.inserted_trades }}</td></tr>
+            <tr><td>Duplicates Skipped</td><td>{{ report.duplicates_skipped }}</td></tr>
+            <tr><td>Open Contracts Remaining</td><td>{{ report.open_contracts }}</td></tr>
+            <tr><td>Errors / Warnings</td><td>{{ report.errors_count }} / {{ report.warnings_count }}</td></tr>
+            <tr>
+              <td>Statement Ending Balance</td>
+              <td>
+                {% if report.statement_ending_balance is not none %}{{ money(report.statement_ending_balance) }}{% else %}Not provided{% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td>Ledger Ending Balance</td>
+              <td>
+                {% if report.ledger_ending_balance is not none %}{{ money(report.ledger_ending_balance) }}{% else %}Not available{% endif %}
+              </td>
+            </tr>
+            <tr>
+              <td>Balance Delta (Ledger - Statement)</td>
+              <td>
+                {% if report.balance_delta is not none %}{{ money(report.balance_delta) }}{% else %}Not computed{% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      """,
+        report=report,
+        money=money,
+    )
+
+
 def trade_lockout_state(day_iso: str):
     rc = repo.get_risk_controls()
     return repo.trade_lockout_state(
@@ -1138,8 +1180,10 @@ def trades_paste():
         text = request.form.get("text", "")
         fmt = detect_paste_format(text)
 
+        reconciliation_html = ""
         if fmt == "broker":
-            inserted, errors = importing.insert_trades_from_broker_paste(text)
+            inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(text)
+            reconciliation_html = _reconciliation_block(report)
         else:
             inserted, errors = importing.insert_trades_from_paste(text)
 
@@ -1154,6 +1198,7 @@ def trades_paste():
                   {% for e in errors %}• {{ e }}<br/>{% endfor %}
                 </div>
               {% endif %}
+              {{ reconciliation_html|safe }}
               <div class="hr"></div>
               <div class="rightActions">
                 <a class="btn primary" href="/trades">Trades 📅</a>
@@ -1165,6 +1210,7 @@ def trades_paste():
             """,
             inserted=inserted,
             errors=errors,
+            reconciliation_html=reconciliation_html,
         )
         return render_page(content, active="trades")
 
@@ -1322,7 +1368,8 @@ def trades_paste_broker():
                 active="trades",
             )
         text = request.form.get("text", "")
-        inserted, errors = importing.insert_trades_from_broker_paste(text)
+        inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(text)
+        reconciliation_html = _reconciliation_block(report)
         content = render_template_string(
             """
             <div class="card"><div class="toolbar">
@@ -1331,6 +1378,7 @@ def trades_paste_broker():
               {% if errors %}
                 <div class="hr"></div><div class="tiny" style="color:#ff8f8f">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
               {% endif %}
+              {{ reconciliation_html|safe }}
               <div class="hr"></div>
               <div class="rightActions">
                 <a class="btn primary" href="/trades">Trades 📅</a>
@@ -1341,6 +1389,7 @@ def trades_paste_broker():
             """,
             inserted=inserted,
             errors=errors,
+            reconciliation_html=reconciliation_html,
         )
         return render_page(content, active="trades")
 
@@ -1419,9 +1468,10 @@ def trades_upload_pdf():
                         active="trades",
                     )
 
-                inserted, errors = importing.insert_trades_from_broker_paste(
+                inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
                     paste_text, ending_balance=balance_val
                 )
+                reconciliation_html = _reconciliation_block(report)
                 msgs = (warns or []) + (errors or [])
 
                 return render_page(
@@ -1436,6 +1486,7 @@ def trades_upload_pdf():
                               {% for m in msgs %}• {{ m }}<br>{% endfor %}
                             </div>
                           {% endif %}
+                          {{ reconciliation_html|safe }}
                           <div class="hr"></div>
                           <a class="btn primary" href="/trades">Trades 📅</a>
                           <a class="btn" href="/trades/upload/statement">Upload Another</a>
@@ -1443,6 +1494,7 @@ def trades_upload_pdf():
                         """,
                         inserted=inserted,
                         msgs=msgs,
+                        reconciliation_html=reconciliation_html,
                     ),
                     active="trades",
                 )
@@ -1521,7 +1573,10 @@ def trades_upload_pdf():
                     active="trades",
                 )
 
-            inserted, errors = importing.insert_trades_from_broker_paste(paste_text)
+            inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
+                paste_text
+            )
+            reconciliation_html = _reconciliation_block(report)
             msgs = (ocr_warns or []) + (errors or [])
             return render_page(
                 render_template_string(
@@ -1535,6 +1590,7 @@ def trades_upload_pdf():
                           {% for m in msgs %}• {{ m }}<br>{% endfor %}
                         </div>
                       {% endif %}
+                      {{ reconciliation_html|safe }}
                       <div class="hr"></div>
                       <a class="btn primary" href="/trades">Trades 📅</a>
                      <a class="btn" href="/trades/upload/statement">Upload Another</a>
@@ -1542,6 +1598,7 @@ def trades_upload_pdf():
                     """,
                     inserted=inserted,
                     msgs=msgs,
+                    reconciliation_html=reconciliation_html,
                 ),
                 active="trades",
             )
