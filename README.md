@@ -99,6 +99,12 @@ python -m mccain_capital.cli
 
 Open `http://localhost:5001`
 
+Run migrations explicitly (optional):
+
+```bash
+python migrate.py
+```
+
 ---
 
 ## 🐳 Quickstart (Podman)

@@ -5,32 +5,12 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-from mccain_capital.runtime import db, now_iso, today_iso
+from mccain_capital.migrations import run_migrations
+from mccain_capital.runtime import DB_PATH, db, now_iso, today_iso
 
 
 def ensure_journal_schema() -> None:
-    with db() as conn:
-        cols = [r["name"] for r in conn.execute("PRAGMA table_info(entries)").fetchall()]
-        if "entry_type" not in cols:
-            conn.execute("ALTER TABLE entries ADD COLUMN entry_type TEXT DEFAULT 'post_market'")
-        if "template_payload" not in cols:
-            conn.execute("ALTER TABLE entries ADD COLUMN template_payload TEXT DEFAULT '{}'")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS entry_trade_links (
-                entry_id INTEGER NOT NULL,
-                trade_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                PRIMARY KEY (entry_id, trade_id)
-            )
-            """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_entry_trade_links_entry ON entry_trade_links(entry_id)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_entry_trade_links_trade ON entry_trade_links(trade_id)"
-        )
+    run_migrations(DB_PATH)
 
 
 def fetch_entries(q: str = "", d: str = "") -> List[object]:
@@ -259,6 +239,8 @@ def weekly_rule_break_tags(start_date: str, end_date: str) -> List[Dict[str, Any
         if not tags:
             continue
         for tag in [t.strip().lower() for t in tags.split(",") if t.strip()]:
+            if tag == "ultra-short-hold":
+                continue
             counts[tag] = counts.get(tag, 0) + 1
     return [
         {"tag": k, "count": v}

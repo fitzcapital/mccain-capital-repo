@@ -189,6 +189,8 @@ def rule_break_counts(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not tags:
             continue
         for tag in [t.strip().lower() for t in tags.split(",") if t.strip()]:
+            if tag == "ultra-short-hold":
+                continue
             c[tag] += 1
     return [{"tag": k, "count": v} for k, v in c.most_common(12)]
 
