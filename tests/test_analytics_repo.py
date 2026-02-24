@@ -76,6 +76,7 @@ def test_group_tables_and_rule_breaks(app):
     setup = repo.group_table(rows, "setup_tag")
     by_setup = {r["k"]: r for r in setup}
     assert by_setup["ORB"]["count"] == 3
+    assert by_setup["ORB"]["expectancy"] == 100.0
 
     hours = repo.hour_bucket_table(rows)
     assert any(r["k"] == "09:00" for r in hours)
@@ -84,3 +85,21 @@ def test_group_tables_and_rule_breaks(app):
     by_tag = {r["tag"]: r["count"] for r in breaks}
     assert by_tag["late-entry"] == 1
     assert by_tag["oversized"] == 1
+
+
+def test_correlation_drawdown_and_edge_over_time(app):
+    _seed_trades()
+    rows = repo.fetch_analytics_rows()
+
+    dd = repo.drawdown_diagnostics(rows)
+    assert dd["max_drawdown"] >= 0
+    assert dd["max_drawdown_streak"] >= 0
+
+    corr = repo.score_pnl_correlation(rows)
+    assert corr["n"] >= 3
+    assert corr["r"] is not None
+
+    setup_trend = repo.edge_over_time(rows, "setup_tag", top_n=2)
+    session_trend = repo.edge_over_time(rows, "session_tag", top_n=2)
+    assert len(setup_trend) > 0
+    assert len(session_trend) > 0

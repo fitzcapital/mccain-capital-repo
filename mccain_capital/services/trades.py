@@ -14,7 +14,6 @@ from mccain_capital.repositories import trades as repo
 from mccain_capital.runtime import (
     UPLOAD_DIR,
     db,
-    default_starting_balance,
     detect_paste_format,
     latest_balance_overall,
     money,
@@ -1137,15 +1136,10 @@ def trades_paste():
                 active="trades",
             )
         text = request.form.get("text", "")
-        starting_balance = (
-            parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
-        )
         fmt = detect_paste_format(text)
 
         if fmt == "broker":
-            inserted, errors = importing.insert_trades_from_broker_paste(
-                text, starting_balance=starting_balance
-            )
+            inserted, errors = importing.insert_trades_from_broker_paste(text)
         else:
             inserted, errors = importing.insert_trades_from_paste(text)
 
@@ -1186,12 +1180,6 @@ def trades_paste():
           </div>
           <div class="hr"></div>
           <form method="post">
-            <div class="row">
-              <div>
-                <label>🏁 Starting Balance (for Broker paste)</label>
-                <input name="starting_balance" inputmode="decimal" value="50000" />
-              </div>
-            </div>
             <div style="margin-top:12px">
               <label>📎 Paste here</label>
               <textarea name="text" placeholder="Paste your trade rows here…"></textarea>
@@ -1334,12 +1322,7 @@ def trades_paste_broker():
                 active="trades",
             )
         text = request.form.get("text", "")
-        starting_balance = (
-            parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
-        )
-        inserted, errors = importing.insert_trades_from_broker_paste(
-            text, starting_balance=starting_balance
-        )
+        inserted, errors = importing.insert_trades_from_broker_paste(text)
         content = render_template_string(
             """
             <div class="card"><div class="toolbar">
@@ -1370,7 +1353,6 @@ def trades_paste_broker():
           </div>
           <div class="hr"></div>
           <form method="post">
-            <div class="row"><div><label>🏁 Starting Balance</label><input name="starting_balance" inputmode="decimal" value="50000" /></div></div>
             <div style="margin-top:12px">
               <label>📎 Paste here</label>
               <textarea name="text" placeholder="SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 2 | 18.90 | 0.70"></textarea>
@@ -1400,7 +1382,6 @@ def trades_upload_pdf():
             )
         f = request.files.get("pdf")
         mode = (request.form.get("mode") or "broker").strip()  # broker | balance
-        starting_balance = parse_float(request.form.get("starting_balance", "")) or 50000.0
 
         if not f or not f.filename:
             return render_page(simple_msg("Please upload a file."), active="trades")
@@ -1439,7 +1420,7 @@ def trades_upload_pdf():
                     )
 
                 inserted, errors = importing.insert_trades_from_broker_paste(
-                    paste_text, starting_balance=starting_balance
+                    paste_text, ending_balance=balance_val
                 )
                 msgs = (warns or []) + (errors or [])
 
@@ -1540,9 +1521,7 @@ def trades_upload_pdf():
                     active="trades",
                 )
 
-            inserted, errors = importing.insert_trades_from_broker_paste(
-                paste_text, starting_balance=starting_balance
-            )
+            inserted, errors = importing.insert_trades_from_broker_paste(paste_text)
             msgs = (ocr_warns or []) + (errors or [])
             return render_page(
                 render_template_string(
@@ -1603,10 +1582,6 @@ def trades_upload_pdf():
                   <option value="broker">🏦 Broker fills → trades</option>
                   <option value="balance">🏁 Statement → ending balance snapshot</option>
                 </select>
-              </div>
-              <div>
-                <label>🏁 Starting Balance (broker mode)</label>
-                <input name="starting_balance" inputmode="decimal" value="50000" />
               </div>
             </div>
 

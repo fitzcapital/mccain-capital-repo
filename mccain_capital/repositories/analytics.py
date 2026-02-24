@@ -148,12 +148,14 @@ def group_table(rows: List[Dict[str, Any]], key_name: str) -> List[Dict[str, Any
     table: List[Dict[str, Any]] = []
     for k, v in out.items():
         c = v["count"] or 1
+        expectancy = v["net"] / c if c else 0.0
         table.append(
             {
                 "k": k,
                 "count": v["count"],
                 "net": v["net"],
                 "win_rate": (v["wins"] / c) * 100.0,
+                "expectancy": expectancy,
                 "avg_score": (sum(v["scores"]) / len(v["scores"])) if v["scores"] else None,
             }
         )
@@ -189,3 +191,117 @@ def rule_break_counts(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for tag in [t.strip().lower() for t in tags.split(",") if t.strip()]:
             c[tag] += 1
     return [{"tag": k, "count": v} for k, v in c.most_common(12)]
+
+
+def drawdown_diagnostics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    net_values = [n for n in (_safe_float(r.get("net_pl")) for r in rows) if n is not None]
+    balances = [_safe_float(r.get("balance")) for r in rows]
+    if any(v is not None for v in balances):
+        curve = [v for v in balances if v is not None]
+    else:
+        running = 0.0
+        curve = []
+        for n in net_values:
+            running += n
+            curve.append(running)
+
+    peak = float("-inf")
+    current_dd = 0.0
+    max_dd = 0.0
+    current_dd_streak = 0
+    max_dd_streak = 0
+    for v in curve:
+        if v >= peak:
+            peak = v
+            current_dd = 0.0
+            current_dd_streak = 0
+        else:
+            current_dd = peak - v
+            current_dd_streak += 1
+            max_dd = max(max_dd, current_dd)
+            max_dd_streak = max(max_dd_streak, current_dd_streak)
+
+    return {
+        "current_drawdown": current_dd,
+        "max_drawdown": max_dd,
+        "current_drawdown_streak": current_dd_streak,
+        "max_drawdown_streak": max_dd_streak,
+    }
+
+
+def score_pnl_correlation(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    pairs: List[tuple[float, float]] = []
+    for r in rows:
+        score = _safe_float(r.get("checklist_score"))
+        net = _safe_float(r.get("net_pl"))
+        if score is None or net is None:
+            continue
+        pairs.append((score, net))
+
+    n = len(pairs)
+    if n < 3:
+        return {"n": n, "r": None, "label": "Not enough scored trades"}
+
+    xs = [p[0] for p in pairs]
+    ys = [p[1] for p in pairs]
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in pairs)
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x <= 0 or var_y <= 0:
+        return {"n": n, "r": None, "label": "Flat data"}
+    r = cov / ((var_x * var_y) ** 0.5)
+    if r >= 0.6:
+        label = "Strong positive"
+    elif r >= 0.3:
+        label = "Moderate positive"
+    elif r > -0.3:
+        label = "Weak / none"
+    elif r > -0.6:
+        label = "Moderate negative"
+    else:
+        label = "Strong negative"
+    return {"n": n, "r": r, "label": label}
+
+
+def edge_over_time(
+    rows: List[Dict[str, Any]], key_name: str, top_n: int = 3
+) -> List[Dict[str, Any]]:
+    grouped = group_table(rows, key_name)
+    top_keys = [r["k"] for r in grouped[:top_n]]
+    if not top_keys:
+        return []
+
+    period_map: Dict[tuple[str, str], Dict[str, Any]] = {}
+    for r in rows:
+        key = (r.get(key_name) or "").strip() or "Unlabeled"
+        if key not in top_keys:
+            continue
+        trade_date = (r.get("trade_date") or "").strip()
+        period = trade_date[:7] if len(trade_date) >= 7 else "Unknown"
+        bucket_key = (key, period)
+        entry = period_map.setdefault(
+            bucket_key, {"key": key, "period": period, "count": 0, "wins": 0, "net": 0.0}
+        )
+        net = _safe_float(r.get("net_pl")) or 0.0
+        entry["count"] += 1
+        entry["net"] += net
+        if net > 0:
+            entry["wins"] += 1
+
+    out: List[Dict[str, Any]] = []
+    for e in period_map.values():
+        c = int(e["count"] or 0)
+        out.append(
+            {
+                "key": e["key"],
+                "period": e["period"],
+                "count": c,
+                "net": float(e["net"] or 0.0),
+                "expectancy": (float(e["net"] or 0.0) / c) if c else 0.0,
+                "win_rate": ((int(e["wins"] or 0) / c) * 100.0) if c else 0.0,
+            }
+        )
+    out.sort(key=lambda x: (x["key"], x["period"]))
+    return out

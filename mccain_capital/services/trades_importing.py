@@ -303,7 +303,7 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
         warnings.append(f"Could not parse balance tables: {e}")
 
     tx_tbl = None
-    inst_c = time_c = side_c = qty_c = price_c = comm_c = None
+    inst_c = time_c = side_c = qty_c = price_c = comm_c = bal_c = None
     for cand in tables:
         inst_c = _pick_col(cand, "Instrument")
         time_c = _pick_col(cand, "Transaction Time")
@@ -311,6 +311,7 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
         qty_c = _pick_col(cand, "Size")
         price_c = _pick_col(cand, "Price")
         comm_c = _pick_col(cand, "Commission")
+        bal_c = _pick_col(cand, "Balance")
         if all([inst_c, time_c, side_c, qty_c, price_c]):
             tx_tbl = cand
             break
@@ -335,10 +336,18 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
                 fee = parse_float(str(r.get(comm_c, "")))
             if fee is None:
                 fee = DEFAULT_FEE_PER_CONTRACT
+            row_balance = (
+                parse_float(str(r.get(bal_c, ""))) if bal_c and bal_c in tx_tbl.columns else None
+            )
 
             if not instrument or side not in ("BUY", "SELL") or qty <= 0 or price is None:
                 continue
-            lines.append(f"{instrument} | {dt} | {side} | {qty} | {price} | {fee}")
+            if row_balance is not None:
+                lines.append(
+                    f"{instrument} | {dt} | {side} | {qty} | {price} | {fee} | {row_balance}"
+                )
+            else:
+                lines.append(f"{instrument} | {dt} | {side} | {qty} | {price} | {fee}")
         except Exception:
             continue
 
@@ -469,6 +478,7 @@ def parse_broker_line_any(ln: str) -> Optional[Dict[str, Any]]:
             price = parse_float(bits[4])
             fee = parse_float(bits[5]) if len(bits) > 5 else DEFAULT_FEE_PER_CONTRACT
             fee = DEFAULT_FEE_PER_CONTRACT if fee is None else fee
+            bal = parse_float(bits[6]) if len(bits) > 6 else None
             if desc and dt and side in ("BUY", "SELL") and qty > 0 and price is not None:
                 return {
                     "desc": desc,
@@ -477,6 +487,7 @@ def parse_broker_line_any(ln: str) -> Optional[Dict[str, Any]]:
                     "qty": qty,
                     "price": float(price),
                     "fee": float(fee),
+                    "balance": bal,
                 }
 
     m = BROKER_OCR_RE.match(raw.upper())
@@ -507,6 +518,12 @@ def parse_broker_line_any(ln: str) -> Optional[Dict[str, Any]]:
             if v is not None and 0 <= v <= 5:
                 fee = float(v)
                 break
+        bal = None
+        for token in reversed(cols):
+            v = parse_float(token)
+            if v is not None and abs(v) >= 1000:
+                bal = float(v)
+                break
 
         if desc and dt and side in ("BUY", "SELL") and qty > 0 and price is not None:
             return {
@@ -516,6 +533,7 @@ def parse_broker_line_any(ln: str) -> Optional[Dict[str, Any]]:
                 "qty": qty,
                 "price": float(price),
                 "fee": float(fee),
+                "balance": bal,
             }
 
     return None
@@ -599,7 +617,7 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def insert_trades_from_broker_paste(
-    text: str, starting_balance: float = 50000.0
+    text: str, ending_balance: Optional[float] = None
 ) -> Tuple[int, List[str]]:
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
     if not lines:
@@ -663,6 +681,9 @@ def insert_trades_from_broker_paste(
                 "qty": int(qty),
                 "price": float(price),
                 "fee": float(fee),
+                "balance": (
+                    float(parsed["balance"]) if parsed.get("balance") is not None else None
+                ),
                 "raw_line": ln,
                 "line_no": i,
             }
@@ -744,6 +765,7 @@ def insert_trades_from_broker_paste(
                     "result_pct": (
                         (net_pl / (entry_price * 100.0 * take) * 100.0) if entry_price > 0 else None
                     ),
+                    "balance": f.get("balance"),
                     "raw_line": f["raw_line"],
                 }
             )
@@ -757,12 +779,82 @@ def insert_trades_from_broker_paste(
             )
 
     inserted = 0
-    balance = float(starting_balance)
+    skipped_duplicates = 0
+
+    def trade_identity(tr: Dict[str, Any]) -> tuple[Any, ...]:
+        return (
+            tr.get("trade_date"),
+            tr.get("entry_time"),
+            tr.get("exit_time"),
+            tr.get("ticker"),
+            tr.get("opt_type"),
+            round(float(tr.get("strike") or 0.0), 4),
+            round(float(tr.get("entry_price") or 0.0), 4),
+            round(float(tr.get("exit_price") or 0.0), 4),
+            int(tr.get("contracts") or 0),
+            round(float(tr.get("comm") or 0.0), 4),
+            round(float(tr.get("gross_pl") or 0.0), 4),
+            round(float(tr.get("net_pl") or 0.0), 4),
+            (tr.get("raw_line") or "").strip(),
+        )
+
+    def db_trade_identity(row: Any) -> tuple[Any, ...]:
+        return (
+            row["trade_date"],
+            row["entry_time"],
+            row["exit_time"],
+            row["ticker"],
+            row["opt_type"],
+            round(float(row["strike"] or 0.0), 4),
+            round(float(row["entry_price"] or 0.0), 4),
+            round(float(row["exit_price"] or 0.0), 4),
+            int(row["contracts"] or 0),
+            round(float(row["comm"] or 0.0), 4),
+            round(float(row["gross_pl"] or 0.0), 4),
+            round(float(row["net_pl"] or 0.0), 4),
+            (row["raw_line"] or "").strip(),
+        )
+
+    derived_start_balance: Optional[float] = None
+    if ending_balance is not None and completed:
+        total_net = sum(float(tr.get("net_pl") or 0.0) for tr in completed)
+        derived_start_balance = float(ending_balance) - total_net
+
+    balance = derived_start_balance
+    if balance is None and completed:
+        first_day = min(str(tr["trade_date"]) for tr in completed)
+        with db() as conn:
+            row = conn.execute(
+                """
+                SELECT balance
+                FROM trades
+                WHERE trade_date < ? AND balance IS NOT NULL
+                ORDER BY trade_date DESC, id DESC
+                LIMIT 1
+                """,
+                (first_day,),
+            ).fetchone()
+        balance = float(row["balance"]) if row and row["balance"] is not None else 50000.0
 
     with db() as conn:
         conn.execute("BEGIN")
+        existing_rows = conn.execute(
+            """
+            SELECT trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                   entry_price, exit_price, contracts, comm, gross_pl, net_pl, raw_line
+            FROM trades
+            """
+        ).fetchall()
+        existing = {db_trade_identity(r) for r in existing_rows}
         for tr in completed:
-            balance += float(tr["net_pl"] or 0.0)
+            ident = trade_identity(tr)
+            if ident in existing:
+                skipped_duplicates += 1
+                continue
+            row_balance = tr.get("balance")
+            if row_balance is None:
+                balance = float(balance or 0.0) + float(tr["net_pl"] or 0.0)
+                row_balance = balance
             cur = conn.execute(
                 """
                 INSERT INTO trades (
@@ -793,7 +885,7 @@ def insert_trades_from_broker_paste(
                     tr["gross_pl"],
                     tr["net_pl"],
                     tr["result_pct"],
-                    balance,
+                    row_balance,
                     tr["raw_line"],
                     created,
                 ),
@@ -818,6 +910,7 @@ def insert_trades_from_broker_paste(
                 ),
             )
             inserted += 1
+            existing.add(ident)
         conn.commit()
 
     open_count = sum(sum(lot["qty"] for lot in lots) for lots in open_lots.values() if lots)
@@ -825,6 +918,8 @@ def insert_trades_from_broker_paste(
         warnings.append(
             f"Note: {open_count} contract(s) remain OPEN (unmatched BUY). That’s normal mid-position."
         )
+    if skipped_duplicates:
+        warnings.append(f"Skipped {skipped_duplicates} duplicate trade(s) already imported.")
 
     return inserted, (warnings + errors)
 

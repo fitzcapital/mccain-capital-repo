@@ -18,8 +18,12 @@ def analytics_page():
 
     rows = repo.fetch_analytics_rows(start_date=start_date, end_date=end_date)
     perf = repo.performance_metrics(rows)
+    dd = repo.drawdown_diagnostics(rows)
+    corr = repo.score_pnl_correlation(rows)
     setup_rows = repo.group_table(rows, "setup_tag")
     session_rows = repo.group_table(rows, "session_tag")
+    setup_trend_rows = repo.edge_over_time(rows, "setup_tag", top_n=3)
+    session_trend_rows = repo.edge_over_time(rows, "session_tag", top_n=3)
     hour_rows = repo.hour_bucket_table(rows)
     rule_breaks = repo.rule_break_counts(rows)
 
@@ -31,6 +35,9 @@ def analytics_page():
           <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div></div>
           <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div></div>
           <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div></div>
+          <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div></div>
+          <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div></div>
+          <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div></div>
         </div>
 
         <div class="card"><div class="toolbar">
@@ -89,10 +96,10 @@ def analytics_page():
             <div class="pill">🕒 Session Breakdown</div>
             <div class="hr"></div>
             <table>
-              <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Score</th></tr></thead>
+              <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in session_rows %}
-                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
               {% endfor %}
               </tbody>
             </table>
@@ -119,10 +126,10 @@ def analytics_page():
             <div class="pill">📌 Setup Edge</div>
             <div class="hr"></div>
             <table>
-              <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Score</th></tr></thead>
+              <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in setup_rows %}
-                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
               {% endfor %}
               </tbody>
             </table>
@@ -131,11 +138,44 @@ def analytics_page():
             <div class="pill">⏱️ Time of Day Edge</div>
             <div class="hr"></div>
             <table>
-              <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Score</th></tr></thead>
+              <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
               <tbody>
               {% for r in hour_rows %}
-                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
               {% endfor %}
+              </tbody>
+            </table>
+          </div></div>
+        </div>
+
+        <div class="twoCol" style="margin-top:12px">
+          <div class="card"><div class="toolbar">
+            <div class="pill">📈 Setup Edge Over Time (Monthly)</div>
+            <div class="hr"></div>
+            <table>
+              <thead><tr><th>Setup</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
+              <tbody>
+              {% for r in setup_trend_rows %}
+                <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
+              {% endfor %}
+              {% if setup_trend_rows|length == 0 %}
+                <tr><td colspan="6">No setup trend data in range.</td></tr>
+              {% endif %}
+              </tbody>
+            </table>
+          </div></div>
+          <div class="card"><div class="toolbar">
+            <div class="pill">📈 Session Edge Over Time (Monthly)</div>
+            <div class="hr"></div>
+            <table>
+              <thead><tr><th>Session</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
+              <tbody>
+              {% for r in session_trend_rows %}
+                <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
+              {% endfor %}
+              {% if session_trend_rows|length == 0 %}
+                <tr><td colspan="6">No session trend data in range.</td></tr>
+              {% endif %}
               </tbody>
             </table>
           </div></div>
@@ -143,8 +183,12 @@ def analytics_page():
         {% endif %}
         """,
         perf=perf,
+        dd=dd,
+        corr=corr,
         setup_rows=setup_rows,
         session_rows=session_rows,
+        setup_trend_rows=setup_trend_rows,
+        session_trend_rows=session_trend_rows,
         hour_rows=hour_rows,
         rule_breaks=rule_breaks,
         start_date=start_date,
