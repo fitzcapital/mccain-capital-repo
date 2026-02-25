@@ -4263,6 +4263,7 @@ def strat_page():
       .stratCard h3{margin:0;font-size:18px;line-height:1.2}
       .stratCard .meta{margin-top:6px}
       .stratCard ul{margin:10px 0 0 18px;line-height:1.7;padding:0}
+      .stratWrap, .stratWrap *{min-width:0}
       .stratChecklistTop{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
       .stratProgress{display:flex;align-items:center;gap:10px}
       .stratProgressBar{
@@ -4278,6 +4279,10 @@ def strat_page():
       .stratActions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
       .stratTableWrap{overflow:auto;margin-top:10px;-webkit-overflow-scrolling:touch}
       .stratTableWrap table{min-width:820px}
+      .checkText{
+        overflow-wrap:anywhere;
+        word-break:break-word;
+      }
       .checkRow.checked{
         border-color: rgba(53,208,127,.45);
         background: rgba(53,208,127,.08);
@@ -4289,26 +4294,50 @@ def strat_page():
           border-radius:14px;
         }
         .stratTitle{
-          font-size:21px;
+          font-size:20px;
           line-height:1.2;
           letter-spacing:.1px;
         }
         .stratSub{
-          font-size:13px;
-          line-height:1.5;
+          font-size:12px;
+          line-height:1.45;
           margin-top:6px;
+          opacity:.92;
         }
-        .stratPills{margin-top:10px;gap:6px}
-        .stratPill{font-size:11px;padding:5px 8px}
+        .stratPills{
+          margin-top:10px;
+          gap:6px;
+          display:grid;
+          grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+        .stratPill{
+          font-size:11px;
+          padding:6px 8px;
+          justify-content:center;
+          text-align:center;
+          white-space:normal;
+          line-height:1.2;
+        }
         .stratCard{
-          padding:12px;
+          padding:11px;
           border-radius:14px;
         }
-        .stratCard h3{font-size:16px}
+        .stratCard h3{
+          font-size:15px;
+          line-height:1.25;
+        }
+        .stratCard .meta{
+          font-size:11px;
+          line-height:1.35;
+        }
         .stratCard ul{
           margin-top:8px;
           margin-left:16px;
-          line-height:1.6;
+          line-height:1.5;
+          font-size:14px;
+        }
+        .stratCard li{
+          margin-bottom:4px;
         }
         .stratChecklistTop{
           display:grid;
@@ -4331,6 +4360,10 @@ def strat_page():
           padding-left:8px;
           font-size:11px;
           white-space:nowrap;
+        }
+        .checkText{
+          font-size:12px;
+          line-height:1.35;
         }
         .checklist{
           gap:8px;
@@ -4358,6 +4391,10 @@ def strat_page():
           padding:11px 10px;
           font-size:13px;
         }
+        .stratCard > div[style*="line-height:1.7"]{
+          font-size:13px;
+          line-height:1.5 !important;
+        }
         .stratTableWrap{
           margin-left:-4px;
           margin-right:-4px;
@@ -4366,6 +4403,23 @@ def strat_page():
         .stratTableWrap table{
           min-width:680px;
           font-size:12px;
+        }
+      }
+      @media (max-width: 420px){
+        .stratPills{
+          grid-template-columns:1fr;
+        }
+        .stratActions{
+          grid-template-columns:1fr;
+        }
+        .stratCard ul{
+          margin-left:14px;
+        }
+        .stratHero{
+          padding:10px;
+        }
+        .stratTableWrap table{
+          min-width:620px;
         }
       }
     </style>
