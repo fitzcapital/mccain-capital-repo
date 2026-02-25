@@ -369,6 +369,17 @@ def trades_page():
         if trades_count
         else "Import statement or add first trade, then complete setup/session review tags."
     )
+    is_day_view = bool(d)
+    primary_net_label = (
+        f"💰 Day Net ({d})" if is_day_view else "💰 Filtered Net (All Visible Trades)"
+    )
+    primary_net_sub = (
+        "Net for the selected trading day"
+        if is_day_view
+        else "Net across the current filter (all dates when no date is set)"
+    )
+    secondary_total_label = "📅 Week Total" if is_day_view else "🏁 All-Time Net"
+    secondary_total_value = week_total if is_day_view else all_time_net
 
     content = render_template_string(
         """
@@ -465,6 +476,7 @@ def trades_page():
                 <div class="tiny">
                   Day Net {{ money(guardrail.day_net) }} / Max Loss {{ money(guardrail.daily_max_loss) }}
                 </div>
+                <div class="tiny">Guardrail uses current trading day only</div>
               </div>
               <div class="stat">
                 <div class="k">⚙️ Risk Controls</div>
@@ -479,14 +491,14 @@ def trades_page():
             <div class="hr"></div>
             <div class="statRow">
               <div class="stat">
-                <div class="k">💰 Day Net{% if d %} ({{ d }}){% else %} (Today){% endif %}</div>
+                <div class="k">{{ primary_net_label }}</div>
                 <div class="v">{{ money(day_net) }}</div>
-                <div class="tiny">Net for the currently selected trading day</div>
+                <div class="tiny">{{ primary_net_sub }}</div>
               </div>
 
-              <div class="stat {% if week_total > 0 %}glow-green{% elif week_total < 0 %}glow-red{% endif %}">
-                <div class="k">📅 Week Total</div>
-                <div class="v">{{ money(week_total) }}</div>
+              <div class="stat {% if secondary_total_value > 0 %}glow-green{% elif secondary_total_value < 0 %}glow-red{% endif %}">
+                <div class="k">{{ secondary_total_label }}</div>
+                <div class="v">{{ money(secondary_total_value) }}</div>
               </div>
 
               <div class="stat">
@@ -895,6 +907,10 @@ if (bulkCopyBtn) {
         risk_msg=risk_msg,
         next_action_msg=next_action_msg,
         guardrail=guardrail,
+        primary_net_label=primary_net_label,
+        primary_net_sub=primary_net_sub,
+        secondary_total_label=secondary_total_label,
+        secondary_total_value=secondary_total_value,
     )
 
     return render_page(content, active="trades")
