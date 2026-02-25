@@ -10,7 +10,59 @@ from __future__ import annotations
 import json
 import os
 import urllib.parse
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+SELECTOR_PROFILE_VERSION = "2026-02-25.v2"
+SELECTOR_PROFILES: Dict[str, List[str]] = {
+    "login_user": [
+        "input[name='username']",
+        "input[name='userName']",
+        "input[name='login']",
+        "input[name='email']",
+        "input[type='email']",
+        "input[id*='user']",
+        "input[id*='email']",
+        "input[autocomplete='username']",
+        "input[placeholder*='Email' i]",
+        "input[placeholder*='Username' i]",
+        "input[type='text']",
+    ],
+    "login_password": [
+        "input[name='password']",
+        "input[type='password']",
+        "input[id*='pass']",
+        "input[autocomplete='current-password']",
+        "input[placeholder*='Password' i]",
+    ],
+    "login_submit": [
+        "button[type='submit']",
+        "input[type='submit']",
+        "button:has-text('Login')",
+        "button:has-text('Log In')",
+        "button:has-text('Sign in')",
+    ],
+    "workspace_menu": [
+        "button.button.button-appMenu.button-icon",
+        "button[class*='button-appMenu']",
+        "button[aria-label*='menu' i]",
+        "button[title*='menu' i]",
+        "button:has-text('≡')",
+        "button:has-text('☰')",
+        "div[role='button'][aria-label*='menu' i]",
+        "div[role='button']:has-text('≡')",
+    ],
+    "account_statement_menu_item": [
+        "text=Account Statement",
+        "a:has-text('Account Statement')",
+        "button:has-text('Account Statement')",
+        "div[role='menuitem']:has-text('Account Statement')",
+    ],
+    "generate_statement_button": [
+        "button:has-text('Generate Statement')",
+        "button:has-text('Generate')",
+        "input[value*='Generate']",
+    ],
+}
 
 
 def _contexts(page) -> List[Any]:
@@ -82,6 +134,10 @@ def _click_first(page, selectors: List[str], timeout_ms: int = 4000) -> bool:
     return False
 
 
+def _stage_error(stage: str, msg: str) -> RuntimeError:
+    return RuntimeError(f"[stage:{stage}] {msg}")
+
+
 def _set_statement_period_fields(page, from_date: str, to_date: str) -> bool:
     js = """
     (payload) => {
@@ -130,7 +186,7 @@ def fetch_statement_html_via_login(
     headless: bool = True,
     timeout_ms: int = 45000,
     debug_dir: Optional[str] = None,
-) -> Tuple[str, List[str], List[str]]:
+) -> Tuple[str, List[str], List[str], Dict[str, Any]]:
     warnings: List[str] = []
     artifacts: List[str] = []
     try:
@@ -164,6 +220,12 @@ def fetch_statement_html_via_login(
         }
     )
 
+    current_stage = "init"
+    meta: Dict[str, Any] = {
+        "selector_profile_version": SELECTOR_PROFILE_VERSION,
+        "used_statement_url_fallback": False,
+        "opened_statement_popup": False,
+    }
     with sync_playwright() as p:
         launch_args = ["--start-maximized", "--window-size=1920,1080"]
         browser = p.chromium.launch(headless=headless, args=launch_args)
@@ -175,6 +237,7 @@ def fetch_statement_html_via_login(
             context.tracing.start(screenshots=True, snapshots=True, sources=True)
         page = context.new_page()
         page.set_default_timeout(timeout_ms)
+        current_stage = "open_login"
         page.goto(login_url, wait_until="domcontentloaded")
         # Vanquish login UI can finish client-side hydration after initial paint.
         try:
@@ -186,43 +249,22 @@ def fetch_statement_html_via_login(
         if shot:
             artifacts.append(shot)
 
-        user_input = _first_visible(
-            page,
-            [
-                "input[name='username']",
-                "input[name='userName']",
-                "input[name='login']",
-                "input[name='email']",
-                "input[type='email']",
-                "input[id*='user']",
-                "input[id*='email']",
-                "input[autocomplete='username']",
-                "input[placeholder*='Email' i]",
-                "input[placeholder*='Username' i]",
-                "input[type='text']",
-            ],
-        )
+        current_stage = "locate_username"
+        user_input = _first_visible(page, SELECTOR_PROFILES["login_user"])
         if not user_input:
             _debug_write(debug_dir, "01_login_dom.html", page.content())
             context.close()
             browser.close()
-            raise RuntimeError("Could not locate username/email field on Vanquish page.")
+            raise _stage_error("locate_username", "Could not locate username/email field.")
 
+        current_stage = "fill_username"
         user_input.fill(username)
         shot = _debug_shot(page, debug_dir, "02_after_username.png")
         if shot:
             artifacts.append(shot)
 
-        pass_input = _first_visible(
-            page,
-            [
-                "input[name='password']",
-                "input[type='password']",
-                "input[id*='pass']",
-                "input[autocomplete='current-password']",
-                "input[placeholder*='Password' i]",
-            ],
-        )
+        current_stage = "locate_password"
+        pass_input = _first_visible(page, SELECTOR_PROFILES["login_password"])
         if not pass_input:
             next_btn = _first_visible(
                 page,
@@ -240,22 +282,14 @@ def fetch_statement_html_via_login(
                     page.wait_for_timeout(800)
                 except Exception:
                     pass
-            pass_input = _first_visible(
-                page,
-                [
-                    "input[name='password']",
-                    "input[type='password']",
-                    "input[id*='pass']",
-                    "input[autocomplete='current-password']",
-                    "input[placeholder*='Password' i]",
-                ],
-            )
+            pass_input = _first_visible(page, SELECTOR_PROFILES["login_password"])
         if not pass_input:
             _debug_write(debug_dir, "02_username_step_dom.html", page.content())
             context.close()
             browser.close()
-            raise RuntimeError("Could not locate password field after entering username/email.")
+            raise _stage_error("locate_password", "Could not locate password field.")
 
+        current_stage = "submit_login"
         pass_input.fill(password)
         # Some broker UIs only enable "Log In" after blur/input events settle.
         try:
@@ -264,16 +298,7 @@ def fetch_statement_html_via_login(
         except Exception:
             pass
 
-        submit_btn = _first_visible(
-            page,
-            [
-                "button[type='submit']",
-                "input[type='submit']",
-                "button:has-text('Login')",
-                "button:has-text('Log In')",
-                "button:has-text('Sign in')",
-            ],
-        )
+        submit_btn = _first_visible(page, SELECTOR_PROFILES["login_submit"])
         if submit_btn:
             enabled = _wait_until_enabled(submit_btn, timeout_ms=20000)
             if not enabled:
@@ -319,61 +344,42 @@ def fetch_statement_html_via_login(
             _debug_write(debug_dir, "03_post_login_dom.html", page.content())
             context.close()
             browser.close()
-            raise RuntimeError(
-                "Still on login page after submit. Credentials may be invalid or MFA/CAPTCHA is required."
+            raise _stage_error(
+                "submit_login",
+                "Still on login page after submit. Credentials may be invalid or MFA/CAPTCHA is required.",
             )
 
         # Preferred flow: hamburger menu -> Account Statement -> Generate Statement.
+        current_stage = "open_workspace_menu"
         statement_page = page
-        menu_clicked = _click_first(
-            page,
-            [
-                "button.button.button-appMenu.button-icon",
-                "button[class*='button-appMenu']",
-                "button[aria-label*='menu' i]",
-                "button[title*='menu' i]",
-                "button:has-text('≡')",
-                "button:has-text('☰')",
-                "div[role='button'][aria-label*='menu' i]",
-                "div[role='button']:has-text('≡')",
-            ],
-        )
+        menu_clicked = _click_first(page, SELECTOR_PROFILES["workspace_menu"])
         if not menu_clicked:
             warnings.append("Could not click hamburger menu; using statement URL fallback.")
+            meta["used_statement_url_fallback"] = True
             page.goto(statement_url, wait_until="domcontentloaded")
         else:
             page.wait_for_timeout(600)
-            statement_clicked = _click_first(
-                page,
-                [
-                    "text=Account Statement",
-                    "a:has-text('Account Statement')",
-                    "button:has-text('Account Statement')",
-                    "div[role='menuitem']:has-text('Account Statement')",
-                ],
-            )
+            current_stage = "open_statement_dialog"
+            statement_clicked = _click_first(page, SELECTOR_PROFILES["account_statement_menu_item"])
             if not statement_clicked:
                 warnings.append("Could not open Account Statement from menu; using URL fallback.")
+                meta["used_statement_url_fallback"] = True
                 page.goto(statement_url, wait_until="domcontentloaded")
             else:
                 page.wait_for_timeout(900)
+                current_stage = "configure_statement_period"
                 if not _set_statement_period_fields(page, from_date, to_date):
                     warnings.append(
                         "Could not set custom From/To in dialog; using visible defaults."
                     )
                 _click_first(page, ["label:has-text('HTML')", "text=HTML"])
-                generate_btn = _first_visible(
-                    page,
-                    [
-                        "button:has-text('Generate Statement')",
-                        "button:has-text('Generate')",
-                        "input[value*='Generate']",
-                    ],
-                )
+                generate_btn = _first_visible(page, SELECTOR_PROFILES["generate_statement_button"])
                 if not generate_btn:
                     warnings.append("Generate Statement button not found; using URL fallback.")
+                    meta["used_statement_url_fallback"] = True
                     page.goto(statement_url, wait_until="domcontentloaded")
                 else:
+                    current_stage = "generate_statement"
                     try:
                         popup_page = None
                         with context.expect_page(timeout=12000) as popup_info:
@@ -387,6 +393,7 @@ def fetch_statement_html_via_login(
                                 "Generated statement tab opened but did not reach network idle."
                             )
                         statement_page = popup_page
+                        meta["opened_statement_popup"] = True
                         warnings.append("Captured statement from generated popup tab.")
                     except Exception:
                         # Some sessions render statement in same tab instead of popup.
@@ -424,6 +431,7 @@ def fetch_statement_html_via_login(
         if shot:
             artifacts.append(shot)
 
+        current_stage = "capture_statement_html"
         html_text = statement_page.content()
         html_path = _debug_write(debug_dir, "final_statement.html", html_text)
         if html_path:
@@ -433,7 +441,10 @@ def fetch_statement_html_via_login(
             "statement_url": statement_url,
             "workspace_url": page.url,
             "final_url": statement_page.url,
+            "stage": current_stage,
+            "selector_profile_version": SELECTOR_PROFILE_VERSION,
             "warnings": warnings,
+            "meta": meta,
         }
         meta_path = _debug_write(debug_dir, "debug_meta.json", json.dumps(debug_meta, indent=2))
         if meta_path:
@@ -449,7 +460,9 @@ def fetch_statement_html_via_login(
     if "<table" not in lowered:
         warnings.append("No HTML table detected in generated statement page.")
     if "password" in lowered and "login" in lowered:
-        raise RuntimeError(
-            "Received login page instead of statement HTML. Session may have expired."
+        raise _stage_error(
+            "capture_statement_html", "Received login page instead of statement HTML."
         )
-    return html_text, warnings, artifacts
+    warnings.append(f"Selector profile: {SELECTOR_PROFILE_VERSION}")
+    meta["stage"] = current_stage
+    return html_text, warnings, artifacts, meta

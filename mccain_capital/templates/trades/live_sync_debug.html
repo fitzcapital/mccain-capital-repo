@@ -1,0 +1,26 @@
+<div class="card">
+  <div class="toolbar">
+    <div class="pill">🧪 Live Sync Debug Artifacts</div>
+    <div class="tiny stack10 line15">Captured from the broker sync run. Use these files to map selector/fallback behavior.</div>
+    <div class="hr"></div>
+    {% if error %}
+      <div class="tiny metaRed line16">Error: {{ error }}</div>
+      <div class="hr"></div>
+    {% endif %}
+    {% if warns %}
+      <div class="tiny metaBlue line16">{% for w in warns %}• {{ w }}<br>{% endfor %}</div>
+      <div class="hr"></div>
+    {% endif %}
+    <div class="tiny"><b>Folder:</b> {{ folder_rel }}</div>
+    <div class="hr"></div>
+    <div class="stack10">
+      {% for rel in artifacts_rel %}
+        <div><a class="btn" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">{{ rel }}</a></div>
+      {% endfor %}
+    </div>
+    <div class="hr"></div>
+    <div class="rightActions">
+      <a class="btn primary" href="/trades/upload/statement">Back to Sync</a>
+    </div>
+  </div>
+</div>

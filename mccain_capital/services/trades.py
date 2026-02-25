@@ -13,6 +13,7 @@ from flask import (
     flash,
     jsonify,
     redirect,
+    render_template,
     render_template_string,
     request,
     send_file,
@@ -50,6 +51,19 @@ last_balance_in_list = repo.last_balance_in_list
 
 BROKER_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync.json")
 BROKER_DEBUG_DIR = os.path.join(UPLOAD_DIR, "vanquish_debug")
+BROKER_SYNC_STATUS_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync_last_run.json")
+
+SYNC_STAGE_HELP = {
+    "open_login": "Broker login page did not load cleanly. Check Base Origin and network.",
+    "locate_username": "Could not find the username input. Broker UI likely changed.",
+    "locate_password": "Could not find the password input. Broker login form likely changed.",
+    "submit_login": "Login did not complete. Validate credentials or check for MFA/CAPTCHA.",
+    "open_workspace_menu": "Could not open the app menu after login. Workspace may still be loading.",
+    "open_statement_dialog": "Could not open Account Statement from the menu.",
+    "configure_statement_period": "Could not set statement date range in the dialog.",
+    "generate_statement": "Generate Statement did not complete as expected.",
+    "capture_statement_html": "Statement page loaded but HTML capture/parse failed.",
+}
 
 
 def _load_broker_sync_config() -> Dict[str, str]:
@@ -78,6 +92,40 @@ def _save_broker_sync_config(data: Dict[str, str]) -> None:
         json.dump(data, f, indent=2)
 
 
+def _load_last_sync_status() -> Dict[str, Any]:
+    try:
+        with open(BROKER_SYNC_STATUS_PATH, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+            return parsed if isinstance(parsed, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_last_sync_status(payload: Dict[str, Any]) -> None:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    with open(BROKER_SYNC_STATUS_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _parse_sync_stage(message: str) -> str:
+    text = (message or "").strip()
+    prefix = "[stage:"
+    if text.startswith(prefix):
+        end = text.find("]")
+        if end > len(prefix):
+            return text[len(prefix) : end].strip()
+    return "unknown"
+
+
+def _strip_stage_prefix(message: str) -> str:
+    text = (message or "").strip()
+    if text.startswith("[stage:"):
+        end = text.find("]")
+        if end != -1:
+            return text[end + 1 :].strip()
+    return text
+
+
 def _debug_relative(path: str) -> str:
     rel = os.path.relpath(path, UPLOAD_DIR)
     return rel.replace("\\", "/")
@@ -100,33 +148,8 @@ def _render_live_debug_result(
     error: str = "",
 ):
     return render_page(
-        render_template_string(
-            """
-            <div class="card"><div class="toolbar">
-              <div class="pill">🧪 Live Sync Debug Artifacts</div>
-              <div class="tiny stack10 line15">Captured from headless run. Use these files to map selectors and flow states.</div>
-              <div class="hr"></div>
-              {% if error %}
-                <div class="tiny metaRed line16">Error: {{ error }}</div>
-                <div class="hr"></div>
-              {% endif %}
-              {% if warns %}
-                <div class="tiny metaBlue line16">{% for w in warns %}• {{ w }}<br>{% endfor %}</div>
-                <div class="hr"></div>
-              {% endif %}
-              <div class="tiny"><b>Folder:</b> {{ folder_rel }}</div>
-              <div class="hr"></div>
-              <div class="stack10">
-                {% for rel in artifacts_rel %}
-                  <div><a class="btn" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">{{ rel }}</a></div>
-                {% endfor %}
-              </div>
-              <div class="hr"></div>
-              <div class="rightActions">
-                <a class="btn primary" href="/trades/upload/statement">Back to Sync</a>
-              </div>
-            </div></div>
-            """,
+        render_template(
+            "trades/live_sync_debug.html",
             folder_rel=folder_rel,
             artifacts_rel=artifacts_rel,
             warns=warns,
@@ -489,6 +512,7 @@ def trades_page():
             </div>
 
             <div class="hr"></div>
+            <div class="desktopOnly">
             <div class="statRow">
               <div class="stat">
                 <div class="k">{{ primary_net_label }}</div>
@@ -545,6 +569,36 @@ def trades_page():
                 </div>
               </div>
             </div>
+            </div>
+            <details class="mobileOnly syncDetails stack10">
+              <summary>📊 Day Performance Snapshot</summary>
+              <div class="statRow stack10">
+                <div class="stat">
+                  <div class="k">{{ primary_net_label }}</div>
+                  <div class="v">{{ money(day_net) }}</div>
+                </div>
+                <div class="stat {% if secondary_total_value > 0 %}glow-green{% elif secondary_total_value < 0 %}glow-red{% endif %}">
+                  <div class="k">{{ secondary_total_label }}</div>
+                  <div class="v">{{ money(secondary_total_value) }}</div>
+                </div>
+                <div class="stat">
+                  <div class="k">🏦 Prior EOD Balance</div>
+                  <div class="v">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
+                </div>
+                <div class="stat">
+                  <div class="k">✅ Wins / ❌ Losses</div>
+                  <div class="v">{{ stats['wins'] if stats is mapping else stats.wins }} / {{ stats['losses'] if stats is mapping else stats.losses }}</div>
+                </div>
+                <div class="stat">
+                  <div class="k">🎯 Win Rate</div>
+                  <div class="v">{{ '%.1f'|format((stats['win_rate'] if stats is mapping else stats.win_rate)) }}%</div>
+                </div>
+                <div class="stat {{ cons.class }}">
+                  <div class="k">🎯 Consistency</div>
+                  <div class="v">{% if cons.ratio is none %}—{% else %}{{ '%.1f'|format(cons.ratio * 100) }}%{% endif %}</div>
+                </div>
+              </div>
+            </details>
 
             <div class="hr"></div>
             <div class="rightActions">
@@ -1737,156 +1791,13 @@ def trades_upload_pdf():
     # GET
     broker_cfg = _load_broker_sync_config()
     default_day = today_iso()
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">📄 Upload Statement (PDF / HTML)</div>
-          <div class="hr"></div>
-          <form method="post" enctype="multipart/form-data" id="statement-upload-form">
-            <div class="row">
-              <div>
-                <label>Mode</label>
-                <select name="mode">
-                  <option value="broker">🏦 Broker fills → trades</option>
-                  <option value="balance">🏁 Statement → ending balance snapshot</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="stack12">
-              <label>📎 File</label>
-              <input type="file" name="pdf" accept="application/pdf,text/html" />
-              <div class="tiny stack8">Upload the Vanquish Account Statement HTML if you have it — it’s cleaner than OCR ✅</div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit" id="statement-upload-submit">🚀 Process</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-            <div class="tiny stack10" id="statement-upload-loading" style="display:none;" aria-live="polite">
-              ⏳ Processing upload. Parsing statement and importing trades...
-            </div>
-          </form>
-        </div></div>
-
-        <div class="card"><div class="toolbar">
-          <div class="pill">🔐 Live Login Sync (Auto Generate Statement)</div>
-          <div class="tiny stack10 line15">Logs into Vanquish, opens statement, clicks Generate Statement, then imports HTML output.</div>
-          <div class="hr"></div>
-          <form method="post" action="/trades/sync/live" id="live-sync-form">
-            <div class="row">
-              <div>
-                <label>Mode</label>
-                <select name="mode">
-                  <option value="broker">🏦 Broker fills → trades</option>
-                  <option value="balance">🏁 Statement → ending balance snapshot</option>
-                </select>
-              </div>
-              <div>
-                <label>From</label>
-                <input type="date" name="from_date" value="{{ default_day }}" />
-              </div>
-              <div>
-                <label>To</label>
-                <input type="date" name="to_date" value="{{ default_day }}" />
-              </div>
-            </div>
-            <div class="row">
-              <div class="fieldGrow2">
-                <label>Username</label>
-                <input name="username" placeholder="Vanquish username/email" />
-              </div>
-              <div class="fieldGrow2">
-                <label>Password</label>
-                <input type="password" name="password" placeholder="Vanquish password" />
-              </div>
-            </div>
-            <div class="row">
-              <div class="fieldGrow2">
-                <label>Base Origin</label>
-                <input name="base_url" value="{{ broker_cfg.base_url }}" />
-              </div>
-              <div class="fieldGrow2">
-                <label>Account</label>
-                <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
-              </div>
-            </div>
-            <div class="row">
-              <div>
-                <label>Whitelist</label>
-                <input name="wl" value="{{ broker_cfg.wl }}" />
-              </div>
-              <div>
-                <label>Timezone</label>
-                <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
-              </div>
-              <div>
-                <label>Date Locale</label>
-                <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
-              </div>
-              <div>
-                <label>Report Locale</label>
-                <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
-              </div>
-            </div>
-            <div class="row">
-              <div class="stack12">
-                <label>Browser Mode</label>
-                <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
-              </div>
-              <div class="stack12">
-                <label>Diagnostics</label>
-                <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
-                <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
-              </div>
-              <div class="stack12">
-                <label>Config</label>
-                <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
-              </div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit" id="live-sync-submit">🤖 Login + Generate + Import</button>
-              <a class="btn" href="/trades/upload/statement">Reset</a>
-            </div>
-            <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">
-              ⏳ Live sync in progress. Logging in, generating statement, and importing. This can take 20-60 seconds.
-            </div>
-          </form>
-        </div></div>
-        <script>
-          (function() {
-            function bindLoading(formId, submitId, loadingId, busyText) {
-              const form = document.getElementById(formId);
-              const submitBtn = document.getElementById(submitId);
-              const loading = document.getElementById(loadingId);
-              if (!form || !submitBtn || !loading) return;
-              form.addEventListener('submit', function() {
-                submitBtn.disabled = true;
-                submitBtn.textContent = busyText;
-                loading.style.display = 'block';
-              });
-            }
-
-            bindLoading(
-              'statement-upload-form',
-              'statement-upload-submit',
-              'statement-upload-loading',
-              '⏳ Processing...'
-            );
-            bindLoading(
-              'live-sync-form',
-              'live-sync-submit',
-              'live-sync-loading',
-              '⏳ Syncing...'
-            );
-          })();
-        </script>
-        """,
+    sync_status = _load_last_sync_status()
+    content = render_template(
+        "trades/upload_statement.html",
         broker_cfg=broker_cfg,
         default_day=default_day,
+        sync_status=sync_status,
+        sync_stage_help=SYNC_STAGE_HELP,
     )
     return render_page(content, active="trades")
 
@@ -1947,6 +1858,31 @@ def trades_sync_live():
         else None
     )
     artifacts_rel: List[str] = []
+    requested = {
+        "mode": mode,
+        "from_date": from_date,
+        "to_date": to_date,
+        "base_url": base_url,
+        "account": account,
+        "wl": wl,
+        "time_zone": time_zone,
+        "date_locale": date_locale,
+        "report_locale": report_locale,
+        "headless": headless,
+        "debug_capture": debug_capture,
+        "debug_only": debug_only,
+        "remember_connection": remember_connection,
+        "username": username,
+    }
+    _save_last_sync_status(
+        {
+            "status": "running",
+            "stage": "start",
+            "message": "Live sync request started.",
+            "requested": requested,
+            "updated_at": now_iso(),
+        }
+    )
 
     if remember_connection:
         cfg.update(
@@ -1962,36 +1898,56 @@ def trades_sync_live():
         _save_broker_sync_config(cfg)
 
     try:
-        html_text, warns, artifacts_abs = vanquish_live_sync.fetch_statement_html_via_login(
-            base_origin=base_url,
-            username=username,
-            password=password,
-            from_date=from_date,
-            to_date=to_date,
-            account=account,
-            wl=wl,
-            time_zone=time_zone,
-            date_locale=date_locale,
-            report_locale=report_locale,
-            headless=headless,
-            debug_dir=debug_dir,
+        html_text, warns, artifacts_abs, sync_meta = (
+            vanquish_live_sync.fetch_statement_html_via_login(
+                base_origin=base_url,
+                username=username,
+                password=password,
+                from_date=from_date,
+                to_date=to_date,
+                account=account,
+                wl=wl,
+                time_zone=time_zone,
+                date_locale=date_locale,
+                report_locale=report_locale,
+                headless=headless,
+                debug_dir=debug_dir,
+            )
         )
         artifacts_rel = [_debug_relative(p) for p in artifacts_abs]
     except Exception as e:
+        raw_error = str(e)
+        failed_stage = _parse_sync_stage(raw_error)
+        clean_error = _strip_stage_prefix(raw_error)
         if debug_dir and os.path.isdir(debug_dir):
             artifacts_rel = [
                 _debug_relative(os.path.join(debug_dir, n))
                 for n in sorted(os.listdir(debug_dir))
                 if os.path.isfile(os.path.join(debug_dir, n))
             ]
+        _save_last_sync_status(
+            {
+                "status": "failed",
+                "stage": failed_stage,
+                "message": clean_error,
+                "stage_help": SYNC_STAGE_HELP.get(failed_stage, ""),
+                "requested": requested,
+                "artifacts_rel": artifacts_rel[:20],
+                "updated_at": now_iso(),
+            }
+        )
         if artifacts_rel:
             return _render_live_debug_result(
                 folder_rel=_debug_relative(debug_dir or ""),
                 artifacts_rel=artifacts_rel,
                 warns=[],
-                error=f"Live login sync failed: {e}",
+                error=f"Live login sync failed ({failed_stage}): {clean_error}",
             )
-        return render_page(simple_msg(f"Live login sync failed: {e}"), active="trades")
+        msg = f"Live login sync failed ({failed_stage}): {clean_error}"
+        help_text = SYNC_STAGE_HELP.get(failed_stage)
+        if help_text:
+            msg = f"{msg} {help_text}"
+        return render_page(simple_msg(msg), active="trades")
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     filename = f"vanquish_statement_live_{from_date}_{to_date}_{stamp}.html"
@@ -2001,6 +1957,17 @@ def trades_sync_live():
     artifacts_rel = artifacts_rel + [_debug_relative(path)]
 
     if debug_only and debug_dir:
+        _save_last_sync_status(
+            {
+                "status": "debug_only",
+                "stage": "capture_statement_html",
+                "message": "Debug capture completed. No import performed.",
+                "requested": requested,
+                "sync_meta": sync_meta,
+                "artifacts_rel": artifacts_rel[:20],
+                "updated_at": now_iso(),
+            }
+        )
         return _render_live_debug_result(
             folder_rel=_debug_relative(debug_dir),
             artifacts_rel=artifacts_rel,
@@ -2009,6 +1976,18 @@ def trades_sync_live():
         )
 
     response = _handle_statement_html_import(path, mode=mode, source_label="LIVE LOGIN HTML")
+    _save_last_sync_status(
+        {
+            "status": "success",
+            "stage": "import_complete",
+            "message": "Live sync completed and statement imported.",
+            "requested": requested,
+            "sync_meta": sync_meta,
+            "artifacts_rel": artifacts_rel[:20],
+            "statement_file": _debug_relative(path),
+            "updated_at": now_iso(),
+        }
+    )
     if warns:
         flash("Live sync note(s): " + " | ".join(warns), "warn")
     if artifacts_rel and debug_dir:

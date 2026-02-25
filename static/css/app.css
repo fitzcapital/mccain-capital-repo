@@ -351,6 +351,22 @@
     .focusList{margin-top:10px;color:var(--muted);line-height:1.5}
     .metaRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
     .pillRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .syncDetails{
+      border:1px solid rgba(0,229,255,.18);
+      border-radius:12px;
+      background:rgba(0,0,0,.18);
+      padding:10px 12px;
+    }
+    .syncDetails summary{
+      cursor:pointer;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:800;
+      letter-spacing:.02em;
+      list-style:none;
+    }
+    .syncDetails summary::-webkit-details-marker{display:none}
+    .syncDetails[open] summary{color:var(--gold)}
 
     .twoCol{display:grid;grid-template-columns:1fr;gap:12px}
     @media(min-width:880px){.twoCol{grid-template-columns:1.1fr .9fr}}
@@ -933,6 +949,8 @@
       .dashboardHero .rightActions .btn{flex:1 1 0}
       .metric .value{font-size:18px}
       .metric .sub{line-height:1.35}
+      .syncDetails{padding:10px}
+      .syncDetails summary{font-size:13px}
       .desktopOnly{display:none !important}
       .mobileOnly{display:block}
       .pageTitle{

@@ -1,0 +1,223 @@
+<div class="card">
+  <div class="toolbar">
+    <div class="pill">📄 Upload Statement (PDF / HTML)</div>
+    <div class="hr"></div>
+    <form method="post" enctype="multipart/form-data" id="statement-upload-form">
+      <div class="row">
+        <div>
+          <label>Mode</label>
+          <select name="mode">
+            <option value="broker">🏦 Broker fills → trades</option>
+            <option value="balance">🏁 Statement → ending balance snapshot</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="stack12">
+        <label>📎 File</label>
+        <input type="file" name="pdf" accept="application/pdf,text/html" />
+        <div class="tiny stack8">Upload the Vanquish Account Statement HTML if you have it — it’s cleaner than OCR ✅</div>
+      </div>
+
+      <div class="hr"></div>
+      <div class="rightActions">
+        <button class="btn primary" type="submit" id="statement-upload-submit">🚀 Process</button>
+        <a class="btn" href="/trades">← Back</a>
+      </div>
+      <div class="tiny stack10" id="statement-upload-loading" style="display:none;" aria-live="polite">
+        ⏳ Processing upload. Parsing statement and importing trades...
+      </div>
+    </form>
+  </div>
+</div>
+
+{% set last = sync_status or {} %}
+{% if last %}
+<div class="card stack12">
+  <div class="toolbar">
+    <div class="pill">🩺 Live Sync Diagnostics</div>
+    <div class="tiny stack8 line15">Last run status, failure stage, and quick-retry controls.</div>
+    <div class="hr"></div>
+    <div class="statRow">
+      <div class="stat">
+        <div class="k">Status</div>
+        <div class="v">{{ (last.get('status') or 'unknown')|upper }}</div>
+        <div class="tiny">Updated: {{ last.get('updated_at') or '—' }}</div>
+      </div>
+      <div class="stat">
+        <div class="k">Failure Stage</div>
+        <div class="v">{{ last.get('stage') or '—' }}</div>
+        {% if last.get('stage_help') %}
+          <div class="tiny">{{ last.get('stage_help') }}</div>
+        {% endif %}
+      </div>
+      <div class="stat">
+        <div class="k">Message</div>
+        <div class="tiny line16">{{ last.get('message') or 'No message' }}</div>
+      </div>
+    </div>
+    {% if last.get('artifacts_rel') %}
+      <div class="hr"></div>
+      <details class="syncDetails">
+        <summary>🧪 Debug Artifacts ({{ last.get('artifacts_rel')|length }})</summary>
+        <div class="stack10">
+          {% for rel in last.get('artifacts_rel')[:8] %}
+            <div><a class="btn" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">{{ rel }}</a></div>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn" type="button" id="quick-retry-btn">🔁 Quick Retry Last Settings</button>
+      <a class="btn" href="/trades/upload/statement">Reset</a>
+    </div>
+    <div class="tiny stack8" id="quick-retry-note">Quick retry pre-fills last sync inputs and focuses password.</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card stack12">
+  <div class="toolbar">
+    <div class="pill">🔐 Live Login Sync (Auto Generate Statement)</div>
+    <div class="tiny stack10 line15">Logs into Vanquish, opens statement, clicks Generate Statement, then imports HTML output.</div>
+    <div class="hr"></div>
+    <form method="post" action="/trades/sync/live" id="live-sync-form">
+      <div class="row">
+        <div>
+          <label>Mode</label>
+          <select name="mode">
+            <option value="broker">🏦 Broker fills → trades</option>
+            <option value="balance">🏁 Statement → ending balance snapshot</option>
+          </select>
+        </div>
+        <div>
+          <label>From</label>
+          <input type="date" name="from_date" value="{{ default_day }}" />
+        </div>
+        <div>
+          <label>To</label>
+          <input type="date" name="to_date" value="{{ default_day }}" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="fieldGrow2">
+          <label>Username</label>
+          <input name="username" placeholder="Vanquish username/email" />
+        </div>
+        <div class="fieldGrow2">
+          <label>Password</label>
+          <input type="password" name="password" placeholder="Vanquish password" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="fieldGrow2">
+          <label>Base Origin</label>
+          <input name="base_url" value="{{ broker_cfg.base_url }}" />
+        </div>
+        <div class="fieldGrow2">
+          <label>Account</label>
+          <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
+        </div>
+      </div>
+
+      <details class="syncDetails stack10">
+        <summary>⚙️ Advanced Sync Options</summary>
+        <div class="stack10">
+          <div class="row">
+            <div>
+              <label>Whitelist</label>
+              <input name="wl" value="{{ broker_cfg.wl }}" />
+            </div>
+            <div>
+              <label>Timezone</label>
+              <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
+            </div>
+            <div>
+              <label>Date Locale</label>
+              <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
+            </div>
+            <div>
+              <label>Report Locale</label>
+              <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="stack12">
+              <label>Browser Mode</label>
+              <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
+            </div>
+            <div class="stack12">
+              <label>Diagnostics</label>
+              <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
+              <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
+            </div>
+            <div class="stack12">
+              <label>Config</label>
+              <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div class="hr"></div>
+      <div class="rightActions">
+        <button class="btn primary" type="submit" id="live-sync-submit">🤖 Login + Generate + Import</button>
+        <a class="btn" href="/trades/upload/statement">Reset</a>
+      </div>
+      <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">
+        ⏳ Live sync in progress. Logging in, generating statement, and importing. This can take 20-60 seconds.
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function() {
+    function bindLoading(formId, submitId, loadingId, busyText) {
+      const form = document.getElementById(formId);
+      const submitBtn = document.getElementById(submitId);
+      const loading = document.getElementById(loadingId);
+      if (!form || !submitBtn || !loading) return;
+      form.addEventListener('submit', function() {
+        submitBtn.disabled = true;
+        submitBtn.textContent = busyText;
+        loading.style.display = 'block';
+      });
+    }
+
+    bindLoading('statement-upload-form', 'statement-upload-submit', 'statement-upload-loading', '⏳ Processing...');
+    bindLoading('live-sync-form', 'live-sync-submit', 'live-sync-loading', '⏳ Syncing...');
+
+    const quickRetryBtn = document.getElementById('quick-retry-btn');
+    if (!quickRetryBtn) return;
+    const quickRetryNote = document.getElementById('quick-retry-note');
+    const liveForm = document.getElementById('live-sync-form');
+    if (!liveForm) return;
+
+    const requested = {{ (last.get('requested') or {}) | tojson }};
+    quickRetryBtn.addEventListener('click', function() {
+      if (!requested || Object.keys(requested).length === 0) {
+        if (quickRetryNote) quickRetryNote.textContent = 'No previous sync request found.';
+        return;
+      }
+      Object.entries(requested).forEach(([key, val]) => {
+        const input = liveForm.querySelector(`[name="${key}"]`);
+        if (!input) return;
+        if (input.type === 'checkbox') {
+          input.checked = Boolean(val);
+        } else if (val !== null && val !== undefined) {
+          input.value = String(val);
+        }
+      });
+      const pwd = liveForm.querySelector('[name="password"]');
+      if (pwd) {
+        pwd.focus();
+        pwd.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (quickRetryNote) {
+        quickRetryNote.textContent = 'Last settings loaded. Enter password if needed, then run sync.';
+      }
+    });
+  })();
+</script>
