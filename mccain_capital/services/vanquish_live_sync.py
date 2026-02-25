@@ -8,17 +8,28 @@ per request and decide whether to persist anything locally.
 from __future__ import annotations
 
 import urllib.parse
-from typing import List, Tuple
+from typing import Any, List, Tuple
+
+
+def _contexts(page) -> List[Any]:
+    # Includes main page and any iframes where hosted auth providers render forms.
+    ctxs: List[Any] = [page]
+    try:
+        ctxs.extend(list(page.frames))
+    except Exception:
+        pass
+    return ctxs
 
 
 def _first_visible(page, selectors: List[str]):
-    for selector in selectors:
-        locator = page.locator(selector)
-        try:
-            if locator.count() > 0 and locator.first.is_visible():
-                return locator.first
-        except Exception:
-            continue
+    for ctx in _contexts(page):
+        for selector in selectors:
+            locator = ctx.locator(selector)
+            try:
+                if locator.count() > 0 and locator.first.is_visible():
+                    return locator.first
+            except Exception:
+                continue
     return None
 
 
@@ -73,26 +84,65 @@ def fetch_statement_html_via_login(
             page,
             [
                 "input[name='username']",
+                "input[name='userName']",
+                "input[name='login']",
                 "input[name='email']",
                 "input[type='email']",
                 "input[id*='user']",
                 "input[id*='email']",
+                "input[autocomplete='username']",
+                "input[placeholder*='Email' i]",
+                "input[placeholder*='Username' i]",
                 "input[type='text']",
             ],
         )
+        if not user_input:
+            browser.close()
+            raise RuntimeError("Could not locate username/email field on Vanquish page.")
+
+        user_input.fill(username)
+
         pass_input = _first_visible(
             page,
             [
                 "input[name='password']",
                 "input[type='password']",
                 "input[id*='pass']",
+                "input[autocomplete='current-password']",
+                "input[placeholder*='Password' i]",
             ],
         )
-        if not user_input or not pass_input:
+        if not pass_input:
+            next_btn = _first_visible(
+                page,
+                [
+                    "button:has-text('Next')",
+                    "button:has-text('Continue')",
+                    "button:has-text('Proceed')",
+                    "button[type='submit']",
+                    "input[type='submit']",
+                ],
+            )
+            if next_btn:
+                next_btn.click()
+                try:
+                    page.wait_for_timeout(800)
+                except Exception:
+                    pass
+            pass_input = _first_visible(
+                page,
+                [
+                    "input[name='password']",
+                    "input[type='password']",
+                    "input[id*='pass']",
+                    "input[autocomplete='current-password']",
+                    "input[placeholder*='Password' i]",
+                ],
+            )
+        if not pass_input:
             browser.close()
-            raise RuntimeError("Could not locate login fields on Vanquish page.")
+            raise RuntimeError("Could not locate password field after entering username/email.")
 
-        user_input.fill(username)
         pass_input.fill(password)
 
         submit_btn = _first_visible(
