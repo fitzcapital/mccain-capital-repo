@@ -165,8 +165,12 @@ def fetch_statement_html_via_login(
     )
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
-        context = browser.new_context()
+        launch_args = ["--start-maximized", "--window-size=1920,1080"]
+        browser = p.chromium.launch(headless=headless, args=launch_args)
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            screen={"width": 1920, "height": 1080},
+        )
         if debug_dir:
             context.tracing.start(screenshots=True, snapshots=True, sources=True)
         page = context.new_page()
@@ -298,6 +302,18 @@ def fetch_statement_html_via_login(
             page.wait_for_load_state("networkidle", timeout=timeout_ms)
         except PlaywrightTimeoutError:
             warnings.append("Login post-submit did not reach network idle; continuing.")
+        # Post-login workspace can hydrate slowly; allow extra settle time.
+        try:
+            page.wait_for_timeout(3500)
+            page.wait_for_selector(
+                "button.button.button-appMenu.button-icon, button[class*='button-appMenu']",
+                timeout=20000,
+            )
+            page.wait_for_timeout(800)
+        except Exception:
+            warnings.append(
+                "Post-login app menu did not become ready in time; continuing with fallbacks."
+            )
 
         if "login" in page.url.lower():
             _debug_write(debug_dir, "03_post_login_dom.html", page.content())
@@ -308,9 +324,12 @@ def fetch_statement_html_via_login(
             )
 
         # Preferred flow: hamburger menu -> Account Statement -> Generate Statement.
+        statement_page = page
         menu_clicked = _click_first(
             page,
             [
+                "button.button.button-appMenu.button-icon",
+                "button[class*='button-appMenu']",
                 "button[aria-label*='menu' i]",
                 "button[title*='menu' i]",
                 "button:has-text('≡')",
@@ -343,49 +362,77 @@ def fetch_statement_html_via_login(
                         "Could not set custom From/To in dialog; using visible defaults."
                     )
                 _click_first(page, ["label:has-text('HTML')", "text=HTML"])
-                generate_clicked = _click_first(
+                generate_btn = _first_visible(
                     page,
                     [
                         "button:has-text('Generate Statement')",
                         "button:has-text('Generate')",
                         "input[value*='Generate']",
                     ],
-                    timeout_ms=7000,
                 )
-                if not generate_clicked:
+                if not generate_btn:
                     warnings.append("Generate Statement button not found; using URL fallback.")
                     page.goto(statement_url, wait_until="domcontentloaded")
                 else:
                     try:
-                        page.wait_for_url("**/account/statement/**", timeout=timeout_ms)
+                        popup_page = None
+                        with context.expect_page(timeout=12000) as popup_info:
+                            generate_btn.click(timeout=7000)
+                        popup_page = popup_info.value
+                        popup_page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+                        try:
+                            popup_page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                        except PlaywrightTimeoutError:
+                            warnings.append(
+                                "Generated statement tab opened but did not reach network idle."
+                            )
+                        statement_page = popup_page
+                        warnings.append("Captured statement from generated popup tab.")
                     except Exception:
+                        # Some sessions render statement in same tab instead of popup.
+                        try:
+                            generate_btn.click(timeout=7000)
+                            page.wait_for_url("**/account/statement/**", timeout=timeout_ms)
+                            statement_page = page
+                        except Exception:
+                            try:
+                                page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                                statement_page = page
+                            except PlaywrightTimeoutError:
+                                warnings.append(
+                                    "Generate clicked but navigation confirmation timed out."
+                                )
                         try:
                             page.wait_for_load_state("networkidle", timeout=timeout_ms)
                         except PlaywrightTimeoutError:
-                            warnings.append(
-                                "Generate clicked but navigation confirmation timed out."
-                            )
+                            pass
 
         shot = _debug_shot(page, debug_dir, "04_statement_page.png")
         if shot:
             artifacts.append(shot)
         try:
-            page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            statement_page.wait_for_load_state("networkidle", timeout=timeout_ms)
         except PlaywrightTimeoutError:
             warnings.append("Statement page load did not reach network idle; continuing.")
 
-        shot = _debug_shot(page, debug_dir, "05_after_generate.png")
+        if statement_page is not page:
+            shot = _debug_shot(statement_page, debug_dir, "05_generated_tab.png")
+            if shot:
+                artifacts.append(shot)
+
+        shot = _debug_shot(statement_page, debug_dir, "05_after_generate.png")
         if shot:
             artifacts.append(shot)
 
-        html_text = page.content()
+        html_text = statement_page.content()
         html_path = _debug_write(debug_dir, "final_statement.html", html_text)
         if html_path:
             artifacts.append(html_path)
         debug_meta = {
             "login_url": login_url,
             "statement_url": statement_url,
-            "final_url": page.url,
+            "workspace_url": page.url,
+            "final_url": statement_page.url,
             "warnings": warnings,
         }
         meta_path = _debug_write(debug_dir, "debug_meta.json", json.dumps(debug_meta, indent=2))
