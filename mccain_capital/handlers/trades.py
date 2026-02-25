@@ -59,6 +59,10 @@ def trades_sync_live():
     return svc.trades_sync_live()
 
 
+def trades_sync_debug_file(name: str):
+    return svc.trades_sync_debug_file(name)
+
+
 def trades_risk_controls():
     return svc.trades_risk_controls()
 

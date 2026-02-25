@@ -7,8 +7,10 @@ per request and decide whether to persist anything locally.
 
 from __future__ import annotations
 
+import json
+import os
 import urllib.parse
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 
 def _contexts(page) -> List[Any]:
@@ -33,6 +35,25 @@ def _first_visible(page, selectors: List[str]):
     return None
 
 
+def _debug_write(debug_dir: Optional[str], name: str, content: str) -> Optional[str]:
+    if not debug_dir:
+        return None
+    os.makedirs(debug_dir, exist_ok=True)
+    path = os.path.join(debug_dir, name)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return path
+
+
+def _debug_shot(page, debug_dir: Optional[str], name: str) -> Optional[str]:
+    if not debug_dir:
+        return None
+    os.makedirs(debug_dir, exist_ok=True)
+    path = os.path.join(debug_dir, name)
+    page.screenshot(path=path, full_page=True)
+    return path
+
+
 def fetch_statement_html_via_login(
     *,
     base_origin: str,
@@ -47,8 +68,10 @@ def fetch_statement_html_via_login(
     report_locale: str = "en",
     headless: bool = True,
     timeout_ms: int = 45000,
-) -> Tuple[str, List[str]]:
+    debug_dir: Optional[str] = None,
+) -> Tuple[str, List[str], List[str]]:
     warnings: List[str] = []
+    artifacts: List[str] = []
     try:
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
         from playwright.sync_api import sync_playwright
@@ -76,9 +99,15 @@ def fetch_statement_html_via_login(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
-        page = browser.new_page()
+        context = browser.new_context()
+        if debug_dir:
+            context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        page = context.new_page()
         page.set_default_timeout(timeout_ms)
         page.goto(login_url, wait_until="domcontentloaded")
+        shot = _debug_shot(page, debug_dir, "01_open_login.png")
+        if shot:
+            artifacts.append(shot)
 
         user_input = _first_visible(
             page,
@@ -97,10 +126,15 @@ def fetch_statement_html_via_login(
             ],
         )
         if not user_input:
+            _debug_write(debug_dir, "01_login_dom.html", page.content())
+            context.close()
             browser.close()
             raise RuntimeError("Could not locate username/email field on Vanquish page.")
 
         user_input.fill(username)
+        shot = _debug_shot(page, debug_dir, "02_after_username.png")
+        if shot:
+            artifacts.append(shot)
 
         pass_input = _first_visible(
             page,
@@ -140,6 +174,8 @@ def fetch_statement_html_via_login(
                 ],
             )
         if not pass_input:
+            _debug_write(debug_dir, "02_username_step_dom.html", page.content())
+            context.close()
             browser.close()
             raise RuntimeError("Could not locate password field after entering username/email.")
 
@@ -158,6 +194,9 @@ def fetch_statement_html_via_login(
             submit_btn.click()
         else:
             pass_input.press("Enter")
+        shot = _debug_shot(page, debug_dir, "03_after_password_submit.png")
+        if shot:
+            artifacts.append(shot)
 
         try:
             page.wait_for_load_state("networkidle", timeout=timeout_ms)
@@ -165,12 +204,17 @@ def fetch_statement_html_via_login(
             warnings.append("Login post-submit did not reach network idle; continuing.")
 
         if "login" in page.url.lower():
+            _debug_write(debug_dir, "03_post_login_dom.html", page.content())
+            context.close()
             browser.close()
             raise RuntimeError(
                 "Still on login page after submit. Credentials may be invalid or MFA/CAPTCHA is required."
             )
 
         page.goto(statement_url, wait_until="domcontentloaded")
+        shot = _debug_shot(page, debug_dir, "04_statement_page.png")
+        if shot:
+            artifacts.append(shot)
         try:
             page.wait_for_load_state("networkidle", timeout=timeout_ms)
         except PlaywrightTimeoutError:
@@ -191,8 +235,31 @@ def fetch_statement_html_via_login(
                 page.wait_for_load_state("networkidle", timeout=timeout_ms)
             except PlaywrightTimeoutError:
                 warnings.append("Generate action completed without network-idle confirmation.")
+        else:
+            warnings.append("Generate button not found; captured current statement page.")
+
+        shot = _debug_shot(page, debug_dir, "05_after_generate.png")
+        if shot:
+            artifacts.append(shot)
 
         html_text = page.content()
+        html_path = _debug_write(debug_dir, "final_statement.html", html_text)
+        if html_path:
+            artifacts.append(html_path)
+        debug_meta = {
+            "login_url": login_url,
+            "statement_url": statement_url,
+            "final_url": page.url,
+            "warnings": warnings,
+        }
+        meta_path = _debug_write(debug_dir, "debug_meta.json", json.dumps(debug_meta, indent=2))
+        if meta_path:
+            artifacts.append(meta_path)
+        if debug_dir:
+            trace_path = os.path.join(debug_dir, "trace.zip")
+            context.tracing.stop(path=trace_path)
+            artifacts.append(trace_path)
+        context.close()
         browser.close()
 
     lowered = html_text.lower()
@@ -202,4 +269,4 @@ def fetch_statement_html_via_login(
         raise RuntimeError(
             "Received login page instead of statement HTML. Session may have expired."
         )
-    return html_text, warnings
+    return html_text, warnings, artifacts

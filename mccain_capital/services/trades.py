@@ -11,7 +11,16 @@ from urllib.error import HTTPError, URLError
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask import abort, flash, jsonify, redirect, render_template_string, request, url_for
+from flask import (
+    abort,
+    flash,
+    jsonify,
+    redirect,
+    render_template_string,
+    request,
+    send_file,
+    url_for,
+)
 from werkzeug.utils import secure_filename
 
 from mccain_capital.repositories import trades as repo
@@ -43,6 +52,7 @@ week_total_net = repo.week_total_net
 last_balance_in_list = repo.last_balance_in_list
 
 BROKER_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync.json")
+BROKER_DEBUG_DIR = os.path.join(UPLOAD_DIR, "vanquish_debug")
 
 
 def _load_broker_sync_config() -> Dict[str, str]:
@@ -72,6 +82,64 @@ def _save_broker_sync_config(data: Dict[str, str]) -> None:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     with open(BROKER_SYNC_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+
+def _debug_relative(path: str) -> str:
+    rel = os.path.relpath(path, UPLOAD_DIR)
+    return rel.replace("\\", "/")
+
+
+def _debug_safe_path(rel: str) -> str:
+    clean = (rel or "").replace("\\", "/").lstrip("/")
+    abs_path = os.path.abspath(os.path.join(UPLOAD_DIR, clean))
+    root = os.path.abspath(UPLOAD_DIR)
+    if not abs_path.startswith(root + os.sep) and abs_path != root:
+        raise ValueError("unsafe path")
+    return abs_path
+
+
+def _render_live_debug_result(
+    *,
+    folder_rel: str,
+    artifacts_rel: List[str],
+    warns: List[str],
+    error: str = "",
+):
+    return render_page(
+        render_template_string(
+            """
+            <div class="card"><div class="toolbar">
+              <div class="pill">🧪 Live Sync Debug Artifacts</div>
+              <div class="tiny stack10 line15">Captured from headless run. Use these files to map selectors and flow states.</div>
+              <div class="hr"></div>
+              {% if error %}
+                <div class="tiny metaRed line16">Error: {{ error }}</div>
+                <div class="hr"></div>
+              {% endif %}
+              {% if warns %}
+                <div class="tiny metaBlue line16">{% for w in warns %}• {{ w }}<br>{% endfor %}</div>
+                <div class="hr"></div>
+              {% endif %}
+              <div class="tiny"><b>Folder:</b> {{ folder_rel }}</div>
+              <div class="hr"></div>
+              <div class="stack10">
+                {% for rel in artifacts_rel %}
+                  <div><a class="btn" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">{{ rel }}</a></div>
+                {% endfor %}
+              </div>
+              <div class="hr"></div>
+              <div class="rightActions">
+                <a class="btn primary" href="/trades/upload/statement">Back to Sync</a>
+              </div>
+            </div></div>
+            """,
+            folder_rel=folder_rel,
+            artifacts_rel=artifacts_rel,
+            warns=warns,
+            error=error,
+        ),
+        active="trades",
+    )
 
 
 def _normalize_iso_date(raw: str, fallback: str) -> str:
@@ -1824,6 +1892,11 @@ def trades_upload_pdf():
                 <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
               </div>
               <div class="stack12">
+                <label>Diagnostics</label>
+                <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
+                <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
+              </div>
+              <div class="stack12">
                 <label>Config</label>
                 <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
               </div>
@@ -1972,6 +2045,8 @@ def trades_sync_live():
         "report_locale", "en"
     )
     headless = request.form.get("headless") == "1"
+    debug_capture = request.form.get("debug_capture") == "1"
+    debug_only = request.form.get("debug_only") == "1"
     remember_connection = request.form.get("remember_connection") == "1"
 
     if not username or not password:
@@ -1990,6 +2065,14 @@ def trades_sync_live():
     if from_date > to_date:
         from_date, to_date = to_date, from_date
 
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    debug_dir = (
+        os.path.join(BROKER_DEBUG_DIR, f"live_{from_date}_{to_date}_{stamp}")
+        if debug_capture
+        else None
+    )
+    artifacts_rel: List[str] = []
+
     if remember_connection:
         cfg.update(
             {
@@ -2004,7 +2087,7 @@ def trades_sync_live():
         _save_broker_sync_config(cfg)
 
     try:
-        html_text, warns = vanquish_live_sync.fetch_statement_html_via_login(
+        html_text, warns, artifacts_abs = vanquish_live_sync.fetch_statement_html_via_login(
             base_origin=base_url,
             username=username,
             password=password,
@@ -2016,21 +2099,60 @@ def trades_sync_live():
             date_locale=date_locale,
             report_locale=report_locale,
             headless=headless,
+            debug_dir=debug_dir,
         )
+        artifacts_rel = [_debug_relative(p) for p in artifacts_abs]
     except Exception as e:
+        if debug_dir and os.path.isdir(debug_dir):
+            artifacts_rel = [
+                _debug_relative(os.path.join(debug_dir, n))
+                for n in sorted(os.listdir(debug_dir))
+                if os.path.isfile(os.path.join(debug_dir, n))
+            ]
+        if artifacts_rel:
+            return _render_live_debug_result(
+                folder_rel=_debug_relative(debug_dir or ""),
+                artifacts_rel=artifacts_rel,
+                warns=[],
+                error=f"Live login sync failed: {e}",
+            )
         return render_page(simple_msg(f"Live login sync failed: {e}"), active="trades")
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"vanquish_statement_live_{from_date}_{to_date}_{stamp}.html"
     path = os.path.join(UPLOAD_DIR, filename)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html_text)
+    artifacts_rel = artifacts_rel + [_debug_relative(path)]
+
+    if debug_only and debug_dir:
+        return _render_live_debug_result(
+            folder_rel=_debug_relative(debug_dir),
+            artifacts_rel=artifacts_rel,
+            warns=warns,
+            error="",
+        )
 
     response = _handle_statement_html_import(path, mode=mode, source_label="LIVE LOGIN HTML")
     if warns:
         flash("Live sync note(s): " + " | ".join(warns), "warn")
+    if artifacts_rel and debug_dir:
+        flash(
+            "Live sync debug artifacts: "
+            + " | ".join(f"/trades/sync/debug/{rel}" for rel in artifacts_rel[:6]),
+            "warn",
+        )
     return response
+
+
+def trades_sync_debug_file(name: str):
+    try:
+        path = _debug_safe_path(name)
+    except ValueError:
+        abort(400)
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path, as_attachment=False)
 
 
 def _fetch_trades_for_rebuild(start_date: str = "", end_date: str = "") -> List[Dict[str, Any]]:

@@ -84,6 +84,12 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/trades/sync/debug/<path:name>",
+        endpoint="trades_sync_debug_file",
+        view_func=h.trades_sync_debug_file,
+        methods=["GET"],
+    )
+    app.add_url_rule(
         "/trades/open-positions",
         endpoint="trades_open_positions",
         view_func=h.trades_open_positions,
