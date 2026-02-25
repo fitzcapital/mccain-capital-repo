@@ -31,6 +31,7 @@ from mccain_capital.runtime import (
     today_iso,
 )
 from mccain_capital.services import trades_importing as importing
+from mccain_capital.services import vanquish_live_sync
 from mccain_capital.services.ui import render_page, simple_msg
 
 # Compatibility aliases used by extracted route bodies.
@@ -1756,6 +1757,85 @@ def trades_upload_pdf():
             </div>
           </form>
         </div></div>
+
+        <div class="card"><div class="toolbar">
+          <div class="pill">🔐 Live Login Sync (Auto Generate Statement)</div>
+          <div class="tiny stack10 line15">Logs into Vanquish, opens statement, clicks Generate Statement, then imports HTML output.</div>
+          <div class="hr"></div>
+          <form method="post" action="/trades/sync/live">
+            <div class="row">
+              <div>
+                <label>Mode</label>
+                <select name="mode">
+                  <option value="broker">🏦 Broker fills → trades</option>
+                  <option value="balance">🏁 Statement → ending balance snapshot</option>
+                </select>
+              </div>
+              <div>
+                <label>From</label>
+                <input type="date" name="from_date" value="{{ default_day }}" />
+              </div>
+              <div>
+                <label>To</label>
+                <input type="date" name="to_date" value="{{ default_day }}" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="fieldGrow2">
+                <label>Username</label>
+                <input name="username" placeholder="Vanquish username/email" />
+              </div>
+              <div class="fieldGrow2">
+                <label>Password</label>
+                <input type="password" name="password" placeholder="Vanquish password" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="fieldGrow2">
+                <label>Base Origin</label>
+                <input name="base_url" value="{{ broker_cfg.base_url }}" />
+              </div>
+              <div class="fieldGrow2">
+                <label>Account</label>
+                <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label>Whitelist</label>
+                <input name="wl" value="{{ broker_cfg.wl }}" />
+              </div>
+              <div>
+                <label>Timezone</label>
+                <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
+              </div>
+              <div>
+                <label>Date Locale</label>
+                <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
+              </div>
+              <div>
+                <label>Report Locale</label>
+                <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="stack12">
+                <label>Browser Mode</label>
+                <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
+              </div>
+              <div class="stack12">
+                <label>Config</label>
+                <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
+              </div>
+            </div>
+
+            <div class="hr"></div>
+            <div class="rightActions">
+              <button class="btn primary" type="submit">🤖 Login + Generate + Import</button>
+              <a class="btn" href="/trades/upload/statement">Reset</a>
+            </div>
+          </form>
+        </div></div>
         """,
         broker_cfg=broker_cfg,
         default_day=default_day,
@@ -1861,6 +1941,96 @@ def trades_sync_statement():
         f.write(html_text)
 
     return _handle_statement_html_import(path, mode=mode, source_label="BROKER SYNC HTML")
+
+
+def trades_sync_live():
+    if request.method != "POST":
+        return redirect(url_for("trades_upload_pdf"))
+
+    mode = (request.form.get("mode") or "broker").strip()
+    guardrail = trade_lockout_state(today_iso())
+    if guardrail["locked"] and mode == "broker":
+        return render_page(
+            simple_msg(
+                f"Daily max-loss guardrail is active for {guardrail['day']}. "
+                f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
+            ),
+            active="trades",
+        )
+
+    cfg = _load_broker_sync_config()
+    username = (request.form.get("username") or "").strip()
+    password = (request.form.get("password") or "").strip()
+    base_url = (request.form.get("base_url") or "").strip() or cfg.get("base_url", "")
+    account = (request.form.get("account") or "").strip() or cfg.get("account", "")
+    wl = (request.form.get("wl") or "").strip() or cfg.get("wl", "vanquishtrader")
+    time_zone = (request.form.get("time_zone") or "").strip() or cfg.get(
+        "time_zone", "America/New_York"
+    )
+    date_locale = (request.form.get("date_locale") or "").strip() or cfg.get("date_locale", "en-US")
+    report_locale = (request.form.get("report_locale") or "").strip() or cfg.get(
+        "report_locale", "en"
+    )
+    headless = request.form.get("headless") == "1"
+    remember_connection = request.form.get("remember_connection") == "1"
+
+    if not username or not password:
+        return render_page(
+            simple_msg("Username and password are required for live login sync."),
+            active="trades",
+        )
+    if not base_url or not account:
+        return render_page(
+            simple_msg("Base origin and account are required for live login sync."),
+            active="trades",
+        )
+
+    from_date = _normalize_iso_date(request.form.get("from_date") or "", today_iso())
+    to_date = _normalize_iso_date(request.form.get("to_date") or "", today_iso())
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    if remember_connection:
+        cfg.update(
+            {
+                "base_url": base_url,
+                "wl": wl,
+                "account": account,
+                "time_zone": time_zone,
+                "date_locale": date_locale,
+                "report_locale": report_locale,
+            }
+        )
+        _save_broker_sync_config(cfg)
+
+    try:
+        html_text, warns = vanquish_live_sync.fetch_statement_html_via_login(
+            base_origin=base_url,
+            username=username,
+            password=password,
+            from_date=from_date,
+            to_date=to_date,
+            account=account,
+            wl=wl,
+            time_zone=time_zone,
+            date_locale=date_locale,
+            report_locale=report_locale,
+            headless=headless,
+        )
+    except Exception as e:
+        return render_page(simple_msg(f"Live login sync failed: {e}"), active="trades")
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"vanquish_statement_live_{from_date}_{to_date}_{stamp}.html"
+    path = os.path.join(UPLOAD_DIR, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html_text)
+
+    response = _handle_statement_html_import(path, mode=mode, source_label="LIVE LOGIN HTML")
+    if warns:
+        flash("Live sync note(s): " + " | ".join(warns), "warn")
+    return response
 
 
 def _fetch_trades_for_rebuild(start_date: str = "", end_date: str = "") -> List[Dict[str, Any]]:
