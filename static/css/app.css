@@ -575,6 +575,12 @@
       display: inline-block;
       text-align: center;
     }
+    .themeToggle{
+      min-width:108px;
+      padding:8px 12px;
+      border-color: rgba(0,229,255,.34);
+      background: rgba(0,229,255,.08);
+    }
 
     @keyframes pulseGreen {
       0%   { box-shadow: 0 0 0 rgba(var(--green), 0); }
@@ -1235,8 +1241,60 @@
 .stratProgressText{font-size:12px;color:var(--muted);font-weight:700;min-width:96px;text-align:right}
 .stratActions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
 .stratTableWrap{overflow:auto;margin-top:10px;-webkit-overflow-scrolling:touch}
-.stratTableWrap table{min-width:820px}
-.stratStopBody{margin-top:10px;line-height:1.7}
+    .stratTableWrap table{min-width:820px}
+    .stratStopBody{margin-top:10px;line-height:1.7}
+
+    body[data-theme="black"]{
+      background:
+        radial-gradient(900px 520px at 15% -12%, rgba(255,255,255,.035), transparent 62%),
+        linear-gradient(180deg, #000000 0%, #020202 100%);
+      background-color:#000;
+    }
+    body[data-theme="black"] .topbar{
+      border-color: rgba(255,255,255,.16);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.00) 72%),
+        #0a0a0a;
+      box-shadow: 0 10px 24px rgba(0,0,0,.56);
+    }
+    body[data-theme="black"] .card,
+    body[data-theme="black"] .stat,
+    body[data-theme="black"] .metric,
+    body[data-theme="black"] .insightCard,
+    body[data-theme="black"] .showcaseCard{
+      border-color: rgba(255,255,255,.14);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 76%),
+        #070707;
+      box-shadow: 0 10px 24px rgba(0,0,0,.56);
+    }
+    body[data-theme="black"] .btn{
+      border-color: rgba(255,255,255,.18);
+      background: rgba(255,255,255,.04);
+    }
+    body[data-theme="black"] .btn.primary,
+    body[data-theme="black"] .clockPill,
+    body[data-theme="black"] .pill{
+      border-color: rgba(255,255,255,.24);
+      background: rgba(255,255,255,.08);
+      color: #f2f7ff;
+    }
+    body[data-theme="black"] .btn.active{
+      border-color: rgba(255,255,255,.28);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.14);
+      background: rgba(255,255,255,.11);
+    }
+    body[data-theme="black"] .nav .btn.active::after{
+      background: rgba(255,255,255,.82);
+    }
+    body[data-theme="black"] .themeToggle{
+      border-color: rgba(255,255,255,.26);
+      background: rgba(255,255,255,.1);
+    }
+    body[data-theme="black"] .glow-green,
+    body[data-theme="black"] .glow-red{
+      box-shadow: none !important;
+    }
 
 .checklist{
   display:grid;

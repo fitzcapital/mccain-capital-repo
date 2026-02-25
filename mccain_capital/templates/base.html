@@ -45,6 +45,7 @@
       <div class="topRight">
         <div id="modePill" class="clockPill">⏳ Loading…</div>
         <div class="clockPill">🕒 <span id="etClock" class="clockTime">--:--:--</span> ET</div>
+        <button id="themeToggleBtn" class="btn themeToggle" type="button" aria-label="Toggle black mode" onclick="toggleTheme()">🖤 Black</button>
 
         <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -92,6 +93,7 @@
             <div class="menuTitle">External</div>
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">📈 TradingView</a>
             <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
+            <button class="btn" type="button" onclick="toggleTheme()">🖤 Toggle Black Mode</button>
             {% if auth_enabled %}
               <div class="hr"></div>
               {% if authenticated %}
@@ -138,6 +140,7 @@
       <div class="drawerGrid">
         <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">📈 TradingView</a>
         <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
+        <button class="btn" type="button" onclick="toggleTheme()">🖤 Toggle Black Mode</button>
         {% if auth_enabled %}
           {% if authenticated %}
             <a class="btn danger" href="/logout">Sign Out</a>
@@ -378,6 +381,23 @@ document.addEventListener('keydown', (e) => {
 
     setInterval(updateETClock, 1000);
     updateETClock();
+
+    function applyTheme(theme){
+      const t = (theme === "black") ? "black" : "default";
+      document.body.setAttribute("data-theme", t);
+      const btn = document.getElementById("themeToggleBtn");
+      if(btn){
+        btn.textContent = t === "black" ? "🌌 Default" : "🖤 Black";
+      }
+    }
+    function toggleTheme(){
+      const current = document.body.getAttribute("data-theme") === "black" ? "black" : "default";
+      const next = current === "black" ? "default" : "black";
+      localStorage.setItem("mc_theme", next);
+      applyTheme(next);
+    }
+    window.toggleTheme = toggleTheme;
+    applyTheme(localStorage.getItem("mc_theme") || "default");
 
     const staggerTargets = document.querySelectorAll(".card, .metric, .calcCard, .insightCard");
     staggerTargets.forEach((el, i) => {
