@@ -54,6 +54,22 @@ def _debug_shot(page, debug_dir: Optional[str], name: str) -> Optional[str]:
     return path
 
 
+def _wait_until_enabled(locator, timeout_ms: int = 6000) -> bool:
+    import time
+
+    deadline = time.time() + (timeout_ms / 1000.0)
+    while time.time() < deadline:
+        try:
+            disabled = locator.get_attribute("disabled")
+            aria_disabled = locator.get_attribute("aria-disabled")
+            if disabled is None and str(aria_disabled).lower() not in {"true", "1"}:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.15)
+    return False
+
+
 def fetch_statement_html_via_login(
     *,
     base_origin: str,
@@ -186,6 +202,12 @@ def fetch_statement_html_via_login(
             raise RuntimeError("Could not locate password field after entering username/email.")
 
         pass_input.fill(password)
+        # Some broker UIs only enable "Log In" after blur/input events settle.
+        try:
+            pass_input.press("Tab")
+            page.wait_for_timeout(500)
+        except Exception:
+            pass
 
         submit_btn = _first_visible(
             page,
@@ -193,11 +215,17 @@ def fetch_statement_html_via_login(
                 "button[type='submit']",
                 "input[type='submit']",
                 "button:has-text('Login')",
+                "button:has-text('Log In')",
                 "button:has-text('Sign in')",
             ],
         )
         if submit_btn:
-            submit_btn.click()
+            _wait_until_enabled(submit_btn, timeout_ms=7000)
+            try:
+                submit_btn.click(timeout=3000)
+            except Exception:
+                # Fallback for JS-controlled forms that listen to Enter key.
+                pass_input.press("Enter")
         else:
             pass_input.press("Enter")
         shot = _debug_shot(page, debug_dir, "03_after_password_submit.png")
