@@ -51,10 +51,6 @@ def trades_upload_pdf():
     return svc.trades_upload_pdf()
 
 
-def trades_sync_statement():
-    return svc.trades_sync_statement()
-
-
 def trades_sync_live():
     return svc.trades_sync_live()
 

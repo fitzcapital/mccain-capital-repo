@@ -5,9 +5,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import json
-import urllib.parse
-import urllib.request
-from urllib.error import HTTPError, URLError
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -57,15 +54,12 @@ BROKER_DEBUG_DIR = os.path.join(UPLOAD_DIR, "vanquish_debug")
 
 def _load_broker_sync_config() -> Dict[str, str]:
     defaults = {
-        "base_url": os.environ.get(
-            "VANQUISH_STATEMENT_URL", "https://trade.vanquishtrader.com/account/statement/"
-        ),
+        "base_url": os.environ.get("VANQUISH_BASE_URL", "https://trade.vanquishtrader.com"),
         "wl": os.environ.get("VANQUISH_WL", "vanquishtrader"),
         "account": os.environ.get("VANQUISH_ACCOUNT", ""),
         "time_zone": os.environ.get("VANQUISH_TIME_ZONE", "America/New_York"),
         "date_locale": os.environ.get("VANQUISH_DATE_LOCALE", "en-US"),
         "report_locale": os.environ.get("VANQUISH_REPORT_LOCALE", "en"),
-        "token": os.environ.get("VANQUISH_TOKEN", ""),
     }
     try:
         with open(BROKER_SYNC_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -150,44 +144,6 @@ def _normalize_iso_date(raw: str, fallback: str) -> str:
         return datetime.strptime(v, "%Y-%m-%d").date().isoformat()
     except ValueError:
         return fallback
-
-
-def _fetch_statement_html(
-    *,
-    base_url: str,
-    token: str,
-    wl: str,
-    from_date: str,
-    to_date: str,
-    time_zone: str,
-    account: str,
-    date_locale: str,
-    report_locale: str,
-) -> str:
-    query = urllib.parse.urlencode(
-        {
-            "token": token,
-            "wl": wl,
-            "format": "html",
-            "from": from_date,
-            "to": to_date,
-            "timeZone": time_zone,
-            "account": account,
-            "dateLocale": date_locale,
-            "reportLocale": report_locale,
-        }
-    )
-    url = f"{base_url.rstrip('/')}?{query}"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "McCainCapitalBrokerSync/1.0",
-            "Accept": "text/html,application/xhtml+xml",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        payload = resp.read()
-    return payload.decode("utf-8", errors="replace")
 
 
 def _handle_statement_html_import(path: str, mode: str, source_label: str):
@@ -1758,75 +1714,6 @@ def trades_upload_pdf():
         </div></div>
 
         <div class="card"><div class="toolbar">
-          <div class="pill">🔗 Broker Sync (Vanquish Statement URL)</div>
-          <div class="tiny stack10 line15">One-click fetches statement HTML using your token, then imports with the same HTML parser.</div>
-          <div class="hr"></div>
-          <form method="post" action="/trades/sync/statement">
-            <div class="row">
-              <div>
-                <label>Mode</label>
-                <select name="mode">
-                  <option value="broker">🏦 Broker fills → trades</option>
-                  <option value="balance">🏁 Statement → ending balance snapshot</option>
-                </select>
-              </div>
-              <div>
-                <label>From</label>
-                <input type="date" name="from_date" value="{{ default_day }}" />
-              </div>
-              <div>
-                <label>To</label>
-                <input type="date" name="to_date" value="{{ default_day }}" />
-              </div>
-            </div>
-            <div class="row">
-              <div class="fieldGrow2">
-                <label>Token (session or static)</label>
-                <input name="token" placeholder="Paste Vanquish statement token" />
-              </div>
-              <div class="fieldGrow2">
-                <label>Account</label>
-                <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
-              </div>
-            </div>
-            <div class="row">
-              <div class="fieldGrow2">
-                <label>Base URL</label>
-                <input name="base_url" value="{{ broker_cfg.base_url }}" />
-              </div>
-              <div>
-                <label>Whitelist</label>
-                <input name="wl" value="{{ broker_cfg.wl }}" />
-              </div>
-              <div>
-                <label>Timezone</label>
-                <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
-              </div>
-            </div>
-            <div class="row">
-              <div>
-                <label>Date Locale</label>
-                <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
-              </div>
-              <div>
-                <label>Report Locale</label>
-                <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
-              </div>
-              <div class="stack12">
-                <label>Token Storage</label>
-                <label><input type="checkbox" name="remember_token" value="1" {% if broker_cfg.token %}checked{% endif %}/> Remember token on this computer</label>
-              </div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">⚡ Sync Statement</button>
-              <a class="btn" href="/trades/upload/statement">Reset</a>
-            </div>
-          </form>
-        </div></div>
-
-        <div class="card"><div class="toolbar">
           <div class="pill">🔐 Live Login Sync (Auto Generate Statement)</div>
           <div class="tiny stack10 line15">Logs into Vanquish, opens statement, clicks Generate Statement, then imports HTML output.</div>
           <div class="hr"></div>
@@ -1914,106 +1801,6 @@ def trades_upload_pdf():
         default_day=default_day,
     )
     return render_page(content, active="trades")
-
-
-def trades_sync_statement():
-    if request.method != "POST":
-        return redirect(url_for("trades_upload_pdf"))
-
-    mode = (request.form.get("mode") or "broker").strip()
-    guardrail = trade_lockout_state(today_iso())
-    if guardrail["locked"] and mode == "broker":
-        return render_page(
-            simple_msg(
-                f"Daily max-loss guardrail is active for {guardrail['day']}. "
-                f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
-            ),
-            active="trades",
-        )
-
-    cfg = _load_broker_sync_config()
-    token = (request.form.get("token") or "").strip() or cfg.get("token", "")
-    base_url = (request.form.get("base_url") or "").strip() or cfg.get("base_url", "")
-    account = (request.form.get("account") or "").strip() or cfg.get("account", "")
-    wl = (request.form.get("wl") or "").strip() or cfg.get("wl", "vanquishtrader")
-    time_zone = (request.form.get("time_zone") or "").strip() or cfg.get(
-        "time_zone", "America/New_York"
-    )
-    date_locale = (request.form.get("date_locale") or "").strip() or cfg.get("date_locale", "en-US")
-    report_locale = (request.form.get("report_locale") or "").strip() or cfg.get(
-        "report_locale", "en"
-    )
-    remember_token = request.form.get("remember_token") == "1"
-
-    if not token:
-        return render_page(
-            simple_msg("Broker token is required. Paste token once or enable remember token."),
-            active="trades",
-        )
-    if not base_url or not account:
-        return render_page(
-            simple_msg("Base URL and account are required for broker sync."), active="trades"
-        )
-
-    from_date = _normalize_iso_date(request.form.get("from_date") or "", today_iso())
-    to_date = _normalize_iso_date(request.form.get("to_date") or "", today_iso())
-    if from_date > to_date:
-        from_date, to_date = to_date, from_date
-
-    if remember_token:
-        cfg.update(
-            {
-                "base_url": base_url,
-                "wl": wl,
-                "account": account,
-                "time_zone": time_zone,
-                "date_locale": date_locale,
-                "report_locale": report_locale,
-                "token": token,
-            }
-        )
-        _save_broker_sync_config(cfg)
-
-    try:
-        html_text = _fetch_statement_html(
-            base_url=base_url,
-            token=token,
-            wl=wl,
-            from_date=from_date,
-            to_date=to_date,
-            time_zone=time_zone,
-            account=account,
-            date_locale=date_locale,
-            report_locale=report_locale,
-        )
-    except HTTPError as e:
-        return render_page(
-            simple_msg(
-                f"Broker sync failed with HTTP {e.code}. Token may be expired or account is invalid."
-            ),
-            active="trades",
-        )
-    except URLError as e:
-        return render_page(simple_msg(f"Broker sync network error: {e.reason}"), active="trades")
-    except Exception as e:
-        return render_page(simple_msg(f"Broker sync failed: {e}"), active="trades")
-
-    if "<html" not in html_text.lower():
-        return render_page(
-            simple_msg(
-                "Broker response was not HTML statement content. Verify token/account and try again."
-            ),
-            active="trades",
-        )
-
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"vanquish_statement_sync_{from_date}_{to_date}_{stamp}.html"
-    path = os.path.join(UPLOAD_DIR, filename)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html_text)
-
-    return _handle_statement_html_import(path, mode=mode, source_label="BROKER SYNC HTML")
 
 
 def trades_sync_live():
