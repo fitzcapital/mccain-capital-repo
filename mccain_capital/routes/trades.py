@@ -72,6 +72,12 @@ def register(app):
         methods=["GET", "POST"],
     )
     app.add_url_rule(
+        "/trades/sync/statement",
+        endpoint="trades_sync_statement",
+        view_func=h.trades_sync_statement,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/trades/open-positions",
         endpoint="trades_open_positions",
         view_func=h.trades_open_positions,
