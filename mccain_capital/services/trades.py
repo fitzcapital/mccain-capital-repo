@@ -322,7 +322,14 @@ def trades_page():
             """,
             (active_day,),
         ).fetchone()
+        all_time_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(net_pl), 0) AS net
+            FROM trades
+            """
+        ).fetchone()
     ytd_net = float(ytd_row["net"] or 0.0)
+    all_time_net = float(all_time_row["net"] or 0.0)
     prior_eod_balance = (
         float(prior_eod_row["balance"])
         if prior_eod_row and prior_eod_row["balance"] is not None
@@ -389,14 +396,9 @@ def trades_page():
             <div class="sub">Year-to-date through selected day</div>
           </div>
           <div class="metric">
-            <div class="label">Win Rate</div>
-            <div class="value">{{ '%.1f'|format(win_rate) }}%</div>
-            <div class="sub">Execution quality for this day</div>
-          </div>
-          <div class="metric">
-            <div class="label">Trades Logged</div>
-            <div class="value">{{ trades_count }}</div>
-            <div class="sub">Disciplined volume beats overtrading</div>
+            <div class="label">All-Time Net</div>
+            <div class="value">{{ money(all_time_net) }}</div>
+            <div class="sub">Career P/L across all imported trades</div>
           </div>
           <div class="metric">
             <div class="label">Current Running Balance</div>
@@ -477,9 +479,9 @@ def trades_page():
             <div class="hr"></div>
             <div class="statRow">
               <div class="stat">
-                <div class="k">💰 YTD Net</div>
-                <div class="v">{{ money(ytd_net) }}</div>
-                <div class="tiny">Selected-day net: {{ money(stats['total'] if stats is mapping else stats.total) }}</div>
+                <div class="k">💰 Day Net{% if d %} ({{ d }}){% else %} (Today){% endif %}</div>
+                <div class="v">{{ money(day_net) }}</div>
+                <div class="tiny">Net for the currently selected trading day</div>
               </div>
 
               <div class="stat {% if week_total > 0 %}glow-green{% elif week_total < 0 %}glow-red{% endif %}">
@@ -488,9 +490,9 @@ def trades_page():
               </div>
 
               <div class="stat">
-                <div class="k">🏦 Running / Prior EOD</div>
-                <div class="v">{{ money(running_balance) }}</div>
-                <div class="tiny">{% if prior_eod_balance is not none %}Prior: {{ money(prior_eod_balance) }}{% else %}Prior: —{% endif %}</div>
+                <div class="k">🏦 Prior EOD Balance</div>
+                <div class="v">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
+                <div class="tiny">Previous completed day's closing balance</div>
               </div>
 
               <div class="stat">
@@ -879,6 +881,7 @@ if (bulkCopyBtn) {
         week_total=week_total,
         running_balance=running_balance,
         ytd_net=ytd_net,
+        all_time_net=all_time_net,
         prior_eod_balance=prior_eod_balance,
         money=money,
         pct=pct,
