@@ -172,6 +172,12 @@ def fetch_statement_html_via_login(
         page = context.new_page()
         page.set_default_timeout(timeout_ms)
         page.goto(login_url, wait_until="domcontentloaded")
+        # Vanquish login UI can finish client-side hydration after initial paint.
+        try:
+            page.wait_for_load_state("networkidle", timeout=12000)
+        except Exception:
+            pass
+        page.wait_for_timeout(1200)
         shot = _debug_shot(page, debug_dir, "01_open_login.png")
         if shot:
             artifacts.append(shot)
@@ -265,7 +271,18 @@ def fetch_statement_html_via_login(
             ],
         )
         if submit_btn:
-            _wait_until_enabled(submit_btn, timeout_ms=7000)
+            enabled = _wait_until_enabled(submit_btn, timeout_ms=20000)
+            if not enabled:
+                # Trigger another round of form validation for delayed client scripts.
+                try:
+                    user_input.focus()
+                    user_input.press("Tab")
+                    pass_input.focus()
+                    pass_input.press("Tab")
+                    page.wait_for_timeout(1200)
+                except Exception:
+                    pass
+                enabled = _wait_until_enabled(submit_btn, timeout_ms=10000)
             try:
                 submit_btn.click(timeout=3000)
             except Exception:
