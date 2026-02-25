@@ -329,6 +329,7 @@
     .rightActions .btn,
     .leftActions .btn{min-height:40px}
     .stack8{margin-top:var(--space-1)}
+    .stack6{margin-top:6px}
     .stack10{margin-top:var(--space-2)}
     .stack12{margin-top:var(--space-3)}
     .line15{line-height:1.5}
@@ -405,6 +406,15 @@
     }
     .tableDense tbody tr:hover td{
       background: rgba(0,229,255,.06);
+    }
+    .kvTable td:first-child{
+      color:var(--muted);
+      font-weight:700;
+    }
+    .kvTable td:last-child{
+      text-align:right;
+      font-weight:800;
+      font-variant-numeric: tabular-nums;
     }
     .thSelect{width:42px}
     .thActions{width:90px;text-align:right}
@@ -896,6 +906,29 @@
         grid-template-columns:1fr;
       }
       .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}
+      .kvTable td{
+        display:block;
+        width:100%;
+        text-align:left !important;
+        padding:8px 10px;
+      }
+      .kvTable tr{
+        display:block;
+        padding:6px 0;
+        border-bottom:1px solid rgba(0,229,255,.10);
+      }
+      .kvTable tr:last-child{
+        border-bottom:0;
+      }
+      .kvTable td:first-child{
+        font-size:11px;
+        letter-spacing:.03em;
+        text-transform:uppercase;
+      }
+      .kvTable td:last-child{
+        padding-top:2px;
+        font-size:15px;
+      }
       .dashboardHero .rightActions{width:100%}
       .dashboardHero .rightActions .btn{flex:1 1 0}
       .metric .value{font-size:18px}
@@ -1136,7 +1169,57 @@
 }
 
 
-/* Strat checklist polish */
+/* The Strat */
+.stratWrap{display:grid;gap:14px}
+.stratHero{
+  padding:16px;
+  border-radius:18px;
+  border:1px solid rgba(0,229,255,.2);
+  background:
+    radial-gradient(800px 220px at 18% 0%, rgba(0,229,255,.14), transparent 65%),
+    linear-gradient(180deg, rgba(0,229,255,.08), rgba(0,0,0,0) 70%),
+    var(--panel);
+  box-shadow:var(--shadow-soft);
+}
+.stratTitle{font-size:28px;font-weight:900;letter-spacing:.2px;line-height:1.15;margin:0}
+.stratSub{margin-top:8px;color:var(--muted);font-size:14px;line-height:1.6;max-width:980px}
+.stratPills{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.stratPill{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;
+  border:1px solid rgba(0,229,255,.28);background:rgba(0,229,255,.1);font-size:12px;color:var(--text)
+}
+.stratGrid3{display:grid;grid-template-columns:1fr;gap:12px}
+.stratGrid2{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width: 980px){ .stratGrid3{grid-template-columns:repeat(3,minmax(0,1fr));} }
+@media (min-width: 860px){ .stratGrid2{grid-template-columns:repeat(2,minmax(0,1fr));} }
+.stratCard{
+  padding:14px;
+  border-radius:16px;
+  border:1px solid rgba(0,229,255,.18);
+  background: linear-gradient(180deg, rgba(0,229,255,.06), rgba(255,255,255,.01));
+}
+.stratCard h3{margin:0;font-size:18px;line-height:1.2}
+.stratCard .meta{margin-top:6px}
+.stratCard ul{margin:10px 0 0 18px;line-height:1.7;padding:0}
+.stratWrap, .stratWrap *{min-width:0}
+.stratChecklistTop{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.stratChecklistTitle{margin:0}
+.stratProgress{display:flex;align-items:center;gap:10px}
+.stratProgressBar{
+  width:180px;height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;
+  border:1px solid rgba(255,255,255,.14)
+}
+.stratProgressFill{
+  width:0%;height:100%;
+  background:linear-gradient(90deg, rgba(0,229,255,.9), rgba(70,255,186,.95));
+  transition:width .18s ease;
+}
+.stratProgressText{font-size:12px;color:var(--muted);font-weight:700;min-width:96px;text-align:right}
+.stratActions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.stratTableWrap{overflow:auto;margin-top:10px;-webkit-overflow-scrolling:touch}
+.stratTableWrap table{min-width:820px}
+.stratStopBody{margin-top:10px;line-height:1.7}
+
 .checklist{
   display:grid;
   gap:10px;
@@ -1176,4 +1259,46 @@
 
 .checkText{
   line-height: 1.55;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+.checkRow.checked{
+  border-color: rgba(53,208,127,.45);
+  background: rgba(53,208,127,.08);
+}
+
+@media (max-width: 720px){
+  .stratWrap{gap:10px}
+  .stratHero{padding:12px;border-radius:14px}
+  .stratTitle{font-size:20px;line-height:1.2;letter-spacing:.1px}
+  .stratSub{font-size:12px;line-height:1.45;margin-top:6px;opacity:.92}
+  .stratPills{margin-top:10px;gap:6px;display:grid;grid-template-columns:repeat(2, minmax(0, 1fr))}
+  .stratPill{font-size:11px;padding:6px 8px;justify-content:center;text-align:center;white-space:normal;line-height:1.2}
+  .stratCard{padding:11px;border-radius:14px}
+  .stratCard h3{font-size:15px;line-height:1.25}
+  .stratCard .meta{font-size:11px;line-height:1.35}
+  .stratCard ul{margin-top:8px;margin-left:16px;line-height:1.5;font-size:14px}
+  .stratCard li{margin-bottom:4px}
+  .stratChecklistTop{display:grid;grid-template-columns:1fr;gap:8px}
+  .stratProgress{justify-content:space-between;width:100%}
+  .stratProgressBar{width:100%;max-width:none;flex:1 1 auto;min-width:0}
+  .stratProgressText{min-width:auto;text-align:right;padding-left:8px;font-size:11px;white-space:nowrap}
+  .checkText{font-size:12px;line-height:1.35}
+  .checklist{gap:8px;max-width:none}
+  .checkRow{grid-template-columns:20px 1fr;gap:10px;padding:12px;border-radius:12px}
+  .checkRow input[type="checkbox"]{width:20px;height:20px;margin-top:1px}
+  .stratActions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stratActions .btn{width:100%;padding:11px 10px;font-size:13px}
+  .stratStopBody{font-size:13px;line-height:1.5}
+  .stratTableWrap{margin-left:-4px;margin-right:-4px;padding:0 4px 2px}
+  .stratTableWrap table{min-width:680px;font-size:12px}
+}
+
+@media (max-width: 420px){
+  .stratPills{grid-template-columns:1fr}
+  .stratActions{grid-template-columns:1fr}
+  .stratCard ul{margin-left:14px}
+  .stratHero{padding:10px}
+  .stratTableWrap table{min-width:620px}
 }

@@ -72,4 +72,6 @@ def chart():
 
 
 def strat_page():
-    return _legacy().strat_page()
+    from mccain_capital.services import strat as strat_svc
+
+    return strat_svc.strat_page()

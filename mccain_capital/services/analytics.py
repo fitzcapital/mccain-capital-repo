@@ -309,7 +309,7 @@ def analytics_page():
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Performance Summary</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap"><table class="tableDense kvTable">
               <tbody>
                 <tr><td>Total Net</td><td>{{ money(perf.total_net) }}</td></tr>
                 <tr><td>Gross Profit</td><td>{{ money(perf.gross_profit) }}</td></tr>
@@ -324,7 +324,7 @@ def analytics_page():
           <div class="card"><div class="toolbar">
             <div class="pill">🔥 Streaks</div>
             <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense">
+            <div class="tableWrap"><table class="tableDense kvTable">
               <tbody>
                 <tr><td>Longest Win Streak</td><td>{{ perf.max_win_streak }}</td></tr>
                 <tr><td>Longest Loss Streak</td><td>{{ perf.max_loss_streak }}</td></tr>
