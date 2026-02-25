@@ -6,3 +6,4 @@ pytesseract==0.3.13
 Pillow==10.4.0
 pandas
 lxml
+playwright==1.51.0
