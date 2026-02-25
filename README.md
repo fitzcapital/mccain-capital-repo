@@ -88,11 +88,25 @@ python migrate.py
 cd /mccain-capital-repo
 podman build -t mccain-capital-app:latest -f Containerfile .
 podman rm -f mccain-capital-app 2>/dev/null || true
-podman run -d --name mccain-capital-app -p 5001:5001 mccain-capital-app:latest
+podman volume create mccain-capital-data
+podman run -d --name mccain-capital-app -p 5001:5001 \
+  -e DB_PATH=/data/journal.db \
+  -e UPLOAD_DIR=/data/uploads \
+  -e BOOKS_DIR=/data/books \
+  -v mccain-capital-data:/data \
+  mccain-capital-app:latest
 podman logs -f mccain-capital-app
 ```
 
 Open: `http://localhost:5001`
+
+### Data Persistence
+
+With the `mccain-capital-data` volume, all app data persists across rebuilds/restarts:
+
+- journal/trades database: `/data/journal.db`
+- uploads/debug artifacts: `/data/uploads`
+- books/library files: `/data/books`
 
 ---
 
