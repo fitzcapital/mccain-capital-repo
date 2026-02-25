@@ -45,7 +45,6 @@
       <div class="topRight">
         <div id="modePill" class="clockPill">⏳ Loading…</div>
         <div class="clockPill">🕒 <span id="etClock" class="clockTime">--:--:--</span> ET</div>
-        <button id="themeToggleBtn" class="btn themeToggle" type="button" aria-label="Toggle black mode" onclick="toggleTheme()">🖤 Black</button>
 
         <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -385,10 +384,6 @@ document.addEventListener('keydown', (e) => {
     function applyTheme(theme){
       const t = (theme === "black") ? "black" : "default";
       document.body.setAttribute("data-theme", t);
-      const btn = document.getElementById("themeToggleBtn");
-      if(btn){
-        btn.textContent = t === "black" ? "🌌 Default" : "🖤 Black";
-      }
     }
     function toggleTheme(){
       const current = document.body.getAttribute("data-theme") === "black" ? "black" : "default";
