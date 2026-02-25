@@ -157,6 +157,7 @@ def analytics_page():
     equity_story = _series_story(equity_series, favorable_direction="up")
     drawdown_story = _series_story(drawdown_series, favorable_direction="down")
     expectancy_story = _series_story(expectancy_series, favorable_direction="up")
+    fitz_22 = repo.fitz_22_rev_indicator(rows)
     insights = _insight_panels(perf, dd, corr)
     edge_pulse = max(8.0, min(100.0, 50.0 + (float(perf.get("expectancy") or 0.0) * 8.0)))
     drawdown_now = float(dd.get("current_drawdown") or 0.0)
@@ -230,6 +231,19 @@ def analytics_page():
         </div>
 
         <div class="insightGrid stack12">
+          <div class="insightCard">
+            <div class="insightTitle">🎯 Fitz 2-2 REV Indicator</div>
+            <div class="insightBody">
+              <div class="trendChips">
+                <span class="trendChip {{ fitz_22.tone }}">{{ fitz_22.status }}</span>
+                <span class="trendChip">{{ fitz_22.trades }} tagged trades</span>
+                <span class="trendChip">WR {{ '%.1f'|format(fitz_22.win_rate) }}%</span>
+                <span class="trendChip">Exp {{ money(fitz_22.expectancy) }}</span>
+              </div>
+              <div class="meta">Recent 10: {{ money(fitz_22.recent_net) }} · {{ '%.1f'|format(fitz_22.recent_win_rate) }}% win rate</div>
+              <div class="stack8">{{ fitz_22.note }}</div>
+            </div>
+          </div>
           <div class="insightCard">
             <div class="insightTitle">🔎 What Changed</div>
             <div class="insightBody">{{ insights.changed }}</div>
@@ -536,6 +550,7 @@ def analytics_page():
         equity_story=equity_story,
         drawdown_story=drawdown_story,
         expectancy_story=expectancy_story,
+        fitz_22=fitz_22,
         edge_pulse=edge_pulse,
         control_pulse=control_pulse,
         start_date=start_date,

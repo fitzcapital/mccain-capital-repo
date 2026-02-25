@@ -358,3 +358,59 @@ def expectancy_trend_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         n = float(agg[period]["net"] or 0.0)
         out.append({"label": period, "v": (n / c) if c else 0.0, "count": c})
     return out
+
+
+def _is_fitz_22_rev_setup(tag: str) -> bool:
+    t = (tag or "").strip().lower()
+    if not t:
+        return False
+    has_22 = ("2-2" in t) or ("2 2" in t) or (t == "22") or (" 22 " in f" {t} ")
+    has_rev = ("reversal" in t) or ("rev" in t)
+    # Keep matching broad enough for short trader shorthand like "2-2".
+    return has_22 and (has_rev or t in {"2-2", "22"})
+
+
+def fitz_22_rev_indicator(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    tagged = [r for r in rows if _is_fitz_22_rev_setup(str(r.get("setup_tag") or ""))]
+    net_values = [float(_safe_float(r.get("net_pl")) or 0.0) for r in tagged]
+    trades = len(net_values)
+    wins = len([n for n in net_values if n > 0])
+    total_net = sum(net_values)
+    win_rate = (wins / trades * 100.0) if trades else 0.0
+    expectancy = (total_net / trades) if trades else 0.0
+
+    recent_slice = net_values[-10:]
+    recent_trades = len(recent_slice)
+    recent_wins = len([n for n in recent_slice if n > 0])
+    recent_net = sum(recent_slice)
+    recent_win_rate = (recent_wins / recent_trades * 100.0) if recent_trades else 0.0
+
+    if trades < 5:
+        status = "BUILD SAMPLE"
+        tone = "neutral"
+        note = "Log more tagged 2-2 reversal trades before trusting the signal."
+    elif expectancy > 0 and recent_net >= 0 and win_rate >= 50.0:
+        status = "IN PLAY"
+        tone = "positive"
+        note = "2-2 reversal edge is currently healthy. Keep execution quality high."
+    elif expectancy > 0:
+        status = "WATCH"
+        tone = "neutral"
+        note = "Edge is positive but unstable. Tighten entry quality and risk discipline."
+    else:
+        status = "COOL OFF"
+        tone = "negative"
+        note = "Recent 2-2 reversal outcomes are weak. Reduce size and wait for clean structure."
+
+    return {
+        "trades": trades,
+        "win_rate": win_rate,
+        "expectancy": expectancy,
+        "total_net": total_net,
+        "recent_trades": recent_trades,
+        "recent_win_rate": recent_win_rate,
+        "recent_net": recent_net,
+        "status": status,
+        "tone": tone,
+        "note": note,
+    }
