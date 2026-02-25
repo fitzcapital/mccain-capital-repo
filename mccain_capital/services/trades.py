@@ -301,8 +301,17 @@ def trades_page():
     week_total = week_total_net(d or None)
     bal_in_day = last_balance_in_list(trades)
     overall_bal = latest_balance_overall(as_of=active_day)
-    running_balance = bal_in_day if bal_in_day is not None else overall_bal
+    running_balance = overall_bal if overall_bal is not None else bal_in_day
     with db() as conn:
+        y_start = f"{active_day[:4]}-01-01"
+        ytd_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(net_pl), 0) AS net
+            FROM trades
+            WHERE trade_date >= ? AND trade_date <= ?
+            """,
+            (y_start, active_day),
+        ).fetchone()
         prior_eod_row = conn.execute(
             """
             SELECT balance
@@ -313,6 +322,7 @@ def trades_page():
             """,
             (active_day,),
         ).fetchone()
+    ytd_net = float(ytd_row["net"] or 0.0)
     prior_eod_balance = (
         float(prior_eod_row["balance"])
         if prior_eod_row and prior_eod_row["balance"] is not None
@@ -374,9 +384,9 @@ def trades_page():
 
         <div class="metricStrip">
           <div class="metric">
-            <div class="label">Day Net</div>
-            <div class="value">{{ money(day_net) }}</div>
-            <div class="sub">Filtered by selected day/search</div>
+            <div class="label">YTD Net</div>
+            <div class="value">{{ money(ytd_net) }}</div>
+            <div class="sub">Year-to-date through selected day</div>
           </div>
           <div class="metric">
             <div class="label">Win Rate</div>
@@ -391,7 +401,7 @@ def trades_page():
           <div class="metric">
             <div class="label">Current Running Balance</div>
             <div class="value">{{ money(running_balance) }}</div>
-            <div class="sub">Latest balance in selected day (or latest <= selected day)</div>
+            <div class="sub">Same ledger balance source used by dashboard</div>
           </div>
           <div class="metric">
             <div class="label">Prior EOD Balance</div>
@@ -467,8 +477,9 @@ def trades_page():
             <div class="hr"></div>
             <div class="statRow">
               <div class="stat">
-                <div class="k">💰 Day Net (filtered)</div>
-                <div class="v">{{ money(stats['total'] if stats is mapping else stats.total) }}</div>
+                <div class="k">💰 YTD Net</div>
+                <div class="v">{{ money(ytd_net) }}</div>
+                <div class="tiny">Selected-day net: {{ money(stats['total'] if stats is mapping else stats.total) }}</div>
               </div>
 
               <div class="stat {% if week_total > 0 %}glow-green{% elif week_total < 0 %}glow-red{% endif %}">
@@ -867,6 +878,7 @@ if (bulkCopyBtn) {
         cons=cons,  # ✅ THIS was missing and caused your crash
         week_total=week_total,
         running_balance=running_balance,
+        ytd_net=ytd_net,
         prior_eod_balance=prior_eod_balance,
         money=money,
         pct=pct,
