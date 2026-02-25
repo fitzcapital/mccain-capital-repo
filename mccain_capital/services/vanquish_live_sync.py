@@ -81,7 +81,13 @@ def fetch_statement_html_via_login(
             "`pip install playwright` then `playwright install chromium`."
         ) from e
 
-    origin = (base_origin or "https://trade.vanquishtrader.com").rstrip("/")
+    raw = (base_origin or "https://trade.vanquishtrader.com").strip()
+    parsed = urllib.parse.urlparse(raw if "://" in raw else f"https://{raw}")
+    scheme = parsed.scheme or "https"
+    netloc = parsed.netloc or parsed.path
+    if not netloc:
+        raise RuntimeError("Invalid Base Origin. Expected host like trade.vanquishtrader.com")
+    origin = f"{scheme}://{netloc}".rstrip("/")
     login_url = origin
     statement_path = "/account/statement/"
     statement_url = f"{origin}{statement_path}?" + urllib.parse.urlencode(
