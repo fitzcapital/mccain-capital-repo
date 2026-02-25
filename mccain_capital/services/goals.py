@@ -77,7 +77,7 @@ def goals_tracker():
             "notes": vals["notes"],
         }
         upsert_daily_goal(vals["track_date"], payload)
-        flash("Saved ✅", "ok")
+        flash("Saved ✅", "goals_ok")
         return redirect(url_for("goals_tracker", date=vals["track_date"]))
 
     # month summary + projections
@@ -153,7 +153,7 @@ def goals_tracker():
               Track *inputs* daily: debt actions + Upwork pipeline. Then let the math bully you into consistency 😈
             </div>
 
-            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% with messages = get_flashed_messages(with_categories=true, category_filter=['goals_ok']) %}
               {% if messages %}
                 <div class="hr"></div>
                 {% for cat,msg in messages %}

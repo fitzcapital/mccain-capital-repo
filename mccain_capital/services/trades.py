@@ -1988,14 +1988,10 @@ def trades_sync_live():
             "updated_at": now_iso(),
         }
     )
-    if warns:
-        flash("Live sync note(s): " + " | ".join(warns), "warn")
-    if artifacts_rel and debug_dir:
-        flash(
-            "Live sync debug artifacts: "
-            + " | ".join(f"/trades/sync/debug/{rel}" for rel in artifacts_rel[:6]),
-            "warn",
-        )
+    flash(
+        "Live sync complete. Review Upload Statement → Live Sync Diagnostics for notes/artifacts.",
+        "success",
+    )
     return response
 
 
