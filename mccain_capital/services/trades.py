@@ -301,7 +301,23 @@ def trades_page():
     week_total = week_total_net(d or None)
     bal_in_day = last_balance_in_list(trades)
     overall_bal = latest_balance_overall(as_of=active_day)
-    display_balance = bal_in_day if bal_in_day is not None else overall_bal
+    running_balance = bal_in_day if bal_in_day is not None else overall_bal
+    with db() as conn:
+        prior_eod_row = conn.execute(
+            """
+            SELECT balance
+            FROM trades
+            WHERE trade_date < ? AND balance IS NOT NULL
+            ORDER BY trade_date DESC, id DESC
+            LIMIT 1
+            """,
+            (active_day,),
+        ).fetchone()
+    prior_eod_balance = (
+        float(prior_eod_row["balance"])
+        if prior_eod_row and prior_eod_row["balance"] is not None
+        else None
+    )
     day_net = float(
         (stats["total"] if isinstance(stats, dict) else getattr(stats, "total", 0.0)) or 0.0
     )
@@ -373,9 +389,14 @@ def trades_page():
             <div class="sub">Disciplined volume beats overtrading</div>
           </div>
           <div class="metric">
-            <div class="label">Displayed Balance</div>
-            <div class="value">{{ money(display_balance) }}</div>
-            <div class="sub">End-of-day if available, otherwise latest</div>
+            <div class="label">Current Running Balance</div>
+            <div class="value">{{ money(running_balance) }}</div>
+            <div class="sub">Latest balance in selected day (or latest <= selected day)</div>
+          </div>
+          <div class="metric">
+            <div class="label">Prior EOD Balance</div>
+            <div class="value">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
+            <div class="sub">Last completed day close before selected day</div>
           </div>
         </div>
 
@@ -456,8 +477,9 @@ def trades_page():
               </div>
 
               <div class="stat">
-                <div class="k">🏦 Balance</div>
-                <div class="v">{{ money(display_balance) }}</div>
+                <div class="k">🏦 Running / Prior EOD</div>
+                <div class="v">{{ money(running_balance) }}</div>
+                <div class="tiny">{% if prior_eod_balance is not none %}Prior: {{ money(prior_eod_balance) }}{% else %}Prior: —{% endif %}</div>
               </div>
 
               <div class="stat">
@@ -844,7 +866,8 @@ if (bulkCopyBtn) {
         stats=stats,
         cons=cons,  # ✅ THIS was missing and caused your crash
         week_total=week_total,
-        display_balance=display_balance,
+        running_balance=running_balance,
+        prior_eod_balance=prior_eod_balance,
         money=money,
         pct=pct,
         prev_day=prev_day,
