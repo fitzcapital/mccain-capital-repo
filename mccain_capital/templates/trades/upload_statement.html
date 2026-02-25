@@ -77,6 +77,88 @@
 </div>
 {% endif %}
 
+{% set auto = auto_sync_cfg or {} %}
+<div class="card stack12">
+  <div class="toolbar">
+    <div class="pill">⏰ After-Market Auto Sync</div>
+    <div class="tiny stack8 line15">Set a daily sync time so your statement import runs automatically even if you forget.</div>
+    <div class="hr"></div>
+    <form method="post" action="/trades/sync/auto/config" id="auto-sync-config-form">
+      <div class="row">
+        <div class="stack10">
+          <label><input type="checkbox" name="auto_enabled" value="1" {% if auto.get('enabled') %}checked{% endif %} /> Enable daily auto sync</label>
+        </div>
+        <div>
+          <label>Run Time (ET)</label>
+          <input type="time" name="auto_run_time_et" value="{{ auto.get('run_time_et', '16:15') }}" />
+        </div>
+        <div class="stack10">
+          <label><input type="checkbox" name="auto_run_weekends" value="1" {% if auto.get('run_weekends') %}checked{% endif %} /> Run on weekends</label>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Mode</label>
+          <select name="auto_mode">
+            <option value="broker" {% if auto.get('mode') == 'broker' %}selected{% endif %}>🏦 Broker fills → trades</option>
+            <option value="balance" {% if auto.get('mode') == 'balance' %}selected{% endif %}>🏁 Statement → ending balance snapshot</option>
+          </select>
+        </div>
+        <div class="fieldGrow2">
+          <label>Username (stored locally)</label>
+          <input name="auto_username" value="{{ auto.get('username', '') }}" placeholder="Vanquish username/email" />
+        </div>
+        <div class="fieldGrow2">
+          <label>Password (stored locally)</label>
+          <input type="password" name="auto_password" placeholder="Leave blank to keep existing password" />
+        </div>
+      </div>
+      <details class="syncDetails stack10">
+        <summary>⚙️ Connection Settings</summary>
+        <div class="stack10">
+          <div class="row">
+            <div class="fieldGrow2">
+              <label>Base Origin</label>
+              <input name="auto_base_url" value="{{ auto.get('base_url', broker_cfg.base_url) }}" />
+            </div>
+            <div class="fieldGrow2">
+              <label>Account</label>
+              <input name="auto_account" value="{{ auto.get('account', broker_cfg.account) }}" placeholder="default:OEXXXXXXXX" />
+            </div>
+          </div>
+          <div class="row">
+            <div><label>Whitelist</label><input name="auto_wl" value="{{ auto.get('wl', broker_cfg.wl) }}" /></div>
+            <div><label>Timezone</label><input name="auto_time_zone" value="{{ auto.get('time_zone', broker_cfg.time_zone) }}" /></div>
+            <div><label>Date Locale</label><input name="auto_date_locale" value="{{ auto.get('date_locale', broker_cfg.date_locale) }}" /></div>
+            <div><label>Report Locale</label><input name="auto_report_locale" value="{{ auto.get('report_locale', broker_cfg.report_locale) }}" /></div>
+          </div>
+          <div class="row">
+            <div class="stack10">
+              <label><input type="checkbox" name="auto_headless" value="1" {% if auto.get('headless', true) %}checked{% endif %} /> Headless browser</label>
+            </div>
+            <div class="stack10">
+              <label><input type="checkbox" name="auto_debug_capture" value="1" {% if auto.get('debug_capture', true) %}checked{% endif %} /> Save debug artifacts</label>
+            </div>
+          </div>
+        </div>
+      </details>
+      <div class="hr"></div>
+      <div class="rightActions">
+        <button class="btn primary" type="submit" id="auto-sync-config-submit">💾 Save Auto Sync</button>
+        <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit">▶ Run Now</button>
+      </div>
+      <div class="tiny stack8" id="auto-sync-config-loading" style="display:none;" aria-live="polite">
+        ⏳ Saving auto sync settings...
+      </div>
+      <div class="tiny stack8" id="auto-sync-run-loading" style="display:none;" aria-live="polite">
+        ⏳ Running auto sync now (login + generate + import)...
+      </div>
+      <div class="tiny stack10 line16">Security note: auto sync credentials are stored locally on this machine in app data files.</div>
+    </form>
+    <form method="post" action="/trades/sync/auto/run" id="auto-sync-run-form"></form>
+  </div>
+</div>
+
 <div class="card stack12">
   <div class="toolbar">
     <div class="pill">🔐 Live Login Sync (Auto Generate Statement)</div>
@@ -188,36 +270,37 @@
 
     bindLoading('statement-upload-form', 'statement-upload-submit', 'statement-upload-loading', '⏳ Processing...');
     bindLoading('live-sync-form', 'live-sync-submit', 'live-sync-loading', '⏳ Syncing...');
+    bindLoading('auto-sync-config-form', 'auto-sync-config-submit', 'auto-sync-config-loading', '⏳ Saving...');
+    bindLoading('auto-sync-run-form', 'auto-sync-run-submit', 'auto-sync-run-loading', '⏳ Running...');
 
     const quickRetryBtn = document.getElementById('quick-retry-btn');
-    if (!quickRetryBtn) return;
     const quickRetryNote = document.getElementById('quick-retry-note');
     const liveForm = document.getElementById('live-sync-form');
-    if (!liveForm) return;
-
-    const requested = {{ (last.get('requested') or {}) | tojson }};
-    quickRetryBtn.addEventListener('click', function() {
-      if (!requested || Object.keys(requested).length === 0) {
-        if (quickRetryNote) quickRetryNote.textContent = 'No previous sync request found.';
-        return;
-      }
-      Object.entries(requested).forEach(([key, val]) => {
-        const input = liveForm.querySelector(`[name="${key}"]`);
-        if (!input) return;
-        if (input.type === 'checkbox') {
-          input.checked = Boolean(val);
-        } else if (val !== null && val !== undefined) {
-          input.value = String(val);
+    if (quickRetryBtn && liveForm) {
+      const requested = {{ (last.get('requested') or {}) | tojson }};
+      quickRetryBtn.addEventListener('click', function() {
+        if (!requested || Object.keys(requested).length === 0) {
+          if (quickRetryNote) quickRetryNote.textContent = 'No previous sync request found.';
+          return;
+        }
+        Object.entries(requested).forEach(([key, val]) => {
+          const input = liveForm.querySelector(`[name="${key}"]`);
+          if (!input) return;
+          if (input.type === 'checkbox') {
+            input.checked = Boolean(val);
+          } else if (val !== null && val !== undefined) {
+            input.value = String(val);
+          }
+        });
+        const pwd = liveForm.querySelector('[name="password"]');
+        if (pwd) {
+          pwd.focus();
+          pwd.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (quickRetryNote) {
+          quickRetryNote.textContent = 'Last settings loaded. Enter password if needed, then run sync.';
         }
       });
-      const pwd = liveForm.querySelector('[name="password"]');
-      if (pwd) {
-        pwd.focus();
-        pwd.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      if (quickRetryNote) {
-        quickRetryNote.textContent = 'Last settings loaded. Enter password if needed, then run sync.';
-      }
-    });
+    }
   })();
 </script>

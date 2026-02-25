@@ -55,6 +55,14 @@ def trades_sync_live():
     return svc.trades_sync_live()
 
 
+def trades_sync_auto_config():
+    return svc.trades_sync_auto_config()
+
+
+def trades_sync_auto_run_now():
+    return svc.trades_sync_auto_run_now()
+
+
 def trades_sync_debug_file(name: str):
     return svc.trades_sync_debug_file(name)
 

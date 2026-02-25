@@ -63,4 +63,9 @@ def create_app():
 
         app._security_hooks_registered = True
     core.init_db()
+    if not getattr(app, "_auto_sync_worker_started", False):
+        from mccain_capital.services import trades as trades_service
+
+        trades_service.ensure_auto_sync_worker_started(app)
+        app._auto_sync_worker_started = True
     return app

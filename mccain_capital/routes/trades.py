@@ -78,6 +78,18 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/trades/sync/auto/config",
+        endpoint="trades_sync_auto_config",
+        view_func=h.trades_sync_auto_config,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/trades/sync/auto/run",
+        endpoint="trades_sync_auto_run_now",
+        view_func=h.trades_sync_auto_run_now,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/trades/sync/debug/<path:name>",
         endpoint="trades_sync_debug_file",
         view_func=h.trades_sync_debug_file,

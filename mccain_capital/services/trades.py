@@ -5,8 +5,11 @@ from __future__ import annotations
 import os
 import sqlite3
 import json
+import threading
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from flask import (
     abort,
@@ -52,6 +55,8 @@ last_balance_in_list = repo.last_balance_in_list
 BROKER_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync.json")
 BROKER_DEBUG_DIR = os.path.join(UPLOAD_DIR, "vanquish_debug")
 BROKER_SYNC_STATUS_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync_last_run.json")
+BROKER_AUTO_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.json")
+BROKER_AUTO_SYNC_LOCK_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.lock")
 
 SYNC_STAGE_HELP = {
     "open_login": "Broker login page did not load cleanly. Check Base Origin and network.",
@@ -64,6 +69,9 @@ SYNC_STAGE_HELP = {
     "generate_statement": "Generate Statement did not complete as expected.",
     "capture_statement_html": "Statement page loaded but HTML capture/parse failed.",
 }
+
+_AUTO_SYNC_THREAD_STARTED = False
+_AUTO_SYNC_THREAD_LOCK = threading.Lock()
 
 
 def _load_broker_sync_config() -> Dict[str, str]:
@@ -105,6 +113,47 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     with open(BROKER_SYNC_STATUS_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
+
+
+def _load_auto_sync_config() -> Dict[str, Any]:
+    defaults: Dict[str, Any] = {
+        "enabled": False,
+        "run_time_et": "16:15",
+        "run_weekends": False,
+        "mode": "broker",
+        "username": "",
+        "password": "",
+        "base_url": os.environ.get("VANQUISH_BASE_URL", "https://trade.vanquishtrader.com"),
+        "wl": os.environ.get("VANQUISH_WL", "vanquishtrader"),
+        "account": os.environ.get("VANQUISH_ACCOUNT", ""),
+        "time_zone": os.environ.get("VANQUISH_TIME_ZONE", "America/New_York"),
+        "date_locale": os.environ.get("VANQUISH_DATE_LOCALE", "en-US"),
+        "report_locale": os.environ.get("VANQUISH_REPORT_LOCALE", "en"),
+        "headless": True,
+        "debug_capture": True,
+        "last_run_date": "",
+    }
+    try:
+        with open(BROKER_AUTO_SYNC_CONFIG_PATH, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+            if not isinstance(parsed, dict):
+                return defaults
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return defaults
+    merged = defaults.copy()
+    merged.update(parsed)
+    merged["enabled"] = bool(merged.get("enabled"))
+    merged["run_weekends"] = bool(merged.get("run_weekends"))
+    merged["headless"] = bool(merged.get("headless", True))
+    merged["debug_capture"] = bool(merged.get("debug_capture", True))
+    merged["run_time_et"] = str(merged.get("run_time_et") or "16:15")
+    return merged
+
+
+def _save_auto_sync_config(cfg: Dict[str, Any]) -> None:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    with open(BROKER_AUTO_SYNC_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
 
 
 def _parse_sync_stage(message: str) -> str:
@@ -1790,16 +1839,166 @@ def trades_upload_pdf():
 
     # GET
     broker_cfg = _load_broker_sync_config()
+    auto_sync_cfg = _load_auto_sync_config()
     default_day = today_iso()
     sync_status = _load_last_sync_status()
     content = render_template(
         "trades/upload_statement.html",
         broker_cfg=broker_cfg,
+        auto_sync_cfg=auto_sync_cfg,
         default_day=default_day,
         sync_status=sync_status,
         sync_stage_help=SYNC_STAGE_HELP,
     )
     return render_page(content, active="trades")
+
+
+def _run_live_sync_once(
+    *,
+    mode: str,
+    username: str,
+    password: str,
+    base_url: str,
+    account: str,
+    wl: str,
+    time_zone: str,
+    date_locale: str,
+    report_locale: str,
+    from_date: str,
+    to_date: str,
+    headless: bool,
+    debug_capture: bool,
+    debug_only: bool,
+    source_label: str,
+) -> Dict[str, Any]:
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    debug_dir = (
+        os.path.join(BROKER_DEBUG_DIR, f"live_{from_date}_{to_date}_{stamp}")
+        if debug_capture
+        else None
+    )
+    artifacts_rel: List[str] = []
+    result: Dict[str, Any] = {"ok": False, "warns": [], "artifacts_rel": [], "message": ""}
+    try:
+        html_text, warns, artifacts_abs, sync_meta = (
+            vanquish_live_sync.fetch_statement_html_via_login(
+                base_origin=base_url,
+                username=username,
+                password=password,
+                from_date=from_date,
+                to_date=to_date,
+                account=account,
+                wl=wl,
+                time_zone=time_zone,
+                date_locale=date_locale,
+                report_locale=report_locale,
+                headless=headless,
+                debug_dir=debug_dir,
+            )
+        )
+        artifacts_rel = [_debug_relative(p) for p in artifacts_abs]
+        result["warns"] = warns
+        result["sync_meta"] = sync_meta
+    except Exception as e:
+        raw_error = str(e)
+        failed_stage = _parse_sync_stage(raw_error)
+        clean_error = _strip_stage_prefix(raw_error)
+        if debug_dir and os.path.isdir(debug_dir):
+            artifacts_rel = [
+                _debug_relative(os.path.join(debug_dir, n))
+                for n in sorted(os.listdir(debug_dir))
+                if os.path.isfile(os.path.join(debug_dir, n))
+            ]
+        result.update(
+            {
+                "ok": False,
+                "stage": failed_stage,
+                "message": clean_error,
+                "artifacts_rel": artifacts_rel,
+            }
+        )
+        return result
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    filename = f"vanquish_statement_live_{from_date}_{to_date}_{stamp}.html"
+    path = os.path.join(UPLOAD_DIR, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html_text)
+    artifacts_rel = artifacts_rel + [_debug_relative(path)]
+
+    if debug_only:
+        result.update(
+            {
+                "ok": True,
+                "message": "Debug capture completed. No import performed.",
+                "artifacts_rel": artifacts_rel,
+                "statement_path": path,
+                "debug_only": True,
+            }
+        )
+        return result
+
+    if mode == "broker":
+        paste_text, balance_val, parse_warns = importing.parse_statement_html_to_broker_paste(path)
+        warns_all = (result.get("warns") or []) + (parse_warns or [])
+        if not paste_text:
+            result.update(
+                {
+                    "ok": False,
+                    "stage": "capture_statement_html",
+                    "message": "Parsed statement HTML but found no trade rows.",
+                    "warns": warns_all,
+                    "artifacts_rel": artifacts_rel,
+                    "statement_path": path,
+                }
+            )
+            return result
+        inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
+            paste_text, ending_balance=balance_val
+        )
+        msg = f"{source_label}: inserted {inserted} trade(s)."
+        if errors:
+            msg = f"{msg} Warnings: {len(errors)}."
+        result.update(
+            {
+                "ok": True,
+                "message": msg,
+                "inserted": inserted,
+                "errors": errors or [],
+                "report": report or {},
+                "warns": warns_all,
+                "artifacts_rel": artifacts_rel,
+                "statement_path": path,
+            }
+        )
+        return result
+
+    # balance mode
+    _, balance_val, parse_warns = importing.parse_statement_html_to_broker_paste(path)
+    warns_all = (result.get("warns") or []) + (parse_warns or [])
+    if balance_val is None:
+        result.update(
+            {
+                "ok": False,
+                "stage": "capture_statement_html",
+                "message": "Statement balance not found in generated HTML.",
+                "warns": warns_all,
+                "artifacts_rel": artifacts_rel,
+                "statement_path": path,
+            }
+        )
+        return result
+    importing.insert_balance_snapshot(today_iso(), balance_val, raw_line=source_label)
+    result.update(
+        {
+            "ok": True,
+            "message": f"{source_label}: imported ending balance snapshot {money(balance_val)}.",
+            "warns": warns_all,
+            "artifacts_rel": artifacts_rel,
+            "statement_path": path,
+        }
+    )
+    return result
 
 
 def trades_sync_live():
@@ -1851,13 +2050,6 @@ def trades_sync_live():
     if from_date > to_date:
         from_date, to_date = to_date, from_date
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    debug_dir = (
-        os.path.join(BROKER_DEBUG_DIR, f"live_{from_date}_{to_date}_{stamp}")
-        if debug_capture
-        else None
-    )
-    artifacts_rel: List[str] = []
     requested = {
         "mode": mode,
         "from_date": from_date,
@@ -1897,34 +2089,27 @@ def trades_sync_live():
         )
         _save_broker_sync_config(cfg)
 
-    try:
-        html_text, warns, artifacts_abs, sync_meta = (
-            vanquish_live_sync.fetch_statement_html_via_login(
-                base_origin=base_url,
-                username=username,
-                password=password,
-                from_date=from_date,
-                to_date=to_date,
-                account=account,
-                wl=wl,
-                time_zone=time_zone,
-                date_locale=date_locale,
-                report_locale=report_locale,
-                headless=headless,
-                debug_dir=debug_dir,
-            )
-        )
-        artifacts_rel = [_debug_relative(p) for p in artifacts_abs]
-    except Exception as e:
-        raw_error = str(e)
-        failed_stage = _parse_sync_stage(raw_error)
-        clean_error = _strip_stage_prefix(raw_error)
-        if debug_dir and os.path.isdir(debug_dir):
-            artifacts_rel = [
-                _debug_relative(os.path.join(debug_dir, n))
-                for n in sorted(os.listdir(debug_dir))
-                if os.path.isfile(os.path.join(debug_dir, n))
-            ]
+    run = _run_live_sync_once(
+        mode=mode,
+        username=username,
+        password=password,
+        base_url=base_url,
+        account=account,
+        wl=wl,
+        time_zone=time_zone,
+        date_locale=date_locale,
+        report_locale=report_locale,
+        from_date=from_date,
+        to_date=to_date,
+        headless=headless,
+        debug_capture=debug_capture,
+        debug_only=debug_only,
+        source_label="LIVE LOGIN HTML",
+    )
+    artifacts_rel = run.get("artifacts_rel", [])
+    if not run.get("ok"):
+        failed_stage = str(run.get("stage") or "unknown")
+        clean_error = str(run.get("message") or "Live sync failed.")
         _save_last_sync_status(
             {
                 "status": "failed",
@@ -1937,10 +2122,11 @@ def trades_sync_live():
             }
         )
         if artifacts_rel:
+            folder = os.path.dirname(artifacts_rel[0])
             return _render_live_debug_result(
-                folder_rel=_debug_relative(debug_dir or ""),
+                folder_rel=folder,
                 artifacts_rel=artifacts_rel,
-                warns=[],
+                warns=run.get("warns", []),
                 error=f"Live login sync failed ({failed_stage}): {clean_error}",
             )
         msg = f"Live login sync failed ({failed_stage}): {clean_error}"
@@ -1949,42 +2135,36 @@ def trades_sync_live():
             msg = f"{msg} {help_text}"
         return render_page(simple_msg(msg), active="trades")
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    filename = f"vanquish_statement_live_{from_date}_{to_date}_{stamp}.html"
-    path = os.path.join(UPLOAD_DIR, filename)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html_text)
-    artifacts_rel = artifacts_rel + [_debug_relative(path)]
-
-    if debug_only and debug_dir:
+    if run.get("debug_only"):
         _save_last_sync_status(
             {
                 "status": "debug_only",
                 "stage": "capture_statement_html",
                 "message": "Debug capture completed. No import performed.",
                 "requested": requested,
-                "sync_meta": sync_meta,
+                "sync_meta": run.get("sync_meta", {}),
                 "artifacts_rel": artifacts_rel[:20],
                 "updated_at": now_iso(),
             }
         )
+        folder = os.path.dirname(artifacts_rel[0]) if artifacts_rel else ""
         return _render_live_debug_result(
-            folder_rel=_debug_relative(debug_dir),
+            folder_rel=folder,
             artifacts_rel=artifacts_rel,
-            warns=warns,
+            warns=run.get("warns", []),
             error="",
         )
-
-    response = _handle_statement_html_import(path, mode=mode, source_label="LIVE LOGIN HTML")
     _save_last_sync_status(
         {
             "status": "success",
             "stage": "import_complete",
-            "message": "Live sync completed and statement imported.",
+            "message": run.get("message", "Live sync completed and statement imported."),
             "requested": requested,
-            "sync_meta": sync_meta,
+            "sync_meta": run.get("sync_meta", {}),
             "artifacts_rel": artifacts_rel[:20],
-            "statement_file": _debug_relative(path),
+            "statement_file": (
+                _debug_relative(run.get("statement_path", "")) if run.get("statement_path") else ""
+            ),
             "updated_at": now_iso(),
         }
     )
@@ -1992,7 +2172,215 @@ def trades_sync_live():
         "Live sync complete. Review Upload Statement → Live Sync Diagnostics for notes/artifacts.",
         "success",
     )
-    return response
+    return redirect(url_for("trades_page"))
+
+
+def trades_sync_auto_config():
+    if request.method != "POST":
+        return redirect(url_for("trades_upload_pdf"))
+    cfg = _load_auto_sync_config()
+    cfg["enabled"] = request.form.get("auto_enabled") == "1"
+    cfg["run_weekends"] = request.form.get("auto_run_weekends") == "1"
+    cfg["run_time_et"] = (request.form.get("auto_run_time_et") or "").strip() or "16:15"
+    cfg["mode"] = (request.form.get("auto_mode") or "broker").strip() or "broker"
+    cfg["username"] = (request.form.get("auto_username") or "").strip()
+    if request.form.get("auto_password"):
+        cfg["password"] = (request.form.get("auto_password") or "").strip()
+    cfg["base_url"] = (request.form.get("auto_base_url") or "").strip() or cfg.get(
+        "base_url", "https://trade.vanquishtrader.com"
+    )
+    cfg["account"] = (request.form.get("auto_account") or "").strip()
+    cfg["wl"] = (request.form.get("auto_wl") or "").strip() or cfg.get("wl", "vanquishtrader")
+    cfg["time_zone"] = (request.form.get("auto_time_zone") or "").strip() or cfg.get(
+        "time_zone", "America/New_York"
+    )
+    cfg["date_locale"] = (request.form.get("auto_date_locale") or "").strip() or cfg.get(
+        "date_locale", "en-US"
+    )
+    cfg["report_locale"] = (request.form.get("auto_report_locale") or "").strip() or cfg.get(
+        "report_locale", "en"
+    )
+    cfg["headless"] = request.form.get("auto_headless") == "1"
+    cfg["debug_capture"] = request.form.get("auto_debug_capture") == "1"
+    _save_auto_sync_config(cfg)
+    flash("Auto sync schedule saved.", "success")
+    return redirect(url_for("trades_upload_pdf"))
+
+
+def trades_sync_auto_run_now():
+    cfg = _load_auto_sync_config()
+    if not cfg.get("username") or not cfg.get("password"):
+        return render_page(
+            simple_msg(
+                "Auto sync credentials are missing. Save username/password in Auto Sync settings."
+            ),
+            active="trades",
+        )
+    today = today_iso()
+    run = _run_live_sync_once(
+        mode=str(cfg.get("mode") or "broker"),
+        username=str(cfg.get("username") or ""),
+        password=str(cfg.get("password") or ""),
+        base_url=str(cfg.get("base_url") or "https://trade.vanquishtrader.com"),
+        account=str(cfg.get("account") or ""),
+        wl=str(cfg.get("wl") or "vanquishtrader"),
+        time_zone=str(cfg.get("time_zone") or "America/New_York"),
+        date_locale=str(cfg.get("date_locale") or "en-US"),
+        report_locale=str(cfg.get("report_locale") or "en"),
+        from_date=today,
+        to_date=today,
+        headless=bool(cfg.get("headless", True)),
+        debug_capture=bool(cfg.get("debug_capture", True)),
+        debug_only=False,
+        source_label="AUTO SYNC HTML",
+    )
+    _save_last_sync_status(
+        {
+            "status": "success" if run.get("ok") else "failed",
+            "stage": run.get("stage") or ("import_complete" if run.get("ok") else "unknown"),
+            "message": run.get("message") or "",
+            "stage_help": SYNC_STAGE_HELP.get(str(run.get("stage") or ""), ""),
+            "requested": {
+                "source": "manual_auto_run",
+                "from_date": today,
+                "to_date": today,
+                "mode": cfg.get("mode", "broker"),
+            },
+            "sync_meta": run.get("sync_meta", {}),
+            "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
+            "statement_file": (
+                _debug_relative(run.get("statement_path", "")) if run.get("statement_path") else ""
+            ),
+            "updated_at": now_iso(),
+        }
+    )
+    if run.get("ok"):
+        flash("Auto sync run completed.", "success")
+        return redirect(url_for("trades_page"))
+    msg = f"Auto sync run failed: {run.get('message') or 'Unknown error'}"
+    stage = str(run.get("stage") or "")
+    if stage and stage in SYNC_STAGE_HELP:
+        msg += f" {SYNC_STAGE_HELP[stage]}"
+    return render_page(simple_msg(msg), active="trades")
+
+
+def ensure_auto_sync_worker_started(app) -> None:
+    global _AUTO_SYNC_THREAD_STARTED
+    with _AUTO_SYNC_THREAD_LOCK:
+        if _AUTO_SYNC_THREAD_STARTED:
+            return
+        t = threading.Thread(
+            target=_auto_sync_worker, args=(app,), daemon=True, name="auto-sync-worker"
+        )
+        t.start()
+        _AUTO_SYNC_THREAD_STARTED = True
+
+
+def _auto_sync_worker(app) -> None:
+    while True:
+        try:
+            cfg = _load_auto_sync_config()
+            if not cfg.get("enabled"):
+                time.sleep(20)
+                continue
+            tz_name = str(cfg.get("time_zone") or "America/New_York")
+            tz = ZoneInfo(tz_name)
+            now_local = datetime.now(tz)
+            if (not cfg.get("run_weekends")) and now_local.weekday() >= 5:
+                time.sleep(30)
+                continue
+            hhmm = str(cfg.get("run_time_et") or "16:15")
+            try:
+                h, m = hhmm.split(":", 1)
+                target_h = int(h)
+                target_m = int(m)
+            except Exception:
+                target_h, target_m = 16, 15
+            today = now_local.date().isoformat()
+            if now_local.hour < target_h or (
+                now_local.hour == target_h and now_local.minute < target_m
+            ):
+                time.sleep(20)
+                continue
+            if str(cfg.get("last_run_date") or "") == today:
+                time.sleep(40)
+                continue
+            if not cfg.get("username") or not cfg.get("password") or not cfg.get("account"):
+                _save_last_sync_status(
+                    {
+                        "status": "failed",
+                        "stage": "auto_config",
+                        "message": "Auto sync is enabled but username/password/account are not fully configured.",
+                        "updated_at": now_iso(),
+                    }
+                )
+                time.sleep(60)
+                continue
+            try:
+                fd = os.open(BROKER_AUTO_SYNC_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+            except FileExistsError:
+                time.sleep(20)
+                continue
+            try:
+                with app.app_context():
+                    run = _run_live_sync_once(
+                        mode=str(cfg.get("mode") or "broker"),
+                        username=str(cfg.get("username") or ""),
+                        password=str(cfg.get("password") or ""),
+                        base_url=str(cfg.get("base_url") or "https://trade.vanquishtrader.com"),
+                        account=str(cfg.get("account") or ""),
+                        wl=str(cfg.get("wl") or "vanquishtrader"),
+                        time_zone=str(cfg.get("time_zone") or "America/New_York"),
+                        date_locale=str(cfg.get("date_locale") or "en-US"),
+                        report_locale=str(cfg.get("report_locale") or "en"),
+                        from_date=today,
+                        to_date=today,
+                        headless=bool(cfg.get("headless", True)),
+                        debug_capture=bool(cfg.get("debug_capture", True)),
+                        debug_only=False,
+                        source_label="AUTO SYNC HTML",
+                    )
+                    cfg["last_run_date"] = today
+                    _save_auto_sync_config(cfg)
+                    _save_last_sync_status(
+                        {
+                            "status": "success" if run.get("ok") else "failed",
+                            "stage": run.get("stage")
+                            or ("import_complete" if run.get("ok") else "unknown"),
+                            "message": run.get("message") or "",
+                            "stage_help": SYNC_STAGE_HELP.get(str(run.get("stage") or ""), ""),
+                            "requested": {
+                                "source": "scheduler",
+                                "scheduled_for": f"{today} {target_h:02d}:{target_m:02d}",
+                                "mode": cfg.get("mode", "broker"),
+                            },
+                            "sync_meta": run.get("sync_meta", {}),
+                            "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
+                            "statement_file": (
+                                _debug_relative(run.get("statement_path", ""))
+                                if run.get("statement_path")
+                                else ""
+                            ),
+                            "updated_at": now_iso(),
+                        }
+                    )
+            finally:
+                try:
+                    os.unlink(BROKER_AUTO_SYNC_LOCK_PATH)
+                except OSError:
+                    pass
+            time.sleep(45)
+        except Exception as e:  # pragma: no cover
+            _save_last_sync_status(
+                {
+                    "status": "failed",
+                    "stage": "auto_worker",
+                    "message": f"Auto sync worker error: {e}",
+                    "updated_at": now_iso(),
+                }
+            )
+            time.sleep(60)
 
 
 def trades_sync_debug_file(name: str):
