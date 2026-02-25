@@ -105,12 +105,21 @@
           </select>
         </div>
         <div class="fieldGrow2">
-          <label>Username (stored locally)</label>
+          <label>Username</label>
           <input name="auto_username" value="{{ auto.get('username', '') }}" placeholder="Vanquish username/email" />
         </div>
         <div class="fieldGrow2">
-          <label>Password (stored locally)</label>
-          <input type="password" name="auto_password" placeholder="Leave blank to keep existing password" />
+          <label>Password (OS keychain)</label>
+          <input type="password" name="auto_password" placeholder="Set/replace keychain password (leave blank to keep current)" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="stack10">
+          <label><input type="checkbox" name="auto_clear_password" value="1" /> Clear stored keychain password</label>
+        </div>
+        <div class="tiny stack10">
+          Keychain: {% if auto.get('keyring_available') %}<b>available</b>{% else %}<b>not available</b>{% endif %}
+          · Password: {% if auto.get('password_stored') %}<b>stored</b>{% else %}<b>not stored</b>{% endif %}
         </div>
       </div>
       <details class="syncDetails stack10">
@@ -153,7 +162,7 @@
       <div class="tiny stack8" id="auto-sync-run-loading" style="display:none;" aria-live="polite">
         ⏳ Running auto sync now (login + generate + import)...
       </div>
-      <div class="tiny stack10 line16">Security note: auto sync credentials are stored locally on this machine in app data files.</div>
+      <div class="tiny stack10 line16">Security note: auto sync password is stored in OS keychain (not in app config files).</div>
     </form>
     <form method="post" action="/trades/sync/auto/run" id="auto-sync-run-form"></form>
   </div>

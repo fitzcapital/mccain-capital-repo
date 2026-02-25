@@ -57,6 +57,7 @@ BROKER_DEBUG_DIR = os.path.join(UPLOAD_DIR, "vanquish_debug")
 BROKER_SYNC_STATUS_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync_last_run.json")
 BROKER_AUTO_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.json")
 BROKER_AUTO_SYNC_LOCK_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.lock")
+BROKER_KEYCHAIN_SERVICE = "mccain-capital.vanquish.auto-sync"
 
 SYNC_STAGE_HELP = {
     "open_login": "Broker login page did not load cleanly. Check Base Origin and network.",
@@ -72,6 +73,56 @@ SYNC_STAGE_HELP = {
 
 _AUTO_SYNC_THREAD_STARTED = False
 _AUTO_SYNC_THREAD_LOCK = threading.Lock()
+
+
+def _keyring_client():
+    try:
+        import keyring  # type: ignore
+
+        return keyring
+    except Exception:
+        return None
+
+
+def _keychain_entry_name(username: str) -> str:
+    u = (username or "").strip().lower()
+    return f"vanquish::{u or 'default'}"
+
+
+def _get_auto_sync_password(cfg: Dict[str, Any]) -> str:
+    username = str(cfg.get("username") or "")
+    kr = _keyring_client()
+    if kr is not None and username:
+        try:
+            pw = kr.get_password(BROKER_KEYCHAIN_SERVICE, _keychain_entry_name(username))
+            if pw:
+                return str(pw)
+        except Exception:
+            pass
+    # Legacy fallback for existing installs.
+    return str(cfg.get("password") or "")
+
+
+def _set_auto_sync_password(username: str, password: str) -> bool:
+    kr = _keyring_client()
+    if kr is None:
+        return False
+    try:
+        kr.set_password(BROKER_KEYCHAIN_SERVICE, _keychain_entry_name(username), password)
+        return True
+    except Exception:
+        return False
+
+
+def _clear_auto_sync_password(username: str) -> bool:
+    kr = _keyring_client()
+    if kr is None:
+        return False
+    try:
+        kr.delete_password(BROKER_KEYCHAIN_SERVICE, _keychain_entry_name(username))
+        return True
+    except Exception:
+        return False
 
 
 def _load_broker_sync_config() -> Dict[str, str]:
@@ -122,7 +173,6 @@ def _load_auto_sync_config() -> Dict[str, Any]:
         "run_weekends": False,
         "mode": "broker",
         "username": "",
-        "password": "",
         "base_url": os.environ.get("VANQUISH_BASE_URL", "https://trade.vanquishtrader.com"),
         "wl": os.environ.get("VANQUISH_WL", "vanquishtrader"),
         "account": os.environ.get("VANQUISH_ACCOUNT", ""),
@@ -147,13 +197,19 @@ def _load_auto_sync_config() -> Dict[str, Any]:
     merged["headless"] = bool(merged.get("headless", True))
     merged["debug_capture"] = bool(merged.get("debug_capture", True))
     merged["run_time_et"] = str(merged.get("run_time_et") or "16:15")
+    merged["password"] = str(merged.get("password") or "")
+    merged["keyring_available"] = _keyring_client() is not None
+    merged["password_stored"] = bool(_get_auto_sync_password(merged))
     return merged
 
 
 def _save_auto_sync_config(cfg: Dict[str, Any]) -> None:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
+    to_save = dict(cfg)
+    to_save.pop("keyring_available", None)
+    to_save.pop("password_stored", None)
     with open(BROKER_AUTO_SYNC_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+        json.dump(to_save, f, indent=2)
 
 
 def _parse_sync_stage(message: str) -> str:
@@ -2183,9 +2239,11 @@ def trades_sync_auto_config():
     cfg["run_weekends"] = request.form.get("auto_run_weekends") == "1"
     cfg["run_time_et"] = (request.form.get("auto_run_time_et") or "").strip() or "16:15"
     cfg["mode"] = (request.form.get("auto_mode") or "broker").strip() or "broker"
-    cfg["username"] = (request.form.get("auto_username") or "").strip()
-    if request.form.get("auto_password"):
-        cfg["password"] = (request.form.get("auto_password") or "").strip()
+    username = (request.form.get("auto_username") or "").strip()
+    old_username = str(cfg.get("username") or "")
+    cfg["username"] = username
+    new_password = (request.form.get("auto_password") or "").strip()
+    clear_password = request.form.get("auto_clear_password") == "1"
     cfg["base_url"] = (request.form.get("auto_base_url") or "").strip() or cfg.get(
         "base_url", "https://trade.vanquishtrader.com"
     )
@@ -2202,17 +2260,41 @@ def trades_sync_auto_config():
     )
     cfg["headless"] = request.form.get("auto_headless") == "1"
     cfg["debug_capture"] = request.form.get("auto_debug_capture") == "1"
+    # Prevent writing secrets to config file.
+    cfg["password"] = ""
+    if clear_password:
+        target_user = username or old_username
+        if target_user and _clear_auto_sync_password(target_user):
+            flash("Auto sync password cleared from OS keychain.", "success")
+        elif target_user:
+            flash("Could not clear keychain password (or it was not present).", "warn")
+    elif new_password:
+        if not username:
+            flash("Set username before saving password to keychain.", "warn")
+        elif _set_auto_sync_password(username, new_password):
+            flash("Auto sync password stored in OS keychain.", "success")
+        else:
+            flash(
+                "OS keychain unavailable. Install/use a keyring backend before enabling auto sync.",
+                "warn",
+            )
     _save_auto_sync_config(cfg)
+    if cfg.get("enabled") and not _get_auto_sync_password(cfg):
+        flash(
+            "Auto sync is enabled but no keychain password is stored yet.",
+            "warn",
+        )
     flash("Auto sync schedule saved.", "success")
     return redirect(url_for("trades_upload_pdf"))
 
 
 def trades_sync_auto_run_now():
     cfg = _load_auto_sync_config()
-    if not cfg.get("username") or not cfg.get("password"):
+    auto_password = _get_auto_sync_password(cfg)
+    if not cfg.get("username") or not auto_password:
         return render_page(
             simple_msg(
-                "Auto sync credentials are missing. Save username/password in Auto Sync settings."
+                "Auto sync credentials are missing. Save username and password in OS keychain first."
             ),
             active="trades",
         )
@@ -2220,7 +2302,7 @@ def trades_sync_auto_run_now():
     run = _run_live_sync_once(
         mode=str(cfg.get("mode") or "broker"),
         username=str(cfg.get("username") or ""),
-        password=str(cfg.get("password") or ""),
+        password=auto_password,
         base_url=str(cfg.get("base_url") or "https://trade.vanquishtrader.com"),
         account=str(cfg.get("account") or ""),
         wl=str(cfg.get("wl") or "vanquishtrader"),
@@ -2305,12 +2387,13 @@ def _auto_sync_worker(app) -> None:
             if str(cfg.get("last_run_date") or "") == today:
                 time.sleep(40)
                 continue
-            if not cfg.get("username") or not cfg.get("password") or not cfg.get("account"):
+            auto_password = _get_auto_sync_password(cfg)
+            if not cfg.get("username") or not auto_password or not cfg.get("account"):
                 _save_last_sync_status(
                     {
                         "status": "failed",
                         "stage": "auto_config",
-                        "message": "Auto sync is enabled but username/password/account are not fully configured.",
+                        "message": "Auto sync is enabled but username/keychain password/account are not fully configured.",
                         "updated_at": now_iso(),
                     }
                 )
@@ -2327,7 +2410,7 @@ def _auto_sync_worker(app) -> None:
                     run = _run_live_sync_once(
                         mode=str(cfg.get("mode") or "broker"),
                         username=str(cfg.get("username") or ""),
-                        password=str(cfg.get("password") or ""),
+                        password=auto_password,
                         base_url=str(cfg.get("base_url") or "https://trade.vanquishtrader.com"),
                         account=str(cfg.get("account") or ""),
                         wl=str(cfg.get("wl") or "vanquishtrader"),
