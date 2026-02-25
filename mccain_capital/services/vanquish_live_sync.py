@@ -70,6 +70,51 @@ def _wait_until_enabled(locator, timeout_ms: int = 6000) -> bool:
     return False
 
 
+def _click_first(page, selectors: List[str], timeout_ms: int = 4000) -> bool:
+    for selector in selectors:
+        try:
+            loc = page.locator(selector)
+            if loc.count() > 0 and loc.first.is_visible():
+                loc.first.click(timeout=timeout_ms)
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _set_statement_period_fields(page, from_date: str, to_date: str) -> bool:
+    js = """
+    (payload) => {
+      const roots = Array.from(document.querySelectorAll('div,section,dialog'));
+      const root = roots.find(el => (el.innerText || '').includes('Account Statement'));
+      if (!root) return false;
+      const inputs = Array.from(root.querySelectorAll('input'));
+      const dateLike = inputs.filter(i => {
+        const p = (i.getAttribute('placeholder') || '').toLowerCase();
+        const v = (i.value || '').trim();
+        return /\\d{2}\\/\\d{2}\\/\\d{4}/.test(v) || p.includes('mm') || p.includes('date');
+      });
+      if (dateLike.length < 2) return false;
+      const setVal = (el, value) => {
+        el.focus();
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.blur();
+      };
+      setVal(dateLike[0], payload.fromUS);
+      setVal(dateLike[1], payload.toUS);
+      return true;
+    }
+    """
+    from_us = f"{from_date[5:7]}/{from_date[8:10]}/{from_date[0:4]}"
+    to_us = f"{to_date[5:7]}/{to_date[8:10]}/{to_date[0:4]}"
+    try:
+        return bool(page.evaluate(js, {"fromUS": from_us, "toUS": to_us}))
+    except Exception:
+        return False
+
+
 def fetch_statement_html_via_login(
     *,
     base_origin: str,
@@ -245,7 +290,65 @@ def fetch_statement_html_via_login(
                 "Still on login page after submit. Credentials may be invalid or MFA/CAPTCHA is required."
             )
 
-        page.goto(statement_url, wait_until="domcontentloaded")
+        # Preferred flow: hamburger menu -> Account Statement -> Generate Statement.
+        menu_clicked = _click_first(
+            page,
+            [
+                "button[aria-label*='menu' i]",
+                "button[title*='menu' i]",
+                "button:has-text('≡')",
+                "button:has-text('☰')",
+                "div[role='button'][aria-label*='menu' i]",
+                "div[role='button']:has-text('≡')",
+            ],
+        )
+        if not menu_clicked:
+            warnings.append("Could not click hamburger menu; using statement URL fallback.")
+            page.goto(statement_url, wait_until="domcontentloaded")
+        else:
+            page.wait_for_timeout(600)
+            statement_clicked = _click_first(
+                page,
+                [
+                    "text=Account Statement",
+                    "a:has-text('Account Statement')",
+                    "button:has-text('Account Statement')",
+                    "div[role='menuitem']:has-text('Account Statement')",
+                ],
+            )
+            if not statement_clicked:
+                warnings.append("Could not open Account Statement from menu; using URL fallback.")
+                page.goto(statement_url, wait_until="domcontentloaded")
+            else:
+                page.wait_for_timeout(900)
+                if not _set_statement_period_fields(page, from_date, to_date):
+                    warnings.append(
+                        "Could not set custom From/To in dialog; using visible defaults."
+                    )
+                _click_first(page, ["label:has-text('HTML')", "text=HTML"])
+                generate_clicked = _click_first(
+                    page,
+                    [
+                        "button:has-text('Generate Statement')",
+                        "button:has-text('Generate')",
+                        "input[value*='Generate']",
+                    ],
+                    timeout_ms=7000,
+                )
+                if not generate_clicked:
+                    warnings.append("Generate Statement button not found; using URL fallback.")
+                    page.goto(statement_url, wait_until="domcontentloaded")
+                else:
+                    try:
+                        page.wait_for_url("**/account/statement/**", timeout=timeout_ms)
+                    except Exception:
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                        except PlaywrightTimeoutError:
+                            warnings.append(
+                                "Generate clicked but navigation confirmation timed out."
+                            )
+
         shot = _debug_shot(page, debug_dir, "04_statement_page.png")
         if shot:
             artifacts.append(shot)
@@ -253,24 +356,6 @@ def fetch_statement_html_via_login(
             page.wait_for_load_state("networkidle", timeout=timeout_ms)
         except PlaywrightTimeoutError:
             warnings.append("Statement page load did not reach network idle; continuing.")
-
-        generate_btn = _first_visible(
-            page,
-            [
-                "button:has-text('Generate Statement')",
-                "button:has-text('Generate')",
-                "input[value*='Generate']",
-                "button:has-text('Run')",
-            ],
-        )
-        if generate_btn:
-            generate_btn.click()
-            try:
-                page.wait_for_load_state("networkidle", timeout=timeout_ms)
-            except PlaywrightTimeoutError:
-                warnings.append("Generate action completed without network-idle confirmation.")
-        else:
-            warnings.append("Generate button not found; captured current statement page.")
 
         shot = _debug_shot(page, debug_dir, "05_after_generate.png")
         if shot:
