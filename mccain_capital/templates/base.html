@@ -106,6 +106,34 @@
       </div>
     </div>
 
+    {% set ss = system_status if system_status is defined else {} %}
+    <div class="systemStatusStrip" role="status" aria-live="polite">
+      <div class="statusChip">
+        <span class="statusKey">Now</span>
+        <span class="statusVal">Last Sync: {{ (ss.last_sync_status or 'unknown')|upper }}</span>
+      </div>
+      <div class="statusChip">
+        <span class="statusKey">Next</span>
+        <span class="statusVal">
+          {% if ss.auto_sync_enabled and ss.auto_sync_time %}
+            Auto Sync {{ ss.auto_sync_time }} ET
+          {% else %}
+            Auto Sync Off
+          {% endif %}
+        </span>
+      </div>
+      <div class="statusChip">
+        <span class="statusKey">Detail</span>
+        <span class="statusVal">
+          {% if ss.last_sync_updated_at %}
+            Updated {{ ss.last_sync_updated_at }}
+          {% else %}
+            No sync run recorded
+          {% endif %}
+        </span>
+      </div>
+    </div>
+
     <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>
     <aside id="drawer" class="drawer" aria-label="Menu">
       <div class="drawerHead">
@@ -393,6 +421,45 @@ document.addEventListener('keydown', (e) => {
     }
     window.toggleTheme = toggleTheme;
     applyTheme(localStorage.getItem("mc_theme") || "default");
+
+    function enforcePrimaryCta(){
+      const groups = document.querySelectorAll('.actionRow, .rightActions, .leftActions');
+      groups.forEach((group) => {
+        const buttons = Array.from(group.querySelectorAll('.btn, button.btn'));
+        if (!buttons.length) return;
+        let primary = buttons.find((b) => b.classList.contains('primary'));
+        if (!primary) {
+          primary = buttons[0];
+          primary.classList.add('primary');
+        }
+        buttons.forEach((b) => {
+          if (b !== primary) b.classList.add('ctaSecondary');
+        });
+      });
+    }
+
+    function setupMobileStatCompaction(){
+      if (window.innerWidth > 760) return;
+      document.querySelectorAll('.statRow').forEach((row, idx) => {
+        const cards = Array.from(row.querySelectorAll(':scope > .stat'));
+        if (cards.length <= 4 || row.dataset.compacted === '1') return;
+        cards.forEach((card, i) => {
+          if (i >= 4) card.classList.add('mobileStatExtra');
+        });
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'btn statToggleBtn';
+        toggle.textContent = 'Show More Stats';
+        toggle.addEventListener('click', () => {
+          const expanded = row.classList.toggle('showAllStats');
+          toggle.textContent = expanded ? 'Show Fewer Stats' : 'Show More Stats';
+        });
+        row.insertAdjacentElement('afterend', toggle);
+        row.dataset.compacted = '1';
+      });
+    }
+    enforcePrimaryCta();
+    setupMobileStatCompaction();
 
     const staggerTargets = document.querySelectorAll(".card, .metric, .calcCard, .insightCard");
     staggerTargets.forEach((el, i) => {
