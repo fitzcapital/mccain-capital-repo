@@ -1742,7 +1742,7 @@ def trades_upload_pdf():
         <div class="card"><div class="toolbar">
           <div class="pill">📄 Upload Statement (PDF / HTML)</div>
           <div class="hr"></div>
-          <form method="post" enctype="multipart/form-data">
+          <form method="post" enctype="multipart/form-data" id="statement-upload-form">
             <div class="row">
               <div>
                 <label>Mode</label>
@@ -1761,8 +1761,11 @@ def trades_upload_pdf():
 
             <div class="hr"></div>
             <div class="rightActions">
-              <button class="btn primary" type="submit">🚀 Process</button>
+              <button class="btn primary" type="submit" id="statement-upload-submit">🚀 Process</button>
               <a class="btn" href="/trades">← Back</a>
+            </div>
+            <div class="tiny stack10" id="statement-upload-loading" style="display:none;" aria-live="polite">
+              ⏳ Processing upload. Parsing statement and importing trades...
             </div>
           </form>
         </div></div>
@@ -1771,7 +1774,7 @@ def trades_upload_pdf():
           <div class="pill">🔐 Live Login Sync (Auto Generate Statement)</div>
           <div class="tiny stack10 line15">Logs into Vanquish, opens statement, clicks Generate Statement, then imports HTML output.</div>
           <div class="hr"></div>
-          <form method="post" action="/trades/sync/live">
+          <form method="post" action="/trades/sync/live" id="live-sync-form">
             <div class="row">
               <div>
                 <label>Mode</label>
@@ -1845,11 +1848,42 @@ def trades_upload_pdf():
 
             <div class="hr"></div>
             <div class="rightActions">
-              <button class="btn primary" type="submit">🤖 Login + Generate + Import</button>
+              <button class="btn primary" type="submit" id="live-sync-submit">🤖 Login + Generate + Import</button>
               <a class="btn" href="/trades/upload/statement">Reset</a>
+            </div>
+            <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">
+              ⏳ Live sync in progress. Logging in, generating statement, and importing. This can take 20-60 seconds.
             </div>
           </form>
         </div></div>
+        <script>
+          (function() {
+            function bindLoading(formId, submitId, loadingId, busyText) {
+              const form = document.getElementById(formId);
+              const submitBtn = document.getElementById(submitId);
+              const loading = document.getElementById(loadingId);
+              if (!form || !submitBtn || !loading) return;
+              form.addEventListener('submit', function() {
+                submitBtn.disabled = true;
+                submitBtn.textContent = busyText;
+                loading.style.display = 'block';
+              });
+            }
+
+            bindLoading(
+              'statement-upload-form',
+              'statement-upload-submit',
+              'statement-upload-loading',
+              '⏳ Processing...'
+            );
+            bindLoading(
+              'live-sync-form',
+              'live-sync-submit',
+              'live-sync-loading',
+              '⏳ Syncing...'
+            );
+          })();
+        </script>
         """,
         broker_cfg=broker_cfg,
         default_day=default_day,
