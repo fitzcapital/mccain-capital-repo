@@ -4258,7 +4258,7 @@ def links_page():
           <div class="rightActions">
             <a class="btn primary" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Vanquish Trader</a>
             <a class="btn" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener">Prop Dashboard</a>
-            <a class="btn" href="{{ url_for('chart') }}" target="_blank" rel="noopener">TradingView Charts</a>
+            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView Charts</a>
           </div>
         </div></div>
         """
@@ -4473,128 +4473,6 @@ def payouts_page():
 # Boot
 # ============================================================
 # DB init moved to package startup (mccain_capital.create_app).
-
-
-def chart():
-    """
-    Full-screen TradingView chart embed.
-    Use the chart UI "Compare / Add Symbol" to add additional tickers (overlays).
-
-    Query params:
-      - symbol (default: AMEX:SPY)
-      - interval (default: 5)
-    """
-    symbol = request.args.get("symbol", "AMEX:SPY")
-    interval = request.args.get("interval", "5")
-
-    page = f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{APP_TITLE} — Chart</title>
-  <style>
-    html, body {{ height: 100%; margin: 0; }}
-    body {{ background: #0b0f19; }}
-    .wrap {{
-      height: 100vh;
-      display: grid;
-      grid-template-rows: auto 1fr;
-    }}
-    .bar {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 12px;
-      border-bottom: 1px solid rgba(255,255,255,.10);
-      color: rgba(255,255,255,.92);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    }}
-    .bar a {{
-      color: rgba(255,255,255,.92);
-      text-decoration: none;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.08);
-    }}
-    .bar label {{ opacity: .85; font-size: 14px; }}
-    .bar input {{
-      width: 230px;
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.06);
-      color: rgba(255,255,255,.95);
-      outline: none;
-    }}
-    .bar input.small {{ width: 90px; }}
-    .bar button {{
-      padding: 8px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.12);
-      color: rgba(255,255,255,.95);
-      cursor: pointer;
-    }}
-    .hint {{
-      margin-left: auto;
-      opacity: .75;
-      font-size: 13px;
-      white-space: nowrap;
-    }}
-    #tv_container {{ height: 100%; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="bar">
-      <a href="/">🏠 Home</a>
-      <label for="sym">Symbol</label>
-      <input id="sym" value="{symbol}" placeholder="e.g. AMEX:SPY or SP:SPX" />
-      <label for="intv">Interval</label>
-      <input id="intv" class="small" value="{interval}" placeholder="1,5,15,60,D" />
-      <button id="go">Load</button>
-      <div class="hint">Tip: use <b>Compare / Add Symbol</b> inside the chart to add tickers.</div>
-    </div>
-    <div id="tv_container"></div>
-  </div>
-
-  <script src="https://s3.tradingview.com/tv.js"></script>
-  <script>
-    function loadChart(symbol, interval) {{
-      const container = document.getElementById("tv_container");
-      container.innerHTML = "";
-      new TradingView.widget({{
-        autosize: true,
-        symbol: symbol,
-        interval: interval,
-        timezone: "America/New_York",
-        theme: "dark",
-        style: "1",
-        locale: "en",
-        enable_publishing: false,
-        allow_symbol_change: true,
-        container_id: "tv_container",
-      }});
-    }}
-
-    document.getElementById("go").addEventListener("click", () => {{
-      const s = (document.getElementById("sym").value || "AMEX:SPY").trim();
-      const i = (document.getElementById("intv").value || "5").trim();
-      const url = new URL(window.location.href);
-      url.searchParams.set("symbol", s);
-      url.searchParams.set("interval", i);
-      window.location.href = url.toString();
-    }});
-
-    loadChart("{symbol}", "{interval}");
-  </script>
-</body>
-</html>
-"""
-    return render_template_string(page)
 
 
 if __name__ == "__main__":

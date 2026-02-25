@@ -31,4 +31,3 @@ def register(app):
     app.add_url_rule(
         "/payouts", endpoint="payouts_page", view_func=h.payouts_page, methods=["GET", "POST"]
     )
-    app.add_url_rule("/chart", endpoint="chart", view_func=h.chart)

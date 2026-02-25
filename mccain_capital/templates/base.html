@@ -90,7 +90,7 @@
             <a class="btn" href="/setup">🔐 Setup Login</a>
             <div class="hr"></div>
             <div class="menuTitle">External</div>
-            <a class="btn" href="{{ url_for('chart') }}" target="_blank" rel="noopener">📈 Charts</a>
+            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">📈 TradingView</a>
             <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
             {% if auth_enabled %}
               <div class="hr"></div>
@@ -136,7 +136,7 @@
 
       <div class="drawerSectionTitle">External</div>
       <div class="drawerGrid">
-        <a class="btn" href="{{ url_for('chart') }}" target="_blank" rel="noopener">📈 Charts</a>
+        <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">📈 TradingView</a>
         <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
         {% if auth_enabled %}
           {% if authenticated %}

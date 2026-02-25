@@ -67,10 +67,6 @@ def restore_data():
     return _legacy().restore_data()
 
 
-def chart():
-    return _legacy().chart()
-
-
 def strat_page():
     from mccain_capital.services import strat as strat_svc
 

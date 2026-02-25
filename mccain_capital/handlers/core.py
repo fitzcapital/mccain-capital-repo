@@ -63,6 +63,3 @@ def restore_data():
 def payouts_page():
     return goals_svc.payouts_page()
 
-
-def chart():
-    return svc.chart()
