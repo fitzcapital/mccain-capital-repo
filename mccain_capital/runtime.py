@@ -252,6 +252,38 @@ def latest_balance_overall(as_of: Optional[str] = None) -> float:
         return float(starting)
 
     date_col = pick(cols, ["trade_date", "date", "day"])
+    bal_col = pick(cols, ["balance", "running_balance", "equity", "account_balance"])
+
+    # Prefer broker/imported ledger balance when available so UI cards and row balances stay aligned.
+    if bal_col:
+        bal_q = _safe_col(bal_col)
+        if as_of and date_col:
+            date_q = _safe_col(date_col)
+            bal_row = conn.execute(
+                f"""
+                SELECT {bal_q}
+                FROM trades
+                WHERE {bal_q} IS NOT NULL AND {date_q} <= ?
+                ORDER BY {date_q} DESC, id DESC
+                LIMIT 1
+                """,
+                (str(as_of),),
+            ).fetchone()
+        else:
+            bal_row = conn.execute(
+                f"""
+                SELECT {bal_q}
+                FROM trades
+                WHERE {bal_q} IS NOT NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if bal_row and bal_row[0] is not None:
+            try:
+                return float(bal_row[0])
+            except Exception:
+                pass
 
     pnl_q = _safe_col(pnl_col)
     if as_of and date_col:
