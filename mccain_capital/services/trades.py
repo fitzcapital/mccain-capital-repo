@@ -445,6 +445,7 @@ def trades_page():
             SELECT balance
             FROM trades
             WHERE trade_date < ? AND balance IS NOT NULL
+              AND COALESCE(ticker, '') <> 'ACCT'
             ORDER BY trade_date DESC, id DESC
             LIMIT 1
             """,
