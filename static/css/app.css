@@ -110,6 +110,11 @@
     }
     .logo img{width:100%;height:100%;object-fit:cover;display:block}
     .logo .fallback{font-weight:900;color:var(--gold);letter-spacing:.5px}
+    .svgSpriteHidden{
+      position:absolute;
+      left:-9999px;
+      top:-9999px;
+    }
 
     h1{
       font-size:21px;margin:0;letter-spacing:.2px;font-weight:800;
@@ -241,6 +246,7 @@
 
 
     .toolbar{padding:var(--card-pad)}
+    .authCard{max-width:560px;margin:18px auto}
 
     label{font-size:var(--type-meta);color:var(--muted)}
     input, select, textarea{
@@ -332,6 +338,43 @@
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
+    }
+    .systemAlerts{
+      display:grid;
+      gap:8px;
+      margin-bottom:12px;
+    }
+    .systemAlert{
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:12px;
+      padding:8px 10px;
+      background:rgba(0,0,0,.22);
+      display:grid;
+      gap:2px;
+    }
+    .systemAlert.success{
+      border-color:rgba(46,204,113,.38);
+      background:rgba(46,204,113,.10);
+    }
+    .systemAlert.warning{
+      border-color:rgba(241,196,15,.44);
+      background:rgba(241,196,15,.10);
+    }
+    .systemAlert.error{
+      border-color:rgba(231,76,60,.45);
+      background:rgba(231,76,60,.12);
+    }
+    .alertTitle{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      font-weight:800;
+      color:var(--text);
+    }
+    .alertBody{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.4;
     }
     .desktopOnly{display:block}
     .mobileOnly{display:none}
@@ -542,7 +585,16 @@
     }
     .metric .label{font-size:12px;color:var(--muted)}
     .metric .value{font-size:23px;font-weight:800;letter-spacing:.2px;margin-top:6px;line-height:1.15}
-    .metric .sub{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.35}
+    .metric .sub{
+      font-size:11px;
+      color:var(--muted);
+      margin-top:6px;
+      line-height:1.35;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .footerTip{margin-top:14px}
 
     .rightActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
     .leftActions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start}
@@ -972,15 +1024,30 @@
       .systemStatusStrip{
         grid-template-columns:1fr;
       }
+      .alertBody{
+        font-size:11px;
+      }
       .showcaseGrid{
         grid-template-columns:1fr;
       }
       .metricStrip{grid-template-columns: repeat(2, minmax(0, 1fr))}
-      .mobileStatExtra{
+      .mobileStatExtra,
+      .mobileDenseExtra{
         display:none;
       }
-      .statRow.showAllStats .mobileStatExtra{
+      .statRow.showAllStats .mobileStatExtra,
+      .statRow.showAllStats .mobileDenseExtra,
+      .metricStrip.showAllStats .mobileDenseExtra,
+      .insightGrid.showAllStats .mobileDenseExtra{
         display:block;
+      }
+      .metricStrip:not(.showAllStats) .metric:nth-child(1) .sub,
+      .metricStrip:not(.showAllStats) .metric:nth-child(2) .sub{
+        display:none;
+      }
+      .insightGrid .insightBody{
+        font-size:12px;
+        line-height:1.45;
       }
       .kvTable td{
         display:block;

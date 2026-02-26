@@ -1,0 +1,19 @@
+<div class="card"><div class="toolbar authCard">
+  <div class="pill">🔐 Secure Sign In</div>
+  <div class="tiny stack10">Private journal access is enabled.</div>
+  {% if err %}<div class="hr"></div><div class="tiny metaRed">{{ err }}</div>{% endif %}
+  <div class="hr"></div>
+  <form method="post" action="{{ url_for('login_page', next=next_url) }}">
+    <div class="row">
+      <div><label>Username</label><input name="username" autocomplete="username" required></div>
+    </div>
+    <div class="row stack10">
+      <div><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
+    </div>
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">Sign In</button>
+    </div>
+  </form>
+</div></div>

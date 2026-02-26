@@ -220,14 +220,14 @@ def analytics_page():
         </div>
 
         <div class="metricStrip">
-          <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div></div>
-          <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div></div>
-          <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div></div>
-          <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div></div>
-          <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div></div>
-          <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div></div>
-          <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div></div>
-          <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div></div>
+          <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div><div class="sub">Reviewed sample in selected range</div></div>
+          <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div><div class="sub">Execution hit-rate across reviewed trades</div></div>
+          <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div><div class="sub">Average outcome per trade</div></div>
+          <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div><div class="sub">Gross wins divided by gross losses</div></div>
+          <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div><div class="sub">Largest peak-to-trough decline</div></div>
+          <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div><div class="sub">Longest drawdown trade streak</div></div>
+          <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div><div class="sub">Active drawdown streak right now</div></div>
+          <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div><div class="sub">Checklist score alignment with outcome</div></div>
         </div>
 
         <div class="insightGrid stack12">
@@ -322,214 +322,283 @@ def analytics_page():
         <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Performance Summary</div>
-            <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense kvTable">
-              <tbody>
-                <tr><td>Total Net</td><td>{{ money(perf.total_net) }}</td></tr>
-                <tr><td>Gross Profit</td><td>{{ money(perf.gross_profit) }}</td></tr>
-                <tr><td>Gross Loss</td><td>{{ money(perf.gross_loss_abs) }}</td></tr>
-                <tr><td>Avg Win</td><td>{{ money(perf.avg_win) }}</td></tr>
-                <tr><td>Avg Loss</td><td>{{ money(perf.avg_loss_abs) }}</td></tr>
-                <tr><td>Largest Win</td><td>{{ money(perf.max_win) }}</td></tr>
-                <tr><td>Largest Loss</td><td>{{ money(perf.max_loss) }}</td></tr>
-              </tbody>
-            </table></div>
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Total Net</div><div class="v">{{ money(perf.total_net) }}</div></div>
+              <div class="stat"><div class="k">Gross Profit</div><div class="v">{{ money(perf.gross_profit) }}</div></div>
+              <div class="stat"><div class="k">Gross Loss</div><div class="v">{{ money(perf.gross_loss_abs) }}</div></div>
+            </div>
+            <details class="syncDetails stack10">
+              <summary>Open detailed performance table</summary>
+              <div class="hr"></div>
+              <div class="tableWrap"><table class="tableDense kvTable">
+                <tbody>
+                  <tr><td>Total Net</td><td>{{ money(perf.total_net) }}</td></tr>
+                  <tr><td>Gross Profit</td><td>{{ money(perf.gross_profit) }}</td></tr>
+                  <tr><td>Gross Loss</td><td>{{ money(perf.gross_loss_abs) }}</td></tr>
+                  <tr><td>Avg Win</td><td>{{ money(perf.avg_win) }}</td></tr>
+                  <tr><td>Avg Loss</td><td>{{ money(perf.avg_loss_abs) }}</td></tr>
+                  <tr><td>Largest Win</td><td>{{ money(perf.max_win) }}</td></tr>
+                  <tr><td>Largest Loss</td><td>{{ money(perf.max_loss) }}</td></tr>
+                </tbody>
+              </table></div>
+            </details>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">🔥 Streaks</div>
-            <div class="hr"></div>
-            <div class="tableWrap"><table class="tableDense kvTable">
-              <tbody>
-                <tr><td>Longest Win Streak</td><td>{{ perf.max_win_streak }}</td></tr>
-                <tr><td>Longest Loss Streak</td><td>{{ perf.max_loss_streak }}</td></tr>
-                <tr><td>Wins</td><td>{{ perf.wins }}</td></tr>
-                <tr><td>Losses</td><td>{{ perf.losses }}</td></tr>
-                <tr><td>Breakeven</td><td>{{ perf.breakeven }}</td></tr>
-              </tbody>
-            </table></div>
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Longest Win Streak</div><div class="v">{{ perf.max_win_streak }}</div></div>
+              <div class="stat"><div class="k">Longest Loss Streak</div><div class="v">{{ perf.max_loss_streak }}</div></div>
+              <div class="stat"><div class="k">Wins / Losses</div><div class="v">{{ perf.wins }} / {{ perf.losses }}</div></div>
+            </div>
+            <details class="syncDetails stack10">
+              <summary>Open detailed streak table</summary>
+              <div class="hr"></div>
+              <div class="tableWrap"><table class="tableDense kvTable">
+                <tbody>
+                  <tr><td>Longest Win Streak</td><td>{{ perf.max_win_streak }}</td></tr>
+                  <tr><td>Longest Loss Streak</td><td>{{ perf.max_loss_streak }}</td></tr>
+                  <tr><td>Wins</td><td>{{ perf.wins }}</td></tr>
+                  <tr><td>Losses</td><td>{{ perf.losses }}</td></tr>
+                  <tr><td>Breakeven</td><td>{{ perf.breakeven }}</td></tr>
+                </tbody>
+              </table></div>
+            </details>
           </div></div>
         </div>
         {% elif tab == 'behavior' %}
         <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">🕒 Session Breakdown</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
-              <tbody>
-              {% for r in session_rows %}
-                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-              {% endfor %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
-                {% for r in session_rows %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.k }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                      <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
-                    </div>
-                  </div></div>
-                {% endfor %}
-              </div>
+            {% set s_top = session_rows[0] if session_rows|length else none %}
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Top Session</div><div class="v">{% if s_top %}{{ s_top.k }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Top Session Net</div><div class="v">{% if s_top %}{{ money(s_top.net) }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Top Session Win Rate</div><div class="v">{% if s_top %}{{ '%.1f'|format(s_top.win_rate) }}%{% else %}—{% endif %}</div></div>
             </div>
+            <details class="syncDetails stack10">
+              <summary>Open session breakdown table</summary>
+              <div class="hr"></div>
+              <div class="tableWrap desktopOnly"><table class="tableDense">
+                <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
+                <tbody>
+                {% for r in session_rows %}
+                  <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+                {% endfor %}
+                </tbody>
+              </table></div>
+              <div class="mobileOnly">
+                <div class="grid">
+                  {% for r in session_rows %}
+                    <div class="card"><div class="toolbar">
+                      <div class="pill">{{ r.k }}</div>
+                      <div class="metaRow">
+                        <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                        <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                        <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                        <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+                      </div>
+                    </div></div>
+                  {% endfor %}
+                </div>
+              </div>
+            </details>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">⚠️ Rule Break Tags</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Tag</th><th>Count</th></tr></thead>
-              <tbody>
-              {% for r in rule_breaks %}
-                <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
-              {% endfor %}
-              {% if rule_breaks|length == 0 %}
-                <tr><td colspan="2">No rule-break tags logged.</td></tr>
-              {% endif %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
+            {% set rb_top = rule_breaks[0] if rule_breaks|length else none %}
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Top Rule Break</div><div class="v">{% if rb_top %}{{ rb_top.tag }}{% else %}None logged{% endif %}</div></div>
+              <div class="stat"><div class="k">Occurrences</div><div class="v">{% if rb_top %}{{ rb_top.count }}{% else %}0{% endif %}</div></div>
+            </div>
+            <details class="syncDetails stack10">
+              <summary>Open full rule-break list</summary>
+              <div class="hr"></div>
+              <div class="tableWrap desktopOnly"><table class="tableDense">
+                <thead><tr><th>Tag</th><th>Count</th></tr></thead>
+                <tbody>
                 {% for r in rule_breaks %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.tag }}</div>
-                    <div class="meta">Count: <b>{{ r.count }}</b></div>
-                  </div></div>
+                  <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
                 {% endfor %}
                 {% if rule_breaks|length == 0 %}
-                  <div class="card"><div class="toolbar"><div class="tiny">No rule-break tags logged.</div></div></div>
+                  <tr><td colspan="2">No rule-break tags logged.</td></tr>
                 {% endif %}
+                </tbody>
+              </table></div>
+              <div class="mobileOnly">
+                <div class="grid">
+                  {% for r in rule_breaks %}
+                    <div class="card"><div class="toolbar">
+                      <div class="pill">{{ r.tag }}</div>
+                      <div class="meta">Count: <b>{{ r.count }}</b></div>
+                    </div></div>
+                  {% endfor %}
+                  {% if rule_breaks|length == 0 %}
+                    <div class="card"><div class="toolbar"><div class="tiny">No rule-break tags logged.</div></div></div>
+                  {% endif %}
+                </div>
               </div>
-            </div>
+            </details>
           </div></div>
         </div>
         {% else %}
         <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📌 Setup Edge</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
-              <tbody>
-              {% for r in setup_rows %}
-                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-              {% endfor %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
-                {% for r in setup_rows %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.k }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                      <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
-                    </div>
-                  </div></div>
-                {% endfor %}
-              </div>
+            {% set setup_top = setup_rows[0] if setup_rows|length else none %}
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Top Setup</div><div class="v">{% if setup_top %}{{ setup_top.k }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Top Setup Net</div><div class="v">{% if setup_top %}{{ money(setup_top.net) }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Top Setup Win Rate</div><div class="v">{% if setup_top %}{{ '%.1f'|format(setup_top.win_rate) }}%{% else %}—{% endif %}</div></div>
             </div>
+            <details class="syncDetails stack10">
+              <summary>Open setup edge table</summary>
+              <div class="hr"></div>
+              <div class="tableWrap desktopOnly"><table class="tableDense">
+                <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
+                <tbody>
+                {% for r in setup_rows %}
+                  <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+                {% endfor %}
+                </tbody>
+              </table></div>
+              <div class="mobileOnly">
+                <div class="grid">
+                  {% for r in setup_rows %}
+                    <div class="card"><div class="toolbar">
+                      <div class="pill">{{ r.k }}</div>
+                      <div class="metaRow">
+                        <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                        <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                        <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                        <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+                      </div>
+                    </div></div>
+                  {% endfor %}
+                </div>
+              </div>
+            </details>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">⏱️ Time of Day Edge</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
-              <tbody>
-              {% for r in hour_rows %}
-                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-              {% endfor %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
-                {% for r in hour_rows %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.k }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                    </div>
-                  </div></div>
-                {% endfor %}
-              </div>
+            {% set hour_top = hour_rows[0] if hour_rows|length else none %}
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Top Hour</div><div class="v">{% if hour_top %}{{ hour_top.k }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Top Hour Net</div><div class="v">{% if hour_top %}{{ money(hour_top.net) }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Top Hour Win Rate</div><div class="v">{% if hour_top %}{{ '%.1f'|format(hour_top.win_rate) }}%{% else %}—{% endif %}</div></div>
             </div>
+            <details class="syncDetails stack10">
+              <summary>Open time-of-day edge table</summary>
+              <div class="hr"></div>
+              <div class="tableWrap desktopOnly"><table class="tableDense">
+                <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
+                <tbody>
+                {% for r in hour_rows %}
+                  <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+                {% endfor %}
+                </tbody>
+              </table></div>
+              <div class="mobileOnly">
+                <div class="grid">
+                  {% for r in hour_rows %}
+                    <div class="card"><div class="toolbar">
+                      <div class="pill">{{ r.k }}</div>
+                      <div class="metaRow">
+                        <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                        <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                        <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                      </div>
+                    </div></div>
+                  {% endfor %}
+                </div>
+              </div>
+            </details>
           </div></div>
         </div>
 
         <div class="twoCol stack12">
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Setup Edge Over Time (Monthly)</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Setup</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
-              <tbody>
-              {% for r in setup_trend_rows %}
-                <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
-              {% endfor %}
-              {% if setup_trend_rows|length == 0 %}
-                <tr><td colspan="6">No setup trend data in range.</td></tr>
-              {% endif %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
+            {% set setup_trend_top = setup_trend_rows[0] if setup_trend_rows|length else none %}
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Top Setup Trend</div><div class="v">{% if setup_trend_top %}{{ setup_trend_top.key }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Latest Period</div><div class="v">{% if setup_trend_top %}{{ setup_trend_top.period }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Latest Net</div><div class="v">{% if setup_trend_top %}{{ money(setup_trend_top.net) }}{% else %}—{% endif %}</div></div>
+            </div>
+            <details class="syncDetails stack10">
+              <summary>Open setup trend table</summary>
+              <div class="hr"></div>
+              <div class="tableWrap desktopOnly"><table class="tableDense">
+                <thead><tr><th>Setup</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
+                <tbody>
                 {% for r in setup_trend_rows %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.key }} · {{ r.period }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                      <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
-                    </div>
-                  </div></div>
+                  <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
                 {% endfor %}
                 {% if setup_trend_rows|length == 0 %}
-                  <div class="card"><div class="toolbar"><div class="tiny">No setup trend data in range.</div></div></div>
+                  <tr><td colspan="6">No setup trend data in range.</td></tr>
                 {% endif %}
+                </tbody>
+              </table></div>
+              <div class="mobileOnly">
+                <div class="grid">
+                  {% for r in setup_trend_rows %}
+                    <div class="card"><div class="toolbar">
+                      <div class="pill">{{ r.key }} · {{ r.period }}</div>
+                      <div class="metaRow">
+                        <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                        <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                        <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                        <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+                      </div>
+                    </div></div>
+                  {% endfor %}
+                  {% if setup_trend_rows|length == 0 %}
+                    <div class="card"><div class="toolbar"><div class="tiny">No setup trend data in range.</div></div></div>
+                  {% endif %}
+                </div>
               </div>
-            </div>
+            </details>
           </div></div>
           <div class="card"><div class="toolbar">
             <div class="pill">📈 Session Edge Over Time (Monthly)</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Session</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
-              <tbody>
-              {% for r in session_trend_rows %}
-                <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
-              {% endfor %}
-              {% if session_trend_rows|length == 0 %}
-                <tr><td colspan="6">No session trend data in range.</td></tr>
-              {% endif %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
+            {% set session_trend_top = session_trend_rows[0] if session_trend_rows|length else none %}
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Top Session Trend</div><div class="v">{% if session_trend_top %}{{ session_trend_top.key }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Latest Period</div><div class="v">{% if session_trend_top %}{{ session_trend_top.period }}{% else %}—{% endif %}</div></div>
+              <div class="stat"><div class="k">Latest Net</div><div class="v">{% if session_trend_top %}{{ money(session_trend_top.net) }}{% else %}—{% endif %}</div></div>
+            </div>
+            <details class="syncDetails stack10">
+              <summary>Open session trend table</summary>
+              <div class="hr"></div>
+              <div class="tableWrap desktopOnly"><table class="tableDense">
+                <thead><tr><th>Session</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
+                <tbody>
                 {% for r in session_trend_rows %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.key }} · {{ r.period }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                      <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
-                    </div>
-                  </div></div>
+                  <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
                 {% endfor %}
                 {% if session_trend_rows|length == 0 %}
-                  <div class="card"><div class="toolbar"><div class="tiny">No session trend data in range.</div></div></div>
+                  <tr><td colspan="6">No session trend data in range.</td></tr>
                 {% endif %}
+                </tbody>
+              </table></div>
+              <div class="mobileOnly">
+                <div class="grid">
+                  {% for r in session_trend_rows %}
+                    <div class="card"><div class="toolbar">
+                      <div class="pill">{{ r.key }} · {{ r.period }}</div>
+                      <div class="metaRow">
+                        <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                        <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                        <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                        <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+                      </div>
+                    </div></div>
+                  {% endfor %}
+                  {% if session_trend_rows|length == 0 %}
+                    <div class="card"><div class="toolbar"><div class="tiny">No session trend data in range.</div></div></div>
+                  {% endif %}
+                </div>
               </div>
-            </div>
+            </details>
           </div></div>
         </div>
         {% endif %}

@@ -33,6 +33,10 @@ It combines trade logging, journal discipline, risk controls, analytics, and pla
 - 🧮 **Calculator**: pre-trade stop/target/risk-reward planning
 - 🎯 **Goals + Payouts**: discipline and payout-readiness tracking
 - 🛡️ **Guardrails + Auth**: risk lockouts and access control support
+- 🔔 **Operational Notifications**:
+  - Sync success/fail
+  - Guardrail lock/active state
+  - Auto-sync missed/skipped warnings
 
 ---
 
@@ -61,6 +65,17 @@ It combines trade logging, journal discipline, risk controls, analytics, and pla
 ### Data Flow
 
 Browser request → Route → Handler → Service → Repository/SQLite → Template response
+
+### Maintainability Notes (Recent Polishing)
+
+- Dashboard UI extracted from inline core string into `mccain_capital/templates/dashboard.html`
+- Auth/Calculator screens extracted into templates:
+  - `mccain_capital/templates/setup_login.html`
+  - `mccain_capital/templates/login.html`
+  - `mccain_capital/templates/calculator.html`
+- Shared system status + alert strip centralized in:
+  - `mccain_capital/services/ui.py`
+  - `mccain_capital/templates/base.html`
 
 ---
 
@@ -157,6 +172,7 @@ With the `mccain-capital-data` volume, all app data persists across rebuilds/res
   - Pytest suite
   - Migration idempotency run
   - Container smoke checks (`/healthz`, `/dashboard`, `/journal`, `/analytics`)
+  - Visual smoke guardrail (desktop + mobile screenshots, uploaded as CI artifacts)
 
 ## 📡 Monitoring
 

@@ -1,0 +1,93 @@
+<div class="twoCol">
+  <div class="card"><div class="toolbar">
+    <div class="pill">🧮 Quick Stop + Take Profit</div>
+    <div class="tiny stack10 line15">
+      Fast. Clean. No overkill. Use this during the day. ✅
+    </div>
+
+    {% if err %}
+      <div class="hr"></div>
+      <div class="tiny metaRed">• {{ err }}</div>
+    {% endif %}
+
+    <div class="hr"></div>
+    <form method="post">
+      <div class="row">
+        <div>
+          <label>💰 Entry Premium</label>
+          <input name="entry" inputmode="decimal" placeholder="e.g. 6.20" value="{{ vals.entry }}">
+        </div>
+        <div>
+          <label>🧾 Contracts</label>
+          <input name="contracts" inputmode="numeric" value="{{ vals.contracts }}">
+        </div>
+      </div>
+
+      <div class="row stack10">
+        <div>
+          <label>🛑 Stop %</label>
+          <input name="stop_pct" inputmode="decimal" value="{{ vals.stop_pct }}">
+        </div>
+        <div>
+          <label>🎯 Target %</label>
+          <input name="target_pct" inputmode="decimal" value="{{ vals.target_pct }}">
+        </div>
+        <div>
+          <label>💵 Fee / Contract (round-trip)</label>
+          <input name="fee_per_contract" inputmode="decimal" value="{{ vals.fee_per_contract }}">
+        </div>
+      </div>
+
+      <div class="hr"></div>
+      <div class="rightActions">
+        <button class="btn primary" type="submit">⚡ Calculate</button>
+        <a class="btn" href="/dashboard">📊 Dashboard</a>
+        <a class="btn" href="/trades">📅 Trades</a>
+      </div>
+    </form>
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">📌 Quick Notes</div>
+    <div class="tiny stack10 line16">
+      • Risk = (Entry → Stop) × 100 × contracts + fees<br>
+      • Reward = (Target → Entry) × 100 × contracts − fees<br>
+      • If you’re “hoping” instead of confirming… you’re gambling 😈
+    </div>
+  </div></div>
+</div>
+
+{% if out %}
+  <div class="card stack12"><div class="toolbar">
+    <div class="pill">✅ Results</div>
+
+    <div class="calcGrid">
+      <div class="calcCard"><div class="k">🛑 Stop Price</div><div class="v">{{ money(out.stop_price) }}</div></div>
+      <div class="calcCard"><div class="k">🎯 Target Price</div><div class="v">{{ money(out.tp_price) }}</div></div>
+      <div class="calcCard"><div class="k">💵 Fees</div><div class="v">{{ money(out.fees) }}</div></div>
+      <div class="calcCard"><div class="k">🧾 Total Contract Spend</div><div class="v">{{ money(out.total_spend) }}</div></div>
+      <div class="calcCard"><div class="k">⚠️ Risk (Net)</div><div class="v">{{ money(out.risk_net) }}</div></div>
+      <div class="calcCard"><div class="k">🎁 Reward (Net)</div><div class="v">{{ money(out.reward_net) }}</div></div>
+      <div class="calcCard"><div class="k">⚖️ R:R</div><div class="v">{{ out.rr }}</div></div>
+    </div>
+
+    <div class="hr"></div>
+    <div class="pill">📈 TP Ladder (Net)</div>
+    <div class="hr"></div>
+
+    <div class="overflowAuto">
+      <table>
+        <thead><tr><th>🎯 %</th><th>📈 TP Price</th><th>🎁 Reward Net</th></tr></thead>
+        <tbody>
+          {% for r in out.ladder %}
+            <tr>
+              <td><b>+{{ r.pct }}%</b></td>
+              <td>{{ money(r.tp) }}</td>
+              <td><b>{{ money(r.net) }}</b></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div></div>
+{% endif %}

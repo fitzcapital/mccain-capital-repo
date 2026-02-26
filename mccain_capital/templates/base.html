@@ -9,7 +9,7 @@
 </head>
 
 <body>
-  <svg width="0" height="0" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true" focusable="false">
+  <svg width="0" height="0" class="svgSpriteHidden" aria-hidden="true" focusable="false">
     <defs>
       <symbol id="mc-crest" viewBox="0 0 24 24">
         <path d="M12 2l8 3v6c0 5.2-3.2 9.2-8 11-4.8-1.8-8-5.8-8-11V5l8-3z" fill="currentColor"/>
@@ -110,29 +110,43 @@
     <div class="systemStatusStrip" role="status" aria-live="polite">
       <div class="statusChip">
         <span class="statusKey">Now</span>
-        <span class="statusVal">Last Sync: {{ (ss.last_sync_status or 'unknown')|upper }}</span>
+        <span class="statusVal">Sync Status: {{ (ss.last_sync_status or 'unknown')|replace('_', ' ')|title }}</span>
       </div>
       <div class="statusChip">
         <span class="statusKey">Next</span>
         <span class="statusVal">
           {% if ss.auto_sync_enabled and ss.auto_sync_time %}
-            Auto Sync {{ ss.auto_sync_time }} ET
+            Next Auto Sync: {{ ss.auto_sync_time }} ET
           {% else %}
-            Auto Sync Off
+            Next Auto Sync: Off
           {% endif %}
         </span>
       </div>
       <div class="statusChip">
         <span class="statusKey">Detail</span>
         <span class="statusVal">
-          {% if ss.last_sync_updated_at %}
-            Updated {{ ss.last_sync_updated_at }}
+          {% if ss.last_sync_updated_human %}
+            Last Updated: {{ ss.last_sync_updated_human }}
+          {% elif ss.last_sync_updated_at %}
+            Last Updated: {{ ss.last_sync_updated_at }}
+          {% elif ss.last_sync_stage %}
+            Last Stage: {{ ss.last_sync_stage|replace('_', ' ')|title }}
           {% else %}
-            No sync run recorded
+            Last Updated: Not yet recorded
           {% endif %}
         </span>
       </div>
     </div>
+    {% if ss.notifications %}
+      <div class="systemAlerts" role="status" aria-live="polite">
+        {% for note in ss.notifications %}
+          <div class="systemAlert {{ note.level }}">
+            <span class="alertTitle">{{ note.title }}</span>
+            <span class="alertBody">{{ note.body }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
 
     <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>
     <aside id="drawer" class="drawer" aria-label="Menu">
@@ -203,7 +217,7 @@
       <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸</a>
     </nav>
 
-    <div style="margin-top:14px" class="tiny">
+    <div class="tiny footerTip">
       Tip: Keep your journal precise. Your edge compounds through consistency.
       <span class="kbd">Ctrl</span> + <span class="kbd">K</span> focuses Search.
     </div>
@@ -423,43 +437,68 @@ document.addEventListener('keydown', (e) => {
     applyTheme(localStorage.getItem("mc_theme") || "default");
 
     function enforcePrimaryCta(){
-      const groups = document.querySelectorAll('.actionRow, .rightActions, .leftActions');
+      const groups = document.querySelectorAll('.actionRow, .rightActions, .leftActions, .mobileActionGrid');
+      const scoreButton = (btn) => {
+        const txt = (btn.textContent || '').trim().toLowerCase();
+        const href = (btn.getAttribute('href') || '').toLowerCase();
+        let score = 0;
+        if (btn.classList.contains('primary')) score += 6;
+        if (/(add|new|save|upload|import|sync|apply|open)/.test(txt)) score += 4;
+        if (/(delete|clear|reset|back|cancel|prev|next)/.test(txt)) score -= 4;
+        if (/(add|new|save|upload|import|sync|apply|open)/.test(href)) score += 2;
+        return score;
+      };
       groups.forEach((group) => {
-        const buttons = Array.from(group.querySelectorAll('.btn, button.btn'));
+        const buttons = Array.from(group.querySelectorAll('.btn, button.btn'))
+          .filter((b) => !b.disabled && b.offsetParent !== null);
         if (!buttons.length) return;
-        let primary = buttons.find((b) => b.classList.contains('primary'));
-        if (!primary) {
-          primary = buttons[0];
-          primary.classList.add('primary');
-        }
+        let primary = buttons[0];
+        let best = -999;
         buttons.forEach((b) => {
-          if (b !== primary) b.classList.add('ctaSecondary');
+          const s = scoreButton(b);
+          if (s > best) {
+            best = s;
+            primary = b;
+          }
+        });
+        buttons.forEach((b) => {
+          if (b === primary) {
+            b.classList.add('primary');
+            b.classList.remove('ctaSecondary');
+          } else {
+            b.classList.remove('primary');
+            b.classList.add('ctaSecondary');
+          }
         });
       });
     }
 
-    function setupMobileStatCompaction(){
-      if (window.innerWidth > 760) return;
-      document.querySelectorAll('.statRow').forEach((row, idx) => {
-        const cards = Array.from(row.querySelectorAll(':scope > .stat'));
-        if (cards.length <= 4 || row.dataset.compacted === '1') return;
-        cards.forEach((card, i) => {
-          if (i >= 4) card.classList.add('mobileStatExtra');
-        });
-        const toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'btn statToggleBtn';
-        toggle.textContent = 'Show More Stats';
-        toggle.addEventListener('click', () => {
-          const expanded = row.classList.toggle('showAllStats');
-          toggle.textContent = expanded ? 'Show Fewer Stats' : 'Show More Stats';
-        });
-        row.insertAdjacentElement('afterend', toggle);
-        row.dataset.compacted = '1';
+    function compactDenseGrid(grid, itemSelector, keepCount, label){
+      const cards = Array.from(grid.querySelectorAll(`:scope > ${itemSelector}`));
+      if (cards.length <= keepCount || grid.dataset.compacted === '1') return;
+      cards.forEach((card, i) => {
+        if (i >= keepCount) card.classList.add('mobileDenseExtra');
       });
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'btn statToggleBtn';
+      toggle.textContent = `Show More ${label}`;
+      toggle.addEventListener('click', () => {
+        const expanded = grid.classList.toggle('showAllStats');
+        toggle.textContent = expanded ? `Show Fewer ${label}` : `Show More ${label}`;
+      });
+      grid.insertAdjacentElement('afterend', toggle);
+      grid.dataset.compacted = '1';
+    }
+
+    function setupMobileDensityCompaction(){
+      if (window.innerWidth > 760) return;
+      document.querySelectorAll('.statRow').forEach((row) => compactDenseGrid(row, '.stat', 3, 'Stats'));
+      document.querySelectorAll('.metricStrip').forEach((row) => compactDenseGrid(row, '.metric', 2, 'Metrics'));
+      document.querySelectorAll('.insightGrid').forEach((row) => compactDenseGrid(row, '.insightCard', 2, 'Insights'));
     }
     enforcePrimaryCta();
-    setupMobileStatCompaction();
+    setupMobileDensityCompaction();
 
     const staggerTargets = document.querySelectorAll(".card, .metric, .calcCard, .insightCard");
     staggerTargets.forEach((el, i) => {

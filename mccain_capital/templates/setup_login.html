@@ -1,0 +1,25 @@
+<div class="card"><div class="toolbar authCard">
+  <div class="pill">🔐 Setup Login</div>
+  <div class="tiny stack10 line16">
+    Create your app login. You can change it later from this same page.
+  </div>
+  {% if err %}<div class="hr"></div><div class="tiny metaRed">{{ err }}</div>{% endif %}
+  {% if msg %}<div class="hr"></div><div class="tiny metaBlue">{{ msg }}</div>{% endif %}
+  <div class="hr"></div>
+  <form method="post">
+    <div class="row">
+      <div><label>Username</label><input name="username" value="{{ default_user }}" autocomplete="username" required></div>
+    </div>
+    <div class="row stack10">
+      <div><label>Password</label><input type="password" name="password" autocomplete="new-password" required></div>
+    </div>
+    <div class="row stack10">
+      <div><label>Confirm Password</label><input type="password" name="confirm_password" autocomplete="new-password" required></div>
+    </div>
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">Save Login</button>
+      <a class="btn" href="/dashboard">Cancel</a>
+    </div>
+  </form>
+</div></div>

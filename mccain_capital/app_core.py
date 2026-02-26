@@ -30,6 +30,7 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 from zoneinfo import ZoneInfo
+from mccain_capital.services.ui import get_system_status
 
 BUILD_MARKER = "BUILD_2026-02-21_GOALS"
 
@@ -1980,6 +1981,7 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
         static_v = str(int(max(mtimes))) if mtimes else BUILD_MARKER
     except Exception:
         static_v = BUILD_MARKER
+
     return render_template(
         "base.html",
         title=title,
@@ -1989,6 +1991,7 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
         auth_enabled=auth_enabled(),
         authenticated=is_authenticated(),
         auth_username=_effective_username(),
+        system_status=get_system_status(),
         content=content_html,
         active=active,
     )
@@ -2043,38 +2046,7 @@ def setup_page():
             return redirect(url_for("dashboard"))
 
     return render_page(
-        render_template_string(
-            """
-            <div class="card"><div class="toolbar" style="max-width:560px;margin:18px auto;">
-              <div class="pill">🔐 Setup Login</div>
-              <div class="tiny" style="margin-top:10px;line-height:1.6">
-                Create your app login. You can change it later from this same page.
-              </div>
-              {% if err %}<div class="hr"></div><div class="tiny" style="color:#ff8f8f">{{ err }}</div>{% endif %}
-              {% if msg %}<div class="hr"></div><div class="tiny" style="color:#9fd6ff">{{ msg }}</div>{% endif %}
-              <div class="hr"></div>
-              <form method="post">
-                <div class="row">
-                  <div><label>Username</label><input name="username" value="{{ default_user }}" autocomplete="username" required></div>
-                </div>
-                <div class="row" style="margin-top:10px">
-                  <div><label>Password</label><input type="password" name="password" autocomplete="new-password" required></div>
-                </div>
-                <div class="row" style="margin-top:10px">
-                  <div><label>Confirm Password</label><input type="password" name="confirm_password" autocomplete="new-password" required></div>
-                </div>
-                <div class="hr"></div>
-                <div class="rightActions">
-                  <button class="btn primary" type="submit">Save Login</button>
-                  <a class="btn" href="/dashboard">Cancel</a>
-                </div>
-              </form>
-            </div></div>
-            """,
-            err=err,
-            msg=msg,
-            default_user=default_user,
-        ),
+        render_template("setup_login.html", err=err, msg=msg, default_user=default_user),
         active="auth",
         title=f"{APP_TITLE} · Setup Login",
     )
@@ -2102,31 +2074,7 @@ def login_page():
         err = "Invalid username or password."
 
     return render_page(
-        render_template_string(
-            """
-            <div class="card"><div class="toolbar" style="max-width:520px;margin:18px auto;">
-              <div class="pill">🔐 Secure Sign In</div>
-              <div class="tiny" style="margin-top:10px">Private journal access is enabled.</div>
-              {% if err %}<div class="hr"></div><div class="tiny" style="color:#ff8f8f">{{ err }}</div>{% endif %}
-              <div class="hr"></div>
-              <form method="post" action="{{ url_for('login_page', next=next_url) }}">
-                <div class="row">
-                  <div><label>Username</label><input name="username" autocomplete="username" required></div>
-                </div>
-                <div class="row" style="margin-top:10px">
-                  <div><label>Password</label><input type="password" name="password" autocomplete="current-password" required></div>
-                </div>
-                <input type="hidden" name="next" value="{{ next_url }}">
-                <div class="hr"></div>
-                <div class="rightActions">
-                  <button class="btn primary" type="submit">Sign In</button>
-                </div>
-              </form>
-            </div></div>
-            """,
-            err=err,
-            next_url=request.args.get("next", ""),
-        ),
+        render_template("login.html", err=err, next_url=request.args.get("next", "")),
         active="auth",
         title=f"{APP_TITLE} · Login",
     )
@@ -3557,249 +3505,8 @@ def dashboard():
         else "Stabilize process" if today_count else "No session logged"
     )
 
-    content = render_template_string(
-        """
-        <div class="dashboardHero card pageHero">
-          <div class="toolbar">
-            <div class="dashboardHeroHead">
-              <div>
-                <div class="pill">📊 Dashboard Control Center</div>
-                <h2 class="pageTitle">Trading Command Center</h2>
-                <div class="dashboardLead stack8">Track execution, review risk posture, then drill into trade days.</div>
-              </div>
-              <div class="rightActions">
-                <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
-                <a class="btn" href="/journal">📝 Open Journal</a>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="metricStrip">
-          <div class="metric">
-            <div class="label">Today Net</div>
-            <div class="value">{{ money(today_net) }}</div>
-            <div class="sub">Live from today’s journaled trades</div>
-          </div>
-          <div class="metric">
-            <div class="label">Today Win Rate</div>
-            <div class="value">{{ '%.1f'|format(today_win_rate) }}%</div>
-            <div class="sub">Consistency starts with daily process</div>
-          </div>
-          <div class="metric">
-            <div class="label">Trades Today</div>
-            <div class="value">{{ today_count }}</div>
-            <div class="sub">Focused > frequent</div>
-          </div>
-          <div class="metric">
-            <div class="label">Current Balance</div>
-            <div class="value">{{ money(overall_balance) }}</div>
-            <div class="sub">Snapshot as of latest recorded trade</div>
-          </div>
-        </div>
-
-        <div class="showcaseGrid">
-          <div class="showcaseCard">
-            <div class="showcaseHead">
-              <div class="showcaseTitle">
-                <svg class="mcIcon"><use href="#mc-crest"></use></svg>
-                Capital Trajectory
-              </div>
-              <span class="trendChip">MTD {{ money(mtd_net) }}</span>
-            </div>
-            <div class="showcaseValue">{{ money(overall_balance) }}</div>
-            <div class="showcaseMeta">
-              Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked.
-            </div>
-            <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(capital_pulse) }}%">
-              <div class="showcasePulseFill"></div>
-              <div class="showcaseWave"></div>
-            </div>
-          </div>
-          <div class="showcaseCard">
-            <div class="showcaseHead">
-              <div class="showcaseTitle">
-                <svg class="mcIcon"><use href="#mc-orbit"></use></svg>
-                Discipline Signal
-              </div>
-              <span class="trendChip">{{ discipline_label }}</span>
-            </div>
-            <div class="showcaseValue">{{ '%.1f'|format(today_win_rate) }}%</div>
-            <div class="showcaseMeta">
-              Today {{ today_count }} trades · Net {{ money(today_net) }} · Guardrail-aware execution flow.
-            </div>
-            <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(discipline_pulse) }}%">
-              <div class="showcasePulseFill"></div>
-              <div class="showcaseWave"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <div class="calendarHead">
-              <div>
-                <div class="pill">📊 P/L Dashboard</div>
-                <div class="tiny stack8">Tap a weekday to open that day’s trades 🧲</div>
-              </div>
-              <div class="calendarNav">
-                <a class="btn" href="/dashboard?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
-                <a class="btn" href="/dashboard">🎯 This Month</a>
-                <a class="btn" href="/dashboard?y={{ next_y }}&m={{ next_m }}">Next ➡️</a>
-              </div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="statRow">
-              <div class="stat"><div class="k">🗓️ Month</div><div class="v">{{ month_name }}</div></div>
-              <div class="stat"><div class="k">🏦 Balance</div><div class="v">{{ money(overall_balance) }}</div></div>
-
-              <div class="stat {% if this_week_total > 0 %}glow-green{% elif this_week_total < 0 %}glow-red{% endif %}">
-                <div class="k">📅 Week Total</div><div class="v">{{ money(this_week_total) }}</div>
-              </div>
-
-              <div class="stat"><div class="k">🗓️ MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
-              <div class="stat"><div class="k">📆 YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
-              <div class="stat"><div class="k">🧾 Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
-              <div class="stat"><div class="k">🧾 Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
-
-              <!-- ✅ YTD ONLY Consistency + threshold marker line -->
-              <div class="stat {{ ytd_cons.class }}">
-                <div class="k">🎯 Consistency (YTD)</div>
-                <div class="v">
-                  {% if ytd_cons.ratio is none %}
-                    —
-                  {% else %}
-                    {{ '%.1f'|format(ytd_cons.ratio * 100) }}%
-                  {% endif %}
-                </div>
-
-                <div class="tiny stack8">
-                  Max: {{ money(ytd_cons.biggest) }} / {{ money(ytd_cons.denom) }}
-                  &nbsp; • &nbsp; Line: {{ '%.0f'|format(cons_threshold * 100) }}%
-                </div>
-
-                {% if ytd_cons.ratio is not none %}
-                  {% set bar_pct = (ytd_cons.ratio * 100) %}
-                  {% if bar_pct < 0 %}{% set bar_pct = 0 %}{% endif %}
-                  {% if bar_pct > 100 %}{% set bar_pct = 100 %}{% endif %}
-
-                  {% set line_pct = (cons_threshold * 100) %}
-                  {% if line_pct < 0 %}{% set line_pct = 0 %}{% endif %}
-                  {% if line_pct > 100 %}{% set line_pct = 100 %}{% endif %}
-
-                  <div class="consistencyBar" style="--bar-pct: {{ bar_pct }}%; --line-pct: {{ line_pct }}%;">
-                    <div class="consistencyFill"></div>
-                    <div class="consistencyLine" title="Threshold"></div>
-                    {% if ytd_cons.ratio > cons_threshold %}
-                      <div class="consistencyAlert"></div>
-                    {% endif %}
-                  </div>
-
-                  <div class="tiny stack8">
-                    {% if ytd_cons.ratio <= cons_threshold %}
-                      ✅ Within threshold
-                    {% else %}
-                      ❌ Over threshold
-                    {% endif %}
-                  </div>
-                {% endif %}
-              </div>
-
-              <div class="stat">
-                <div class="k">🧮 Calculator</div>
-                <div class="v"><a class="btn primary" href="/calculator">Open</a></div>
-              </div>
-            </div>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">⚡ Focus Board</div>
-            <div class="hr"></div>
-            <div class="leftActions">
-              <a class="btn primary" href="/trades">📅 Review Trades</a>
-              <a class="btn" href="/payouts">💸 Check Payouts</a>
-              <a class="btn" href="/calculator">🧮 Position Plan</a>
-            </div>
-            <div class="tiny stack10 line15">
-              Workflow: plan risk, execute, journal, then score outcomes by week.
-            </div>
-          </div></div>
-        </div>
-
-        <div class="card stack12"><div class="toolbar">
-          <div class="heat">
-            <table class="tableDense">
-              <thead>
-                <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
-              </thead>
-              <tbody>
-              {% for wk in heat.weeks %}
-                <tr>
-                  {% for daynum, net, iso, wd in wk %}
-                    {% if daynum is none %}
-                      <td class="daycell" style="background: rgba(255,255,255,.02)"></td>
-                    {% else %}
-                      {% set max_abs = heat.max_abs if heat.max_abs else 1 %}
-                      {% set intensity = ((net|abs) / max_abs) %}
-                      {% set alpha = 0.10 + (0.45 * intensity) %}
-                      {% if net > 0 %}
-                        <td class="daycell" style="background: rgba(46, 204, 113, {{ alpha }});">
-                      {% elif net < 0 %}
-                        <td class="daycell" style="background: rgba(231, 76, 60, {{ alpha }});">
-                      {% else %}
-                        <td class="daycell" style="background: rgba(255,255,255,.03)">
-                      {% endif %}
-                          <div class="daynum">{{ daynum }}</div>
-
-                          {% if wd is not none and wd < 5 %}
-                            {% if net %}
-                              <div class="daypnl">{{ money_compact(net) }}</div>
-                            {% else %}
-                              <div class="daypnl"></div>
-                            {% endif %}
-                            <a href="/trades?d={{ iso }}" class="dayLink" aria-label="Open day"></a>
-                          {% else %}
-                            <div class="daypnl"></div>
-                          {% endif %}
-                        </td>
-                    {% endif %}
-                  {% endfor %}
-                </tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div></div>
-
-        <div class="card stack12"><div class="toolbar">
-          <div class="pill">📈 Projections (Trading Days: Mon–Fri)</div>
-          <div class="tiny stack10 line15">
-            Based on recent weekday daily totals (up to 20 days). Planning tool — not a promise.
-          </div>
-
-          <div class="hr"></div>
-          <div class="statRow">
-            <div class="stat"><div class="k">📊 Daily Avg (recent)</div><div class="v">{{ money(proj.avg) }}</div></div>
-            <div class="stat"><div class="k">🏦 Base Balance</div><div class="v">{{ money(proj.base_balance) }}</div></div>
-
-            <div class="stat {% if proj.p5.est_pnl > 0 %}glow-green{% elif proj.p5.est_pnl < 0 %}glow-red{% endif %}">
-              <div class="k">5 Trading Days</div><div class="v">{{ money(proj.p5.est_pnl) }}</div>
-              <div class="tiny">Est Bal: {{ money(proj.p5.est_balance) }}</div>
-            </div>
-
-            <div class="stat {% if proj.p10.est_pnl > 0 %}glow-green{% elif proj.p10.est_pnl < 0 %}glow-red{% endif %}">
-              <div class="k">10 Trading Days</div><div class="v">{{ money(proj.p10.est_pnl) }}</div>
-              <div class="tiny">Est Bal: {{ money(proj.p10.est_balance) }}</div>
-            </div>
-
-            <div class="stat {% if proj.p20.est_pnl > 0 %}glow-green{% elif proj.p20.est_pnl < 0 %}glow-red{% endif %}">
-              <div class="k">20 Trading Days</div><div class="v">{{ money(proj.p20.est_pnl) }}</div>
-              <div class="tiny">Est Bal: {{ money(proj.p20.est_balance) }}</div>
-            </div>
-          </div>
-        </div></div>
-        """,
+    content = render_template(
+        "dashboard.html",
         heat=heat,
         prev_y=prev_y,
         prev_m=prev_m,
@@ -3886,107 +3593,7 @@ def calculator():
                 "ladder": ladder,
             }
 
-    content = render_template_string(
-        """
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <div class="pill">🧮 Quick Stop + Take Profit</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.5">
-              Fast. Clean. No overkill. Use this during the day. ✅
-            </div>
-
-            {% if err %}
-              <div class="hr"></div>
-              <div class="tiny" style="color:#ff8f8f">• {{ err }}</div>
-            {% endif %}
-
-            <div class="hr"></div>
-            <form method="post">
-              <div class="row">
-                <div>
-                  <label>💰 Entry Premium</label>
-                  <input name="entry" inputmode="decimal" placeholder="e.g. 6.20" value="{{ vals.entry }}">
-                </div>
-                <div>
-                  <label>🧾 Contracts</label>
-                  <input name="contracts" inputmode="numeric" value="{{ vals.contracts }}">
-                </div>
-              </div>
-
-              <div class="row" style="margin-top:10px">
-                <div>
-                  <label>🛑 Stop %</label>
-                  <input name="stop_pct" inputmode="decimal" value="{{ vals.stop_pct }}">
-                </div>
-                <div>
-                  <label>🎯 Target %</label>
-                  <input name="target_pct" inputmode="decimal" value="{{ vals.target_pct }}">
-                </div>
-                <div>
-                  <label>💵 Fee / Contract (round-trip)</label>
-                  <input name="fee_per_contract" inputmode="decimal" value="{{ vals.fee_per_contract }}">
-                </div>
-              </div>
-
-              <div class="hr"></div>
-              <div class="rightActions">
-                <button class="btn primary" type="submit">⚡ Calculate</button>
-                <a class="btn" href="/dashboard">📊 Dashboard</a>
-                <a class="btn" href="/trades">📅 Trades</a>
-              </div>
-            </form>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">📌 Quick Notes</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
-              • Risk = (Entry → Stop) × 100 × contracts + fees<br>
-              • Reward = (Target → Entry) × 100 × contracts − fees<br>
-              • If you’re “hoping” instead of confirming… you’re gambling 😈
-            </div>
-          </div></div>
-        </div>
-
-        {% if out %}
-          <div class="card" style="margin-top:12px"><div class="toolbar">
-            <div class="pill">✅ Results</div>
-
-            <div class="calcGrid">
-              <div class="calcCard"><div class="k">🛑 Stop Price</div><div class="v">{{ money(out.stop_price) }}</div></div>
-              <div class="calcCard"><div class="k">🎯 Target Price</div><div class="v">{{ money(out.tp_price) }}</div></div>
-              <div class="calcCard"><div class="k">💵 Fees</div><div class="v">{{ money(out.fees) }}</div></div>
-              <div class="calcCard"><div class="k">🧾 Total Contract Spend</div><div class="v">{{ money(out.total_spend) }}</div></div>
-              <div class="calcCard"><div class="k">⚠️ Risk (Net)</div><div class="v">{{ money(out.risk_net) }}</div></div>
-              <div class="calcCard"><div class="k">🎁 Reward (Net)</div><div class="v">{{ money(out.reward_net) }}</div></div>
-              <div class="calcCard"><div class="k">⚖️ R:R</div><div class="v">{{ out.rr }}</div></div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="pill">📈 TP Ladder (Net)</div>
-            <div class="hr"></div>
-
-            <div style="overflow:auto">
-              <table>
-                <thead><tr><th>🎯 %</th><th>📈 TP Price</th><th>🎁 Reward Net</th></tr></thead>
-                <tbody>
-                  {% for r in out.ladder %}
-                    <tr>
-                      <td><b>+{{ r.pct }}%</b></td>
-                      <td>{{ money(r.tp) }}</td>
-                      <td><b>{{ money(r.net) }}</b></td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div></div>
-        {% endif %}
-        """,
-        out=out,
-        err=err,
-        vals=vals,
-        money=money,
-    )
+    content = render_template("calculator.html", out=out, err=err, vals=vals, money=money)
     return render_page(content, active="calc")
 
 
