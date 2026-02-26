@@ -137,17 +137,6 @@
         </span>
       </div>
     </div>
-    {% if ss.notifications %}
-      <div class="systemAlerts" role="status" aria-live="polite">
-        {% for note in ss.notifications %}
-          <div class="systemAlert {{ note.level }}">
-            <span class="alertTitle">{{ note.title }}</span>
-            <span class="alertBody">{{ note.body }}</span>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-
     <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>
     <aside id="drawer" class="drawer" aria-label="Menu">
       <div class="drawerHead">
