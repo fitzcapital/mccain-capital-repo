@@ -210,6 +210,31 @@ def test_upload_statement_workspaces_render(client):
     resp_rec = client.get("/trades/upload/statement?ws=reconcile", follow_redirects=True)
     assert resp_rec.status_code == 200
     assert b"Reconcile Import Batches (30D)" in resp_rec.data
+    assert b"No import history yet." in resp_rec.data
+    assert b"Next best action: run one statement import" in resp_rec.data
+
+
+def test_trades_page_data_trust_shows_sync_failure_next_action(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    status_path = tmp_path / "sync_status.json"
+    monkeypatch.setattr(trades_svc, "BROKER_SYNC_STATUS_PATH", str(status_path))
+    status_path.write_text(
+        json.dumps(
+            {
+                "status": "failed",
+                "stage": "reconcile_gate",
+                "updated_at_human": "Feb 27, 2026 10:30 AM ET",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resp = client.get("/trades", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Data Trust" in resp.data
+    assert b"Latest sync/import reported a failure or block." in resp.data
+    assert b"/trades/upload/statement?ws=live" in resp.data
 
 
 def test_reconcile_gate_result_blocks_unresolved_conditions():
@@ -239,6 +264,82 @@ def test_reconcile_gate_result_blocks_unresolved_conditions():
         {"errors_count": 0, "open_contracts": 0, "balance_delta": 0.5}
     )
     assert clean["blocked"] is False
+
+
+def test_live_sync_skips_balance_reconcile_when_date_fallback_warning(monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(
+        trades_svc.vanquish_live_sync,
+        "fetch_statement_html_via_login",
+        lambda **_kwargs: (
+            "<html><body>statement</body></html>",
+            ["Could not set custom From/To in dialog; using visible defaults."],
+            [],
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        trades_svc.importing,
+        "parse_statement_html_to_broker_paste",
+        lambda _path: ("row1\nrow2", 54396.20, []),
+    )
+
+    seen = {"ending_balance": "unset"}
+
+    def _fake_insert(text, ending_balance=None, commit=False, import_batch_id=""):
+        seen["ending_balance"] = ending_balance
+        if not commit:
+            return (
+                0,
+                [],
+                {
+                    "errors_count": 0,
+                    "open_contracts": 0,
+                    "balance_delta": None,
+                    "inserted_trades": 0,
+                    "duplicates_skipped": 0,
+                },
+            )
+        return (
+            0,
+            [],
+            {
+                "errors_count": 0,
+                "open_contracts": 0,
+                "balance_delta": None,
+                "inserted_trades": 0,
+                "duplicates_skipped": 0,
+            },
+        )
+
+    monkeypatch.setattr(
+        trades_svc.importing, "insert_trades_from_broker_paste_with_report", _fake_insert
+    )
+
+    out = trades_svc._run_live_sync_once(
+        mode="broker",
+        username="u",
+        password="p",
+        base_url="https://trade.vanquishtrader.com",
+        account="default:OEV0035974",
+        wl="vanquishtrader",
+        time_zone="America/New_York",
+        date_locale="en-US",
+        report_locale="en",
+        from_date="2026-02-27",
+        to_date="2026-02-27",
+        headless=True,
+        debug_capture=False,
+        debug_only=False,
+        source_label="LIVE LOGIN HTML",
+    )
+
+    assert out.get("ok") is True
+    assert seen["ending_balance"] is None
+    assert any(
+        "skipped ending-balance reconcile" in str(w).lower() for w in (out.get("warns") or [])
+    )
 
 
 def test_rollback_import_batch_deletes_only_target_batch(client, monkeypatch, tmp_path):

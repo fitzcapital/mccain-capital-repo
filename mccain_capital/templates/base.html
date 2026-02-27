@@ -536,8 +536,6 @@ document.addEventListener('keydown', (e) => {
       document.body.classList.toggle("guidedMode", enabled);
       const btn = document.getElementById("guidedModeBtn");
       if(btn) btn.textContent = `Guided Mode: ${enabled ? "On" : "Off"}`;
-      const panel = document.getElementById("guidedPanel");
-      if(panel && "open" in panel) panel.open = enabled;
       applyGuidedHighlights(enabled);
       localStorage.setItem("mc_guided_mode", enabled ? "1" : "0");
       localStorage.setItem("mc_guided_seen", "1");

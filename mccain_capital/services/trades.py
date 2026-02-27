@@ -57,6 +57,7 @@ from mccain_capital.runtime import (
 from mccain_capital.services import trades_importing as importing
 from mccain_capital.services import vanquish_live_sync
 from mccain_capital.services.ui import render_page, simple_msg
+from mccain_capital.services.viewmodels import trades_data_trust
 
 # Compatibility aliases used by extracted route bodies.
 fetch_trades = repo.fetch_trades
@@ -1477,6 +1478,10 @@ def trades_page():
     stats = trade_day_stats(trades)  # likely dict
     cons = calc_consistency(trades)  # dict-like expected
     guardrail = trade_lockout_state(active_day)
+    sync_status = _load_last_sync_status() or {}
+    data_trust = trades_data_trust(
+        sync_status, guardrail_locked=bool(guardrail.get("locked")), active_day=active_day
+    )
 
     week_total = week_total_net(d or None)
     overall_bal = latest_balance_overall(as_of=active_day)
@@ -1570,14 +1575,35 @@ def trades_page():
                 <div class="pageSub">Log, review, and import trades with fast context on risk, consistency, and current exposure.</div>
               </div>
               <div class="actionRow">
-                <a class="btn primary" href="/trades/new">➕ Add Trade</a>
-                <a class="btn" href="/trades/open-positions">📂 Open Positions</a>
-                <a class="btn" href="/trades/playbook">📘 Playbook</a>
-                <a class="btn" href="/trades/reviews/rebuild">🛠️ Rebuild Reviews</a>
+                <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
+                <a class="btn ctaLink" href="/trades/new">➕ Add Trade</a>
+                <a class="btn ctaLink" href="/trades/open-positions">📂 Open Positions</a>
+                <a class="btn ctaLink" href="/trades/playbook">📘 Playbook</a>
               </div>
             </div>
           </div>
         </div>
+
+        <div class="card"><div class="toolbar">
+          <div class="pill">🛡️ Data Trust</div>
+          <div class="tiny stack8 line16">
+            Last sync status:
+            <b>{{ data_trust.status_label }}</b>
+            {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
+            {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
+          </div>
+          <div class="tiny stack8 line16 {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
+            {{ data_trust.message }}
+          </div>
+          {% if data_trust.primary_href and data_trust.primary_label %}
+            <div class="rightActions stack8">
+              <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+              {% if data_trust.secondary_href and data_trust.secondary_label %}
+                <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div></div>
 
         <div class="metricStrip">
           <div class="metric">
@@ -1633,16 +1659,16 @@ def trades_page():
                 <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next ➡️</a>
                 <button class="btn" type="submit">🧲 Filter</button>
                 <a class="btn" href="/trades">♻️ Reset</a>
-                <a class="btn primary" href="/trades/new">➕ Manual Add</a>
-                <a class="btn primary" href="/trades/paste">📋 Table Paste</a>
+                <a class="btn ctaLink" href="/trades/new">➕ Manual Add</a>
+                <a class="btn ctaLink" href="/trades/paste">📋 Table Paste</a>
                 <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
               </div>
             </form>
             <div class="tradesMobileActions">
               <div class="mobileActionGrid">
-                <a class="btn primary" href="/trades/new">➕ Add</a>
-                <a class="btn primary" href="/trades/paste">📋 Paste</a>
                 <a class="btn primary" href="/trades/upload/statement">📄 Upload</a>
+                <a class="btn" href="/trades/new">➕ Add</a>
+                <a class="btn" href="/trades/paste">📋 Paste</a>
                 <a class="btn" href="/trades/open-positions">📂 Open</a>
               </div>
             </div>
@@ -1914,7 +1940,12 @@ def trades_page():
               {% endfor %}
 
               {% if total_rows == 0 %}
-                <tr><td colspan="17" class="meta">No trades yet. Click <b>📋 Paste</b> and feed the beast 😈</td></tr>
+                <tr><td colspan="17">
+                  <div class="emptyState">
+                    <div class="emptyStateTitle">No trades in this view yet.</div>
+                    <div class="emptyStateBody">Next best action: upload statement first, then complete setup/session tags and review scores.</div>
+                  </div>
+                </td></tr>
               {% endif %}
               </tbody>
             </table>
@@ -1971,8 +2002,8 @@ def trades_page():
           {% if total_rows == 0 %}
             <div class="card stack12"><div class="toolbar">
               <div class="pill">🧭 First Trade Coaching</div>
-              <div class="tiny stack8 line16">Why this matters: trade analytics is only as good as logging consistency.</div>
-              <div class="tiny stack8 line16">Next best action: upload statement first, then add setup/session tags and checklist score.</div>
+              <div class="tiny stack8 line16"><b>Why this matters:</b> trade analytics is only as good as logging consistency.</div>
+              <div class="tiny stack8 line16"><b>Next best action:</b> upload statement first, then add setup/session tags and checklist score.</div>
               <div class="actionRow stack10">
                 <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
                 <a class="btn" href="/trades/new">➕ Add Manual Trade</a>
@@ -2146,6 +2177,7 @@ if (bulkCopyBtn) {
         risk_msg=risk_msg,
         next_action_msg=next_action_msg,
         guardrail=guardrail,
+        data_trust=data_trust,
         primary_net_label=primary_net_label,
         primary_net_sub=primary_net_sub,
         secondary_total_label=secondary_total_label,
@@ -3299,6 +3331,16 @@ def _run_live_sync_once(
         batch_id = _new_import_batch_id("live")
         paste_text, balance_val, parse_warns = importing.parse_statement_html_to_broker_paste(path)
         warns_all = (result.get("warns") or []) + (parse_warns or [])
+        date_range_fallback = any(
+            "Could not set custom From/To" in str(w) for w in (result.get("warns") or [])
+        )
+        if date_range_fallback and balance_val is not None:
+            # When broker UI keeps visible defaults, captured statement can span a wider range
+            # than requested dates. Reconcile using ending balance would be misleading.
+            balance_val = None
+            warns_all.append(
+                "Date-range fallback detected; skipped ending-balance reconcile for this run."
+            )
         if not paste_text:
             result.update(
                 {

@@ -126,6 +126,12 @@ With the `mccain-capital-data` volume, all app data persists across rebuilds/res
 ---
 
 ## 🖼️ Screenshots
+Refreshed from the live container on **February 27, 2026**.
+
+Refresh command:
+```bash
+./scripts/refresh_readme_screenshots.sh http://127.0.0.1:5001
+```
 
 ### 💻 Desktop
 

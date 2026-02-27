@@ -8,7 +8,6 @@
       </div>
       <div class="rightActions">
         <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
-        <a class="btn" href="/journal">📝 Open Journal</a>
       </div>
     </div>
   </div>
@@ -16,29 +15,56 @@
 
 <div class="card"><div class="toolbar">
   <details class="syncDetails">
-    <summary>🧭 Quick Access (Advanced)</summary>
-    <div class="tiny stack8 line15">Jump directly to advanced tools without menu hunting.</div>
+    <summary>🧭 Advanced Tools</summary>
+    <div class="tiny stack8 line15">Use these after core workflow steps to avoid dashboard overload.</div>
     <div class="leftActions stack10">
-      <a class="btn" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
-      <a class="btn" href="/analytics?tab=behavior">🗺️ Heatmap</a>
-      <a class="btn" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
-      <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
+      <a class="btn ctaLink" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
+      <a class="btn ctaLink" href="/analytics?tab=behavior">🗺️ Heatmap</a>
+      <a class="btn ctaLink" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
+      <a class="btn ctaLink" href="/ops/alerts">🚨 Ops Alerts</a>
     </div>
   </details>
 </div></div>
 
 <div class="card"><div class="toolbar">
   <div class="pill">🎯 Today Focus</div>
-  <div class="tiny stack8 line16">One next action, no competing priorities.</div>
+  <div class="tiny stack8 line16"><b>Why this matters:</b> one next action beats five competing priorities.</div>
   {% if today_count == 0 %}
-    <div class="tiny stack8 line16">Next: upload statement to start today’s execution record.</div>
+    <div class="tiny stack8 line16"><b>Next best action:</b> upload statement to start today’s execution record.</div>
     <div class="rightActions"><a class="btn primary" href="/trades/upload/statement">📄 Start With Statement</a></div>
   {% elif today_net < 0 %}
-    <div class="tiny stack8 line16">Next: run Session Replay and tag the rule-break pattern.</div>
-    <div class="rightActions"><a class="btn primary" href="/analytics/replay">🎬 Review Today</a></div>
+    <div class="tiny stack8 line16"><b>Next best action:</b> run Session Replay and tag the rule-break pattern.</div>
+    <div class="rightActions">
+      <a class="btn primary" href="/analytics/replay">🎬 Review Today</a>
+      <a class="btn ctaLink" href="/journal">📝 Open Journal</a>
+    </div>
   {% else %}
-    <div class="tiny stack8 line16">Next: lock in the win with a short journal debrief.</div>
-    <div class="rightActions"><a class="btn primary" href="/journal/new">📝 Debrief Now</a></div>
+    <div class="tiny stack8 line16"><b>Next best action:</b> lock in the win with a short journal debrief.</div>
+    <div class="rightActions">
+      <a class="btn primary" href="/journal/new">📝 Debrief Now</a>
+      <a class="btn ctaLink" href="/analytics?tab=performance">📈 Analyze Day</a>
+    </div>
+  {% endif %}
+</div></div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">🛡️ Data Trust</div>
+  <div class="tiny stack8 line16">
+    Last sync status:
+    <b>{{ data_trust.status_label }}</b>
+    {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
+    {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
+  </div>
+  <div class="tiny stack8 line16 {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
+    {{ data_trust.message }}
+  </div>
+  {% if data_trust.primary_href and data_trust.primary_label %}
+  <div class="rightActions stack8">
+    <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+    {% if data_trust.secondary_href and data_trust.secondary_label %}
+      <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+    {% endif %}
+  </div>
   {% endif %}
 </div></div>
 
@@ -194,8 +220,8 @@
 </div>
 
 <div class="card stack12"><div class="toolbar">
-  <details class="syncDetails" id="advancedDashboardWidgets">
-    <summary>Calendar Heatmap (Load on Demand)</summary>
+    <details class="syncDetails" id="advancedDashboardWidgets">
+    <summary>Daily P/L Calendar (Advanced)</summary>
     <div class="tiny stack8 line15">Daily P/L calendar view. Open when you want date-level context after core workflow steps.</div>
     <div class="hr"></div>
     <div class="heat">
@@ -245,7 +271,7 @@
 
 <div class="card stack12"><div class="toolbar">
   <details class="syncDetails" id="advancedProjectionWidget">
-    <summary>Projection Scenarios (Advanced)</summary>
+    <summary>Balance Projection (Advanced)</summary>
     <div class="pill stack10">📈 Projections (Trading Days: Mon–Fri)</div>
     <div class="tiny stack10 line15">
       Based on recent weekday daily totals (up to 20 days). Planning tool — not a promise.

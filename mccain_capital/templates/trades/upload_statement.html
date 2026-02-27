@@ -206,7 +206,12 @@
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="9">No import history yet.</td></tr>
+        <tr><td colspan="9">
+          <div class="emptyState">
+            <div class="emptyStateTitle">No import history yet.</div>
+            <div class="emptyStateBody">Next best action: run one statement import, then review batch quality here before relying on analytics.</div>
+          </div>
+        </td></tr>
       {% endfor %}
       </tbody>
     </table>

@@ -203,3 +203,31 @@ def test_analytics_expectancy_weekly_toggle_renders(client):
     resp = client.get("/analytics?tab=performance&expectancy_granularity=weekly", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Expectancy Trend (WEEKLY)" in resp.data
+
+
+def test_analytics_data_trust_shows_sync_failure_next_action(client, monkeypatch):
+    from mccain_capital.services import analytics as analytics_svc
+
+    monkeypatch.setattr(
+        analytics_svc,
+        "get_system_status",
+        lambda: {
+            "last_sync_status": "failed",
+            "last_sync_stage": "submit_login",
+            "last_sync_updated_human": "Feb 27, 2026 10:30 AM ET",
+        },
+    )
+
+    resp = client.get("/analytics?tab=performance", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Data Trust" in resp.data
+    assert b"Sync reliability is degraded." in resp.data
+    assert b"/trades/upload/statement?ws=live" in resp.data
+
+
+def test_analytics_behavior_empty_state_is_standardized(client):
+    resp = client.get("/analytics?tab=behavior&start=2020-01-01&end=2020-01-02", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"No heatmap data in this range." in resp.data
+    assert b"Why this matters: time-block expectancy needs setup tags" in resp.data
+    assert b"Next best action: widen date range or log more tagged trades." in resp.data

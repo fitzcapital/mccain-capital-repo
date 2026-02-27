@@ -33,6 +33,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.exceptions import RequestEntityTooLarge
 from zoneinfo import ZoneInfo
 from mccain_capital.services.ui import get_system_status
+from mccain_capital.services.viewmodels import dashboard_data_trust
 
 BUILD_MARKER = "BUILD_2026-02-21_GOALS"
 
@@ -3553,6 +3554,8 @@ def dashboard():
 
     overall_balance = latest_balance_overall()
     balance_integrity = balance_integrity_snapshot()
+    sync_status = get_system_status()
+    data_trust = dashboard_data_trust(sync_status, balance_integrity)
     admin_recompute_allowed = auth_enabled() and is_authenticated()
 
     # ✅ Week total should match the month view anchor
@@ -3605,6 +3608,8 @@ def dashboard():
         month_name=month_name,
         overall_balance=overall_balance,
         balance_integrity=balance_integrity,
+        sync_status=sync_status,
+        data_trust=data_trust,
         admin_recompute_allowed=admin_recompute_allowed,
         this_week_total=this_week_total,
         mtd_net=mtd_net,

@@ -14,10 +14,12 @@ SCENARIOS = [
     ("desktop-dashboard", "/dashboard", {"width": 1600, "height": 1000}),
     ("desktop-trades", "/trades", {"width": 1600, "height": 1100}),
     ("desktop-journal", "/journal", {"width": 1600, "height": 1000}),
+    ("desktop-calculator", "/calculator", {"width": 1600, "height": 1000}),
     ("desktop-analytics", "/analytics?tab=performance", {"width": 1600, "height": 1100}),
     ("mobile-dashboard", "/dashboard", {"width": 390, "height": 844}),
     ("mobile-trades", "/trades", {"width": 390, "height": 844}),
     ("mobile-journal", "/journal", {"width": 390, "height": 844}),
+    ("mobile-calculator", "/calculator", {"width": 390, "height": 844}),
     ("mobile-analytics", "/analytics?tab=performance", {"width": 390, "height": 844}),
 ]
 

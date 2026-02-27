@@ -11,7 +11,8 @@ from flask import render_template_string, request
 
 from mccain_capital.repositories import analytics as repo
 from mccain_capital.runtime import get_setting_float, money
-from mccain_capital.services.ui import render_page
+from mccain_capital.services.ui import get_system_status, render_page
+from mccain_capital.services.viewmodels import analytics_data_trust
 
 
 def _series_day_from_label(label: str) -> str:
@@ -20,9 +21,22 @@ def _series_day_from_label(label: str) -> str:
     return m.group(0) if m else ""
 
 
+def _chart_empty_state() -> str:
+    return """
+    <div class="chartEmpty">
+      <div class="chartEmptyTitle">Not enough data to render chart.</div>
+      <div class="chartEmptySub">Need at least 2 data points in this range. Try a wider range or switch to Weekly granularity.</div>
+      <div class="chartEmptyActions">
+        <a class="btn ctaSecondary" href="/trades/upload/statement">Upload Statement</a>
+        <a class="btn ctaLink" href="/analytics?tab=performance&expectancy_granularity=weekly">Use Weekly View</a>
+      </div>
+    </div>
+    """
+
+
 def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "$") -> str:
     if len(series) < 2:
-        return '<div class="chartEmpty">Not enough data to render chart.</div>'
+        return _chart_empty_state()
 
     width = 820.0
     height = 200.0
@@ -75,9 +89,9 @@ def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "
 def _multi_line_chart_svg(series_list: List[Dict[str, Any]], y_prefix: str = "$") -> str:
     active = [s for s in series_list if isinstance(s.get("series"), list) and s.get("series")]
     if not active:
-        return '<div class="chartEmpty">Not enough data to render chart.</div>'
+        return _chart_empty_state()
     if all(len(s["series"]) < 2 for s in active):
-        return '<div class="chartEmpty">Not enough data to render chart.</div>'
+        return _chart_empty_state()
 
     width = 820.0
     height = 210.0
@@ -448,6 +462,30 @@ def analytics_page():
     expectancy_story = _series_story(expectancy_series, favorable_direction="up")
     fitz_22 = repo.fitz_22_rev_indicator(rows)
     integrity = repo.integrity_diagnostics(rows)
+    integrity_issue_count = int(
+        (integrity.get("missing_setup") or 0)
+        + (integrity.get("missing_session") or 0)
+        + (integrity.get("missing_score") or 0)
+        + (integrity.get("duplicate_candidates") or 0)
+        + (integrity.get("stale_balance_rows") or 0)
+    )
+    sync_status = get_system_status() or {}
+    data_trust = analytics_data_trust(sync_status, integrity_issue_count=integrity_issue_count)
+    if data_trust.primary_href == "/analytics?tab=diagnostics":
+        data_trust = data_trust.__class__(
+            status_label=data_trust.status_label,
+            stage_label=data_trust.stage_label,
+            updated_label=data_trust.updated_label,
+            tone=data_trust.tone,
+            message=data_trust.message,
+            primary_href=(
+                f"/analytics?tab=diagnostics&start={start_date}&end={end_date}"
+                f"&explain_day={explain_day}&expectancy_granularity={expectancy_granularity}"
+            ),
+            primary_label=data_trust.primary_label,
+            secondary_href=data_trust.secondary_href,
+            secondary_label=data_trust.secondary_label,
+        )
     day_story = _explain_day(rows, day_iso=explain_day)
     sizing = _regime_sizing_suggestion(
         perf=perf, dd=dd, vol_summary=vol_summary, setup_rows=setup_rows
@@ -476,14 +514,35 @@ def analytics_page():
                 <div class="pageSub">Track edge quality over time with expectancy, drawdown, behavior, and setup/session diagnostics.</div>
               </div>
               <div class="actionRow">
-                <a class="btn" href="/trades">📅 Trades</a>
-                <a class="btn" href="/journal/review/weekly">📘 Weekly Review</a>
-                <a class="btn" href="/analytics/replay">🎬 Session Replay</a>
-                <a class="btn" href="/trades/playbook">📘 Playbook</a>
+                <a class="btn primary" href="/analytics/replay">🎬 Session Replay</a>
+                <a class="btn ctaLink" href="/trades">📅 Trades</a>
+                <a class="btn ctaLink" href="/journal/review/weekly">📘 Weekly Review</a>
+                <a class="btn ctaLink" href="/trades/playbook">📘 Playbook</a>
               </div>
             </div>
           </div>
         </div>
+
+        <div class="card"><div class="toolbar">
+          <div class="pill">🛡️ Data Trust</div>
+          <div class="tiny stack8 line16">
+            Last sync status:
+            <b>{{ data_trust.status_label }}</b>
+            {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
+            {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
+          </div>
+          <div class="tiny stack8 line16 {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
+            {{ data_trust.message }}
+          </div>
+          {% if data_trust.primary_href and data_trust.primary_label %}
+            <div class="rightActions stack8">
+              <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+              {% if data_trust.secondary_href and data_trust.secondary_label %}
+                <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div></div>
 
         <div class="showcaseGrid">
           <div class="showcaseCard">
@@ -662,8 +721,8 @@ def analytics_page():
         <div class="card"><div class="toolbar">
           <div class="pill">🧪 What-If Day Simulator</div>
           <div class="tiny stack8 line15">Project your ending balance from current balance using your real consistency profile.</div>
-          <div class="tiny stack8 line16">Why this matters: plan quality is measured by expected ending balance, not isolated trade outcomes.</div>
-          <div class="tiny stack8 line16">Next best action: set max trades + stop streak, then compare projected end balance vs your real average day.</div>
+          <div class="tiny stack8 line16"><b>Why this matters:</b> plan quality is measured by expected ending balance, not isolated trade outcomes.</div>
+          <div class="tiny stack8 line16"><b>Next best action:</b> set max trades + stop streak, then compare projected end balance vs your real average day.</div>
           <div class="hr"></div>
           <form method="get" class="row">
             <input type="hidden" name="tab" value="{{ tab }}">
@@ -806,7 +865,12 @@ def analytics_page():
                   <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
                 {% endfor %}
                 {% if rule_breaks|length == 0 %}
-                  <tr><td colspan="2">No rule-break tags logged.</td></tr>
+                  <tr><td colspan="2">
+                    <div class="emptyState">
+                      <div class="emptyStateTitle">No rule-break tags in this range.</div>
+                      <div class="emptyStateBody">Next best action: keep tagging rule breaks during reviews so behavior drift is measurable.</div>
+                    </div>
+                  </td></tr>
                 {% endif %}
                 </tbody>
               </table></div>
@@ -819,7 +883,10 @@ def analytics_page():
                     </div></div>
                   {% endfor %}
                   {% if rule_breaks|length == 0 %}
-                    <div class="card"><div class="toolbar"><div class="tiny">No rule-break tags logged.</div></div></div>
+                    <div class="emptyState">
+                      <div class="emptyStateTitle">No rule-break tags in this range.</div>
+                      <div class="emptyStateBody">Next best action: tag rule breaks on each review to keep behavior analytics reliable.</div>
+                    </div>
                   {% endif %}
                 </div>
               </div>
@@ -831,7 +898,11 @@ def analytics_page():
           <div class="tiny stack8 line15">Color intensity reflects expectancy magnitude for top setups across intraday blocks.</div>
           <div class="hr"></div>
           {% if heatmap.setups|length == 0 %}
-            <div class="tiny">No setup heatmap data in this range.</div>
+            <div class="emptyState">
+              <div class="emptyStateTitle">No heatmap data in this range.</div>
+              <div class="emptyStateBody">Why this matters: time-block expectancy needs setup tags + entry times across multiple trades.</div>
+              <div class="emptyStateBody">Next best action: widen date range or log more tagged trades.</div>
+            </div>
           {% else %}
             <div class="tableWrap desktopOnly">
               <table class="tableDense">
@@ -1001,7 +1072,12 @@ def analytics_page():
                   <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
                 {% endfor %}
                 {% if setup_trend_rows|length == 0 %}
-                  <tr><td colspan="6">No setup trend data in range.</td></tr>
+                  <tr><td colspan="6">
+                    <div class="emptyState">
+                      <div class="emptyStateTitle">No setup trend data in this range.</div>
+                      <div class="emptyStateBody">Next best action: expand date range or increase tagged setup samples.</div>
+                    </div>
+                  </td></tr>
                 {% endif %}
                 </tbody>
               </table></div>
@@ -1019,7 +1095,10 @@ def analytics_page():
                     </div></div>
                   {% endfor %}
                   {% if setup_trend_rows|length == 0 %}
-                    <div class="card"><div class="toolbar"><div class="tiny">No setup trend data in range.</div></div></div>
+                    <div class="emptyState">
+                      <div class="emptyStateTitle">No setup trend data in this range.</div>
+                      <div class="emptyStateBody">Next best action: expand date range or increase tagged setup samples.</div>
+                    </div>
                   {% endif %}
                 </div>
               </div>
@@ -1043,7 +1122,12 @@ def analytics_page():
                   <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
                 {% endfor %}
                 {% if session_trend_rows|length == 0 %}
-                  <tr><td colspan="6">No session trend data in range.</td></tr>
+                  <tr><td colspan="6">
+                    <div class="emptyState">
+                      <div class="emptyStateTitle">No session trend data in this range.</div>
+                      <div class="emptyStateBody">Next best action: keep tagging session context to unlock session edge tracking.</div>
+                    </div>
+                  </td></tr>
                 {% endif %}
                 </tbody>
               </table></div>
@@ -1061,7 +1145,10 @@ def analytics_page():
                     </div></div>
                   {% endfor %}
                   {% if session_trend_rows|length == 0 %}
-                    <div class="card"><div class="toolbar"><div class="tiny">No session trend data in range.</div></div></div>
+                    <div class="emptyState">
+                      <div class="emptyStateTitle">No session trend data in this range.</div>
+                      <div class="emptyStateBody">Next best action: keep tagging session context to unlock session edge tracking.</div>
+                    </div>
                   {% endif %}
                 </div>
               </div>
@@ -1144,6 +1231,9 @@ def analytics_page():
         vol_summary=vol_summary,
         fitz_22=fitz_22,
         integrity=integrity,
+        integrity_issue_count=integrity_issue_count,
+        sync_status=sync_status,
+        data_trust=data_trust,
         edge_pulse=edge_pulse,
         control_pulse=control_pulse,
         start_date=start_date,

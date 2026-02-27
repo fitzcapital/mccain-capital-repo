@@ -189,7 +189,7 @@ def test_dashboard_shows_balance_basis_and_drift_signal(client):
     assert resp.status_code == 200
     assert b"Starting balance + cumulative net P/L" in resp.data
     assert b"Ledger drift detected" in resp.data
-    assert b"Quick Access" in resp.data
+    assert b"Advanced Tools" in resp.data
     assert b"/ops/alerts" in resp.data
 
 

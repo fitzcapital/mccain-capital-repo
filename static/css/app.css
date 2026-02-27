@@ -505,7 +505,7 @@
     }
     .tableWrap{overflow:auto;border-radius:12px}
     .tableDense th, .tableDense td{
-      padding:9px 12px;
+      padding:8px 10px;
       font-size:12px;
       line-height:1.4;
       font-variant-numeric: tabular-nums;
@@ -551,12 +551,12 @@
     .statRow{
       display:grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap:10px;
-      margin-top:10px;
+      gap:8px;
+      margin-top:8px;
     }
     .stat{
       flex:1 1 160px;
-      padding:12px;
+      padding:10px;
       border-radius:var(--radius-sm);
       border:1px solid rgba(var(--accent-rgb),.15);
       background: rgba(0,0,0,.2);
@@ -595,11 +595,11 @@
       max-width:720px;
     }
     .metric{
-      padding:13px;
+      padding:11px;
       border-radius:var(--radius-sm);
       border:1px solid rgba(var(--accent-rgb),.18);
       background: linear-gradient(180deg, rgba(var(--accent-rgb),.06), rgba(255,255,255,.01));
-      min-height:88px;
+      min-height:82px;
     }
     .metric .label{font-size:12px;color:var(--muted)}
     .metric .value{font-size:23px;font-weight:800;letter-spacing:.2px;margin-top:6px;line-height:1.15}
@@ -1006,6 +1006,7 @@
         padding:14px 10px 112px;
         min-height:100vh;
       }
+      .card .toolbar{padding:10px}
       input, select, textarea, button{font-size:16px}
       .nav{display:none}
       .hamburger{display:flex}
@@ -1129,10 +1130,23 @@
       }
       .dashboardHero .rightActions{width:100%}
       .dashboardHero .rightActions .btn{flex:1 1 0}
-      .metric .value{font-size:18px}
+      .metric{
+        padding:9px;
+        min-height:74px;
+      }
+      .metric .value{font-size:17px}
       .metric .sub{line-height:1.35}
-      .syncDetails{padding:10px}
-      .syncDetails summary{font-size:13px}
+      .stat{padding:8px}
+      .tableDense th, .tableDense td{
+        padding:7px 8px;
+        font-size:11px;
+      }
+      .syncDetails{padding:8px}
+      .syncDetails summary{font-size:12px}
+      .trendChip{
+        padding:4px 7px;
+        font-size:10px;
+      }
       .desktopOnly{display:none !important}
       .mobileOnly{display:block}
       .pageTitle{
@@ -1185,6 +1199,11 @@
       .drawerHead{position:sticky;top:0;padding:2px 0 10px;background:linear-gradient(180deg, rgba(3,7,12,.96), rgba(3,7,12,.86));backdrop-filter: blur(8px);z-index:2}
       .drawerGrid{grid-template-columns: 1fr}
       .drawerGrid a{padding:14px 12px}
+      .tradeCard{padding:10px}
+      .tradeCardGrid{
+        grid-template-columns:1fr;
+        gap:7px;
+      }
     }
     @media (max-width: 430px){
       .actionRow,
@@ -1565,11 +1584,11 @@
 }
 
 .workflowRail{
-  margin: 12px 0 16px;
-  padding: 10px;
+  margin: 10px 0 14px;
+  padding: 8px;
   border-radius: 14px;
-  border: 1px solid rgba(var(--accent-rgb),0.28);
-  background: linear-gradient(180deg, rgba(var(--accent-rgb),.08), rgba(4,16,26,.35));
+  border: 1px solid rgba(var(--accent-rgb),0.24);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb),.06), rgba(4,16,26,.3));
 }
 .workflowHead{
   display:flex;
@@ -1578,11 +1597,11 @@
   gap:10px;
 }
 .guidedPanel{
-  margin-top: 8px;
-  padding: 6px 10px;
+  margin-top: 6px;
+  padding: 5px 9px;
   border-radius: 10px;
-  border: 1px dashed rgba(255,255,255,.2);
-  background: rgba(255,255,255,.03);
+  border: 1px dashed rgba(255,255,255,.16);
+  background: rgba(255,255,255,.02);
 }
 .guidedPanel summary{
   cursor:pointer;
@@ -1593,18 +1612,18 @@
 }
 .guidedPanel summary::-webkit-details-marker{display:none}
 .workflowGrid{
-  margin-top: 10px;
+  margin-top: 8px;
   display:grid;
-  gap:8px;
+  gap:7px;
   grid-template-columns: repeat(4, minmax(0,1fr));
 }
 .workflowStep{
   border-radius: 10px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(3,10,18,.45);
-  padding: 8px;
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(3,10,18,.38);
+  padding: 7px;
   display:grid;
-  gap:6px;
+  gap:5px;
 }
 .workflowStep.flowActive{
   border-color: rgba(var(--accent-rgb),.42);
@@ -1622,15 +1641,61 @@
   font-size:12px;
   line-height:1.4;
 }
-.guidedMode .guideStep{
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb),.45);
-}
-.guidedMode .workflowText{
+.guidedPanel[open] ~ .workflowGrid .workflowText{
   display:block;
+}
+.workflowStep .btn{
+  width:100%;
 }
 .guideHot{
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb),.45), 0 0 18px rgba(var(--accent-rgb),.22);
   border-color: rgba(var(--accent-rgb),.48) !important;
+}
+.chartEmpty{
+  border:1px dashed rgba(var(--accent-rgb),.26);
+  border-radius:12px;
+  padding:10px;
+  background:rgba(0,0,0,.22);
+}
+.chartEmptyTitle{
+  font-size:13px;
+  font-weight:800;
+  color:var(--text);
+}
+.chartEmptySub{
+  margin-top:4px;
+  font-size:12px;
+  line-height:1.45;
+  color:var(--muted);
+}
+.chartEmptyActions{
+  margin-top:8px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.emptyState{
+  border:1px dashed rgba(var(--accent-rgb),.24);
+  border-radius:12px;
+  padding:10px;
+  background:rgba(0,0,0,.2);
+}
+.emptyStateTitle{
+  font-size:13px;
+  font-weight:800;
+  color:var(--text);
+}
+.emptyStateBody{
+  margin-top:4px;
+  font-size:12px;
+  color:var(--muted);
+  line-height:1.45;
+}
+.emptyStateActions{
+  margin-top:8px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
 }
 .chartPoint{
   transition: transform var(--motion-fast) var(--motion-ease), filter var(--motion-fast) var(--motion-ease);
