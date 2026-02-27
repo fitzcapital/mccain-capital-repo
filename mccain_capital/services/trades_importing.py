@@ -583,6 +583,7 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
             score += 6
         elif rp <= -20:
             score -= 12
+            tags.append("no-cut-20-loss")
 
     fee_ratio = (comm / total_spent) if total_spent > 0 else 0.0
     if fee_ratio > 0.02:
@@ -614,7 +615,10 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def insert_trades_from_broker_paste_with_report(
-    text: str, ending_balance: Optional[float] = None
+    text: str,
+    ending_balance: Optional[float] = None,
+    commit: bool = True,
+    import_batch_id: str = "",
 ) -> Tuple[int, List[str], Dict[str, Any]]:
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
     if not lines:
@@ -861,7 +865,6 @@ def insert_trades_from_broker_paste_with_report(
         balance = float(row["balance"]) if row and row["balance"] is not None else 50000.0
 
     with db() as conn:
-        conn.execute("BEGIN")
         existing_rows = conn.execute(
             """
             SELECT trade_date, entry_time, exit_time, ticker, opt_type, strike,
@@ -870,72 +873,81 @@ def insert_trades_from_broker_paste_with_report(
             """
         ).fetchall()
         existing = {db_trade_identity(r) for r in existing_rows}
+        to_insert: List[Dict[str, Any]] = []
         for tr in completed:
             ident = trade_identity(tr)
             if ident in existing:
                 skipped_duplicates += 1
                 continue
-            row_balance = tr.get("balance")
-            if row_balance is None:
-                balance = float(balance or 0.0) + float(tr["net_pl"] or 0.0)
-                row_balance = balance
-            cur = conn.execute(
-                """
-                INSERT INTO trades (
-                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
-                    entry_price, exit_price, contracts, total_spent,
-                    stop_pct, target_pct, stop_price, take_profit,
-                    risk, comm, gross_pl, net_pl, result_pct, balance,
-                    raw_line, created_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    tr["trade_date"],
-                    tr["entry_time"],
-                    tr["exit_time"],
-                    tr["ticker"],
-                    tr["opt_type"],
-                    tr["strike"],
-                    tr["entry_price"],
-                    tr["exit_price"],
-                    tr["contracts"],
-                    tr["total_spent"],
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    tr["comm"],
-                    tr["gross_pl"],
-                    tr["net_pl"],
-                    tr["result_pct"],
-                    row_balance,
-                    tr["raw_line"],
-                    created,
-                ),
-            )
-            trade_id = int(cur.lastrowid)
-            payload = _auto_review_payload(tr)
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO trade_reviews
-                  (trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    trade_id,
-                    payload.get("setup_tag", ""),
-                    payload.get("session_tag", ""),
-                    payload.get("checklist_score", None),
-                    payload.get("rule_break_tags", ""),
-                    payload.get("review_note", ""),
-                    created,
-                    created,
-                ),
-            )
-            inserted += 1
+            to_insert.append(tr)
             existing.add(ident)
-        conn.commit()
+
+        if commit:
+            conn.execute("BEGIN")
+            for tr in to_insert:
+                row_balance = tr.get("balance")
+                if row_balance is None:
+                    balance = float(balance or 0.0) + float(tr["net_pl"] or 0.0)
+                    row_balance = balance
+                cur = conn.execute(
+                    """
+                    INSERT INTO trades (
+                        trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                        entry_price, exit_price, contracts, total_spent,
+                        stop_pct, target_pct, stop_price, take_profit,
+                        risk, comm, gross_pl, net_pl, result_pct, balance,
+                        raw_line, created_at, import_batch_id
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        tr["trade_date"],
+                        tr["entry_time"],
+                        tr["exit_time"],
+                        tr["ticker"],
+                        tr["opt_type"],
+                        tr["strike"],
+                        tr["entry_price"],
+                        tr["exit_price"],
+                        tr["contracts"],
+                        tr["total_spent"],
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        tr["comm"],
+                        tr["gross_pl"],
+                        tr["net_pl"],
+                        tr["result_pct"],
+                        row_balance,
+                        tr["raw_line"],
+                        created,
+                        import_batch_id or "",
+                    ),
+                )
+                trade_id = int(cur.lastrowid)
+                payload = _auto_review_payload(tr)
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO trade_reviews
+                      (trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        trade_id,
+                        payload.get("setup_tag", ""),
+                        payload.get("session_tag", ""),
+                        payload.get("checklist_score", None),
+                        payload.get("rule_break_tags", ""),
+                        payload.get("review_note", ""),
+                        created,
+                        created,
+                    ),
+                )
+                inserted += 1
+            conn.commit()
+        else:
+            inserted = len(to_insert)
 
     open_count = sum(sum(lot["qty"] for lot in lots) for lots in open_lots.values() if lots)
     if open_count:
@@ -977,6 +989,7 @@ def insert_trades_from_broker_paste_with_report(
         "statement_ending_balance": ending_balance,
         "ledger_ending_balance": ledger_ending_balance,
         "balance_delta": balance_delta,
+        "import_batch_id": import_batch_id or "",
     }
 
     return inserted, (warnings + errors), report
@@ -986,7 +999,7 @@ def insert_trades_from_broker_paste(
     text: str, ending_balance: Optional[float] = None
 ) -> Tuple[int, List[str]]:
     inserted, messages, _ = insert_trades_from_broker_paste_with_report(
-        text, ending_balance=ending_balance
+        text, ending_balance=ending_balance, commit=True, import_batch_id=""
     )
     return inserted, messages
 

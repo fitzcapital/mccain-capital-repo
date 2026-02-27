@@ -9,3 +9,4 @@ lxml
 html5lib
 playwright==1.51.0
 keyring==25.6.0
+cryptography==44.0.1

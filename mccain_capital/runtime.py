@@ -239,6 +239,12 @@ def _safe_col(col: str) -> str:
 
 
 def latest_balance_overall(as_of: Optional[str] = None) -> float:
+    """
+    Overall balance = starting_balance + cumulative net P/L.
+
+    We intentionally derive this from net P/L instead of trusting stored per-row
+    balance snapshots, which can be stale after imports/edits.
+    """
     conn = db()
     starting = get_setting_float("starting_balance", 50000.0)
 
@@ -252,70 +258,6 @@ def latest_balance_overall(as_of: Optional[str] = None) -> float:
         return float(starting)
 
     date_col = pick(cols, ["trade_date", "date", "day"])
-    bal_col = pick(cols, ["balance", "running_balance", "equity", "account_balance"])
-
-    # Prefer real trade-ledger balances over ACCT snapshot rows so stale snapshots
-    # don't override true running balances.
-    if bal_col:
-        bal_q = _safe_col(bal_col)
-        acct_filter = " AND COALESCE(ticker, '') <> 'ACCT'" if "ticker" in cols else ""
-        if as_of and date_col:
-            date_q = _safe_col(date_col)
-            bal_row = conn.execute(
-                f"""
-                SELECT {bal_q}
-                FROM trades
-                WHERE {bal_q} IS NOT NULL AND {date_q} <= ?{acct_filter}
-                ORDER BY {date_q} DESC, id DESC
-                LIMIT 1
-                """,
-                (str(as_of),),
-            ).fetchone()
-        else:
-            bal_row = conn.execute(
-                f"""
-                SELECT {bal_q}
-                FROM trades
-                WHERE {bal_q} IS NOT NULL{acct_filter}
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            ).fetchone()
-        if bal_row and bal_row[0] is not None:
-            try:
-                return float(bal_row[0])
-            except Exception:
-                pass
-
-        # Fallback: if no real trade balances exist, allow ACCT snapshot balances.
-        if as_of and date_col:
-            date_q = _safe_col(date_col)
-            bal_row = conn.execute(
-                f"""
-                SELECT {bal_q}
-                FROM trades
-                WHERE {bal_q} IS NOT NULL AND {date_q} <= ?
-                ORDER BY {date_q} DESC, id DESC
-                LIMIT 1
-                """,
-                (str(as_of),),
-            ).fetchone()
-        else:
-            bal_row = conn.execute(
-                f"""
-                SELECT {bal_q}
-                FROM trades
-                WHERE {bal_q} IS NOT NULL
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            ).fetchone()
-        if bal_row and bal_row[0] is not None:
-            try:
-                return float(bal_row[0])
-            except Exception:
-                pass
-
     pnl_q = _safe_col(pnl_col)
     if as_of and date_col:
         date_q = _safe_col(date_col)
@@ -325,7 +267,6 @@ def latest_balance_overall(as_of: Optional[str] = None) -> float:
         ).fetchone()
     else:
         row = conn.execute(f"SELECT COALESCE(SUM(CAST({pnl_q} AS REAL)), 0) FROM trades").fetchone()
-
     return float(starting + float(row[0] or 0.0))
 
 

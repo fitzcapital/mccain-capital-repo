@@ -53,3 +53,37 @@ def test_broker_import_reconciliation_report_fields(app):
     assert report["open_contracts"] == 0
     assert report["statement_ending_balance"] == 50198.60
     assert report["ledger_ending_balance"] is not None
+
+
+def test_broker_import_preflight_commit_false_does_not_write(app):
+    text = "\n".join(
+        [
+            "SPX JAN/30/26 6935 PUT | 1/30/26, 10:00 AM | BUY | 1 | 10.00 | 0.70",
+            "SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 1 | 12.00 | 0.70",
+        ]
+    )
+    inserted, messages, report = importing.insert_trades_from_broker_paste_with_report(
+        text, ending_balance=50198.60, commit=False
+    )
+    assert inserted == 1
+    assert isinstance(messages, list)
+    assert report["pairs_completed"] == 1
+
+    with db() as conn:
+        row = conn.execute("SELECT COUNT(*) AS c FROM trades").fetchone()
+    assert int(row["c"] or 0) == 0
+
+
+def test_auto_review_payload_adds_no_cut_20_loss_rule_break():
+    payload = importing._auto_review_payload(
+        {
+            "entry_time": "10:00 AM",
+            "net_pl": -30.0,
+            "total_spent": 100.0,
+            "comm": 0.7,
+            "contracts": 1,
+            "result_pct": -25.0,
+        }
+    )
+    tags = str(payload.get("rule_break_tags") or "")
+    assert "no-cut-20-loss" in tags

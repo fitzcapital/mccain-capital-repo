@@ -345,15 +345,28 @@ def new_entry():
         repo.set_entry_trade_links(entry_id, linked_ids)
         return redirect(url_for("edit_entry", entry_id=entry_id))
 
-    entry_date = _default_entry_date_for_journal()
-    initial_values = {"entry_date": entry_date, "entry_type": "post_market", "link_all_day": "1"}
+    prefill_date = (request.args.get("d") or "").strip()
+    entry_date = prefill_date or _default_entry_date_for_journal()
+    initial_values = {
+        "entry_date": entry_date,
+        "entry_type": (request.args.get("entry_type") or "post_market").strip() or "post_market",
+        "link_all_day": "1" if (request.args.get("link_all_day") or "1").strip() == "1" else "0",
+        "market": (request.args.get("market") or "").strip(),
+        "setup": (request.args.get("setup") or "").strip(),
+        "grade": (request.args.get("grade") or "").strip(),
+        "mood": (request.args.get("mood") or "").strip(),
+        "pnl": (request.args.get("pnl") or "").strip(),
+        "notes": (request.args.get("notes") or "").strip(),
+        "template_notes": (request.args.get("template_notes") or "").strip(),
+    }
+    selected_ids = _trade_ids_for_date(entry_date) if initial_values["link_all_day"] == "1" else []
     return render_page(
         _entry_form(
             "new",
             initial_values,
             errors=[],
             available_trades=_trade_options_for_date(entry_date),
-            selected_trade_ids=_trade_ids_for_date(entry_date),
+            selected_trade_ids=selected_ids,
         ),
         active="journal",
     )

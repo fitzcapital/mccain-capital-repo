@@ -14,6 +14,33 @@
   </div>
 </div>
 
+<div class="card"><div class="toolbar">
+  <div class="pill">🧭 Quick Access</div>
+  <div class="tiny stack8 line15">Jump directly to advanced tools without menu hunting.</div>
+  <div class="hr"></div>
+  <div class="leftActions">
+    <a class="btn" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
+    <a class="btn" href="/analytics?tab=behavior">🗺️ Heatmap</a>
+    <a class="btn" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
+    <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
+  </div>
+</div></div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">🎯 Today Focus</div>
+  <div class="tiny stack8 line16">Why this matters: the fastest way to improve is one clear next action, not five competing priorities.</div>
+  {% if today_count == 0 %}
+    <div class="tiny stack8 line16">Next best action: upload your statement to start today’s execution record.</div>
+    <div class="rightActions"><a class="btn primary" href="/trades/upload/statement">📄 Start With Statement</a></div>
+  {% elif today_net < 0 %}
+    <div class="tiny stack8 line16">Next best action: run Session Replay and tag the rule-break pattern before your next trade day.</div>
+    <div class="rightActions"><a class="btn primary" href="/analytics/replay">🎬 Review Today</a></div>
+  {% else %}
+    <div class="tiny stack8 line16">Next best action: lock in the win with a short journal debrief while the context is fresh.</div>
+    <div class="rightActions"><a class="btn primary" href="/journal/new">📝 Debrief Now</a></div>
+  {% endif %}
+</div></div>
+
 <div class="metricStrip">
   <div class="metric">
     <div class="label">Today Net</div>
@@ -33,7 +60,7 @@
   <div class="metric">
     <div class="label">Current Balance</div>
     <div class="value">{{ money(overall_balance) }}</div>
-    <div class="sub">Snapshot as of latest recorded trade</div>
+    <div class="sub">Starting balance + cumulative net P/L (canonical ledger math)</div>
   </div>
 </div>
 
@@ -50,6 +77,18 @@
     <div class="showcaseMeta">
       Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked.
     </div>
+    {% if balance_integrity and balance_integrity.has_drift %}
+    <div class="tiny" style="margin-top:8px; color:#ff9f7f; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+      <span>⚠️ Ledger drift detected {{ money(balance_integrity.delta) }} vs stored row balance.</span>
+      {% if admin_recompute_allowed %}
+        <form method="post" action="/dashboard/recompute-balances" class="inlineForm">
+          <button class="btn btnCompact" type="submit" title="Recompute stored balances">🔄</button>
+        </form>
+      {% else %}
+        <span title="Admin login required">🔒</span>
+      {% endif %}
+    </div>
+    {% endif %}
     <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(capital_pulse) }}%">
       <div class="showcasePulseFill"></div>
       <div class="showcaseWave"></div>
@@ -166,8 +205,12 @@
 </div>
 
 <div class="card stack12"><div class="toolbar">
-  <div class="heat">
-    <table class="tableDense">
+  <details class="syncDetails" id="advancedDashboardWidgets">
+    <summary>Calendar Heatmap (Load on Demand)</summary>
+    <div class="tiny stack8 line15">Daily P/L calendar view. Open when you want date-level context after core workflow steps.</div>
+    <div class="hr"></div>
+    <div class="heat">
+      <table class="tableDense">
       <thead>
         <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
       </thead>
@@ -206,34 +249,38 @@
         </tr>
       {% endfor %}
       </tbody>
-    </table>
-  </div>
+      </table>
+    </div>
+  </details>
 </div></div>
 
 <div class="card stack12"><div class="toolbar">
-  <div class="pill">📈 Projections (Trading Days: Mon–Fri)</div>
-  <div class="tiny stack10 line15">
-    Based on recent weekday daily totals (up to 20 days). Planning tool — not a promise.
-  </div>
-
-  <div class="hr"></div>
-  <div class="statRow">
-    <div class="stat"><div class="k">📊 Daily Avg (recent)</div><div class="v">{{ money(proj.avg) }}</div></div>
-    <div class="stat"><div class="k">🏦 Base Balance</div><div class="v">{{ money(proj.base_balance) }}</div></div>
-
-    <div class="stat {% if proj.p5.est_pnl > 0 %}glow-green{% elif proj.p5.est_pnl < 0 %}glow-red{% endif %}">
-      <div class="k">5 Trading Days</div><div class="v">{{ money(proj.p5.est_pnl) }}</div>
-      <div class="tiny">Est Bal: {{ money(proj.p5.est_balance) }}</div>
+  <details class="syncDetails" id="advancedProjectionWidget">
+    <summary>Projection Scenarios (Advanced)</summary>
+    <div class="pill stack10">📈 Projections (Trading Days: Mon–Fri)</div>
+    <div class="tiny stack10 line15">
+      Based on recent weekday daily totals (up to 20 days). Planning tool — not a promise.
     </div>
 
-    <div class="stat {% if proj.p10.est_pnl > 0 %}glow-green{% elif proj.p10.est_pnl < 0 %}glow-red{% endif %}">
-      <div class="k">10 Trading Days</div><div class="v">{{ money(proj.p10.est_pnl) }}</div>
-      <div class="tiny">Est Bal: {{ money(proj.p10.est_balance) }}</div>
-    </div>
+    <div class="hr"></div>
+    <div class="statRow">
+      <div class="stat"><div class="k">📊 Daily Avg (recent)</div><div class="v">{{ money(proj.avg) }}</div></div>
+      <div class="stat"><div class="k">🏦 Base Balance</div><div class="v">{{ money(proj.base_balance) }}</div></div>
 
-    <div class="stat {% if proj.p20.est_pnl > 0 %}glow-green{% elif proj.p20.est_pnl < 0 %}glow-red{% endif %}">
-      <div class="k">20 Trading Days</div><div class="v">{{ money(proj.p20.est_pnl) }}</div>
-      <div class="tiny">Est Bal: {{ money(proj.p20.est_balance) }}</div>
+      <div class="stat {% if proj.p5.est_pnl > 0 %}glow-green{% elif proj.p5.est_pnl < 0 %}glow-red{% endif %}">
+        <div class="k">5 Trading Days</div><div class="v">{{ money(proj.p5.est_pnl) }}</div>
+        <div class="tiny">Est Bal: {{ money(proj.p5.est_balance) }}</div>
+      </div>
+
+      <div class="stat {% if proj.p10.est_pnl > 0 %}glow-green{% elif proj.p10.est_pnl < 0 %}glow-red{% endif %}">
+        <div class="k">10 Trading Days</div><div class="v">{{ money(proj.p10.est_pnl) }}</div>
+        <div class="tiny">Est Bal: {{ money(proj.p10.est_balance) }}</div>
+      </div>
+
+      <div class="stat {% if proj.p20.est_pnl > 0 %}glow-green{% elif proj.p20.est_pnl < 0 %}glow-red{% endif %}">
+        <div class="k">20 Trading Days</div><div class="v">{{ money(proj.p20.est_pnl) }}</div>
+        <div class="tiny">Est Bal: {{ money(proj.p20.est_balance) }}</div>
+      </div>
     </div>
-  </div>
+  </details>
 </div></div>

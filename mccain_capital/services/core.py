@@ -41,10 +41,20 @@ def dashboard():
     return _legacy().dashboard()
 
 
+def dashboard_recompute_balances():
+    return _legacy().dashboard_recompute_balances()
+
+
 def analytics_page():
     from mccain_capital.services import analytics as analytics_svc
 
     return analytics_svc.analytics_page()
+
+
+def session_replay_page():
+    from mccain_capital.services import analytics as analytics_svc
+
+    return analytics_svc.session_replay_page()
 
 
 def calculator():

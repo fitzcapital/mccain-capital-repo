@@ -32,8 +32,16 @@ def dashboard():
     return svc.dashboard()
 
 
+def dashboard_recompute_balances():
+    return svc.dashboard_recompute_balances()
+
+
 def analytics_page():
     return svc.analytics_page()
+
+
+def session_replay_page():
+    return svc.session_replay_page()
 
 
 def calculator():

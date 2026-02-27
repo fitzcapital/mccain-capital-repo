@@ -39,6 +39,10 @@ def trades_paste():
     return svc.trades_paste()
 
 
+def trades_playbook():
+    return svc.trades_playbook()
+
+
 def trades_new_manual():
     return svc.trades_new_manual()
 
@@ -65,6 +69,58 @@ def trades_sync_auto_run_now():
 
 def trades_sync_debug_file(name: str):
     return svc.trades_sync_debug_file(name)
+
+
+def ops_alerts_page():
+    return svc.ops_alerts_page()
+
+
+def ops_alert_ack():
+    return svc.ops_alert_ack()
+
+
+def ops_alert_resolve():
+    return svc.ops_alert_resolve()
+
+
+def ops_alert_mute():
+    return svc.ops_alert_mute()
+
+
+def ops_backups_config():
+    return svc.ops_backups_config()
+
+
+def ops_backups_page():
+    return svc.ops_backups_page()
+
+
+def ops_backups_run_now():
+    return svc.ops_backups_run_now()
+
+
+def ops_backups_download(name: str):
+    return svc.ops_backups_download(name)
+
+
+def ops_backups_restore():
+    return svc.ops_backups_restore()
+
+
+def ops_backups_restore_dry_run():
+    return svc.ops_backups_restore_dry_run()
+
+
+def ops_backups_delete():
+    return svc.ops_backups_delete()
+
+
+def ops_integrity_run():
+    return svc.ops_integrity_run()
+
+
+def rollback_import_batch():
+    return svc.rollback_import_batch()
 
 
 def trades_risk_controls():

@@ -54,6 +54,12 @@ def register(app):
         "/trades/paste", endpoint="trades_paste", view_func=h.trades_paste, methods=["GET", "POST"]
     )
     app.add_url_rule(
+        "/trades/playbook",
+        endpoint="trades_playbook",
+        view_func=h.trades_playbook,
+        methods=["GET", "POST"],
+    )
+    app.add_url_rule(
         "/trades/new",
         endpoint="trades_new_manual",
         view_func=h.trades_new_manual,
@@ -94,6 +100,79 @@ def register(app):
         endpoint="trades_sync_debug_file",
         view_func=h.trades_sync_debug_file,
         methods=["GET"],
+    )
+    app.add_url_rule("/ops/alerts", endpoint="ops_alerts_page", view_func=h.ops_alerts_page)
+    app.add_url_rule(
+        "/ops/alerts/ack",
+        endpoint="ops_alert_ack",
+        view_func=h.ops_alert_ack,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/alerts/resolve",
+        endpoint="ops_alert_resolve",
+        view_func=h.ops_alert_resolve,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/alerts/mute",
+        endpoint="ops_alert_mute",
+        view_func=h.ops_alert_mute,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/backups/config",
+        endpoint="ops_backups_config",
+        view_func=h.ops_backups_config,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/backups",
+        endpoint="ops_backups_page",
+        view_func=h.ops_backups_page,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/ops/backups/run",
+        endpoint="ops_backups_run_now",
+        view_func=h.ops_backups_run_now,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/backups/download/<path:name>",
+        endpoint="ops_backups_download",
+        view_func=h.ops_backups_download,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/ops/backups/restore",
+        endpoint="ops_backups_restore",
+        view_func=h.ops_backups_restore,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/backups/restore-dry-run",
+        endpoint="ops_backups_restore_dry_run",
+        view_func=h.ops_backups_restore_dry_run,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/backups/delete",
+        endpoint="ops_backups_delete",
+        view_func=h.ops_backups_delete,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/integrity/run",
+        endpoint="ops_integrity_run",
+        view_func=h.ops_integrity_run,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/trades/import/rollback",
+        endpoint="rollback_import_batch",
+        view_func=h.rollback_import_batch,
+        methods=["POST"],
     )
     app.add_url_rule(
         "/trades/open-positions",

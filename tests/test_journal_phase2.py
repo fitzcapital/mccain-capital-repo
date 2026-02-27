@@ -234,3 +234,15 @@ def test_journal_trades_for_date_endpoint(client):
     assert isinstance(payload, dict)
     assert len(payload.get("trades", [])) == 1
     assert payload["trades"][0]["trade_date"] == "2026-02-18"
+
+
+def test_new_entry_prefill_query_params_render(client):
+    resp = client.get(
+        "/new?d=2026-02-23&entry_type=trade_debrief&link_all_day=1&setup=Session+Replay+Debrief&grade=TBD&pnl=120.50&notes=Replay+note",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Session Replay Debrief" in body
+    assert "Replay note" in body
+    assert "trade_debrief" in body

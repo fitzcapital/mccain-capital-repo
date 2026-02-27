@@ -45,6 +45,27 @@
         <a class="btn" href="/trades">📅 Trades</a>
       </div>
     </form>
+    <div class="hr"></div>
+    <div class="statRow">
+      <div class="stat">
+        <div class="k">🏦 Current Balance</div>
+        <div class="v" id="balNow">{{ money(current_balance) }}</div>
+      </div>
+      <div class="stat">
+        <div class="k">🛑 Balance If Stop Hits</div>
+        <div class="v" id="balStop">—</div>
+      </div>
+      <div class="stat">
+        <div class="k">🎯 Balance If Target Hits</div>
+        <div class="v" id="balTarget">—</div>
+      </div>
+      <div class="stat {{ current_consistency.class }}">
+        <div class="k">📏 Current Consistency</div>
+        <div class="v">
+          {% if current_consistency.ratio is not none %}{{ '%.1f'|format(current_consistency.ratio * 100) }}%{% else %}—{% endif %}
+        </div>
+      </div>
+    </div>
   </div></div>
 
   <div class="card"><div class="toolbar">
@@ -69,6 +90,20 @@
       <div class="calcCard"><div class="k">⚠️ Risk (Net)</div><div class="v">{{ money(out.risk_net) }}</div></div>
       <div class="calcCard"><div class="k">🎁 Reward (Net)</div><div class="v">{{ money(out.reward_net) }}</div></div>
       <div class="calcCard"><div class="k">⚖️ R:R</div><div class="v">{{ out.rr }}</div></div>
+      <div class="calcCard"><div class="k">🛑 Balance If Stop Hits</div><div class="v">{{ money(out.balance_if_stop) }}</div></div>
+      <div class="calcCard"><div class="k">🎯 Balance If Target Hits</div><div class="v">{{ money(out.balance_if_target) }}</div></div>
+      <div class="calcCard {{ out.consistency_if_stop.class }}">
+        <div class="k">📏 Consistency If Stop Hits</div>
+        <div class="v">
+          {% if out.consistency_if_stop.ratio is not none %}{{ '%.1f'|format(out.consistency_if_stop.ratio * 100) }}% · {{ out.consistency_if_stop.status }}{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="calcCard {{ out.consistency_if_target.class }}">
+        <div class="k">📏 Consistency If Target Hits</div>
+        <div class="v">
+          {% if out.consistency_if_target.ratio is not none %}{{ '%.1f'|format(out.consistency_if_target.ratio * 100) }}% · {{ out.consistency_if_target.status }}{% else %}—{% endif %}
+        </div>
+      </div>
     </div>
 
     <div class="hr"></div>
@@ -91,3 +126,59 @@
     </div>
   </div></div>
 {% endif %}
+
+<script>
+  (function(){
+    const entryEl = document.querySelector('input[name="entry"]');
+    const contractsEl = document.querySelector('input[name="contracts"]');
+    const stopPctEl = document.querySelector('input[name="stop_pct"]');
+    const targetPctEl = document.querySelector('input[name="target_pct"]');
+    const feeEl = document.querySelector('input[name="fee_per_contract"]');
+    const balStopEl = document.getElementById("balStop");
+    const balTargetEl = document.getElementById("balTarget");
+    const currentBalance = Number({{ current_balance|tojson }});
+    if(!entryEl || !contractsEl || !stopPctEl || !targetPctEl || !feeEl || !balStopEl || !balTargetEl){
+      return;
+    }
+
+    function num(v, fallback){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function money(v){
+      const sign = v < 0 ? "-" : "";
+      const abs = Math.abs(v);
+      return `${sign}$${abs.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    }
+
+    function updatePreview(){
+      const entry = num(entryEl.value, 0);
+      const contracts = Math.max(1, Math.floor(num(contractsEl.value, 1)));
+      const stopPct = Math.max(0, num(stopPctEl.value, 0));
+      const targetPct = Math.max(0, num(targetPctEl.value, 0));
+      const fee = Math.max(0, num(feeEl.value, 0));
+      if(entry <= 0){
+        balStopEl.textContent = "—";
+        balTargetEl.textContent = "—";
+        return;
+      }
+      const stopPrice = entry * (1 - (stopPct / 100));
+      const tpPrice = entry * (1 + (targetPct / 100));
+      const fees = fee * contracts;
+      const riskNet = ((entry - stopPrice) * 100 * contracts) + fees;
+      const rewardNet = ((tpPrice - entry) * 100 * contracts) - fees;
+      balStopEl.textContent = money(currentBalance - riskNet);
+      balTargetEl.textContent = money(currentBalance + rewardNet);
+    }
+
+    ["input","change"].forEach((evt)=>{
+      entryEl.addEventListener(evt, updatePreview);
+      contractsEl.addEventListener(evt, updatePreview);
+      stopPctEl.addEventListener(evt, updatePreview);
+      targetPctEl.addEventListener(evt, updatePreview);
+      feeEl.addEventListener(evt, updatePreview);
+    });
+    updatePreview();
+  })();
+</script>

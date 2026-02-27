@@ -13,6 +13,7 @@ import sqlite3
 import tempfile
 import calendar
 import zipfile
+import shutil
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Callable
 from flask import (
@@ -29,6 +30,7 @@ from flask import (
     flash,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.exceptions import RequestEntityTooLarge
 from zoneinfo import ZoneInfo
 from mccain_capital.services.ui import get_system_status
 
@@ -57,7 +59,7 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_UPLOAD_EXTS = {".pdf", ".html", ".htm"}
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "25"))
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "250"))
 APP_USERNAME = os.environ.get("APP_USERNAME", "owner")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "")
@@ -71,6 +73,17 @@ app = Flask(
 )
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_entity_too_large(_e):
+    return render_page(
+        _simple_msg(
+            f"Upload too large. Max allowed is {MAX_UPLOAD_MB}MB. "
+            "Use Backup Center restore or increase MAX_UPLOAD_MB."
+        ),
+        active="dashboard",
+    ), 413
 
 
 def auth_enabled() -> bool:
@@ -1636,6 +1649,75 @@ def latest_balance_overall(as_of: str | None = None) -> float:
     return float(starting + total)
 
 
+def balance_integrity_snapshot(as_of: str | None = None, tolerance: float = 0.01) -> Dict[str, Any]:
+    """
+    Compare canonical derived ledger balance vs latest stored row balance.
+    Used as a reconciliation signal to detect stale imported balances.
+    """
+    derived = float(latest_balance_overall(as_of=as_of))
+    out: Dict[str, Any] = {
+        "derived_balance": derived,
+        "stored_balance": None,
+        "delta": None,
+        "has_drift": False,
+        "tolerance": float(tolerance),
+    }
+    conn = db()
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+
+    def _pick(existing: list[str], preferred: list[str]) -> str | None:
+        for c in preferred:
+            if c in existing:
+                return c
+        return None
+
+    bal_col = _pick(cols, ["balance", "running_balance", "equity", "account_balance"])
+    if not bal_col:
+        return out
+    date_col = _pick(cols, ["trade_date", "date", "day"])
+
+    def _q(col: str) -> str:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", col):
+            raise ValueError(f"Unsafe column name: {col}")
+        return f'"{col}"'
+
+    bal_q = _q(bal_col)
+    acct_filter = " AND COALESCE(ticker, '') <> 'ACCT'" if "ticker" in cols else ""
+    if as_of and date_col:
+        date_q = _q(date_col)
+        row = conn.execute(
+            f"""
+            SELECT {bal_q}
+            FROM trades
+            WHERE {bal_q} IS NOT NULL AND {date_q} <= ?{acct_filter}
+            ORDER BY {date_q} DESC, id DESC
+            LIMIT 1
+            """,
+            (str(as_of),),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            f"""
+            SELECT {bal_q}
+            FROM trades
+            WHERE {bal_q} IS NOT NULL{acct_filter}
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    if not row or row[0] is None:
+        return out
+    try:
+        stored = float(row[0])
+    except Exception:
+        return out
+    delta = derived - stored
+    out["stored_balance"] = stored
+    out["delta"] = delta
+    out["has_drift"] = abs(delta) > float(tolerance)
+    return out
+
+
 def last_balance_in_list(trades: List[sqlite3.Row]) -> Optional[float]:
     for t in trades:
         b = t["balance"]
@@ -2087,7 +2169,13 @@ def logout_page():
 
 def healthz():
     return jsonify(
-        {"status": "ok", "app": "mccain-capital", "build": BUILD_MARKER, "ts": now_iso()}
+        {
+            "status": "ok",
+            "app": "mccain-capital",
+            "build": BUILD_MARKER,
+            "ts": now_iso(),
+            "safe_mode": bool(app.config.get("SAFE_MODE")),
+        }
     )
 
 
@@ -3464,6 +3552,8 @@ def dashboard():
     month_name = date(y, m, 1).strftime("%B %Y")
 
     overall_balance = latest_balance_overall()
+    balance_integrity = balance_integrity_snapshot()
+    admin_recompute_allowed = auth_enabled() and is_authenticated()
 
     # ✅ Week total should match the month view anchor
     week_anchor = (
@@ -3514,6 +3604,8 @@ def dashboard():
         next_m=next_m,
         month_name=month_name,
         overall_balance=overall_balance,
+        balance_integrity=balance_integrity,
+        admin_recompute_allowed=admin_recompute_allowed,
         this_week_total=this_week_total,
         mtd_net=mtd_net,
         ytd_net=ytd_net,
@@ -3535,12 +3627,37 @@ def dashboard():
     return render_page(content, active="dashboard")
 
 
+def dashboard_recompute_balances():
+    if not auth_enabled():
+        flash("Enable authentication to use admin recompute actions.", "warn")
+        return redirect(url_for("dashboard"))
+    if not is_authenticated():
+        abort(403)
+    starting = float(get_setting_float("starting_balance", 50000.0))
+    recompute_balances(starting_balance=starting)
+    try:
+        from mccain_capital.services.trades import record_admin_audit
+
+        record_admin_audit(
+            "dashboard_recompute_balances",
+            {"starting_balance": starting},
+            actor=_effective_username(),
+        )
+    except Exception:
+        pass
+    flash("Stored trade balances recomputed from canonical ledger math.", "success")
+    return redirect(url_for("dashboard"))
+
+
 # ============================================================
 # Calculator page ✅
 # ============================================================
 def calculator():
     out = None
     err = None
+    current_balance = latest_balance_overall() or 50000.0
+    base_trades = fetch_trades(d="", q="")
+    current_consistency = calc_consistency(base_trades)
 
     vals = {
         "entry": "",
@@ -3589,11 +3706,29 @@ def calculator():
                 "fee": fee,
                 "stop_price": stop_price,
                 "tp_price": tp_price,
+                "current_balance": float(current_balance),
+                "balance_if_stop": round(float(current_balance) - float(rr["risk_net"]), 2),
+                "balance_if_target": round(float(current_balance) + float(rr["reward_net"]), 2),
+                "consistency_current": current_consistency,
+                "consistency_if_stop": calc_consistency(
+                    base_trades + [{"net_pl": -float(rr["risk_net"])}]
+                ),
+                "consistency_if_target": calc_consistency(
+                    base_trades + [{"net_pl": float(rr["reward_net"])}]
+                ),
                 **rr,
                 "ladder": ladder,
             }
 
-    content = render_template("calculator.html", out=out, err=err, vals=vals, money=money)
+    content = render_template(
+        "calculator.html",
+        out=out,
+        err=err,
+        vals=vals,
+        money=money,
+        current_balance=current_balance,
+        current_consistency=current_consistency,
+    )
     return render_page(content, active="calc")
 
 
@@ -3926,6 +4061,16 @@ def backup_data():
         }
         zf.writestr("data/meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
 
+    try:
+        from mccain_capital.services.trades import record_admin_audit
+
+        record_admin_audit(
+            "manual_backup_downloaded",
+            {"file": f"mccain_capital_backup_{stamp}.zip"},
+            actor=_effective_username() if auth_enabled() else APP_USERNAME,
+        )
+    except Exception:
+        pass
     return send_file(
         out_path,
         as_attachment=True,
@@ -3986,8 +4131,16 @@ def restore_data():
             db_member = "data/journal.db"
             if db_member in names:
                 os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
-                with zf.open(db_member) as src, open(DB_PATH, "wb") as dst:
-                    dst.write(src.read())
+                db_dir = os.path.dirname(DB_PATH) or "."
+                fd, tmp_db = tempfile.mkstemp(prefix="restore_db_", suffix=".tmp", dir=db_dir)
+                os.close(fd)
+                try:
+                    with zf.open(db_member) as src, open(tmp_db, "wb") as dst:
+                        shutil.copyfileobj(src, dst, length=1024 * 1024)
+                    os.replace(tmp_db, DB_PATH)
+                finally:
+                    if os.path.exists(tmp_db):
+                        os.unlink(tmp_db)
 
             os.makedirs(UPLOAD_DIR, exist_ok=True)
             for n in names:
@@ -3999,13 +4152,23 @@ def restore_data():
                 if out_dir:
                     os.makedirs(out_dir, exist_ok=True)
                 with zf.open(n) as src, open(out_path, "wb") as dst:
-                    dst.write(src.read())
+                    shutil.copyfileobj(src, dst, length=1024 * 1024)
 
     except zipfile.BadZipFile:
         return render_page(_simple_msg("Invalid zip file."), active="dashboard")
     except Exception as e:
         return render_page(_simple_msg(f"Restore failed: {e}"), active="dashboard")
 
+    try:
+        from mccain_capital.services.trades import record_admin_audit
+
+        record_admin_audit(
+            "manual_backup_restored",
+            {"source_filename": f.filename if f else ""},
+            actor=_effective_username() if auth_enabled() else APP_USERNAME,
+        )
+    except Exception:
+        pass
     return render_page(_simple_msg("Backup restore completed."), active="dashboard")
 
 

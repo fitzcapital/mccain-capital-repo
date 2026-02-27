@@ -141,9 +141,17 @@ def _migration_0002_journal_phase2(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0003_import_batches(conn: sqlite3.Connection) -> None:
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+    if "import_batch_id" not in cols:
+        conn.execute("ALTER TABLE trades ADD COLUMN import_batch_id TEXT DEFAULT ''")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_import_batch ON trades(import_batch_id)")
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
+    ("0003_import_batches", _migration_0003_import_batches),
 ]
 
 

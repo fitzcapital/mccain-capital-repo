@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+import random
+import statistics
 from flask import flash, get_flashed_messages, redirect, render_template_string, request, url_for
 
 from mccain_capital.repositories import goals as repo
@@ -21,6 +23,7 @@ from mccain_capital.runtime import (
     payout_summary,
     projections_from_daily,
     today_iso,
+    db,
 )
 from mccain_capital.services.ui import render_page
 
@@ -29,6 +32,145 @@ upsert_daily_goal = repo.upsert_daily_goal
 fetch_daily_goals = repo.fetch_daily_goals
 fetch_daily_goal = repo.fetch_daily_goal
 _month_bounds = month_bounds
+
+
+def _goal_execution_bridge(anchor_day):
+    start = anchor_day - timedelta(days=anchor_day.weekday())
+    end = start + timedelta(days=6)
+    prev_start = start - timedelta(days=7)
+    prev_end = start - timedelta(days=1)
+    with db() as conn:
+        goals_rows = conn.execute(
+            """
+            SELECT track_date, upwork_proposals, upwork_interviews
+            FROM daily_goals
+            WHERE track_date >= ? AND track_date <= ?
+            ORDER BY track_date ASC
+            """,
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        trade_rows = conn.execute(
+            """
+            SELECT t.trade_date, t.net_pl, r.checklist_score
+            FROM trades t
+            LEFT JOIN trade_reviews r ON r.trade_id = t.id
+            WHERE t.trade_date >= ? AND t.trade_date <= ?
+            ORDER BY t.trade_date ASC, t.id ASC
+            """,
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        prev_trade_rows = conn.execute(
+            """
+            SELECT t.trade_date, t.net_pl, r.checklist_score
+            FROM trades t
+            LEFT JOIN trade_reviews r ON r.trade_id = t.id
+            WHERE t.trade_date >= ? AND t.trade_date <= ?
+            ORDER BY t.trade_date ASC, t.id ASC
+            """,
+            (prev_start.isoformat(), prev_end.isoformat()),
+        ).fetchall()
+    goal_days = {str(r["track_date"]) for r in goals_rows}
+    trade_days = {str(r["trade_date"]) for r in trade_rows}
+    aligned_days = len(goal_days & trade_days)
+    proposals = sum(int(r["upwork_proposals"] or 0) for r in goals_rows)
+    interviews = sum(int(r["upwork_interviews"] or 0) for r in goals_rows)
+    checklist_scores = [
+        float(r["checklist_score"])
+        for r in trade_rows
+        if r["checklist_score"] is not None
+    ]
+    avg_score = (sum(checklist_scores) / len(checklist_scores)) if checklist_scores else 0.0
+    planned_days = len(goal_days)
+    proposal_target = max(1, planned_days * 3)
+    interview_target = max(1, planned_days // 2)
+    align_ratio = (aligned_days / planned_days) if planned_days else 0.0
+    proposal_ratio = min(1.0, proposals / proposal_target)
+    interview_ratio = min(1.0, interviews / interview_target)
+    score_ratio = min(1.0, avg_score / 100.0)
+    compliance = round(
+        (align_ratio * 0.45 + proposal_ratio * 0.20 + interview_ratio * 0.10 + score_ratio * 0.25) * 100.0,
+        1,
+    )
+    prev_scores = [float(r["checklist_score"]) for r in prev_trade_rows if r["checklist_score"] is not None]
+    prev_avg = (sum(prev_scores) / len(prev_scores)) if prev_scores else 0.0
+    prev_trade_days = {str(r["trade_date"]) for r in prev_trade_rows}
+    prev_align = (len(prev_trade_days) / max(1, len(prev_trade_days))) if prev_trade_days else 0.0
+    prev_compliance = round((prev_align * 0.45 + (prev_avg / 100.0) * 0.25) * 100.0, 1)
+    drift = compliance - prev_compliance
+    drift_flag = "improving" if drift >= 5 else "slipping" if drift <= -5 else "stable"
+    return {
+        "week_start": start.isoformat(),
+        "week_end": end.isoformat(),
+        "planned_days": planned_days,
+        "trade_days": len(trade_days),
+        "aligned_days": aligned_days,
+        "proposals": proposals,
+        "proposal_target": proposal_target,
+        "interviews": interviews,
+        "interview_target": interview_target,
+        "avg_checklist_score": avg_score,
+        "compliance_score": compliance,
+        "drift_vs_prev_week": drift,
+        "drift_flag": drift_flag,
+    }
+
+
+def _payout_readiness_planner(
+    *,
+    daily_vals,
+    balance: float,
+    safe_floor: float,
+    biweekly_goal: float,
+):
+    sample = [float(v) for v in daily_vals if isinstance(v, (int, float))]
+    if not sample:
+        sample = [0.0]
+    mu = statistics.mean(sample)
+    sigma = statistics.pstdev(sample) if len(sample) > 1 else abs(mu) * 0.6
+    sigma = max(sigma, 1.0)
+    target_balance = float(balance) + max(0.0, biweekly_goal)
+
+    def simulate(days: int, runs: int = 600):
+        hits_target = 0
+        hits_floor = 0
+        pnls = []
+        for _ in range(runs):
+            pnl = 0.0
+            bal = float(balance)
+            breached = False
+            for _d in range(days):
+                step = random.gauss(mu, sigma)
+                pnl += step
+                bal += step
+                if bal < safe_floor:
+                    breached = True
+            pnls.append(pnl)
+            if bal >= target_balance:
+                hits_target += 1
+            if breached:
+                hits_floor += 1
+        pnls.sort()
+        p10 = pnls[max(0, int(len(pnls) * 0.10) - 1)]
+        p50 = pnls[max(0, int(len(pnls) * 0.50) - 1)]
+        p90 = pnls[max(0, int(len(pnls) * 0.90) - 1)]
+        return {
+            "days": days,
+            "target_hit_prob": round((hits_target / runs) * 100.0, 1),
+            "floor_breach_prob": round((hits_floor / runs) * 100.0, 1),
+            "p10_pnl": p10,
+            "p50_pnl": p50,
+            "p90_pnl": p90,
+            "p50_balance": balance + p50,
+        }
+
+    return {
+        "mu": mu,
+        "sigma": sigma,
+        "h5": simulate(5),
+        "h10": simulate(10),
+        "h20": simulate(20),
+        "target_balance": target_balance,
+    }
 
 
 def goals_tracker():
@@ -106,6 +248,7 @@ def goals_tracker():
     other_daily_avg = sum_other / recorded_days
     projected_upwork = round(upwork_daily_avg * 30, 2)
     projected_other = round(other_daily_avg * 30, 2)
+    bridge = _goal_execution_bridge(d_obj)
 
     # scenario inputs (GET so it doesn't overwrite your daily log)
     s = request.args
@@ -364,6 +507,24 @@ def goals_tracker():
             </div>
           </div></div>
         </div>
+
+        <div class="card"><div class="toolbar">
+          <div class="pill">🧭 Goal-to-Execution Bridge (Weekly)</div>
+          <div class="tiny stack10 line16">Connect planned actions to actual trade execution quality and weekly drift.</div>
+          <div class="hr"></div>
+          <div class="statRow">
+            <div class="stat"><div class="k">Week</div><div class="v">{{ bridge.week_start }} → {{ bridge.week_end }}</div></div>
+            <div class="stat"><div class="k">Compliance</div><div class="v">{{ '%.1f'|format(bridge.compliance_score) }}%</div></div>
+            <div class="stat"><div class="k">Planned vs Traded Days</div><div class="v">{{ bridge.planned_days }} / {{ bridge.trade_days }}</div></div>
+            <div class="stat"><div class="k">Aligned Days</div><div class="v">{{ bridge.aligned_days }}</div></div>
+            <div class="stat"><div class="k">Avg Checklist Score</div><div class="v">{{ '%.1f'|format(bridge.avg_checklist_score) }}</div></div>
+            <div class="stat"><div class="k">Weekly Drift</div><div class="v">{{ '%.1f'|format(bridge.drift_vs_prev_week) }} ({{ bridge.drift_flag }})</div></div>
+          </div>
+          <div class="hr"></div>
+          <div class="tiny line16">
+            Pipeline: proposals {{ bridge.proposals }}/{{ bridge.proposal_target }} · interviews {{ bridge.interviews }}/{{ bridge.interview_target }}.
+          </div>
+        </div></div>
         """,
         vals=vals,
         rows=rows,
@@ -375,6 +536,7 @@ def goals_tracker():
         recorded_days=recorded_days,
         projected_upwork=projected_upwork,
         projected_other=projected_other,
+        bridge=bridge,
         base_income=BASE_MONTHLY_INCOME,
         hourly_rate=hourly_rate,
         hours_per_week=hours_per_week,
@@ -413,7 +575,14 @@ def payouts_page():
     last30 = last_30d_total_net()
 
     daily20 = last_n_trading_day_totals(20)
+    daily60 = last_n_trading_day_totals(60)
     proj = projections_from_daily(daily20, overall_balance)
+    readiness = _payout_readiness_planner(
+        daily_vals=daily60,
+        balance=float(overall_balance),
+        safe_floor=float(ps["safe_floor"]),
+        biweekly_goal=float(biweekly_goal),
+    )
 
     can_take_biweekly_now = ps["safe_request"] >= biweekly_goal
 
@@ -500,6 +669,25 @@ def payouts_page():
             Respect risk. One impulsive day can erase progress.
           </div>
         </div></div>
+        <div class="card stack12"><div class="toolbar">
+          <div class="pill">🧠 Payout Readiness Planner</div>
+          <div class="tiny stack10 line16">Probability bands based on your recent daily expectancy/volatility profile.</div>
+          <div class="hr"></div>
+          <div class="statRow">
+            <div class="stat"><div class="k">Drift (μ/day)</div><div class="v">{{ money(readiness.mu) }}</div></div>
+            <div class="stat"><div class="k">Vol (σ/day)</div><div class="v">{{ money(readiness.sigma) }}</div></div>
+            <div class="stat"><div class="k">Target Balance</div><div class="v">{{ money(readiness.target_balance) }}</div></div>
+          </div>
+          <div class="hr"></div>
+          <div class="tableWrap"><table class="tableDense">
+            <thead><tr><th>Horizon</th><th>Target Hit %</th><th>Floor Breach %</th><th>P10 PnL</th><th>P50 PnL</th><th>P90 PnL</th></tr></thead>
+            <tbody>
+              <tr><td>5D</td><td>{{ readiness.h5.target_hit_prob }}%</td><td>{{ readiness.h5.floor_breach_prob }}%</td><td>{{ money(readiness.h5.p10_pnl) }}</td><td>{{ money(readiness.h5.p50_pnl) }}</td><td>{{ money(readiness.h5.p90_pnl) }}</td></tr>
+              <tr><td>10D</td><td>{{ readiness.h10.target_hit_prob }}%</td><td>{{ readiness.h10.floor_breach_prob }}%</td><td>{{ money(readiness.h10.p10_pnl) }}</td><td>{{ money(readiness.h10.p50_pnl) }}</td><td>{{ money(readiness.h10.p90_pnl) }}</td></tr>
+              <tr><td>20D</td><td>{{ readiness.h20.target_hit_prob }}%</td><td>{{ readiness.h20.floor_breach_prob }}%</td><td>{{ money(readiness.h20.p10_pnl) }}</td><td>{{ money(readiness.h20.p50_pnl) }}</td><td>{{ money(readiness.h20.p90_pnl) }}</td></tr>
+            </tbody>
+          </table></div>
+        </div></div>
         """,
         ps=ps,
         protect=protect,
@@ -507,6 +695,7 @@ def payouts_page():
         mtd=mtd,
         last30=last30,
         proj=proj,
+        readiness=readiness,
         can_take_biweekly_now=can_take_biweekly_now,
         money=money,
     )

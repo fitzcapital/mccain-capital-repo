@@ -15,7 +15,16 @@ def register(app):
     app.add_url_rule("/healthz", endpoint="healthz", view_func=h.healthz)
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)
+    app.add_url_rule(
+        "/dashboard/recompute-balances",
+        endpoint="dashboard_recompute_balances",
+        view_func=h.dashboard_recompute_balances,
+        methods=["POST"],
+    )
     app.add_url_rule("/analytics", endpoint="analytics_page", view_func=h.analytics_page)
+    app.add_url_rule(
+        "/analytics/replay", endpoint="session_replay_page", view_func=h.session_replay_page
+    )
     app.add_url_rule(
         "/calculator", endpoint="calculator", view_func=h.calculator, methods=["GET", "POST"]
     )

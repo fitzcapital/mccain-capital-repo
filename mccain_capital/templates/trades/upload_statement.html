@@ -1,3 +1,20 @@
+{% set ws = workspace or 'upload' %}
+{% set last = sync_status or {} %}
+<div class="card stack12">
+  <div class="toolbar">
+    <div class="pill">🧭 Import Workspace</div>
+    <div class="tiny stack8 line15">Use focused tabs to avoid clutter while keeping all import tools in one place.</div>
+    <div class="hr"></div>
+    <div class="leftActions">
+      <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">📄 Upload</a>
+      <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">🤖 Live Sync</a>
+      <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
+      <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
+    </div>
+  </div>
+</div>
+
+{% if ws == 'upload' %}
 <div class="card">
   <div class="toolbar">
     <div class="pill">📄 Upload Statement (PDF / HTML)</div>
@@ -30,8 +47,9 @@
     </form>
   </div>
 </div>
+{% endif %}
 
-{% set last = sync_status or {} %}
+{% if ws == 'live' %}
 {% if last %}
 <div class="card stack12">
   <div class="toolbar">
@@ -76,7 +94,127 @@
   </div>
 </div>
 {% endif %}
+{% endif %}
 
+{% if ws == 'live' %}
+{% set rel = sync_reliability or {} %}
+<div class="card stack12">
+  <div class="toolbar">
+    <div class="pill">📊 Sync Reliability (30D)</div>
+    <div class="tiny stack8 line15">Success rate, runtime, and failure-stage trend for live + auto sync runs.</div>
+    <div class="hr"></div>
+    <div class="statRow">
+      <div class="stat">
+        <div class="k">Attempts</div>
+        <div class="v">{{ rel.get('attempts', 0) }}</div>
+      </div>
+      <div class="stat">
+        <div class="k">Success Rate</div>
+        <div class="v">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}%</div>
+      </div>
+      <div class="stat">
+        <div class="k">Success / Failed</div>
+        <div class="v">{{ rel.get('success', 0) }} / {{ rel.get('failed', 0) }}</div>
+      </div>
+      <div class="stat">
+        <div class="k">Avg Runtime</div>
+        <div class="v">
+          {% if rel.get('avg_duration_sec') is not none %}
+            {{ '%.1f'|format(rel.get('avg_duration_sec')) }}s
+          {% else %}
+            —
+          {% endif %}
+        </div>
+      </div>
+      <div class="stat">
+        <div class="k">Top Failure Stage</div>
+        <div class="v">{{ rel.get('top_failure_stage') or '—' }}</div>
+      </div>
+    </div>
+    {% if rel.get('by_source') %}
+      <div class="hr"></div>
+      <div class="tiny stack8 line16">
+        {% for src, bucket in rel.get('by_source', {}).items() %}
+          • {{ src }}: {{ bucket.get('success', 0) }}/{{ bucket.get('attempts', 0) }} success<br>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if rel.get('recent') %}
+      <div class="hr"></div>
+      <details class="syncDetails">
+        <summary>🕓 Recent Runs ({{ rel.get('recent')|length }})</summary>
+        <table>
+          <thead><tr><th>Time</th><th>Source</th><th>Status</th><th>Stage</th><th>Runtime</th></tr></thead>
+          <tbody>
+          {% for r in rel.get('recent', []) %}
+            <tr>
+              <td>{{ r.get('updated_at', '—') }}</td>
+              <td>{{ r.get('source', '—') }}</td>
+              <td>{{ (r.get('status') or '—')|upper }}</td>
+              <td>{{ r.get('stage', '—') }}</td>
+              <td>{% if r.get('duration_sec') is not none %}{{ '%.1f'|format(r.get('duration_sec')) }}s{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </details>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if ws == 'reconcile' %}
+{% set rec = reconcile_summary or {} %}
+<div class="card stack12">
+  <div class="toolbar">
+    <div class="pill">🧮 Reconcile Import Batches (30D)</div>
+    <div class="tiny stack8 line15">Review import quality before relying on downstream analytics and decisions.</div>
+    <div class="hr"></div>
+    <div class="statRow">
+      <div class="stat"><div class="k">Batches</div><div class="v">{{ rec.get('batches', 0) }}</div></div>
+      <div class="stat"><div class="k">Trades Inserted</div><div class="v">{{ rec.get('inserted', 0) }}</div></div>
+      <div class="stat"><div class="k">Unresolved Batches</div><div class="v">{{ rec.get('unresolved', 0) }}</div></div>
+      <div class="stat"><div class="k">Clean Rate</div><div class="v">{{ '%.1f'|format(rec.get('clean_rate', 0.0)) }}%</div></div>
+    </div>
+    <div class="hr"></div>
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Batch</th><th>Source</th><th>Status</th><th>Inserted</th><th>Open</th><th>Err/Warn</th><th>Delta</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+      {% for b in import_history or [] %}
+        <tr>
+          <td>{{ b.get('updated_at', '—') }}</td>
+          <td><code>{{ b.get('batch_id') or '—' }}</code></td>
+          <td>{{ b.get('source', '—') }}</td>
+          <td>{{ (b.get('status') or '—')|upper }}</td>
+          <td>{{ b.get('inserted_trades', 0) }}</td>
+          <td>{{ b.get('open_contracts', 0) }}</td>
+          <td>{{ b.get('errors_count', 0) }}/{{ b.get('warnings_count', 0) }}</td>
+          <td>{% if b.get('balance_delta') is not none %}{{ money(b.get('balance_delta')) }}{% else %}—{% endif %}</td>
+          <td>
+            {% if b.get('rolled_back') %}
+              <span class="tiny">Rolled back</span>
+            {% elif auth_enabled and authenticated and b.get('batch_id') and b.get('inserted_trades', 0) > 0 %}
+              <form method="post" action="/trades/import/rollback" onsubmit="return confirm('Rollback batch {{ b.get('batch_id') }}? This deletes imported trades and recomputes balances.');" style="display:inline">
+                <input type="hidden" name="batch_id" value="{{ b.get('batch_id') }}" />
+                <button class="btn" type="submit" title="Rollback batch">↩</button>
+              </form>
+            {% else %}
+              <span class="tiny">—</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9">No import history yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if ws == 'live' %}
 {% set auto = auto_sync_cfg or {} %}
 <div class="card stack12">
   <div class="toolbar">
@@ -109,8 +247,8 @@
           <input name="auto_username" value="{{ auto.get('username', '') }}" placeholder="Vanquish username/email" />
         </div>
         <div class="fieldGrow2">
-          <label>Password (OS keychain)</label>
-          <input type="password" name="auto_password" placeholder="Set/replace keychain password (leave blank to keep current)" />
+          <label>Password ({% if auto_sync_password_fallback %}Keychain or container fallback{% else %}OS keychain{% endif %})</label>
+          <input type="password" name="auto_password" placeholder="Set/replace password (leave blank to keep current)" />
         </div>
       </div>
       <div class="row">
@@ -120,6 +258,11 @@
         <div class="tiny stack10">
           Keychain: {% if auto.get('keyring_available') %}<b>available</b>{% else %}<b>not available</b>{% endif %}
           · Password: {% if auto.get('password_stored') %}<b>stored</b>{% else %}<b>not stored</b>{% endif %}
+          {% if auto_sync_password_fallback %}
+          · Storage: <b>keychain with container fallback enabled</b>
+          {% else %}
+          · Storage: <b>keychain only</b>
+          {% endif %}
         </div>
       </div>
       <details class="syncDetails stack10">
@@ -162,12 +305,20 @@
       <div class="tiny stack8" id="auto-sync-run-loading" style="display:none;" aria-live="polite">
         ⏳ Running auto sync now (login + generate + import)...
       </div>
-      <div class="tiny stack10 line16">Security note: auto sync password is stored in OS keychain (not in app config files).</div>
+      <div class="tiny stack10 line16">
+        {% if auto_sync_password_fallback %}
+        Security note: prefers OS keychain; if unavailable, password is stored encrypted in container config.
+        {% else %}
+        Security note: auto sync password is stored in OS keychain (not in app config files).
+        {% endif %}
+      </div>
     </form>
     <form method="post" action="/trades/sync/auto/run" id="auto-sync-run-form"></form>
   </div>
 </div>
+{% endif %}
 
+{% if ws == 'live' %}
 <div class="card stack12">
   <div class="toolbar">
     <div class="pill">🔐 Live Login Sync (Auto Generate Statement)</div>
@@ -262,6 +413,7 @@
     </form>
   </div>
 </div>
+{% endif %}
 
 <script>
   (function() {

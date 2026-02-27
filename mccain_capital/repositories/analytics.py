@@ -6,7 +6,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
-from mccain_capital.runtime import db
+from mccain_capital.runtime import db, get_setting_float
 
 
 def fetch_analytics_rows(start_date: str = "", end_date: str = "") -> List[Dict[str, Any]]:
@@ -24,6 +24,7 @@ def fetch_analytics_rows(start_date: str = "", end_date: str = "") -> List[Dict[
           t.id,
           t.trade_date,
           t.entry_time,
+          t.ticker,
           t.net_pl,
           t.balance,
           r.setup_tag,
@@ -71,16 +72,21 @@ def _streaks(net_values: Iterable[float]) -> tuple[int, int]:
     return max_win_streak, max_loss_streak
 
 
-def _max_drawdown(rows: List[Dict[str, Any]], net_values: List[float]) -> float:
-    balances = [_safe_float(r.get("balance")) for r in rows]
-    if any(v is not None for v in balances):
-        series = [v for v in balances if v is not None]
-    else:
-        running = 0.0
-        series = []
-        for n in net_values:
+def _derived_equity_curve(rows: List[Dict[str, Any]]) -> List[float]:
+    running = float(get_setting_float("starting_balance", 50000.0))
+    curve: List[float] = []
+    for r in rows:
+        n = _safe_float(r.get("net_pl"))
+        if n is not None:
             running += n
-            series.append(running)
+        curve.append(running)
+    return curve
+
+
+def _max_drawdown(rows: List[Dict[str, Any]]) -> float:
+    series = _derived_equity_curve(rows)
+    if not series:
+        return 0.0
 
     peak = float("-inf")
     max_dd = 0.0
@@ -108,7 +114,7 @@ def performance_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     max_loss = min(losses) if losses else 0.0
     win_rate = (len(wins) / total_trades * 100.0) if total_trades else 0.0
     max_win_streak, max_loss_streak = _streaks(net_values)
-    max_drawdown = _max_drawdown(rows, net_values)
+    max_drawdown = _max_drawdown(rows)
 
     return {
         "total_trades": total_trades,
@@ -196,16 +202,7 @@ def rule_break_counts(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def drawdown_diagnostics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    net_values = [n for n in (_safe_float(r.get("net_pl")) for r in rows) if n is not None]
-    balances = [_safe_float(r.get("balance")) for r in rows]
-    if any(v is not None for v in balances):
-        curve = [v for v in balances if v is not None]
-    else:
-        running = 0.0
-        curve = []
-        for n in net_values:
-            running += n
-            curve.append(running)
+    curve = _derived_equity_curve(rows)
 
     peak = float("-inf")
     current_dd = 0.0
@@ -310,30 +307,21 @@ def edge_over_time(
 
 
 def equity_curve_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    curve = _derived_equity_curve(rows)
     out: List[Dict[str, Any]] = []
-    running = 0.0
-    for idx, r in enumerate(rows, start=1):
-        running += _safe_float(r.get("net_pl")) or 0.0
+    for idx, (r, v) in enumerate(zip(rows, curve), start=1):
         out.append(
             {
                 "i": idx,
                 "label": f"{r.get('trade_date', '')} #{r.get('id', idx)}",
-                "v": running,
+                "v": v,
             }
         )
     return out
 
 
 def drawdown_curve_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    balances = [_safe_float(r.get("balance")) for r in rows]
-    if any(v is not None for v in balances):
-        curve = [float(v) for v in balances if v is not None]
-    else:
-        running = 0.0
-        curve = []
-        for r in rows:
-            running += _safe_float(r.get("net_pl")) or 0.0
-            curve.append(running)
+    curve = _derived_equity_curve(rows)
 
     out: List[Dict[str, Any]] = []
     peak = float("-inf")
@@ -343,11 +331,29 @@ def drawdown_curve_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def expectancy_trend_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def expectancy_trend_series(
+    rows: List[Dict[str, Any]], granularity: str = "monthly"
+) -> List[Dict[str, Any]]:
+    g = (granularity or "monthly").strip().lower()
+    if g not in {"monthly", "weekly"}:
+        g = "monthly"
+
+    def _period(d: str) -> str:
+        if len(d) < 10:
+            return "Unknown"
+        if g == "monthly":
+            return d[:7]
+        try:
+            dt = datetime.strptime(d[:10], "%Y-%m-%d")
+            iso = dt.isocalendar()
+            return f"{iso.year}-W{iso.week:02d}"
+        except Exception:
+            return "Unknown"
+
     agg: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         d = str(r.get("trade_date") or "")
-        period = d[:7] if len(d) >= 7 else "Unknown"
+        period = _period(d)
         bucket = agg.setdefault(period, {"count": 0, "net": 0.0})
         bucket["count"] += 1
         bucket["net"] += _safe_float(r.get("net_pl")) or 0.0
@@ -358,6 +364,76 @@ def expectancy_trend_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         n = float(agg[period]["net"] or 0.0)
         out.append({"label": period, "v": (n / c) if c else 0.0, "count": c})
     return out
+
+
+def spx_benchmark_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Benchmark curve: only applies P/L from SPX ticker rows, keeping other rows flat.
+    This provides a simple in-book benchmark overlay without external market data.
+    """
+    running = float(get_setting_float("starting_balance", 50000.0))
+    out: List[Dict[str, Any]] = []
+    for idx, r in enumerate(rows, start=1):
+        ticker = str(r.get("ticker") or "").strip().upper()
+        if ticker == "SPX":
+            n = _safe_float(r.get("net_pl"))
+            if n is not None:
+                running += n
+        out.append(
+            {
+                "i": idx,
+                "label": f"{r.get('trade_date', '')} #{r.get('id', idx)}",
+                "v": running,
+            }
+        )
+    return out
+
+
+def volatility_regime_summary(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Day volatility proxy from internal book data:
+      - daily_abs = abs(sum(net_pl) per day)
+      - rolling_5d_abs = 5-day rolling average of daily_abs
+      - regime = LOW / NORMAL / HIGH using 33/66 percentile thresholds
+    """
+    by_day: Dict[str, float] = {}
+    for r in rows:
+        d = str(r.get("trade_date") or "").strip()
+        if not d:
+            continue
+        by_day[d] = by_day.get(d, 0.0) + float(_safe_float(r.get("net_pl")) or 0.0)
+    if not by_day:
+        return {
+            "regime": "NO DATA",
+            "current": 0.0,
+            "p33": 0.0,
+            "p66": 0.0,
+            "series": [],
+        }
+
+    days = sorted(by_day.keys())
+    abs_vals = [abs(float(by_day[d])) for d in days]
+    rolling: List[float] = []
+    for i in range(len(abs_vals)):
+        start = max(0, i - 4)
+        window = abs_vals[start : i + 1]
+        rolling.append(sum(window) / len(window))
+
+    sorted_roll = sorted(rolling)
+    i33 = int((len(sorted_roll) - 1) * 0.33)
+    i66 = int((len(sorted_roll) - 1) * 0.66)
+    p33 = float(sorted_roll[i33])
+    p66 = float(sorted_roll[i66])
+    current = float(rolling[-1])
+    if current <= p33:
+        regime = "LOW"
+    elif current <= p66:
+        regime = "NORMAL"
+    else:
+        regime = "HIGH"
+
+    series = [{"label": d, "v": float(v)} for d, v in zip(days, rolling)]
+    return {"regime": regime, "current": current, "p33": p33, "p66": p66, "series": series}
 
 
 def _is_fitz_22_rev_setup(tag: str) -> bool:
@@ -414,3 +490,130 @@ def fitz_22_rev_indicator(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "tone": tone,
         "note": note,
     }
+
+
+def integrity_diagnostics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    missing_setup = 0
+    missing_session = 0
+    missing_score = 0
+    sig_counts: Dict[tuple[str, str, str, str], int] = {}
+
+    curve = _derived_equity_curve(rows)
+    stale_balance_rows = 0
+    for idx, r in enumerate(rows):
+        setup = str(r.get("setup_tag") or "").strip()
+        session = str(r.get("session_tag") or "").strip()
+        score = _safe_float(r.get("checklist_score"))
+        if not setup:
+            missing_setup += 1
+        if not session:
+            missing_session += 1
+        if score is None:
+            missing_score += 1
+
+        sig = (
+            str(r.get("trade_date") or ""),
+            str(r.get("ticker") or ""),
+            str(r.get("entry_time") or ""),
+            str(r.get("net_pl") or ""),
+        )
+        sig_counts[sig] = sig_counts.get(sig, 0) + 1
+
+        bal = _safe_float(r.get("balance"))
+        if bal is not None and idx < len(curve) and abs(float(bal) - float(curve[idx])) > 0.01:
+            stale_balance_rows += 1
+
+    duplicate_candidates = sum(1 for v in sig_counts.values() if v > 1)
+    return {
+        "missing_setup": missing_setup,
+        "missing_session": missing_session,
+        "missing_score": missing_score,
+        "duplicate_candidates": duplicate_candidates,
+        "stale_balance_rows": stale_balance_rows,
+    }
+
+
+def _entry_time_to_block(entry_time: str) -> str:
+    s = (entry_time or "").strip().upper()
+    if not s:
+        return "Other / Unknown"
+    try:
+        t = datetime.strptime(s, "%I:%M %p")
+    except Exception:
+        return "Other / Unknown"
+    minutes = t.hour * 60 + t.minute
+    if 570 <= minutes < 600:  # 9:30-10:00
+        return "09:30-10:00"
+    if 600 <= minutes < 660:
+        return "10:00-11:00"
+    if 660 <= minutes < 720:
+        return "11:00-12:00"
+    if 720 <= minutes < 780:
+        return "12:00-13:00"
+    if 780 <= minutes < 840:
+        return "13:00-14:00"
+    if 840 <= minutes < 900:
+        return "14:00-15:00"
+    if 900 <= minutes < 960:
+        return "15:00-16:00"
+    return "Other / Unknown"
+
+
+def setup_expectancy_heatmap(rows: List[Dict[str, Any]], top_n_setups: int = 5) -> Dict[str, Any]:
+    setup_stats: Dict[str, Dict[str, float]] = {}
+    for r in rows:
+        setup = (r.get("setup_tag") or "").strip() or "Unlabeled"
+        net = float(_safe_float(r.get("net_pl")) or 0.0)
+        entry = setup_stats.setdefault(setup, {"count": 0.0, "net": 0.0})
+        entry["count"] += 1.0
+        entry["net"] += net
+    top_setups = [
+        k
+        for k, _ in sorted(
+            setup_stats.items(), key=lambda kv: (kv[1]["count"], kv[1]["net"]), reverse=True
+        )[:top_n_setups]
+    ]
+    if not top_setups:
+        return {"setups": [], "rows": [], "max_abs_exp": 0.0}
+
+    block_order = [
+        "09:30-10:00",
+        "10:00-11:00",
+        "11:00-12:00",
+        "12:00-13:00",
+        "13:00-14:00",
+        "14:00-15:00",
+        "15:00-16:00",
+        "Other / Unknown",
+    ]
+    agg: Dict[tuple[str, str], Dict[str, float]] = {}
+    for r in rows:
+        setup = (r.get("setup_tag") or "").strip() or "Unlabeled"
+        if setup not in top_setups:
+            continue
+        block = _entry_time_to_block(str(r.get("entry_time") or ""))
+        net = float(_safe_float(r.get("net_pl")) or 0.0)
+        key = (block, setup)
+        bucket = agg.setdefault(key, {"count": 0.0, "net": 0.0})
+        bucket["count"] += 1.0
+        bucket["net"] += net
+
+    out_rows: List[Dict[str, Any]] = []
+    max_abs_exp = 0.0
+    for block in block_order:
+        cells: List[Dict[str, Any]] = []
+        for setup in top_setups:
+            bucket = agg.get((block, setup), {"count": 0.0, "net": 0.0})
+            count = int(bucket["count"])
+            expectancy = (bucket["net"] / count) if count else 0.0
+            max_abs_exp = max(max_abs_exp, abs(expectancy))
+            cells.append(
+                {
+                    "setup": setup,
+                    "count": count,
+                    "net": float(bucket["net"]),
+                    "expectancy": float(expectancy),
+                }
+            )
+        out_rows.append({"block": block, "cells": cells})
+    return {"setups": top_setups, "rows": out_rows, "max_abs_exp": max_abs_exp}
