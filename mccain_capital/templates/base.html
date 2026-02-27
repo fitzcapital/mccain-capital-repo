@@ -44,8 +44,7 @@
 
       <div class="topRight">
         <div id="modePill" class="clockPill">⏳ Loading…</div>
-        <button id="shortcutHintBtn" class="btn btnCompact" type="button" onclick="toggleShortcutHelp()">⌨️ Shortcuts</button>
-        <div class="clockPill">🕒 <span id="etClock" class="clockTime">--:--:--</span> ET</div>
+        <div class="clockPill">🕒 <span id="etClock" class="clockTime">--:--:--</span> ET <span id="marketState" class="marketState marketClosed">Closed</span></div>
 
         <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -95,6 +94,7 @@
             <div class="menuTitle">External</div>
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">📈 TradingView</a>
             <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
+            <button class="btn" type="button" onclick="toggleShortcutHelp()">⌨️ Shortcuts</button>
             <button class="btn" type="button" onclick="toggleTheme()">🖤 Toggle Black Mode</button>
             <button class="btn" type="button" onclick="toggleGuidedMode()">🧭 Toggle Guided Mode</button>
             {% if auth_enabled %}
@@ -210,6 +210,7 @@
       <div class="drawerGrid">
         <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">📈 TradingView</a>
         <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
+        <button class="btn" type="button" onclick="toggleShortcutHelp()">⌨️ Shortcuts</button>
         <button class="btn" type="button" onclick="toggleTheme()">🖤 Toggle Black Mode</button>
         <button class="btn" type="button" onclick="toggleGuidedMode()">🧭 Guided Mode</button>
         {% if auth_enabled %}
@@ -485,6 +486,7 @@ document.addEventListener('keydown', (e) => {
 
         const clock = document.getElementById("etClock");
         const mode = document.getElementById("modePill");
+        const market = document.getElementById("marketState");
         if(clock) clock.textContent = timeStr;
 
         if(mode){
@@ -492,6 +494,21 @@ document.addEventListener('keydown', (e) => {
           if(isWeekend) mode.textContent = "🧠 Weekend Mode";
           else if(hour24 >= 16) mode.textContent = "📚 Study Mode";
           else mode.textContent = "📈 Trading Day";
+        }
+        if(market){
+          const hm = new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/New_York",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+          }).format(now).split(":");
+          const nyMinutes = (Number(hm[0] || 0) * 60) + Number(hm[1] || 0);
+          const isWeekend = (weekday === "Sat" || weekday === "Sun");
+          const isOpen = !isWeekend && nyMinutes >= 570 && nyMinutes < 960;
+          market.textContent = isOpen ? "Open" : "Closed";
+          market.classList.toggle("marketOpen", isOpen);
+          market.classList.toggle("marketClosed", !isOpen);
+          market.title = isOpen ? "US market is open (9:30 AM - 4:00 PM ET)" : "US market is closed";
         }
       }catch(e){
         console.error(e);

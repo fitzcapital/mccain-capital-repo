@@ -15,28 +15,29 @@
 </div>
 
 <div class="card"><div class="toolbar">
-  <div class="pill">🧭 Quick Access</div>
-  <div class="tiny stack8 line15">Jump directly to advanced tools without menu hunting.</div>
-  <div class="hr"></div>
-  <div class="leftActions">
-    <a class="btn" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
-    <a class="btn" href="/analytics?tab=behavior">🗺️ Heatmap</a>
-    <a class="btn" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
-    <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
-  </div>
+  <details class="syncDetails">
+    <summary>🧭 Quick Access (Advanced)</summary>
+    <div class="tiny stack8 line15">Jump directly to advanced tools without menu hunting.</div>
+    <div class="leftActions stack10">
+      <a class="btn" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
+      <a class="btn" href="/analytics?tab=behavior">🗺️ Heatmap</a>
+      <a class="btn" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
+      <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
+    </div>
+  </details>
 </div></div>
 
 <div class="card"><div class="toolbar">
   <div class="pill">🎯 Today Focus</div>
-  <div class="tiny stack8 line16">Why this matters: the fastest way to improve is one clear next action, not five competing priorities.</div>
+  <div class="tiny stack8 line16">One next action, no competing priorities.</div>
   {% if today_count == 0 %}
-    <div class="tiny stack8 line16">Next best action: upload your statement to start today’s execution record.</div>
+    <div class="tiny stack8 line16">Next: upload statement to start today’s execution record.</div>
     <div class="rightActions"><a class="btn primary" href="/trades/upload/statement">📄 Start With Statement</a></div>
   {% elif today_net < 0 %}
-    <div class="tiny stack8 line16">Next best action: run Session Replay and tag the rule-break pattern before your next trade day.</div>
+    <div class="tiny stack8 line16">Next: run Session Replay and tag the rule-break pattern.</div>
     <div class="rightActions"><a class="btn primary" href="/analytics/replay">🎬 Review Today</a></div>
   {% else %}
-    <div class="tiny stack8 line16">Next best action: lock in the win with a short journal debrief while the context is fresh.</div>
+    <div class="tiny stack8 line16">Next: lock in the win with a short journal debrief.</div>
     <div class="rightActions"><a class="btn primary" href="/journal/new">📝 Debrief Now</a></div>
   {% endif %}
 </div></div>
@@ -46,11 +47,6 @@
     <div class="label">Today Net</div>
     <div class="value">{{ money(today_net) }}</div>
     <div class="sub">Live from today’s journaled trades</div>
-  </div>
-  <div class="metric">
-    <div class="label">Today Win Rate</div>
-    <div class="value">{{ '%.1f'|format(today_win_rate) }}%</div>
-    <div class="sub">Consistency starts with daily process</div>
   </div>
   <div class="metric">
     <div class="label">Trades Today</div>
@@ -136,11 +132,6 @@
         <div class="k">📅 Week Total</div><div class="v">{{ money(this_week_total) }}</div>
       </div>
 
-      <div class="stat"><div class="k">🗓️ MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
-      <div class="stat"><div class="k">📆 YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
-      <div class="stat"><div class="k">🧾 Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
-      <div class="stat"><div class="k">🧾 Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
-
       <div class="stat {{ ytd_cons.class }}">
         <div class="k">🎯 Consistency (YTD)</div>
         <div class="v">
@@ -182,24 +173,22 @@
           </div>
         {% endif %}
       </div>
+    </div>
 
+    <details class="syncDetails stack10">
+      <summary>More Stats</summary>
+      <div class="statRow stack10">
+        <div class="stat"><div class="k">🗓️ MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
+        <div class="stat"><div class="k">📆 YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
+        <div class="stat"><div class="k">🧾 Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
+        <div class="stat"><div class="k">🧾 Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
+      </div>
+    </details>
+    <div class="statRow stack10">
       <div class="stat">
         <div class="k">🧮 Calculator</div>
         <div class="v"><a class="btn primary" href="/calculator">Open</a></div>
       </div>
-    </div>
-  </div></div>
-
-  <div class="card"><div class="toolbar">
-    <div class="pill">⚡ Focus Board</div>
-    <div class="hr"></div>
-    <div class="leftActions">
-      <a class="btn primary" href="/trades">📅 Review Trades</a>
-      <a class="btn" href="/payouts">💸 Check Payouts</a>
-      <a class="btn" href="/calculator">🧮 Position Plan</a>
-    </div>
-    <div class="tiny stack10 line15">
-      Workflow: plan risk, execute, journal, then score outcomes by week.
     </div>
   </div></div>
 </div>

@@ -690,6 +690,46 @@
       display: inline-block;
       text-align: center;
     }
+    .marketState{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      margin-left:4px;
+      padding:2px 8px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:.02em;
+      color:var(--muted);
+      background:rgba(255,255,255,.04);
+    }
+    .marketState::before{
+      content:"";
+      width:7px;
+      height:7px;
+      border-radius:999px;
+      background:rgba(255,255,255,.35);
+      box-shadow:0 0 0 1px rgba(0,0,0,.25) inset;
+    }
+    .marketState.marketOpen{
+      color:#9ff2c7;
+      border-color:rgba(46,204,113,.45);
+      background:rgba(46,204,113,.11);
+    }
+    .marketState.marketOpen::before{
+      background:rgba(46,204,113,.9);
+      box-shadow:0 0 8px rgba(46,204,113,.42);
+    }
+    .marketState.marketClosed{
+      color:#ffc59d;
+      border-color:rgba(255,149,92,.45);
+      background:rgba(255,149,92,.12);
+    }
+    .marketState.marketClosed::before{
+      background:rgba(255,149,92,.9);
+      box-shadow:0 0 8px rgba(255,149,92,.4);
+    }
     .themeToggle{
       min-width:108px;
       padding:8px 12px;
