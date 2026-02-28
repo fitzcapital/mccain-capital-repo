@@ -15,16 +15,34 @@ def register(app):
         endpoint="journal_weekly_review",
         view_func=h.journal_weekly_review,
     )
-    app.add_url_rule("/new", endpoint="new_entry", view_func=h.new_entry, methods=["GET", "POST"])
+    app.add_url_rule("/journal/new", endpoint="new_entry", view_func=h.new_entry, methods=["GET", "POST"])
     app.add_url_rule(
-        "/edit/<int:entry_id>",
+        "/new",
+        endpoint="new_entry_legacy",
+        view_func=h.new_entry,
+        methods=["GET", "POST"],
+    )
+    app.add_url_rule(
+        "/journal/edit/<int:entry_id>",
         endpoint="edit_entry",
         view_func=h.edit_entry,
         methods=["GET", "POST"],
     )
     app.add_url_rule(
-        "/delete/<int:entry_id>",
+        "/edit/<int:entry_id>",
+        endpoint="edit_entry_legacy",
+        view_func=h.edit_entry,
+        methods=["GET", "POST"],
+    )
+    app.add_url_rule(
+        "/journal/delete/<int:entry_id>",
         endpoint="delete_entry_route",
+        view_func=h.delete_entry_route,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/delete/<int:entry_id>",
+        endpoint="delete_entry_route_legacy",
         view_func=h.delete_entry_route,
         methods=["POST"],
     )

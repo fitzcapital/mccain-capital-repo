@@ -20,6 +20,7 @@
     <div class="leftActions stack10">
       <a class="btn ctaLink" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
       <a class="btn ctaLink" href="/analytics?tab=behavior">🗺️ Heatmap</a>
+      <a class="btn ctaLink" href="/candle-opens">🕯️ Candle Opens</a>
       <a class="btn ctaLink" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
       <a class="btn ctaLink" href="/ops/alerts">🚨 Ops Alerts</a>
     </div>
@@ -41,7 +42,7 @@
   {% else %}
     <div class="tiny stack8 line16"><b>Next best action:</b> lock in the win with a short journal debrief.</div>
     <div class="rightActions">
-      <a class="btn primary" href="/journal/new">📝 Debrief Now</a>
+      <a class="btn primary" href="{{ url_for('new_entry') }}">📝 Debrief Now</a>
       <a class="btn ctaLink" href="/analytics?tab=performance">📈 Analyze Day</a>
     </div>
   {% endif %}

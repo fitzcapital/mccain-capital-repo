@@ -50,21 +50,21 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
 
 
 def get_setting_value(key: str, default: Any = None) -> Any:
-    conn = db()
-    if not _table_exists(conn, "settings"):
-        return default
+    with db() as conn:
+        if not _table_exists(conn, "settings"):
+            return default
 
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(settings)").fetchall()]
-    key_col = next((c for c in ("key", "name", "setting") if c in cols), None)
-    val_col = next((c for c in ("value", "val", "setting_value") if c in cols), None)
-    if not key_col or not val_col:
-        return default
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(settings)").fetchall()]
+        key_col = next((c for c in ("key", "name", "setting") if c in cols), None)
+        val_col = next((c for c in ("value", "val", "setting_value") if c in cols), None)
+        if not key_col or not val_col:
+            return default
 
-    row = conn.execute(
-        f'SELECT "{val_col}" FROM settings WHERE "{key_col}" = ? LIMIT 1',
-        (key,),
-    ).fetchone()
-    return row[0] if row else default
+        row = conn.execute(
+            f'SELECT "{val_col}" FROM settings WHERE "{key_col}" = ? LIMIT 1',
+            (key,),
+        ).fetchone()
+        return row[0] if row else default
 
 
 def get_setting_float(key: str, default: float = 0.0) -> float:

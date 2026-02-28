@@ -82,6 +82,7 @@
             <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">📌 Strategies</a>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">🚨 Ops Alerts</a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">🧠 The Strat</a>
+            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">🕯️ Candle Opens</a>
             <a class="btn {% if active=='books' %}active{% endif %}" href="/books">📚 Books</a>
             <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">💸 Payouts</a>
             <div class="hr"></div>
@@ -234,7 +235,7 @@
         <div class="menuTitle">Quick Actions</div>
         <div class="quickList">
           <a class="btn" href="/trades/new">➕ Add Trade</a>
-          <a class="btn" href="/journal/new">📝 Add Journal</a>
+          <a class="btn" href="{{ url_for('new_entry') }}">📝 Add Journal</a>
           <a class="btn" href="/trades/upload/statement">📄 Upload Statement</a>
           <a class="btn" href="/trades/open-positions">📂 Open Positions</a>
         </div>
@@ -380,7 +381,7 @@ document.addEventListener('keydown', (e) => {
       "gc": "/calculator",
       "ng": "/goals",
       "nt": "/trades/new",
-      "nj": "/journal/new"
+      "nj": "{{ url_for('new_entry') }}"
     };
     let _comboBuffer = "";
     let _comboTs = 0;

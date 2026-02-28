@@ -24,6 +24,9 @@ def create_app():
     os.makedirs(runtime.BOOKS_DIR, exist_ok=True)
 
     app.config.from_object(select_config())
+    env = os.environ.get("APP_ENV", "dev").lower().strip()
+    if env in {"prod", "production"} and not (os.environ.get("SECRET_KEY") or "").strip():
+        raise RuntimeError("SECRET_KEY must be set when APP_ENV=prod.")
     app.secret_key = app.config["SECRET_KEY"]
     app.permanent_session_lifetime = timedelta(
         minutes=app.config["PERMANENT_SESSION_LIFETIME_MINUTES"]
@@ -105,6 +108,8 @@ def create_app():
     except Exception as e:
         app.config["SAFE_MODE"] = True
         app.config["SAFE_MODE_ERROR"] = str(e)
+    if app.config.get("SAFE_MODE"):
+        return app
     if not getattr(app, "_auto_sync_worker_started", False):
         from mccain_capital.services import trades as trades_service
 

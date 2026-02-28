@@ -172,7 +172,7 @@ def test_new_entry_can_auto_link_all_trades_for_day(client):
             )
 
     resp = client.post(
-        "/new",
+        "/journal/new",
         data={
             "entry_date": "2026-02-23",
             "market": "SPX",
@@ -194,6 +194,11 @@ def test_new_entry_can_auto_link_all_trades_for_day(client):
     entry_id = int(entries[0]["id"])
     linked = repo.fetch_entry_trade_ids(entry_id)
     assert len(linked) == 2
+
+
+def test_legacy_new_entry_route_still_works(client):
+    resp = client.get("/new", follow_redirects=False)
+    assert resp.status_code == 200
 
 
 def test_journal_trades_for_date_endpoint(client):

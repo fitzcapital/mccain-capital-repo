@@ -34,7 +34,7 @@ def _entry_form(
     available_trades = available_trades or []
     selected_trade_ids = selected_trade_ids or []
     selected_trade_ids_set = {int(i) for i in selected_trade_ids if int(i) > 0}
-    action = "/new" if mode == "new" else f"/edit/{entry_id}"
+    action = url_for("new_entry") if mode == "new" else url_for("edit_entry", entry_id=entry_id)
     title = "➕ New Entry" if mode == "new" else f"✏️ Edit Entry #{entry_id}"
     return render_template(
         "journal/entry_form.html",

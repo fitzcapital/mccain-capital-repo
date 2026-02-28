@@ -1,11 +1,16 @@
 """Shared pytest fixtures for app tests."""
 
 from pathlib import Path
+import sys
 
 import pytest
 
-from mccain_capital import create_app
-from mccain_capital import app_core as core
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from mccain_capital import create_app  # noqa: E402
+from mccain_capital import app_core as core  # noqa: E402
 
 
 @pytest.fixture()

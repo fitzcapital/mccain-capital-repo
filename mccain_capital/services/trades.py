@@ -57,6 +57,7 @@ from mccain_capital.runtime import (
 )
 from mccain_capital.services import trades_importing as importing
 from mccain_capital.services import vanquish_live_sync
+from mccain_capital.services.background_jobs import BackgroundJobStore
 from mccain_capital.services.ui import render_page, simple_msg
 from mccain_capital.services.viewmodels import trades_data_trust
 
@@ -116,9 +117,7 @@ NOTIFY_DEDUPE_BY_EVENT = {
     ),
 }
 
-_BG_JOB_LOCK = threading.Lock()
-_BG_JOBS: Dict[str, Dict[str, Any]] = {}
-_BG_JOB_MAX = 40
+_BG_JOB_STORE = BackgroundJobStore(BG_JOB_DIR, now_iso)
 
 _AUDIT_ACTION_META = {
     "backup_created": {"label": "Backup Created", "group": "backup"},
@@ -175,99 +174,16 @@ def _sync_stage_label(stage: str) -> str:
     return SYNC_STAGE_LABELS.get(key, key.replace("_", " ").strip().title() or "Working...")
 
 
-def _bg_job_path(job_id: str) -> str:
-    return os.path.join(BG_JOB_DIR, f"{job_id}.json")
-
-
-def _write_bg_job(job: Dict[str, Any]) -> None:
-    os.makedirs(BG_JOB_DIR, exist_ok=True)
-    job_id = str(job.get("id") or "").strip()
-    if not job_id:
-        return
-    path = _bg_job_path(job_id)
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(job, f, indent=2)
-    os.replace(tmp_path, path)
-
-
-def _read_bg_job(job_id: str) -> Dict[str, Any]:
-    path = _bg_job_path((job_id or "").strip())
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            parsed = json.load(f)
-            return parsed if isinstance(parsed, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return {}
-
-
-def _trim_bg_jobs_locked() -> None:
-    try:
-        os.makedirs(BG_JOB_DIR, exist_ok=True)
-        entries: List[tuple[str, float]] = []
-        for name in os.listdir(BG_JOB_DIR):
-            if not name.endswith(".json"):
-                continue
-            full = os.path.join(BG_JOB_DIR, name)
-            if not os.path.isfile(full):
-                continue
-            entries.append((full, os.path.getmtime(full)))
-        if len(entries) <= _BG_JOB_MAX:
-            return
-        entries.sort(key=lambda item: item[1])
-        for full, _ in entries[: max(0, len(entries) - _BG_JOB_MAX)]:
-            try:
-                os.unlink(full)
-            except OSError:
-                pass
-    except OSError:
-        return
-
-
 def _create_bg_job(kind: str, title: str, requested: Dict[str, Any]) -> Dict[str, Any]:
-    stamp = now_iso()
-    job = {
-        "id": uuid4().hex,
-        "kind": kind,
-        "title": title,
-        "status": "queued",
-        "stage": "start",
-        "message": "Queued and waiting to start.",
-        "requested": requested,
-        "created_at": stamp,
-        "updated_at": stamp,
-        "duration_sec": None,
-        "summary": {},
-    }
-    with _BG_JOB_LOCK:
-        _BG_JOBS[job["id"]] = job
-        _write_bg_job(job)
-        _trim_bg_jobs_locked()
-        return dict(job)
+    return _BG_JOB_STORE.create(kind, title, requested)
 
 
 def _update_bg_job(job_id: str, **updates: Any) -> Dict[str, Any]:
-    with _BG_JOB_LOCK:
-        existing = _BG_JOBS.get(job_id) or _read_bg_job(job_id)
-        if not existing:
-            return {}
-        job = dict(existing)
-        job.update(updates)
-        job["updated_at"] = now_iso()
-        _BG_JOBS[job_id] = job
-        _write_bg_job(job)
-        return dict(job)
+    return _BG_JOB_STORE.update(job_id, **updates)
 
 
 def _get_bg_job(job_id: str) -> Dict[str, Any]:
-    with _BG_JOB_LOCK:
-        cached = _BG_JOBS.get(job_id)
-        if cached:
-            return dict(cached)
-        disk = _read_bg_job(job_id)
-        if disk:
-            _BG_JOBS[job_id] = disk
-        return dict(disk)
+    return _BG_JOB_STORE.get(job_id)
 
 
 def _build_action_result_summary(
