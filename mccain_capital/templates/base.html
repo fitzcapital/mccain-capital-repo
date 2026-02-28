@@ -114,21 +114,32 @@
     {% set ss = system_status if system_status is defined else {} %}
     <div class="systemStatusStrip" role="status" aria-live="polite">
       <div class="statusChip">
-        <span class="statusKey">Now</span>
-        <span class="statusVal">{{ (ss.last_sync_status or 'unknown')|replace('_', ' ')|title }}</span>
-      </div>
-      <div class="statusChip">
-        <span class="statusKey">Next</span>
+        <span class="statusKey">Last Sync</span>
         <span class="statusVal">
-          {% if ss.auto_sync_enabled and ss.auto_sync_time %}
-            {{ ss.auto_sync_time }} ET
+          {% set sync_status = (ss.last_sync_status or '')|lower %}
+          {% if sync_status in ['success', 'succeeded', 'ok', 'healthy'] %}
+            Succeeded
+          {% elif sync_status in ['failed', 'error', 'blocked'] %}
+            Failed
+          {% elif sync_status %}
+            {{ sync_status|replace('_', ' ')|title }}
           {% else %}
-            Auto Sync Off
+            Not yet recorded
           {% endif %}
         </span>
       </div>
       <div class="statusChip">
-        <span class="statusKey">Detail</span>
+        <span class="statusKey">Next Auto Sync</span>
+        <span class="statusVal">
+          {% if ss.auto_sync_enabled and ss.auto_sync_time %}
+            {{ ss.auto_sync_time }} ET
+          {% else %}
+            Auto sync is off
+          {% endif %}
+        </span>
+      </div>
+      <div class="statusChip">
+        <span class="statusKey">Last Sync Update</span>
         <span class="statusVal">
           {% if ss.last_sync_updated_human %}
             {{ ss.last_sync_updated_human }}
