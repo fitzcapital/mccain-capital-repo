@@ -459,7 +459,12 @@ def month_heatmap(year: int, month: int) -> Dict[str, Any]:
     with db() as conn:
         rows = conn.execute(
             """
-            SELECT trade_date, COALESCE(SUM(net_pl), 0) AS net
+            SELECT
+                trade_date,
+                COALESCE(SUM(net_pl), 0) AS net,
+                COUNT(*) AS trade_count,
+                SUM(CASE WHEN COALESCE(net_pl, 0) > 0 THEN 1 ELSE 0 END) AS wins,
+                SUM(CASE WHEN COALESCE(net_pl, 0) < 0 THEN 1 ELSE 0 END) AS losses
             FROM trades
             WHERE trade_date >= ? AND trade_date < ?
             GROUP BY trade_date
@@ -475,7 +480,15 @@ def month_heatmap(year: int, month: int) -> Dict[str, Any]:
             """,
             (first.isoformat(), nxt.isoformat()),
         ).fetchall()
-    daily_net = {r["trade_date"]: float(r["net"] or 0.0) for r in rows}
+    daily_stats = {
+        r["trade_date"]: {
+            "net": float(r["net"] or 0.0),
+            "trade_count": int(r["trade_count"] or 0),
+            "wins": int(r["wins"] or 0),
+            "losses": int(r["losses"] or 0),
+        }
+        for r in rows
+    }
     daily_balance: Dict[str, float] = {}
     for r in bal_rows:
         try:
@@ -483,21 +496,104 @@ def month_heatmap(year: int, month: int) -> Dict[str, Any]:
         except Exception:
             pass
     start_weekday = (first.weekday() + 1) % 7
-    cells: List[tuple[Optional[int], float, str, Optional[int]]] = []
+    weekday_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    cells: List[Dict[str, Any]] = []
     max_abs = 0.0
     for _ in range(start_weekday):
-        cells.append((None, 0.0, "", None))
+        cells.append(
+            {
+                "daynum": None,
+                "net": 0.0,
+                "iso": "",
+                "wd": None,
+                "weekday_label": "",
+                "trade_count": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": 0.0,
+                "balance": None,
+                "is_weekend": False,
+                "has_trades": False,
+                "outcome": "empty",
+            }
+        )
     for daynum in range(1, days_in_month + 1):
         iso = date(year, month, daynum).isoformat()
-        net = daily_net.get(iso, 0.0)
+        stats = daily_stats.get(iso, {})
+        net = float(stats.get("net", 0.0))
+        wins = int(stats.get("wins", 0) or 0)
+        losses = int(stats.get("losses", 0) or 0)
+        trade_count = int(stats.get("trade_count", 0) or 0)
+        total_decisions = wins + losses
+        weekday = date(year, month, daynum).weekday()
+        is_weekend = weekday >= 5
+        if trade_count <= 0:
+            outcome = "closed" if is_weekend else "flat"
+        elif net > 0:
+            outcome = "gain"
+        elif net < 0:
+            outcome = "loss"
+        else:
+            outcome = "flat"
         max_abs = max(max_abs, abs(net))
-        cells.append((daynum, net, iso, date(year, month, daynum).weekday()))
+        cells.append(
+            {
+                "daynum": daynum,
+                "net": net,
+                "iso": iso,
+                "wd": weekday,
+                "weekday_label": weekday_names[(weekday + 1) % 7],
+                "trade_count": trade_count,
+                "wins": wins,
+                "losses": losses,
+                "win_rate": (wins / total_decisions * 100.0) if total_decisions else 0.0,
+                "balance": daily_balance.get(iso),
+                "is_weekend": is_weekend,
+                "has_trades": trade_count > 0,
+                "outcome": outcome,
+            }
+        )
     while len(cells) % 7 != 0:
-        cells.append((None, 0.0, "", None))
+        cells.append(
+            {
+                "daynum": None,
+                "net": 0.0,
+                "iso": "",
+                "wd": None,
+                "weekday_label": "",
+                "trade_count": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": 0.0,
+                "balance": None,
+                "is_weekend": False,
+                "has_trades": False,
+                "outcome": "empty",
+            }
+        )
+    weeks: List[Dict[str, Any]] = []
+    for i in range(0, len(cells), 7):
+        week_days = cells[i : i + 7]
+        active_days = [d for d in week_days if d["daynum"] is not None]
+        week_start = next((d for d in week_days if d["daynum"] is not None), None)
+        week_end = next((d for d in reversed(week_days) if d["daynum"] is not None), None)
+        weeks.append(
+            {
+                "days": week_days,
+                "net": sum(float(d["net"]) for d in active_days),
+                "trade_count": sum(int(d["trade_count"]) for d in active_days),
+                "traded_days": sum(1 for d in active_days if d["trade_count"] > 0),
+                "label": (
+                    f"{week_start['iso']} to {week_end['iso']}"
+                    if week_start and week_end
+                    else "Out of month"
+                ),
+            }
+        )
     return {
         "year": year,
         "month": month,
-        "weeks": [cells[i : i + 7] for i in range(0, len(cells), 7)],
+        "weeks": weeks,
         "max_abs": max_abs or 1.0,
         "daily_balance": daily_balance,
     }

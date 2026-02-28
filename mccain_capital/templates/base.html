@@ -38,7 +38,7 @@
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-crown"></use></svg> McCain Capital Reserve</span>
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Private Trading Workspace</span>
           </div>
-          <div class="sub">{% if active == 'dashboard' %}Journal • Trades • Dashboard{% else %}Trading Workspace{% endif %}</div>
+          <div class="sub">{% if active == 'dashboard' %}Journal · Trades · Dashboard{% else %}Trading Workspace{% endif %}</div>
         </div>
       </div>
 
@@ -115,15 +115,15 @@
     <div class="systemStatusStrip" role="status" aria-live="polite">
       <div class="statusChip">
         <span class="statusKey">Now</span>
-        <span class="statusVal">Sync Status: {{ (ss.last_sync_status or 'unknown')|replace('_', ' ')|title }}</span>
+        <span class="statusVal">{{ (ss.last_sync_status or 'unknown')|replace('_', ' ')|title }}</span>
       </div>
       <div class="statusChip">
         <span class="statusKey">Next</span>
         <span class="statusVal">
           {% if ss.auto_sync_enabled and ss.auto_sync_time %}
-            Next Auto Sync: {{ ss.auto_sync_time }} ET
+            {{ ss.auto_sync_time }} ET
           {% else %}
-            Next Auto Sync: Off
+            Auto Sync Off
           {% endif %}
         </span>
       </div>
@@ -131,13 +131,13 @@
         <span class="statusKey">Detail</span>
         <span class="statusVal">
           {% if ss.last_sync_updated_human %}
-            Last Updated: {{ ss.last_sync_updated_human }}
+            {{ ss.last_sync_updated_human }}
           {% elif ss.last_sync_updated_at %}
-            Last Updated: {{ ss.last_sync_updated_at }}
+            {{ ss.last_sync_updated_at }}
           {% elif ss.last_sync_stage %}
-            Last Stage: {{ ss.last_sync_stage|replace('_', ' ')|title }}
+            {{ ss.last_sync_stage|replace('_', ' ')|title }}
           {% else %}
-            Last Updated: Not yet recorded
+            Not yet recorded
           {% endif %}
         </span>
       </div>
@@ -150,29 +150,28 @@
       <details id="guidedPanel" class="guidedPanel">
         <summary>Show Guide</summary>
         <div class="tiny stack8 line15">
-          <b>First-run flow (5 core actions):</b>
-          1) Plan Risk 2) Upload Statement 3) Add/Review Trades 4) Analyze Day 5) Weekly Debrief
+          Plan Risk → Upload Statement → Analyze Day → Weekly Debrief
         </div>
       </details>
       <div class="workflowGrid">
         <div class="workflowStep guideStep {% if active=='calc' %}flowActive{% endif %}" data-guide-item="plan-risk">
           <div class="workflowKicker">Plan</div>
-          <div class="workflowText">Define risk, size, and payout target before execution.</div>
+          <div class="workflowText">Define risk and size first.</div>
           <a class="btn primary {% if active=='calc' %}active{% endif %}" href="/calculator">🧮 Plan Risk</a>
         </div>
         <div class="workflowStep guideStep {% if active=='trades' %}flowActive{% endif %}" data-guide-item="upload-statement">
           <div class="workflowKicker">Execute</div>
-          <div class="workflowText">Log activity fast so metrics stay accurate.</div>
+          <div class="workflowText">Log activity while it is fresh.</div>
           <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
         </div>
         <div class="workflowStep guideStep {% if active=='analytics' %}flowActive{% endif %}" data-guide-item="review-trades">
           <div class="workflowKicker">Review</div>
-          <div class="workflowText">Check edge quality, drawdown, and behavioral patterns.</div>
+          <div class="workflowText">Review edge, drawdown, and behavior.</div>
           <a class="btn primary {% if active=='analytics' %}active{% endif %}" href="/analytics?tab=performance">📈 Analyze Day</a>
         </div>
         <div class="workflowStep guideStep {% if active=='journal' %}flowActive{% endif %}" data-guide-item="weekly-debrief">
           <div class="workflowKicker">Improve</div>
-          <div class="workflowText">Lock learning into weekly review and playbook updates.</div>
+          <div class="workflowText">Turn learning into playbook updates.</div>
           <a class="btn primary {% if active=='journal' %}active{% endif %}" href="/journal/review/weekly">📝 Weekly Debrief</a>
         </div>
       </div>
@@ -197,6 +196,7 @@
       <div class="drawerSectionTitle">Decide</div>
       <div class="drawerGrid">
         <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">🧮 Plan Risk</a>
+        <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">🕯️ Candle Opens</a>
         <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">📌 Strategies</a>
         <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">📈 Improve</a>
         <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">🧠 The Strat</a>
@@ -245,6 +245,7 @@
     <nav class="mobileDock" aria-label="Quick navigation">
       <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊</a>
       <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅</a>
+      <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">🕯️</a>
       <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝</a>
       <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸</a>
     </nav>

@@ -528,6 +528,8 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
             cells.append(
                 {
                     "day": day.day,
+                    "iso": day.isoformat(),
+                    "weekday_label": day.strftime("%a"),
                     "in_month": in_month,
                     "is_weekend": is_weekend,
                     "is_holiday": is_holiday,

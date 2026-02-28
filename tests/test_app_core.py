@@ -111,6 +111,8 @@ def test_candle_opens_page_renders_monthly_market_calendar(client):
     assert b"Presidents Day" in resp.data
     assert b"2D" in resp.data
     assert b"Trading Days" in resp.data
+    assert b"Day reset" in resp.data
+    assert b"candleWeekdayInline" in resp.data
 
 
 def test_trades_page_uses_derived_running_balance(client):
@@ -219,10 +221,82 @@ def test_dashboard_shows_balance_basis_and_drift_signal(client):
 
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Starting balance + cumulative net P/L" in resp.data
+    assert b"Starting balance plus cumulative net P/L." in resp.data
     assert b"Ledger drift detected" in resp.data
     assert b"Advanced Tools" in resp.data
     assert b"/ops/alerts" in resp.data
+
+
+def test_dashboard_renders_calendar_week_cards_and_preview_metadata(client):
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("starting_balance", "50000"),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "9:35 AM",
+                "9:50 AM",
+                "SPX",
+                "CALL",
+                6900.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                250.0,
+                250.0,
+                250.0,
+                50250.0,
+                "win 1",
+                now_iso(),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "10:05 AM",
+                "10:20 AM",
+                "SPX",
+                "PUT",
+                6895.0,
+                1.5,
+                1.0,
+                1,
+                150.0,
+                1.0,
+                -80.0,
+                -80.0,
+                -53.3,
+                50170.0,
+                "loss 1",
+                now_iso(),
+            ),
+        )
+
+    resp = client.get("/dashboard?y=2026&m=2", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"weekCardTitle" in resp.data
+    assert b"2T" in resp.data
+    assert b"1W/1L" in resp.data
+    assert b"calendarPreview" in resp.data
+    assert b"Preview 2026-02-24" in resp.data
 
 
 def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):

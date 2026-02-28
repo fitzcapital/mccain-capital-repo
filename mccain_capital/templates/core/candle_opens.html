@@ -40,6 +40,65 @@
 
 <div class="card candleShell">
   <div class="toolbar">
+    <div class="candleLegend">
+      <span class="candleLegendItem"><span class="candleLegendDot candleLegendDay"></span> Day reset</span>
+      <span class="candleLegendItem"><span class="candleLegendDot candleLegendWeek"></span> Week reset</span>
+      <span class="candleLegendItem"><span class="candleLegendDot candleLegendHoliday"></span> Holiday / market closed</span>
+    </div>
+    <div class="mobileCandleWeeks">
+      {% for week in weeks %}
+        {% set ns = namespace(first='', last='', signals=0, visible=0) %}
+        {% for cell in week %}
+          {% if cell.in_month %}
+            {% set ns.visible = ns.visible + 1 %}
+            {% if not ns.first %}{% set ns.first = cell.iso %}{% endif %}
+            {% set ns.last = cell.iso %}
+            {% set ns.signals = ns.signals + (cell.labels|length) %}
+          {% endif %}
+        {% endfor %}
+        {% if ns.visible > 0 %}
+          <details class="mobileCandleWeek" {% if loop.first %}open{% endif %}>
+            <summary>
+              <span class="mobileCandleWeekTitle">Week {{ loop.index }}</span>
+              <span class="mobileCandleWeekMeta">{{ ns.first }} to {{ ns.last }}</span>
+              <span class="mobileCandleWeekMeta">{{ ns.signals }} signals</span>
+            </summary>
+            <div class="mobileCandleWeekGrid">
+              {% for cell in week %}
+                {% if cell.in_month %}
+                  <div class="mobileCandleDay{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}">
+                    <div class="mobileCandleDayTop">
+                      <div>
+                        <div class="mobileCandleWeekday">{{ cell.weekday_label }}</div>
+                        <div class="mobileCandleIso">{{ cell.iso }}</div>
+                      </div>
+                      <div class="mobileCandleDate">{{ cell.day }}</div>
+                    </div>
+                    {% if cell.is_holiday %}
+                      <div class="mobileCandleMeta">{{ cell.holiday_name }}</div>
+                    {% elif cell.is_weekend %}
+                      <div class="mobileCandleMeta">Weekend</div>
+                    {% elif cell.is_trading and not cell.labels %}
+                      <div class="mobileCandleMeta">No reset</div>
+                    {% endif %}
+                    {% if cell.labels %}
+                      <div class="mobileCandleTags">
+                        {% for label in cell.day_labels %}
+                          <span class="candleTag">{{ label }}</span>
+                        {% endfor %}
+                        {% for label in cell.week_labels %}
+                          <span class="candleTag candleTagWeek">{{ label }}</span>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+      {% endfor %}
+    </div>
     <div class="candleBoard" style="--candle-mark: url('{{ url_for('static', filename='logo.png') }}');">
       <div class="candleBoardGlow"></div>
       <div class="candleWeekday">Sun</div>
@@ -52,7 +111,11 @@
       {% for week in weeks %}
         {% for cell in week %}
           <div class="candleCell{% if not cell.in_month %} is-muted{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cell.day_labels %} has-day-signal{% endif %}{% if cell.week_labels %} has-week-signal{% endif %}">
-            <div class="candleDate">{{ cell.day }}</div>
+            <div class="candleCellTop">
+              <div class="candleWeekdayInline">{{ cell.weekday_label }}</div>
+              <div class="candleDate">{{ cell.day }}</div>
+            </div>
+            <div class="candleIso">{{ cell.iso }}</div>
             {% if cell.is_holiday %}
               <div class="candleMeta">{{ cell.holiday_name }}</div>
             {% elif cell.in_month and cell.is_weekend %}

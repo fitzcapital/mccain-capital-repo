@@ -4,7 +4,7 @@
       <div>
         <div class="pill">📊 Dashboard Control Center</div>
         <h2 class="pageTitle">Trading Command Center</h2>
-        <div class="dashboardLead stack8">Track execution, review risk posture, then drill into trade days.</div>
+        <div class="dashboardLead stack8">Track execution, review risk posture, drill into trade days.</div>
       </div>
       <div class="rightActions">
         <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
@@ -13,10 +13,10 @@
   </div>
 </div>
 
-<div class="card"><div class="toolbar">
+<div class="card subtleCard"><div class="toolbar">
   <details class="syncDetails">
     <summary>🧭 Advanced Tools</summary>
-    <div class="tiny stack8 line15">Use these after core workflow steps to avoid dashboard overload.</div>
+    <div class="tiny stack8 line15">Use after the core workflow when deeper context is needed.</div>
     <div class="leftActions stack10">
       <a class="btn ctaLink" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
       <a class="btn ctaLink" href="/analytics?tab=behavior">🗺️ Heatmap</a>
@@ -27,47 +27,48 @@
   </details>
 </div></div>
 
-<div class="card"><div class="toolbar">
-  <div class="pill">🎯 Today Focus</div>
-  <div class="tiny stack8 line16"><b>Why this matters:</b> one next action beats five competing priorities.</div>
-  {% if today_count == 0 %}
-    <div class="tiny stack8 line16"><b>Next best action:</b> upload statement to start today’s execution record.</div>
-    <div class="rightActions"><a class="btn primary" href="/trades/upload/statement">📄 Start With Statement</a></div>
-  {% elif today_net < 0 %}
-    <div class="tiny stack8 line16"><b>Next best action:</b> run Session Replay and tag the rule-break pattern.</div>
-    <div class="rightActions">
-      <a class="btn primary" href="/analytics/replay">🎬 Review Today</a>
-      <a class="btn ctaLink" href="/journal">📝 Open Journal</a>
-    </div>
-  {% else %}
-    <div class="tiny stack8 line16"><b>Next best action:</b> lock in the win with a short journal debrief.</div>
-    <div class="rightActions">
-      <a class="btn primary" href="{{ url_for('new_entry') }}">📝 Debrief Now</a>
-      <a class="btn ctaLink" href="/analytics?tab=performance">📈 Analyze Day</a>
-    </div>
-  {% endif %}
-</div></div>
-
-<div class="card"><div class="toolbar">
-  <div class="pill">🛡️ Data Trust</div>
-  <div class="tiny stack8 line16">
-    Last sync status:
-    <b>{{ data_trust.status_label }}</b>
-    {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
-    {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
-  </div>
-  <div class="tiny stack8 line16 {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
-    {{ data_trust.message }}
-  </div>
-  {% if data_trust.primary_href and data_trust.primary_label %}
-  <div class="rightActions stack8">
-    <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-    {% if data_trust.secondary_href and data_trust.secondary_label %}
-      <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+<div class="dashboardSupportGrid">
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">🎯 Today Focus</div>
+    <div class="supportLead">One next action beats five competing priorities.</div>
+    {% if today_count == 0 %}
+      <div class="supportBody">Upload statement to start today’s record.</div>
+      <div class="rightActions"><a class="btn primary" href="/trades/upload/statement">📄 Start With Statement</a></div>
+    {% elif today_net < 0 %}
+      <div class="supportBody">Run Session Replay and tag the rule-break pattern while context is fresh.</div>
+      <div class="rightActions">
+        <a class="btn primary" href="/analytics/replay">🎬 Review Today</a>
+        <a class="btn ctaLink" href="/journal">📝 Open Journal</a>
+      </div>
+    {% else %}
+      <div class="supportBody">Lock in the win with a short journal debrief.</div>
+      <div class="rightActions">
+        <a class="btn primary" href="{{ url_for('new_entry') }}">📝 Debrief Now</a>
+        <a class="btn ctaLink" href="/analytics?tab=performance">📈 Analyze Day</a>
+      </div>
     {% endif %}
-  </div>
-  {% endif %}
-</div></div>
+  </div></div>
+
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">🛡️ Data Trust</div>
+    <div class="supportLead">
+      {{ data_trust.status_label }}
+      {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
+      {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
+    </div>
+    <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
+      {{ data_trust.message }}
+    </div>
+    {% if data_trust.primary_href and data_trust.primary_label %}
+    <div class="rightActions stack8">
+      <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+      {% if data_trust.secondary_href and data_trust.secondary_label %}
+        <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div></div>
+</div>
 
 <div class="metricStrip">
   <div class="metric">
@@ -83,7 +84,7 @@
   <div class="metric">
     <div class="label">Current Balance</div>
     <div class="value">{{ money(overall_balance) }}</div>
-    <div class="sub">Starting balance + cumulative net P/L (canonical ledger math)</div>
+    <div class="sub">Starting balance plus cumulative net P/L.</div>
   </div>
 </div>
 
@@ -98,7 +99,7 @@
     </div>
     <div class="showcaseValue">{{ money(overall_balance) }}</div>
     <div class="showcaseMeta">
-      Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked.
+      Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked
     </div>
     {% if balance_integrity and balance_integrity.has_drift %}
     <div class="tiny" style="margin-top:8px; color:#ff9f7f; display:flex; align-items:center; justify-content:space-between; gap:10px;">
@@ -127,7 +128,7 @@
     </div>
     <div class="showcaseValue">{{ '%.1f'|format(today_win_rate) }}%</div>
     <div class="showcaseMeta">
-      Today {{ today_count }} trades · Net {{ money(today_net) }} · Guardrail-aware execution flow.
+      Today {{ today_count }} trades · Net {{ money(today_net) }} · Guardrail-aware flow
     </div>
     <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(discipline_pulse) }}%">
       <div class="showcasePulseFill"></div>
@@ -137,11 +138,11 @@
 </div>
 
 <div class="twoCol">
-  <div class="card"><div class="toolbar">
+  <div class="card summaryPanel"><div class="toolbar">
     <div class="calendarHead">
       <div>
         <div class="pill">📊 P/L Dashboard</div>
-        <div class="tiny stack8">Tap a weekday to open that day’s trades 🧲</div>
+        <div class="summaryLead stack8">Month snapshot with balance, week pressure, and consistency guardrails.</div>
       </div>
       <div class="calendarNav">
         <a class="btn" href="/dashboard?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
@@ -151,15 +152,34 @@
     </div>
 
     <div class="hr"></div>
-    <div class="statRow">
-      <div class="stat"><div class="k">🗓️ Month</div><div class="v">{{ month_name }}</div></div>
-      <div class="stat"><div class="k">🏦 Balance</div><div class="v">{{ money(overall_balance) }}</div></div>
-
-      <div class="stat {% if this_week_total > 0 %}glow-green{% elif this_week_total < 0 %}glow-red{% endif %}">
-        <div class="k">📅 Week Total</div><div class="v">{{ money(this_week_total) }}</div>
+    <div class="summaryHero">
+      <div class="summaryHeroMain">
+        <div class="summaryMonth">{{ month_name }}</div>
+        <div class="summaryBalance">{{ money(overall_balance) }}</div>
+        <div class="summaryCaption">Live account balance with calendar context.</div>
+      </div>
+      <div class="summaryHeroSide">
+        <div class="summaryChip {% if this_week_total > 0 %}summaryChipGain{% elif this_week_total < 0 %}summaryChipLoss{% endif %}">
+          <span>Week Total</span>
+          <strong>{{ money(this_week_total) }}</strong>
+        </div>
+        <div class="summaryChip">
+          <span>Tracked Trades</span>
+          <strong>{{ ytd_trades }}</strong>
+        </div>
+      </div>
+    </div>
+    <div class="summaryGrid">
+      <div class="summaryStat">
+        <div class="k">🗓️ Month</div>
+        <div class="v">{{ month_name }}</div>
+      </div>
+      <div class="summaryStat">
+        <div class="k">🏦 Balance</div>
+        <div class="v">{{ money(overall_balance) }}</div>
       </div>
 
-      <div class="stat {{ ytd_cons.class }}">
+      <div class="summaryStat {{ ytd_cons.class }}">
         <div class="k">🎯 Consistency (YTD)</div>
         <div class="v">
           {% if ytd_cons.ratio is none %}
@@ -204,15 +224,15 @@
 
     <details class="syncDetails stack10">
       <summary>More Stats</summary>
-      <div class="statRow stack10">
-        <div class="stat"><div class="k">🗓️ MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
-        <div class="stat"><div class="k">📆 YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
-        <div class="stat"><div class="k">🧾 Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
-        <div class="stat"><div class="k">🧾 Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
+      <div class="summaryGrid stack10">
+        <div class="summaryStat"><div class="k">🗓️ MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
+        <div class="summaryStat"><div class="k">📆 YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
+        <div class="summaryStat"><div class="k">🧾 Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
+        <div class="summaryStat"><div class="k">🧾 Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
       </div>
     </details>
-    <div class="statRow stack10">
-      <div class="stat">
+    <div class="summaryGrid stack10">
+      <div class="summaryStat">
         <div class="k">🧮 Calculator</div>
         <div class="v"><a class="btn primary" href="/calculator">Open</a></div>
       </div>
@@ -225,48 +245,181 @@
     <summary>Daily P/L Calendar (Advanced)</summary>
     <div class="tiny stack8 line15">Daily P/L calendar view. Open when you want date-level context after core workflow steps.</div>
     <div class="hr"></div>
-    <div class="heat">
-      <table class="tableDense">
-      <thead>
-        <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
-      </thead>
-      <tbody>
-      {% for wk in heat.weeks %}
-        <tr>
-          {% for daynum, net, iso, wd in wk %}
-            {% if daynum is none %}
-              <td class="daycell" style="background: rgba(255,255,255,.02)"></td>
-            {% else %}
-              {% set max_abs = heat.max_abs if heat.max_abs else 1 %}
-              {% set intensity = ((net|abs) / max_abs) %}
-              {% set alpha = 0.10 + (0.45 * intensity) %}
-              {% if net > 0 %}
-                <td class="daycell" style="background: rgba(46, 204, 113, {{ alpha }});">
-              {% elif net < 0 %}
-                <td class="daycell" style="background: rgba(231, 76, 60, {{ alpha }});">
-              {% else %}
-                <td class="daycell" style="background: rgba(255,255,255,.03)">
-              {% endif %}
-                  <div class="daynum">{{ daynum }}</div>
-
-                  {% if wd is not none and wd < 5 %}
-                    {% if net %}
-                      <div class="daypnl">{{ money_compact(net) }}</div>
-                    {% else %}
-                      <div class="daypnl"></div>
-                    {% endif %}
-                    <a href="/trades?d={{ iso }}" class="dayLink" aria-label="Open day"></a>
-                  {% else %}
-                    <div class="daypnl"></div>
-                  {% endif %}
-                </td>
-            {% endif %}
-          {% endfor %}
-        </tr>
+    {% set cal = namespace(traded_days=0, green_days=0, red_days=0, flat_days=0) %}
+    {% for wk in heat.weeks %}
+      {% for day in wk.days %}
+        {% if day.daynum is not none and day.wd is not none and day.wd < 5 %}
+          {% set cal.traded_days = cal.traded_days + 1 %}
+          {% if day.net > 0 %}
+            {% set cal.green_days = cal.green_days + 1 %}
+          {% elif day.net < 0 %}
+            {% set cal.red_days = cal.red_days + 1 %}
+          {% else %}
+            {% set cal.flat_days = cal.flat_days + 1 %}
+          {% endif %}
+        {% endif %}
       {% endfor %}
-      </tbody>
-      </table>
+    {% endfor %}
+    <div class="calendarLegend stack10" aria-label="Calendar legend and monthly summary">
+      <div class="legendRow">
+        <span class="legendItem"><span class="legendSwatch legendGain"></span> Green = profitable day</span>
+        <span class="legendItem"><span class="legendSwatch legendLoss"></span> Red = losing day</span>
+        <span class="legendItem"><span class="legendSwatch legendFlat"></span> Neutral = flat or no P/L</span>
+      </div>
+      <div class="legendStats" aria-label="Month trading day summary">
+        <span class="legendStat"><strong>{{ cal.traded_days }}</strong> weekdays</span>
+        <span class="legendStat"><strong>{{ cal.green_days }}</strong> green</span>
+        <span class="legendStat"><strong>{{ cal.red_days }}</strong> red</span>
+        <span class="legendStat"><strong>{{ cal.flat_days }}</strong> flat</span>
+      </div>
     </div>
+    <div class="calendarWeeks" aria-label="{{ month_name }} daily profit and loss calendar">
+      <div class="calendarWeekdayRow" aria-hidden="true">
+        <span class="calendarWeekdaySpacer"></span>
+        <span>Sun</span>
+        <span>Mon</span>
+        <span>Tue</span>
+        <span>Wed</span>
+        <span>Thu</span>
+        <span>Fri</span>
+        <span>Sat</span>
+      </div>
+      {% for wk in heat.weeks %}
+        <section class="weekCard">
+          <div class="weekCardHead">
+            <div>
+              <div class="weekCardTitle">Week {{ loop.index }}</div>
+              <div class="weekCardRange">{{ wk.label }}</div>
+            </div>
+            <div class="weekCardMeta">
+              <span>{{ wk.trade_count }} trades</span>
+              <span>{{ wk.traded_days }} active days</span>
+              <span class="{% if wk.net > 0 %}metaGreen{% elif wk.net < 0 %}metaRed{% endif %}">{{ money_compact(wk.net) }}</span>
+            </div>
+          </div>
+          <div class="weekDaysGrid">
+            {% for day in wk.days %}
+              {% if day.daynum is none %}
+                <div class="dayCard dayCardEmpty" aria-hidden="true"></div>
+              {% else %}
+                {% set max_abs = heat.max_abs if heat.max_abs else 1 %}
+                {% set intensity = ((day.net|abs) / max_abs) %}
+                {% set alpha = 0.10 + (0.45 * intensity) %}
+                {% if day.net > 0 %}
+                  {% set bg = 'rgba(46, 204, 113, ' ~ alpha ~ ')' %}
+                {% elif day.net < 0 %}
+                  {% set bg = 'rgba(231, 76, 60, ' ~ alpha ~ ')' %}
+                {% else %}
+                  {% set bg = 'rgba(255,255,255,.03)' %}
+                {% endif %}
+                <article class="dayCard dayCard-{{ day.outcome }} {% if not day.has_trades %}dayCard-muted{% endif %}" style="background: {{ bg }};">
+                  <button
+                    type="button"
+                    class="dayPreviewButton"
+                    data-iso="{{ day.iso }}"
+                    data-weekday="{{ day.weekday_label }}"
+                    data-daynum="{{ day.daynum }}"
+                    data-net="{{ money_compact(day.net) }}"
+                    data-trade-count="{{ day.trade_count }}"
+                    data-wins="{{ day.wins }}"
+                    data-losses="{{ day.losses }}"
+                    data-win-rate="{{ '%.0f'|format(day.win_rate) }}"
+                    data-balance="{% if day.balance is not none %}{{ money(day.balance) }}{% else %}—{% endif %}"
+                    data-status="{% if day.is_weekend %}Market closed{% elif day.trade_count <= 0 %}No trades logged{% elif day.net > 0 %}Profitable session{% elif day.net < 0 %}Losing session{% else %}Flat session{% endif %}"
+                    data-open-url="/trades?d={{ day.iso }}"
+                    aria-label="Preview {{ day.iso }}"
+                  >
+                    <div class="daymeta">
+                      <div class="dayweekday">{{ day.weekday_label }}</div>
+                      <div class="daynum">{{ day.daynum }}</div>
+                    </div>
+                    <div class="dayBadges">
+                      {% if day.trade_count > 0 %}
+                        <span class="dayBadge">{{ day.trade_count }}T</span>
+                        <span class="dayBadge {% if day.wins > day.losses %}badgeGain{% elif day.losses > day.wins %}badgeLoss{% else %}badgeFlat{% endif %}">
+                          {{ day.wins }}W/{{ day.losses }}L
+                        </span>
+                      {% else %}
+                        <span class="dayBadge badgeFlat">{% if day.is_weekend %}Closed{% else %}Idle{% endif %}</span>
+                      {% endif %}
+                    </div>
+                    {% if day.net %}
+                      <div class="daypnl">{{ money_compact(day.net) }}</div>
+                    {% else %}
+                      <div class="daypnl daypnlMuted">{% if day.is_weekend %}Closed{% else %}No P/L{% endif %}</div>
+                    {% endif %}
+                  </button>
+                </article>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </section>
+      {% endfor %}
+    </div>
+    <div class="calendarPreview" id="calendarPreview" hidden>
+      <div class="calendarPreviewCard">
+        <div class="calendarPreviewHead">
+          <div>
+            <div class="calendarPreviewTitle" id="calendarPreviewTitle">Day preview</div>
+            <div class="tiny" id="calendarPreviewStatus">Tap a day to inspect its session.</div>
+          </div>
+          <button type="button" class="btn" id="calendarPreviewClose">Close</button>
+        </div>
+        <div class="previewMetrics">
+          <div class="previewMetric">
+            <div class="k">Net</div>
+            <div class="v" id="previewNet">—</div>
+          </div>
+          <div class="previewMetric">
+            <div class="k">Trades</div>
+            <div class="v" id="previewTrades">—</div>
+          </div>
+          <div class="previewMetric">
+            <div class="k">Record</div>
+            <div class="v" id="previewRecord">—</div>
+          </div>
+          <div class="previewMetric">
+            <div class="k">Balance</div>
+            <div class="v" id="previewBalance">—</div>
+          </div>
+        </div>
+        <div class="calendarPreviewActions">
+          <a class="btn primary" id="calendarPreviewOpen" href="/trades">Open full day</a>
+        </div>
+      </div>
+    </div>
+    <script>
+      (() => {
+        const preview = document.getElementById("calendarPreview");
+        const title = document.getElementById("calendarPreviewTitle");
+        const status = document.getElementById("calendarPreviewStatus");
+        const net = document.getElementById("previewNet");
+        const trades = document.getElementById("previewTrades");
+        const record = document.getElementById("previewRecord");
+        const balance = document.getElementById("previewBalance");
+        const open = document.getElementById("calendarPreviewOpen");
+        const close = document.getElementById("calendarPreviewClose");
+        if (!preview || !title || !status || !net || !trades || !record || !balance || !open || !close) return;
+
+        document.querySelectorAll(".dayPreviewButton").forEach((button) => {
+          button.addEventListener("click", () => {
+            const d = button.dataset;
+            title.textContent = `${d.weekday} ${d.daynum} • ${d.iso}`;
+            status.textContent = d.status || "Session preview";
+            net.textContent = d.net || "—";
+            trades.textContent = d.tradeCount || "0";
+            record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L • ${d.winRate || "0"}%`;
+            balance.textContent = d.balance || "—";
+            open.href = d.openUrl || "/trades";
+            preview.hidden = false;
+          });
+        });
+
+        close.addEventListener("click", () => {
+          preview.hidden = true;
+        });
+      })();
+    </script>
   </details>
 </div></div>
 
