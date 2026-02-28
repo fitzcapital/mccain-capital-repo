@@ -18,6 +18,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
     first = run_migrations(str(db_path))
     assert "0001_baseline" in first
     assert "0002_journal_phase2" in first
+    assert "0003_import_batches" in first
 
     second = run_migrations(str(db_path))
     assert second == []
@@ -34,6 +35,10 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
         applied = [
             r[0] for r in conn.execute("SELECT id FROM schema_migrations ORDER BY id").fetchall()
         ]
-        assert applied == ["0001_baseline", "0002_journal_phase2"]
+        assert applied == [
+            "0001_baseline",
+            "0002_journal_phase2",
+            "0003_import_batches",
+        ]
     finally:
         conn.close()
