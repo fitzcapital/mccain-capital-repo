@@ -30,7 +30,9 @@ def _status_line(
     return status_label, stage_label, updated_label
 
 
-def dashboard_data_trust(sync_status: Mapping[str, Any], balance_integrity: Mapping[str, Any]) -> DataTrustViewModel:
+def dashboard_data_trust(
+    sync_status: Mapping[str, Any], balance_integrity: Mapping[str, Any]
+) -> DataTrustViewModel:
     status_label, stage_label, updated_label = _status_line(
         str(sync_status.get("last_sync_status") or ""),
         str(sync_status.get("last_sync_stage") or ""),
@@ -72,7 +74,9 @@ def dashboard_data_trust(sync_status: Mapping[str, Any], balance_integrity: Mapp
     )
 
 
-def trades_data_trust(sync_status: Mapping[str, Any], *, guardrail_locked: bool, active_day: str) -> DataTrustViewModel:
+def trades_data_trust(
+    sync_status: Mapping[str, Any], *, guardrail_locked: bool, active_day: str
+) -> DataTrustViewModel:
     status_label, stage_label, updated_label = _status_line(
         str(sync_status.get("status") or ""),
         str(sync_status.get("stage") or ""),
@@ -112,7 +116,9 @@ def trades_data_trust(sync_status: Mapping[str, Any], *, guardrail_locked: bool,
     )
 
 
-def analytics_data_trust(sync_status: Mapping[str, Any], *, integrity_issue_count: int) -> DataTrustViewModel:
+def analytics_data_trust(
+    sync_status: Mapping[str, Any], *, integrity_issue_count: int
+) -> DataTrustViewModel:
     status_label, stage_label, updated_label = _status_line(
         str(sync_status.get("last_sync_status") or ""),
         str(sync_status.get("last_sync_stage") or ""),

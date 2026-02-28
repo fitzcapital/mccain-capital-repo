@@ -272,9 +272,7 @@ def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):
     assert resp.status_code == 200
 
     with db() as conn:
-        rows = conn.execute(
-            "SELECT balance FROM trades ORDER BY trade_date ASC, id ASC"
-        ).fetchall()
+        rows = conn.execute("SELECT balance FROM trades ORDER BY trade_date ASC, id ASC").fetchall()
     assert len(rows) == 2
     assert float(rows[0]["balance"]) == 50399.0
     assert float(rows[1]["balance"]) == 53399.0

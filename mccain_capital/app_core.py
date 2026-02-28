@@ -78,13 +78,16 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_request_entity_too_large(_e):
-    return render_page(
-        _simple_msg(
-            f"Upload too large. Max allowed is {MAX_UPLOAD_MB}MB. "
-            "Use Backup Center restore or increase MAX_UPLOAD_MB."
+    return (
+        render_page(
+            _simple_msg(
+                f"Upload too large. Max allowed is {MAX_UPLOAD_MB}MB. "
+                "Use Backup Center restore or increase MAX_UPLOAD_MB."
+            ),
+            active="dashboard",
         ),
-        active="dashboard",
-    ), 413
+        413,
+    )
 
 
 def auth_enabled() -> bool:

@@ -34,6 +34,7 @@ def create_app():
         app._routes_registered = True
 
     if not getattr(app, "_safe_mode_route_registered", False):
+
         @app.get("/safe-mode")
         def safe_mode_page():
             msg = str(app.config.get("SAFE_MODE_ERROR") or "Unknown startup fault")
@@ -58,7 +59,9 @@ def create_app():
                 upload_dir=runtime.UPLOAD_DIR,
                 books_dir=runtime.BOOKS_DIR,
             )
-            return core.render_page(content, active="dashboard", title="McCain Capital 🏛️ · Safe Mode")
+            return core.render_page(
+                content, active="dashboard", title="McCain Capital 🏛️ · Safe Mode"
+            )
 
         app._safe_mode_route_registered = True
 

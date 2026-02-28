@@ -444,9 +444,7 @@ def test_rollback_import_batch_deletes_only_target_batch(client, monkeypatch, tm
     assert resp.status_code == 200
 
     with db() as conn:
-        remaining = conn.execute(
-            "SELECT import_batch_id FROM trades ORDER BY id ASC"
-        ).fetchall()
+        remaining = conn.execute("SELECT import_batch_id FROM trades ORDER BY id ASC").fetchall()
         review = conn.execute(
             "SELECT 1 FROM trade_reviews WHERE trade_id = ?", (target_trade_id,)
         ).fetchone()

@@ -305,9 +305,11 @@ def _regime_sizing_suggestion(
     if expectancy < 0:
         base *= 0.80
     top_setup = setup_rows[0] if setup_rows else None
-    if top_setup and float(top_setup.get("expectancy") or 0.0) > 0 and float(
-        top_setup.get("win_rate") or 0.0
-    ) >= 55.0:
+    if (
+        top_setup
+        and float(top_setup.get("expectancy") or 0.0) > 0
+        and float(top_setup.get("win_rate") or 0.0) >= 55.0
+    ):
         base *= 1.08
     size_pct = int(round(max(30.0, min(120.0, base * 100.0))))
     if size_pct <= 60:
@@ -364,7 +366,9 @@ def _what_if_day_simulator(
     p_loss = 1.0 - p_win
     expectancy = (p_win * consistency_avg_win) - (p_loss * consistency_avg_loss)
     projected_full = max_trades * expectancy
-    streak_prob = 1.0 - ((1.0 - (p_loss**stop_loss_streak)) ** max(1, max_trades - stop_loss_streak + 1))
+    streak_prob = 1.0 - (
+        (1.0 - (p_loss**stop_loss_streak)) ** max(1, max_trades - stop_loss_streak + 1)
+    )
     projected_with_guardrail = (projected_full * (1.0 - streak_prob)) + (
         (-stop_loss_streak * consistency_avg_loss) * streak_prob
     )
@@ -385,7 +389,11 @@ def _what_if_day_simulator(
         sum(float(x["net"]) for x in day_stats) / len(day_stats) if day_stats else 0.0
     )
     real_avg_win_rate = (
-        (sum(float(x["wins"]) for x in day_stats) / max(1.0, sum(float(x["count"]) for x in day_stats))) * 100.0
+        (
+            sum(float(x["wins"]) for x in day_stats)
+            / max(1.0, sum(float(x["count"]) for x in day_stats))
+        )
+        * 100.0
         if day_stats
         else 0.0
     )
@@ -417,7 +425,9 @@ def analytics_page():
     start_date = (request.args.get("start") or "").strip()
     end_date = (request.args.get("end") or "").strip()
     explain_day = (request.args.get("explain_day") or "").strip()
-    expectancy_granularity = (request.args.get("expectancy_granularity") or "monthly").strip().lower()
+    expectancy_granularity = (
+        (request.args.get("expectancy_granularity") or "monthly").strip().lower()
+    )
     if expectancy_granularity not in {"monthly", "weekly"}:
         expectancy_granularity = "monthly"
     tab = (request.args.get("tab") or "performance").strip().lower()
@@ -612,7 +622,10 @@ def session_replay_page():
         )
     else:
         notes_lines.append("- None")
-    notes_lines.append("Primary mistakes/rule breaks: " + (", ".join(rule_breaks) if rule_breaks else "none logged"))
+    notes_lines.append(
+        "Primary mistakes/rule breaks: "
+        + (", ".join(rule_breaks) if rule_breaks else "none logged")
+    )
     notes_lines.append("Action plan for next session:")
     notes_lines.append("- Keep A+ setups only in strongest time block.")
     notes_lines.append("- Respect max size and stop-after-streak guardrails.")

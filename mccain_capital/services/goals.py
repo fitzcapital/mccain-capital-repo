@@ -75,9 +75,7 @@ def _goal_execution_bridge(anchor_day):
     proposals = sum(int(r["upwork_proposals"] or 0) for r in goals_rows)
     interviews = sum(int(r["upwork_interviews"] or 0) for r in goals_rows)
     checklist_scores = [
-        float(r["checklist_score"])
-        for r in trade_rows
-        if r["checklist_score"] is not None
+        float(r["checklist_score"]) for r in trade_rows if r["checklist_score"] is not None
     ]
     avg_score = (sum(checklist_scores) / len(checklist_scores)) if checklist_scores else 0.0
     planned_days = len(goal_days)
@@ -88,10 +86,13 @@ def _goal_execution_bridge(anchor_day):
     interview_ratio = min(1.0, interviews / interview_target)
     score_ratio = min(1.0, avg_score / 100.0)
     compliance = round(
-        (align_ratio * 0.45 + proposal_ratio * 0.20 + interview_ratio * 0.10 + score_ratio * 0.25) * 100.0,
+        (align_ratio * 0.45 + proposal_ratio * 0.20 + interview_ratio * 0.10 + score_ratio * 0.25)
+        * 100.0,
         1,
     )
-    prev_scores = [float(r["checklist_score"]) for r in prev_trade_rows if r["checklist_score"] is not None]
+    prev_scores = [
+        float(r["checklist_score"]) for r in prev_trade_rows if r["checklist_score"] is not None
+    ]
     prev_avg = (sum(prev_scores) / len(prev_scores)) if prev_scores else 0.0
     prev_trade_days = {str(r["trade_date"]) for r in prev_trade_rows}
     prev_align = (len(prev_trade_days) / max(1, len(prev_trade_days))) if prev_trade_days else 0.0

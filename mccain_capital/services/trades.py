@@ -99,9 +99,13 @@ NOTIFY_DEDUPE_BY_EVENT = {
     "reconcile_gate_block": int(
         os.environ.get("NOTIFY_DEDUPE_RECONCILE_GATE_BLOCK_SECONDS", "600") or 600
     ),
-    "drift_recurrence": int(os.environ.get("NOTIFY_DEDUPE_DRIFT_RECURRENCE_SECONDS", "1800") or 1800),
+    "drift_recurrence": int(
+        os.environ.get("NOTIFY_DEDUPE_DRIFT_RECURRENCE_SECONDS", "1800") or 1800
+    ),
     "batch_rollback": int(os.environ.get("NOTIFY_DEDUPE_BATCH_ROLLBACK_SECONDS", "120") or 120),
-    "anomaly_size_spike": int(os.environ.get("NOTIFY_DEDUPE_ANOMALY_SIZE_SPIKE_SECONDS", "900") or 900),
+    "anomaly_size_spike": int(
+        os.environ.get("NOTIFY_DEDUPE_ANOMALY_SIZE_SPIKE_SECONDS", "900") or 900
+    ),
     "anomaly_revenge_pattern": int(
         os.environ.get("NOTIFY_DEDUPE_ANOMALY_REVENGE_PATTERN_SECONDS", "900") or 900
     ),
@@ -270,12 +274,12 @@ def _playbook_violations(
         exp_map = _setup_expectancy_map()
         exp = float(exp_map.get(setup, 0.0))
         if exp <= 0:
-            violations.append(f"Setup {setup or 'Unlabeled'} expectancy is not positive ({money(exp)}).")
+            violations.append(
+                f"Setup {setup or 'Unlabeled'} expectancy is not positive ({money(exp)})."
+            )
     if cfg.get("require_critical_checklist"):
         required = [
-            str(x).strip()
-            for x in (cfg.get("critical_items") or [])
-            if str(x).strip()
+            str(x).strip() for x in (cfg.get("critical_items") or []) if str(x).strip()
         ] or ["Bias Confirmed", "Risk Defined", "Stop Planned"]
         checked = {str(x).strip() for x in (critical_items_checked or []) if str(x).strip()}
         missing = [item for item in required if item not in checked]
@@ -464,7 +468,11 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
                     "sync_fail_streak",
                     "Sync failure streak",
                     f"Sync has failed {streak} times in a row. Latest stage: {payload.get('stage') or 'unknown'}.",
-                    {"streak": streak, "stage": payload.get("stage"), "status": payload.get("status")},
+                    {
+                        "streak": streak,
+                        "stage": payload.get("stage"),
+                        "status": payload.get("status"),
+                    },
                 )
                 state = _load_notify_history()
                 state["last_fail_streak_notified"] = streak
@@ -509,7 +517,9 @@ def _load_admin_audit() -> List[Dict[str, Any]]:
         return []
 
 
-def record_admin_audit(action: str, details: Optional[Dict[str, Any]] = None, actor: str = "") -> None:
+def record_admin_audit(
+    action: str, details: Optional[Dict[str, Any]] = None, actor: str = ""
+) -> None:
     rows = _load_admin_audit()
     rows.append(
         {
@@ -636,6 +646,7 @@ def _normalize_backup_times(raw: str) -> List[str]:
     dedup = sorted(set(out))
     return dedup or ["16:30"]
 
+
 def _notify_dedupe_window_seconds(event_type: str) -> int:
     return max(0, int(NOTIFY_DEDUPE_BY_EVENT.get(event_type, NOTIFY_DEFAULT_DEDUPE_SECONDS)))
 
@@ -738,14 +749,14 @@ def _signed_headers(body: bytes, event_type: str, ts: str) -> Dict[str, str]:
         "X-McCain-Timestamp": ts,
     }
     if NOTIFY_WEBHOOK_SECRET:
-        digest = hmac.new(
-            NOTIFY_WEBHOOK_SECRET.encode("utf-8"), body, hashlib.sha256
-        ).hexdigest()
+        digest = hmac.new(NOTIFY_WEBHOOK_SECRET.encode("utf-8"), body, hashlib.sha256).hexdigest()
         headers["X-McCain-Signature"] = f"sha256={digest}"
     return headers
 
 
-def _emit_notification(event_type: str, title: str, message: str, extra: Optional[Dict[str, Any]] = None):
+def _emit_notification(
+    event_type: str, title: str, message: str, extra: Optional[Dict[str, Any]] = None
+):
     state = _load_notify_history()
     now_epoch = time.time()
     fp = _notification_fingerprint(event_type, title, message, extra)
@@ -881,7 +892,9 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
         fail_stage_counts[st] = fail_stage_counts.get(st, 0) + 1
     top_failure_stage = None
     if fail_stage_counts:
-        top_failure_stage = sorted(fail_stage_counts.items(), key=lambda kv: kv[1], reverse=True)[0][0]
+        top_failure_stage = sorted(fail_stage_counts.items(), key=lambda kv: kv[1], reverse=True)[
+            0
+        ][0]
     by_source: Dict[str, Dict[str, int]] = {}
     for e in recent:
         src = str(e.get("source") or "unknown")
@@ -1053,7 +1066,9 @@ def rollback_import_batch() -> Any:
         flash("Missing batch ID for rollback.", "warn")
         return redirect(url_for("trades_upload_pdf", ws="reconcile"))
     with db() as conn:
-        rows = conn.execute("SELECT id FROM trades WHERE import_batch_id = ?", (batch_id,)).fetchall()
+        rows = conn.execute(
+            "SELECT id FROM trades WHERE import_batch_id = ?", (batch_id,)
+        ).fetchall()
         trade_ids = [int(r["id"]) for r in rows if r["id"] is not None]
         if not trade_ids:
             _mark_import_batch_rolled_back(batch_id)
@@ -1928,7 +1943,9 @@ def trades_review(trade_id: int):
         checklist_score = parse_int(score_raw) if score_raw else None
         rule_break_tags = (f.get("rule_break_tags") or "").strip()
         rule_break_tags = _merge_auto_rule_break_tags(
-            entry_price=parse_float(str(row["entry_price"]) if row["entry_price"] is not None else ""),
+            entry_price=parse_float(
+                str(row["entry_price"]) if row["entry_price"] is not None else ""
+            ),
             exit_price=parse_float(str(row["exit_price"]) if row["exit_price"] is not None else ""),
             existing_tags=rule_break_tags,
         )
@@ -2272,7 +2289,9 @@ def trades_new_manual():
         session_tag = (f.get("session_tag") or "").strip()
         checklist_score_raw = (f.get("checklist_score") or "").strip()
         checklist_score = parse_int(checklist_score_raw) if checklist_score_raw else None
-        critical_items_checked = [str(x).strip() for x in f.getlist("critical_item") if str(x).strip()]
+        critical_items_checked = [
+            str(x).strip() for x in f.getlist("critical_item") if str(x).strip()
+        ]
 
         if (
             not ticker
@@ -2406,7 +2425,8 @@ def trades_new_manual():
         </div></div>
         """,
         today=today_iso(),
-        critical_items=pb_cfg.get("critical_items") or ["Bias Confirmed", "Risk Defined", "Stop Planned"],
+        critical_items=pb_cfg.get("critical_items")
+        or ["Bias Confirmed", "Risk Defined", "Stop Planned"],
     )
     return render_page(content, active="trades")
 
@@ -2793,7 +2813,8 @@ def _run_live_sync_once(
                     {
                         "ok": False,
                         "stage": "reconcile_gate",
-                        "message": "Reconciliation gate blocked import: " + "; ".join(gate["reasons"]),
+                        "message": "Reconciliation gate blocked import: "
+                        + "; ".join(gate["reasons"]),
                         "report": pre_report,
                         "warns": warns_all,
                         "artifacts_rel": artifacts_rel,
@@ -3138,9 +3159,7 @@ def trades_sync_auto_run_now():
     auto_password = _get_auto_sync_password(cfg)
     if not cfg.get("username") or not auto_password:
         return render_page(
-            simple_msg(
-                "Auto sync credentials are missing. Save username and password first."
-            ),
+            simple_msg("Auto sync credentials are missing. Save username and password first."),
             active="trades",
         )
     today = today_iso()
@@ -3417,8 +3436,16 @@ def _scan_anomaly_watch() -> None:
     recent = rows[-48:]
 
     # Size spike: recent average spend is meaningfully above prior baseline.
-    spends_recent = [float(r.get("total_spent") or 0.0) for r in recent[-6:] if float(r.get("total_spent") or 0.0) > 0]
-    spends_base = [float(r.get("total_spent") or 0.0) for r in recent[:-6] if float(r.get("total_spent") or 0.0) > 0]
+    spends_recent = [
+        float(r.get("total_spent") or 0.0)
+        for r in recent[-6:]
+        if float(r.get("total_spent") or 0.0) > 0
+    ]
+    spends_base = [
+        float(r.get("total_spent") or 0.0)
+        for r in recent[:-6]
+        if float(r.get("total_spent") or 0.0) > 0
+    ]
     if len(spends_recent) >= 4 and len(spends_base) >= 8:
         avg_recent = sum(spends_recent) / len(spends_recent)
         avg_base = sum(spends_base) / len(spends_base)
@@ -3469,7 +3496,9 @@ def _scan_anomaly_watch() -> None:
         if len(vals) < 3 or len(all_vals) < 8:
             continue
         recent_exp = sum(vals) / len(vals)
-        base_exp = sum(all_vals[:-len(vals)] or all_vals) / max(1, len(all_vals[:-len(vals)] or all_vals))
+        base_exp = sum(all_vals[: -len(vals)] or all_vals) / max(
+            1, len(all_vals[: -len(vals)] or all_vals)
+        )
         if base_exp >= 40.0 and recent_exp <= -40.0:
             _emit_notification(
                 "anomaly_setup_underperformance",
@@ -3496,7 +3525,9 @@ def _require_ops_mutation_auth() -> None:
         abort(403)
 
 
-def _sorted_alerts(state: Dict[str, Any], status_filter: str, event_filter: str) -> List[Dict[str, Any]]:
+def _sorted_alerts(
+    state: Dict[str, Any], status_filter: str, event_filter: str
+) -> List[Dict[str, Any]]:
     alerts = state.get("alerts", [])
     if not isinstance(alerts, list):
         alerts = []
@@ -3508,7 +3539,10 @@ def _sorted_alerts(state: Dict[str, Any], status_filter: str, event_filter: str)
         event_type = str(a.get("event_type") or "")
         if status_filter == "active" and status == "resolved":
             continue
-        if status_filter in {"open", "acknowledged", "resolved", "muted"} and status != status_filter:
+        if (
+            status_filter in {"open", "acknowledged", "resolved", "muted"}
+            and status != status_filter
+        ):
             continue
         if event_filter and event_type != event_filter:
             continue
@@ -3992,7 +4026,9 @@ def _list_saved_backups() -> List[Dict[str, Any]]:
             {
                 "name": n,
                 "size_bytes": os.path.getsize(p),
-                "modified_at": datetime.fromtimestamp(os.path.getmtime(p)).isoformat(timespec="seconds"),
+                "modified_at": datetime.fromtimestamp(os.path.getmtime(p)).isoformat(
+                    timespec="seconds"
+                ),
                 "verify_score": int(verify.get("score") or 0),
                 "verify_ok": bool(verify.get("ok")),
                 "verify_label": str(verify.get("label") or "Unknown"),
@@ -4030,9 +4066,7 @@ def ops_backups_page():
     all_audit_rows = list(reversed(_load_admin_audit()))
     if audit_action == "restore":
         all_audit_rows = [
-            r
-            for r in all_audit_rows
-            if "restore" in str(r.get("action") or "").lower()
+            r for r in all_audit_rows if "restore" in str(r.get("action") or "").lower()
         ]
     elif audit_action == "backup":
         all_audit_rows = [
@@ -4350,9 +4384,7 @@ def _integrity_health_snapshot() -> Dict[str, Any]:
         )
         missing_balance = int(
             (
-                conn.execute(
-                    "SELECT COUNT(*) AS c FROM trades WHERE balance IS NULL"
-                ).fetchone()
+                conn.execute("SELECT COUNT(*) AS c FROM trades WHERE balance IS NULL").fetchone()
                 or {"c": 0}
             )["c"]
         )
