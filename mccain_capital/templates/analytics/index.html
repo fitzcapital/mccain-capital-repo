@@ -1,0 +1,705 @@
+"""
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">📈 Analytics Workspace</div>
+        <h2 class="pageTitle">Performance Intelligence</h2>
+        <div class="pageSub">Track edge quality over time with expectancy, drawdown, behavior, and setup/session diagnostics.</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn primary" href="/analytics/replay">🎬 Session Replay</a>
+        <a class="btn ctaLink" href="/trades">📅 Trades</a>
+        <a class="btn ctaLink" href="/journal/review/weekly">📘 Weekly Review</a>
+        <a class="btn ctaLink" href="/trades/playbook">📘 Playbook</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">🛡️ Data Trust</div>
+  <div class="tiny stack8 line16">
+    Last sync status:
+    <b>{{ data_trust.status_label }}</b>
+    {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
+    {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
+  </div>
+  <div class="tiny stack8 line16 {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
+    {{ data_trust.message }}
+  </div>
+  {% if data_trust.primary_href and data_trust.primary_label %}
+    <div class="rightActions stack8">
+      <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+      {% if data_trust.secondary_href and data_trust.secondary_label %}
+        <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div></div>
+
+<div class="showcaseGrid">
+  <div class="showcaseCard">
+    <div class="showcaseHead">
+      <div class="showcaseTitle">
+        <svg class="mcIcon"><use href="#mc-crown"></use></svg>
+        Edge Intensity
+      </div>
+      <span class="trendChip">{{ perf.total_trades }} trades</span>
+    </div>
+    <div class="showcaseValue">{{ money(perf.expectancy) }}</div>
+    <div class="showcaseMeta">
+      Profit factor {% if perf.profit_factor is not none %}{{ '%.2f'|format(perf.profit_factor) }}{% else %}∞{% endif %}
+      · Win rate {{ '%.1f'|format(perf.win_rate) }}%.
+    </div>
+    <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(edge_pulse) }}%">
+      <div class="showcasePulseFill"></div>
+      <div class="showcaseWave"></div>
+    </div>
+  </div>
+  <div class="showcaseCard">
+    <div class="showcaseHead">
+      <div class="showcaseTitle">
+        <svg class="mcIcon"><use href="#mc-crest"></use></svg>
+        Risk Control State
+      </div>
+      <span class="trendChip">DD streak {{ dd.current_drawdown_streak }}</span>
+    </div>
+    <div class="showcaseValue">{{ money(dd.current_drawdown) }}</div>
+    <div class="showcaseMeta">
+      Max DD {{ money(dd.max_drawdown) }} · Current streak {{ dd.current_drawdown_streak }}.
+    </div>
+    <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(control_pulse) }}%">
+      <div class="showcasePulseFill"></div>
+      <div class="showcaseWave"></div>
+    </div>
+  </div>
+</div>
+
+<div class="metricStrip">
+  <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div><div class="sub">Reviewed sample in selected range</div></div>
+  <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div><div class="sub">Execution hit-rate across reviewed trades</div></div>
+  <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div><div class="sub">Average outcome per trade</div></div>
+  <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div><div class="sub">Gross wins divided by gross losses</div></div>
+  <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div><div class="sub">Largest peak-to-trough decline</div></div>
+  <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div><div class="sub">Longest drawdown trade streak</div></div>
+  <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div><div class="sub">Active drawdown streak right now</div></div>
+  <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div><div class="sub">Checklist score alignment with outcome</div></div>
+</div>
+
+<div class="insightGrid stack12">
+  <div class="insightCard">
+    <div class="insightTitle">🎯 Fitz 2-2 REV Indicator</div>
+    <div class="insightBody">
+      <div class="trendChips">
+        <span class="trendChip {{ fitz_22.tone }}">{{ fitz_22.status }}</span>
+        <span class="trendChip">{{ fitz_22.trades }} tagged trades</span>
+        <span class="trendChip">WR {{ '%.1f'|format(fitz_22.win_rate) }}%</span>
+        <span class="trendChip">Exp {{ money(fitz_22.expectancy) }}</span>
+      </div>
+      <div class="meta">Recent 10: {{ money(fitz_22.recent_net) }} · {{ '%.1f'|format(fitz_22.recent_win_rate) }}% win rate</div>
+      <div class="stack8">{{ fitz_22.note }}</div>
+    </div>
+  </div>
+  <div class="insightCard">
+    <div class="insightTitle">🔎 What Changed</div>
+    <div class="insightBody">{{ insights.changed }}</div>
+  </div>
+  <div class="insightCard">
+    <div class="insightTitle">🛡️ Risk Now</div>
+    <div class="insightBody">{{ insights.risk_now }}</div>
+  </div>
+  <div class="insightCard">
+    <div class="insightTitle">➡️ Next Action</div>
+    <div class="insightBody">{{ insights.next_action }}</div>
+  </div>
+</div>
+
+<div class="card"><div class="toolbar">
+  <div class="actionRow">
+    <a class="btn {% if tab == 'performance' %}primary{% endif %}" href="/analytics?tab=performance&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Performance</a>
+    <a class="btn {% if tab == 'behavior' %}primary{% endif %}" href="/analytics?tab=behavior&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Behavior</a>
+    <a class="btn {% if tab == 'edge' %}primary{% endif %}" href="/analytics?tab=edge&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Edge</a>
+    <a class="btn {% if tab == 'diagnostics' %}primary{% endif %}" href="/analytics?tab=diagnostics&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Diagnostics</a>
+  </div>
+  <div class="hr"></div>
+  <form method="get" class="row">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <div><label>Start</label><input type="date" name="start" value="{{ start_date }}"></div>
+    <div><label>End</label><input type="date" name="end" value="{{ end_date }}"></div>
+    <div>
+      <label>Explain Day</label>
+      <input type="date" name="explain_day" value="{{ explain_day }}" />
+    </div>
+    <div>
+      <label>Expectancy View</label>
+      <select name="expectancy_granularity">
+        <option value="monthly" {% if expectancy_granularity == 'monthly' %}selected{% endif %}>Monthly</option>
+        <option value="weekly" {% if expectancy_granularity == 'weekly' %}selected{% endif %}>Weekly</option>
+      </select>
+    </div>
+    <div class="actionRow">
+      <button class="btn" type="submit">Apply</button>
+      <a class="btn" href="/analytics">Reset</a>
+    </div>
+  </form>
+</div></div>
+
+{% if tab == 'performance' %}
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">📈 Equity Curve</div>
+    <div class="hr"></div>
+    <div class="trendChips">
+      <span class="trendChip {{ equity_story.tone }}">Latest {{ money(equity_story.latest) }}</span>
+      <span class="trendChip {{ equity_story.tone }}">
+        Δ {{ money(equity_story.delta) }}
+        {% if equity_story.pct is not none %}({{ '%.1f'|format(equity_story.pct) }}%){% endif %}
+      </span>
+      <span class="trendChip">{{ equity_story.label }}</span>
+    </div>
+    {{ equity_chart|safe }}
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">📉 Drawdown Curve</div>
+    <div class="hr"></div>
+    <div class="trendChips">
+      <span class="trendChip {{ drawdown_story.tone }}">Latest {{ money(drawdown_story.latest) }}</span>
+      <span class="trendChip {{ drawdown_story.tone }}">
+        Δ {{ money(drawdown_story.delta) }}
+        {% if drawdown_story.pct is not none %}({{ '%.1f'|format(drawdown_story.pct) }}%){% endif %}
+      </span>
+      <span class="trendChip">{{ drawdown_story.label }}</span>
+    </div>
+    {{ drawdown_chart|safe }}
+  </div></div>
+</div>
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">🧭 Equity vs SPX Benchmark</div>
+    <div class="tiny stack8 line15">SPX benchmark applies only SPX ticker outcomes across the same trade timeline.</div>
+    <div class="hr"></div>
+    {{ benchmark_chart|safe }}
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">🌪️ Day Volatility Regime (5D)</div>
+    <div class="trendChips">
+      <span class="trendChip">Regime {{ vol_summary.regime }}</span>
+      <span class="trendChip">Current {{ money(vol_summary.current) }}</span>
+      <span class="trendChip">P33 {{ money(vol_summary.p33) }}</span>
+      <span class="trendChip">P66 {{ money(vol_summary.p66) }}</span>
+    </div>
+    <div class="hr"></div>
+    {{ vol_chart|safe }}
+  </div></div>
+</div>
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">🧠 {{ day_story.title }}</div>
+    <div class="hr"></div>
+    <div class="tiny stack8 line16">• {{ day_story.pnl_driver }}</div>
+    <div class="tiny stack8 line16">• {{ day_story.risk_driver }}</div>
+    <div class="tiny stack8 line16">• {{ day_story.edge_driver }}</div>
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">📐 Regime-Aware Sizing</div>
+    <div class="trendChips">
+      <span class="trendChip">Regime {{ sizing.regime }}</span>
+      <span class="trendChip">{{ sizing.action }}</span>
+      <span class="trendChip">Size {{ sizing.size_pct }}%</span>
+    </div>
+    <div class="hr"></div>
+    <div class="tiny stack8 line16">{{ sizing.note }}</div>
+  </div></div>
+</div>
+<div class="card"><div class="toolbar">
+  <div class="pill">🧪 What-If Day Simulator</div>
+  <div class="tiny stack8 line15">Project your ending balance from current balance using your real consistency profile.</div>
+  <div class="tiny stack8 line16"><b>Why this matters:</b> plan quality is measured by expected ending balance, not isolated trade outcomes.</div>
+  <div class="tiny stack8 line16"><b>Next best action:</b> set max trades + stop streak, then compare projected end balance vs your real average day.</div>
+  <div class="hr"></div>
+  <form method="get" class="row">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="hidden" name="start" value="{{ start_date }}">
+    <input type="hidden" name="end" value="{{ end_date }}">
+    <input type="hidden" name="explain_day" value="{{ explain_day }}">
+    <div><label>Max Trades</label><input type="number" min="1" max="30" name="sim_max_trades" value="{{ sim.max_trades }}"></div>
+    <div><label>Stop After Loss Streak</label><input type="number" min="1" max="8" name="sim_stop_loss_streak" value="{{ sim.stop_loss_streak }}"></div>
+    <div class="actionRow"><button class="btn" type="submit">Simulate</button></div>
+  </form>
+  <div class="hr"></div>
+  <div class="statRow stack10">
+    <div class="stat"><div class="k">Current Balance</div><div class="v">{{ money(sim.current_balance) }}</div></div>
+    <div class="stat"><div class="k">Projected Expectancy</div><div class="v">{{ money(sim.expectancy) }}</div></div>
+    <div class="stat"><div class="k">Projected Net (plan)</div><div class="v">{{ money(sim.projected_full) }}</div></div>
+    <div class="stat"><div class="k">Projected End Balance</div><div class="v">{{ money(sim.projected_end_balance) }}</div></div>
+    <div class="stat"><div class="k">Guardrail-Adjusted End</div><div class="v">{{ money(sim.projected_guardrail_end_balance) }}</div></div>
+    <div class="stat"><div class="k">Loss-Streak Trigger Prob</div><div class="v">{{ '%.1f'|format(sim.streak_prob * 100.0) }}%</div></div>
+  </div>
+  <div class="tiny stack8 line16">
+    Consistency profile in selected range: WR {{ '%.1f'|format(sim.consistency_win_rate) }}% · Avg Win {{ money(sim.consistency_avg_win) }} · Avg Loss {{ money(sim.consistency_avg_loss) }}.<br>
+    Real avg day: {{ money(sim.real_avg_day_net) }} · Real avg WR: {{ '%.1f'|format(sim.real_avg_win_rate) }}% · Real avg trades/day: {{ '%.1f'|format(sim.real_avg_trades) }}.<br>
+    Delta vs real avg day: {{ money(sim.delta_vs_real) }}.
+  </div>
+</div></div>
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">🧠 Expectancy Trend ({{ expectancy_granularity|upper }})</div>
+  {% if expectancy_auto_switched %}
+    <div class="tiny stack8 line15">Auto-switched to weekly because monthly has too few points.</div>
+  {% endif %}
+  <div class="hr"></div>
+  <div class="trendChips">
+    <span class="trendChip {{ expectancy_story.tone }}">Latest {{ money(expectancy_story.latest) }}</span>
+    <span class="trendChip {{ expectancy_story.tone }}">
+      Δ {{ money(expectancy_story.delta) }}
+      {% if expectancy_story.pct is not none %}({{ '%.1f'|format(expectancy_story.pct) }}%){% endif %}
+    </span>
+    <span class="trendChip">{{ expectancy_story.label }}</span>
+  </div>
+  {{ expectancy_chart|safe }}
+</div></div>
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">📈 Performance Summary</div>
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Total Net</div><div class="v">{{ money(perf.total_net) }}</div></div>
+      <div class="stat"><div class="k">Gross Profit</div><div class="v">{{ money(perf.gross_profit) }}</div></div>
+      <div class="stat"><div class="k">Gross Loss</div><div class="v">{{ money(perf.gross_loss_abs) }}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open detailed performance table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap"><table class="tableDense kvTable">
+        <tbody>
+          <tr><td>Total Net</td><td>{{ money(perf.total_net) }}</td></tr>
+          <tr><td>Gross Profit</td><td>{{ money(perf.gross_profit) }}</td></tr>
+          <tr><td>Gross Loss</td><td>{{ money(perf.gross_loss_abs) }}</td></tr>
+          <tr><td>Avg Win</td><td>{{ money(perf.avg_win) }}</td></tr>
+          <tr><td>Avg Loss</td><td>{{ money(perf.avg_loss_abs) }}</td></tr>
+          <tr><td>Largest Win</td><td>{{ money(perf.max_win) }}</td></tr>
+          <tr><td>Largest Loss</td><td>{{ money(perf.max_loss) }}</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">🔥 Streaks</div>
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Longest Win Streak</div><div class="v">{{ perf.max_win_streak }}</div></div>
+      <div class="stat"><div class="k">Longest Loss Streak</div><div class="v">{{ perf.max_loss_streak }}</div></div>
+      <div class="stat"><div class="k">Wins / Losses</div><div class="v">{{ perf.wins }} / {{ perf.losses }}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open detailed streak table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap"><table class="tableDense kvTable">
+        <tbody>
+          <tr><td>Longest Win Streak</td><td>{{ perf.max_win_streak }}</td></tr>
+          <tr><td>Longest Loss Streak</td><td>{{ perf.max_loss_streak }}</td></tr>
+          <tr><td>Wins</td><td>{{ perf.wins }}</td></tr>
+          <tr><td>Losses</td><td>{{ perf.losses }}</td></tr>
+          <tr><td>Breakeven</td><td>{{ perf.breakeven }}</td></tr>
+        </tbody>
+      </table></div>
+    </details>
+  </div></div>
+</div>
+{% elif tab == 'behavior' %}
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">🕒 Session Breakdown</div>
+    {% set s_top = session_rows[0] if session_rows|length else none %}
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Top Session</div><div class="v">{% if s_top %}{{ s_top.k }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Top Session Net</div><div class="v">{% if s_top %}{{ money(s_top.net) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Top Session Win Rate</div><div class="v">{% if s_top %}{{ '%.1f'|format(s_top.win_rate) }}%{% else %}—{% endif %}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open session breakdown table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
+        <tbody>
+        {% for r in session_rows %}
+          <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="mobileOnly">
+        <div class="grid">
+          {% for r in session_rows %}
+            <div class="card"><div class="toolbar">
+              <div class="pill">{{ r.k }}</div>
+              <div class="metaRow">
+                <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+              </div>
+            </div></div>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">⚠️ Rule Break Tags</div>
+    {% set rb_top = rule_breaks[0] if rule_breaks|length else none %}
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Top Rule Break</div><div class="v">{% if rb_top %}{{ rb_top.tag }}{% else %}None logged{% endif %}</div></div>
+      <div class="stat"><div class="k">Occurrences</div><div class="v">{% if rb_top %}{{ rb_top.count }}{% else %}0{% endif %}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open full rule-break list</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Tag</th><th>Count</th></tr></thead>
+        <tbody>
+        {% for r in rule_breaks %}
+          <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
+        {% endfor %}
+        {% if rule_breaks|length == 0 %}
+          <tr><td colspan="2">
+            <div class="emptyState">
+              <div class="emptyStateTitle">No rule-break tags in this range.</div>
+              <div class="emptyStateBody">Next best action: keep tagging rule breaks during reviews so behavior drift is measurable.</div>
+            </div>
+          </td></tr>
+        {% endif %}
+        </tbody>
+      </table></div>
+      <div class="mobileOnly">
+        <div class="grid">
+          {% for r in rule_breaks %}
+            <div class="card"><div class="toolbar">
+              <div class="pill">{{ r.tag }}</div>
+              <div class="meta">Count: <b>{{ r.count }}</b></div>
+            </div></div>
+          {% endfor %}
+          {% if rule_breaks|length == 0 %}
+            <div class="emptyState">
+              <div class="emptyStateTitle">No rule-break tags in this range.</div>
+              <div class="emptyStateBody">Next best action: tag rule breaks on each review to keep behavior analytics reliable.</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </details>
+  </div></div>
+</div>
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">🗺️ Setup Expectancy Heatmap by Time Block</div>
+  <div class="tiny stack8 line15">Color intensity reflects expectancy magnitude for top setups across intraday blocks.</div>
+  <div class="hr"></div>
+  {% if heatmap.setups|length == 0 %}
+    <div class="emptyState">
+      <div class="emptyStateTitle">No heatmap data in this range.</div>
+      <div class="emptyStateBody">Why this matters: time-block expectancy needs setup tags + entry times across multiple trades.</div>
+      <div class="emptyStateBody">Next best action: widen date range or log more tagged trades.</div>
+    </div>
+  {% else %}
+    <div class="tableWrap desktopOnly">
+      <table class="tableDense">
+        <thead>
+          <tr>
+            <th>Time Block</th>
+            {% for s in heatmap.setups %}<th>{{ s }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in heatmap.rows %}
+          <tr>
+            <td>{{ row.block }}</td>
+            {% for c in row.cells %}
+              {% set ratio = ((c.expectancy|abs) / (heatmap.max_abs_exp if heatmap.max_abs_exp else 1.0)) %}
+              {% set alpha = 0.08 + (0.42 * ratio) %}
+              {% if c.expectancy > 0 %}
+                <td style="background: rgba(46, 204, 113, {{ alpha }});">{{ money(c.expectancy) }} · {{ c.count }}</td>
+              {% elif c.expectancy < 0 %}
+                <td style="background: rgba(231, 76, 60, {{ alpha }});">{{ money(c.expectancy) }} · {{ c.count }}</td>
+              {% else %}
+                <td style="background: rgba(255,255,255,.03);">{{ money(c.expectancy) }} · {{ c.count }}</td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="mobileOnly">
+      {% for row in heatmap.rows %}
+        <details class="syncDetails stack10">
+          <summary>{{ row.block }}</summary>
+          <div class="tiny stack8 line16">
+            {% for c in row.cells %}
+              • {{ c.setup }}: {{ money(c.expectancy) }} ({{ c.count }})<br>
+            {% endfor %}
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div></div>
+{% elif tab == 'diagnostics' %}
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">🧪 Data Integrity Diagnostics</div>
+  <div class="tiny stack8 line15">Find data quality issues that can distort analytics and decision quality.</div>
+  <div class="hr"></div>
+  <div class="statRow">
+    <div class="stat"><div class="k">Missing Setup Tags</div><div class="v">{{ integrity.missing_setup }}</div></div>
+    <div class="stat"><div class="k">Missing Session Tags</div><div class="v">{{ integrity.missing_session }}</div></div>
+    <div class="stat"><div class="k">Missing Scores</div><div class="v">{{ integrity.missing_score }}</div></div>
+    <div class="stat"><div class="k">Duplicate Candidates</div><div class="v">{{ integrity.duplicate_candidates }}</div></div>
+    <div class="stat"><div class="k">Stale Balance Rows</div><div class="v">{{ integrity.stale_balance_rows }}</div></div>
+  </div>
+  <div class="hr"></div>
+  <div class="tiny stack8 line15">
+    Priority actions:
+    {% if integrity.stale_balance_rows > 0 %}
+      • Recompute stored balances from dashboard drift action.<br>
+    {% endif %}
+    {% if integrity.missing_setup or integrity.missing_session %}
+      • Rebuild/fill trade reviews to restore setup/session analytics.<br>
+    {% endif %}
+    {% if integrity.missing_score > 0 %}
+      • Backfill checklist scores for quality-vs-PnL correlation.<br>
+    {% endif %}
+    {% if integrity.duplicate_candidates > 0 %}
+      • Review recent imports for duplicate signatures.<br>
+    {% endif %}
+    {% if not (integrity.stale_balance_rows or integrity.missing_setup or integrity.missing_session or integrity.missing_score or integrity.duplicate_candidates) %}
+      • No major integrity issues detected in this range.
+    {% endif %}
+  </div>
+</div></div>
+{% else %}
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">📌 Setup Edge</div>
+    {% set setup_top = setup_rows[0] if setup_rows|length else none %}
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Top Setup</div><div class="v">{% if setup_top %}{{ setup_top.k }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Top Setup Net</div><div class="v">{% if setup_top %}{{ money(setup_top.net) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Top Setup Win Rate</div><div class="v">{% if setup_top %}{{ '%.1f'|format(setup_top.win_rate) }}%{% else %}—{% endif %}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open setup edge table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
+        <tbody>
+        {% for r in setup_rows %}
+          <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="mobileOnly">
+        <div class="grid">
+          {% for r in setup_rows %}
+            <div class="card"><div class="toolbar">
+              <div class="pill">{{ r.k }}</div>
+              <div class="metaRow">
+                <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+              </div>
+            </div></div>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">⏱️ Time of Day Edge</div>
+    {% set hour_top = hour_rows[0] if hour_rows|length else none %}
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Top Hour</div><div class="v">{% if hour_top %}{{ hour_top.k }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Top Hour Net</div><div class="v">{% if hour_top %}{{ money(hour_top.net) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Top Hour Win Rate</div><div class="v">{% if hour_top %}{{ '%.1f'|format(hour_top.win_rate) }}%{% else %}—{% endif %}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open time-of-day edge table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
+        <tbody>
+        {% for r in hour_rows %}
+          <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="mobileOnly">
+        <div class="grid">
+          {% for r in hour_rows %}
+            <div class="card"><div class="toolbar">
+              <div class="pill">{{ r.k }}</div>
+              <div class="metaRow">
+                <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+              </div>
+            </div></div>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+  </div></div>
+</div>
+
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">📈 Setup Edge Over Time (Monthly)</div>
+    {% set setup_trend_top = setup_trend_rows[0] if setup_trend_rows|length else none %}
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Top Setup Trend</div><div class="v">{% if setup_trend_top %}{{ setup_trend_top.key }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Latest Period</div><div class="v">{% if setup_trend_top %}{{ setup_trend_top.period }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Latest Net</div><div class="v">{% if setup_trend_top %}{{ money(setup_trend_top.net) }}{% else %}—{% endif %}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open setup trend table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Setup</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
+        <tbody>
+        {% for r in setup_trend_rows %}
+          <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
+        {% endfor %}
+        {% if setup_trend_rows|length == 0 %}
+          <tr><td colspan="6">
+            <div class="emptyState">
+              <div class="emptyStateTitle">No setup trend data in this range.</div>
+              <div class="emptyStateBody">Next best action: expand date range or increase tagged setup samples.</div>
+            </div>
+          </td></tr>
+        {% endif %}
+        </tbody>
+      </table></div>
+      <div class="mobileOnly">
+        <div class="grid">
+          {% for r in setup_trend_rows %}
+            <div class="card"><div class="toolbar">
+              <div class="pill">{{ r.key }} · {{ r.period }}</div>
+              <div class="metaRow">
+                <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+              </div>
+            </div></div>
+          {% endfor %}
+          {% if setup_trend_rows|length == 0 %}
+            <div class="emptyState">
+              <div class="emptyStateTitle">No setup trend data in this range.</div>
+              <div class="emptyStateBody">Next best action: expand date range or increase tagged setup samples.</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </details>
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">📈 Session Edge Over Time (Monthly)</div>
+    {% set session_trend_top = session_trend_rows[0] if session_trend_rows|length else none %}
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Top Session Trend</div><div class="v">{% if session_trend_top %}{{ session_trend_top.key }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Latest Period</div><div class="v">{% if session_trend_top %}{{ session_trend_top.period }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Latest Net</div><div class="v">{% if session_trend_top %}{{ money(session_trend_top.net) }}{% else %}—{% endif %}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open session trend table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Session</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
+        <tbody>
+        {% for r in session_trend_rows %}
+          <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
+        {% endfor %}
+        {% if session_trend_rows|length == 0 %}
+          <tr><td colspan="6">
+            <div class="emptyState">
+              <div class="emptyStateTitle">No session trend data in this range.</div>
+              <div class="emptyStateBody">Next best action: keep tagging session context to unlock session edge tracking.</div>
+            </div>
+          </td></tr>
+        {% endif %}
+        </tbody>
+      </table></div>
+      <div class="mobileOnly">
+        <div class="grid">
+          {% for r in session_trend_rows %}
+            <div class="card"><div class="toolbar">
+              <div class="pill">{{ r.key }} · {{ r.period }}</div>
+              <div class="metaRow">
+                <span class="meta">Trades: <b>{{ r.count }}</b></span>
+                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
+                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+                <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+              </div>
+            </div></div>
+          {% endfor %}
+          {% if session_trend_rows|length == 0 %}
+            <div class="emptyState">
+              <div class="emptyStateTitle">No session trend data in this range.</div>
+              <div class="emptyStateBody">Next best action: keep tagging session context to unlock session edge tracking.</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </details>
+  </div></div>
+</div>
+{% endif %}
+<script>
+  (function(){
+    const points = Array.from(document.querySelectorAll(".chartPoint"));
+    if(!points.length){ return; }
+    const tip = document.createElement("div");
+    tip.style.position = "fixed";
+    tip.style.zIndex = "9999";
+    tip.style.pointerEvents = "none";
+    tip.style.padding = "8px 10px";
+    tip.style.borderRadius = "10px";
+    tip.style.border = "1px solid rgba(53,212,255,.35)";
+    tip.style.background = "rgba(4,12,20,.95)";
+    tip.style.color = "#dff8ff";
+    tip.style.fontSize = "12px";
+    tip.style.lineHeight = "1.35";
+    tip.style.boxShadow = "0 10px 24px rgba(0,0,0,.45)";
+    tip.style.display = "none";
+    document.body.appendChild(tip);
+
+    function fmt(prefix, raw){
+      const v = Number(raw || 0);
+      if(prefix === "%"){ return `${v.toFixed(2)}%`; }
+      if(prefix === "$"){ return `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`; }
+      return `${prefix || ""}${v.toFixed(2)}`;
+    }
+    function showTip(el, evt){
+      const label = el.dataset.label || "Point";
+      const series = el.dataset.series ? `${el.dataset.series} · ` : "";
+      const prefix = el.dataset.prefix || "$";
+      const value = fmt(prefix, el.dataset.value);
+      const day = el.dataset.day || "";
+      const drill = day ? `<div style="opacity:.8;margin-top:4px">Click to open ${day} trades</div>` : "";
+      tip.innerHTML = `<div style="font-weight:800">${series}${label}</div><div>${value}</div>${drill}`;
+      tip.style.display = "block";
+      tip.style.left = `${evt.clientX + 12}px`;
+      tip.style.top = `${evt.clientY + 12}px`;
+    }
+    function hideTip(){ tip.style.display = "none"; }
+
+    points.forEach((pt)=>{
+      pt.style.cursor = "pointer";
+      pt.addEventListener("mouseenter", (e)=>showTip(pt, e));
+      pt.addEventListener("mousemove", (e)=>showTip(pt, e));
+      pt.addEventListener("mouseleave", hideTip);
+      pt.addEventListener("click", ()=>{
+        const day = (pt.dataset.day || "").trim();
+        if(day){
+          window.location.href = `/trades?d=${encodeURIComponent(day)}`;
+        }
+      });
+    });
+  })();
+</script>
