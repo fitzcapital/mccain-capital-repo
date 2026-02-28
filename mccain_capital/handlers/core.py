@@ -36,6 +36,10 @@ def dashboard_recompute_balances():
     return svc.dashboard_recompute_balances()
 
 
+def candle_opens_page():
+    return svc.candle_opens_page()
+
+
 def analytics_page():
     return svc.analytics_page()
 

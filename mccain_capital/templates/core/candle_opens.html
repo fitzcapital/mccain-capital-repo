@@ -1,0 +1,78 @@
+<div class="card pageHero candleHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">🕯️ Timing Map</div>
+        <h2 class="pageTitle">{{ month_name }} Candle Opens</h2>
+        <div class="pageSub">A clean month view of session-based resets. Day intervals follow the market-session count from the first session of the year, and week intervals print on the first tradable session of qualifying weeks.</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn" href="/candle-opens?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
+        <a class="btn primary" href="/candle-opens">🎯 This Month</a>
+        <a class="btn" href="/candle-opens?y={{ next_y }}&m={{ next_m }}">Next ➡️</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="metricStrip">
+  <div class="metric">
+    <div class="label">Trading Days</div>
+    <div class="value">{{ trading_days }}</div>
+    <div class="sub">Weekend + market holidays excluded</div>
+  </div>
+  <div class="metric">
+    <div class="label">Open Signals</div>
+    <div class="value">{{ signal_count }}</div>
+    <div class="sub">Combined daily + weekly resets</div>
+  </div>
+  <div class="metric">
+    <div class="label">Day Cycles</div>
+    <div class="value">{{ day_legend }}</div>
+    <div class="sub">Session-count opens</div>
+  </div>
+  <div class="metric">
+    <div class="label">Week Cycles</div>
+    <div class="value">{{ week_legend }}</div>
+    <div class="sub">First tradable day only</div>
+  </div>
+</div>
+
+<div class="card candleShell">
+  <div class="toolbar">
+    <div class="candleBoard" style="--candle-mark: url('{{ url_for('static', filename='logo.png') }}');">
+      <div class="candleBoardGlow"></div>
+      <div class="candleWeekday">Sun</div>
+      <div class="candleWeekday">Mon</div>
+      <div class="candleWeekday">Tue</div>
+      <div class="candleWeekday">Wed</div>
+      <div class="candleWeekday">Thu</div>
+      <div class="candleWeekday">Fri</div>
+      <div class="candleWeekday">Sat</div>
+      {% for week in weeks %}
+        {% for cell in week %}
+          <div class="candleCell{% if not cell.in_month %} is-muted{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cell.day_labels %} has-day-signal{% endif %}{% if cell.week_labels %} has-week-signal{% endif %}">
+            <div class="candleDate">{{ cell.day }}</div>
+            {% if cell.is_holiday %}
+              <div class="candleMeta">{{ cell.holiday_name }}</div>
+            {% elif cell.in_month and cell.is_weekend %}
+              <div class="candleMeta">Weekend</div>
+            {% elif cell.in_month and cell.is_trading and not cell.labels %}
+              <div class="candleMeta">No reset</div>
+            {% endif %}
+            {% if cell.labels %}
+              <div class="candleTags">
+                {% for label in cell.day_labels %}
+                  <span class="candleTag">{{ label }}</span>
+                {% endfor %}
+                {% for label in cell.week_labels %}
+                  <span class="candleTag candleTagWeek">{{ label }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+</div>

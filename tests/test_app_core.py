@@ -24,6 +24,7 @@ def test_core_pages_are_reachable(client):
     for path in [
         "/",
         "/dashboard",
+        "/candle-opens",
         "/trades",
         "/journal",
         "/journal/review/weekly",
@@ -93,6 +94,7 @@ def test_expected_endpoints_registered(app):
         "healthz",
         "dashboard",
         "dashboard_recompute_balances",
+        "candle_opens_page",
         "trades_page",
         "journal_home",
         "calculator",
@@ -100,6 +102,15 @@ def test_expected_endpoints_registered(app):
         "books_page",
     }
     assert expected.issubset(endpoints)
+
+
+def test_candle_opens_page_renders_monthly_market_calendar(client):
+    resp = client.get("/candle-opens?y=2026&m=2", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"February 2026 Candle Opens" in resp.data
+    assert b"Presidents Day" in resp.data
+    assert b"2D" in resp.data
+    assert b"Trading Days" in resp.data
 
 
 def test_trades_page_uses_derived_running_balance(client):

@@ -1822,3 +1822,187 @@
   .syncRunway{ padding:10px 12px; }
   .syncSteps{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
+.candleHero{
+  overflow:hidden;
+}
+.candleShell{
+  overflow:hidden;
+}
+.candleBoard{
+  position:relative;
+  display:grid;
+  grid-template-columns:repeat(7, minmax(0, 1fr));
+  gap:1px;
+  padding:1px;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.12);
+  background:
+    linear-gradient(135deg, rgba(5,16,24,.96), rgba(2,10,16,.98)),
+    var(--panel-2);
+  overflow:hidden;
+  isolation:isolate;
+}
+.candleBoard::before{
+  content:"";
+  position:absolute;
+  inset:8% 16%;
+  background-image:var(--candle-mark);
+  background-repeat:no-repeat;
+  background-position:center;
+  background-size:min(58vw, 540px);
+  opacity:.08;
+  filter:grayscale(.1) saturate(.85);
+  pointer-events:none;
+}
+.candleBoardGlow{
+  position:absolute;
+  inset:-20% 28% 42%;
+  background:radial-gradient(circle, rgba(108,170,84,.18), rgba(108,170,84,0));
+  pointer-events:none;
+}
+.candleWeekday,
+.candleCell{
+  position:relative;
+  z-index:1;
+}
+.candleWeekday{
+  padding:14px 10px;
+  text-align:center;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:rgba(237,244,255,.82);
+  background:rgba(255,255,255,.03);
+}
+.candleCell{
+  min-height:124px;
+  padding:12px;
+  background:rgba(255,255,255,.018);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  transition:
+    transform var(--motion-mid) var(--motion-ease),
+    box-shadow var(--motion-mid) var(--motion-ease),
+    border-color var(--motion-mid) var(--motion-ease),
+    background var(--motion-mid) var(--motion-ease);
+}
+.candleCell.has-signal{
+  background:
+    radial-gradient(circle at top left, rgba(212,176,82,.16), rgba(212,176,82,0) 42%),
+    rgba(255,255,255,.028);
+  box-shadow:
+    inset 0 0 0 1px rgba(212,176,82,.12),
+    0 0 0 1px rgba(212,176,82,.06),
+    0 0 18px rgba(212,176,82,.12);
+}
+.candleCell.has-week-signal{
+  background:
+    radial-gradient(circle at top left, rgba(var(--accent-rgb),.2), rgba(var(--accent-rgb),0) 44%),
+    rgba(255,255,255,.03);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--accent-rgb),.18),
+    0 0 0 1px rgba(var(--accent-rgb),.08),
+    0 0 22px rgba(var(--accent-rgb),.16);
+}
+.candleCell.has-signal:hover{
+  transform:translateY(-2px);
+}
+.candleCell.is-muted{
+  background:rgba(255,255,255,.008);
+  color:rgba(237,244,255,.28);
+}
+.candleCell.is-weekend{
+  background:rgba(255,255,255,.012);
+}
+.candleCell.is-holiday{
+  background:linear-gradient(135deg, rgba(33,120,31,.65), rgba(17,64,19,.88));
+  box-shadow:inset 0 0 0 1px rgba(125,255,98,.2);
+}
+.candleDate{
+  font-size:18px;
+  font-weight:800;
+  line-height:1;
+}
+.candleMeta{
+  font-size:11px;
+  line-height:1.35;
+  color:rgba(237,244,255,.62);
+  min-height:30px;
+}
+.candleCell.is-holiday .candleMeta{
+  color:rgba(240,255,240,.86);
+}
+.candleTags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:auto;
+}
+.candleTag{
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.05);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.04em;
+  color:var(--text);
+  box-shadow:0 0 0 rgba(212,176,82,0);
+}
+.candleCell.has-signal .candleTag{
+  border-color:rgba(212,176,82,.22);
+  background:rgba(212,176,82,.09);
+  box-shadow:
+    inset 0 0 12px rgba(212,176,82,.05),
+    0 0 12px rgba(212,176,82,.12);
+}
+.candleTagWeek{
+  border-color:rgba(var(--accent-rgb),.32);
+  background:rgba(var(--accent-rgb),.14);
+  box-shadow:
+    inset 0 0 14px rgba(var(--accent-rgb),.07),
+    0 0 14px rgba(var(--accent-rgb),.18);
+}
+.candleCell.has-signal .candleDate{
+  text-shadow:0 0 14px rgba(212,176,82,.18);
+}
+.candleCell.has-week-signal .candleDate{
+  text-shadow:0 0 16px rgba(var(--accent-rgb),.22);
+}
+@media (max-width: 980px){
+  .candleCell{
+    min-height:112px;
+    padding:10px;
+  }
+  .candleTag{
+    font-size:10px;
+    padding:4px 7px;
+  }
+}
+@media (max-width: 720px){
+  .candleBoard{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+    padding:0;
+    border:none;
+    background:transparent;
+  }
+  .candleBoard::before,
+  .candleBoardGlow{
+    display:none;
+  }
+  .candleWeekday{
+    display:none;
+  }
+  .candleCell{
+    min-height:108px;
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,.08);
+    background:linear-gradient(180deg, rgba(8,20,30,.92), rgba(4,12,18,.96));
+  }
+  .candleCell.is-muted{
+    display:none;
+  }
+}

@@ -6,7 +6,9 @@ keeps that dependency localized behind explicit delegator functions.
 
 from __future__ import annotations
 
+from calendar import Calendar
 from datetime import date
+from datetime import timedelta
 import json
 import os
 import shutil
@@ -18,13 +20,15 @@ from flask import abort, flash, jsonify, redirect, render_template, request, sen
 
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital import runtime as app_runtime
-from mccain_capital.services.ui import APP_TITLE, get_system_status, render_page, simple_msg
+from mccain_capital.services.ui import get_system_status, render_page, simple_msg
 from mccain_capital.services.viewmodels import dashboard_data_trust
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
 DEFAULT_TARGET_PCT = 30.0
 DEFAULT_FEE_PER_CONTRACT = 0.70
+DAY_OPEN_INTERVALS = tuple(range(2, 13))
+WEEK_OPEN_INTERVALS = (2, 3, 4, 5)
 
 
 def _legacy():
@@ -178,6 +182,19 @@ def dashboard_recompute_balances():
         pass
     flash("Stored trade balances recomputed from canonical ledger math.", "success")
     return redirect(url_for("dashboard"))
+
+
+def candle_opens_page():
+    anchor = app_runtime.now_et().date()
+    year = int(request.args.get("y") or anchor.year)
+    month = max(1, min(12, int(request.args.get("m") or anchor.month)))
+    model = _build_candle_open_calendar(year, month)
+    content = render_template("core/candle_opens.html", **model)
+    return render_page(
+        content,
+        active="candle-opens",
+        title=f"{model['month_name']} Candle Opens",
+    )
 
 
 def analytics_page():
@@ -469,3 +486,172 @@ def _calculator_context(form_data: Optional[Any] = None) -> Dict[str, Any]:
         "current_balance": current_balance,
         "current_consistency": current_consistency,
     }
+
+
+def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
+    cal = Calendar(firstweekday=6)
+    session_index = _trading_day_index_map(year)
+    week_index, week_open_dates = _trading_week_index_map(year)
+
+    prev_y, prev_m = (year, month - 1)
+    next_y, next_m = (year, month + 1)
+    if prev_m == 0:
+        prev_m = 12
+        prev_y -= 1
+    if next_m == 13:
+        next_m = 1
+        next_y += 1
+
+    weeks = []
+    total_signals = 0
+    trading_days = 0
+    for week in cal.monthdatescalendar(year, month):
+        cells = []
+        for day in week:
+            in_month = day.month == month
+            holiday_name = _market_holiday_name(day)
+            is_weekend = day.weekday() >= 5
+            is_holiday = bool(holiday_name)
+            is_trading = in_month and not is_weekend and not is_holiday
+            day_labels = []
+            week_labels = []
+            if is_trading:
+                trading_days += 1
+                idx = session_index.get(day)
+                if idx is not None:
+                    day_labels = [f"{span}D" for span in DAY_OPEN_INTERVALS if idx % span == 1]
+                if day in week_open_dates:
+                    widx = week_index.get(day)
+                    if widx is not None:
+                        week_labels = [f"{span}W" for span in WEEK_OPEN_INTERVALS if widx % span == 1]
+                total_signals += len(day_labels) + len(week_labels)
+            cells.append(
+                {
+                    "day": day.day,
+                    "in_month": in_month,
+                    "is_weekend": is_weekend,
+                    "is_holiday": is_holiday,
+                    "is_trading": is_trading,
+                    "holiday_name": holiday_name,
+                    "day_labels": day_labels,
+                    "week_labels": week_labels,
+                    "labels": day_labels + week_labels,
+                }
+            )
+        weeks.append(cells)
+
+    month_name = date(year, month, 1).strftime("%B %Y")
+    return {
+        "month_name": month_name,
+        "year": year,
+        "month": month,
+        "weeks": weeks,
+        "prev_y": prev_y,
+        "prev_m": prev_m,
+        "next_y": next_y,
+        "next_m": next_m,
+        "trading_days": trading_days,
+        "signal_count": total_signals,
+        "day_legend": ", ".join(f"{span}D" for span in DAY_OPEN_INTERVALS),
+        "week_legend": ", ".join(f"{span}W" for span in WEEK_OPEN_INTERVALS),
+    }
+
+
+def _trading_day_index_map(year: int) -> Dict[date, int]:
+    idx = 0
+    out: Dict[date, int] = {}
+    cursor = date(year, 1, 1)
+    end = date(year, 12, 31)
+    while cursor <= end:
+        if _is_market_session(cursor):
+            idx += 1
+            out[cursor] = idx
+        cursor += timedelta(days=1)
+    return out
+
+
+def _trading_week_index_map(year: int) -> Tuple[Dict[date, int], set[date]]:
+    idx = 0
+    out: Dict[date, int] = {}
+    week_open_dates: set[date] = set()
+    current_week_key = None
+    cursor = date(year, 1, 1)
+    end = date(year, 12, 31)
+    while cursor <= end:
+        if _is_market_session(cursor):
+            week_key = cursor - timedelta(days=cursor.weekday())
+            if week_key != current_week_key:
+                current_week_key = week_key
+                idx += 1
+                week_open_dates.add(cursor)
+            out[cursor] = idx
+        cursor += timedelta(days=1)
+    return out, week_open_dates
+
+
+def _is_market_session(day: date) -> bool:
+    return day.weekday() < 5 and not _market_holiday_name(day)
+
+
+def _market_holiday_name(day: date) -> str:
+    return _market_holidays(day.year).get(day, "")
+
+
+def _market_holidays(year: int) -> Dict[date, str]:
+    easter = _easter_sunday(year)
+    holidays = {
+        _observed_fixed_holiday(year, 1, 1): "New Years Day",
+        _nth_weekday_of_month(year, 1, 0, 3): "Martin Luther King Jr. Day",
+        _nth_weekday_of_month(year, 2, 0, 3): "Presidents Day",
+        easter - timedelta(days=2): "Good Friday",
+        _last_weekday_of_month(year, 5, 0): "Memorial Day",
+        _observed_fixed_holiday(year, 6, 19): "Juneteenth",
+        _observed_fixed_holiday(year, 7, 4): "Independence Day",
+        _nth_weekday_of_month(year, 9, 0, 1): "Labor Day",
+        _nth_weekday_of_month(year, 11, 3, 4): "Thanksgiving",
+        _observed_fixed_holiday(year, 12, 25): "Christmas Day",
+    }
+    return holidays
+
+
+def _observed_fixed_holiday(year: int, month: int, day_num: int) -> date:
+    holiday = date(year, month, day_num)
+    if holiday.weekday() == 5:
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:
+        return holiday + timedelta(days=1)
+    return holiday
+
+
+def _nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> date:
+    first = date(year, month, 1)
+    delta = (weekday - first.weekday()) % 7
+    return first + timedelta(days=delta + ((n - 1) * 7))
+
+
+def _last_weekday_of_month(year: int, month: int, weekday: int) -> date:
+    if month == 12:
+        cursor = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        cursor = date(year, month + 1, 1) - timedelta(days=1)
+    while cursor.weekday() != weekday:
+        cursor -= timedelta(days=1)
+    return cursor
+
+
+def _easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + (2 * e) + (2 * i) - h - k) % 7
+    m = (a + (11 * h) + (22 * l)) // 451
+    month = (h + l - (7 * m) + 114) // 31
+    day_num = ((h + l - (7 * m) + 114) % 31) + 1
+    return date(year, month, day_num)
