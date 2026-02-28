@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 
 from mccain_capital.runtime import db, now_iso
 
@@ -201,11 +202,15 @@ def test_upload_statement_workspaces_render(client):
     resp = client.get("/trades/upload/statement", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Import Workspace" in resp.data
-    assert b"Upload Statement (PDF / HTML)" in resp.data
+    assert b"Sync Reliability (30D)" in resp.data
 
     resp_live = client.get("/trades/upload/statement?ws=live", follow_redirects=True)
     assert resp_live.status_code == 200
     assert b"Sync Reliability (30D)" in resp_live.data
+
+    resp_upload = client.get("/trades/upload/statement?ws=upload", follow_redirects=True)
+    assert resp_upload.status_code == 200
+    assert b"Upload Statement (PDF / HTML)" in resp_upload.data
 
     resp_rec = client.get("/trades/upload/statement?ws=reconcile", follow_redirects=True)
     assert resp_rec.status_code == 200
@@ -691,7 +696,7 @@ def test_ops_backups_config_and_run_now(client, monkeypatch, tmp_path):
     page_resp = client.get("/ops/backups", follow_redirects=True)
     assert page_resp.status_code == 200
     assert b"Saved Backups" in page_resp.data
-    assert b"Restore Audit Timeline" in page_resp.data
+    assert b"System Activity History" in page_resp.data
 
     dl_resp = client.get(f"/ops/backups/download/{name}", follow_redirects=True)
     assert dl_resp.status_code == 200
@@ -724,6 +729,55 @@ def test_ops_backups_config_and_run_now(client, monkeypatch, tmp_path):
     assert "backup_restored_from_center" in actions
 
 
+def test_ops_async_backup_job_status_returns_result_html(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(tmp_path / ".bg_jobs"))
+    monkeypatch.setattr(
+        trades_svc,
+        "_run_backup_once",
+        lambda reason, actor: {
+            "ok": True,
+            "name": "test_backup.zip",
+            "size_bytes": 321,
+        },
+    )
+
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_username", "owner"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_password_hash", "pbkdf2:sha256:1$stub$stub"),
+        )
+
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    start = client.post("/ops/backups/run?async=1")
+    assert start.status_code == 200
+    payload = start.get_json()
+    assert payload["ok"] is True
+    job_id = payload["job"]["id"]
+
+    status = client.get(f"/ops/jobs/{job_id}")
+    assert status.status_code == 200
+    status_payload = status.get_json()
+    assert status_payload["ok"] is True
+    assert status_payload["job"]["kind"] == "backup"
+
+    deadline = time.time() + 1.5
+    job = status_payload["job"]
+    while time.time() < deadline and job["status"] in {"queued", "running"}:
+        time.sleep(0.05)
+        job = client.get(f"/ops/jobs/{job_id}").get_json()["job"]
+    assert job["status"] == "success"
+    assert "Backup Created" in job["result_html"]
+
+
 def test_ops_integrity_run_records_audit(client, monkeypatch, tmp_path):
     from mccain_capital.services import trades as trades_svc
 
@@ -749,6 +803,44 @@ def test_ops_integrity_run_records_audit(client, monkeypatch, tmp_path):
     rows = json.loads(audit_path.read_text(encoding="utf-8"))
     actions = [str(r.get("action") or "") for r in rows]
     assert "integrity_check_run" in actions
+
+
+def test_rebuild_reviews_supports_async_job_flow(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(tmp_path / ".bg_jobs"))
+
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_username", "owner"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_password_hash", "pbkdf2:sha256:1$stub$stub"),
+        )
+
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.post(
+        "/trades/reviews/rebuild?async=1",
+        data={"scope": "missing", "preserve_manual": "1"},
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    job_id = payload["job"]["id"]
+
+    deadline = time.time() + 1.5
+    job = client.get(f"/ops/jobs/{job_id}").get_json()["job"]
+    while time.time() < deadline and job["status"] in {"queued", "running"}:
+        time.sleep(0.05)
+        job = client.get(f"/ops/jobs/{job_id}").get_json()["job"]
+    assert job["kind"] == "review_rebuild"
+    assert job["status"] == "success"
+    assert "Review Rebuild Complete" in job["result_html"]
 
 
 def test_trades_playbook_page_renders(client):

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.parse
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 SELECTOR_PROFILE_VERSION = "2026-02-25.v2"
 SELECTOR_PROFILES: Dict[str, List[str]] = {
@@ -186,6 +186,7 @@ def fetch_statement_html_via_login(
     headless: bool = True,
     timeout_ms: int = 45000,
     debug_dir: Optional[str] = None,
+    progress_cb: Optional[Callable[[str, str], None]] = None,
 ) -> Tuple[str, List[str], List[str], Dict[str, Any]]:
     warnings: List[str] = []
     artifacts: List[str] = []
@@ -226,6 +227,16 @@ def fetch_statement_html_via_login(
         "used_statement_url_fallback": False,
         "opened_statement_popup": False,
     }
+
+    def mark(stage: str, message: str) -> None:
+        nonlocal current_stage
+        current_stage = stage
+        if progress_cb:
+            try:
+                progress_cb(stage, message)
+            except Exception:
+                pass
+
     with sync_playwright() as p:
         launch_args = ["--start-maximized", "--window-size=1920,1080"]
         browser = p.chromium.launch(headless=headless, args=launch_args)
@@ -237,7 +248,7 @@ def fetch_statement_html_via_login(
             context.tracing.start(screenshots=True, snapshots=True, sources=True)
         page = context.new_page()
         page.set_default_timeout(timeout_ms)
-        current_stage = "open_login"
+        mark("open_login", "Opening broker login page.")
         page.goto(login_url, wait_until="domcontentloaded")
         # Vanquish login UI can finish client-side hydration after initial paint.
         try:
@@ -249,7 +260,7 @@ def fetch_statement_html_via_login(
         if shot:
             artifacts.append(shot)
 
-        current_stage = "locate_username"
+        mark("locate_username", "Finding username field.")
         user_input = _first_visible(page, SELECTOR_PROFILES["login_user"])
         if not user_input:
             _debug_write(debug_dir, "01_login_dom.html", page.content())
@@ -257,13 +268,13 @@ def fetch_statement_html_via_login(
             browser.close()
             raise _stage_error("locate_username", "Could not locate username/email field.")
 
-        current_stage = "fill_username"
+        mark("fill_username", "Entering username.")
         user_input.fill(username)
         shot = _debug_shot(page, debug_dir, "02_after_username.png")
         if shot:
             artifacts.append(shot)
 
-        current_stage = "locate_password"
+        mark("locate_password", "Finding password field.")
         pass_input = _first_visible(page, SELECTOR_PROFILES["login_password"])
         if not pass_input:
             next_btn = _first_visible(
@@ -289,7 +300,7 @@ def fetch_statement_html_via_login(
             browser.close()
             raise _stage_error("locate_password", "Could not locate password field.")
 
-        current_stage = "submit_login"
+        mark("submit_login", "Submitting broker login.")
         pass_input.fill(password)
         # Some broker UIs only enable "Log In" after blur/input events settle.
         try:
@@ -350,7 +361,7 @@ def fetch_statement_html_via_login(
             )
 
         # Preferred flow: hamburger menu -> Account Statement -> Generate Statement.
-        current_stage = "open_workspace_menu"
+        mark("open_workspace_menu", "Opening workspace menu.")
         statement_page = page
         menu_clicked = _click_first(page, SELECTOR_PROFILES["workspace_menu"])
         if not menu_clicked:
@@ -359,7 +370,7 @@ def fetch_statement_html_via_login(
             page.goto(statement_url, wait_until="domcontentloaded")
         else:
             page.wait_for_timeout(600)
-            current_stage = "open_statement_dialog"
+            mark("open_statement_dialog", "Opening statement dialog.")
             statement_clicked = _click_first(page, SELECTOR_PROFILES["account_statement_menu_item"])
             if not statement_clicked:
                 warnings.append("Could not open Account Statement from menu; using URL fallback.")
@@ -367,7 +378,7 @@ def fetch_statement_html_via_login(
                 page.goto(statement_url, wait_until="domcontentloaded")
             else:
                 page.wait_for_timeout(900)
-                current_stage = "configure_statement_period"
+                mark("configure_statement_period", "Setting statement date range.")
                 if not _set_statement_period_fields(page, from_date, to_date):
                     warnings.append(
                         "Could not set custom From/To in dialog; using visible defaults."
@@ -379,7 +390,7 @@ def fetch_statement_html_via_login(
                     meta["used_statement_url_fallback"] = True
                     page.goto(statement_url, wait_until="domcontentloaded")
                 else:
-                    current_stage = "generate_statement"
+                    mark("generate_statement", "Generating statement HTML.")
                     try:
                         popup_page = None
                         with context.expect_page(timeout=12000) as popup_info:
@@ -431,7 +442,7 @@ def fetch_statement_html_via_login(
         if shot:
             artifacts.append(shot)
 
-        current_stage = "capture_statement_html"
+        mark("capture_statement_html", "Capturing statement HTML.")
         html_text = statement_page.content()
         html_path = _debug_write(debug_dir, "final_statement.html", html_text)
         if html_path:

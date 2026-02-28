@@ -1,0 +1,219 @@
+{% from "partials/async_job_macros.html" import runway %}
+<div class="card pageHero"><div class="toolbar">
+  <div class="pageHeroHead">
+    <div>
+      <div class="pill">💾 Auto Backup Center</div>
+      <h2 class="pageTitle">Backups & Restore Safety</h2>
+      <div class="pageSub">Configure schedule, run manual snapshots, and review saved backup archives.</div>
+    </div>
+    <div class="actionRow">
+      <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
+      <a class="btn" href="/admin/restore">♻️ Restore Backup</a>
+    </div>
+  </div>
+</div></div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">🩺 Integrity Check</div>
+  <div class="tiny stack8 line15">One-click ledger + review integrity pass after restore/import/recompute.</div>
+  <div class="actionRow stack10">
+    <form method="post" action="/ops/integrity/run" class="inlineForm" id="integrity-check-form">
+      <button class="btn primary" type="submit" id="integrity-check-submit">Run Integrity Check</button>
+    </form>
+    <a class="btn" href="/analytics?tab=diagnostics">Open Diagnostics</a>
+  </div>
+  {{ runway('integrity-check-runway', ['Ledger', 'Reviews', 'Balances', 'Summary'], badge='Checking', label='Scanning ledger, reviews, and balances...') }}
+  <div id="integrity-check-result" style="display:none;"></div>
+</div></div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">⚙️ Schedule Settings</div>
+  <div class="hr"></div>
+  <form method="post" action="/ops/backups/config" class="row">
+    <div><label><input type="checkbox" name="enabled" value="1" {% if cfg.get('enabled') %}checked{% endif %}/> Enable auto backups</label></div>
+    <div><label><input type="checkbox" name="run_weekends" value="1" {% if cfg.get('run_weekends') %}checked{% endif %}/> Run on weekends</label></div>
+    <div class="fieldGrow2">
+      <label>Run Times (ET, comma-separated HH:MM)</label>
+      <input name="run_times_et" value="{{ cfg.get('run_times_et', ['16:30'])|join(', ') }}" placeholder="16:30, 20:30" />
+    </div>
+    <div>
+      <label>Frequency (hours)</label>
+      <input type="number" name="frequency_hours" min="1" max="168" step="1" value="{{ cfg.get('frequency_hours', 24) }}" />
+    </div>
+    <div>
+      <label>Keep Last (files)</label>
+      <input type="number" name="keep_count" min="3" max="120" step="1" value="{{ cfg.get('keep_count', 21) }}" />
+    </div>
+    <div class="tiny stack10">
+      Last run: {{ cfg.get('last_run_at') or 'Never' }}<br>
+      Status: {{ cfg.get('last_status') or 'n/a' }}<br>
+      {{ cfg.get('last_message') or '' }}
+    </div>
+    <div class="actionRow"><button class="btn" type="submit">Save Schedule</button></div>
+  </form>
+  <div class="hr"></div>
+  <form method="post" action="/ops/backups/run" class="rightActions" id="backup-run-form">
+    <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
+  </form>
+  {{ runway('backup-job-runway', ['Archive', 'Verify', 'Summary', 'Ready'], label='Creating backup archive from current app data.') }}
+  <div id="ops-job-summary" style="display:none;"></div>
+</div></div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">🗂️ Saved Backups</div>
+  <div class="tiny stack8 line15">Stored in {{ backup_dir }}</div>
+  {% if not backups %}
+    <div class="tiny stack8 line16">Why this matters: without snapshots, rollback and restore are blind when imports or syncs misfire.</div>
+    <div class="tiny stack8 line16">Next best action: run one manual backup now, then keep auto backup enabled.</div>
+  {% endif %}
+  <div class="hr"></div>
+  <div class="tableWrap"><table class="tableDense">
+    <thead><tr><th>File</th><th>Modified</th><th>Size</th><th>Verify</th><th>Action</th></tr></thead>
+    <tbody>
+    {% for b in backups %}
+      <tr>
+        <td><code>{{ b.name }}</code></td>
+        <td>{{ b.modified_at }}</td>
+        <td>{{ b.size_bytes }} bytes</td>
+        <td>
+          <span class="trendChip {% if b.verify_ok %}positive{% elif b.verify_score < 50 %}negative{% endif %}">
+            {{ b.verify_label }} · {{ b.verify_score }}%
+          </span>
+          {% if b.verify_issues %}
+            <div class="tiny stack6">{{ b.verify_issues|join(', ') }}</div>
+          {% endif %}
+        </td>
+        <td>
+          <a class="btn" href="/ops/backups/download/{{ b.name }}">Download</a>
+          <a class="btn" href="/ops/backups?dry_run={{ b.name|urlencode }}">Dry Run</a>
+          <form method="post" action="/ops/backups/restore" style="display:inline" class="backup-restore-form" data-backup-name="{{ b.name }}">
+            <input type="hidden" name="name" value="{{ b.name }}" />
+            <button class="btn" type="submit">Restore</button>
+          </form>
+          <form method="post" action="/ops/backups/restore-dry-run" style="display:none">
+            <input type="hidden" name="name" value="{{ b.name }}" />
+          </form>
+          <form method="post" action="/ops/backups/delete" style="display:inline" onsubmit="return confirm('Delete backup {{ b.name }}?');">
+            <input type="hidden" name="name" value="{{ b.name }}" />
+            <button class="btn" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5">No backups saved yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div></div>
+
+{% if dry_run_report %}
+<div class="card"><div class="toolbar">
+  <div class="pill">🧪 Restore Dry Run: {{ dry_run_name }}</div>
+  <div class="tiny stack8 line15">Preview only. No files were written.</div>
+  <div class="statRow stack10">
+    <div class="stat"><div class="k">Current Trades</div><div class="v">{{ dry_run_report.current_counts.trades }}</div></div>
+    <div class="stat"><div class="k">Backup Trades</div><div class="v">{{ dry_run_report.backup_counts.trades }}</div></div>
+    <div class="stat"><div class="k">Trade Delta</div><div class="v">{{ dry_run_report.delta.trades }}</div></div>
+    <div class="stat"><div class="k">Current Journal Entries</div><div class="v">{{ dry_run_report.current_counts.entries }}</div></div>
+    <div class="stat"><div class="k">Backup Journal Entries</div><div class="v">{{ dry_run_report.backup_counts.entries }}</div></div>
+    <div class="stat"><div class="k">Entry Delta</div><div class="v">{{ dry_run_report.delta.entries }}</div></div>
+    <div class="stat"><div class="k">Upload Files New</div><div class="v">{{ dry_run_report.uploads.new_files }}</div></div>
+    <div class="stat"><div class="k">Upload Files Overwrite</div><div class="v">{{ dry_run_report.uploads.overwritten_files }}</div></div>
+    <div class="stat"><div class="k">Upload Payload</div><div class="v">{{ dry_run_report.uploads.payload_bytes }} bytes</div></div>
+  </div>
+</div></div>
+{% endif %}
+
+<div class="card"><div class="toolbar">
+  <div class="pill">🧾 System Activity History</div>
+  <div class="tiny stack8 line15">Review backups, restores, integrity runs, review rebuilds, alerts, and rollback events in one timeline.</div>
+  <form method="get" action="/ops/backups" class="row stack10">
+    <div>
+      <label>Action Filter</label>
+      <select name="audit_action">
+        <option value="all" {% if audit_action == 'all' %}selected{% endif %}>All Activity</option>
+        <option value="backup" {% if audit_action == 'backup' %}selected{% endif %}>Backup</option>
+        <option value="restore" {% if audit_action == 'restore' %}selected{% endif %}>Restore</option>
+        <option value="integrity" {% if audit_action == 'integrity' %}selected{% endif %}>Integrity</option>
+        <option value="review" {% if audit_action == 'review' %}selected{% endif %}>Review Rebuild</option>
+        <option value="rollback" {% if audit_action == 'rollback' %}selected{% endif %}>Rollback</option>
+        <option value="recompute" {% if audit_action == 'recompute' %}selected{% endif %}>Recompute</option>
+        <option value="alert" {% if audit_action == 'alert' %}selected{% endif %}>Alerts</option>
+        <option value="config" {% if audit_action == 'config' %}selected{% endif %}>Settings</option>
+      </select>
+    </div>
+    <div>
+      <label>Rows</label>
+      <input type="number" name="audit_limit" min="20" max="300" step="10" value="{{ audit_limit }}" />
+    </div>
+    {% if dry_run_name %}
+      <input type="hidden" name="dry_run" value="{{ dry_run_name }}" />
+    {% endif %}
+    <div class="actionRow"><button class="btn" type="submit">Apply</button></div>
+  </form>
+  <div class="hr"></div>
+  <div class="tableWrap"><table class="tableDense">
+    <thead><tr><th>Time</th><th>Event</th><th>Actor</th><th>Summary</th></tr></thead>
+    <tbody>
+    {% for r in audit_rows %}
+      <tr>
+        <td>{{ r.get('at_human', '—') }}</td>
+        <td><code>{{ r.get('label', '—') }}</code></td>
+        <td>{{ r.get('actor', '—') }}</td>
+        <td class="tiny line16">{{ r.get('summary', '—') }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4">No activity records for this filter.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div></div>
+
+{% include "partials/async_job_helpers.html" %}
+<script>
+  (function() {
+    const jobs = window.McAsyncJobs;
+    if (!jobs) return;
+
+    jobs.bindAsyncJob({
+      form: document.getElementById('integrity-check-form'),
+      button: document.getElementById('integrity-check-submit'),
+      runway: document.getElementById('integrity-check-runway'),
+      summary: document.getElementById('integrity-check-result'),
+      startLabel: 'Running...',
+      doneLabel: 'Run Integrity Check',
+      badge: 'Checking',
+      startMessage: 'Scanning ledger, reviews, and balances...',
+      stageMap: { scan_ledger: 1, build_summary: 3, complete: 3, failed: 3 }
+    });
+
+    jobs.bindAsyncJob({
+      form: document.getElementById('backup-run-form'),
+      button: document.getElementById('backup-run-submit'),
+      runway: document.getElementById('backup-job-runway'),
+      summary: document.getElementById('ops-job-summary'),
+      startLabel: 'Running...',
+      doneLabel: 'Run Backup Now',
+      badge: 'Running',
+      startMessage: 'Creating backup archive from current app data.',
+      stageMap: { create_archive: 1, complete: 3, failed: 3 }
+    });
+
+    document.querySelectorAll('.backup-restore-form').forEach(function(form) {
+      const button = form.querySelector('button[type="submit"]');
+      if (!button) return;
+      jobs.bindAsyncJob({
+        form: form,
+        button: button,
+        runway: document.getElementById('backup-job-runway'),
+        summary: document.getElementById('ops-job-summary'),
+        startLabel: 'Restoring...',
+        doneLabel: 'Restore',
+        badge: 'Restore',
+        startMessage: 'Validating backup archive before restore.',
+        stageMap: { validate_archive: 1, apply_restore: 2, complete: 3, failed: 3 },
+        confirmText: 'Restore from ' + (form.dataset.backupName || 'this backup') + '? This replaces DB and merges uploads.'
+      });
+    });
+  })();
+</script>

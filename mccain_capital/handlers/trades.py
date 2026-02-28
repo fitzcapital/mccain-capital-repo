@@ -67,6 +67,10 @@ def trades_sync_auto_run_now():
     return svc.trades_sync_auto_run_now()
 
 
+def trades_sync_job_status(job_id: str):
+    return svc.trades_sync_job_status(job_id)
+
+
 def trades_sync_debug_file(name: str):
     return svc.trades_sync_debug_file(name)
 
@@ -113,6 +117,14 @@ def ops_backups_restore_dry_run():
 
 def ops_backups_delete():
     return svc.ops_backups_delete()
+
+
+def ops_job_status(job_id: str):
+    return svc.ops_job_status(job_id)
+
+
+def ops_integrity_job_status(job_id: str):
+    return svc.ops_integrity_job_status(job_id)
 
 
 def ops_integrity_run():

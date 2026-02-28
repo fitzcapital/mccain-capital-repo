@@ -1,0 +1,57 @@
+{% from "partials/async_job_macros.html" import runway %}
+<div class="metricStrip">
+  <div class="metric"><div class="label">Trades In Scope</div><div class="value">{{ preview|length }}</div></div>
+  <div class="metric"><div class="label">Existing Reviews</div><div class="value">{{ preview_reviews|length }}</div></div>
+  <div class="metric"><div class="label">Missing Reviews</div><div class="value">{{ preview_missing }}</div></div>
+  <div class="metric"><div class="label">Mode</div><div class="value">{{ 'Missing Only' if scope == 'missing' else 'All Trades' }}</div></div>
+</div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">🛠️ Admin: Rebuild Reviews</div>
+  <div class="tiny stack10 line15">Bulk regenerate review metadata (setup/session/score/tags) from trade rows.</div>
+  <div class="hr"></div>
+  <form method="post" class="row" id="review-rebuild-form">
+    <div><label>Start Date</label><input type="date" name="start_date" value="{{ start_date }}"></div>
+    <div><label>End Date</label><input type="date" name="end_date" value="{{ end_date }}"></div>
+    <div>
+      <label>Scope</label>
+      <select name="scope">
+        <option value="missing" {% if scope == 'missing' %}selected{% endif %}>Only Missing Reviews</option>
+        <option value="all" {% if scope == 'all' %}selected{% endif %}>All Trades (Overwrite)</option>
+      </select>
+    </div>
+    <div>
+      <label>Preserve Manual Fields</label>
+      <select name="preserve_manual">
+        <option value="1" {% if preserve_manual %}selected{% endif %}>Yes (safer)</option>
+        <option value="0" {% if not preserve_manual %}selected{% endif %}>No (fully regenerate)</option>
+      </select>
+    </div>
+    <div class="actionRow">
+      <button class="btn primary" type="submit" id="review-rebuild-submit">Run Rebuild</button>
+      <a class="btn" href="/trades/reviews/rebuild">Reset</a>
+      <a class="btn" href="/trades">Back Trades</a>
+    </div>
+  </form>
+  {{ runway('review-rebuild-runway', ['Scope', 'Rebuild', 'Summary', 'Ready'], badge='Rebuilding', label='Collecting trades in rebuild scope.') }}
+  <div id="review-rebuild-summary" style="display:none;"></div>
+</div></div>
+
+{% include "partials/async_job_helpers.html" %}
+<script>
+  (function() {
+    const jobs = window.McAsyncJobs;
+    if (!jobs) return;
+    jobs.bindAsyncJob({
+      form: document.getElementById('review-rebuild-form'),
+      button: document.getElementById('review-rebuild-submit'),
+      runway: document.getElementById('review-rebuild-runway'),
+      summary: document.getElementById('review-rebuild-summary'),
+      startLabel: 'Running...',
+      doneLabel: 'Run Rebuild',
+      badge: 'Rebuilding',
+      startMessage: 'Collecting trades in rebuild scope.',
+      stageMap: { collect_scope: 0, rebuild_reviews: 1, complete: 3, failed: 3 }
+    });
+  })();
+</script>

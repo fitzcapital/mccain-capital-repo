@@ -1,0 +1,48 @@
+{% if out %}
+  <div class="card stack12"><div class="toolbar">
+    <div class="pill">✅ Results</div>
+
+    <div class="calcGrid">
+      <div class="calcCard"><div class="k">🛑 Stop Price</div><div class="v">{{ money(out.stop_price) }}</div></div>
+      <div class="calcCard"><div class="k">🎯 Target Price</div><div class="v">{{ money(out.tp_price) }}</div></div>
+      <div class="calcCard"><div class="k">💵 Fees</div><div class="v">{{ money(out.fees) }}</div></div>
+      <div class="calcCard"><div class="k">🧾 Total Contract Spend</div><div class="v">{{ money(out.total_spend) }}</div></div>
+      <div class="calcCard"><div class="k">⚠️ Risk (Net)</div><div class="v">{{ money(out.risk_net) }}</div></div>
+      <div class="calcCard"><div class="k">🎁 Reward (Net)</div><div class="v">{{ money(out.reward_net) }}</div></div>
+      <div class="calcCard"><div class="k">⚖️ R:R</div><div class="v">{{ out.rr }}</div></div>
+      <div class="calcCard"><div class="k">🛑 Balance If Stop Hits</div><div class="v">{{ money(out.balance_if_stop) }}</div></div>
+      <div class="calcCard"><div class="k">🎯 Balance If Target Hits</div><div class="v">{{ money(out.balance_if_target) }}</div></div>
+      <div class="calcCard {{ out.consistency_if_stop.class }}">
+        <div class="k">📏 Consistency If Stop Hits</div>
+        <div class="v">
+          {% if out.consistency_if_stop.ratio is not none %}{{ '%.1f'|format(out.consistency_if_stop.ratio * 100) }}% · {{ out.consistency_if_stop.status }}{% else %}—{% endif %}
+        </div>
+      </div>
+      <div class="calcCard {{ out.consistency_if_target.class }}">
+        <div class="k">📏 Consistency If Target Hits</div>
+        <div class="v">
+          {% if out.consistency_if_target.ratio is not none %}{{ '%.1f'|format(out.consistency_if_target.ratio * 100) }}% · {{ out.consistency_if_target.status }}{% else %}—{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="hr"></div>
+    <div class="pill">📈 TP Ladder (Net)</div>
+    <div class="hr"></div>
+
+    <div class="overflowAuto">
+      <table>
+        <thead><tr><th>🎯 %</th><th>📈 TP Price</th><th>🎁 Reward Net</th></tr></thead>
+        <tbody>
+          {% for r in out.ladder %}
+            <tr>
+              <td><b>+{{ r.pct }}%</b></td>
+              <td>{{ money(r.tp) }}</td>
+              <td><b>{{ money(r.net) }}</b></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div></div>
+{% endif %}

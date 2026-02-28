@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import re
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from mccain_capital.runtime import db, now_iso
+from mccain_capital.runtime import db, get_setting_float, now_iso
 
 
 def fetch_trades(d: str = "", q: str = ""):
@@ -323,3 +324,278 @@ def recompute_balances(starting_balance: float = 50000.0) -> None:
                 bal += float(net)
             conn.execute("UPDATE trades SET balance = ? WHERE id = ?", (bal, r["id"]))
         conn.commit()
+
+
+def latest_trade_day() -> Optional[date]:
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT trade_date
+            FROM trades
+            WHERE trade_date IS NOT NULL AND trade_date != ''
+            ORDER BY trade_date DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        return datetime.strptime(row["trade_date"], "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def latest_balance_overall(as_of: str | None = None) -> float:
+    starting = get_setting_float("starting_balance", 50000.0)
+    with db() as conn:
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+        except Exception:
+            return float(starting)
+
+        def _pick(existing: list[str], preferred: list[str]) -> str | None:
+            for c in preferred:
+                if c in existing:
+                    return c
+            return None
+
+        pnl_col = _pick(
+            cols,
+            ["net_pl", "pnl", "profit_loss", "pl", "profit", "p_l", "net_pnl"],
+        )
+        if not pnl_col:
+            return float(starting)
+        date_col = _pick(cols, ["trade_date", "date", "day"])
+
+        def _q(col: str) -> str:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", col):
+                raise ValueError(f"Unsafe column name: {col}")
+            return f'"{col}"'
+
+        try:
+            pnl_q = _q(pnl_col)
+            if as_of and date_col:
+                row = conn.execute(
+                    f"SELECT COALESCE(SUM(CAST({pnl_q} AS REAL)), 0) FROM trades WHERE {_q(date_col)} <= ?",
+                    (str(as_of),),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    f"SELECT COALESCE(SUM(CAST({pnl_q} AS REAL)), 0) FROM trades"
+                ).fetchone()
+            total = float(row[0] or 0.0)
+        except Exception:
+            total = 0.0
+    return float(starting + total)
+
+
+def balance_integrity_snapshot(as_of: str | None = None, tolerance: float = 0.01) -> Dict[str, Any]:
+    derived = float(latest_balance_overall(as_of=as_of))
+    out: Dict[str, Any] = {
+        "derived_balance": derived,
+        "stored_balance": None,
+        "delta": None,
+        "has_drift": False,
+        "tolerance": float(tolerance),
+    }
+    with db() as conn:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+
+        def _pick(existing: list[str], preferred: list[str]) -> str | None:
+            for c in preferred:
+                if c in existing:
+                    return c
+            return None
+
+        bal_col = _pick(cols, ["balance", "running_balance", "equity", "account_balance"])
+        if not bal_col:
+            return out
+        date_col = _pick(cols, ["trade_date", "date", "day"])
+
+        def _q(col: str) -> str:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", col):
+                raise ValueError(f"Unsafe column name: {col}")
+            return f'"{col}"'
+
+        acct_filter = " AND COALESCE(ticker, '') <> 'ACCT'" if "ticker" in cols else ""
+        if as_of and date_col:
+            row = conn.execute(
+                f"""
+                SELECT {_q(bal_col)}
+                FROM trades
+                WHERE {_q(bal_col)} IS NOT NULL AND {_q(date_col)} <= ?{acct_filter}
+                ORDER BY {_q(date_col)} DESC, id DESC
+                LIMIT 1
+                """,
+                (str(as_of),),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                f"""
+                SELECT {_q(bal_col)}
+                FROM trades
+                WHERE {_q(bal_col)} IS NOT NULL{acct_filter}
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+    if not row or row[0] is None:
+        return out
+    try:
+        stored = float(row[0])
+    except Exception:
+        return out
+    delta = derived - stored
+    out["stored_balance"] = stored
+    out["delta"] = delta
+    out["has_drift"] = abs(delta) > float(tolerance)
+    return out
+
+
+def month_heatmap(year: int, month: int) -> Dict[str, Any]:
+    first = date(year, month, 1)
+    nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    days_in_month = (nxt - first).days
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT trade_date, COALESCE(SUM(net_pl), 0) AS net
+            FROM trades
+            WHERE trade_date >= ? AND trade_date < ?
+            GROUP BY trade_date
+            """,
+            (first.isoformat(), nxt.isoformat()),
+        ).fetchall()
+        bal_rows = conn.execute(
+            """
+            SELECT trade_date, balance, id
+            FROM trades
+            WHERE trade_date >= ? AND trade_date < ? AND balance IS NOT NULL
+            ORDER BY trade_date ASC, id ASC
+            """,
+            (first.isoformat(), nxt.isoformat()),
+        ).fetchall()
+    daily_net = {r["trade_date"]: float(r["net"] or 0.0) for r in rows}
+    daily_balance: Dict[str, float] = {}
+    for r in bal_rows:
+        try:
+            daily_balance[r["trade_date"]] = float(r["balance"])
+        except Exception:
+            pass
+    start_weekday = (first.weekday() + 1) % 7
+    cells: List[tuple[Optional[int], float, str, Optional[int]]] = []
+    max_abs = 0.0
+    for _ in range(start_weekday):
+        cells.append((None, 0.0, "", None))
+    for daynum in range(1, days_in_month + 1):
+        iso = date(year, month, daynum).isoformat()
+        net = daily_net.get(iso, 0.0)
+        max_abs = max(max_abs, abs(net))
+        cells.append((daynum, net, iso, date(year, month, daynum).weekday()))
+    while len(cells) % 7 != 0:
+        cells.append((None, 0.0, "", None))
+    return {
+        "year": year,
+        "month": month,
+        "weeks": [cells[i : i + 7] for i in range(0, len(cells), 7)],
+        "max_abs": max_abs or 1.0,
+        "daily_balance": daily_balance,
+    }
+
+
+def last_n_trading_day_totals(n: int = 20) -> List[float]:
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT trade_date, COALESCE(SUM(net_pl),0) AS net
+            FROM trades
+            GROUP BY trade_date
+            ORDER BY trade_date DESC
+            LIMIT 200
+            """
+        ).fetchall()
+    out: List[float] = []
+    for r in rows:
+        try:
+            d = datetime.strptime(r["trade_date"], "%Y-%m-%d").date()
+        except Exception:
+            continue
+        if d.weekday() >= 5:
+            continue
+        out.append(float(r["net"] or 0.0))
+        if len(out) >= n:
+            break
+    return out
+
+
+def projections_from_daily(
+    daily_vals: List[float], base_balance: Optional[float]
+) -> Dict[str, Any]:
+    avg = (sum(daily_vals) / len(daily_vals)) if daily_vals else 0.0
+    base = float(base_balance or 0.0)
+
+    def _proj(days: int) -> Dict[str, Any]:
+        est = avg * days
+        return {"days": days, "daily_avg": avg, "est_pnl": est, "est_balance": base + est}
+
+    return {"avg": avg, "base_balance": base, "p5": _proj(5), "p10": _proj(10), "p20": _proj(20)}
+
+
+def month_total_net(year: int, month: int) -> float:
+    first = date(year, month, 1)
+    nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(net_pl), 0) AS net
+            FROM trades
+            WHERE trade_date >= ? AND trade_date < ?
+            """,
+            (first.isoformat(), nxt.isoformat()),
+        ).fetchone()
+    return float(row["net"] or 0.0)
+
+
+def ytd_total_net(year: int) -> float:
+    start = date(year, 1, 1)
+    end = date(year + 1, 1, 1)
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(net_pl), 0) AS net
+            FROM trades
+            WHERE trade_date >= ? AND trade_date < ?
+            """,
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()
+    return float(row["net"] or 0.0)
+
+
+def month_trade_count(year: int, month: int) -> int:
+    first = date(year, month, 1)
+    nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM trades
+            WHERE trade_date >= ? AND trade_date < ?
+            """,
+            (first.isoformat(), nxt.isoformat()),
+        ).fetchone()
+    return int(row["c"] or 0)
+
+
+def ytd_trade_count(year: int) -> int:
+    start = date(year, 1, 1)
+    end = date(year + 1, 1, 1)
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM trades
+            WHERE trade_date >= ? AND trade_date < ?
+            """,
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()
+    return int(row["c"] or 0)

@@ -1,0 +1,145 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">{{ title }}</div>
+  <div class="tiny stack10 line16">
+    Document observations, execution, and lessons with clarity.
+  </div>
+
+  {% if errors %}
+    <div class="hr"></div>
+    <div class="tiny metaRed">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
+  {% endif %}
+
+  <div class="hr"></div>
+  <form method="post" action="{{ action }}">
+    <div class="row">
+      <div>
+        <label>📆 Date</label>
+        <input id="journal-entry-date" type="date" name="entry_date" value="{{ values.get('entry_date','') }}">
+      </div>
+      <div>
+        <label>🏷️ Market</label>
+        <input name="market" value="{{ values.get('market','') }}" placeholder="SPX / QQQ / NQ...">
+      </div>
+      <div>
+        <label>📌 Setup</label>
+        <input name="setup" value="{{ values.get('setup','') }}" placeholder="Midday CE Strike...">
+      </div>
+    </div>
+
+    <div class="row stack10">
+      <div>
+        <label>🧠 Grade</label>
+        <input name="grade" value="{{ values.get('grade','') }}" placeholder="A / B / C...">
+      </div>
+      <div>
+        <label>😶‍🌫️ Mood</label>
+        <input name="mood" value="{{ values.get('mood','') }}" placeholder="Calm / anxious / revenge...">
+      </div>
+      <div>
+        <label>💰 PnL</label>
+        <input name="pnl" inputmode="decimal" value="{{ values.get('pnl','') }}" placeholder="e.g. 327.90">
+      </div>
+    </div>
+
+    <div class="row stack10">
+      <div>
+        <label>🧩 Entry Type</label>
+        <select name="entry_type">
+          {% set et = values.get('entry_type','post_market') %}
+          <option value="pre_market" {% if et == 'pre_market' %}selected{% endif %}>Pre-Market Plan</option>
+          <option value="trade_debrief" {% if et == 'trade_debrief' %}selected{% endif %}>Trade Debrief</option>
+          <option value="post_market" {% if et == 'post_market' %}selected{% endif %}>Post-Market Review</option>
+        </select>
+      </div>
+      <div>
+        <label>🔁 Day Link Mode</label>
+        <label class="pillRow stack8">
+          <input id="journal-link-all-day" type="checkbox" name="link_all_day" value="1" {% if values.get('link_all_day') == '1' %}checked{% endif %}>
+          Link all trades for selected date
+        </label>
+      </div>
+      <div class="fieldGrow2">
+        <label>🔗 Linked Trade IDs (comma separated)</label>
+        <input name="linked_trade_ids" value="{{ values.get('linked_trade_ids','') }}" placeholder="e.g. 101,102">
+      </div>
+    </div>
+
+    <div class="stack12">
+      <label>📌 Linked Trades (multi-select)</label>
+      {% if available_trades|length == 0 %}
+        <div class="tiny mb6">
+          No trades found for <b>{{ values.get('entry_date','(no date)') }}</b>. Change date to a trading day or save with Day Link Mode after setting the date.
+        </div>
+      {% else %}
+        <div class="tiny mb6">
+          Showing {{ available_trades|length }} trade{{ '' if available_trades|length == 1 else 's' }} for <b>{{ values.get('entry_date','') }}</b>.
+        </div>
+      {% endif %}
+      <select id="journal-linked-trades" name="linked_trade_ids_multi" multiple size="8">
+        {% for t in available_trades %}
+          <option value="{{ t['id'] }}" {% if t['id'] in selected_trade_ids_set %}selected{% endif %}>
+            #{{ t['id'] }} • {{ t['trade_date'] }} {{ t.get('entry_time') or '' }} • {{ t.get('ticker') or '—' }} {{ t.get('opt_type') or '' }} • Net {{ money(t.get('net_pl') or 0) }}
+          </option>
+        {% endfor %}
+      </select>
+      <div class="tiny stack8">
+        Tip: Hold Cmd/Ctrl to select multiple trades. For Post-Market Review, enable Day Link Mode to auto-link everything from that date.
+      </div>
+    </div>
+
+    <div class="stack12">
+      <label>🗂️ Template Notes</label>
+      <textarea name="template_notes" placeholder="Planned levels, risk model, follow-up checklist...">{{ values.get('template_notes','') }}</textarea>
+    </div>
+
+    <div class="stack12">
+      <label>📝 Notes</label>
+      <textarea name="notes" placeholder="Capture context, execution, and improvement plan...">{{ values.get('notes','') }}</textarea>
+    </div>
+
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">💾 Save</button>
+      <a class="btn" href="/journal">← Back</a>
+    </div>
+  </form>
+</div></div>
+<script>
+  (function(){
+    const dateInput = document.getElementById("journal-entry-date");
+    const tradeSelect = document.getElementById("journal-linked-trades");
+    const linkAllDay = document.getElementById("journal-link-all-day");
+    if(!dateInput || !tradeSelect){ return; }
+
+    function fmtMoney(v){
+      const n = Number(v || 0);
+      return n.toLocaleString(undefined, {style:"currency", currency:"USD"});
+    }
+
+    async function refreshTradesForDate(){
+      const d = (dateInput.value || "").trim();
+      if(!d){ tradeSelect.innerHTML = ""; return; }
+      const resp = await fetch(`/journal/trades-for-date?d=${encodeURIComponent(d)}`);
+      if(!resp.ok){ return; }
+      const data = await resp.json();
+      tradeSelect.innerHTML = "";
+      (data.trades || []).forEach((t)=>{
+        const opt = document.createElement("option");
+        opt.value = String(t.id);
+        opt.textContent = `#${t.id} • ${t.trade_date} ${t.entry_time || ""} • ${t.ticker || "—"} ${t.opt_type || ""} • Net ${fmtMoney(t.net_pl || 0)}`;
+        if(linkAllDay && linkAllDay.checked){
+          opt.selected = true;
+        }
+        tradeSelect.appendChild(opt);
+      });
+    }
+
+    dateInput.addEventListener("change", refreshTradesForDate);
+    if(linkAllDay){
+      linkAllDay.addEventListener("change", ()=>{
+        const on = linkAllDay.checked;
+        Array.from(tradeSelect.options).forEach((o)=>{ o.selected = on; });
+      });
+    }
+  })();
+</script>

@@ -6,7 +6,15 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from flask import abort, jsonify, redirect, render_template_string, request, url_for
+from flask import (
+    abort,
+    jsonify,
+    redirect,
+    render_template,
+    render_template_string,
+    request,
+    url_for,
+)
 
 from mccain_capital.repositories import journal as repo
 from mccain_capital.repositories import trades as trades_repo
@@ -28,154 +36,8 @@ def _entry_form(
     selected_trade_ids_set = {int(i) for i in selected_trade_ids if int(i) > 0}
     action = "/new" if mode == "new" else f"/edit/{entry_id}"
     title = "➕ New Entry" if mode == "new" else f"✏️ Edit Entry #{entry_id}"
-    return render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">{{ title }}</div>
-          <div class="tiny stack10 line16">
-            Document observations, execution, and lessons with clarity.
-          </div>
-
-          {% if errors %}
-            <div class="hr"></div>
-            <div class="tiny metaRed">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
-          {% endif %}
-
-          <div class="hr"></div>
-          <form method="post" action="{{ action }}">
-            <div class="row">
-              <div>
-                <label>📆 Date</label>
-                <input id="journal-entry-date" type="date" name="entry_date" value="{{ values.get('entry_date','') }}">
-              </div>
-              <div>
-                <label>🏷️ Market</label>
-                <input name="market" value="{{ values.get('market','') }}" placeholder="SPX / QQQ / NQ...">
-              </div>
-              <div>
-                <label>📌 Setup</label>
-                <input name="setup" value="{{ values.get('setup','') }}" placeholder="Midday CE Strike...">
-              </div>
-            </div>
-
-            <div class="row stack10">
-              <div>
-                <label>🧠 Grade</label>
-                <input name="grade" value="{{ values.get('grade','') }}" placeholder="A / B / C...">
-              </div>
-              <div>
-                <label>😶‍🌫️ Mood</label>
-                <input name="mood" value="{{ values.get('mood','') }}" placeholder="Calm / anxious / revenge...">
-              </div>
-              <div>
-                <label>💰 PnL</label>
-                <input name="pnl" inputmode="decimal" value="{{ values.get('pnl','') }}" placeholder="e.g. 327.90">
-              </div>
-            </div>
-
-            <div class="row stack10">
-              <div>
-                <label>🧩 Entry Type</label>
-                <select name="entry_type">
-                  {% set et = values.get('entry_type','post_market') %}
-                  <option value="pre_market" {% if et == 'pre_market' %}selected{% endif %}>Pre-Market Plan</option>
-                  <option value="trade_debrief" {% if et == 'trade_debrief' %}selected{% endif %}>Trade Debrief</option>
-                  <option value="post_market" {% if et == 'post_market' %}selected{% endif %}>Post-Market Review</option>
-                </select>
-              </div>
-              <div>
-                <label>🔁 Day Link Mode</label>
-                <label class="pillRow stack8">
-                  <input id="journal-link-all-day" type="checkbox" name="link_all_day" value="1" {% if values.get('link_all_day') == '1' %}checked{% endif %}>
-                  Link all trades for selected date
-                </label>
-              </div>
-              <div class="fieldGrow2">
-                <label>🔗 Linked Trade IDs (comma separated)</label>
-                <input name="linked_trade_ids" value="{{ values.get('linked_trade_ids','') }}" placeholder="e.g. 101,102">
-              </div>
-            </div>
-
-            <div class="stack12">
-              <label>📌 Linked Trades (multi-select)</label>
-              {% if available_trades|length == 0 %}
-                <div class="tiny mb6">
-                  No trades found for <b>{{ values.get('entry_date','(no date)') }}</b>. Change date to a trading day or save with Day Link Mode after setting the date.
-                </div>
-              {% else %}
-                <div class="tiny mb6">
-                  Showing {{ available_trades|length }} trade{{ '' if available_trades|length == 1 else 's' }} for <b>{{ values.get('entry_date','') }}</b>.
-                </div>
-              {% endif %}
-              <select id="journal-linked-trades" name="linked_trade_ids_multi" multiple size="8">
-                {% for t in available_trades %}
-                  <option value="{{ t['id'] }}" {% if t['id'] in selected_trade_ids_set %}selected{% endif %}>
-                    #{{ t['id'] }} • {{ t['trade_date'] }} {{ t.get('entry_time') or '' }} • {{ t.get('ticker') or '—' }} {{ t.get('opt_type') or '' }} • Net {{ money(t.get('net_pl') or 0) }}
-                  </option>
-                {% endfor %}
-              </select>
-              <div class="tiny stack8">
-                Tip: Hold Cmd/Ctrl to select multiple trades. For Post-Market Review, enable Day Link Mode to auto-link everything from that date.
-              </div>
-            </div>
-
-            <div class="stack12">
-              <label>🗂️ Template Notes</label>
-              <textarea name="template_notes" placeholder="Planned levels, risk model, follow-up checklist...">{{ values.get('template_notes','') }}</textarea>
-            </div>
-
-            <div class="stack12">
-              <label>📝 Notes</label>
-              <textarea name="notes" placeholder="Capture context, execution, and improvement plan...">{{ values.get('notes','') }}</textarea>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save</button>
-              <a class="btn" href="/journal">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        <script>
-          (function(){
-            const dateInput = document.getElementById("journal-entry-date");
-            const tradeSelect = document.getElementById("journal-linked-trades");
-            const linkAllDay = document.getElementById("journal-link-all-day");
-            if(!dateInput || !tradeSelect){ return; }
-
-            function fmtMoney(v){
-              const n = Number(v || 0);
-              return n.toLocaleString(undefined, {style:"currency", currency:"USD"});
-            }
-
-            async function refreshTradesForDate(){
-              const d = (dateInput.value || "").trim();
-              if(!d){ tradeSelect.innerHTML = ""; return; }
-              const resp = await fetch(`/journal/trades-for-date?d=${encodeURIComponent(d)}`);
-              if(!resp.ok){ return; }
-              const data = await resp.json();
-              tradeSelect.innerHTML = "";
-              (data.trades || []).forEach((t)=>{
-                const opt = document.createElement("option");
-                opt.value = String(t.id);
-                opt.textContent = `#${t.id} • ${t.trade_date} ${t.entry_time || ""} • ${t.ticker || "—"} ${t.opt_type || ""} • Net ${fmtMoney(t.net_pl || 0)}`;
-                if(linkAllDay && linkAllDay.checked){
-                  opt.selected = true;
-                }
-                tradeSelect.appendChild(opt);
-              });
-            }
-
-            dateInput.addEventListener("change", refreshTradesForDate);
-            if(linkAllDay){
-              linkAllDay.addEventListener("change", ()=>{
-                const on = linkAllDay.checked;
-                Array.from(tradeSelect.options).forEach((o)=>{ o.selected = on; });
-              });
-            }
-          })();
-        </script>
-        """,
+    return render_template(
+        "journal/entry_form.html",
         title=title,
         action=action,
         values=values,
@@ -191,93 +53,8 @@ def journal_home():
     d = request.args.get("d", "")
     entries = [dict(r) for r in repo.fetch_entries(q=q, d=d)]
 
-    content = render_template_string(
-        """
-        <div class="card pageHero">
-          <div class="toolbar">
-            <div class="pageHeroHead">
-              <div>
-                <div class="pill">📝 Journal Workspace</div>
-                <h2 class="pageTitle">Reflection & Review</h2>
-                <div class="pageSub">Capture context, decision quality, and lessons with linked trades so patterns are easy to study later.</div>
-              </div>
-              <div class="actionRow">
-                <a class="btn primary" href="{{ url_for('new_entry') }}">➕ New Entry</a>
-                <a class="btn" href="{{ url_for('journal_weekly_review') }}">📅 Weekly Review</a>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <form method="get" action="/journal" class="row">
-              <div class="fieldGrow2">
-                <label for="search">🔎 Search Journal 🧠</label>
-                <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
-              </div>
-              <div class="fieldGrow1">
-                <label>📆 Date</label>
-                <input type="date" name="d" value="{{ d }}" />
-              </div>
-              <div class="actionRow">
-                <button class="btn" type="submit">🧲 Filter</button>
-                <a class="btn" href="/journal">♻️ Reset</a>
-                <a class="btn primary" href="{{ url_for('new_entry') }}">➕ New Entry</a>
-                <a class="btn" href="{{ url_for('journal_weekly_review') }}">📅 Weekly Review</a>
-              </div>
-            </form>
-            <div class="hr"></div>
-            <div class="meta">🧾 {{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} found</div>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">🎯 Daily Focus</div>
-            <div class="focusList">
-              <div>✅ Rules first (or it’s gambling 🎰).</div>
-              <div>✅ Confirmation > Hope 👀</div>
-              <div>✅ Size + stop respected 🛑</div>
-              <div class="stack10">Journal: <b>what you saw</b> → <b>what you did</b> → <b>what you learned</b> 🧱</div>
-            </div>
-          </div></div>
-        </div>
-
-        <div class="grid">
-          {% for e in entries %}
-            <div class="card entry">
-              <div class="entryTop">
-                <div>
-                  <div class="pillRow">
-                    <div class="pill">📆 {{ e['entry_date'] }}</div>
-                    <div class="pill">🧩 {{ (e.get('entry_type') or 'post_market').replace('_',' ').title() }}</div>
-                    {% if e['market'] %}<div class="meta">🏷️ Market: <b>{{ e['market'] }}</b></div>{% endif %}
-                    {% if e['setup'] %}<div class="meta">📌 Setup: <b>{{ e['setup'] }}</b></div>{% endif %}
-                  </div>
-                  <div class="metaRow">
-                    {% if e['grade'] %}<span class="meta">🧠 Grade: <b>{{ e['grade'] }}</b></span>{% endif %}
-                    {% if e['mood'] %}<span class="meta">😶‍🌫️ Mood: <b>{{ e['mood'] }}</b></span>{% endif %}
-                    {% if e['pnl'] is not none %}<span class="meta">💰 PnL: <b>{{ money(e['pnl']) }}</b></span>{% endif %}
-                    {% if e.get('linked_trades', 0) > 0 %}<span class="meta">🔗 Trades: <b>{{ e.get('linked_trades') }}</b></span>{% endif %}
-                    <span class="meta">🕒 Updated: {{ e['updated_at'] }}</span>
-                  </div>
-                </div>
-
-                <div class="rightActions">
-                  <a class="btn" href="{{ url_for('edit_entry', entry_id=e['id']) }}">✏️ Edit</a>
-                  <form id="del-e-{{ e['id'] }}" method="post" action="{{ url_for('delete_entry_route', entry_id=e['id']) }}" class="inlineForm"></form>
-                  <button class="btn danger" type="button" onclick="confirmDelete('del-e-{{ e['id'] }}')">🗑️</button>
-                </div>
-              </div>
-
-              <div class="notes">{{ e['notes'] }}</div>
-            </div>
-          {% endfor %}
-
-          {% if entries|length == 0 %}
-            <div class="card entry"><div class="meta">No journal entries yet. Hit <b>New Entry</b>. 📝</div></div>
-          {% endif %}
-        </div>
-        """,
+    content = render_template(
+        "journal/home.html",
         q=q,
         d=d,
         entries=entries,

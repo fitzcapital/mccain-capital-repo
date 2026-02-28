@@ -1,0 +1,17 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">♻️ Restore Backup</div>
+  <div class="tiny" style="margin-top:10px;line-height:1.6">
+    Upload a backup zip created from <b>/admin/backup</b>.<br>
+    This will replace <b>{{ db_path }}</b> and merge files into <b>{{ upload_dir }}</b>.
+  </div>
+  <div class="hr"></div>
+  <form method="post" enctype="multipart/form-data">
+    <label>Backup ZIP</label>
+    <input type="file" name="backup_zip" accept=".zip,application/zip" required />
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn danger" type="submit">Restore</button>
+      <a class="btn" href="/dashboard">Cancel</a>
+    </div>
+  </form>
+</div></div>

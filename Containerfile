@@ -40,7 +40,10 @@ COPY . .
 
 # App listens on 5001 by default (matches app.py)
 ENV PORT=5001
+ENV AUTO_SYNC_PASSWORD_FALLBACK=1
 EXPOSE 5001
 
-# Gunicorn for production
-CMD ["gunicorn", "-b", "0.0.0.0:5001", "mccain_capital.wsgi:app"]
+# Gunicorn for production.
+# Live broker sync can exceed the default 30s request timeout, so raise the timeout
+# and keep an extra worker available while one request is busy running Playwright.
+CMD ["gunicorn", "--workers", "2", "--timeout", "180", "--graceful-timeout", "30", "-b", "0.0.0.0:5001", "mccain_capital.wsgi:app"]

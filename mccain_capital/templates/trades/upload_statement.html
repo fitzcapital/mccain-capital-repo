@@ -1,4 +1,5 @@
-{% set ws = workspace or 'upload' %}
+{% from "partials/async_job_macros.html" import runway %}
+{% set ws = workspace or 'live' %}
 {% set last = sync_status or {} %}
 <div class="card stack12">
   <div class="toolbar">
@@ -6,8 +7,8 @@
     <div class="tiny stack8 line15">Use focused tabs to avoid clutter while keeping all import tools in one place.</div>
     <div class="hr"></div>
     <div class="leftActions">
-      <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">📄 Upload</a>
       <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">🤖 Live Sync</a>
+      <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">📄 Upload</a>
       <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
       <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
     </div>
@@ -50,6 +51,47 @@
 {% endif %}
 
 {% if ws == 'live' %}
+{% set job = sync_job or {} %}
+{% if job %}
+<div class="card stack12" id="sync-job-card" data-job-id="{{ job.get('id') }}">
+  <div class="toolbar">
+    <div class="pill">🛰️ Sync Job Status</div>
+    <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
+    {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
+    <div class="statRow">
+      <div class="stat">
+        <div class="k">Status</div>
+        <div class="v" id="sync-job-status">{{ (job.get('status') or 'queued')|replace('_', ' ')|title }}</div>
+      </div>
+      <div class="stat">
+        <div class="k">Stage</div>
+        <div class="v" id="sync-job-stage">{{ (job.get('stage') or 'start')|replace('_', ' ')|title }}</div>
+      </div>
+      <div class="stat">
+        <div class="k">Duration</div>
+        <div class="v" id="sync-job-duration">{% if job.get('duration_sec') is not none %}{{ '%.1f'|format(job.get('duration_sec')) }}s{% else %}—{% endif %}</div>
+      </div>
+      <div class="stat">
+        <div class="k">Inserted</div>
+        <div class="v" id="sync-job-inserted">{{ ((job.get('summary') or {}).get('inserted')) or 0 }}</div>
+      </div>
+    </div>
+    <div class="tiny stack8 line16" id="sync-job-summary">
+      {% set summary = job.get('summary') or {} %}
+      {% if summary %}
+      Result: {{ summary.get('message') or job.get('message') or 'In progress.' }}
+      {% if summary.get('warn_count') %} · Warnings: {{ summary.get('warn_count') }}{% endif %}
+      {% if summary.get('error_count') %} · Errors: {{ summary.get('error_count') }}{% endif %}
+      {% endif %}
+    </div>
+    <div class="stack10" id="sync-job-artifacts">
+      {% for rel in (summary.get('artifacts_rel') or [])[:6] %}
+      <div><a class="btn" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">{{ rel }}</a></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
 {% if last %}
 <div class="card stack12">
   <div class="toolbar">
@@ -60,7 +102,7 @@
       <div class="stat">
         <div class="k">Status</div>
         <div class="v">{{ (last.get('status') or 'unknown')|upper }}</div>
-        <div class="tiny">Updated: {{ last.get('updated_at') or '—' }}</div>
+        <div class="tiny">Updated: {{ last.get('updated_at_human') or last.get('updated_at') or '—' }}</div>
       </div>
       <div class="stat">
         <div class="k">Failure Stage</div>
@@ -260,19 +302,26 @@
         <div class="stack10">
           <label><input type="checkbox" name="auto_clear_password" value="1" /> Clear stored keychain password</label>
         </div>
-        <div class="tiny stack10">
-          Keychain: {% if auto.get('keyring_available') %}<b>available</b>{% else %}<b>not available</b>{% endif %}
-          · Password: {% if auto.get('password_stored') %}<b>stored</b>{% else %}<b>not stored</b>{% endif %}
-          {% if auto_sync_password_fallback %}
-          · Storage: <b>keychain with container fallback enabled</b>
+        <div class="tiny stack10 line16" id="auto-sync-credential-status">
+          {% if auto.get('password_stored') %}
+          Credential status: <b>ready</b> for scheduled runs.
           {% else %}
-          · Storage: <b>keychain only</b>
+          Credential status: <b>setup needed</b>. Run Now uses saved credentials only. Click Save Auto Sync first.
           {% endif %}
         </div>
       </div>
       <details class="syncDetails stack10">
         <summary>⚙️ Connection Settings</summary>
         <div class="stack10">
+          <div class="tiny stack8 line15">
+            Keychain: {% if auto.get('keyring_available') %}<b>available</b>{% else %}<b>not available</b>{% endif %}
+            · Password: {% if auto.get('password_stored') %}<b>stored</b>{% else %}<b>not stored</b>{% endif %}
+            {% if auto_sync_password_fallback %}
+            · Storage: <b>keychain with container fallback enabled</b>
+            {% else %}
+            · Storage: <b>keychain only</b>
+            {% endif %}
+          </div>
           <div class="row">
             <div class="fieldGrow2">
               <label>Base Origin</label>
@@ -302,7 +351,7 @@
       <div class="hr"></div>
       <div class="rightActions">
         <button class="btn primary" type="submit" id="auto-sync-config-submit">💾 Save Auto Sync</button>
-        <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit">▶ Run Now</button>
+        <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if not auto.get('password_stored') %}disabled title="Save Auto Sync first so credentials are stored"{% endif %}>▶ Run Now</button>
       </div>
       <div class="tiny stack8" id="auto-sync-config-loading" style="display:none;" aria-live="polite">
         ⏳ Saving auto sync settings...
@@ -310,6 +359,7 @@
       <div class="tiny stack8" id="auto-sync-run-loading" style="display:none;" aria-live="polite">
         ⏳ Running auto sync now (login + generate + import)...
       </div>
+      {{ runway('auto-sync-runway', ['Load credentials', 'Login', 'Generate', 'Import'], badge='Running', label='Preparing sync run...', label_id='auto-sync-stage-label') }}
       <div class="tiny stack10 line16">
         {% if auto_sync_password_fallback %}
         Security note: prefers OS keychain; if unavailable, password is stored encrypted in container config.
@@ -357,20 +407,19 @@
           <input type="password" name="password" placeholder="Vanquish password" />
         </div>
       </div>
-      <div class="row">
-        <div class="fieldGrow2">
-          <label>Base Origin</label>
-          <input name="base_url" value="{{ broker_cfg.base_url }}" />
-        </div>
-        <div class="fieldGrow2">
-          <label>Account</label>
-          <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
-        </div>
-      </div>
-
       <details class="syncDetails stack10">
         <summary>⚙️ Advanced Sync Options</summary>
         <div class="stack10">
+          <div class="row">
+            <div class="fieldGrow2">
+              <label>Base Origin</label>
+              <input name="base_url" value="{{ broker_cfg.base_url }}" />
+            </div>
+            <div class="fieldGrow2">
+              <label>Account</label>
+              <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
+            </div>
+          </div>
           <div class="row">
             <div>
               <label>Whitelist</label>
@@ -415,13 +464,16 @@
       <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">
         ⏳ Live sync in progress. Logging in, generating statement, and importing. This can take 20-60 seconds.
       </div>
+      {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge='Live', label='Opening broker session...', label_id='live-sync-stage-label') }}
     </form>
   </div>
 </div>
 {% endif %}
 
+{% include "partials/async_job_helpers.html" %}
 <script>
   (function() {
+    const jobs = window.McAsyncJobs;
     function bindLoading(formId, submitId, loadingId, busyText) {
       const form = document.getElementById(formId);
       const submitBtn = document.getElementById(submitId);
@@ -434,14 +486,190 @@
       });
     }
 
+    function bindSyncRunway(formId, runwayId, labelId, stageLabels) {
+      const form = document.getElementById(formId);
+      const runway = document.getElementById(runwayId);
+      const label = document.getElementById(labelId);
+      if (!form || !runway || !label || !Array.isArray(stageLabels) || stageLabels.length === 0) return;
+      const steps = Array.from(runway.querySelectorAll('.syncStep'));
+      form.addEventListener('submit', function() {
+        let idx = 0;
+        if (jobs) {
+          jobs.setRunwayState(runway, { badge: runway.querySelector('.syncBadge')?.textContent || 'Running', label: stageLabels[0], stepIndex: 0 });
+        } else {
+          runway.style.display = 'block';
+          label.textContent = stageLabels[0];
+          steps.forEach((step, stepIdx) => {
+            step.classList.toggle('is-active', stepIdx === 0);
+            step.classList.toggle('is-done', false);
+          });
+        }
+        const tick = window.setInterval(function() {
+          idx = Math.min(idx + 1, stageLabels.length - 1);
+          if (jobs) {
+            jobs.setRunwayState(runway, { badge: runway.querySelector('.syncBadge')?.textContent || 'Running', label: stageLabels[idx], stepIndex: idx });
+          } else {
+            label.textContent = stageLabels[idx];
+            steps.forEach((step, stepIdx) => {
+              step.classList.toggle('is-done', stepIdx < idx);
+              step.classList.toggle('is-active', stepIdx === idx);
+            });
+          }
+          if (idx >= stageLabels.length - 1) {
+            window.clearInterval(tick);
+          }
+        }, 1400);
+      });
+    }
+
+    function syncStepIndex(stage) {
+      const order = ['open_login', 'submit_login', 'generate_statement', 'import_complete'];
+      const idx = order.indexOf(stage);
+      if (idx >= 0) return idx;
+      if (stage === 'locate_username' || stage === 'fill_username' || stage === 'locate_password') return 0;
+      if (stage === 'open_workspace_menu' || stage === 'open_statement_dialog' || stage === 'configure_statement_period') return 2;
+      if (stage === 'parse_statement_html' || stage === 'reconcile_gate' || stage === 'import_trades' || stage === 'capture_statement_html') return 3;
+      return 0;
+    }
+
+    function updateJobCard(job) {
+      const card = document.getElementById('sync-job-card');
+      if (!card || !job) return;
+      const statusText = String(job.status || 'queued').replaceAll('_', ' ');
+      const stageText = String(job.stage || 'start').replaceAll('_', ' ');
+      const terminal = !['queued', 'running'].includes(String(job.status || ''));
+      const summary = job.summary || {};
+      const statusEl = document.getElementById('sync-job-status');
+      const badgeEl = document.getElementById('sync-job-badge');
+      const stageEl = document.getElementById('sync-job-stage');
+      const stageLabelEl = document.getElementById('sync-job-stage-label');
+      const messageEl = document.getElementById('sync-job-message');
+      const durationEl = document.getElementById('sync-job-duration');
+      const insertedEl = document.getElementById('sync-job-inserted');
+      const summaryEl = document.getElementById('sync-job-summary');
+      const artifactsEl = document.getElementById('sync-job-artifacts');
+      if (statusEl) statusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
+      if (badgeEl) badgeEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
+      if (stageEl) stageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
+      if (stageLabelEl) stageLabelEl.textContent = job.message || stageText;
+      if (messageEl) messageEl.textContent = job.message || 'Working...';
+      if (durationEl) durationEl.textContent = (job.duration_sec !== null && job.duration_sec !== undefined) ? `${Number(job.duration_sec).toFixed(1)}s` : '—';
+      if (insertedEl) insertedEl.textContent = String(summary.inserted || 0);
+      if (summaryEl) {
+        let txt = summary.message || job.message || 'Working...';
+        if (summary.warn_count) txt += ` · Warnings: ${summary.warn_count}`;
+        if (summary.error_count) txt += ` · Errors: ${summary.error_count}`;
+        summaryEl.textContent = txt;
+      }
+      if (artifactsEl) {
+        const links = Array.isArray(summary.artifacts_rel) ? summary.artifacts_rel.slice(0, 6) : [];
+        artifactsEl.innerHTML = links.map(rel => `<div><a class="btn" href="/trades/sync/debug/${rel}" target="_blank" rel="noopener">${rel}</a></div>`).join('');
+      }
+      const steps = Array.from(card.querySelectorAll('.syncStep'));
+      const trackBar = card.querySelector('.syncTrackBar');
+      const idx = syncStepIndex(String(job.stage || 'start'));
+      steps.forEach((step, stepIdx) => {
+        const done = stepIdx < idx || ['success', 'debug_only'].includes(String(job.status || ''));
+        const active = !done && stepIdx === idx && !['success', 'failed', 'debug_only'].includes(String(job.status || ''));
+        step.classList.toggle('is-done', done);
+        step.classList.toggle('is-active', active);
+      });
+      if (trackBar) {
+        if (terminal) {
+          if (jobs) {
+            jobs.setTerminalTrack(trackBar, String(job.status || '') === 'failed');
+          } else {
+            trackBar.style.animation = 'none';
+            trackBar.style.transform = 'translateX(0)';
+            trackBar.style.left = '0';
+            trackBar.style.width = String(job.status || '') === 'failed' ? '42%' : '100%';
+            trackBar.style.background = String(job.status || '') === 'failed'
+              ? 'linear-gradient(90deg, rgba(231,76,60,.9) 0%, rgba(231,76,60,.55) 100%)'
+              : 'linear-gradient(90deg, rgba(46,204,113,.92) 0%, rgba(var(--accent-rgb),.95) 100%)';
+          }
+        } else {
+          if (jobs) {
+            jobs.resetTrack(trackBar);
+          } else {
+            trackBar.style.animation = '';
+            trackBar.style.transform = '';
+            trackBar.style.left = '';
+            trackBar.style.width = '';
+            trackBar.style.background = '';
+          }
+        }
+      }
+    }
+
+    function pollJobCard() {
+      const card = document.getElementById('sync-job-card');
+      if (!card) return;
+      const jobId = card.getAttribute('data-job-id');
+      if (!jobId) return;
+      const tick = function() {
+        fetch(`/trades/sync/job/${jobId}`, { headers: { 'Accept': 'application/json' } })
+          .then(r => r.ok ? r.json() : Promise.reject(new Error('poll_failed')))
+          .then(payload => {
+            if (!payload || !payload.ok || !payload.job) return;
+            updateJobCard(payload.job);
+            if (!['queued', 'running'].includes(String(payload.job.status || ''))) return;
+            window.setTimeout(tick, 1200);
+          })
+          .catch(() => {
+            window.setTimeout(tick, 2000);
+          });
+      };
+      tick();
+    }
+
     bindLoading('statement-upload-form', 'statement-upload-submit', 'statement-upload-loading', '⏳ Processing...');
     bindLoading('live-sync-form', 'live-sync-submit', 'live-sync-loading', '⏳ Syncing...');
     bindLoading('auto-sync-config-form', 'auto-sync-config-submit', 'auto-sync-config-loading', '⏳ Saving...');
     bindLoading('auto-sync-run-form', 'auto-sync-run-submit', 'auto-sync-run-loading', '⏳ Running...');
+    bindSyncRunway(
+      'live-sync-form',
+      'live-sync-runway',
+      'live-sync-stage-label',
+      ['Opening broker session...', 'Submitting login...', 'Generating statement...', 'Importing fills and checks...']
+    );
+    bindSyncRunway(
+      'auto-sync-run-form',
+      'auto-sync-runway',
+      'auto-sync-stage-label',
+      ['Preparing sync run...', 'Logging into broker...', 'Generating statement...', 'Importing fills and checks...']
+    );
 
     const quickRetryBtn = document.getElementById('quick-retry-btn');
     const quickRetryNote = document.getElementById('quick-retry-note');
     const liveForm = document.getElementById('live-sync-form');
+    const autoPwd = document.querySelector('#auto-sync-config-form [name="auto_password"]');
+    const autoStatus = document.getElementById('auto-sync-credential-status');
+    const autoRunBtn = document.getElementById('auto-sync-run-submit');
+    const autoPasswordStored = {{ (((auto_sync_cfg or {}) if auto_sync_cfg is defined else {}).get('password_stored', false)) | tojson }};
+
+    function updateAutoSyncIntentState() {
+      if (!autoPwd || !autoStatus || !autoRunBtn) return;
+      const hasTypedPassword = Boolean((autoPwd.value || '').trim());
+      if (autoPasswordStored) {
+        autoRunBtn.disabled = false;
+        autoRunBtn.title = '';
+        autoStatus.innerHTML = 'Credential status: <b>ready</b> for scheduled runs.';
+        return;
+      }
+      autoRunBtn.disabled = true;
+      autoRunBtn.title = 'Save Auto Sync first so credentials are stored';
+      if (hasTypedPassword) {
+        autoStatus.innerHTML = 'Credential status: <b>password entered but not saved</b>. Click <b>Save Auto Sync</b>, then use <b>Run Now</b>.';
+      } else {
+        autoStatus.innerHTML = 'Credential status: <b>setup needed</b>. Run Now uses saved credentials only. Click <b>Save Auto Sync</b> first.';
+      }
+    }
+
+    if (autoPwd) {
+      autoPwd.addEventListener('input', updateAutoSyncIntentState);
+      updateAutoSyncIntentState();
+    }
+
     if (quickRetryBtn && liveForm) {
       const requested = {{ (last.get('requested') or {}) | tojson }};
       quickRetryBtn.addEventListener('click', function() {
@@ -468,5 +696,7 @@
         }
       });
     }
+
+    pollJobCard();
   })();
 </script>

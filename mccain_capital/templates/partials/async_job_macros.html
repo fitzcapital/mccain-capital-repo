@@ -1,0 +1,14 @@
+{% macro runway(runway_id, steps, badge='Running', label='Working...', visible=False, badge_id='', label_id='', track_id='') -%}
+<div class="syncRunway" id="{{ runway_id }}" {% if not visible %}style="display:none;"{% endif %} aria-live="polite">
+  <div class="syncRunwayTop">
+    <span class="syncBadge"{% if badge_id %} id="{{ badge_id }}"{% endif %}>{{ badge }}</span>
+    <span class="syncStageLabel"{% if label_id %} id="{{ label_id }}"{% endif %}>{{ label }}</span>
+  </div>
+  <div class="syncTrack"><div class="syncTrackBar"{% if track_id %} id="{{ track_id }}"{% endif %}></div></div>
+  <div class="syncSteps">
+    {% for step in steps %}
+      <span class="syncStep{% if loop.first %} is-active{% endif %}">{{ step }}</span>
+    {% endfor %}
+  </div>
+</div>
+{%- endmacro %}

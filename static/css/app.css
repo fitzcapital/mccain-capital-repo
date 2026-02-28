@@ -1719,3 +1719,106 @@
 @media (max-width: 620px){
   .workflowGrid{ grid-template-columns: 1fr; }
 }
+.syncRunway{
+  margin-top:10px;
+  padding:12px 14px;
+  border-radius:14px;
+  border:1px solid rgba(var(--accent-rgb),.18);
+  background:
+    linear-gradient(120deg, rgba(217,181,109,.06), rgba(var(--accent-rgb),.05) 48%, rgba(217,181,109,.03) 100%),
+    rgba(3,8,15,.84);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+  animation: riseIn var(--motion-mid) var(--motion-ease);
+}
+.syncRunwayTop{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:8px;
+  flex-wrap:wrap;
+}
+.syncBadge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid rgba(var(--accent-rgb),.28);
+  background:rgba(var(--accent-rgb),.12);
+  color:var(--text);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  box-shadow:0 0 0 1px rgba(var(--accent-rgb),.06);
+}
+.syncBadge::before{
+  content:"";
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:rgb(var(--green));
+  box-shadow:0 0 0 0 rgba(var(--green),.48);
+  animation:syncDotPulse 1.2s ease-out infinite;
+}
+.syncStageLabel{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+}
+.syncTrack{
+  position:relative;
+  overflow:hidden;
+  height:8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(var(--accent-rgb),.1);
+}
+.syncTrackBar{
+  position:absolute;
+  inset:0 auto 0 0;
+  width:38%;
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(217,181,109,.8) 0%, rgba(var(--accent-rgb),.95) 70%, rgba(255,255,255,.55) 100%);
+  box-shadow:0 0 16px rgba(var(--accent-rgb),.3);
+  animation:syncSweep 1.45s linear infinite;
+}
+.syncSteps{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:8px;
+  margin-top:10px;
+}
+.syncStep{
+  font-size:11px;
+  color:rgba(237,244,255,.54);
+  padding-top:8px;
+  border-top:1px solid rgba(255,255,255,.08);
+  transition:
+    color var(--motion-mid) var(--motion-ease),
+    border-color var(--motion-mid) var(--motion-ease),
+    transform var(--motion-mid) var(--motion-ease);
+}
+.syncStep.is-active{
+  color:var(--text);
+  border-color:rgba(var(--accent-rgb),.55);
+  transform:translateY(-1px);
+}
+.syncStep.is-done{
+  color:rgba(46,204,113,.95);
+  border-color:rgba(46,204,113,.5);
+}
+@keyframes syncSweep{
+  0%{ transform:translateX(-115%); }
+  100%{ transform:translateX(285%); }
+}
+@keyframes syncDotPulse{
+  0%{ box-shadow:0 0 0 0 rgba(var(--green),.42); }
+  70%{ box-shadow:0 0 0 8px rgba(var(--green),0); }
+  100%{ box-shadow:0 0 0 0 rgba(var(--green),0); }
+}
+@media (max-width: 720px){
+  .syncRunway{ padding:10px 12px; }
+  .syncSteps{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}

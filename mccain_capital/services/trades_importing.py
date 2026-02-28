@@ -258,6 +258,43 @@ def vanquish_trades_to_broker_paste(trades: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def parse_vanquish_statement_table_to_broker_paste(text: str) -> Tuple[str, List[str]]:
+    warnings: List[str] = []
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    if not lines:
+        return "", ["Nothing pasted."]
+
+    if "Instrument" in lines[0] and "Transaction Time" in lines[0]:
+        lines = lines[1:]
+
+    out: List[str] = []
+    for i, ln in enumerate(lines, start=1):
+        cols = split_row(ln)
+        if len(cols) < 6:
+            warnings.append(f"Line {i}: too few columns ({len(cols)}).")
+            continue
+
+        instrument = cols[0].strip().upper()
+        dt = cols[2].strip().replace("\u202f", " ").replace("\u00a0", " ")
+        side = cols[3].strip().upper()
+        qty = parse_int(cols[4]) or 0
+        price = parse_float(cols[5])
+
+        fee = DEFAULT_FEE_PER_CONTRACT
+        if len(cols) >= 11:
+            maybe_fee = parse_float(cols[10])
+            if maybe_fee is not None and 0 <= maybe_fee <= 5:
+                fee = float(maybe_fee)
+
+        if not instrument or side not in ("BUY", "SELL") or qty <= 0 or price is None:
+            warnings.append(f"Line {i}: skipped (bad instrument/side/qty/price).")
+            continue
+
+        out.append(f"{instrument} | {dt} | {side} | {qty} | {price} | {fee}")
+
+    return "\n".join(out), warnings
+
+
 def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[float], List[str]]:
     warnings: List[str] = []
 

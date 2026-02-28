@@ -1,0 +1,138 @@
+<script>
+  window.McAsyncJobs = window.McAsyncJobs || (function() {
+    function setTerminalTrack(trackBar, failed) {
+      if (!trackBar) return;
+      trackBar.style.animation = 'none';
+      trackBar.style.transform = 'translateX(0)';
+      trackBar.style.left = '0';
+      trackBar.style.width = failed ? '42%' : '100%';
+      trackBar.style.background = failed
+        ? 'linear-gradient(90deg, rgba(231,76,60,.9) 0%, rgba(231,76,60,.55) 100%)'
+        : 'linear-gradient(90deg, rgba(46,204,113,.92) 0%, rgba(var(--accent-rgb),.95) 100%)';
+    }
+
+    function resetTrack(trackBar) {
+      if (!trackBar) return;
+      trackBar.style.animation = '';
+      trackBar.style.transform = '';
+      trackBar.style.left = '';
+      trackBar.style.width = '';
+      trackBar.style.background = '';
+    }
+
+    function setRunwayState(runway, options) {
+      if (!runway) return;
+      const badge = runway.querySelector('.syncBadge');
+      const label = runway.querySelector('.syncStageLabel');
+      const trackBar = runway.querySelector('.syncTrackBar');
+      const steps = Array.from(runway.querySelectorAll('.syncStep'));
+      const idx = Math.max(0, Math.min(Number(options.stepIndex || 0), Math.max(steps.length - 1, 0)));
+      runway.style.display = 'block';
+      if (badge && options.badge) badge.textContent = options.badge;
+      if (label && options.label) label.textContent = options.label;
+      steps.forEach((step, stepIdx) => {
+        step.classList.toggle('is-done', stepIdx < idx || (!!options.complete && stepIdx <= idx));
+        step.classList.toggle('is-active', !options.complete && stepIdx === idx);
+      });
+      if (options.complete) {
+        setTerminalTrack(trackBar, !!options.failed);
+      } else {
+        resetTrack(trackBar);
+      }
+    }
+
+    function bindAsyncJob(config) {
+      const form = config.form;
+      const button = config.button;
+      const runway = config.runway;
+      const summary = config.summary;
+      if (!form || !button || !runway || !summary) return;
+      const startLabel = config.startLabel || 'Running...';
+      const doneLabel = config.doneLabel || 'Run';
+      const confirmText = config.confirmText || '';
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (confirmText && !window.confirm(confirmText)) return;
+        button.disabled = true;
+        button.textContent = startLabel;
+        summary.style.display = 'none';
+        summary.innerHTML = '';
+        setRunwayState(runway, {
+          badge: config.badge || 'Running',
+          label: config.startMessage || 'Working...',
+          stepIndex: 0
+        });
+        fetch(form.action + '?async=1', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' },
+          body: new FormData(form)
+        })
+          .then(r => r.ok ? r.json() : Promise.reject(new Error('start_failed')))
+          .then(payload => {
+            if (!payload || !payload.ok || !payload.job || !payload.job.id) {
+              throw new Error('start_failed');
+            }
+            const poll = function() {
+              fetch((config.pollBase || '/ops/jobs/') + payload.job.id, { headers: { 'Accept': 'application/json' } })
+                .then(r => r.ok ? r.json() : Promise.reject(new Error('poll_failed')))
+                .then(statusPayload => {
+                  if (!statusPayload || !statusPayload.ok || !statusPayload.job) {
+                    throw new Error('poll_failed');
+                  }
+                  const job = statusPayload.job;
+                  const stageIndex = (config.stageMap || {})[String(job.stage || '')] ?? 0;
+                  const done = !['queued', 'running'].includes(String(job.status || ''));
+                  const failed = String(job.status || '') === 'failed';
+                  setRunwayState(runway, {
+                    badge: failed ? 'Failed' : (String(job.status || '').toLowerCase() === 'success' ? 'Complete' : (config.badge || 'Running')),
+                    label: job.message || config.startMessage || 'Working...',
+                    stepIndex: done ? Math.max(stageIndex, runway.querySelectorAll('.syncStep').length - 1) : stageIndex,
+                    complete: done,
+                    failed: failed
+                  });
+                  if (!done) {
+                    window.setTimeout(poll, Number(config.pollDelayMs || 700));
+                    return;
+                  }
+                  button.disabled = false;
+                  button.textContent = doneLabel;
+                  summary.innerHTML = job.result_html || '';
+                  summary.style.display = summary.innerHTML ? 'block' : 'none';
+                  if (typeof config.onComplete === 'function') config.onComplete(job);
+                })
+                .catch(() => {
+                  setRunwayState(runway, {
+                    badge: 'Failed',
+                    label: 'Status polling failed.',
+                    stepIndex: 1,
+                    complete: true,
+                    failed: true
+                  });
+                  button.disabled = false;
+                  button.textContent = doneLabel;
+                });
+            };
+            window.setTimeout(poll, Number(config.startPollDelayMs || 300));
+          })
+          .catch(() => {
+            setRunwayState(runway, {
+              badge: 'Failed',
+              label: 'Could not start the job.',
+              stepIndex: 1,
+              complete: true,
+              failed: true
+            });
+            button.disabled = false;
+            button.textContent = doneLabel;
+          });
+      });
+    }
+
+    return {
+      setTerminalTrack,
+      resetTrack,
+      setRunwayState,
+      bindAsyncJob
+    };
+  })();
+</script>

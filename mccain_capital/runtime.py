@@ -77,6 +77,23 @@ def get_setting_float(key: str, default: float = 0.0) -> float:
         return float(default)
 
 
+def set_setting_value(key: str, value: Any) -> None:
+    """Insert or update a setting in DB."""
+    with db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+
+
 def now_et() -> datetime:
     return datetime.now(TZ)
 

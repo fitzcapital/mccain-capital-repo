@@ -16,12 +16,13 @@ import threading
 import time
 import zipfile
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 from uuid import uuid4
 
 from flask import (
     abort,
+    current_app,
     flash,
     jsonify,
     redirect,
@@ -79,6 +80,7 @@ BROKER_AUTO_SYNC_LOCK_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.lock"
 AUTO_BACKUP_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".auto_backup_config.json")
 AUTO_BACKUP_DIR = os.path.join(UPLOAD_DIR, "backups")
 AUTO_BACKUP_LOCK_PATH = os.path.join(UPLOAD_DIR, ".auto_backup.lock")
+BG_JOB_DIR = os.path.join(UPLOAD_DIR, ".bg_jobs")
 BROKER_KEYCHAIN_SERVICE = "mccain-capital.vanquish.auto-sync"
 AUTO_SYNC_PASSWORD_FALLBACK = os.environ.get("AUTO_SYNC_PASSWORD_FALLBACK", "0") == "1"
 SYNC_HISTORY_MAX = 300
@@ -114,6 +116,29 @@ NOTIFY_DEDUPE_BY_EVENT = {
     ),
 }
 
+_BG_JOB_LOCK = threading.Lock()
+_BG_JOBS: Dict[str, Dict[str, Any]] = {}
+_BG_JOB_MAX = 40
+
+_AUDIT_ACTION_META = {
+    "backup_created": {"label": "Backup Created", "group": "backup"},
+    "backup_failed": {"label": "Backup Failed", "group": "backup"},
+    "backup_restored_from_center": {"label": "Backup Restored", "group": "restore"},
+    "manual_backup_restored": {"label": "Backup Restored", "group": "restore"},
+    "manual_backup_downloaded": {"label": "Backup Downloaded", "group": "backup"},
+    "backup_deleted": {"label": "Backup Deleted", "group": "backup"},
+    "integrity_check_run": {"label": "Integrity Check", "group": "integrity"},
+    "trades_rebuild_reviews": {"label": "Review Rebuild", "group": "review"},
+    "rollback_import_batch": {"label": "Import Batch Rolled Back", "group": "rollback"},
+    "dashboard_recompute_balances": {"label": "Balances Recomputed", "group": "recompute"},
+    "auto_backup_config_saved": {"label": "Backup Settings Saved", "group": "config"},
+    "ops_alert_ack": {"label": "Alert Acknowledged", "group": "alert"},
+    "ops_alert_resolve": {"label": "Alert Resolved", "group": "alert"},
+    "ops_alert_resolve_all": {"label": "All Alerts Resolved", "group": "alert"},
+    "ops_alert_mute": {"label": "Alert Muted", "group": "alert"},
+    "ops_alert_unmute": {"label": "Alert Unmuted", "group": "alert"},
+}
+
 SYNC_STAGE_HELP = {
     "open_login": "Broker login page did not load cleanly. Check Base Origin and network.",
     "locate_username": "Could not find the username input. Broker UI likely changed.",
@@ -125,6 +150,166 @@ SYNC_STAGE_HELP = {
     "generate_statement": "Generate Statement did not complete as expected.",
     "capture_statement_html": "Statement page loaded but HTML capture/parse failed.",
 }
+
+SYNC_STAGE_LABELS = {
+    "start": "Queued and preparing sync run.",
+    "open_login": "Opening broker login page.",
+    "locate_username": "Finding username field.",
+    "fill_username": "Entering username.",
+    "locate_password": "Finding password field.",
+    "submit_login": "Submitting broker login.",
+    "open_workspace_menu": "Opening workspace menu.",
+    "open_statement_dialog": "Opening statement dialog.",
+    "configure_statement_period": "Setting statement date range.",
+    "generate_statement": "Generating statement HTML.",
+    "capture_statement_html": "Capturing statement HTML.",
+    "parse_statement_html": "Parsing statement rows.",
+    "reconcile_gate": "Running reconcile guardrails.",
+    "import_trades": "Importing trades.",
+    "import_complete": "Import complete.",
+}
+
+
+def _sync_stage_label(stage: str) -> str:
+    key = str(stage or "").strip()
+    return SYNC_STAGE_LABELS.get(key, key.replace("_", " ").strip().title() or "Working...")
+
+
+def _bg_job_path(job_id: str) -> str:
+    return os.path.join(BG_JOB_DIR, f"{job_id}.json")
+
+
+def _write_bg_job(job: Dict[str, Any]) -> None:
+    os.makedirs(BG_JOB_DIR, exist_ok=True)
+    job_id = str(job.get("id") or "").strip()
+    if not job_id:
+        return
+    path = _bg_job_path(job_id)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(job, f, indent=2)
+    os.replace(tmp_path, path)
+
+
+def _read_bg_job(job_id: str) -> Dict[str, Any]:
+    path = _bg_job_path((job_id or "").strip())
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+            return parsed if isinstance(parsed, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def _trim_bg_jobs_locked() -> None:
+    try:
+        os.makedirs(BG_JOB_DIR, exist_ok=True)
+        entries: List[tuple[str, float]] = []
+        for name in os.listdir(BG_JOB_DIR):
+            if not name.endswith(".json"):
+                continue
+            full = os.path.join(BG_JOB_DIR, name)
+            if not os.path.isfile(full):
+                continue
+            entries.append((full, os.path.getmtime(full)))
+        if len(entries) <= _BG_JOB_MAX:
+            return
+        entries.sort(key=lambda item: item[1])
+        for full, _ in entries[: max(0, len(entries) - _BG_JOB_MAX)]:
+            try:
+                os.unlink(full)
+            except OSError:
+                pass
+    except OSError:
+        return
+
+
+def _create_bg_job(kind: str, title: str, requested: Dict[str, Any]) -> Dict[str, Any]:
+    stamp = now_iso()
+    job = {
+        "id": uuid4().hex,
+        "kind": kind,
+        "title": title,
+        "status": "queued",
+        "stage": "start",
+        "message": "Queued and waiting to start.",
+        "requested": requested,
+        "created_at": stamp,
+        "updated_at": stamp,
+        "duration_sec": None,
+        "summary": {},
+    }
+    with _BG_JOB_LOCK:
+        _BG_JOBS[job["id"]] = job
+        _write_bg_job(job)
+        _trim_bg_jobs_locked()
+        return dict(job)
+
+
+def _update_bg_job(job_id: str, **updates: Any) -> Dict[str, Any]:
+    with _BG_JOB_LOCK:
+        existing = _BG_JOBS.get(job_id) or _read_bg_job(job_id)
+        if not existing:
+            return {}
+        job = dict(existing)
+        job.update(updates)
+        job["updated_at"] = now_iso()
+        _BG_JOBS[job_id] = job
+        _write_bg_job(job)
+        return dict(job)
+
+
+def _get_bg_job(job_id: str) -> Dict[str, Any]:
+    with _BG_JOB_LOCK:
+        cached = _BG_JOBS.get(job_id)
+        if cached:
+            return dict(cached)
+        disk = _read_bg_job(job_id)
+        if disk:
+            _BG_JOBS[job_id] = disk
+        return dict(disk)
+
+
+def _build_action_result_summary(
+    *,
+    tone: str,
+    title: str,
+    happened: str,
+    changed: Optional[str] = None,
+    warnings: Optional[List[str]] = None,
+    next_action: str = "",
+    metrics: Optional[List[Dict[str, str]]] = None,
+) -> Dict[str, Any]:
+    return {
+        "tone": str(tone or "info"),
+        "title": str(title or "Action Summary"),
+        "happened": str(happened or "").strip(),
+        "changed": str(changed or "").strip(),
+        "warnings": [str(x).strip() for x in (warnings or []) if str(x).strip()],
+        "next_action": str(next_action or "").strip(),
+        "metrics": [
+            {"label": str(m.get("label") or "").strip(), "value": str(m.get("value") or "").strip()}
+            for m in (metrics or [])
+            if str(m.get("label") or "").strip()
+        ],
+    }
+
+
+def _render_action_result_summary(summary: Dict[str, Any]) -> str:
+    return render_template("partials/action_result_summary.html", summary=summary)
+
+
+def _job_response_payload(job: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(job or {})
+    payload["created_at_human"] = _humanize_et_timestamp(str(payload.get("created_at") or ""))
+    payload["updated_at_human"] = _humanize_et_timestamp(str(payload.get("updated_at") or ""))
+    summary = payload.get("result_summary")
+    if isinstance(summary, dict) and summary:
+        payload["result_html"] = _render_action_result_summary(summary)
+    else:
+        payload["result_html"] = ""
+    return payload
+
 
 _AUTO_SYNC_THREAD_STARTED = False
 _AUTO_SYNC_THREAD_LOCK = threading.Lock()
@@ -292,6 +477,13 @@ def _keyring_client():
     try:
         import keyring  # type: ignore
 
+        try:
+            backend = keyring.get_keyring()
+            priority = float(getattr(backend, "priority", 0) or 0)
+            if priority <= 0:
+                return None
+        except Exception:
+            return None
         return keyring
     except Exception:
         return None
@@ -412,11 +604,25 @@ def _save_broker_sync_config(data: Dict[str, str]) -> None:
         json.dump(data, f, indent=2)
 
 
+def _humanize_et_timestamp(raw: str) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return dt.astimezone(ZoneInfo("America/New_York")).strftime("%b %d, %Y %I:%M %p ET")
+    except Exception:
+        return text
+
+
 def _load_last_sync_status() -> Dict[str, Any]:
     try:
         with open(BROKER_SYNC_STATUS_PATH, "r", encoding="utf-8") as f:
             parsed = json.load(f)
-            return parsed if isinstance(parsed, dict) else {}
+            if not isinstance(parsed, dict):
+                return {}
+            parsed["updated_at_human"] = _humanize_et_timestamp(str(parsed.get("updated_at") or ""))
+            return parsed
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
 
@@ -534,6 +740,72 @@ def record_admin_audit(
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     with open(ADMIN_AUDIT_LOG_PATH, "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=2)
+
+
+def _audit_action_meta(action: str) -> Dict[str, str]:
+    key = str(action or "").strip()
+    meta = _AUDIT_ACTION_META.get(key)
+    if meta:
+        return dict(meta)
+    return {
+        "label": key.replace("_", " ").strip().title() or "Unknown Event",
+        "group": "other",
+    }
+
+
+def _audit_summary_text(row: Dict[str, Any]) -> str:
+    action = str(row.get("action") or "").strip()
+    details = row.get("details") if isinstance(row.get("details"), dict) else {}
+    if action in {"backup_created", "backup_restored_from_center", "manual_backup_restored"}:
+        return str(details.get("file") or "Snapshot file updated.")
+    if action == "backup_deleted":
+        return str(details.get("file") or "Backup file deleted.")
+    if action == "backup_failed":
+        return str(details.get("error") or "Backup failed.")
+    if action == "integrity_check_run":
+        return (
+            f"Issues={int(details.get('issues') or 0)} · "
+            f"Orphans={int(details.get('orphan_reviews') or 0)} · "
+            f"Missing Balances={int(details.get('missing_balance') or 0)}"
+        )
+    if action == "trades_rebuild_reviews":
+        return (
+            f"Updated {int(details.get('rebuilt') or 0)} review(s), "
+            f"skipped {int(details.get('skipped_existing') or 0)} existing."
+        )
+    if action in {"dashboard_recompute_balances", "rollback_import_batch"}:
+        return json.dumps(details, separators=(", ", ": "))
+    if action.startswith("ops_alert_"):
+        return json.dumps(details, separators=(", ", ": "))
+    if action == "auto_backup_config_saved":
+        times = details.get("run_times_et") if isinstance(details.get("run_times_et"), list) else []
+        return f"{int(details.get('frequency_hours') or 0)}h cadence · {', '.join(str(x) for x in times)}"
+    return json.dumps(details, separators=(", ", ": ")) if details else "No extra details."
+
+
+def _load_system_activity(limit: int, category: str = "all") -> List[Dict[str, Any]]:
+    rows = list(reversed(_load_admin_audit()))
+    selected = str(category or "all").strip().lower() or "all"
+    if selected != "all":
+        rows = [
+            r
+            for r in rows
+            if _audit_action_meta(str(r.get("action") or "")).get("group") == selected
+        ]
+    out: List[Dict[str, Any]] = []
+    for row in rows[: max(1, int(limit or 1))]:
+        action = str(row.get("action") or "")
+        meta = _audit_action_meta(action)
+        out.append(
+            {
+                **row,
+                "at_human": _humanize_et_timestamp(str(row.get("at") or "")),
+                "label": meta["label"],
+                "group": meta["group"],
+                "summary": _audit_summary_text(row),
+            }
+        )
+    return out
 
 
 def _load_auto_backup_config() -> Dict[str, Any]:
@@ -2507,9 +2779,9 @@ def trades_paste_broker():
 
 
 def trades_upload_pdf():
-    workspace = (request.args.get("ws") or "upload").strip().lower()
+    workspace = (request.args.get("ws") or "live").strip().lower()
     if workspace not in {"upload", "live", "reconcile"}:
-        workspace = "upload"
+        workspace = "live"
     if request.method == "POST":
         guardrail = trade_lockout_state(today_iso())
         if guardrail["locked"]:
@@ -2661,6 +2933,8 @@ def trades_upload_pdf():
     sync_reliability = _sync_reliability_summary(sync_history, days=30)
     import_history = _load_import_history()
     reconcile_summary = _reconcile_summary(import_history, days=30)
+    sync_job_id = (request.args.get("job") or "").strip()
+    sync_job = _get_bg_job(sync_job_id) if sync_job_id else {}
     content = render_template(
         "trades/upload_statement.html",
         workspace=workspace,
@@ -2670,6 +2944,7 @@ def trades_upload_pdf():
         default_day=default_day,
         sync_status=sync_status,
         sync_reliability=sync_reliability,
+        sync_job=sync_job,
         reconcile_summary=reconcile_summary,
         import_history=list(reversed(import_history[-40:])),
         sync_stage_help=SYNC_STAGE_HELP,
@@ -2695,6 +2970,7 @@ def _run_live_sync_once(
     debug_capture: bool,
     debug_only: bool,
     source_label: str,
+    progress_cb: Optional[Callable[[str, str], None]] = None,
 ) -> Dict[str, Any]:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = (
@@ -2719,6 +2995,7 @@ def _run_live_sync_once(
                 report_locale=report_locale,
                 headless=headless,
                 debug_dir=debug_dir,
+                progress_cb=progress_cb,
             )
         )
         artifacts_rel = [_debug_relative(p) for p in artifacts_abs]
@@ -2765,6 +3042,8 @@ def _run_live_sync_once(
 
     if mode == "broker":
         batch_id = _new_import_batch_id("live")
+        if progress_cb:
+            progress_cb("parse_statement_html", "Parsing statement rows.")
         paste_text, balance_val, parse_warns = importing.parse_statement_html_to_broker_paste(path)
         warns_all = (result.get("warns") or []) + (parse_warns or [])
         date_range_fallback = any(
@@ -2796,6 +3075,8 @@ def _run_live_sync_once(
             import_batch_id=batch_id,
         )
         if RECONCILE_GATE_ENABLED:
+            if progress_cb:
+                progress_cb("reconcile_gate", "Running reconcile guardrails.")
             gate = _reconcile_gate_result(pre_report)
             if gate["blocked"]:
                 _emit_notification(
@@ -2822,6 +3103,8 @@ def _run_live_sync_once(
                     }
                 )
                 return result
+        if progress_cb:
+            progress_cb("import_trades", "Importing trades.")
         inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
             ending_balance=balance_val,
@@ -2835,6 +3118,7 @@ def _run_live_sync_once(
             {
                 "ok": True,
                 "message": msg,
+                "stage": "import_complete",
                 "inserted": inserted,
                 "errors": errors or [],
                 "report": report or {},
@@ -2848,6 +3132,8 @@ def _run_live_sync_once(
 
     # balance mode
     batch_id = _new_import_batch_id("livebal")
+    if progress_cb:
+        progress_cb("parse_statement_html", "Parsing statement balance.")
     _, balance_val, parse_warns = importing.parse_statement_html_to_broker_paste(path)
     warns_all = (result.get("warns") or []) + (parse_warns or [])
     if balance_val is None:
@@ -2866,6 +3152,7 @@ def _run_live_sync_once(
     result.update(
         {
             "ok": True,
+            "stage": "import_complete",
             "message": f"{source_label}: imported ending balance snapshot {money(balance_val)}.",
             "warns": warns_all,
             "artifacts_rel": artifacts_rel,
@@ -2874,6 +3161,180 @@ def _run_live_sync_once(
         }
     )
     return result
+
+
+def _sync_requested_payload(
+    *,
+    source: str,
+    mode: str,
+    from_date: str,
+    to_date: str,
+    base_url: str,
+    account: str,
+    wl: str,
+    time_zone: str,
+    date_locale: str,
+    report_locale: str,
+    headless: bool,
+    debug_capture: bool,
+    debug_only: bool,
+    username: str,
+) -> Dict[str, Any]:
+    return {
+        "source": source,
+        "mode": mode,
+        "from_date": from_date,
+        "to_date": to_date,
+        "base_url": base_url,
+        "account": account,
+        "wl": wl,
+        "time_zone": time_zone,
+        "date_locale": date_locale,
+        "report_locale": report_locale,
+        "headless": headless,
+        "debug_capture": debug_capture,
+        "debug_only": debug_only,
+        "username": username,
+    }
+
+
+def _start_sync_job(
+    *,
+    title: str,
+    source_label: str,
+    record_source: str,
+    mode: str,
+    username: str,
+    password: str,
+    base_url: str,
+    account: str,
+    wl: str,
+    time_zone: str,
+    date_locale: str,
+    report_locale: str,
+    from_date: str,
+    to_date: str,
+    headless: bool,
+    debug_capture: bool,
+    debug_only: bool,
+    requested: Dict[str, Any],
+) -> Dict[str, Any]:
+    app = current_app._get_current_object()
+    job = _create_bg_job("sync", title, requested)
+
+    def runner() -> None:
+        started = time.time()
+
+        def progress(stage: str, message: str) -> None:
+            stage_message = message or _sync_stage_label(stage)
+            _update_bg_job(job["id"], status="running", stage=stage, message=stage_message)
+            _save_last_sync_status(
+                {
+                    "status": "running",
+                    "stage": stage,
+                    "message": stage_message,
+                    "stage_help": SYNC_STAGE_HELP.get(stage, ""),
+                    "requested": requested,
+                    "updated_at": now_iso(),
+                }
+            )
+
+        try:
+            with app.app_context():
+                progress("start", "Sync job started.")
+                run = _run_live_sync_once(
+                    mode=mode,
+                    username=username,
+                    password=password,
+                    base_url=base_url,
+                    account=account,
+                    wl=wl,
+                    time_zone=time_zone,
+                    date_locale=date_locale,
+                    report_locale=report_locale,
+                    from_date=from_date,
+                    to_date=to_date,
+                    headless=headless,
+                    debug_capture=debug_capture,
+                    debug_only=debug_only,
+                    source_label=source_label,
+                    progress_cb=progress,
+                )
+                duration_sec = round(max(0.0, time.time() - started), 2)
+                status = (
+                    "debug_only"
+                    if run.get("debug_only")
+                    else ("success" if run.get("ok") else "failed")
+                )
+                stage = str(
+                    run.get("stage")
+                    or ("capture_statement_html" if run.get("debug_only") else "")
+                    or ("import_complete" if run.get("ok") else "unknown")
+                )
+                summary = {
+                    "message": str(run.get("message") or ""),
+                    "warn_count": len(run.get("warns") or []),
+                    "error_count": len(run.get("errors") or []),
+                    "inserted": int(run.get("inserted") or 0),
+                    "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
+                    "statement_file": (
+                        _debug_relative(run.get("statement_path", ""))
+                        if run.get("statement_path")
+                        else ""
+                    ),
+                }
+                _record_import_batch(
+                    batch_id=str(run.get("batch_id") or ""),
+                    source=record_source,
+                    mode=mode,
+                    report=run.get("report") if isinstance(run.get("report"), dict) else None,
+                    status="success" if run.get("ok") else "failed",
+                    message=str(run.get("message") or ""),
+                )
+                _save_last_sync_status(
+                    {
+                        "status": status,
+                        "stage": stage,
+                        "message": run.get("message") or "",
+                        "stage_help": SYNC_STAGE_HELP.get(stage, ""),
+                        "requested": requested,
+                        "sync_meta": run.get("sync_meta", {}),
+                        "artifacts_rel": summary["artifacts_rel"],
+                        "statement_file": summary["statement_file"],
+                        "duration_sec": duration_sec,
+                        "updated_at": now_iso(),
+                    }
+                )
+                _update_bg_job(
+                    job["id"],
+                    status=status,
+                    stage=stage,
+                    message=summary["message"] or _sync_stage_label(stage),
+                    duration_sec=duration_sec,
+                    summary=summary,
+                )
+        except Exception as e:  # pragma: no cover
+            duration_sec = round(max(0.0, time.time() - started), 2)
+            fail_message = f"Background sync worker error: {e}"
+            _save_last_sync_status(
+                {
+                    "status": "failed",
+                    "stage": "auto_worker",
+                    "message": fail_message,
+                    "updated_at": now_iso(),
+                }
+            )
+            _update_bg_job(
+                job["id"],
+                status="failed",
+                stage="auto_worker",
+                message=fail_message,
+                duration_sec=duration_sec,
+                summary={"message": fail_message, "warn_count": 0, "error_count": 1},
+            )
+
+    threading.Thread(target=runner, daemon=True, name=f"sync-job-{job['id'][:8]}").start()
+    return job
 
 
 def trades_sync_live():
@@ -2925,31 +3386,23 @@ def trades_sync_live():
     if from_date > to_date:
         from_date, to_date = to_date, from_date
 
-    requested = {
-        "mode": mode,
-        "from_date": from_date,
-        "to_date": to_date,
-        "base_url": base_url,
-        "account": account,
-        "wl": wl,
-        "time_zone": time_zone,
-        "date_locale": date_locale,
-        "report_locale": report_locale,
-        "headless": headless,
-        "debug_capture": debug_capture,
-        "debug_only": debug_only,
-        "remember_connection": remember_connection,
-        "username": username,
-    }
-    _save_last_sync_status(
-        {
-            "status": "running",
-            "stage": "start",
-            "message": "Live sync request started.",
-            "requested": requested,
-            "updated_at": now_iso(),
-        }
+    requested = _sync_requested_payload(
+        source="manual_live",
+        mode=mode,
+        from_date=from_date,
+        to_date=to_date,
+        base_url=base_url,
+        account=account,
+        wl=wl,
+        time_zone=time_zone,
+        date_locale=date_locale,
+        report_locale=report_locale,
+        headless=headless,
+        debug_capture=debug_capture,
+        debug_only=debug_only,
+        username=username,
     )
+    requested["remember_connection"] = remember_connection
 
     if remember_connection:
         cfg.update(
@@ -2963,9 +3416,10 @@ def trades_sync_live():
             }
         )
         _save_broker_sync_config(cfg)
-
-    started = time.time()
-    run = _run_live_sync_once(
+    job = _start_sync_job(
+        title="Live Sync",
+        source_label="LIVE LOGIN HTML",
+        record_source="LIVE LOGIN HTML",
         mode=mode,
         username=username,
         password=password,
@@ -2980,95 +3434,10 @@ def trades_sync_live():
         headless=headless,
         debug_capture=debug_capture,
         debug_only=debug_only,
-        source_label="LIVE LOGIN HTML",
+        requested=requested,
     )
-    artifacts_rel = run.get("artifacts_rel", [])
-    duration_sec = round(max(0.0, time.time() - started), 2)
-    if not run.get("ok"):
-        failed_stage = str(run.get("stage") or "unknown")
-        clean_error = str(run.get("message") or "Live sync failed.")
-        _record_import_batch(
-            batch_id=str(run.get("batch_id") or ""),
-            source="LIVE LOGIN HTML",
-            mode=mode,
-            report=None,
-            status="failed",
-            message=f"{failed_stage}: {clean_error}",
-        )
-        _save_last_sync_status(
-            {
-                "status": "failed",
-                "stage": failed_stage,
-                "message": clean_error,
-                "stage_help": SYNC_STAGE_HELP.get(failed_stage, ""),
-                "requested": requested,
-                "artifacts_rel": artifacts_rel[:20],
-                "duration_sec": duration_sec,
-                "updated_at": now_iso(),
-            }
-        )
-        if artifacts_rel:
-            folder = os.path.dirname(artifacts_rel[0])
-            return _render_live_debug_result(
-                folder_rel=folder,
-                artifacts_rel=artifacts_rel,
-                warns=run.get("warns", []),
-                error=f"Live login sync failed ({failed_stage}): {clean_error}",
-            )
-        msg = f"Live login sync failed ({failed_stage}): {clean_error}"
-        help_text = SYNC_STAGE_HELP.get(failed_stage)
-        if help_text:
-            msg = f"{msg} {help_text}"
-        return render_page(simple_msg(msg), active="trades")
-
-    if run.get("debug_only"):
-        _save_last_sync_status(
-            {
-                "status": "debug_only",
-                "stage": "capture_statement_html",
-                "message": "Debug capture completed. No import performed.",
-                "requested": requested,
-                "sync_meta": run.get("sync_meta", {}),
-                "artifacts_rel": artifacts_rel[:20],
-                "duration_sec": duration_sec,
-                "updated_at": now_iso(),
-            }
-        )
-        folder = os.path.dirname(artifacts_rel[0]) if artifacts_rel else ""
-        return _render_live_debug_result(
-            folder_rel=folder,
-            artifacts_rel=artifacts_rel,
-            warns=run.get("warns", []),
-            error="",
-        )
-    _record_import_batch(
-        batch_id=str(run.get("batch_id") or ""),
-        source="LIVE LOGIN HTML",
-        mode=mode,
-        report=run.get("report") if isinstance(run.get("report"), dict) else None,
-        status="success",
-        message=str(run.get("message") or ""),
-    )
-    _save_last_sync_status(
-        {
-            "status": "success",
-            "stage": "import_complete",
-            "message": run.get("message", "Live sync completed and statement imported."),
-            "requested": requested,
-            "sync_meta": run.get("sync_meta", {}),
-            "artifacts_rel": artifacts_rel[:20],
-            "statement_file": (
-                _debug_relative(run.get("statement_path", "")) if run.get("statement_path") else ""
-            ),
-            "duration_sec": duration_sec,
-            "updated_at": now_iso(),
-        }
-    )
-    flash(
-        "Live sync complete. Review Upload Statement → Live Sync Diagnostics for notes/artifacts.",
-        "success",
-    )
-    return redirect(url_for("trades_page"))
+    flash("Live sync started. Progress and result will update below.", "success")
+    return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
 
 
 def trades_sync_auto_config():
@@ -3151,20 +3520,39 @@ def trades_sync_auto_config():
             "warn",
         )
     flash("Auto sync schedule saved.", "success")
-    return redirect(url_for("trades_upload_pdf"))
+    return redirect(url_for("trades_upload_pdf", ws="live"))
 
 
 def trades_sync_auto_run_now():
     cfg = _load_auto_sync_config()
     auto_password = _get_auto_sync_password(cfg)
     if not cfg.get("username") or not auto_password:
-        return render_page(
-            simple_msg("Auto sync credentials are missing. Save username and password first."),
-            active="trades",
+        flash(
+            "Auto sync credentials are missing. Save username and password in the Live Sync workspace first.",
+            "warn",
         )
+        return redirect(url_for("trades_upload_pdf", ws="live"))
     today = today_iso()
-    started = time.time()
-    run = _run_live_sync_once(
+    requested = _sync_requested_payload(
+        source="manual_auto_run",
+        mode=str(cfg.get("mode") or "broker"),
+        from_date=today,
+        to_date=today,
+        base_url=str(cfg.get("base_url") or "https://trade.vanquishtrader.com"),
+        account=str(cfg.get("account") or ""),
+        wl=str(cfg.get("wl") or "vanquishtrader"),
+        time_zone=str(cfg.get("time_zone") or "America/New_York"),
+        date_locale=str(cfg.get("date_locale") or "en-US"),
+        report_locale=str(cfg.get("report_locale") or "en"),
+        headless=bool(cfg.get("headless", True)),
+        debug_capture=bool(cfg.get("debug_capture", True)),
+        debug_only=False,
+        username=str(cfg.get("username") or ""),
+    )
+    job = _start_sync_job(
+        title="Auto Sync Run",
+        source_label="AUTO SYNC HTML",
+        record_source="AUTO SYNC MANUAL RUN",
         mode=str(cfg.get("mode") or "broker"),
         username=str(cfg.get("username") or ""),
         password=auto_password,
@@ -3179,46 +3567,17 @@ def trades_sync_auto_run_now():
         headless=bool(cfg.get("headless", True)),
         debug_capture=bool(cfg.get("debug_capture", True)),
         debug_only=False,
-        source_label="AUTO SYNC HTML",
+        requested=requested,
     )
-    duration_sec = round(max(0.0, time.time() - started), 2)
-    _record_import_batch(
-        batch_id=str(run.get("batch_id") or ""),
-        source="AUTO SYNC MANUAL RUN",
-        mode=str(cfg.get("mode") or "broker"),
-        report=run.get("report") if isinstance(run.get("report"), dict) else None,
-        status="success" if run.get("ok") else "failed",
-        message=str(run.get("message") or ""),
-    )
-    _save_last_sync_status(
-        {
-            "status": "success" if run.get("ok") else "failed",
-            "stage": run.get("stage") or ("import_complete" if run.get("ok") else "unknown"),
-            "message": run.get("message") or "",
-            "stage_help": SYNC_STAGE_HELP.get(str(run.get("stage") or ""), ""),
-            "requested": {
-                "source": "manual_auto_run",
-                "from_date": today,
-                "to_date": today,
-                "mode": cfg.get("mode", "broker"),
-            },
-            "sync_meta": run.get("sync_meta", {}),
-            "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
-            "statement_file": (
-                _debug_relative(run.get("statement_path", "")) if run.get("statement_path") else ""
-            ),
-            "duration_sec": duration_sec,
-            "updated_at": now_iso(),
-        }
-    )
-    if run.get("ok"):
-        flash("Auto sync run completed.", "success")
-        return redirect(url_for("trades_page"))
-    msg = f"Auto sync run failed: {run.get('message') or 'Unknown error'}"
-    stage = str(run.get("stage") or "")
-    if stage and stage in SYNC_STAGE_HELP:
-        msg += f" {SYNC_STAGE_HELP[stage]}"
-    return render_page(simple_msg(msg), active="trades")
+    flash("Auto sync started. Live status will update below.", "success")
+    return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
+
+
+def trades_sync_job_status(job_id: str):
+    job = _get_bg_job((job_id or "").strip())
+    if not job:
+        return jsonify({"ok": False, "error": "job_not_found"}), 404
+    return jsonify({"ok": True, "job": _job_response_payload(job)})
 
 
 def ensure_auto_sync_worker_started(app) -> None:
@@ -3601,6 +3960,14 @@ def ops_alerts_page():
             <a class="btn {% if status_filter == 'acknowledged' %}primary{% endif %}" href="/ops/alerts?status=acknowledged">Acknowledged</a>
             <a class="btn {% if status_filter == 'resolved' %}primary{% endif %}" href="/ops/alerts?status=resolved">Resolved</a>
             <a class="btn {% if status_filter == 'all' %}primary{% endif %}" href="/ops/alerts?status=all">All</a>
+            {% if resolveable_count %}
+              <form method="post" action="/ops/alerts/resolve" style="display:inline">
+                <input type="hidden" name="resolve_scope" value="visible">
+                <input type="hidden" name="status_filter" value="{{ status_filter }}">
+                <input type="hidden" name="event_filter" value="{{ event_filter }}">
+                <button class="btn" type="submit">Resolve All ({{ resolveable_count }})</button>
+              </form>
+            {% endif %}
           </div>
           <details class="syncDetails stack10">
             <summary>Advanced Alert Controls</summary>
@@ -3691,9 +4058,23 @@ def ops_alerts_page():
             </details>
           </form>
           <div class="hr"></div>
-          <form method="post" action="/ops/backups/run" class="rightActions">
-            <button class="btn primary" type="submit">Run Backup Now</button>
+          <form method="post" action="/ops/backups/run" class="rightActions" id="backup-run-form">
+            <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
           </form>
+          <div class="syncRunway" id="backup-job-runway" style="display:none;" aria-live="polite">
+            <div class="syncRunwayTop">
+              <span class="syncBadge" id="backup-job-badge">Running</span>
+              <span class="syncStageLabel" id="backup-job-label">Creating backup archive from current app data.</span>
+            </div>
+            <div class="syncTrack"><div class="syncTrackBar" id="backup-job-track"></div></div>
+            <div class="syncSteps">
+              <span class="syncStep is-active" data-backup-step>Archive</span>
+              <span class="syncStep" data-backup-step>Verify</span>
+              <span class="syncStep" data-backup-step>Summary</span>
+              <span class="syncStep" data-backup-step>Ready</span>
+            </div>
+          </div>
+          <div id="ops-job-summary" style="display:none;"></div>
         </div></div>
         <div class="card"><div class="toolbar">
           <div class="pill">🧾 Admin Action Timeline</div>
@@ -3718,6 +4099,8 @@ def ops_alerts_page():
         """,
         alerts=alerts,
         status_filter=status_filter,
+        event_filter=event_filter,
+        resolveable_count=len([a for a in alerts if str(a.get("status") or "open") != "resolved"]),
         muted=muted,
         event_types=event_types,
         auto_backup_cfg=auto_backup_cfg,
@@ -3757,6 +4140,41 @@ def _update_alert_status(alert_id: str, status: str) -> bool:
     return updated
 
 
+def _bulk_update_alert_status(status_filter: str, event_filter: str, status: str) -> int:
+    state = _load_notify_history()
+    alerts = state.get("alerts", [])
+    if not isinstance(alerts, list):
+        return 0
+    targets = _sorted_alerts(state, status_filter=status_filter, event_filter=event_filter)
+    target_ids = {
+        str(a.get("id") or "")
+        for a in targets
+        if isinstance(a, dict) and str(a.get("status") or "open") != status
+    }
+    if not target_ids:
+        return 0
+    actor = _alerts_actor()
+    stamp = now_iso()
+    updated = 0
+    for a in alerts:
+        if not isinstance(a, dict):
+            continue
+        if str(a.get("id") or "") not in target_ids:
+            continue
+        a["status"] = status
+        if status == "acknowledged":
+            a["ack_by"] = actor
+            a["ack_at"] = stamp
+        if status == "resolved":
+            a["resolved_by"] = actor
+            a["resolved_at"] = stamp
+        updated += 1
+    if updated:
+        state["alerts"] = alerts
+        _save_notify_history(state)
+    return updated
+
+
 def ops_alert_ack():
     _require_ops_mutation_auth()
     alert_id = (request.form.get("alert_id") or "").strip()
@@ -3770,6 +4188,26 @@ def ops_alert_ack():
 
 def ops_alert_resolve():
     _require_ops_mutation_auth()
+    resolve_scope = (request.form.get("resolve_scope") or "").strip().lower()
+    if resolve_scope == "visible":
+        status_filter = (request.form.get("status_filter") or "active").strip().lower()
+        event_filter = (request.form.get("event_filter") or "").strip()
+        count = _bulk_update_alert_status(status_filter, event_filter, "resolved")
+        if count <= 0:
+            flash("No open alerts matched this view.", "warn")
+        else:
+            record_admin_audit(
+                "ops_alert_resolve_all",
+                {
+                    "count": count,
+                    "status_filter": status_filter,
+                    "event_filter": event_filter,
+                },
+            )
+            flash(f"Resolved {count} alerts in this view.", "success")
+        if event_filter:
+            return redirect(url_for("ops_alerts_page", status=status_filter, event=event_filter))
+        return redirect(url_for("ops_alerts_page", status=status_filter))
     alert_id = (request.form.get("alert_id") or "").strip()
     if not alert_id or not _update_alert_status(alert_id, "resolved"):
         flash("Alert not found.", "warn")
@@ -3864,6 +4302,65 @@ def _run_backup_once(reason: str, actor: str) -> Dict[str, Any]:
             actor=actor,
         )
         return {"ok": False, "error": str(e)}
+
+
+def _start_backup_job(reason: str, actor: str) -> Dict[str, Any]:
+    app = current_app._get_current_object()
+    job = _create_bg_job("backup", "Backup Snapshot", {"reason": reason})
+
+    def runner() -> None:
+        started = time.time()
+        try:
+            _update_bg_job(
+                job["id"],
+                status="running",
+                stage="create_archive",
+                message="Creating backup archive from current app data.",
+            )
+            with app.app_context():
+                out = _run_backup_once(reason=reason, actor=actor)
+            if not out.get("ok"):
+                raise RuntimeError(str(out.get("error") or "Backup failed."))
+            summary = _build_action_result_summary(
+                tone="success",
+                title="Backup Created",
+                happened=f"Saved snapshot {out.get('name')}.",
+                changed="Database and uploads were archived into a new restore point.",
+                next_action="Run a dry run before restoring, or keep auto backup enabled after major imports.",
+                metrics=[
+                    {"label": "Archive", "value": str(out.get("name") or "—")},
+                    {"label": "Size", "value": f"{int(out.get('size_bytes') or 0)} bytes"},
+                ],
+            )
+            _update_bg_job(
+                job["id"],
+                status="success",
+                stage="complete",
+                message=f"Backup created: {out.get('name')}",
+                duration_sec=round(max(0.0, time.time() - started), 2),
+                summary=out,
+                result_summary=summary,
+            )
+        except Exception as e:  # pragma: no cover
+            summary = _build_action_result_summary(
+                tone="danger",
+                title="Backup Failed",
+                happened=f"Backup did not complete: {e}",
+                changed="No new restore point was saved.",
+                next_action="Check disk space and file permissions, then rerun the backup.",
+            )
+            _update_bg_job(
+                job["id"],
+                status="failed",
+                stage="failed",
+                message=f"Backup failed: {e}",
+                duration_sec=round(max(0.0, time.time() - started), 2),
+                summary={"ok": False, "error": str(e)},
+                result_summary=summary,
+            )
+
+    threading.Thread(target=runner, daemon=True, name=f"backup-job-{job['id'][:8]}").start()
+    return job
 
 
 def _safe_backup_file_path(name: str) -> str:
@@ -4054,196 +4551,9 @@ def ops_backups_page():
     audit_action = (request.args.get("audit_action") or "all").strip().lower()
     audit_limit_raw = parse_int(request.args.get("audit_limit") or "60") or 60
     audit_limit = max(20, min(300, int(audit_limit_raw or 60)))
-    restore_timeline_actions = {
-        "backup_created",
-        "backup_failed",
-        "backup_restored_from_center",
-        "manual_backup_restored",
-        "backup_deleted",
-        "dashboard_recompute_balances",
-        "rollback_import_batch",
-    }
-    all_audit_rows = list(reversed(_load_admin_audit()))
-    if audit_action == "restore":
-        all_audit_rows = [
-            r for r in all_audit_rows if "restore" in str(r.get("action") or "").lower()
-        ]
-    elif audit_action == "backup":
-        all_audit_rows = [
-            r for r in all_audit_rows if "backup" in str(r.get("action") or "").lower()
-        ]
-    elif audit_action == "rollback":
-        all_audit_rows = [
-            r for r in all_audit_rows if "rollback" in str(r.get("action") or "").lower()
-        ]
-    elif audit_action == "recompute":
-        all_audit_rows = [
-            r for r in all_audit_rows if "recompute" in str(r.get("action") or "").lower()
-        ]
-    else:
-        all_audit_rows = [
-            r for r in all_audit_rows if str(r.get("action") or "") in restore_timeline_actions
-        ]
-    audit_rows = all_audit_rows[:audit_limit]
-    content = render_template_string(
-        """
-        <div class="card pageHero"><div class="toolbar">
-          <div class="pageHeroHead">
-            <div>
-              <div class="pill">💾 Auto Backup Center</div>
-              <h2 class="pageTitle">Backups & Restore Safety</h2>
-              <div class="pageSub">Configure schedule, run manual snapshots, and review saved backup archives.</div>
-            </div>
-            <div class="actionRow">
-              <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
-              <a class="btn" href="/admin/restore">♻️ Restore Backup</a>
-            </div>
-          </div>
-        </div></div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">🩺 Integrity Check</div>
-          <div class="tiny stack8 line15">One-click ledger + review integrity pass after restore/import/recompute.</div>
-          <div class="actionRow stack10">
-            <form method="post" action="/ops/integrity/run" class="inlineForm">
-              <button class="btn primary" type="submit">Run Integrity Check</button>
-            </form>
-            <a class="btn" href="/analytics?tab=diagnostics">Open Diagnostics</a>
-          </div>
-        </div></div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">⚙️ Schedule Settings</div>
-          <div class="hr"></div>
-          <form method="post" action="/ops/backups/config" class="row">
-            <div><label><input type="checkbox" name="enabled" value="1" {% if cfg.get('enabled') %}checked{% endif %}/> Enable auto backups</label></div>
-            <div><label><input type="checkbox" name="run_weekends" value="1" {% if cfg.get('run_weekends') %}checked{% endif %}/> Run on weekends</label></div>
-            <div class="fieldGrow2">
-              <label>Run Times (ET, comma-separated HH:MM)</label>
-              <input name="run_times_et" value="{{ cfg.get('run_times_et', ['16:30'])|join(', ') }}" placeholder="16:30, 20:30" />
-            </div>
-            <div>
-              <label>Frequency (hours)</label>
-              <input type="number" name="frequency_hours" min="1" max="168" step="1" value="{{ cfg.get('frequency_hours', 24) }}" />
-            </div>
-            <div>
-              <label>Keep Last (files)</label>
-              <input type="number" name="keep_count" min="3" max="120" step="1" value="{{ cfg.get('keep_count', 21) }}" />
-            </div>
-            <div class="tiny stack10">
-              Last run: {{ cfg.get('last_run_at') or 'Never' }}<br>
-              Status: {{ cfg.get('last_status') or 'n/a' }}<br>
-              {{ cfg.get('last_message') or '' }}
-            </div>
-            <div class="actionRow"><button class="btn" type="submit">Save Schedule</button></div>
-          </form>
-          <div class="hr"></div>
-          <form method="post" action="/ops/backups/run" class="rightActions">
-            <button class="btn primary" type="submit">Run Backup Now</button>
-          </form>
-        </div></div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">🗂️ Saved Backups</div>
-          <div class="tiny stack8 line15">Stored in {{ backup_dir }}</div>
-          {% if not backups %}
-            <div class="tiny stack8 line16">Why this matters: without snapshots, rollback and restore are blind when imports or syncs misfire.</div>
-            <div class="tiny stack8 line16">Next best action: run one manual backup now, then keep auto backup enabled.</div>
-          {% endif %}
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>File</th><th>Modified</th><th>Size</th><th>Verify</th><th>Action</th></tr></thead>
-            <tbody>
-            {% for b in backups %}
-              <tr>
-                <td><code>{{ b.name }}</code></td>
-                <td>{{ b.modified_at }}</td>
-                <td>{{ b.size_bytes }} bytes</td>
-                <td>
-                  <span class="trendChip {% if b.verify_ok %}positive{% elif b.verify_score < 50 %}negative{% endif %}">
-                    {{ b.verify_label }} · {{ b.verify_score }}%
-                  </span>
-                  {% if b.verify_issues %}
-                    <div class="tiny stack6">{{ b.verify_issues|join(', ') }}</div>
-                  {% endif %}
-                </td>
-                <td>
-                  <a class="btn" href="/ops/backups/download/{{ b.name }}">Download</a>
-                  <a class="btn" href="/ops/backups?dry_run={{ b.name|urlencode }}">Dry Run</a>
-                  <form method="post" action="/ops/backups/restore" style="display:inline" onsubmit="return confirm('Restore from {{ b.name }}? This replaces DB and merges uploads.');">
-                    <input type="hidden" name="name" value="{{ b.name }}" />
-                    <button class="btn" type="submit">Restore</button>
-                  </form>
-                  <form method="post" action="/ops/backups/restore-dry-run" style="display:none">
-                    <input type="hidden" name="name" value="{{ b.name }}" />
-                  </form>
-                  <form method="post" action="/ops/backups/delete" style="display:inline" onsubmit="return confirm('Delete backup {{ b.name }}?');">
-                    <input type="hidden" name="name" value="{{ b.name }}" />
-                    <button class="btn" type="submit">Delete</button>
-                  </form>
-                </td>
-              </tr>
-            {% else %}
-              <tr><td colspan="5">No backups saved yet.</td></tr>
-            {% endfor %}
-            </tbody>
-          </table></div>
-        </div></div>
-        {% if dry_run_report %}
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧪 Restore Dry Run: {{ dry_run_name }}</div>
-          <div class="tiny stack8 line15">Preview only. No files were written.</div>
-          <div class="statRow stack10">
-            <div class="stat"><div class="k">Current Trades</div><div class="v">{{ dry_run_report.current_counts.trades }}</div></div>
-            <div class="stat"><div class="k">Backup Trades</div><div class="v">{{ dry_run_report.backup_counts.trades }}</div></div>
-            <div class="stat"><div class="k">Trade Delta</div><div class="v">{{ dry_run_report.delta.trades }}</div></div>
-            <div class="stat"><div class="k">Current Journal Entries</div><div class="v">{{ dry_run_report.current_counts.entries }}</div></div>
-            <div class="stat"><div class="k">Backup Journal Entries</div><div class="v">{{ dry_run_report.backup_counts.entries }}</div></div>
-            <div class="stat"><div class="k">Entry Delta</div><div class="v">{{ dry_run_report.delta.entries }}</div></div>
-            <div class="stat"><div class="k">Upload Files New</div><div class="v">{{ dry_run_report.uploads.new_files }}</div></div>
-            <div class="stat"><div class="k">Upload Files Overwrite</div><div class="v">{{ dry_run_report.uploads.overwritten_files }}</div></div>
-            <div class="stat"><div class="k">Upload Payload</div><div class="v">{{ dry_run_report.uploads.payload_bytes }} bytes</div></div>
-          </div>
-        </div></div>
-        {% endif %}
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧾 Restore Audit Timeline</div>
-          <div class="tiny stack8 line15">Filter rollback/recompute/backup/restore events before executing high-risk actions.</div>
-          <form method="get" action="/ops/backups" class="row stack10">
-            <div>
-              <label>Action Filter</label>
-              <select name="audit_action">
-                <option value="all" {% if audit_action == 'all' %}selected{% endif %}>All Restore Timeline</option>
-                <option value="restore" {% if audit_action == 'restore' %}selected{% endif %}>Restore Only</option>
-                <option value="backup" {% if audit_action == 'backup' %}selected{% endif %}>Backup Only</option>
-                <option value="rollback" {% if audit_action == 'rollback' %}selected{% endif %}>Rollback Only</option>
-                <option value="recompute" {% if audit_action == 'recompute' %}selected{% endif %}>Recompute Only</option>
-              </select>
-            </div>
-            <div>
-              <label>Rows</label>
-              <input type="number" name="audit_limit" min="20" max="300" step="10" value="{{ audit_limit }}" />
-            </div>
-            {% if dry_run_name %}
-              <input type="hidden" name="dry_run" value="{{ dry_run_name }}" />
-            {% endif %}
-            <div class="actionRow"><button class="btn" type="submit">Apply</button></div>
-          </form>
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Details</th></tr></thead>
-            <tbody>
-            {% for r in audit_rows %}
-              <tr>
-                <td>{{ r.get('at', '—') }}</td>
-                <td><code>{{ r.get('action', '—') }}</code></td>
-                <td>{{ r.get('actor', '—') }}</td>
-                <td class="tiny line16"><code>{{ r.get('details', {})|tojson }}</code></td>
-              </tr>
-            {% else %}
-              <tr><td colspan="4">No timeline records for this filter.</td></tr>
-            {% endfor %}
-            </tbody>
-          </table></div>
-        </div></div>
-        """,
+    audit_rows = _load_system_activity(limit=audit_limit, category=audit_action)
+    content = render_template(
+        "ops/backups.html",
         cfg=cfg,
         backups=backups,
         backup_dir=AUTO_BACKUP_DIR,
@@ -4258,6 +4568,9 @@ def ops_backups_page():
 
 def ops_backups_run_now():
     _require_ops_mutation_auth()
+    if (request.args.get("async") or "").strip() == "1":
+        job = _start_backup_job(reason="manual_ops_run", actor=_alerts_actor())
+        return jsonify({"ok": True, "job": _job_response_payload(job)})
     out = _run_backup_once(reason="manual_ops_run", actor=_alerts_actor())
     if out.get("ok"):
         flash(f"Backup created: {out.get('name')}", "success")
@@ -4315,6 +4628,77 @@ def _restore_from_backup_path(path: str) -> None:
                 shutil.copyfileobj(src, dst, length=1024 * 1024)
 
 
+def _start_restore_job(path: str, actor: str) -> Dict[str, Any]:
+    app = current_app._get_current_object()
+    job = _create_bg_job(
+        "restore",
+        "Restore Backup",
+        {"file": os.path.basename(path)},
+    )
+
+    def runner() -> None:
+        started = time.time()
+        try:
+            _update_bg_job(
+                job["id"],
+                status="running",
+                stage="validate_archive",
+                message="Validating backup archive before restore.",
+            )
+            with app.app_context():
+                _update_bg_job(
+                    job["id"],
+                    status="running",
+                    stage="apply_restore",
+                    message="Applying backup to database and uploads.",
+                )
+                _restore_from_backup_path(path)
+                record_admin_audit(
+                    "backup_restored_from_center",
+                    {"file": os.path.basename(path)},
+                    actor=actor,
+                )
+            summary = _build_action_result_summary(
+                tone="success",
+                title="Restore Complete",
+                happened=f"Restored from {os.path.basename(path)}.",
+                changed="Database rows were replaced and upload files were merged from the selected backup.",
+                next_action="Run Integrity Check next so ledger, reviews, and balances are verified on the restored state.",
+                metrics=[
+                    {"label": "Source", "value": os.path.basename(path)},
+                ],
+            )
+            _update_bg_job(
+                job["id"],
+                status="success",
+                stage="complete",
+                message=f"Restored from {os.path.basename(path)}.",
+                duration_sec=round(max(0.0, time.time() - started), 2),
+                summary={"file": os.path.basename(path)},
+                result_summary=summary,
+            )
+        except Exception as e:  # pragma: no cover
+            summary = _build_action_result_summary(
+                tone="danger",
+                title="Restore Failed",
+                happened=f"Restore did not complete: {e}",
+                changed="The selected backup was not fully applied.",
+                next_action="Review the backup file, then retry restore or run a dry run first.",
+            )
+            _update_bg_job(
+                job["id"],
+                status="failed",
+                stage="failed",
+                message=f"Restore failed: {e}",
+                duration_sec=round(max(0.0, time.time() - started), 2),
+                summary={"file": os.path.basename(path), "error": str(e)},
+                result_summary=summary,
+            )
+
+    threading.Thread(target=runner, daemon=True, name=f"restore-job-{job['id'][:8]}").start()
+    return job
+
+
 def ops_backups_restore():
     _require_ops_mutation_auth()
     name = (request.form.get("name") or "").strip()
@@ -4326,6 +4710,9 @@ def ops_backups_restore():
     if not os.path.isfile(path):
         flash("Backup not found.", "warn")
         return redirect(url_for("ops_backups_page"))
+    if (request.args.get("async") or "").strip() == "1":
+        job = _start_restore_job(path, actor=_alerts_actor())
+        return jsonify({"ok": True, "job": _job_response_payload(job)})
     try:
         _restore_from_backup_path(path)
     except Exception as e:
@@ -4334,6 +4721,14 @@ def ops_backups_restore():
     record_admin_audit("backup_restored_from_center", {"file": os.path.basename(path)})
     flash(f"Restored from {os.path.basename(path)}.", "success")
     return redirect(url_for("ops_backups_page"))
+
+
+def ops_job_status(job_id: str):
+    _require_ops_mutation_auth()
+    job = _get_bg_job((job_id or "").strip())
+    if not job:
+        return jsonify({"ok": False, "error": "job_not_found"}), 404
+    return jsonify({"ok": True, "job": _job_response_payload(job)})
 
 
 def ops_backups_restore_dry_run():
@@ -4405,8 +4800,104 @@ def _integrity_health_snapshot() -> Dict[str, Any]:
     }
 
 
+def _start_integrity_job() -> Dict[str, Any]:
+    app = current_app._get_current_object()
+    actor = _alerts_actor()
+    job = _create_bg_job("integrity", "Integrity Check", {"source": "ops_integrity"})
+
+    def runner() -> None:
+        started = time.time()
+        try:
+            _update_bg_job(
+                job["id"],
+                status="running",
+                stage="scan_ledger",
+                message="Scanning ledger, reviews, and balances...",
+            )
+            with app.app_context():
+                snap = _integrity_health_snapshot()
+            _update_bg_job(
+                job["id"],
+                status="running",
+                stage="build_summary",
+                message="Building integrity summary...",
+            )
+            diag = snap.get("diag", {})
+            summary_message = (
+                "Integrity check: "
+                f"issues={snap.get('issues', 0)} · "
+                f"stale_bal={diag.get('stale_balance_rows', 0)} · "
+                f"missing_setup={diag.get('missing_setup', 0)} · "
+                f"missing_session={diag.get('missing_session', 0)} · "
+                f"missing_scores={diag.get('missing_score', 0)} · "
+                f"duplicates={diag.get('duplicate_candidates', 0)} · "
+                f"orphan_reviews={snap.get('orphan_reviews', 0)} · "
+                f"missing_balance={snap.get('missing_balance', 0)}"
+            )
+            summary_card = _build_action_result_summary(
+                tone="success" if int(snap.get("issues", 0)) == 0 else "warning",
+                title="Integrity Summary",
+                happened=summary_message,
+                changed="Ledger, review coverage, and stored balances were scanned against the current dataset.",
+                next_action=(
+                    "No action needed."
+                    if int(snap.get("issues", 0)) == 0
+                    else "Open Diagnostics next, then resolve the flagged rows before the next import."
+                ),
+                metrics=[
+                    {"label": "Issues", "value": str(int(snap.get("issues") or 0))},
+                    {"label": "Orphans", "value": str(int(snap.get("orphan_reviews") or 0))},
+                    {
+                        "label": "Missing Balance",
+                        "value": str(int(snap.get("missing_balance") or 0)),
+                    },
+                ],
+            )
+            record_admin_audit(
+                "integrity_check_run",
+                {
+                    "issues": int(snap.get("issues", 0)),
+                    "orphan_reviews": int(snap.get("orphan_reviews", 0)),
+                    "missing_balance": int(snap.get("missing_balance", 0)),
+                },
+                actor=actor,
+            )
+            _update_bg_job(
+                job["id"],
+                status="success" if int(snap.get("issues", 0)) == 0 else "warning",
+                stage="complete",
+                message=summary_message,
+                duration_sec=round(max(0.0, time.time() - started), 2),
+                summary=snap,
+                result_summary=summary_card,
+            )
+        except Exception as e:  # pragma: no cover
+            summary_card = _build_action_result_summary(
+                tone="danger",
+                title="Integrity Check Failed",
+                happened=f"Integrity check failed: {e}",
+                changed="The integrity pass did not finish, so the current dataset was not fully verified.",
+                next_action="Retry the integrity pass. If it fails again, inspect diagnostics and logs before importing again.",
+            )
+            _update_bg_job(
+                job["id"],
+                status="failed",
+                stage="failed",
+                message=f"Integrity check failed: {e}",
+                duration_sec=round(max(0.0, time.time() - started), 2),
+                summary={"issues": 0},
+                result_summary=summary_card,
+            )
+
+    threading.Thread(target=runner, daemon=True, name=f"integrity-job-{job['id'][:8]}").start()
+    return job
+
+
 def ops_integrity_run():
     _require_ops_mutation_auth()
+    if (request.args.get("async") or "").strip() == "1":
+        job = _start_integrity_job()
+        return jsonify({"ok": True, "job": job})
     snap = _integrity_health_snapshot()
     diag = snap.get("diag", {})
     msg = (
@@ -4433,6 +4924,14 @@ def ops_integrity_run():
     return redirect(url_for("ops_backups_page"))
 
 
+def ops_integrity_job_status(job_id: str):
+    _require_ops_mutation_auth()
+    job = _get_bg_job((job_id or "").strip())
+    if not job or str(job.get("kind") or "") != "integrity":
+        return jsonify({"ok": False, "error": "job_not_found"}), 404
+    return jsonify({"ok": True, "job": _job_response_payload(job)})
+
+
 def _fetch_trades_for_rebuild(start_date: str = "", end_date: str = "") -> List[Dict[str, Any]]:
     where: List[str] = []
     params: List[Any] = []
@@ -4449,6 +4948,163 @@ def _fetch_trades_for_rebuild(start_date: str = "", end_date: str = "") -> List[
     with db() as conn:
         rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
+
+
+def _run_review_rebuild(
+    *,
+    start_date: str,
+    end_date: str,
+    scope: str,
+    preserve_manual: bool,
+    actor: str,
+) -> Dict[str, Any]:
+    trades = _fetch_trades_for_rebuild(start_date=start_date, end_date=end_date)
+    review_map = repo.fetch_trade_reviews_map(
+        [int(t["id"]) for t in trades if t.get("id") is not None]
+    )
+    rebuilt = 0
+    skipped_existing = 0
+
+    for t in trades:
+        tid = int(t["id"])
+        existing = review_map.get(tid)
+        if scope == "missing" and existing:
+            skipped_existing += 1
+            continue
+
+        payload = importing._auto_review_payload(t)
+        if preserve_manual and existing:
+            payload["setup_tag"] = (existing.get("setup_tag") or "").strip() or payload["setup_tag"]
+            payload["session_tag"] = (existing.get("session_tag") or "").strip() or payload[
+                "session_tag"
+            ]
+            if existing.get("checklist_score") is not None:
+                payload["checklist_score"] = int(existing["checklist_score"])
+            payload["rule_break_tags"] = (existing.get("rule_break_tags") or "").strip() or payload[
+                "rule_break_tags"
+            ]
+            payload["review_note"] = (existing.get("review_note") or "").strip() or payload[
+                "review_note"
+            ]
+        payload["rule_break_tags"] = _merge_auto_rule_break_tags(
+            entry_price=parse_float(str(t.get("entry_price") or "")),
+            exit_price=parse_float(str(t.get("exit_price") or "")),
+            existing_tags=payload.get("rule_break_tags", ""),
+        )
+
+        repo.upsert_trade_review(
+            trade_id=tid,
+            setup_tag=payload.get("setup_tag", ""),
+            session_tag=payload.get("session_tag", ""),
+            checklist_score=payload.get("checklist_score"),
+            rule_break_tags=payload.get("rule_break_tags", ""),
+            review_note=payload.get("review_note", ""),
+        )
+        rebuilt += 1
+
+    record_admin_audit(
+        "trades_rebuild_reviews",
+        {
+            "rebuilt": rebuilt,
+            "skipped_existing": skipped_existing,
+            "scope": scope,
+            "preserve_manual": preserve_manual,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+        actor=actor,
+    )
+    return {
+        "rebuilt": rebuilt,
+        "skipped_existing": skipped_existing,
+        "trade_count": len(trades),
+        "scope": scope,
+        "preserve_manual": preserve_manual,
+    }
+
+
+def _start_review_rebuild_job(
+    *, start_date: str, end_date: str, scope: str, preserve_manual: bool, actor: str
+) -> Dict[str, Any]:
+    app = current_app._get_current_object()
+    job = _create_bg_job(
+        "review_rebuild",
+        "Review Rebuild",
+        {
+            "start_date": start_date,
+            "end_date": end_date,
+            "scope": scope,
+            "preserve_manual": preserve_manual,
+        },
+    )
+
+    def runner() -> None:
+        started = time.time()
+        try:
+            _update_bg_job(
+                job["id"],
+                status="running",
+                stage="collect_scope",
+                message="Collecting trades in rebuild scope.",
+            )
+            with app.app_context():
+                _update_bg_job(
+                    job["id"],
+                    status="running",
+                    stage="rebuild_reviews",
+                    message="Rebuilding trade review metadata.",
+                )
+                out = _run_review_rebuild(
+                    start_date=start_date,
+                    end_date=end_date,
+                    scope=scope,
+                    preserve_manual=preserve_manual,
+                    actor=actor,
+                )
+            summary = _build_action_result_summary(
+                tone="success",
+                title="Review Rebuild Complete",
+                happened=(
+                    f"Updated {int(out.get('rebuilt') or 0)} review(s) and skipped "
+                    f"{int(out.get('skipped_existing') or 0)} existing review(s)."
+                ),
+                changed="Review metadata was regenerated from the current trade rows in scope.",
+                next_action="Open Trades or Analytics to spot-check a few rebuilt rows before making more changes.",
+                metrics=[
+                    {"label": "Trades In Scope", "value": str(int(out.get("trade_count") or 0))},
+                    {"label": "Updated", "value": str(int(out.get("rebuilt") or 0))},
+                    {"label": "Skipped", "value": str(int(out.get("skipped_existing") or 0))},
+                ],
+            )
+            _update_bg_job(
+                job["id"],
+                status="success",
+                stage="complete",
+                message="Review rebuild completed.",
+                duration_sec=round(max(0.0, time.time() - started), 2),
+                summary=out,
+                result_summary=summary,
+            )
+        except Exception as e:  # pragma: no cover
+            summary = _build_action_result_summary(
+                tone="danger",
+                title="Review Rebuild Failed",
+                happened=f"Review rebuild did not complete: {e}",
+                changed="Trade review rows were not fully regenerated.",
+                next_action="Retry with a smaller date range, then inspect the affected trades.",
+            )
+            _update_bg_job(
+                job["id"],
+                status="failed",
+                stage="failed",
+                message=f"Review rebuild failed: {e}",
+                duration_sec=round(max(0.0, time.time() - started), 2),
+                summary={"error": str(e)},
+                result_summary=summary,
+            )
+
+    threading.Thread(target=runner, daemon=True, name=f"review-rebuild-job-{job['id'][:8]}").start()
+    return job
 
 
 def trades_open_positions():
@@ -4554,54 +5210,27 @@ def trades_rebuild_reviews():
     preserve_manual = (request.values.get("preserve_manual") or "1") == "1"
 
     if request.method == "POST":
-        trades = _fetch_trades_for_rebuild(start_date=start_date, end_date=end_date)
-        review_map = repo.fetch_trade_reviews_map(
-            [int(t["id"]) for t in trades if t.get("id") is not None]
+        if (request.args.get("async") or "").strip() == "1":
+            job = _start_review_rebuild_job(
+                start_date=start_date,
+                end_date=end_date,
+                scope=scope,
+                preserve_manual=preserve_manual,
+                actor=_alerts_actor(),
+            )
+            return jsonify({"ok": True, "job": _job_response_payload(job)})
+        out = _run_review_rebuild(
+            start_date=start_date,
+            end_date=end_date,
+            scope=scope,
+            preserve_manual=preserve_manual,
+            actor=_alerts_actor(),
         )
-        rebuilt = 0
-        skipped_existing = 0
-
-        for t in trades:
-            tid = int(t["id"])
-            existing = review_map.get(tid)
-            if scope == "missing" and existing:
-                skipped_existing += 1
-                continue
-
-            payload = importing._auto_review_payload(t)
-            if preserve_manual and existing:
-                payload["setup_tag"] = (existing.get("setup_tag") or "").strip() or payload[
-                    "setup_tag"
-                ]
-                payload["session_tag"] = (existing.get("session_tag") or "").strip() or payload[
-                    "session_tag"
-                ]
-                if existing.get("checklist_score") is not None:
-                    payload["checklist_score"] = int(existing["checklist_score"])
-                payload["rule_break_tags"] = (
-                    existing.get("rule_break_tags") or ""
-                ).strip() or payload["rule_break_tags"]
-                payload["review_note"] = (existing.get("review_note") or "").strip() or payload[
-                    "review_note"
-                ]
-            payload["rule_break_tags"] = _merge_auto_rule_break_tags(
-                entry_price=parse_float(str(t.get("entry_price") or "")),
-                exit_price=parse_float(str(t.get("exit_price") or "")),
-                existing_tags=payload.get("rule_break_tags", ""),
-            )
-
-            repo.upsert_trade_review(
-                trade_id=tid,
-                setup_tag=payload.get("setup_tag", ""),
-                session_tag=payload.get("session_tag", ""),
-                checklist_score=payload.get("checklist_score"),
-                rule_break_tags=payload.get("rule_break_tags", ""),
-                review_note=payload.get("review_note", ""),
-            )
-            rebuilt += 1
-
         flash(
-            f"Rebuild complete: updated {rebuilt} review(s), skipped {skipped_existing} existing review(s).",
+            (
+                f"Rebuild complete: updated {int(out.get('rebuilt') or 0)} review(s), "
+                f"skipped {int(out.get('skipped_existing') or 0)} existing review(s)."
+            ),
             "success",
         )
         return redirect(
@@ -4620,44 +5249,8 @@ def trades_rebuild_reviews():
     )
     preview_missing = sum(1 for t in preview if int(t["id"]) not in preview_reviews)
 
-    content = render_template_string(
-        """
-        <div class="metricStrip">
-          <div class="metric"><div class="label">Trades In Scope</div><div class="value">{{ preview|length }}</div></div>
-          <div class="metric"><div class="label">Existing Reviews</div><div class="value">{{ preview_reviews|length }}</div></div>
-          <div class="metric"><div class="label">Missing Reviews</div><div class="value">{{ preview_missing }}</div></div>
-          <div class="metric"><div class="label">Mode</div><div class="value">{{ 'Missing Only' if scope == 'missing' else 'All Trades' }}</div></div>
-        </div>
-
-        <div class="card"><div class="toolbar">
-          <div class="pill">🛠️ Admin: Rebuild Reviews</div>
-          <div class="tiny stack10 line15">Bulk regenerate review metadata (setup/session/score/tags) from trade rows.</div>
-          <div class="hr"></div>
-          <form method="post" class="row">
-            <div><label>Start Date</label><input type="date" name="start_date" value="{{ start_date }}"></div>
-            <div><label>End Date</label><input type="date" name="end_date" value="{{ end_date }}"></div>
-            <div>
-              <label>Scope</label>
-              <select name="scope">
-                <option value="missing" {% if scope == 'missing' %}selected{% endif %}>Only Missing Reviews</option>
-                <option value="all" {% if scope == 'all' %}selected{% endif %}>All Trades (Overwrite)</option>
-              </select>
-            </div>
-            <div>
-              <label>Preserve Manual Fields</label>
-              <select name="preserve_manual">
-                <option value="1" {% if preserve_manual %}selected{% endif %}>Yes (safer)</option>
-                <option value="0" {% if not preserve_manual %}selected{% endif %}>No (fully regenerate)</option>
-              </select>
-            </div>
-            <div class="actionRow">
-              <button class="btn primary" type="submit">Run Rebuild</button>
-              <a class="btn" href="/trades/reviews/rebuild">Reset</a>
-              <a class="btn" href="/trades">Back Trades</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/rebuild_reviews.html",
         preview=preview,
         preview_reviews=preview_reviews,
         preview_missing=preview_missing,

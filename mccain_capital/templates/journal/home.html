@@ -1,0 +1,84 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">📝 Journal Workspace</div>
+        <h2 class="pageTitle">Reflection & Review</h2>
+        <div class="pageSub">Capture context, decision quality, and lessons with linked trades so patterns are easy to study later.</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn primary" href="{{ url_for('new_entry') }}">➕ New Entry</a>
+        <a class="btn" href="{{ url_for('journal_weekly_review') }}">📅 Weekly Review</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="twoCol">
+  <div class="card"><div class="toolbar">
+    <form method="get" action="/journal" class="row">
+      <div class="fieldGrow2">
+        <label for="search">🔎 Search Journal 🧠</label>
+        <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
+      </div>
+      <div class="fieldGrow1">
+        <label>📆 Date</label>
+        <input type="date" name="d" value="{{ d }}" />
+      </div>
+      <div class="actionRow">
+        <button class="btn" type="submit">🧲 Filter</button>
+        <a class="btn" href="/journal">♻️ Reset</a>
+        <a class="btn primary" href="{{ url_for('new_entry') }}">➕ New Entry</a>
+        <a class="btn" href="{{ url_for('journal_weekly_review') }}">📅 Weekly Review</a>
+      </div>
+    </form>
+    <div class="hr"></div>
+    <div class="meta">🧾 {{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} found</div>
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">🎯 Daily Focus</div>
+    <div class="focusList">
+      <div>✅ Rules first (or it’s gambling 🎰).</div>
+      <div>✅ Confirmation > Hope 👀</div>
+      <div>✅ Size + stop respected 🛑</div>
+      <div class="stack10">Journal: <b>what you saw</b> → <b>what you did</b> → <b>what you learned</b> 🧱</div>
+    </div>
+  </div></div>
+</div>
+
+<div class="grid">
+  {% for e in entries %}
+    <div class="card entry">
+      <div class="entryTop">
+        <div>
+          <div class="pillRow">
+            <div class="pill">📆 {{ e['entry_date'] }}</div>
+            <div class="pill">🧩 {{ (e.get('entry_type') or 'post_market').replace('_',' ').title() }}</div>
+            {% if e['market'] %}<div class="meta">🏷️ Market: <b>{{ e['market'] }}</b></div>{% endif %}
+            {% if e['setup'] %}<div class="meta">📌 Setup: <b>{{ e['setup'] }}</b></div>{% endif %}
+          </div>
+          <div class="metaRow">
+            {% if e['grade'] %}<span class="meta">🧠 Grade: <b>{{ e['grade'] }}</b></span>{% endif %}
+            {% if e['mood'] %}<span class="meta">😶‍🌫️ Mood: <b>{{ e['mood'] }}</b></span>{% endif %}
+            {% if e['pnl'] is not none %}<span class="meta">💰 PnL: <b>{{ money(e['pnl']) }}</b></span>{% endif %}
+            {% if e.get('linked_trades', 0) > 0 %}<span class="meta">🔗 Trades: <b>{{ e.get('linked_trades') }}</b></span>{% endif %}
+            <span class="meta">🕒 Updated: {{ e['updated_at'] }}</span>
+          </div>
+        </div>
+
+        <div class="rightActions">
+          <a class="btn" href="{{ url_for('edit_entry', entry_id=e['id']) }}">✏️ Edit</a>
+          <form id="del-e-{{ e['id'] }}" method="post" action="{{ url_for('delete_entry_route', entry_id=e['id']) }}" class="inlineForm"></form>
+          <button class="btn danger" type="button" onclick="confirmDelete('del-e-{{ e['id'] }}')">🗑️</button>
+        </div>
+      </div>
+
+      <div class="notes">{{ e['notes'] }}</div>
+    </div>
+  {% endfor %}
+
+  {% if entries|length == 0 %}
+    <div class="card entry"><div class="meta">No journal entries yet. Hit <b>New Entry</b>. 📝</div></div>
+  {% endif %}
+</div>

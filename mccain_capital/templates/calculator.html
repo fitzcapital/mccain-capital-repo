@@ -5,13 +5,12 @@
       Fast. Clean. No overkill. Use this during the day. ✅
     </div>
 
-    {% if err %}
-      <div class="hr"></div>
-      <div class="tiny metaRed">• {{ err }}</div>
-    {% endif %}
-
     <div class="hr"></div>
-    <form method="post">
+    <div id="calc-error" class="tiny metaRed" {% if not err %}style="display:none"{% endif %}>
+      {% if err %}• {{ err }}{% endif %}
+    </div>
+
+    <form id="plan-risk-form" method="post">
       <div class="row">
         <div>
           <label>💰 Entry Premium</label>
@@ -40,11 +39,26 @@
 
       <div class="hr"></div>
       <div class="rightActions">
-        <button class="btn primary" type="submit">⚡ Calculate</button>
+        <button id="calc-submit" class="btn primary" type="submit">⚡ Calculate</button>
         <a class="btn" href="/dashboard">📊 Dashboard</a>
         <a class="btn" href="/trades">📅 Trades</a>
       </div>
     </form>
+    <div id="calc-runway" class="syncRunway" style="display:none">
+      <div class="syncRunwayTop">
+        <span id="calc-badge" class="syncBadge">Calculating</span>
+        <span id="calc-stage-label" class="syncStageLabel">Computing risk, reward, and consistency.</span>
+      </div>
+      <div class="syncTrack">
+        <div id="calc-track-bar" class="syncTrackBar"></div>
+      </div>
+      <div class="syncSteps">
+        <div class="syncStep is-active" data-calc-step>Inputs</div>
+        <div class="syncStep" data-calc-step>Risk</div>
+        <div class="syncStep" data-calc-step>Consistency</div>
+        <div class="syncStep" data-calc-step>Projection</div>
+      </div>
+    </div>
     <div class="hr"></div>
     <div class="statRow">
       <div class="stat">
@@ -78,57 +92,21 @@
   </div></div>
 </div>
 
-{% if out %}
-  <div class="card stack12"><div class="toolbar">
-    <div class="pill">✅ Results</div>
-
-    <div class="calcGrid">
-      <div class="calcCard"><div class="k">🛑 Stop Price</div><div class="v">{{ money(out.stop_price) }}</div></div>
-      <div class="calcCard"><div class="k">🎯 Target Price</div><div class="v">{{ money(out.tp_price) }}</div></div>
-      <div class="calcCard"><div class="k">💵 Fees</div><div class="v">{{ money(out.fees) }}</div></div>
-      <div class="calcCard"><div class="k">🧾 Total Contract Spend</div><div class="v">{{ money(out.total_spend) }}</div></div>
-      <div class="calcCard"><div class="k">⚠️ Risk (Net)</div><div class="v">{{ money(out.risk_net) }}</div></div>
-      <div class="calcCard"><div class="k">🎁 Reward (Net)</div><div class="v">{{ money(out.reward_net) }}</div></div>
-      <div class="calcCard"><div class="k">⚖️ R:R</div><div class="v">{{ out.rr }}</div></div>
-      <div class="calcCard"><div class="k">🛑 Balance If Stop Hits</div><div class="v">{{ money(out.balance_if_stop) }}</div></div>
-      <div class="calcCard"><div class="k">🎯 Balance If Target Hits</div><div class="v">{{ money(out.balance_if_target) }}</div></div>
-      <div class="calcCard {{ out.consistency_if_stop.class }}">
-        <div class="k">📏 Consistency If Stop Hits</div>
-        <div class="v">
-          {% if out.consistency_if_stop.ratio is not none %}{{ '%.1f'|format(out.consistency_if_stop.ratio * 100) }}% · {{ out.consistency_if_stop.status }}{% else %}—{% endif %}
-        </div>
-      </div>
-      <div class="calcCard {{ out.consistency_if_target.class }}">
-        <div class="k">📏 Consistency If Target Hits</div>
-        <div class="v">
-          {% if out.consistency_if_target.ratio is not none %}{{ '%.1f'|format(out.consistency_if_target.ratio * 100) }}% · {{ out.consistency_if_target.status }}{% else %}—{% endif %}
-        </div>
-      </div>
-    </div>
-
-    <div class="hr"></div>
-    <div class="pill">📈 TP Ladder (Net)</div>
-    <div class="hr"></div>
-
-    <div class="overflowAuto">
-      <table>
-        <thead><tr><th>🎯 %</th><th>📈 TP Price</th><th>🎁 Reward Net</th></tr></thead>
-        <tbody>
-          {% for r in out.ladder %}
-            <tr>
-              <td><b>+{{ r.pct }}%</b></td>
-              <td>{{ money(r.tp) }}</td>
-              <td><b>{{ money(r.net) }}</b></td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div></div>
-{% endif %}
+<div id="calc-results">
+  {% include "calculator_results.html" %}
+</div>
 
 <script>
   (function(){
+    const form = document.getElementById("plan-risk-form");
+    const errorEl = document.getElementById("calc-error");
+    const runway = document.getElementById("calc-runway");
+    const submitBtn = document.getElementById("calc-submit");
+    const badge = document.getElementById("calc-badge");
+    const stageLabel = document.getElementById("calc-stage-label");
+    const trackBar = document.getElementById("calc-track-bar");
+    const steps = Array.from(document.querySelectorAll("[data-calc-step]"));
+    const resultsEl = document.getElementById("calc-results");
     const entryEl = document.querySelector('input[name="entry"]');
     const contractsEl = document.querySelector('input[name="contracts"]');
     const stopPctEl = document.querySelector('input[name="stop_pct"]');
@@ -137,9 +115,11 @@
     const balStopEl = document.getElementById("balStop");
     const balTargetEl = document.getElementById("balTarget");
     const currentBalance = Number({{ current_balance|tojson }});
-    if(!entryEl || !contractsEl || !stopPctEl || !targetPctEl || !feeEl || !balStopEl || !balTargetEl){
+    if(!form || !entryEl || !contractsEl || !stopPctEl || !targetPctEl || !feeEl || !balStopEl || !balTargetEl){
       return;
     }
+
+    let stageTimer = null;
 
     function num(v, fallback){
       const n = Number(v);
@@ -171,6 +151,118 @@
       balStopEl.textContent = money(currentBalance - riskNet);
       balTargetEl.textContent = money(currentBalance + rewardNet);
     }
+
+    function showError(message){
+      if(!errorEl){
+        return;
+      }
+      if(message){
+        errorEl.textContent = `• ${message}`;
+        errorEl.style.display = "";
+      }else{
+        errorEl.textContent = "";
+        errorEl.style.display = "none";
+      }
+    }
+
+    function setStep(index){
+      steps.forEach((step, i) => {
+        step.classList.toggle("is-active", i === index);
+        step.classList.toggle("is-done", i < index);
+      });
+    }
+
+    function stopRunway(success, message){
+      if(stageTimer){
+        window.clearInterval(stageTimer);
+        stageTimer = null;
+      }
+      setStep(steps.length);
+      if(runway){
+        runway.style.display = "";
+      }
+      if(trackBar){
+        trackBar.style.animation = "none";
+        trackBar.style.transform = "translateX(0)";
+        trackBar.style.left = "0";
+        trackBar.style.width = success ? "100%" : "42%";
+        trackBar.style.background = success
+          ? "linear-gradient(90deg, rgba(46,204,113,.9) 0%, rgba(var(--accent-rgb),.95) 100%)"
+          : "linear-gradient(90deg, rgba(220,80,80,.95) 0%, rgba(255,160,160,.75) 100%)";
+      }
+      if(badge){
+        badge.textContent = success ? "Ready" : "Fix Input";
+      }
+      if(stageLabel){
+        stageLabel.textContent = message;
+      }
+    }
+
+    function startRunway(){
+      showError("");
+      if(runway){
+        runway.style.display = "";
+      }
+      if(trackBar){
+        trackBar.className = "syncTrackBar";
+        trackBar.style.animation = "";
+        trackBar.style.transform = "";
+        trackBar.style.left = "";
+        trackBar.style.width = "";
+        trackBar.style.background = "";
+      }
+      if(badge){
+        badge.textContent = "Calculating";
+      }
+      if(stageLabel){
+        stageLabel.textContent = "Computing risk, reward, and consistency.";
+      }
+      setStep(0);
+      let index = 0;
+      if(stageTimer){
+        window.clearInterval(stageTimer);
+      }
+      stageTimer = window.setInterval(() => {
+        index = Math.min(index + 1, steps.length - 1);
+        setStep(index);
+      }, 260);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      startRunway();
+      if(submitBtn){
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Calculating...";
+      }
+      try{
+        const response = await fetch(form.action || window.location.pathname, {
+          method: "POST",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json"
+          },
+          body: new FormData(form)
+        });
+        const payload = await response.json();
+        if(!response.ok){
+          throw new Error(payload && payload.err ? payload.err : "Calculation failed.");
+        }
+        if(resultsEl){
+          resultsEl.innerHTML = payload.results_html || "";
+        }
+        showError(payload.err || "");
+        stopRunway(!payload.err, payload.err ? "Update the inputs and recalculate." : "Plan updated. Risk and balance projections are ready.");
+      }catch(error){
+        showError(error && error.message ? error.message : "Calculation failed.");
+        stopRunway(false, "Calculation failed. Check the inputs and try again.");
+      }finally{
+        if(submitBtn){
+          submitBtn.disabled = false;
+          submitBtn.textContent = "⚡ Calculate";
+        }
+      }
+    });
 
     ["input","change"].forEach((evt)=>{
       entryEl.addEventListener(evt, updatePreview);

@@ -96,6 +96,12 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/trades/sync/job/<job_id>",
+        endpoint="trades_sync_job_status",
+        view_func=h.trades_sync_job_status,
+        methods=["GET"],
+    )
+    app.add_url_rule(
         "/trades/sync/debug/<path:name>",
         endpoint="trades_sync_debug_file",
         view_func=h.trades_sync_debug_file,
@@ -163,10 +169,22 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/ops/jobs/<job_id>",
+        endpoint="ops_job_status",
+        view_func=h.ops_job_status,
+        methods=["GET"],
+    )
+    app.add_url_rule(
         "/ops/integrity/run",
         endpoint="ops_integrity_run",
         view_func=h.ops_integrity_run,
         methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/integrity/job/<job_id>",
+        endpoint="ops_integrity_job_status",
+        view_func=h.ops_integrity_job_status,
+        methods=["GET"],
     )
     app.add_url_rule(
         "/trades/import/rollback",

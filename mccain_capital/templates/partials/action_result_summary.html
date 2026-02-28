@@ -1,0 +1,28 @@
+{% if summary %}
+  <div class="card"><div class="toolbar">
+    <div class="pill">
+      {% if summary.tone == 'success' %}✅{% elif summary.tone == 'warning' %}⚠️{% elif summary.tone == 'danger' %}⛔{% else %}ℹ️{% endif %}
+      {{ summary.title }}
+    </div>
+    <div class="tiny stack8 line16">What happened: {{ summary.happened }}</div>
+    {% if summary.changed %}
+      <div class="tiny stack8 line16">What changed: {{ summary.changed }}</div>
+    {% endif %}
+    {% if summary.metrics %}
+      <div class="statRow stack10">
+        {% for metric in summary.metrics %}
+          <div class="stat">
+            <div class="k">{{ metric.label }}</div>
+            <div class="v">{{ metric.value }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if summary.warnings %}
+      <div class="tiny stack8 line16 metaRed">Warnings: {{ summary.warnings|join(' · ') }}</div>
+    {% endif %}
+    {% if summary.next_action %}
+      <div class="tiny stack8 line16">Next best action: {{ summary.next_action }}</div>
+    {% endif %}
+  </div></div>
+{% endif %}

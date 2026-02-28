@@ -55,6 +55,27 @@ def test_calculator_shows_projected_balances_for_stop_and_target(client):
     assert b"$50,299.30" in resp.data
 
 
+def test_calculator_supports_async_json_updates(client):
+    resp = client.post(
+        "/calculator",
+        data={
+            "entry": "10",
+            "contracts": "1",
+            "stop_pct": "20",
+            "target_pct": "30",
+            "fee_per_contract": "0.70",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert payload["err"] is None
+    assert "Plan updated" not in payload["results_html"]
+    assert "Balance If Stop Hits" in payload["results_html"]
+    assert "Consistency If Target Hits" in payload["results_html"]
+
+
 def test_goals_and_payouts_render_new_planning_sections(client):
     goals_resp = client.get("/goals", follow_redirects=True)
     assert goals_resp.status_code == 200

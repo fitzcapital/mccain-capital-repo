@@ -264,7 +264,9 @@ def money(val: Any) -> str:
 
 
 def default_starting_balance() -> float:
-    return latest_balance_overall() or 50000.0
+    from mccain_capital import runtime as app_runtime
+
+    return app_runtime.default_starting_balance()
 
 
 def money_compact(val: Any) -> str:
@@ -1396,12 +1398,6 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
     return inserted, errors
 
 
-def fetch_trades(d: str = "", q: str = "") -> List[sqlite3.Row]:
-    from mccain_capital.repositories import trades as repo
-
-    return repo.fetch_trades(d=d, q=q)
-
-
 def get_risk_controls() -> Dict[str, Any]:
     from mccain_capital.repositories import trades as repo
 
@@ -1587,376 +1583,6 @@ def backfill_auto_reviews_for_unreviewed() -> int:
     return count
 
 
-def latest_balance_overall(as_of: str | None = None) -> float:
-    """Overall balance = starting_balance + sum(PnL up to `as_of` (inclusive).
-
-    This is schema-tolerant:
-      - picks the first existing PnL column from a preferred list
-      - optionally filters by a trade date column if present
-    """
-    conn = db()
-
-    starting = get_setting_float("starting_balance", 50000.0)
-
-    # Introspect columns so we don't break on older DBs
-    cols = []
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
-    except Exception:
-        return float(starting)
-
-    def _pick(existing: list[str], preferred: list[str]) -> str | None:
-        for c in preferred:
-            if c in existing:
-                return c
-        return None
-
-    pnl_col = _pick(
-        cols,
-        [
-            "net_pl",
-            "pnl",
-            "profit_loss",
-            "pl",
-            "profit",
-            "p_l",
-            "net_pnl",
-        ],
-    )
-    if not pnl_col:
-        return float(starting)
-
-    date_col = _pick(cols, ["trade_date", "date", "day"])
-
-    # Validate column names and quote them
-    def _q(col: str) -> str:
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", col):
-            raise ValueError(f"Unsafe column name: {col}")
-        return f'"{col}"'
-
-    try:
-        pnl_q = _q(pnl_col)
-        if as_of and date_col:
-            date_q = _q(date_col)
-            row = conn.execute(
-                f"SELECT COALESCE(SUM(CAST({pnl_q} AS REAL)), 0) FROM trades WHERE {date_q} <= ?",
-                (str(as_of),),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                f"SELECT COALESCE(SUM(CAST({pnl_q} AS REAL)), 0) FROM trades"
-            ).fetchone()
-        total = float(row[0] or 0.0)
-    except Exception:
-        total = 0.0
-
-    return float(starting + total)
-
-
-def balance_integrity_snapshot(as_of: str | None = None, tolerance: float = 0.01) -> Dict[str, Any]:
-    """
-    Compare canonical derived ledger balance vs latest stored row balance.
-    Used as a reconciliation signal to detect stale imported balances.
-    """
-    derived = float(latest_balance_overall(as_of=as_of))
-    out: Dict[str, Any] = {
-        "derived_balance": derived,
-        "stored_balance": None,
-        "delta": None,
-        "has_drift": False,
-        "tolerance": float(tolerance),
-    }
-    conn = db()
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
-
-    def _pick(existing: list[str], preferred: list[str]) -> str | None:
-        for c in preferred:
-            if c in existing:
-                return c
-        return None
-
-    bal_col = _pick(cols, ["balance", "running_balance", "equity", "account_balance"])
-    if not bal_col:
-        return out
-    date_col = _pick(cols, ["trade_date", "date", "day"])
-
-    def _q(col: str) -> str:
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", col):
-            raise ValueError(f"Unsafe column name: {col}")
-        return f'"{col}"'
-
-    bal_q = _q(bal_col)
-    acct_filter = " AND COALESCE(ticker, '') <> 'ACCT'" if "ticker" in cols else ""
-    if as_of and date_col:
-        date_q = _q(date_col)
-        row = conn.execute(
-            f"""
-            SELECT {bal_q}
-            FROM trades
-            WHERE {bal_q} IS NOT NULL AND {date_q} <= ?{acct_filter}
-            ORDER BY {date_q} DESC, id DESC
-            LIMIT 1
-            """,
-            (str(as_of),),
-        ).fetchone()
-    else:
-        row = conn.execute(
-            f"""
-            SELECT {bal_q}
-            FROM trades
-            WHERE {bal_q} IS NOT NULL{acct_filter}
-            ORDER BY id DESC
-            LIMIT 1
-            """
-        ).fetchone()
-    if not row or row[0] is None:
-        return out
-    try:
-        stored = float(row[0])
-    except Exception:
-        return out
-    delta = derived - stored
-    out["stored_balance"] = stored
-    out["delta"] = delta
-    out["has_drift"] = abs(delta) > float(tolerance)
-    return out
-
-
-def last_balance_in_list(trades: List[sqlite3.Row]) -> Optional[float]:
-    for t in trades:
-        b = t["balance"]
-        if b is not None:
-            try:
-                return float(b)
-            except Exception:
-                return None
-    return None
-
-
-def trade_day_stats(trades: List[sqlite3.Row]) -> Dict[str, Any]:
-    total = 0.0
-    wins = 0
-    losses = 0
-    for t in trades:
-        net = t["net_pl"]
-        if net is None:
-            continue
-        total += float(net)
-        if net > 0:
-            wins += 1
-        elif net < 0:
-            losses += 1
-
-    total_trades = wins + losses
-    win_rate = (wins / total_trades * 100.0) if total_trades else 0.0
-    wl_ratio = (wins / losses) if losses else (float(wins) if wins else 0.0)
-
-    return {
-        "total": total,
-        "wins": wins,
-        "losses": losses,
-        "total_trades": total_trades,
-        "win_rate": win_rate,
-        "wl_ratio": wl_ratio,
-    }
-
-
-def week_range_for(day_iso: Optional[str]) -> Tuple[str, str]:
-    d = datetime.strptime(day_iso or today_iso(), "%Y-%m-%d").date()
-    start = d - timedelta(days=d.weekday())  # Monday
-    end = start + timedelta(days=7)
-    return start.isoformat(), end.isoformat()
-
-
-def week_total_net(day_iso: Optional[str]) -> float:
-    start, end = week_range_for(day_iso)
-    with db() as conn:
-        row = conn.execute(
-            """
-            SELECT COALESCE(SUM(net_pl), 0) AS net
-            FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
-            """,
-            (start, end),
-        ).fetchone()
-    return float(row["net"] or 0.0)
-
-
-def month_heatmap(year: int, month: int) -> Dict[str, Any]:
-    first = date(year, month, 1)
-    nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
-    days_in_month = (nxt - first).days
-
-    with db() as conn:
-        rows = conn.execute(
-            """
-            SELECT trade_date, COALESCE(SUM(net_pl), 0) AS net
-            FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
-            GROUP BY trade_date
-            """,
-            (first.isoformat(), nxt.isoformat()),
-        ).fetchall()
-
-        bal_rows = conn.execute(
-            """
-            SELECT trade_date, balance, id
-            FROM trades
-            WHERE trade_date >= ? AND trade_date < ? AND balance IS NOT NULL
-            ORDER BY trade_date ASC, id ASC
-            """,
-            (first.isoformat(), nxt.isoformat()),
-        ).fetchall()
-
-    daily_net = {r["trade_date"]: float(r["net"] or 0) for r in rows}
-
-    daily_balance: Dict[str, float] = {}
-    for r in bal_rows:
-        try:
-            daily_balance[r["trade_date"]] = float(r["balance"])
-        except Exception:
-            pass
-
-    # Sunday-start calendar grid
-    start_weekday = (first.weekday() + 1) % 7  # Mon=0 -> Sun=0
-    cells: List[Tuple[Optional[int], float, str, Optional[int]]] = []
-    for _ in range(start_weekday):
-        cells.append((None, 0.0, "", None))
-
-    max_abs = 0.0
-    for daynum in range(1, days_in_month + 1):
-        iso = date(year, month, daynum).isoformat()
-        net = daily_net.get(iso, 0.0)
-        wd = date(year, month, daynum).weekday()
-        max_abs = max(max_abs, abs(net))
-        cells.append((daynum, net, iso, wd))
-
-    while len(cells) % 7 != 0:
-        cells.append((None, 0.0, "", None))
-
-    weeks = [cells[i : i + 7] for i in range(0, len(cells), 7)]
-    return {
-        "year": year,
-        "month": month,
-        "weeks": weeks,
-        "max_abs": max_abs or 1.0,
-        "daily_balance": daily_balance,
-    }
-
-
-def clear_trades() -> None:
-    with db() as conn:
-        conn.execute("DELETE FROM trades")
-
-
-def allowed_file(filename: str) -> bool:
-    name = (filename or "").lower().strip()
-    _, ext = os.path.splitext(name)
-    return ext in {".pdf", ".html", ".htm"}
-
-
-def detect_paste_format(text: str) -> str:
-    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
-    if not lines:
-        return "table"
-
-    # Vanquish statement table paste
-    if (
-        ("Instrument" in lines[0])
-        and ("Transaction Time" in lines[0])
-        and ("Direction" in lines[0])
-    ):
-        return "vanquish_statement"
-
-    # existing logic...
-    if looks_like_header(lines[0]):
-        lines = lines[1:]
-    if not lines:
-        return "table"
-
-    sample = lines[:3]
-    broker_hits = 0
-    for ln in sample:
-        joined = " ".join(split_row(ln)).upper()
-        if re.search(r"\b(BUY|SELL)\b", joined):
-            broker_hits += 1
-        if re.search(r"\b\d{1,2}/\d{1,2}/\d{2},\s*\d{1,2}:\d{2}\s*(AM|PM)\b", ln):
-            broker_hits += 1
-        if re.match(
-            r"^[A-Z]{1,6}\s+[A-Z]{3}/\d{1,2}/\d{2}\s+\d+(\.\d+)?\s+(PUT|CALL)\b", ln.upper()
-        ):
-            broker_hits += 2
-
-    return "broker" if broker_hits >= 3 else "table"
-
-
-# ============================================================
-# Projections (Mon–Fri only) ✅
-# ============================================================
-def last_n_trading_day_totals(n: int = 20) -> List[float]:
-    with db() as conn:
-        rows = conn.execute(
-            """
-            SELECT trade_date, COALESCE(SUM(net_pl),0) AS net
-            FROM trades
-            GROUP BY trade_date
-            ORDER BY trade_date DESC
-            LIMIT 200
-            """
-        ).fetchall()
-
-    out: List[float] = []
-    for r in rows:
-        try:
-            d = datetime.strptime(r["trade_date"], "%Y-%m-%d").date()
-        except Exception:
-            continue
-        if d.weekday() >= 5:
-            continue
-        out.append(float(r["net"] or 0.0))
-        if len(out) >= n:
-            break
-    return out
-
-
-def safe_avg(vals: List[float]) -> float:
-    return (sum(vals) / len(vals)) if vals else 0.0
-
-
-def projections_from_daily(
-    daily_vals: List[float], base_balance: Optional[float]
-) -> Dict[str, Any]:
-    avg = safe_avg(daily_vals)
-    b0 = float(base_balance or 0.0)
-
-    def proj(days: int) -> Dict[str, Any]:
-        est = avg * days
-        return {"days": days, "daily_avg": avg, "est_pnl": est, "est_balance": b0 + est}
-
-    return {"avg": avg, "base_balance": b0, "p5": proj(5), "p10": proj(10), "p20": proj(20)}
-
-
-# ============================================================
-# Calculator (simple + fast) ✅
-# ============================================================
-def calc_stop_takeprofit(entry: float, stop_pct: float, target_pct: float) -> Tuple[float, float]:
-    stop_price = round(entry * (1 - stop_pct / 100.0), 2)
-    tp_price = round(entry * (1 + target_pct / 100.0), 2)
-    return stop_price, tp_price
-
-
-def calc_risk_reward(
-    entry: float, contracts: int, stop_price: float, tp_price: float, fee_per_contract: float
-) -> Dict[str, float]:
-    fees = round(contracts * fee_per_contract, 2)
-    risk_gross = (entry - stop_price) * MULTIPLIER * contracts
-    reward_gross = (tp_price - entry) * MULTIPLIER * contracts
-    risk_net = round(risk_gross + fees, 2)
-    reward_net = round(reward_gross - fees, 2)
-    rr = round((reward_net / risk_net), 2) if risk_net > 0 else 0.0
-    return {"fees": fees, "risk_net": risk_net, "reward_net": reward_net, "rr": rr}
-
-
 # ============================================================
 # Strategies CRUD ✅
 # ============================================================
@@ -2084,91 +1710,30 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
 
 
 def _simple_msg(msg: str) -> str:
-    return render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">⚠️</div>
-          <div style="margin-top:10px">{{ msg }}</div>
-          <div class="hr"></div>
-          <div class="rightActions">
-            <a class="btn primary" href="/trades">Back</a>
-          </div>
-        </div></div>
-        """,
-        msg=msg,
-    )
+    from mccain_capital.services.ui import simple_msg
+
+    return simple_msg(msg)
 
 
 # ============================================================
 # Routes – Home + favicon
 # ============================================================
 def setup_page():
-    """First-run auth setup from the web UI."""
-    if auth_enabled() and not is_authenticated():
-        return redirect(url_for("login_page"))
+    from mccain_capital.services import auth as auth_svc
 
-    err = ""
-    msg = ""
-    default_user = _effective_username() if auth_enabled() else APP_USERNAME
-
-    if request.method == "POST":
-        user = (request.form.get("username") or "").strip()
-        password = request.form.get("password") or ""
-        confirm = request.form.get("confirm_password") or ""
-
-        if len(user) < 3:
-            err = "Username must be at least 3 characters."
-        elif len(password) < 8:
-            err = "Password must be at least 8 characters."
-        elif password != confirm:
-            err = "Passwords do not match."
-        else:
-            set_setting_value("auth_username", user)
-            set_setting_value("auth_password_hash", generate_password_hash(password))
-            session["auth_ok"] = True
-            session["auth_user"] = user
-            session.permanent = True
-            msg = "Login credentials saved."
-            return redirect(url_for("dashboard"))
-
-    return render_page(
-        render_template("setup_login.html", err=err, msg=msg, default_user=default_user),
-        active="auth",
-        title=f"{APP_TITLE} · Setup Login",
-    )
+    return auth_svc.setup_page()
 
 
 def login_page():
-    if not auth_enabled():
-        return redirect(url_for("setup_page"))
-    if is_authenticated():
-        return redirect(url_for("dashboard"))
+    from mccain_capital.services import auth as auth_svc
 
-    err = ""
-    if request.method == "POST":
-        user = (request.form.get("username") or "").strip()
-        password = request.form.get("password") or ""
-        effective_user = _effective_username()
-        if user == effective_user and check_password_hash(_effective_password_hash(), password):
-            session["auth_ok"] = True
-            session["auth_user"] = effective_user
-            session.permanent = True
-            nxt = (request.args.get("next") or request.form.get("next") or "").strip()
-            if nxt.startswith("/") and not nxt.startswith("//"):
-                return redirect(nxt)
-            return redirect(url_for("dashboard"))
-        err = "Invalid username or password."
-
-    return render_page(
-        render_template("login.html", err=err, next_url=request.args.get("next", "")),
-        active="auth",
-        title=f"{APP_TITLE} · Login",
-    )
+    return auth_svc.login_page()
 
 
 def logout_page():
-    session.clear()
-    return redirect(url_for("login_page"))
+    from mccain_capital.services import auth as auth_svc
+
+    return auth_svc.logout_page()
 
 
 def healthz():
@@ -2200,240 +1765,39 @@ def _entry_form(
     entry_id: Optional[int] = None,
     errors: Optional[List[str]] = None,
 ) -> str:
-    errors = errors or []
-    action = "/new" if mode == "new" else f"/edit/{entry_id}"
-    title = "➕ New Entry" if mode == "new" else f"✏️ Edit Entry #{entry_id}"
-    return render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">{{ title }}</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.6">
-            Document observations, execution, and lessons with clarity.
-          </div>
+    from mccain_capital.services import journal as journal_svc
 
-          {% if errors %}
-            <div class="hr"></div>
-            <div class="tiny" style="color:#ff8f8f">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
-          {% endif %}
-
-          <div class="hr"></div>
-          <form method="post" action="{{ action }}">
-            <div class="row">
-              <div>
-                <label>📆 Date</label>
-                <input type="date" name="entry_date" value="{{ values.get('entry_date','') }}">
-              </div>
-              <div>
-                <label>🏷️ Market</label>
-                <input name="market" value="{{ values.get('market','') }}" placeholder="SPX / QQQ / NQ...">
-              </div>
-              <div>
-                <label>📌 Setup</label>
-                <input name="setup" value="{{ values.get('setup','') }}" placeholder="Midday CE Strike...">
-              </div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div>
-                <label>🧠 Grade</label>
-                <input name="grade" value="{{ values.get('grade','') }}" placeholder="A / B / C...">
-              </div>
-              <div>
-                <label>😶‍🌫️ Mood</label>
-                <input name="mood" value="{{ values.get('mood','') }}" placeholder="Calm / anxious / revenge...">
-              </div>
-              <div>
-                <label>💰 PnL</label>
-                <input name="pnl" inputmode="decimal" value="{{ values.get('pnl','') }}" placeholder="e.g. 327.90">
-              </div>
-            </div>
-
-            <div style="margin-top:12px">
-              <label>📝 Notes</label>
-              <textarea name="notes" placeholder="Capture context, execution, and improvement plan...">{{ values.get('notes','') }}</textarea>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save</button>
-              <a class="btn" href="/journal">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        title=title,
-        action=action,
-        values=values,
-        errors=errors,
-    )
+    return journal_svc._entry_form(mode, values, entry_id=entry_id, errors=errors)
 
 
 def journal_home():
-    q = request.args.get("q", "")
-    d = request.args.get("d", "")
-    entries = fetch_entries(q=q, d=d)
+    from mccain_capital.services import journal as journal_svc
 
-    content = render_template_string(
-        """
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <form method="get" action="/journal" class="row">
-              <div style="flex:2 1 260px">
-                <label for="search">🔎 Search Journal 🧠</label>
-                <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
-              </div>
-              <div style="flex:1 1 160px">
-                <label>📆 Date</label>
-                <input type="date" name="d" value="{{ d }}" />
-              </div>
-              <div style="display:flex; gap:10px; flex-wrap:wrap">
-                <button class="btn" type="submit">🧲 Filter</button>
-                <a class="btn" href="/journal">♻️ Reset</a>
-                <a class="btn primary" href="{{ url_for('new_entry') }}">➕ New Entry</a>
-              </div>
-            </form>
-            <div class="hr"></div>
-            <div class="meta">🧾 {{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} found</div>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">🎯 Daily Focus</div>
-            <div style="margin-top:10px; color:var(--muted); line-height:1.5">
-              <div>✅ Rules first (or it’s gambling 🎰).</div>
-              <div>✅ Confirmation > Hope 👀</div>
-              <div>✅ Size + stop respected 🛑</div>
-              <div style="margin-top:10px">Journal: <b>what you saw</b> → <b>what you did</b> → <b>what you learned</b> 🧱</div>
-            </div>
-          </div></div>
-        </div>
-
-        <div class="grid">
-          {% for e in entries %}
-            <div class="card entry">
-              <div class="entryTop">
-                <div>
-                  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
-                    <div class="pill">📆 {{ e['entry_date'] }}</div>
-                    {% if e['market'] %}<div class="meta">🏷️ Market: <b>{{ e['market'] }}</b></div>{% endif %}
-                    {% if e['setup'] %}<div class="meta">📌 Setup: <b>{{ e['setup'] }}</b></div>{% endif %}
-                  </div>
-                  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px">
-                    {% if e['grade'] %}<span class="meta">🧠 Grade: <b>{{ e['grade'] }}</b></span>{% endif %}
-                    {% if e['mood'] %}<span class="meta">😶‍🌫️ Mood: <b>{{ e['mood'] }}</b></span>{% endif %}
-                    {% if e['pnl'] is not none %}<span class="meta">💰 PnL: <b>{{ money(e['pnl']) }}</b></span>{% endif %}
-                    <span class="meta">🕒 Updated: {{ e['updated_at'] }}</span>
-                  </div>
-                </div>
-
-                <div class="rightActions">
-                  <a class="btn" href="{{ url_for('edit_entry', entry_id=e['id']) }}">✏️ Edit</a>
-                  <form id="del-e-{{ e['id'] }}" method="post" action="{{ url_for('delete_entry_route', entry_id=e['id']) }}" style="display:inline"></form>
-                  <button class="btn danger" type="button" onclick="confirmDelete('del-e-{{ e['id'] }}')">🗑️</button>
-                </div>
-              </div>
-
-              <div class="notes">{{ e['notes'] }}</div>
-            </div>
-          {% endfor %}
-
-          {% if entries|length == 0 %}
-            <div class="card entry"><div class="meta">No journal entries yet. Hit <b>New Entry</b>. 📝</div></div>
-          {% endif %}
-        </div>
-        """,
-        q=q,
-        d=d,
-        entries=entries,
-        money=money,
-    )
-    return render_page(content, active="journal")
+    return journal_svc.journal_home()
 
 
 def new_entry():
-    if request.method == "POST":
-        f = request.form
-        pnl = parse_float(f.get("pnl", ""))
-        notes = (f.get("notes") or "").strip()
-        if not notes:
-            return render_page(
-                _entry_form("new", dict(f), errors=["Notes is required."]), active="journal"
-            )
+    from mccain_capital.services import journal as journal_svc
 
-        entry_id = create_entry(
-            {
-                "entry_date": (f.get("entry_date") or today_iso()).strip(),
-                "market": f.get("market"),
-                "setup": f.get("setup"),
-                "grade": f.get("grade"),
-                "pnl": pnl,
-                "mood": f.get("mood"),
-                "notes": notes,
-            }
-        )
-        return redirect(url_for("edit_entry", entry_id=entry_id))
-
-    return render_page(_entry_form("new", {"entry_date": today_iso()}, errors=[]), active="journal")
+    return journal_svc.new_entry()
 
 
 def edit_entry(entry_id: int):
-    row = get_entry(entry_id)
-    if not row:
-        abort(404)
+    from mccain_capital.services import journal as journal_svc
 
-    if request.method == "POST":
-        f = request.form
-        pnl = parse_float(f.get("pnl", ""))
-        notes = (f.get("notes") or "").strip()
-        if not notes:
-            return render_page(
-                _entry_form("edit", dict(f), entry_id=entry_id, errors=["Notes is required."]),
-                active="journal",
-            )
-
-        update_entry(
-            entry_id,
-            {
-                "entry_date": (f.get("entry_date") or today_iso()).strip(),
-                "market": f.get("market"),
-                "setup": f.get("setup"),
-                "grade": f.get("grade"),
-                "pnl": pnl,
-                "mood": f.get("mood"),
-                "notes": notes,
-            },
-        )
-        return redirect(url_for("journal_home"))
-
-    values = dict(row)
-    if values.get("pnl") is None:
-        values["pnl"] = ""
-    return render_page(_entry_form("edit", values, entry_id=entry_id, errors=[]), active="journal")
+    return journal_svc.edit_entry(entry_id)
 
 
 def delete_entry_route(entry_id: int):
-    delete_entry(entry_id)
-    return redirect(url_for("journal_home"))
+    from mccain_capital.services import journal as journal_svc
+
+    return journal_svc.delete_entry_route(entry_id)
 
 
 def latest_trade_day() -> Optional[date]:
-    with db() as conn:
-        row = conn.execute(
-            """
-            SELECT trade_date
-            FROM trades
-            WHERE trade_date IS NOT NULL AND trade_date != ''
-            ORDER BY trade_date DESC, id DESC
-            LIMIT 1
-            """
-        ).fetchone()
+    from mccain_capital.repositories import trades as trades_repo
 
-    if not row:
-        return None
-
-    try:
-        return datetime.strptime(row["trade_date"], "%Y-%m-%d").date()
-    except Exception:
-        return None
+    return trades_repo.latest_trade_day()
 
 
 def fetch_trades_range(start_iso: str, end_iso: str) -> List[sqlite3.Row]:
@@ -2466,7 +1830,9 @@ def trades_duplicate(trade_id: int):
 
     # Keep the same economics, but roll balance forward from latest balance
     net_pl = float(src["net_pl"] or 0.0)
-    new_balance = (latest_balance_overall() or 50000.0) + net_pl
+    from mccain_capital import runtime as app_runtime
+
+    new_balance = (app_runtime.latest_balance_overall() or 50000.0) + net_pl
 
     with db() as conn:
         conn.execute(
@@ -2678,757 +2044,63 @@ def update_trade(trade_id: int, data: Dict[str, Any]) -> None:
 
 
 def trades_edit(trade_id: int):
-    row = get_trade(trade_id)
-    if not row:
-        abort(404)
+    from mccain_capital.services import trades as trades_svc
 
-    # preserve where user came from
-    d = request.args.get("d", "")
-    q = request.args.get("q", "")
-
-    if request.method == "POST":
-        f = request.form
-
-        trade_date = (f.get("trade_date") or today_iso()).strip()
-        entry_time = (f.get("entry_time") or "").strip()
-        exit_time = (f.get("exit_time") or "").strip()
-
-        ticker = (f.get("ticker") or "").strip().upper()
-        opt_type = normalize_opt_type(f.get("opt_type") or "")
-        strike = parse_float(f.get("strike") or "")
-
-        contracts = parse_int(f.get("contracts") or "") or 0
-        entry_price = parse_float(f.get("entry_price") or "")
-        exit_price = parse_float(f.get("exit_price") or "")
-        comm = parse_float(f.get("comm") or "") or 0.0
-
-        if (
-            not ticker
-            or opt_type not in ("CALL", "PUT")
-            or contracts <= 0
-            or entry_price is None
-            or exit_price is None
-        ):
-            return render_page(
-                _simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                active="trades",
-            )
-
-        gross_pl = (exit_price - entry_price) * 100.0 * contracts
-        net_pl = gross_pl - comm
-        total_spent = entry_price * 100.0 * contracts
-        result_pct = (net_pl / total_spent * 100.0) if total_spent > 0 else None
-
-        update_trade(
-            trade_id,
-            {
-                "trade_date": trade_date,
-                "entry_time": entry_time,
-                "exit_time": exit_time,
-                "ticker": ticker,
-                "opt_type": opt_type,
-                "strike": strike,
-                "entry_price": entry_price,
-                "exit_price": exit_price,
-                "contracts": contracts,
-                "comm": comm,
-                "total_spent": total_spent,
-                "gross_pl": gross_pl,
-                "net_pl": net_pl,
-                "result_pct": result_pct,
-            },
-        )
-
-        # IMPORTANT: balances are stored per row. Editing net_pl affects future balances.
-        recompute_balances()
-
-        return redirect(
-            url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page", d=trade_date)
-        )
-
-    # GET
-    t = dict(row)
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">✏️ Edit Trade #{{ t.id }}</div>
-          <div class="hr"></div>
-
-          <form method="post" action="/trades/edit/{{ t.id }}?d={{ d }}&q={{ q }}">
-            <div class="row">
-              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ t.trade_date }}"/></div>
-              <div><label>⏱️ Entry Time</label><input name="entry_time" value="{{ t.entry_time or '' }}"/></div>
-              <div><label>⏱️ Exit Time</label><input name="exit_time" value="{{ t.exit_time or '' }}"/></div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div><label>🏷️ Ticker</label><input name="ticker" value="{{ t.ticker or '' }}"/></div>
-              <div>
-                <label>📌 Type</label>
-                <select name="opt_type">
-                  <option value="CALL" {% if (t.opt_type or '')=='CALL' %}selected{% endif %}>CALL</option>
-                  <option value="PUT"  {% if (t.opt_type or '')=='PUT' %}selected{% endif %}>PUT</option>
-                </select>
-              </div>
-              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" value="{{ '' if t.strike is none else t.strike }}"/></div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ t.contracts or 1 }}"/></div>
-              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" value="{{ '' if t.entry_price is none else t.entry_price }}"/></div>
-              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" value="{{ '' if t.exit_price is none else t.exit_price }}"/></div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div><label>💵 Fees (total)</label><input name="comm" inputmode="decimal" value="{{ t.comm or 0.70 }}"/></div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save</button>
-              <a class="btn" href="/trades?d={{ d }}&q={{ q }}">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        t=t,
-        d=d,
-        q=q,
-    )
-    return render_page(content, active="trades")
+    return trades_svc.trades_edit(trade_id)
 
 
 def trades_review(trade_id: int):
-    row = get_trade(trade_id)
-    if not row:
-        abort(404)
+    from mccain_capital.services import trades as trades_svc
 
-    d = request.args.get("d", "")
-    q = request.args.get("q", "")
-    rv = get_trade_review(trade_id) or {}
-
-    if request.method == "POST":
-        f = request.form
-        setup_tag = (f.get("setup_tag") or "").strip()
-        session_tag = (f.get("session_tag") or "").strip()
-        score_raw = (f.get("checklist_score") or "").strip()
-        checklist_score = parse_int(score_raw) if score_raw else None
-        rule_break_tags = (f.get("rule_break_tags") or "").strip()
-        review_note = (f.get("review_note") or "").strip()
-        upsert_trade_review(
-            trade_id=trade_id,
-            setup_tag=setup_tag,
-            session_tag=session_tag,
-            checklist_score=checklist_score,
-            rule_break_tags=rule_break_tags,
-            review_note=review_note,
-        )
-        return redirect(url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page"))
-
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧠 Trade Review #{{ t.id }}</div>
-          <div class="tiny" style="margin-top:8px">{{ t.trade_date }} · {{ t.ticker }} {{ t.opt_type }}</div>
-          <div class="hr"></div>
-          <form method="post" action="/trades/review/{{ t.id }}?d={{ d }}&q={{ q }}">
-            <div class="row">
-              <div><label>Setup Tag</label><input name="setup_tag" value="{{ rv.get('setup_tag','') }}" placeholder="FVG, ORB, Fade, Breakout"></div>
-              <div>
-                <label>Session Tag</label>
-                <select name="session_tag">
-                  {% set s = rv.get('session_tag','') %}
-                  <option value="" {% if s=='' %}selected{% endif %}>—</option>
-                  <option value="Open" {% if s=='Open' %}selected{% endif %}>Open</option>
-                  <option value="Midday" {% if s=='Midday' %}selected{% endif %}>Midday</option>
-                  <option value="Power Hour" {% if s=='Power Hour' %}selected{% endif %}>Power Hour</option>
-                  <option value="After Hours" {% if s=='After Hours' %}selected{% endif %}>After Hours</option>
-                </select>
-              </div>
-              <div><label>Checklist Score (0-100)</label><input name="checklist_score" inputmode="numeric" value="{{ '' if rv.get('checklist_score') is none else rv.get('checklist_score') }}"></div>
-            </div>
-            <div class="row" style="margin-top:10px">
-              <div>
-                <label>Rule-Break Tags (comma separated)</label>
-                <input name="rule_break_tags" value="{{ rv.get('rule_break_tags','') }}" placeholder="oversized, late entry, no stop, revenge trade">
-              </div>
-            </div>
-            <div style="margin-top:10px">
-              <label>Review Note</label>
-              <textarea name="review_note" placeholder="What to repeat, what to remove next session">{{ rv.get('review_note','') }}</textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save Review</button>
-              <a class="btn" href="/trades?d={{ d }}&q={{ q }}">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        t=dict(row),
-        rv=rv,
-        d=d,
-        q=q,
-    )
-    return render_page(content, active="trades")
+    return trades_svc.trades_review(trade_id)
 
 
 def trades_risk_controls():
-    if request.method == "POST":
-        daily_max_loss = parse_float(request.form.get("daily_max_loss", "")) or 0.0
-        enforce_lockout = 1 if request.form.get("enforce_lockout") == "1" else 0
-        save_risk_controls(daily_max_loss, enforce_lockout)
-        return redirect(url_for("trades_risk_controls"))
+    from mccain_capital.services import trades as trades_svc
 
-    rc = get_risk_controls()
-    state = trade_lockout_state(today_iso())
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🛡️ Risk Controls</div>
-          <div class="tiny" style="margin-top:8px">
-            Today's net: {{ money(state.day_net) }} · Max loss: {{ money(state.daily_max_loss) }} ·
-            Status: {% if state.locked %}<b style="color:#ff8f8f">LOCKED</b>{% else %}<b style="color:#7ee2ae">ACTIVE</b>{% endif %}
-          </div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div><label>Daily Max Loss ($)</label><input name="daily_max_loss" inputmode="decimal" value="{{ rc.daily_max_loss }}"></div>
-              <div>
-                <label>Enforce Lockout</label>
-                <select name="enforce_lockout">
-                  <option value="0" {% if not rc.enforce_lockout %}selected{% endif %}>Off</option>
-                  <option value="1" {% if rc.enforce_lockout %}selected{% endif %}>On</option>
-                </select>
-              </div>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">Save Controls</button>
-              <a class="btn" href="/trades">Back to Trades</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        rc=rc,
-        state=state,
-        money=money,
-    )
-    return render_page(content, active="trades")
+    return trades_svc.trades_risk_controls()
 
 
 def analytics_page():
-    backfill_auto_reviews_for_unreviewed()
-    with db() as conn:
-        rows = conn.execute(
-            """
-            SELECT t.id, t.trade_date, t.entry_time, t.net_pl, r.setup_tag, r.session_tag, r.checklist_score, r.rule_break_tags
-            FROM trades t
-            LEFT JOIN trade_reviews r ON r.trade_id = t.id
-            ORDER BY t.trade_date DESC, t.id DESC
-            """
-        ).fetchall()
-    trades = [dict(r) for r in rows]
+    from mccain_capital.services import analytics as analytics_svc
 
-    def _bucket_hour(v: str) -> str:
-        s = (v or "").strip().upper()
-        m = re.match(r"^(\d{1,2}):(\d{2})\s*(AM|PM)$", s)
-        if not m:
-            return "Unknown"
-        hh = int(m.group(1)) % 12
-        if m.group(3) == "PM":
-            hh += 12
-        return f"{hh:02d}:00"
-
-    def _group(key_fn):
-        out: Dict[str, Dict[str, Any]] = {}
-        for t in trades:
-            k = key_fn(t)
-            if not k:
-                continue
-            out.setdefault(k, {"count": 0, "wins": 0, "net": 0.0, "scores": []})
-            out[k]["count"] += 1
-            n = float(t.get("net_pl") or 0.0)
-            out[k]["net"] += n
-            if n > 0:
-                out[k]["wins"] += 1
-            sc = t.get("checklist_score")
-            if sc is not None:
-                out[k]["scores"].append(float(sc))
-        table = []
-        for k, v in out.items():
-            c = v["count"] or 1
-            table.append(
-                {
-                    "k": k,
-                    "count": v["count"],
-                    "net": v["net"],
-                    "win_rate": (v["wins"] / c) * 100.0,
-                    "avg_score": (sum(v["scores"]) / len(v["scores"])) if v["scores"] else None,
-                }
-            )
-        table.sort(key=lambda x: x["net"], reverse=True)
-        return table
-
-    setup_rows = _group(lambda t: (t.get("setup_tag") or "").strip() or "Unlabeled")
-    session_rows = _group(lambda t: (t.get("session_tag") or "").strip() or "Unlabeled")
-    hour_rows = _group(lambda t: _bucket_hour(t.get("entry_time") or ""))
-
-    content = render_template_string(
-        """
-        <div class="metricStrip">
-          <div class="metric"><div class="label">Reviewed Trades</div><div class="value">{{ trades|length }}</div></div>
-          <div class="metric"><div class="label">Setups Tracked</div><div class="value">{{ setup_rows|length }}</div></div>
-          <div class="metric"><div class="label">Sessions Tracked</div><div class="value">{{ session_rows|length }}</div></div>
-          <div class="metric"><div class="label">Hour Buckets</div><div class="value">{{ hour_rows|length }}</div></div>
-        </div>
-
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <div class="pill">📌 Setup Analytics</div>
-            <div class="hr"></div>
-            <table>
-              <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Avg Score</th></tr></thead>
-              <tbody>
-              {% for r in setup_rows %}
-                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </div></div>
-          <div class="card"><div class="toolbar">
-            <div class="pill">🕒 Session Analytics</div>
-            <div class="hr"></div>
-            <table>
-              <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Avg Score</th></tr></thead>
-              <tbody>
-              {% for r in session_rows %}
-                <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </div></div>
-        </div>
-
-        <div class="card" style="margin-top:12px"><div class="toolbar">
-          <div class="pill">⏱️ Time-of-Day Analytics</div>
-          <div class="hr"></div>
-          <table>
-            <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Avg Score</th></tr></thead>
-            <tbody>
-            {% for r in hour_rows %}
-              <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-            {% endfor %}
-            </tbody>
-          </table>
-        </div></div>
-        """,
-        trades=trades,
-        setup_rows=setup_rows,
-        session_rows=session_rows,
-        hour_rows=hour_rows,
-        money=money,
-    )
-    return render_page(content, active="analytics", title=f"{APP_TITLE} · Analytics")
+    return analytics_svc.analytics_page()
 
 
 def recompute_balances(starting_balance: float = 50000.0) -> None:
-    """
-    Recompute running balances for all trades in chronological order.
-    Call this after EDIT or DELETE of any trade.
-    """
-    with db() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, net_pl
-            FROM trades
-            ORDER BY trade_date ASC, id ASC
-            """
-        ).fetchall()
+    from mccain_capital.repositories import trades as trades_repo
 
-        bal = float(starting_balance)
-
-        conn.execute("BEGIN")
-        for r in rows:
-            net = r["net_pl"]
-            if net is not None:
-                bal += float(net)
-            conn.execute("UPDATE trades SET balance = ? WHERE id = ?", (bal, r["id"]))
-        conn.commit()
-
-
-def _row_has(t, key: str) -> bool:
-    # sqlite3.Row supports `key in row.keys()`
-    try:
-        return key in t.keys()
-    except Exception:
-        return False
-
-
-def _val(t, key: str, default=None):
-    # Safe access for sqlite3.Row or dict
-    if t is None:
-        return default
-    try:
-        if hasattr(t, "keys") and _row_has(t, key):
-            v = t[key]
-            return default if v is None else v
-        if isinstance(t, dict):
-            v = t.get(key, default)
-            return default if v is None else v
-    except Exception:
-        pass
-    return default
+    trades_repo.recompute_balances(starting_balance=starting_balance)
 
 
 def calc_consistency(trades):
-    """
-    Vanquish consistency (per article wording):
-      ratio = biggest winning trade / total PnL   (when total PnL > 0)
-      ratio = biggest losing trade  / total PnL   (when total PnL < 0) using abs values
-    Pass if ratio <= 0.30
-    """
-    if not trades:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
+    from mccain_capital.repositories import trades as trades_repo
 
-    net_vals = []
-    for t in trades:
-        v = _val(t, "net_pl", None)
-        if v is None:
-            continue
-        try:
-            net_vals.append(float(v))
-        except Exception:
-            continue
-
-    if not net_vals:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
-
-    total_pnl = sum(net_vals)
-
-    winners = [v for v in net_vals if v > 0]
-    losers = [v for v in net_vals if v < 0]
-
-    if total_pnl > 0:
-        biggest = max(winners) if winners else 0.0
-        denom = total_pnl
-        ratio = (biggest / denom) if denom else None
-    elif total_pnl < 0:
-        biggest = max(abs(v) for v in losers) if losers else 0.0
-        denom = abs(total_pnl)
-        ratio = (biggest / denom) if denom else None
-    else:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
-
-    ok = (ratio is not None) and (ratio <= 0.30)
-    return {
-        "ratio": ratio,
-        "status": "✅ Pass" if ok else "🚫 Fail",
-        "class": "glow-green" if ok else "glow-red",
-        "biggest": biggest,
-        "denom": denom,
-    }
+    return trades_repo.calc_consistency(trades)
 
 
 def trades_clear():
-    clear_trades()
-    return redirect(url_for("trades_page"))
+    from mccain_capital.services import trades as trades_svc
+
+    return trades_svc.trades_clear()
 
 
 def trades_paste():
-    if request.method == "POST":
-        guardrail = trade_lockout_state(today_iso())
-        if guardrail["locked"]:
-            return render_page(
-                _simple_msg(
-                    f"Daily max-loss guardrail is active for {guardrail['day']}. "
-                    f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}. "
-                    "Unlock in Risk Controls to continue."
-                ),
-                active="trades",
-            )
-        text = request.form.get("text", "")
-        starting_balance = (
-            parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
-        )
-        fmt = detect_paste_format(text)
+    from mccain_capital.services import trades as trades_svc
 
-        if fmt == "broker":
-            inserted, errors = insert_trades_from_broker_paste(
-                text, starting_balance=starting_balance
-            )
-        else:
-            inserted, errors = insert_trades_from_paste(text)
-
-        content = render_template_string(
-            """
-            <div class="card"><div class="toolbar">
-              <div class="pill">📋 Paste Trades</div>
-              <div style="margin-top:10px">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }} ✅</div>
-
-              {% if errors %}
-                <div class="hr"></div>
-                <div class="tiny" style="color:#ff8f8f">
-                  {% for e in errors %}• {{ e }}<br/>{% endfor %}
-                </div>
-              {% endif %}
-
-              <div class="hr"></div>
-              <div class="rightActions">
-                <a class="btn primary" href="/trades">Trades 📅</a>
-                <a class="btn" href="/dashboard">Dashboard 📊</a>
-                <a class="btn" href="/calculator">Calculator 🧮</a>
-                <a class="btn" href="/trades/paste">Paste More 🔁</a>
-              </div>
-            </div></div>
-            """,
-            inserted=inserted,
-            errors=errors,
-        )
-        return render_page(content, active="trades")
-
-    example = "1/29\t9:35 AM\t9:37 AM\tSPX\tPUT\t6940\t$6.20\t$7.30\t3\t$1,860.00\t20\t30\t$4.96\t$8.06\t$374.10\t$2.10\t$330.00\t$327.90\t17.74%\t$50,924.40"
-
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">📋 Paste Trades (tabs please ✅)</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.5">
-            Pro tip: copy straight from your sheet/log, keep the tabs.
-            <div class="hr"></div>
-            Example:<br/><code style="font-size:12px; color:var(--muted)">{{ example }}</code>
-          </div>
-
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div>
-                <label>🏁 Starting Balance (for Broker paste)</label>
-                <input name="starting_balance" inputmode="decimal" value="50000" />
-              </div>
-            </div>
-
-            <div style="margin-top:12px">
-              <label>📎 Paste here</label>
-              <textarea name="text" placeholder="Paste your trade rows here…"></textarea>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">🚀 Import</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        example=example,
-    )
-    return render_page(content, active="trades")
+    return trades_svc.trades_paste()
 
 
 def trades_new_manual():
-    if request.method == "POST":
-        f = request.form
+    from mccain_capital.services import trades as trades_svc
 
-        trade_date = (f.get("trade_date") or today_iso()).strip()
-        guardrail = trade_lockout_state(trade_date)
-        if guardrail["locked"]:
-            return render_page(
-                _simple_msg(
-                    f"Daily max-loss lockout active for {trade_date}. "
-                    f"Day net {money(guardrail['day_net'])} hit limit {money(guardrail['daily_max_loss'])}."
-                ),
-                active="trades",
-            )
-        entry_time = (f.get("entry_time") or "").strip()
-        exit_time = (f.get("exit_time") or "").strip()
-
-        ticker = (f.get("ticker") or "").strip().upper()
-        opt_type = normalize_opt_type(f.get("opt_type") or "")
-        strike = parse_float(f.get("strike") or "")
-
-        contracts = parse_int(f.get("contracts") or "") or 0
-        entry_price = parse_float(f.get("entry_price") or "")
-        exit_price = parse_float(f.get("exit_price") or "")
-        comm = parse_float(f.get("comm") or "") or 0.0
-
-        if (
-            not ticker
-            or opt_type not in ("CALL", "PUT")
-            or contracts <= 0
-            or entry_price is None
-            or exit_price is None
-        ):
-            return render_page(
-                _simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                active="trades",
-            )
-
-        gross_pl = (exit_price - entry_price) * 100.0 * contracts
-        net_pl = gross_pl - comm
-        total_spent = entry_price * 100.0 * contracts
-        result_pct = (net_pl / total_spent * 100.0) if total_spent > 0 else None
-
-        # balance rolls forward from latest
-        balance = (latest_balance_overall() or 50000.0) + net_pl
-
-        with db() as conn:
-            conn.execute(
-                """
-                INSERT INTO trades (
-                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
-                    entry_price, exit_price, contracts, total_spent,
-                    comm, gross_pl, net_pl, result_pct, balance,
-                    raw_line, created_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    trade_date,
-                    entry_time,
-                    exit_time,
-                    ticker,
-                    opt_type,
-                    strike,
-                    entry_price,
-                    exit_price,
-                    contracts,
-                    total_spent,
-                    comm,
-                    gross_pl,
-                    net_pl,
-                    result_pct,
-                    balance,
-                    "MANUAL ENTRY",
-                    now_iso(),
-                ),
-            )
-
-        return redirect(url_for("trades_page", d=trade_date))
-
-    # GET: simple form
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">➕ Manual Trade Entry</div>
-          <div class="hr"></div>
-
-          <form method="post">
-            <div class="row">
-              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ today }}"/></div>
-              <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM"/></div>
-              <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM"/></div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX"/></div>
-              <div>
-                <label>📌 Type</label>
-                <select name="opt_type">
-                  <option>CALL</option>
-                  <option>PUT</option>
-                </select>
-              </div>
-              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940"/></div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="1"/></div>
-              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20"/></div>
-              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30"/></div>
-            </div>
-
-            <div class="row" style="margin-top:10px">
-              <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="0.70"/></div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save Trade</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        today=today_iso(),
-    )
-    return render_page(content, active="trades")
+    return trades_svc.trades_new_manual()
 
 
 def trades_paste_broker():
-    if request.method == "POST":
-        guardrail = trade_lockout_state(today_iso())
-        if guardrail["locked"]:
-            return render_page(
-                _simple_msg(
-                    f"Daily max-loss guardrail is active for {guardrail['day']}. "
-                    f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
-                ),
-                active="trades",
-            )
-        text = request.form.get("text", "")
-        starting_balance = (
-            parse_float(request.form.get("starting_balance", "")) or default_starting_balance()
-        )
-        inserted, errors = insert_trades_from_broker_paste(text, starting_balance=starting_balance)
+    from mccain_capital.services import trades as trades_svc
 
-        content = render_template_string(
-            """
-            <div class="card"><div class="toolbar">
-              <div class="pill">🏦 Broker Paste Import</div>
-              <div style="margin-top:10px">Inserted <b>{{ inserted }}</b> round-trip trade{{ '' if inserted==1 else 's' }} ✅</div>
-
-              {% if errors %}
-                <div class="hr"></div>
-                <div class="tiny" style="color:#ff8f8f">
-                  {% for e in errors %}• {{ e }}<br/>{% endfor %}
-                </div>
-              {% endif %}
-
-              <div class="hr"></div>
-              <div class="rightActions">
-                <a class="btn primary" href="/trades">Trades 📅</a>
-                <a class="btn" href="/dashboard">Dashboard 📊</a>
-                <a class="btn" href="/trades/paste/broker">Paste More 🔁</a>
-              </div>
-            </div></div>
-            """,
-            inserted=inserted,
-            errors=errors,
-        )
-        return render_page(content, active="trades")
-
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🏦 Paste Broker Fills (BUY/SELL legs)</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.5">
-            Paste the raw fills. This importer pairs BUY+SELL into one completed trade (FIFO). ✅
-          </div>
-
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div>
-                <label>🏁 Starting Balance</label>
-                <input name="starting_balance" inputmode="decimal" value="50000" />
-              </div>
-            </div>
-
-            <div style="margin-top:12px">
-              <label>📎 Paste here</label>
-              <textarea name="text" placeholder="SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 2 | 18.90 | 0.70"></textarea>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">🚀 Convert + Import</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """
-    )
-    return render_page(content, active="trades")
+    return trades_svc.trades_paste_broker()
 
 
 # ============================================================
@@ -3442,302 +2114,33 @@ def trades_upload_pdf():
 
 
 def parse_vanquish_statement_table_to_broker_paste(text: str) -> Tuple[str, List[str]]:
-    """
-    Converts your pasted Vanquish statement table (Instrument, Transaction Time, Direction, Size, Price, Commission...)
-    into broker-paste lines that your broker importer already knows how to pair.
-    """
-    warnings: List[str] = []
-    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    from mccain_capital.services import trades_importing as importing
 
-    if not lines:
-        return "", ["Nothing pasted."]
-
-    # drop header row if present
-    if "Instrument" in lines[0] and "Transaction Time" in lines[0]:
-        lines = lines[1:]
-
-    out: List[str] = []
-    for i, ln in enumerate(lines, start=1):
-        cols = split_row(ln)
-        # Expected (at least): Instrument, TxCode, TxTime, Direction, Size, Price, ... Commission ...
-        if len(cols) < 6:
-            warnings.append(f"Line {i}: too few columns ({len(cols)}).")
-            continue
-
-        instrument = cols[0].strip().upper()
-        dt = cols[2].strip().replace("\u202f", " ").replace("\u00a0", " ")
-        side = cols[3].strip().upper()
-        qty = parse_int(cols[4]) or 0
-        price = parse_float(cols[5])
-
-        # Commission column exists in your paste (index 10), but sometimes it may be missing
-        fee = DEFAULT_FEE_PER_CONTRACT
-        if len(cols) >= 11:
-            maybe_fee = parse_float(cols[10])
-            if maybe_fee is not None and 0 <= maybe_fee <= 5:
-                fee = float(maybe_fee)
-
-        if not instrument or side not in ("BUY", "SELL") or qty <= 0 or price is None:
-            warnings.append(f"Line {i}: skipped (bad instrument/side/qty/price).")
-            continue
-
-        out.append(f"{instrument} | {dt} | {side} | {qty} | {price} | {fee}")
-
-    return "\n".join(out), warnings
-
-
-def ytd_total_net(year: int) -> float:
-    start = date(year, 1, 1)
-    end = date(year + 1, 1, 1)
-    with db() as conn:
-        row = conn.execute(
-            """
-            SELECT COALESCE(SUM(net_pl), 0) AS net
-            FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
-            """,
-            (start.isoformat(), end.isoformat()),
-        ).fetchone()
-    return float(row["net"] or 0.0)
-
-
-def month_trade_count(year: int, month: int) -> int:
-    first = date(year, month, 1)
-    nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
-    with db() as conn:
-        row = conn.execute(
-            """
-            SELECT COUNT(*) AS c
-            FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
-            """,
-            (first.isoformat(), nxt.isoformat()),
-        ).fetchone()
-    return int(row["c"] or 0)
-
-
-def ytd_trade_count(year: int) -> int:
-    start = date(year, 1, 1)
-    end = date(year + 1, 1, 1)
-    with db() as conn:
-        row = conn.execute(
-            """
-            SELECT COUNT(*) AS c
-            FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
-            """,
-            (start.isoformat(), end.isoformat()),
-        ).fetchone()
-    return int(row["c"] or 0)
+    return importing.parse_vanquish_statement_table_to_broker_paste(text)
 
 
 # ============================================================
 # Dashboard – calendar + projections ✅
 # ============================================================
 def dashboard():
-    # ✅ Default dashboard month = month of most recent trade (fallback to today)
-    anchor = latest_trade_day() or now_et().date()
+    from mccain_capital.services import core as core_svc
 
-    y = int(request.args.get("y") or anchor.year)
-    m = int(request.args.get("m") or anchor.month)
-    m = max(1, min(12, m))
-
-    heat = month_heatmap(y, m)
-
-    prev_y, prev_m = (y, m - 1)
-    next_y, next_m = (y, m + 1)
-    if prev_m == 0:
-        prev_m = 12
-        prev_y -= 1
-    if next_m == 13:
-        next_m = 1
-        next_y += 1
-
-    month_name = date(y, m, 1).strftime("%B %Y")
-
-    overall_balance = latest_balance_overall()
-    balance_integrity = balance_integrity_snapshot()
-    sync_status = get_system_status()
-    data_trust = dashboard_data_trust(sync_status, balance_integrity)
-    admin_recompute_allowed = auth_enabled() and is_authenticated()
-
-    # ✅ Week total should match the month view anchor
-    week_anchor = (
-        anchor.isoformat()
-        if (y == anchor.year and m == anchor.month)
-        else date(y, m, 1).isoformat()
-    )
-    this_week_total = week_total_net(week_anchor)
-
-    mtd_net = month_total_net(y, m)
-    ytd_net = ytd_total_net(y)
-
-    mtd_trades = month_trade_count(y, m)
-    ytd_trades = ytd_trade_count(y)
-
-    daily20 = last_n_trading_day_totals(20)
-    proj = projections_from_daily(daily20, overall_balance)
-
-    # ✅ YTD ONLY: Consistency + threshold line
-    # Ratio is assumed: biggest / denom (lower is better)
-    CONSISTENCY_THRESHOLD = 0.30  # 30% line (adjust if your firm uses a different rule)
-
-    y_start = date(y, 1, 1).isoformat()
-    y_end = date(y + 1, 1, 1).isoformat()
-
-    ytd_trades_list = fetch_trades_range(y_start, y_end) or []
-    ytd_trades_list = [dict(r) for r in ytd_trades_list]  # sqlite3.Row -> dict for safety
-    ytd_cons = calc_consistency(ytd_trades_list)
-    today_rows = [dict(r) for r in fetch_trades(d=today_iso(), q="")]
-    today_stats = trade_day_stats(today_rows)
-    today_net = float(today_stats.get("total", 0.0))
-    today_win_rate = float(today_stats.get("win_rate", 0.0))
-    today_count = len(today_rows)
-    capital_pulse = max(8.0, min(100.0, 50.0 + ((mtd_net / 3000.0) * 50.0)))
-    discipline_pulse = max(8.0, min(100.0, today_win_rate if today_count else 18.0))
-    discipline_label = (
-        "Locked in"
-        if today_win_rate >= 60 and today_net >= 0
-        else "Stabilize process" if today_count else "No session logged"
-    )
-
-    content = render_template(
-        "dashboard.html",
-        heat=heat,
-        prev_y=prev_y,
-        prev_m=prev_m,
-        next_y=next_y,
-        next_m=next_m,
-        month_name=month_name,
-        overall_balance=overall_balance,
-        balance_integrity=balance_integrity,
-        sync_status=sync_status,
-        data_trust=data_trust,
-        admin_recompute_allowed=admin_recompute_allowed,
-        this_week_total=this_week_total,
-        mtd_net=mtd_net,
-        ytd_net=ytd_net,
-        mtd_trades=mtd_trades,
-        ytd_trades=ytd_trades,
-        ytd_cons=ytd_cons,  # ✅ YTD ONLY
-        cons_threshold=CONSISTENCY_THRESHOLD,  # ✅ threshold line
-        today_net=today_net,
-        today_win_rate=today_win_rate,
-        today_count=today_count,
-        capital_pulse=capital_pulse,
-        discipline_pulse=discipline_pulse,
-        discipline_label=discipline_label,
-        proj=proj,
-        money=money,
-        money_compact=money_compact,
-    )
-
-    return render_page(content, active="dashboard")
+    return core_svc.dashboard()
 
 
 def dashboard_recompute_balances():
-    if not auth_enabled():
-        flash("Enable authentication to use admin recompute actions.", "warn")
-        return redirect(url_for("dashboard"))
-    if not is_authenticated():
-        abort(403)
-    starting = float(get_setting_float("starting_balance", 50000.0))
-    recompute_balances(starting_balance=starting)
-    try:
-        from mccain_capital.services.trades import record_admin_audit
+    from mccain_capital.services import core as core_svc
 
-        record_admin_audit(
-            "dashboard_recompute_balances",
-            {"starting_balance": starting},
-            actor=_effective_username(),
-        )
-    except Exception:
-        pass
-    flash("Stored trade balances recomputed from canonical ledger math.", "success")
-    return redirect(url_for("dashboard"))
+    return core_svc.dashboard_recompute_balances()
 
 
 # ============================================================
 # Calculator page ✅
 # ============================================================
 def calculator():
-    out = None
-    err = None
-    current_balance = latest_balance_overall() or 50000.0
-    base_trades = fetch_trades(d="", q="")
-    current_consistency = calc_consistency(base_trades)
+    from mccain_capital.services import core as core_svc
 
-    vals = {
-        "entry": "",
-        "contracts": "1",
-        "stop_pct": str(DEFAULT_STOP_PCT),
-        "target_pct": str(DEFAULT_TARGET_PCT),
-        "fee_per_contract": str(DEFAULT_FEE_PER_CONTRACT),
-    }
-
-    if request.method == "POST":
-        f = request.form
-        vals["entry"] = (f.get("entry") or "").strip()
-        vals["contracts"] = (f.get("contracts") or "1").strip()
-        vals["stop_pct"] = (f.get("stop_pct") or str(DEFAULT_STOP_PCT)).strip()
-        vals["target_pct"] = (f.get("target_pct") or str(DEFAULT_TARGET_PCT)).strip()
-        vals["fee_per_contract"] = (
-            f.get("fee_per_contract") or str(DEFAULT_FEE_PER_CONTRACT)
-        ).strip()
-
-        entry = parse_float(vals["entry"])
-        contracts = parse_int(vals["contracts"]) or 1
-        stop_pct = parse_float(vals["stop_pct"]) or DEFAULT_STOP_PCT
-        target_pct = parse_float(vals["target_pct"]) or DEFAULT_TARGET_PCT
-        fee = parse_float(vals["fee_per_contract"]) or DEFAULT_FEE_PER_CONTRACT
-
-        if not entry or entry <= 0:
-            err = "Entry premium must be > 0."
-        elif contracts <= 0:
-            err = "Contracts must be >= 1."
-        else:
-            stop_price, tp_price = calc_stop_takeprofit(entry, stop_pct, target_pct)
-            rr = calc_risk_reward(entry, contracts, stop_price, tp_price, fee)
-
-            ladder = []
-            for p in range(10, 101, 10):
-                tpp = round(entry * (1 + p / 100.0), 2)
-                rr2 = calc_risk_reward(entry, contracts, stop_price, tpp, fee)
-                ladder.append({"pct": p, "tp": tpp, "net": rr2["reward_net"]})
-
-            out = {
-                "entry": entry,
-                "contracts": contracts,
-                "total_spend": round(entry * MULTIPLIER * contracts + (fee * contracts), 2),
-                "stop_pct": stop_pct,
-                "target_pct": target_pct,
-                "fee": fee,
-                "stop_price": stop_price,
-                "tp_price": tp_price,
-                "current_balance": float(current_balance),
-                "balance_if_stop": round(float(current_balance) - float(rr["risk_net"]), 2),
-                "balance_if_target": round(float(current_balance) + float(rr["reward_net"]), 2),
-                "consistency_current": current_consistency,
-                "consistency_if_stop": calc_consistency(
-                    base_trades + [{"net_pl": -float(rr["risk_net"])}]
-                ),
-                "consistency_if_target": calc_consistency(
-                    base_trades + [{"net_pl": float(rr["reward_net"])}]
-                ),
-                **rr,
-                "ladder": ladder,
-            }
-
-    content = render_template(
-        "calculator.html",
-        out=out,
-        err=err,
-        vals=vals,
-        money=money,
-        current_balance=current_balance,
-        current_consistency=current_consistency,
-    )
-    return render_page(content, active="calc")
+    return core_svc.calculator()
 
 
 # ============================================================
@@ -3782,200 +2185,42 @@ def goals_tracker():
 # Strategies pages ✅
 # ============================================================
 def _strategy_form(title: str, t: str, body: str, errors: List[str]) -> str:
-    return render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">📌 {{ title }}</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.6">
-            Keep it executable. If it’s too complex, you won’t follow it. ✅
-          </div>
+    from mccain_capital.services import strategies as svc
 
-          {% if errors %}
-            <div class="hr"></div>
-            <div class="tiny" style="color:#ff8f8f">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
-          {% endif %}
-
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div style="flex:2 1 320px">
-                <label>Title</label>
-                <input name="title" value="{{ t }}" placeholder="e.g. Fitz Midday CE Strike">
-              </div>
-            </div>
-
-            <div style="margin-top:12px">
-              <label>Body</label>
-              <textarea name="body" placeholder="Entry trigger… Invalidation… Size… Stops… Targets…">{{ body }}</textarea>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save</button>
-              <a class="btn" href="/strategies">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        title=title,
-        t=t,
-        body=body,
-        errors=errors,
-    )
+    return svc._strategy_form(title, t, body, errors)
 
 
 def strategies_page():
-    items = fetch_strategies()
-    content = render_template_string(
-        """
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <div class="pill">📌 Strategies</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.5">
-              Build your playbook here. Add / edit anytime. ✅
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <a class="btn primary" href="/strategies/new">➕ New Strategy</a>
-              <a class="btn" href="/dashboard">📊 Dashboard</a>
-            </div>
-          </div></div>
+    from mccain_capital.services import strategies as svc
 
-          <div class="card"><div class="toolbar">
-            <div class="pill">Rules</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
-              • One page per setup<br>
-              • Include: Entry trigger, invalidation, size rule, exit plan<br>
-              • Keep it simple enough to execute under pressure
-            </div>
-          </div></div>
-        </div>
-
-        <div class="grid">
-          {% for s in items %}
-            <div class="card entry">
-              <div class="entryTop">
-                <div>
-                  <div class="pill">📌 {{ s['title'] }}</div>
-                  <div class="meta" style="margin-top:6px">🕒 Updated: {{ s['updated_at'] }}</div>
-                </div>
-                <div class="rightActions">
-                  <a class="btn" href="/strategies/edit/{{ s['id'] }}">✏️ Edit</a>
-                  <form id="del-s-{{ s['id'] }}" method="post" action="/strategies/delete/{{ s['id'] }}" style="display:inline"></form>
-                  <button class="btn danger" type="button" onclick="confirmDelete('del-s-{{ s['id'] }}')">🗑️</button>
-                </div>
-              </div>
-              <div class="notes">{{ s['body'] }}</div>
-            </div>
-          {% endfor %}
-
-          {% if items|length == 0 %}
-            <div class="card entry"><div class="meta">No strategies yet. Hit <b>New Strategy</b>. 📌</div></div>
-          {% endif %}
-        </div>
-        """,
-        items=items,
-    )
-    return render_page(content, active="strategies")
+    return svc.strategies_page()
 
 
 def strategies_new():
-    if request.method == "POST":
-        title = (request.form.get("title") or "").strip()
-        body = (request.form.get("body") or "").strip()
-        if not title or not body:
-            return render_page(
-                _strategy_form("New Strategy", title, body, ["Title and body required."]),
-                active="strategies",
-            )
-        create_strategy(title, body)
-        return redirect(url_for("strategies_page"))
-    return render_page(_strategy_form("New Strategy", "", "", []), active="strategies")
+    from mccain_capital.services import strategies as svc
+
+    return svc.strategies_new()
 
 
 def strategies_edit(sid: int):
-    row = get_strategy(sid)
-    if not row:
-        abort(404)
+    from mccain_capital.services import strategies as svc
 
-    if request.method == "POST":
-        title = (request.form.get("title") or "").strip()
-        body = (request.form.get("body") or "").strip()
-        if not title or not body:
-            return render_page(
-                _strategy_form("Edit Strategy", title, body, ["Title and body required."]),
-                active="strategies",
-            )
-        update_strategy(sid, title, body)
-        return redirect(url_for("strategies_page"))
-
-    return render_page(
-        _strategy_form("Edit Strategy", row["title"], row["body"], []), active="strategies"
-    )
+    return svc.strategies_edit(sid)
 
 
 def strategies_delete(sid: int):
-    delete_strategy(sid)
-    return redirect(url_for("strategies_page"))
+    from mccain_capital.services import strategies as svc
+
+    return svc.strategies_delete(sid)
 
 
 # ============================================================
 # Books ✅
 # ============================================================
 def books_page():
-    books = list_books()
-    content = render_template_string(
-        """
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <div class="pill">📚 Trading Books</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
-              No web uploading. Drop PDFs into the <b>{{ books_dir }}</b> folder and refresh. ✅<br>
-              Path example: <span class="kbd">./books</span>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <a class="btn" href="/dashboard">📊 Dashboard</a>
-              <a class="btn" href="/links">🔗 Links</a>
-            </div>
-          </div></div>
+    from mccain_capital.services import books as svc
 
-          <div class="card"><div class="toolbar">
-            <div class="pill">⭐ Current Favorites</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
-              • Trading in the Zone — Mark Douglas<br>
-              • The Disciplined Trader — Mark Douglas<br>
-              • Best Loser Wins — Tom Hougaard
-            </div>
-          </div></div>
-        </div>
-
-        <div class="card" style="margin-top:12px"><div class="toolbar">
-          <div class="pill">📄 Library ({{ books|length }})</div>
-          <div class="hr"></div>
-
-          {% if books|length == 0 %}
-            <div class="meta">No PDFs found in <b>{{ books_dir }}</b>.</div>
-          {% else %}
-            <div style="display:grid; gap:10px">
-              {% for b in books %}
-                <div class="card" style="border-radius:14px">
-                  <div class="toolbar" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                    <div><b>{{ b.name }}</b></div>
-                    <div class="rightActions">
-                      <a class="btn primary" href="/books/open/{{ b.name }}">Open</a>
-                    </div>
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-        </div></div>
-        """,
-        books=books,
-        books_dir=BOOKS_DIR,
-    )
-    return render_page(content, active="books")
+    return svc.books_page()
 
 
 def strat_page():
@@ -3986,34 +2231,18 @@ def strat_page():
 
 
 def books_open(name: str):
-    fn = safe_filename(name)
-    path = os.path.join(BOOKS_DIR, fn)
-    if not os.path.exists(path) or not fn.lower().endswith(".pdf"):
-        abort(404)
-    return send_file(path, as_attachment=False)
+    from mccain_capital.services import books as svc
+
+    return svc.books_open(name)
 
 
 # ============================================================
 # Links ✅
 # ============================================================
 def links_page():
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🔗 Trading Links</div>
-          <div class="tiny" style="margin-top:10px; line-height:1.6">
-            Open in new tab. ✅
-          </div>
-          <div class="hr"></div>
-          <div class="rightActions">
-            <a class="btn primary" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Vanquish Trader</a>
-            <a class="btn" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener">Prop Dashboard</a>
-            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView Charts</a>
-          </div>
-        </div></div>
-        """
-    )
-    return render_page(content, active="links")
+    from mccain_capital.services import core as svc
+
+    return svc.links_page()
 
 
 # ============================================================
@@ -4046,138 +2275,15 @@ def export_json():
 
 
 def backup_data():
-    """Download a zip backup containing DB + uploads."""
-    stamp = now_et().strftime("%Y%m%d_%H%M%S")
-    fd, out_path = tempfile.mkstemp(prefix="mccain_backup_", suffix=".zip")
-    os.close(fd)
-    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        if os.path.exists(DB_PATH):
-            zf.write(DB_PATH, arcname="data/journal.db")
+    from mccain_capital.services import core as svc
 
-        if os.path.isdir(UPLOAD_DIR):
-            for root, _, files in os.walk(UPLOAD_DIR):
-                for name in files:
-                    full = os.path.join(root, name)
-                    rel = os.path.relpath(full, UPLOAD_DIR)
-                    zf.write(full, arcname=f"data/uploads/{rel}")
-
-        meta = {
-            "exported_at": now_iso(),
-            "db_path": DB_PATH,
-            "upload_dir": UPLOAD_DIR,
-            "app": "mccain-capital",
-        }
-        zf.writestr("data/meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
-
-    try:
-        from mccain_capital.services.trades import record_admin_audit
-
-        record_admin_audit(
-            "manual_backup_downloaded",
-            {"file": f"mccain_capital_backup_{stamp}.zip"},
-            actor=_effective_username() if auth_enabled() else APP_USERNAME,
-        )
-    except Exception:
-        pass
-    return send_file(
-        out_path,
-        as_attachment=True,
-        download_name=f"mccain_capital_backup_{stamp}.zip",
-        mimetype="application/zip",
-    )
+    return svc.backup_data()
 
 
 def restore_data():
-    """Restore DB + uploads from a backup zip."""
-    if request.method == "GET":
-        content = render_template_string(
-            """
-            <div class="card"><div class="toolbar">
-              <div class="pill">♻️ Restore Backup</div>
-              <div class="tiny" style="margin-top:10px;line-height:1.6">
-                Upload a backup zip created from <b>/admin/backup</b>.<br>
-                This will replace <b>{{ db_path }}</b> and merge files into <b>{{ upload_dir }}</b>.
-              </div>
-              <div class="hr"></div>
-              <form method="post" enctype="multipart/form-data">
-                <label>Backup ZIP</label>
-                <input type="file" name="backup_zip" accept=".zip,application/zip" required />
-                <div class="hr"></div>
-                <div class="rightActions">
-                  <button class="btn danger" type="submit">Restore</button>
-                  <a class="btn" href="/dashboard">Cancel</a>
-                </div>
-              </form>
-            </div></div>
-            """,
-            db_path=DB_PATH,
-            upload_dir=UPLOAD_DIR,
-        )
-        return render_page(content, active="dashboard")
+    from mccain_capital.services import core as svc
 
-    f = request.files.get("backup_zip")
-    if not f or not f.filename:
-        return render_page(_simple_msg("Please choose a backup zip file."), active="dashboard")
-
-    try:
-        with zipfile.ZipFile(f.stream) as zf:
-            names = zf.namelist()
-            if not names:
-                return render_page(_simple_msg("Backup zip is empty."), active="dashboard")
-
-            allowed_prefixes = ("data/journal.db", "data/uploads/", "data/meta.json")
-            for n in names:
-                if n.startswith("/") or ".." in n:
-                    return render_page(
-                        _simple_msg("Backup zip contains unsafe paths."), active="dashboard"
-                    )
-                if not any(n == p or n.startswith(p) for p in allowed_prefixes):
-                    return render_page(
-                        _simple_msg("Backup zip contains unsupported files."), active="dashboard"
-                    )
-
-            db_member = "data/journal.db"
-            if db_member in names:
-                os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
-                db_dir = os.path.dirname(DB_PATH) or "."
-                fd, tmp_db = tempfile.mkstemp(prefix="restore_db_", suffix=".tmp", dir=db_dir)
-                os.close(fd)
-                try:
-                    with zf.open(db_member) as src, open(tmp_db, "wb") as dst:
-                        shutil.copyfileobj(src, dst, length=1024 * 1024)
-                    os.replace(tmp_db, DB_PATH)
-                finally:
-                    if os.path.exists(tmp_db):
-                        os.unlink(tmp_db)
-
-            os.makedirs(UPLOAD_DIR, exist_ok=True)
-            for n in names:
-                if not n.startswith("data/uploads/") or n.endswith("/"):
-                    continue
-                rel = n[len("data/uploads/") :]
-                out_path = os.path.join(UPLOAD_DIR, rel)
-                out_dir = os.path.dirname(out_path)
-                if out_dir:
-                    os.makedirs(out_dir, exist_ok=True)
-                with zf.open(n) as src, open(out_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst, length=1024 * 1024)
-
-    except zipfile.BadZipFile:
-        return render_page(_simple_msg("Invalid zip file."), active="dashboard")
-    except Exception as e:
-        return render_page(_simple_msg(f"Restore failed: {e}"), active="dashboard")
-
-    try:
-        from mccain_capital.services.trades import record_admin_audit
-
-        record_admin_audit(
-            "manual_backup_restored",
-            {"source_filename": f.filename if f else ""},
-            actor=_effective_username() if auth_enabled() else APP_USERNAME,
-        )
-    except Exception:
-        pass
-    return render_page(_simple_msg("Backup restore completed."), active="dashboard")
+    return svc.restore_data()
 
 
 # ============================================================
@@ -4208,21 +2314,6 @@ def payout_summary(
         "max_request": max_request,
         "safe_request": safe_request,
     }
-
-
-def month_total_net(year: int, month: int) -> float:
-    first = date(year, month, 1)
-    nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
-    with db() as conn:
-        row = conn.execute(
-            """
-            SELECT COALESCE(SUM(net_pl), 0) AS net
-            FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
-            """,
-            (first.isoformat(), nxt.isoformat()),
-        ).fetchone()
-    return float(row["net"] or 0.0)
 
 
 def last_30d_total_net() -> float:
