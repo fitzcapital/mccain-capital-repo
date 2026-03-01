@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import List
+from datetime import datetime
+from typing import Any, Dict, List
 
-from flask import abort, redirect, render_template_string, request, url_for
+from flask import abort, redirect, render_template, render_template_string, request, url_for
 
 from mccain_capital.services import core as core_svc
 from mccain_capital.services.ui import render_page
@@ -58,69 +59,21 @@ def _strategy_form(title: str, t: str, body: str, errors: List[str]) -> str:
 
 def strategies_page():
     items = [dict(r) for r in repo.fetch_strategies()]
-    stats_rows = analytics_repo.group_table(analytics_repo.fetch_analytics_rows(), "setup_tag")
-    stats_map = {str(r.get("k") or "").strip(): r for r in stats_rows}
+    analytics_rows = analytics_repo.fetch_analytics_rows()
+    scorecards = _build_strategy_scorecards(items, analytics_rows)
+    stats_map = {str(r.get("title") or "").strip(): r for r in scorecards}
     for item in items:
         stat = stats_map.get(str(item.get("title") or "").strip(), {})
         item["trade_count"] = int(stat.get("count") or 0)
         item["expectancy"] = float(stat.get("expectancy") or 0.0)
         item["win_rate"] = float(stat.get("win_rate") or 0.0)
         item["net"] = float(stat.get("net") or 0.0)
-    content = render_template_string(
-        """
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <div class="pill">📌 Strategies</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.5">
-              Build your playbook here. Add / edit anytime. ✅
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <a class="btn primary" href="/strategies/new">➕ New Strategy</a>
-              <a class="btn" href="/dashboard">📊 Calendar</a>
-            </div>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">Rules</div>
-            <div class="tiny" style="margin-top:10px; line-height:1.6">
-              • One page per setup<br>
-              • Include: Entry trigger, invalidation, size rule, exit plan<br>
-              • Keep it simple enough to execute under pressure
-            </div>
-          </div></div>
-        </div>
-
-        <div class="grid">
-          {% for s in items %}
-            <div class="card entry">
-              <div class="entryTop">
-                <div>
-                  <div class="pill">📌 {{ s['title'] }}</div>
-                  <div class="meta" style="margin-top:6px">🕒 Updated: {{ s['updated_at'] }}</div>
-                  <div class="meta" style="margin-top:6px">
-                    Tracked trades: <b>{{ s['trade_count'] }}</b>
-                    · WR: <b>{{ '%.1f'|format(s['win_rate']) }}%</b>
-                    · Exp: <b>{{ money(s['expectancy']) }}</b>
-                    · Net: <b>{{ money(s['net']) }}</b>
-                  </div>
-                </div>
-                <div class="rightActions">
-                  <a class="btn" href="/strategies/edit/{{ s['id'] }}">✏️ Edit</a>
-                  <form id="del-s-{{ s['id'] }}" method="post" action="/strategies/delete/{{ s['id'] }}" style="display:inline"></form>
-                  <button class="btn danger" type="button" onclick="confirmDelete('del-s-{{ s['id'] }}')">🗑️</button>
-                </div>
-              </div>
-              <div class="notes">{{ s['body'] }}</div>
-            </div>
-          {% endfor %}
-
-          {% if items|length == 0 %}
-            <div class="card entry"><div class="meta">No strategies yet. Hit <b>New Strategy</b>. 📌</div></div>
-          {% endif %}
-        </div>
-        """,
+    headline = scorecards[0] if scorecards else None
+    content = render_template(
+        "strategies/index.html",
         items=items,
+        scorecards=scorecards,
+        headline=headline,
         money=money,
     )
     return render_page(content, active="strategies")
@@ -168,3 +121,71 @@ def strategies_delete(sid: int):
 
 def strat_page():
     return core_svc.strat_page()
+
+
+def _build_strategy_scorecards(items: List[Dict[str, Any]], analytics_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = {
+        str(item.get("title") or "").strip(): [] for item in items
+    }
+    for row in analytics_rows:
+        key = str(row.get("setup_tag") or "").strip()
+        if key in grouped:
+            grouped[key].append(row)
+
+    scorecards: List[Dict[str, Any]] = []
+    for item in items:
+        title = str(item.get("title") or "").strip()
+        rows = grouped.get(title, [])
+        perf = analytics_repo.performance_metrics(rows)
+        recent_rows = rows[-10:]
+        recent_perf = analytics_repo.performance_metrics(recent_rows)
+        avg_score_values = [
+            float(r["checklist_score"])
+            for r in rows
+            if r.get("checklist_score") is not None and str(r.get("checklist_score")).strip() != ""
+        ]
+        updated_label = str(item.get("updated_at") or "")
+        try:
+            updated_label = datetime.fromisoformat(updated_label.replace("Z", "+00:00")).strftime("%b %d, %Y")
+        except Exception:
+            pass
+        scorecards.append(
+            {
+                **item,
+                "count": perf["total_trades"],
+                "win_rate": perf["win_rate"],
+                "expectancy": perf["expectancy"],
+                "net": perf["total_net"],
+                "avg_win": perf["avg_win"],
+                "avg_loss_abs": perf["avg_loss_abs"],
+                "profit_factor": perf["profit_factor"],
+                "max_drawdown": perf["max_drawdown"],
+                "recent_net": recent_perf["total_net"],
+                "recent_win_rate": recent_perf["win_rate"],
+                "avg_score": (sum(avg_score_values) / len(avg_score_values)) if avg_score_values else None,
+                "status": _strategy_status(perf, recent_perf),
+                "status_tone": _strategy_status_tone(perf, recent_perf),
+                "updated_label": updated_label,
+            }
+        )
+    scorecards.sort(key=lambda x: (x["count"], x["net"]), reverse=True)
+    return scorecards
+
+
+def _strategy_status(perf: Dict[str, Any], recent_perf: Dict[str, Any]) -> str:
+    if perf["total_trades"] == 0:
+        return "Build sample"
+    if recent_perf["total_trades"] >= 3 and recent_perf["total_net"] < 0:
+        return "Review now"
+    if perf["win_rate"] >= 55.0 and perf["expectancy"] > 0:
+        return "Trade"
+    return "Tighten"
+
+
+def _strategy_status_tone(perf: Dict[str, Any], recent_perf: Dict[str, Any]) -> str:
+    status = _strategy_status(perf, recent_perf)
+    if status == "Trade":
+        return "metaGreen"
+    if status == "Review now":
+        return "metaRed"
+    return "metaAmber"

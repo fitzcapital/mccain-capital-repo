@@ -1,8 +1,22 @@
 <div class="twoCol">
   <div class="card"><div class="toolbar">
-    <div class="pill">🧮 Quick Stop + Take Profit</div>
-    <div class="tiny stack10 line15">
-      Fast. Clean. No overkill. Use this during the day. ✅
+    <div class="calculatorTopline">
+      <div class="pill">🧮 Quick Stop + Take Profit</div>
+      <details class="calcHelper">
+        <summary aria-label="Calculator help">?</summary>
+        <div class="calcHelperPopover">
+          <div>Risk = (Entry → Stop) × 100 × contracts + fees</div>
+          <div>Reward = (Target → Entry) × 100 × contracts − fees</div>
+          <div>Confirm first. Hope is not a setup.</div>
+        </div>
+      </details>
+    </div>
+    <div class="tiny stack10 line15">Fast plan-first sizing. Keep it sharp enough to use during the day.</div>
+
+    <div class="calcPresetRow">
+      <button class="btn btnCompact calcPresetBtn" type="button" data-stop="15" data-target="30">1R quick</button>
+      <button class="btn btnCompact calcPresetBtn" type="button" data-stop="20" data-target="40">2R standard</button>
+      <button class="btn btnCompact calcPresetBtn" type="button" data-stop="25" data-target="60">Runner</button>
     </div>
 
     <div class="hr"></div>
@@ -79,17 +93,15 @@
           {% if current_consistency.ratio is not none %}{{ '%.1f'|format(current_consistency.ratio * 100) }}%{% else %}—{% endif %}
         </div>
       </div>
+      {% if out %}
+      <div class="stat">
+        <div class="k">Plan State</div>
+        <div class="v"><span class="tradeValueBubble {% if out.plan_state == 'Sharp' %}tradeValueBubbleGain{% elif out.plan_state == 'Manageable' %}tradeValueBubbleWarm{% else %}tradeValueBubbleLoss{% endif %}">{{ out.plan_state }}</span></div>
+      </div>
+      {% endif %}
     </div>
   </div></div>
 
-  <div class="card"><div class="toolbar">
-    <div class="pill">📌 Quick Notes</div>
-    <div class="tiny stack10 line16">
-      • Risk = (Entry → Stop) × 100 × contracts + fees<br>
-      • Reward = (Target → Entry) × 100 × contracts − fees<br>
-      • If you’re “hoping” instead of confirming… you’re gambling 😈
-    </div>
-  </div></div>
 </div>
 
 <div id="calc-results">
@@ -114,10 +126,19 @@
     const feeEl = document.querySelector('input[name="fee_per_contract"]');
     const balStopEl = document.getElementById("balStop");
     const balTargetEl = document.getElementById("balTarget");
+    const presetButtons = Array.from(document.querySelectorAll(".calcPresetBtn"));
     const currentBalance = Number({{ current_balance|tojson }});
     if(!form || !entryEl || !contractsEl || !stopPctEl || !targetPctEl || !feeEl || !balStopEl || !balTargetEl){
       return;
     }
+
+    presetButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        stopPctEl.value = button.dataset.stop || stopPctEl.value;
+        targetPctEl.value = button.dataset.target || targetPctEl.value;
+        updatePreview();
+      });
+    });
 
     let stageTimer = null;
 

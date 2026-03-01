@@ -111,6 +111,10 @@ def ops_backups_restore():
     return svc.ops_backups_restore()
 
 
+def ops_backups_clear_live():
+    return svc.ops_backups_clear_live()
+
+
 def ops_backups_restore_dry_run():
     return svc.ops_backups_restore_dry_run()
 

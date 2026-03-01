@@ -7,9 +7,12 @@
       <div class="calcCard"><div class="k">🎯 Target Price</div><div class="v">{{ money(out.tp_price) }}</div></div>
       <div class="calcCard"><div class="k">💵 Fees</div><div class="v">{{ money(out.fees) }}</div></div>
       <div class="calcCard"><div class="k">🧾 Total Contract Spend</div><div class="v">{{ money(out.total_spend) }}</div></div>
-      <div class="calcCard"><div class="k">⚠️ Risk (Net)</div><div class="v">{{ money(out.risk_net) }}</div></div>
-      <div class="calcCard"><div class="k">🎁 Reward (Net)</div><div class="v">{{ money(out.reward_net) }}</div></div>
-      <div class="calcCard"><div class="k">⚖️ R:R</div><div class="v">{{ out.rr }}</div></div>
+      <div class="calcCard"><div class="k">⚠️ Risk (Net)</div><div class="v"><span class="tradeValueBubble tradeValueBubbleLoss">{{ money(out.risk_net) }}</span></div></div>
+      <div class="calcCard"><div class="k">🎁 Reward (Net)</div><div class="v"><span class="tradeValueBubble tradeValueBubbleGain">{{ money(out.reward_net) }}</span></div></div>
+      <div class="calcCard"><div class="k">⚖️ R:R</div><div class="v"><span class="tradeValueBubble tradeValueBubbleWarm">{{ out.rr }}</span></div></div>
+      <div class="calcCard"><div class="k">🧨 Risk % Balance</div><div class="v"><span class="tradeValueBubble {% if out.risk_pct_balance <= 1 %}tradeValueBubbleGain{% elif out.risk_pct_balance <= 2 %}tradeValueBubbleWarm{% else %}tradeValueBubbleLoss{% endif %}">{{ '%.2f'|format(out.risk_pct_balance) }}%</span></div></div>
+      <div class="calcCard"><div class="k">🚀 Reward % Balance</div><div class="v"><span class="tradeValueBubble tradeValueBubbleGain">{{ '%.2f'|format(out.reward_pct_balance) }}%</span></div></div>
+      <div class="calcCard"><div class="k">📈 Profit %</div><div class="v"><span class="tradeValueBubble tradeValueBubbleGain">{{ '%.1f'|format(out.profit_pct) }}%</span></div></div>
       <div class="calcCard"><div class="k">🛑 Balance If Stop Hits</div><div class="v">{{ money(out.balance_if_stop) }}</div></div>
       <div class="calcCard"><div class="k">🎯 Balance If Target Hits</div><div class="v">{{ money(out.balance_if_target) }}</div></div>
       <div class="calcCard {{ out.consistency_if_stop.class }}">
@@ -32,13 +35,14 @@
 
     <div class="overflowAuto">
       <table>
-        <thead><tr><th>🎯 %</th><th>📈 TP Price</th><th>🎁 Reward Net</th></tr></thead>
+        <thead><tr><th>🎯 %</th><th>📈 TP Price</th><th>🎁 Reward Net</th><th>📊 Profit %</th></tr></thead>
         <tbody>
           {% for r in out.ladder %}
             <tr>
-              <td><b>+{{ r.pct }}%</b></td>
-              <td>{{ money(r.tp) }}</td>
-              <td><b>{{ money(r.net) }}</b></td>
+              <td><span class="tradeValueBubble tradeValueBubbleWarm">+{{ r.pct }}%</span></td>
+              <td><span class="tradeValueBubble tradeValueBubbleFlat">{{ money(r.tp) }}</span></td>
+              <td><span class="tradeValueBubble tradeValueBubbleGain">{{ money(r.net) }}</span></td>
+              <td><span class="tradeValueBubble tradeValueBubbleGain">{{ '%.1f'|format((r.net / out.total_spend) * 100 if out.total_spend else 0) }}%</span></td>
             </tr>
           {% endfor %}
         </tbody>

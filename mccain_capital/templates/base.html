@@ -206,10 +206,10 @@
           <div class="drawerSectionTitle">Today</div>
           <div class="drawerPrimaryGrid">
             <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Run Day</a>
-            <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Execute</a>
-            <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics?tab=performance">Analyze Day</a>
+            <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
             <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Debrief</a>
+            <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
           </div>
         </section>
 
@@ -279,9 +279,8 @@
     <nav class="mobileDock" aria-label="Quick navigation">
       <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Day</a>
       <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
-      <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Open</a>
+      <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
       <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Notes</a>
-      <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Pay</a>
     </nav>
 
     <div class="tiny footerTip">

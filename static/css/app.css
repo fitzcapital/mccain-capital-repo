@@ -1145,13 +1145,13 @@
     }
     .weekCard{
       display:grid;
-      grid-template-columns:190px minmax(0, 1fr);
-      gap:14px;
-      border:1px solid rgba(var(--accent-rgb),.15);
-      border-radius:16px;
-      padding:14px;
-      background:linear-gradient(180deg, rgba(var(--accent-rgb),.05), rgba(255,255,255,.02));
-      box-shadow:0 18px 40px rgba(0,0,0,.16);
+      grid-template-columns:140px minmax(0, 1fr);
+      gap:10px;
+      border-top:1px solid rgba(255,255,255,.06);
+      border-radius:0;
+      padding:12px 0 0;
+      background:transparent;
+      box-shadow:none;
     }
     .weekCardHead{
       display:flex;
@@ -1160,7 +1160,7 @@
       align-items:flex-start;
       margin-bottom:0;
       padding-right:10px;
-      border-right:1px solid rgba(255,255,255,.06);
+      border-right:0;
     }
     .weekCardTitle{
       font-size:13px;
@@ -1175,8 +1175,9 @@
       line-height:1.35;
     }
     .weekCardMeta{
-      display:grid;
-      gap:3px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
       font-size:11px;
       color:var(--muted);
     }
@@ -1188,15 +1189,15 @@
     }
     .dayCard{
       min-height:108px;
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:14px;
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:12px;
       position:relative;
       overflow:hidden;
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+      box-shadow:none;
     }
     .dayCardEmpty{
       border-style:dashed;
-      background:rgba(255,255,255,.02);
+      background:rgba(255,255,255,.01);
       min-height:108px;
     }
     .dayCard-gain{border-color:rgba(46,204,113,.28)}
@@ -1244,6 +1245,7 @@
       display:flex;
       flex-wrap:wrap;
       gap:5px;
+      min-height:20px;
     }
     .dayBadge{
       display:inline-flex;
@@ -1273,6 +1275,7 @@
       font-size:11px;
       letter-spacing:.02em;
       text-transform:uppercase;
+      min-height:14px;
     }
     .calendarPreview{
       position:static;
@@ -1519,7 +1522,7 @@
       background: rgba(4,8,14,.92);
       backdrop-filter: blur(8px);
       gap:8px;
-      grid-template-columns: repeat(5,1fr);
+      grid-template-columns: repeat(4,1fr);
     }
     .mobileDock .btn{padding:9px 8px;font-size:12px}
     .quickLauncher{
@@ -1896,25 +1899,34 @@
       }
       .weekCard{
         grid-template-columns:1fr;
-        padding:12px;
+        border:1px solid rgba(var(--accent-rgb),.15);
+        border-radius:16px;
+        padding:10px;
+        background:linear-gradient(180deg, rgba(var(--accent-rgb),.05), rgba(255,255,255,.02));
+        box-shadow:0 18px 40px rgba(0,0,0,.16);
       }
       .weekCardHead{
         flex-direction:column;
         padding-right:0;
         border-right:0;
+        gap:4px;
+        margin-bottom:2px;
       }
+      .weekCardTitle{font-size:12px}
+      .weekCardRange{font-size:10px}
+      .weekCardMeta{font-size:10px;gap:6px}
       .weekDaysGrid{
         grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:8px;
+        gap:7px;
       }
       .dayCard,
       .dayCardEmpty,
       .dayPreviewButton{
-        min-height:118px;
+        min-height:108px;
       }
       .daymeta{
         flex-direction:column;
-        gap:4px;
+        gap:2px;
       }
       .dayweekday{
         display:block;
@@ -1924,23 +1936,28 @@
         font-size:12px;
       }
       .dayBadge{
-        font-size:9px;
-        padding:4px 6px;
+        font-size:8px;
+        padding:4px 5px;
       }
+      .badgeState{display:none}
       .daypnl{
-        font-size:11px;
+        font-size:10px;
       }
       .daypnlMuted{
         font-size:10px;
+        opacity:.34;
       }
       .calendarPreview{
         position:fixed;
         left:10px;
         right:10px;
-        bottom:10px;
+        bottom:88px;
       }
       .calendarPreviewCard{
         padding:12px;
+      }
+      .footerTip{
+        display:none;
       }
       .previewMetrics{
         grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -2030,7 +2047,7 @@
         border-radius:14px;
       }
       .drawerPrimaryGrid{
-        grid-template-columns:1fr;
+        grid-template-columns:1fr 1fr;
       }
       .drawerSectionTitle{
         margin-top:0;
@@ -2044,9 +2061,9 @@
       .drawerPrimaryGrid .btn,
       .drawerStack .btn{
         min-height:0;
-        padding:13px 15px;
+        padding:12px 14px;
         border-radius:16px;
-        font-size:clamp(15px, 4.8vw, 18px);
+        font-size:clamp(14px, 4.2vw, 17px);
         line-height:1.15;
         background:rgba(255,255,255,.025);
         border-color:rgba(255,255,255,.10);
@@ -2116,12 +2133,55 @@
       margin-top:12px;
     }
     @media(min-width:900px){ .calcGrid{ grid-template-columns: repeat(3, 1fr); } }
-    .calcCard{
-      padding:12px;border-radius:14px;border:1px solid rgba(var(--accent-rgb),.15);
-      background: rgba(0,0,0,.18);
-    }
-    .calcCard .k{font-size:12px;color:var(--muted)}
-    .calcCard .v{font-size:18px;font-weight:900;margin-top:6px}
+.calcCard{
+  padding:12px;border-radius:14px;border:1px solid rgba(var(--accent-rgb),.15);
+  background: rgba(0,0,0,.18);
+}
+.calcCard .k{font-size:12px;color:var(--muted)}
+.calcCard .v{font-size:18px;font-weight:900;margin-top:6px}
+.calculatorTopline{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.calcHelper{
+  position:relative;
+}
+.calcHelper summary{
+  list-style:none;
+  cursor:pointer;
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  border:1px solid rgba(var(--accent-rgb),.24);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:900;
+  color:var(--text);
+  background:linear-gradient(180deg, rgba(var(--accent-rgb),.10), rgba(var(--accent-rgb),.04));
+}
+.calcHelper summary::-webkit-details-marker{display:none}
+.calcHelperPopover{
+  position:absolute;
+  right:0;
+  top:calc(100% + 8px);
+  z-index:20;
+  width:min(320px, 78vw);
+  padding:12px;
+  border-radius:14px;
+  border:1px solid rgba(var(--accent-rgb),.18);
+  background:
+    linear-gradient(180deg, rgba(var(--accent-rgb),.08), rgba(255,255,255,.02)),
+    var(--panel);
+  box-shadow:var(--shadow);
+  display:grid;
+  gap:8px;
+  font-size:12px;
+  line-height:1.5;
+  color:var(--text);
+}
 
     .rowMenu{ position: relative; display:inline-flex; }
 .rowMenuBtn{
@@ -3504,6 +3564,120 @@
     grid-template-columns:1fr;
   }
   .commandDayLine{
+    display:none;
+  }
+}
+
+.metaAmber{
+  color:#ffd59a;
+  border-color:rgba(255, 186, 90, .32);
+  background:rgba(171, 111, 18, .18);
+}
+
+.replaySupportGrid,
+.strategyScoreGrid{
+  margin-top:12px;
+}
+
+.tableMeta{
+  margin-top:4px;
+  font-size:12px;
+  opacity:.72;
+}
+
+.replayJournalEntry{
+  padding:12px 0;
+  border-top:1px solid rgba(120, 180, 255, .12);
+}
+
+.replayJournalEntry:first-of-type{
+  border-top:0;
+  padding-top:0;
+}
+
+.replayJournalMeta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:10px;
+}
+
+.strategyScoreGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
+  gap:16px;
+}
+
+.strategyScoreCard .notes{
+  margin-top:12px;
+}
+
+.strategyTrendChips{
+  margin-top:12px;
+}
+
+.metricStripCompact .metric{
+  min-width:0;
+}
+
+.commandCalendarSignals{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:14px 0 4px;
+}
+
+.badgeState{
+  max-width:100%;
+}
+
+.badgeState-clean_win{
+  background:rgba(46,204,113,.18);
+  border-color:rgba(46,204,113,.30);
+  color:#f0fff6;
+}
+
+.badgeState-sloppy_win{
+  background:rgba(249,115,22,.18);
+  border-color:rgba(249,115,22,.30);
+  color:#fff4e8;
+}
+
+.badgeState-impulsive_loss{
+  background:rgba(231,76,60,.18);
+  border-color:rgba(231,76,60,.30);
+  color:#fff0f0;
+}
+
+.badgeState-controlled_loss,
+.badgeState-flat_session,
+.badgeState-review_build,
+.badgeState-debrief_day,
+.badgeState-project_day,
+.badgeState-quiet_day,
+.badgeState-green_day{
+  background:rgba(255,255,255,.08);
+  border-color:rgba(255,255,255,.16);
+  color:rgba(241,246,255,.85);
+}
+
+.dayCard-muted .dayBadges{
+  min-height:0;
+}
+
+.dayCard-muted .daypnlMuted{
+  opacity:.44;
+}
+
+.calcPresetRow{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
+}
+
+@media (max-width: 900px){
+  .quickLauncher{
     display:none;
   }
 }

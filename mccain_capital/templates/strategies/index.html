@@ -1,0 +1,71 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">📌 Strategy Scorecards</div>
+        <h2 class="pageTitle">Playbook That Measures Itself</h2>
+        <div class="pageSub">Each strategy should earn its seat with real expectancy, recent form, and drawdown pressure.</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn primary" href="/strategies/new">New Strategy</a>
+        <a class="btn" href="/analytics/replay">Open Replay</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dashboardSupportGrid">
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Playbook Rule</div>
+    <div class="supportLead">One card per executable setup.</div>
+    <div class="supportBody">Entry trigger, invalidation, size rule, target logic, and the real sample behind it.</div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Top Seat</div>
+    {% if headline %}
+      <div class="supportLead">{{ headline.title }}</div>
+      <div class="supportBody">{{ headline.count }} trades · WR {{ '%.1f'|format(headline.win_rate) }}% · Net {{ money(headline.net) }}</div>
+    {% else %}
+      <div class="supportLead">No strategy tracked yet</div>
+      <div class="supportBody">Create a strategy, then tie trades to it in review.</div>
+    {% endif %}
+  </div></div>
+</div>
+
+<div class="strategyScoreGrid">
+  {% for s in scorecards %}
+    <div class="card strategyScoreCard">
+      <div class="toolbar">
+        <div class="entryTop">
+          <div>
+            <div class="pill">{{ s.title }}</div>
+            <div class="meta stack8">{{ s.updated_label }}</div>
+          </div>
+          <div class="rightActions">
+            <span class="tradeValueBubble {{ s.status_tone }}">{{ s.status }}</span>
+            <a class="btn" href="/strategies/edit/{{ s.id }}">Edit</a>
+            <form id="del-s-{{ s.id }}" method="post" action="/strategies/delete/{{ s.id }}" style="display:inline"></form>
+            <button class="btn danger" type="button" onclick="confirmDelete('del-s-{{ s.id }}')">Delete</button>
+          </div>
+        </div>
+        <div class="metricStrip metricStripCompact">
+          <div class="metric"><div class="label">Trades</div><div class="value">{{ s.count }}</div></div>
+          <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(s.win_rate) }}%</div></div>
+          <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(s.expectancy) }}</div></div>
+          <div class="metric"><div class="label">Net</div><div class="value">{{ money(s.net) }}</div></div>
+        </div>
+        <div class="trendChips strategyTrendChips">
+          <span class="trendChip">Recent 10 {{ money(s.recent_net) }}</span>
+          <span class="trendChip">Recent WR {{ '%.1f'|format(s.recent_win_rate) }}%</span>
+          <span class="trendChip">Avg win {{ money(s.avg_win) }}</span>
+          <span class="trendChip">Avg loss {{ money(s.avg_loss_abs) }}</span>
+          <span class="trendChip">Max DD {{ money(s.max_drawdown) }}</span>
+          {% if s.avg_score is not none %}<span class="trendChip">Checklist {{ '%.1f'|format(s.avg_score) }}</span>{% endif %}
+        </div>
+        <div class="notes">{{ s.body }}</div>
+      </div>
+    </div>
+  {% else %}
+    <div class="card entry"><div class="toolbar"><div class="supportLead">No strategies yet.</div><div class="supportBody">Create one playbook card and start measuring it against actual trades.</div></div></div>
+  {% endfor %}
+</div>

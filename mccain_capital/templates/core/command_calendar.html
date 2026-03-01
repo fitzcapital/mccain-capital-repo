@@ -85,6 +85,16 @@
     </div>
   </div>
 
+  <div class="commandCalendarSignals">
+    <span class="tradeValueBubble tradeValueBubbleGain">Clean {{ state_rollup.get('clean_win', 0) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleWarm">Review {{ state_rollup.get('sloppy_win', 0) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleLoss">Impulsive {{ state_rollup.get('impulsive_loss', 0) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleFlat">Controlled loss {{ state_rollup.get('controlled_loss', 0) }}</span>
+    {% if top_mistake %}
+      <span class="tradeValueBubble tradeValueBubbleRisk">Top mistake: {{ top_mistake|replace('-', ' ')|title }}</span>
+    {% endif %}
+  </div>
+
   <div class="calendarWeeks" aria-label="{{ month_name }} command calendar">
     <div class="calendarWeekdayRow" aria-hidden="true">
       <span class="calendarWeekdaySpacer"></span>
@@ -137,6 +147,8 @@
                   data-win-rate="{{ '%.0f'|format(day.win_rate) }}"
                   data-balance="{% if day.balance is not none %}{{ money(day.balance) }}{% else %}—{% endif %}"
                   data-status="{{ day.focus_label }}"
+                  data-state="{{ day.day_state_label }}"
+                  data-mistake="{{ day.mistake_summary|replace('-', ' ')|title if day.mistake_summary else 'No repeated mistake tag' }}"
                   data-journal-count="{{ day.journal.entry_count if day.journal else 0 }}"
                   data-journal-pnl="{% if day.journal %}{{ money_compact(day.journal.pnl_total) }}{% else %}—{% endif %}"
                   data-journal-summary="{{ (day.journal_summary|join(' · ')) if day.journal_summary else 'No debrief logged' }}"
@@ -154,20 +166,20 @@
                     {% if day.trade_count > 0 %}
                       <span class="dayBadge">{{ day.trade_count }}T</span>
                     {% endif %}
+                    {% if day.day_state_label and day.trade_count > 0 %}
+                      <span class="dayBadge badgeState badgeState-{{ day.day_state }}">{{ day.day_state_label }}</span>
+                    {% endif %}
                     {% if day.journal %}
                       <span class="dayBadge badgeInfo">✍️ {{ day.journal.entry_count }}</span>
                     {% endif %}
                     {% if day.has_projects %}
                       <span class="dayBadge badgeInfo">🧱 {{ day.goal_signal_count }}</span>
                     {% endif %}
-                    {% if not day.trade_count and not day.journal and not day.has_projects %}
-                      <span class="dayBadge badgeFlat">{% if day.is_weekend %}Closed{% else %}Quiet{% endif %}</span>
-                    {% endif %}
                   </div>
                   {% if day.net %}
                     <div class="daypnl">{{ money_compact(day.net) }}</div>
                   {% else %}
-                    <div class="daypnl daypnlMuted">{% if day.is_weekend %}Closed{% else %}No P/L{% endif %}</div>
+                    <div class="daypnl daypnlMuted">{% if day.is_weekend %}Closed{% endif %}</div>
                   {% endif %}
                 </button>
               </article>
@@ -204,6 +216,10 @@
           <div class="k">Balance</div>
           <div class="v" id="previewBalance">—</div>
         </div>
+        <div class="previewMetric">
+          <div class="k">Day State</div>
+          <div class="v" id="previewState">—</div>
+        </div>
       </div>
       <div class="previewNarrative">
         <div class="previewNarrativeBlock">
@@ -211,8 +227,8 @@
           <div class="tiny line16" id="previewJournal">No debrief logged</div>
         </div>
         <div class="previewNarrativeBlock">
-          <div class="k">Projects</div>
-          <div class="tiny line16" id="previewProjects">No project signal logged</div>
+          <div class="k">Mistake Engine</div>
+          <div class="tiny line16" id="previewProjects">No repeated mistake tag</div>
         </div>
       </div>
       <div class="calendarPreviewActions">
@@ -232,13 +248,14 @@
       const trades = document.getElementById("previewTrades");
       const record = document.getElementById("previewRecord");
       const balance = document.getElementById("previewBalance");
+      const state = document.getElementById("previewState");
       const journal = document.getElementById("previewJournal");
       const projects = document.getElementById("previewProjects");
       const open = document.getElementById("calendarPreviewOpen");
       const journalLink = document.getElementById("calendarPreviewJournal");
       const goalsLink = document.getElementById("calendarPreviewGoals");
       const close = document.getElementById("calendarPreviewClose");
-      if (!preview || !title || !status || !net || !trades || !record || !balance || !journal || !projects || !open || !journalLink || !goalsLink || !close) return;
+      if (!preview || !title || !status || !net || !trades || !record || !balance || !state || !journal || !projects || !open || !journalLink || !goalsLink || !close) return;
 
       document.querySelectorAll(".dayPreviewButton").forEach((button) => {
         button.addEventListener("click", () => {
@@ -249,8 +266,9 @@
           trades.textContent = d.tradeCount || "0";
           record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L • ${d.winRate || "0"}%`;
           balance.textContent = d.balance || "—";
+          state.textContent = d.state || "—";
           journal.textContent = d.journalSummary || "No debrief logged";
-          projects.textContent = d.projectSummary || "No project signal logged";
+          projects.textContent = d.mistake || "No repeated mistake tag";
           open.href = d.openUrl || "/trades";
           journalLink.href = d.journalUrl || "/journal";
           goalsLink.href = d.goalsUrl || "/goals";

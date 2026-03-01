@@ -26,6 +26,19 @@
   <div id="integrity-check-result" style="display:none;"></div>
 </div></div>
 
+<div class="dashboardSupportGrid">
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Restore Modes</div>
+    <div class="supportLead">Use the lightest rollback that solves the problem.</div>
+    <div class="supportBody">`Restore` replaces DB rows and merges uploads. `Clear + Restore` wipes live state first for a hard rollback.</div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Safe Flow</div>
+    <div class="supportLead">Dry run before hard restore.</div>
+    <div class="supportBody">Preview row deltas and upload overwrite risk before you touch the live state.</div>
+  </div></div>
+</div>
+
 <div class="card"><div class="toolbar">
   <div class="pill">⚙️ Schedule Settings</div>
   <div class="hr"></div>
@@ -52,9 +65,14 @@
     <div class="actionRow"><button class="btn" type="submit">Save Schedule</button></div>
   </form>
   <div class="hr"></div>
-  <form method="post" action="/ops/backups/run" class="rightActions" id="backup-run-form">
-    <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
-  </form>
+  <div class="rightActions">
+    <form method="post" action="/ops/backups/run" class="inlineForm" id="backup-run-form">
+      <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
+    </form>
+    <form method="post" action="/ops/backups/clear-live" class="inlineForm" onsubmit="return confirm('Clear live app data? This keeps backup archives but wipes the current database, uploads, and books.');">
+      <button class="btn danger" type="submit">Clear Live Data</button>
+    </form>
+  </div>
   {{ runway('backup-job-runway', ['Archive', 'Verify', 'Summary', 'Ready'], label='Creating backup archive from current app data.') }}
   <div id="ops-job-summary" style="display:none;"></div>
 </div></div>
@@ -90,6 +108,11 @@
             <input type="hidden" name="name" value="{{ b.name }}" />
             <button class="btn" type="submit">Restore</button>
           </form>
+          <form method="post" action="/ops/backups/restore" style="display:inline" class="backup-restore-form" data-backup-name="{{ b.name }}" data-clear-first="1">
+            <input type="hidden" name="name" value="{{ b.name }}" />
+            <input type="hidden" name="clear_first" value="1" />
+            <button class="btn danger" type="submit">Clear + Restore</button>
+          </form>
           <form method="post" action="/ops/backups/restore-dry-run" style="display:none">
             <input type="hidden" name="name" value="{{ b.name }}" />
           </form>
@@ -110,6 +133,11 @@
 <div class="card"><div class="toolbar">
   <div class="pill">🧪 Restore Dry Run: {{ dry_run_name }}</div>
   <div class="tiny stack8 line15">Preview only. No files were written.</div>
+  <div class="trendChips">
+    <span class="trendChip">Trade delta {{ dry_run_report.delta.trades }}</span>
+    <span class="trendChip">Entry delta {{ dry_run_report.delta.entries }}</span>
+    <span class="trendChip">Overwrite {{ dry_run_report.uploads.overwritten_files }}</span>
+  </div>
   <div class="statRow stack10">
     <div class="stat"><div class="k">Current Trades</div><div class="v">{{ dry_run_report.current_counts.trades }}</div></div>
     <div class="stat"><div class="k">Backup Trades</div><div class="v">{{ dry_run_report.backup_counts.trades }}</div></div>
@@ -202,17 +230,20 @@
     document.querySelectorAll('.backup-restore-form').forEach(function(form) {
       const button = form.querySelector('button[type="submit"]');
       if (!button) return;
+      const clearFirst = form.dataset.clearFirst === '1';
       jobs.bindAsyncJob({
         form: form,
         button: button,
         runway: document.getElementById('backup-job-runway'),
         summary: document.getElementById('ops-job-summary'),
-        startLabel: 'Restoring...',
-        doneLabel: 'Restore',
+        startLabel: clearFirst ? 'Clearing + Restoring...' : 'Restoring...',
+        doneLabel: clearFirst ? 'Clear + Restore' : 'Restore',
         badge: 'Restore',
-        startMessage: 'Validating backup archive before restore.',
+        startMessage: clearFirst ? 'Clearing live data, then validating backup archive before restore.' : 'Validating backup archive before restore.',
         stageMap: { validate_archive: 1, apply_restore: 2, complete: 3, failed: 3 },
-        confirmText: 'Restore from ' + (form.dataset.backupName || 'this backup') + '? This replaces DB and merges uploads.'
+        confirmText: clearFirst
+          ? 'Clear live data and restore from ' + (form.dataset.backupName || 'this backup') + '? This wipes the current database, uploads, and books first.'
+          : 'Restore from ' + (form.dataset.backupName || 'this backup') + '? This replaces DB and merges uploads.'
       });
     });
   })();

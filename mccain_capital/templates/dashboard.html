@@ -36,22 +36,35 @@
   </div></div>
 
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Data Trust</div>
-    <div class="supportLead">
-      {{ data_trust.status_label }}
-      {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
-      {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
+    <div class="pill">Payout Pace</div>
+    <div class="supportLead">{{ payout_focus }}</div>
+    <div class="supportBody">{{ payout_focus_detail }}</div>
+    <div class="rightActions stack8">
+      <a class="btn primary" href="/payouts">Open Planner</a>
+      <a class="btn ctaLink" href="/calendar">Open Calendar</a>
     </div>
+  </div></div>
+
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Risk Posture</div>
+    <div class="supportLead">{{ risk_posture_title }}</div>
+    <div class="supportBody">{{ risk_posture_detail }}</div>
+    <div class="supportMeta">{{ setup_focus }}</div>
+  </div></div>
+
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Pattern Watch</div>
+    <div class="supportLead">{{ pattern_watch }}</div>
     <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
       {{ data_trust.message }}
     </div>
     {% if data_trust.primary_href and data_trust.primary_label %}
-    <div class="rightActions stack8">
-      <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-      {% if data_trust.secondary_href and data_trust.secondary_label %}
-        <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
-      {% endif %}
-    </div>
+      <div class="rightActions stack8">
+        <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+        {% if data_trust.secondary_href and data_trust.secondary_label %}
+          <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+        {% endif %}
+      </div>
     {% endif %}
   </div></div>
 </div>
@@ -328,17 +341,15 @@
                     <div class="dayBadges">
                       {% if day.trade_count > 0 %}
                         <span class="dayBadge">{{ day.trade_count }}T</span>
-                        <span class="dayBadge {% if day.wins > day.losses %}badgeGain{% elif day.losses > day.wins %}badgeLoss{% else %}badgeFlat{% endif %}">
-                          {{ day.wins }}W/{{ day.losses }}L
-                        </span>
-                      {% else %}
-                        <span class="dayBadge badgeFlat">{% if day.is_weekend %}Closed{% else %}Idle{% endif %}</span>
+                        {% if day.losses > day.wins %}
+                          <span class="dayBadge badgeLoss">{{ day.wins }}W/{{ day.losses }}L</span>
+                        {% endif %}
                       {% endif %}
                     </div>
                     {% if day.net %}
                       <div class="daypnl">{{ money_compact(day.net) }}</div>
                     {% else %}
-                      <div class="daypnl daypnlMuted">{% if day.is_weekend %}Closed{% else %}No P/L{% endif %}</div>
+                      <div class="daypnl daypnlMuted">{% if day.is_weekend %}Closed{% endif %}</div>
                     {% endif %}
                   </button>
                 </article>

@@ -40,7 +40,9 @@ from mccain_capital.repositories import analytics as analytics_repo
 from mccain_capital.repositories import strategies as strategies_repo
 from mccain_capital import auth
 from mccain_capital import runtime as app_runtime
+from mccain_capital.migrations import run_migrations
 from mccain_capital.runtime import (
+    BOOKS_DIR,
     UPLOAD_DIR,
     db,
     detect_paste_format,
@@ -124,6 +126,7 @@ _AUDIT_ACTION_META = {
     "backup_created": {"label": "Backup Created", "group": "backup"},
     "backup_failed": {"label": "Backup Failed", "group": "backup"},
     "backup_restored_from_center": {"label": "Backup Restored", "group": "restore"},
+    "live_data_cleared": {"label": "Live Data Cleared", "group": "restore"},
     "manual_backup_restored": {"label": "Backup Restored", "group": "restore"},
     "manual_backup_downloaded": {"label": "Backup Downloaded", "group": "backup"},
     "backup_deleted": {"label": "Backup Deleted", "group": "backup"},
@@ -685,6 +688,8 @@ def _audit_summary_text(row: Dict[str, Any]) -> str:
     details = row.get("details") if isinstance(row.get("details"), dict) else {}
     if action in {"backup_created", "backup_restored_from_center", "manual_backup_restored"}:
         return str(details.get("file") or "Snapshot file updated.")
+    if action == "live_data_cleared":
+        return "Database and live uploads were cleared while backup archives were preserved."
     if action == "backup_deleted":
         return str(details.get("file") or "Backup file deleted.")
     if action == "backup_failed":
@@ -4628,12 +4633,59 @@ def _restore_from_backup_path(path: str) -> None:
                 shutil.copyfileobj(src, dst, length=1024 * 1024)
 
 
-def _start_restore_job(path: str, actor: str) -> Dict[str, Any]:
+def _clear_live_app_data(*, preserve_backups: bool = True) -> Dict[str, Any]:
+    db_path = str(app_runtime.DB_PATH)
+    upload_root = str(app_runtime.UPLOAD_DIR)
+    books_root = str(getattr(app_runtime, "BOOKS_DIR", BOOKS_DIR))
+    preserved: set[str] = set()
+    if preserve_backups:
+        preserved.update(
+            {
+                os.path.abspath(AUTO_BACKUP_DIR),
+                os.path.abspath(AUTO_BACKUP_CONFIG_PATH),
+                os.path.abspath(ADMIN_AUDIT_LOG_PATH),
+            }
+        )
+
+    if os.path.exists(db_path):
+        os.unlink(db_path)
+    os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
+    run_migrations(db_path)
+
+    if os.path.isdir(upload_root):
+        for name in os.listdir(upload_root):
+            path = os.path.abspath(os.path.join(upload_root, name))
+            if path in preserved:
+                continue
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=False)
+            elif os.path.exists(path):
+                os.unlink(path)
+    os.makedirs(upload_root, exist_ok=True)
+
+    if os.path.isdir(books_root):
+        for name in os.listdir(books_root):
+            path = os.path.join(books_root, name)
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=False)
+            elif os.path.exists(path):
+                os.unlink(path)
+    os.makedirs(books_root, exist_ok=True)
+
+    return {
+        "db_path": db_path,
+        "upload_root": upload_root,
+        "books_root": books_root,
+        "preserved_backups": preserve_backups,
+    }
+
+
+def _start_restore_job(path: str, actor: str, clear_first: bool = False) -> Dict[str, Any]:
     app = current_app._get_current_object()
     job = _create_bg_job(
         "restore",
         "Restore Backup",
-        {"file": os.path.basename(path)},
+        {"file": os.path.basename(path), "clear_first": bool(clear_first)},
     )
 
     def runner() -> None:
@@ -4652,17 +4704,28 @@ def _start_restore_job(path: str, actor: str) -> Dict[str, Any]:
                     stage="apply_restore",
                     message="Applying backup to database and uploads.",
                 )
+                if clear_first:
+                    _clear_live_app_data(preserve_backups=True)
+                    record_admin_audit(
+                        "live_data_cleared",
+                        {"mode": "before_restore", "file": os.path.basename(path)},
+                        actor=actor,
+                    )
                 _restore_from_backup_path(path)
                 record_admin_audit(
                     "backup_restored_from_center",
-                    {"file": os.path.basename(path)},
+                    {"file": os.path.basename(path), "clear_first": bool(clear_first)},
                     actor=actor,
                 )
             summary = _build_action_result_summary(
                 tone="success",
                 title="Restore Complete",
                 happened=f"Restored from {os.path.basename(path)}.",
-                changed="Database rows were replaced and upload files were merged from the selected backup.",
+                changed=(
+                    "Live data was cleared first, then the selected backup was applied."
+                    if clear_first
+                    else "Database rows were replaced and upload files were merged from the selected backup."
+                ),
                 next_action="Run Integrity Check next so ledger, reviews, and balances are verified on the restored state.",
                 metrics=[
                     {"label": "Source", "value": os.path.basename(path)},
@@ -4702,6 +4765,7 @@ def _start_restore_job(path: str, actor: str) -> Dict[str, Any]:
 def ops_backups_restore():
     _require_ops_mutation_auth()
     name = (request.form.get("name") or "").strip()
+    clear_first = (request.form.get("clear_first") or "").strip() == "1"
     try:
         path = _safe_backup_file_path(name)
     except ValueError:
@@ -4711,15 +4775,39 @@ def ops_backups_restore():
         flash("Backup not found.", "warn")
         return redirect(url_for("ops_backups_page"))
     if (request.args.get("async") or "").strip() == "1":
-        job = _start_restore_job(path, actor=_alerts_actor())
+        job = _start_restore_job(path, actor=_alerts_actor(), clear_first=clear_first)
         return jsonify({"ok": True, "job": _job_response_payload(job)})
     try:
+        if clear_first:
+            _clear_live_app_data(preserve_backups=True)
+            record_admin_audit(
+                "live_data_cleared",
+                {"mode": "before_restore", "file": os.path.basename(path)},
+                actor=_alerts_actor(),
+            )
         _restore_from_backup_path(path)
     except Exception as e:
         flash(f"Restore failed: {e}", "warn")
         return redirect(url_for("ops_backups_page"))
-    record_admin_audit("backup_restored_from_center", {"file": os.path.basename(path)})
-    flash(f"Restored from {os.path.basename(path)}.", "success")
+    record_admin_audit(
+        "backup_restored_from_center",
+        {"file": os.path.basename(path), "clear_first": bool(clear_first)},
+    )
+    flash(
+        f"{'Cleared live data and r' if clear_first else 'R'}estored from {os.path.basename(path)}.",
+        "success",
+    )
+    return redirect(url_for("ops_backups_page"))
+
+
+def ops_backups_clear_live():
+    _require_ops_mutation_auth()
+    try:
+        _clear_live_app_data(preserve_backups=True)
+        record_admin_audit("live_data_cleared", {"mode": "manual_clear"})
+        flash("Live database, uploads, and books were cleared. Saved backups were preserved.", "success")
+    except Exception as e:
+        flash(f"Clear failed: {e}", "warn")
     return redirect(url_for("ops_backups_page"))
 
 

@@ -7,9 +7,10 @@ import re
 from urllib.parse import urlencode
 from typing import Any, Dict, List
 
-from flask import render_template, render_template_string, request
+from flask import render_template, request
 
 from mccain_capital.repositories import analytics as repo
+from mccain_capital.repositories import journal as journal_repo
 from mccain_capital.runtime import get_setting_float, money
 from mccain_capital.services.ui import get_system_status, render_page
 from mccain_capital.services.viewmodels import analytics_data_trust
@@ -591,6 +592,16 @@ def session_replay_page():
     key_losses = sorted(
         [t for t in timeline if float(t["net_pl"]) < 0], key=lambda x: float(x["net_pl"])
     )[:3]
+    score_values = [
+        float(t["checklist_score"])
+        for t in timeline
+        if t.get("checklist_score") is not None and str(t.get("checklist_score")).strip() != ""
+    ]
+    avg_score = (sum(score_values) / len(score_values)) if score_values else None
+    setup_rows = repo.group_table(day_rows, "setup_tag")
+    session_rows = repo.group_table(day_rows, "session_tag")
+    dominant_setup = setup_rows[0] if setup_rows else None
+    dominant_session = session_rows[0] if session_rows else None
     rule_breaks = sorted(
         {
             p.strip()
@@ -598,6 +609,27 @@ def session_replay_page():
             for p in str(t.get("rule_break_tags") or "").split(",")
             if p.strip()
         }
+    )
+    rule_break_rows = repo.rule_break_counts(day_rows)
+    journal_entries = [dict(r) for r in journal_repo.fetch_entries(d=day)]
+    for entry in journal_entries:
+        entry["linked_trade_ids"] = journal_repo.fetch_entry_trade_ids(int(entry["id"]))
+    journal_summary = journal_entries[0] if journal_entries else None
+    replay_status = (
+        "No trades logged"
+        if not timeline
+        else "Controlled green day"
+        if day_net > 0 and not rule_break_rows
+        else "Review behavior"
+        if day_net < 0 or rule_break_rows
+        else "Logged and stable"
+    )
+    first_trade = timeline[0] if timeline else None
+    last_trade = timeline[-1] if timeline else None
+    intraday_arc = (
+        f"{first_trade['entry_time']} first print -> {last_trade['exit_time']} close"
+        if first_trade and last_trade
+        else "No intraday sequence recorded."
     )
     notes_lines: List[str] = [
         f"Session replay for {day}: {len(timeline)} trades, net {money(day_net)}, wins/losses {wins}/{losses}.",
@@ -642,58 +674,21 @@ def session_replay_page():
             "grade": "TBD",
         }
     )
-    content = render_template_string(
-        """
-        <div class="card pageHero"><div class="toolbar">
-          <div class="pageHeroHead">
-            <div>
-              <div class="pill">🎬 Session Replay</div>
-              <h2 class="pageTitle">Day Reconstruction</h2>
-              <div class="pageSub">Replay execution sequence, equity steps, and rule-break context for one day.</div>
-            </div>
-            <div class="actionRow">
-              <a class="btn primary" href="{{ replay_journal_href }}">📝 Create Journal Entry</a>
-              <a class="btn" href="/analytics">📈 Back Analytics</a>
-            </div>
-          </div>
-          <div class="hr"></div>
-          <form method="get" class="row">
-            <div><label>Date</label><input type="date" name="date" value="{{ day }}" /></div>
-            <div class="actionRow"><button class="btn primary" type="submit">Replay</button></div>
-          </form>
-        </div></div>
-        <div class="metricStrip">
-          <div class="metric"><div class="label">Trades</div><div class="value">{{ timeline|length }}</div></div>
-          <div class="metric"><div class="label">Day Net</div><div class="value">{{ money(day_net) }}</div></div>
-          <div class="metric"><div class="label">Wins / Losses</div><div class="value">{{ wins }} / {{ losses }}</div></div>
-        </div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧭 Timeline</div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>#</th><th>Trade</th><th>Setup/Session</th><th>Score</th><th>Rule Breaks</th><th>Net</th><th>Equity Step</th></tr></thead>
-            <tbody>
-            {% for t in timeline %}
-              <tr>
-                <td>{{ t.step }}</td>
-                <td>#{{ t.id }} · {{ t.entry_time }} → {{ t.exit_time }} · {{ t.ticker }} {{ t.opt_type }}</td>
-                <td>{{ t.setup_tag or '—' }} / {{ t.session_tag or '—' }}</td>
-                <td>{% if t.checklist_score is not none %}{{ t.checklist_score }}{% else %}—{% endif %}</td>
-                <td>{{ t.rule_break_tags or '—' }}</td>
-                <td>{{ money(t.net_pl) }}</td>
-                <td>{{ money(t.equity_delta) }}</td>
-              </tr>
-            {% else %}
-              <tr><td colspan="7">No trades found for selected day.</td></tr>
-            {% endfor %}
-            </tbody>
-          </table></div>
-        </div></div>
-        """,
+    content = render_template(
+        "analytics/session_replay.html",
         day=day,
         timeline=timeline,
         day_net=day_net,
         wins=wins,
         losses=losses,
+        avg_score=avg_score,
+        dominant_setup=dominant_setup,
+        dominant_session=dominant_session,
+        journal_entries=journal_entries,
+        journal_summary=journal_summary,
+        rule_break_rows=rule_break_rows,
+        replay_status=replay_status,
+        intraday_arc=intraday_arc,
         replay_journal_href=replay_journal_href,
         money=money,
     )

@@ -157,6 +157,12 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/ops/backups/clear-live",
+        endpoint="ops_backups_clear_live",
+        view_func=h.ops_backups_clear_live,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/ops/backups/restore-dry-run",
         endpoint="ops_backups_restore_dry_run",
         view_func=h.ops_backups_restore_dry_run,

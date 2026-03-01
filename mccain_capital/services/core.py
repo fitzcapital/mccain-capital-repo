@@ -68,6 +68,7 @@ def favicon():
 
 
 def dashboard():
+    from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
 
     anchor = trades_repo.latest_trade_day() or app_runtime.now_et().date()
@@ -131,6 +132,52 @@ def dashboard():
         if today_win_rate >= 60 and today_net >= 0
         else "Stabilize process" if today_count else "No session logged"
     )
+    recent_start = max(date(year, month, 1), anchor - timedelta(days=45))
+    recent_rows = analytics_repo.fetch_analytics_rows(recent_start.isoformat(), anchor.isoformat())
+    recent_rule_breaks = analytics_repo.rule_break_counts(recent_rows)
+    recent_setup_rows = [
+        row
+        for row in analytics_repo.group_table(recent_rows, "setup_tag")
+        if str(row.get("k") or "").strip() and str(row.get("k") or "").strip() != "Unlabeled"
+    ]
+    top_rule_break = recent_rule_breaks[0] if recent_rule_breaks else None
+    top_setup = recent_setup_rows[0] if recent_setup_rows else None
+    payout_focus = (
+        f"5-day pace projects {app_runtime.money(proj['p5']['est_balance'])}."
+        if proj.get("p5")
+        else "Need more daily history for payout pace."
+    )
+    payout_focus_detail = (
+        f"10-day estimate {app_runtime.money(proj['p10']['est_balance'])} · Avg day {app_runtime.money(proj['avg'])}."
+        if proj.get("p10")
+        else "Upload more trades to stabilize projections."
+    )
+    risk_posture_title = (
+        "Attack window"
+        if today_count and today_net > 0 and (ytd_cons.get("ratio") is None or ytd_cons.get("ratio", 1.0) <= 0.30)
+        else "Protect capital"
+        if today_count and today_net < 0
+        else "Wait for clean signal"
+    )
+    risk_posture_detail = (
+        f"Today {today_wins}W/{today_losses}L · Consistency "
+        + (
+            f"{float(ytd_cons['ratio']) * 100.0:.1f}%"
+            if ytd_cons.get("ratio") is not None
+            else "—"
+        )
+        + "."
+    )
+    pattern_watch = (
+        f"Most common breach: {str(top_rule_break['tag']).replace('-', ' ').title()} ({top_rule_break['count']})."
+        if top_rule_break
+        else "No recurring rule-break tag is dominating recent sessions."
+    )
+    setup_focus = (
+        f"Lead setup {top_setup['k']} · {top_setup['count']} trades · {app_runtime.money(top_setup['net'])}."
+        if top_setup
+        else "No dominant labeled setup yet."
+    )
 
     content = render_template(
         "dashboard.html",
@@ -163,6 +210,12 @@ def dashboard():
         capital_pulse=capital_pulse,
         discipline_pulse=discipline_pulse,
         discipline_label=discipline_label,
+        payout_focus=payout_focus,
+        payout_focus_detail=payout_focus_detail,
+        risk_posture_title=risk_posture_title,
+        risk_posture_detail=risk_posture_detail,
+        pattern_watch=pattern_watch,
+        setup_focus=setup_focus,
         proj=proj,
         money=app_runtime.money,
         money_compact=_money_compact,
@@ -171,6 +224,7 @@ def dashboard():
 
 
 def command_calendar_page():
+    from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import goals as goals_repo
     from mccain_capital.repositories import journal as journal_repo
     from mccain_capital.repositories import trades as trades_repo
@@ -185,15 +239,19 @@ def command_calendar_page():
     heat = trades_repo.month_heatmap(year, month)
     journal_rows = journal_repo.fetch_entry_day_rollups(first.isoformat(), month_end.isoformat())
     goal_rows = goals_repo.fetch_daily_goals(first.isoformat(), month_end.isoformat())
+    analytics_rows = analytics_repo.fetch_analytics_rows(first.isoformat(), month_end.isoformat())
 
     journal_map = {str(row["entry_date"]): row for row in journal_rows}
     goal_map = {str(row["track_date"]): dict(row) for row in goal_rows}
+    analytics_map = _analytics_rows_by_day(analytics_rows)
 
     activity_days = 0
     journal_days = 0
     project_days = 0
     project_signals = 0
     debrief_count = 0
+    state_rollup: Dict[str, int] = {}
+    mistake_rollup: Dict[str, int] = {}
 
     for week in heat["weeks"]:
         for day in week["days"]:
@@ -202,6 +260,7 @@ def command_calendar_page():
                 continue
             journal = journal_map.get(iso) or {}
             goals = goal_map.get(iso) or {}
+            day_analytics = analytics_map.get(iso) or []
             goal_signal_count = _goal_signal_count(goals)
             if day.get("has_trades") or journal or goal_signal_count:
                 activity_days += 1
@@ -225,6 +284,12 @@ def command_calendar_page():
             day["focus_label"] = _day_focus_label(day, journal, goals)
             day["project_summary"] = _project_summary(goals)
             day["journal_summary"] = _journal_summary(journal)
+            day["mistake_summary"] = _day_mistake_summary(day_analytics)
+            day["day_state"] = _day_state(day, journal, goals, day_analytics)
+            day["day_state_label"] = _day_state_label(day["day_state"])
+            state_rollup[day["day_state"]] = int(state_rollup.get(day["day_state"], 0)) + 1
+            if day["mistake_summary"]:
+                mistake_rollup[day["mistake_summary"]] = int(mistake_rollup.get(day["mistake_summary"], 0)) + 1
 
     month_net = trades_repo.month_total_net(year, month)
     month_trade_count = trades_repo.month_trade_count(year, month)
@@ -255,6 +320,8 @@ def command_calendar_page():
         debrief_count=debrief_count,
         project_days=project_days,
         project_signals=project_signals,
+        state_rollup=state_rollup,
+        top_mistake=max(mistake_rollup.items(), key=lambda kv: kv[1])[0] if mistake_rollup else "",
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -577,6 +644,22 @@ def _calculator_context(form_data: Optional[Any] = None) -> Dict[str, Any]:
                 "consistency_if_target": trades_repo.calc_consistency(
                     list(base_trades) + [{"net_pl": float(rr["reward_net"])}]
                 ),
+                "risk_pct_balance": round((float(rr["risk_net"]) / float(current_balance) * 100.0), 2)
+                if current_balance
+                else 0.0,
+                "reward_pct_balance": round((float(rr["reward_net"]) / float(current_balance) * 100.0), 2)
+                if current_balance
+                else 0.0,
+                "profit_pct": round((float(rr["reward_net"]) / float(entry * MULTIPLIER * contracts + (fee * contracts)) * 100.0), 1)
+                if (entry * MULTIPLIER * contracts + (fee * contracts))
+                else 0.0,
+                "plan_state": (
+                    "Sharp"
+                    if rr["rr"] >= 2.0 and float(rr["risk_net"]) <= float(current_balance) * 0.01
+                    else "Manageable"
+                    if rr["rr"] >= 1.5 and float(rr["risk_net"]) <= float(current_balance) * 0.02
+                    else "Too hot"
+                ),
                 **rr,
                 "ladder": ladder,
             }
@@ -733,6 +816,66 @@ def _day_focus_label(
     if goal_row:
         return "Project day"
     return "No signal"
+
+
+def _analytics_rows_by_day(rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        iso = str(row.get("trade_date") or "")
+        if not iso:
+            continue
+        out.setdefault(iso, []).append(row)
+    return out
+
+
+def _day_mistake_summary(rows: List[Dict[str, Any]]) -> str:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        tags = str(row.get("rule_break_tags") or "")
+        for tag in [part.strip().lower() for part in tags.split(",") if part.strip()]:
+            counts[tag] = int(counts.get(tag, 0)) + 1
+    if not counts:
+        return ""
+    return max(counts.items(), key=lambda kv: kv[1])[0][0:36]
+
+
+def _day_state(day_row: Dict[str, Any], journal_row: Dict[str, Any], goal_row: Dict[str, Any], analytics_rows: List[Dict[str, Any]]) -> str:
+    has_trades = bool(day_row.get("has_trades"))
+    net = float(day_row.get("net") or 0.0)
+    has_journal = bool(journal_row)
+    has_projects = bool(goal_row)
+    mistake = _day_mistake_summary(analytics_rows)
+    if has_trades and net > 0 and has_journal and not mistake:
+        return "clean_win"
+    if has_trades and net > 0:
+        return "sloppy_win" if mistake else "green_day"
+    if has_trades and net < 0:
+        return "impulsive_loss" if mistake else "controlled_loss"
+    if has_trades and net == 0:
+        return "flat_session"
+    if has_journal and has_projects:
+        return "review_build"
+    if has_journal:
+        return "debrief_day"
+    if has_projects:
+        return "project_day"
+    return "quiet_day"
+
+
+def _day_state_label(value: str) -> str:
+    labels = {
+        "clean_win": "Clean win",
+        "sloppy_win": "Review win",
+        "green_day": "Green day",
+        "controlled_loss": "Controlled loss",
+        "impulsive_loss": "Impulsive loss",
+        "flat_session": "Flat session",
+        "review_build": "Review + build",
+        "debrief_day": "Debrief",
+        "project_day": "Project",
+        "quiet_day": "",
+    }
+    return labels.get(value, "Day state")
 
 
 def _trading_day_index_map(year: int) -> Dict[date, int]:
