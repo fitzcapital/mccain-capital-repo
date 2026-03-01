@@ -10,6 +10,7 @@ import re
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import (
     db,
     looks_like_header,
@@ -964,15 +965,23 @@ def insert_trades_from_broker_paste_with_report(
                 )
                 trade_id = int(cur.lastrowid)
                 payload = _auto_review_payload(tr)
+                strategy_id, strategy_label = trades_repo._resolve_strategy_link(
+                    conn,
+                    strategy_id=None,
+                    strategy_label=payload.get("setup_tag", ""),
+                    setup_tag=payload.get("setup_tag", ""),
+                )
                 conn.execute(
                     """
                     INSERT OR IGNORE INTO trade_reviews
-                      (trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                      (trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         trade_id,
-                        payload.get("setup_tag", ""),
+                        strategy_id,
+                        strategy_label,
+                        strategy_label,
                         payload.get("session_tag", ""),
                         payload.get("checklist_score", None),
                         payload.get("rule_break_tags", ""),
@@ -1142,15 +1151,23 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
             )
             trade_id = int(cur.lastrowid)
             payload = _auto_review_payload(row)
+            strategy_id, strategy_label = trades_repo._resolve_strategy_link(
+                conn,
+                strategy_id=None,
+                strategy_label=payload.get("setup_tag", ""),
+                setup_tag=payload.get("setup_tag", ""),
+            )
             conn.execute(
                 """
                 INSERT OR IGNORE INTO trade_reviews
-                  (trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  (trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     trade_id,
-                    payload.get("setup_tag", ""),
+                    strategy_id,
+                    strategy_label,
+                    strategy_label,
                     payload.get("session_tag", ""),
                     payload.get("checklist_score", None),
                     payload.get("rule_break_tags", ""),

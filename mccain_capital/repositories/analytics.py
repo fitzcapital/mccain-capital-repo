@@ -27,12 +27,13 @@ def fetch_analytics_rows(start_date: str = "", end_date: str = "") -> List[Dict[
           t.ticker,
           t.net_pl,
           t.balance,
-          r.setup_tag,
+          COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '') AS setup_tag,
           r.session_tag,
           r.checklist_score,
           r.rule_break_tags
         FROM trades t
         LEFT JOIN trade_reviews r ON r.trade_id = t.id
+        LEFT JOIN strategies s ON s.id = r.strategy_id
     """
     if where:
         sql += " WHERE " + " AND ".join(where)

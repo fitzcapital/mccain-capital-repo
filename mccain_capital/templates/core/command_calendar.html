@@ -1,0 +1,266 @@
+<div class="card pageHero commandCalendarHero"><div class="toolbar">
+  <div class="pageHeroTop">
+    <div>
+      <div class="pill">🗓️ P/L Command Calendar</div>
+      <h2 class="pageTitle">Month map for trading and outside projects</h2>
+      <div class="pageSub">Calendar-first view for session quality, debrief coverage, and side work.</div>
+    </div>
+    <div class="pageHeroActions">
+      <a class="btn" href="/dashboard">Dashboard</a>
+      <a class="btn primary" href="/trades">Trades</a>
+    </div>
+  </div>
+</div></div>
+
+<div class="card summaryPanel commandCalendarPanel"><div class="toolbar">
+  <div class="calendarHead">
+    <div>
+      <div class="pill">📡 Month Signal Grid</div>
+      <div class="summaryLead stack8">{{ month_name }} with trading, debrief, and project context.</div>
+    </div>
+    <div class="calendarNav">
+      <a class="btn" href="/calendar?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
+      <a class="btn" href="/calendar">This Month</a>
+      <a class="btn" href="/calendar?y={{ next_y }}&m={{ next_m }}">Next</a>
+    </div>
+  </div>
+
+  <div class="hr"></div>
+  <div class="commandCalendarTopline">
+    <div class="commandCalendarMonthBlock">
+      <div class="summaryMonth">{{ month_name }}</div>
+      <div class="summaryCaption">Balance {{ money(overall_balance) }}</div>
+    </div>
+    <div class="commandCalendarStats">
+      <div class="commandCalendarStat {% if month_net > 0 %}isGain{% elif month_net < 0 %}isLoss{% endif %}">
+        <span>Month P/L</span>
+        <strong>{{ money(month_net) }}</strong>
+      </div>
+      <div class="commandCalendarStat">
+        <span>Trades</span>
+        <strong>{{ month_trade_count }}</strong>
+      </div>
+      <div class="commandCalendarStat">
+        <span>Debriefed</span>
+        <strong>{{ journal_days }}</strong>
+      </div>
+      <div class="commandCalendarStat">
+        <span>Projects</span>
+        <strong>{{ project_days }}</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="calendarLegend stack10">
+    {% set cal = namespace(weekday_count=0, green_days=0, red_days=0, flat_days=0) %}
+    {% for wk in heat.weeks %}
+      {% for day in wk.days %}
+        {% if day.daynum is not none and day.wd is not none and day.wd < 5 %}
+          {% set cal.weekday_count = cal.weekday_count + 1 %}
+          {% if day.net > 0 %}
+            {% set cal.green_days = cal.green_days + 1 %}
+          {% elif day.net < 0 %}
+            {% set cal.red_days = cal.red_days + 1 %}
+          {% else %}
+            {% set cal.flat_days = cal.flat_days + 1 %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+    <div class="legendStats" aria-label="Month trading day summary">
+      <span class="legendStat"><strong>{{ cal.weekday_count }}</strong> weekdays</span>
+      <span class="legendStat"><strong>{{ cal.green_days }}</strong> green</span>
+      <span class="legendStat"><strong>{{ cal.red_days }}</strong> red</span>
+      <span class="legendStat"><strong>{{ cal.flat_days }}</strong> flat</span>
+      <details class="calendarLegendHelp">
+        <summary aria-label="Calendar legend help">?</summary>
+        <div class="calendarLegendPopover">
+          <div><span class="legendSwatch legendGain"></span> Green = profitable session</div>
+          <div><span class="legendSwatch legendLoss"></span> Red = losing session</div>
+          <div><span class="legendSwatch legendFlat"></span> Neutral = no trading edge signal</div>
+          <div>✍️ Journal = debrief written</div>
+          <div>🧱 Projects = outside-work / business signal logged</div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="calendarWeeks" aria-label="{{ month_name }} command calendar">
+    <div class="calendarWeekdayRow" aria-hidden="true">
+      <span class="calendarWeekdaySpacer"></span>
+      <span>Sun</span>
+      <span>Mon</span>
+      <span>Tue</span>
+      <span>Wed</span>
+      <span>Thu</span>
+      <span>Fri</span>
+      <span>Sat</span>
+    </div>
+    {% for wk in heat.weeks %}
+      <section class="weekCard">
+        <div class="weekCardHead">
+          <div>
+            <div class="weekCardTitle">Week {{ loop.index }}</div>
+            <div class="weekCardRange">{{ wk.label }}</div>
+          </div>
+          <div class="weekCardMeta">
+            <span>{{ wk.trade_count }} trades</span>
+            <span class="{% if wk.net > 0 %}metaGreen{% elif wk.net < 0 %}metaRed{% endif %}">{{ money_compact(wk.net) }}</span>
+          </div>
+        </div>
+        <div class="weekDaysGrid">
+          {% for day in wk.days %}
+            {% if day.daynum is none %}
+              <div class="dayCard dayCardEmpty" aria-hidden="true"></div>
+            {% else %}
+              {% set max_abs = heat.max_abs if heat.max_abs else 1 %}
+              {% set intensity = ((day.net|abs) / max_abs) %}
+              {% set alpha = 0.10 + (0.45 * intensity) %}
+              {% if day.net > 0 %}
+                {% set bg = 'rgba(46, 204, 113, ' ~ alpha ~ ')' %}
+              {% elif day.net < 0 %}
+                {% set bg = 'rgba(231, 76, 60, ' ~ alpha ~ ')' %}
+              {% else %}
+                {% set bg = 'rgba(255,255,255,.03)' %}
+              {% endif %}
+              <article class="dayCard dayCard-{{ day.outcome }} {% if not day.has_trades %}dayCard-muted{% endif %} commandDayCard" style="background: {{ bg }};">
+                <button
+                  type="button"
+                  class="dayPreviewButton"
+                  data-iso="{{ day.iso }}"
+                  data-weekday="{{ day.weekday_label }}"
+                  data-daynum="{{ day.daynum }}"
+                  data-net="{{ money_compact(day.net) }}"
+                  data-trade-count="{{ day.trade_count }}"
+                  data-wins="{{ day.wins }}"
+                  data-losses="{{ day.losses }}"
+                  data-win-rate="{{ '%.0f'|format(day.win_rate) }}"
+                  data-balance="{% if day.balance is not none %}{{ money(day.balance) }}{% else %}—{% endif %}"
+                  data-status="{{ day.focus_label }}"
+                  data-journal-count="{{ day.journal.entry_count if day.journal else 0 }}"
+                  data-journal-pnl="{% if day.journal %}{{ money_compact(day.journal.pnl_total) }}{% else %}—{% endif %}"
+                  data-journal-summary="{{ (day.journal_summary|join(' · ')) if day.journal_summary else 'No debrief logged' }}"
+                  data-project-summary="{{ (day.project_summary|join(' · ')) if day.project_summary else 'No project signal logged' }}"
+                  data-open-url="/trades?d={{ day.iso }}"
+                  data-journal-url="/journal?d={{ day.iso }}"
+                  data-goals-url="/goals?date={{ day.iso }}"
+                  aria-label="Preview {{ day.iso }}"
+                >
+                  <div class="daymeta">
+                    <div class="dayweekday">{{ day.weekday_label }}</div>
+                    <div class="daynum">{{ day.daynum }}</div>
+                  </div>
+                  <div class="dayBadges">
+                    {% if day.trade_count > 0 %}
+                      <span class="dayBadge">{{ day.trade_count }}T</span>
+                    {% endif %}
+                    {% if day.journal %}
+                      <span class="dayBadge badgeInfo">✍️ {{ day.journal.entry_count }}</span>
+                    {% endif %}
+                    {% if day.has_projects %}
+                      <span class="dayBadge badgeInfo">🧱 {{ day.goal_signal_count }}</span>
+                    {% endif %}
+                    {% if not day.trade_count and not day.journal and not day.has_projects %}
+                      <span class="dayBadge badgeFlat">{% if day.is_weekend %}Closed{% else %}Quiet{% endif %}</span>
+                    {% endif %}
+                  </div>
+                  {% if day.net %}
+                    <div class="daypnl">{{ money_compact(day.net) }}</div>
+                  {% else %}
+                    <div class="daypnl daypnlMuted">{% if day.is_weekend %}Closed{% else %}No P/L{% endif %}</div>
+                  {% endif %}
+                </button>
+              </article>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+  </div>
+
+  <div class="calendarPreview commandCalendarPreview" id="calendarPreview" hidden>
+    <div class="calendarPreviewCard">
+      <div class="calendarPreviewHead">
+        <div>
+          <div class="calendarPreviewTitle" id="calendarPreviewTitle">Day preview</div>
+          <div class="tiny" id="calendarPreviewStatus">Tap a day to inspect its session.</div>
+        </div>
+        <button type="button" class="btn" id="calendarPreviewClose">Close</button>
+      </div>
+      <div class="previewMetrics">
+        <div class="previewMetric">
+          <div class="k">Net</div>
+          <div class="v" id="previewNet">—</div>
+        </div>
+        <div class="previewMetric">
+          <div class="k">Trades</div>
+          <div class="v" id="previewTrades">—</div>
+        </div>
+        <div class="previewMetric">
+          <div class="k">Record</div>
+          <div class="v" id="previewRecord">—</div>
+        </div>
+        <div class="previewMetric">
+          <div class="k">Balance</div>
+          <div class="v" id="previewBalance">—</div>
+        </div>
+      </div>
+      <div class="previewNarrative">
+        <div class="previewNarrativeBlock">
+          <div class="k">Journal</div>
+          <div class="tiny line16" id="previewJournal">No debrief logged</div>
+        </div>
+        <div class="previewNarrativeBlock">
+          <div class="k">Projects</div>
+          <div class="tiny line16" id="previewProjects">No project signal logged</div>
+        </div>
+      </div>
+      <div class="calendarPreviewActions">
+        <a class="btn" id="calendarPreviewJournal" href="/journal">Open journal day</a>
+        <a class="btn" id="calendarPreviewGoals" href="/goals">Open project day</a>
+        <a class="btn primary" id="calendarPreviewOpen" href="/trades">Open full day</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const preview = document.getElementById("calendarPreview");
+      const title = document.getElementById("calendarPreviewTitle");
+      const status = document.getElementById("calendarPreviewStatus");
+      const net = document.getElementById("previewNet");
+      const trades = document.getElementById("previewTrades");
+      const record = document.getElementById("previewRecord");
+      const balance = document.getElementById("previewBalance");
+      const journal = document.getElementById("previewJournal");
+      const projects = document.getElementById("previewProjects");
+      const open = document.getElementById("calendarPreviewOpen");
+      const journalLink = document.getElementById("calendarPreviewJournal");
+      const goalsLink = document.getElementById("calendarPreviewGoals");
+      const close = document.getElementById("calendarPreviewClose");
+      if (!preview || !title || !status || !net || !trades || !record || !balance || !journal || !projects || !open || !journalLink || !goalsLink || !close) return;
+
+      document.querySelectorAll(".dayPreviewButton").forEach((button) => {
+        button.addEventListener("click", () => {
+          const d = button.dataset;
+          title.textContent = `${d.weekday} ${d.daynum} • ${d.iso}`;
+          status.textContent = d.status || "Day preview";
+          net.textContent = d.net || "—";
+          trades.textContent = d.tradeCount || "0";
+          record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L • ${d.winRate || "0"}%`;
+          balance.textContent = d.balance || "—";
+          journal.textContent = d.journalSummary || "No debrief logged";
+          projects.textContent = d.projectSummary || "No project signal logged";
+          open.href = d.openUrl || "/trades";
+          journalLink.href = d.journalUrl || "/journal";
+          goalsLink.href = d.goalsUrl || "/goals";
+          preview.hidden = false;
+        });
+      });
+
+      close.addEventListener("click", () => {
+        preview.hidden = true;
+      });
+    })();
+  </script>
+</div></div>

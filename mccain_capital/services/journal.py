@@ -137,6 +137,17 @@ def new_entry():
         "template_notes": (request.args.get("template_notes") or "").strip(),
     }
     selected_ids = _trade_ids_for_date(entry_date) if initial_values["link_all_day"] == "1" else []
+    scaffold = _build_debrief_scaffold(
+        entry_date,
+        initial_values["entry_type"],
+        selected_ids,
+    )
+    if not initial_values["template_notes"]:
+        initial_values["template_notes"] = scaffold["template_notes"]
+    if not initial_values["notes"]:
+        initial_values["notes"] = scaffold["notes"]
+    if not initial_values["pnl"] and scaffold["pnl"] is not None:
+        initial_values["pnl"] = f"{float(scaffold['pnl']):.2f}"
     return render_page(
         _entry_form(
             "new",
@@ -451,6 +462,63 @@ def _linked_trade_ids_from_form(entry_date: str, form: Any) -> List[int]:
     multi_ids = [int(v) for v in multi_raw if str(v).isdigit() and int(v) > 0]
     comma_ids = _parse_linked_trade_ids(form.get("linked_trade_ids", ""))
     return sorted(set(multi_ids + comma_ids))
+
+
+def _build_debrief_scaffold(entry_date: str, entry_type: str, linked_trade_ids: List[int]) -> Dict[str, str]:
+    entry_kind = (entry_type or "").strip() or "post_market"
+    if entry_kind == "pre_market":
+        return {
+            "template_notes": "Planned levels, catalysts, invalidation, and risk limits for the session.",
+            "notes": "",
+            "pnl": None,
+        }
+
+    trades = _trade_options_for_date(entry_date)
+    if linked_trade_ids:
+        wanted = set(int(tid) for tid in linked_trade_ids)
+        trades = [t for t in trades if int(t.get("id") or 0) in wanted]
+    stats = trades_repo.trade_day_stats(trades)
+    review_map = trades_repo.fetch_trade_reviews_map(
+        [int(t["id"]) for t in trades if t.get("id") is not None]
+    )
+    tickers = sorted({str(t.get("ticker") or "").strip() for t in trades if str(t.get("ticker") or "").strip()})
+    strategy_labels = sorted(
+        {
+            str((review_map.get(int(t["id"]), {}) or {}).get("strategy_label")
+                or (review_map.get(int(t["id"]), {}) or {}).get("setup_tag")
+                or "").strip()
+            for t in trades
+            if t.get("id") is not None
+        }
+        - {""}
+    )
+    template_lines = [
+        f"Session date: {entry_date}",
+        f"Trades linked: {len(trades)}",
+        f"Wins / Losses: {int(stats.get('wins', 0) or 0)} / {int(stats.get('losses', 0) or 0)}",
+        f"Net P/L: {money(float(stats.get('total', 0.0) or 0.0))}",
+        "Tickers: " + (", ".join(tickers) if tickers else "None linked yet"),
+        "Strategies: " + (", ".join(strategy_labels) if strategy_labels else "Unlabeled"),
+    ]
+    notes_lines = [
+        "What I saw:",
+        "- Day context / market behavior:",
+        "- Best setup or read:",
+        "",
+        "What I did:",
+        f"- Risk and execution summary ({int(stats.get('wins', 0) or 0)}W/{int(stats.get('losses', 0) or 0)}L, {money(float(stats.get('total', 0.0) or 0.0))} net):",
+        "- Rule adherence / mistakes:",
+        "",
+        "What I learned:",
+        "- Keep doing:",
+        "- Stop doing:",
+        "- Next session adjustment:",
+    ]
+    return {
+        "template_notes": "\n".join(template_lines),
+        "notes": "\n".join(notes_lines),
+        "pnl": float(stats.get("total", 0.0) or 0.0),
+    }
 
 
 def _safe_template_payload(v: Any) -> Dict[str, Any]:

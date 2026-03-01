@@ -17,6 +17,17 @@ def get_strategy(sid: int) -> Optional[object]:
         return conn.execute("SELECT * FROM strategies WHERE id = ?", (sid,)).fetchone()
 
 
+def get_strategy_by_title(title: str) -> Optional[object]:
+    clean = (title or "").strip()
+    if not clean:
+        return None
+    with db() as conn:
+        return conn.execute(
+            "SELECT * FROM strategies WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) LIMIT 1",
+            (clean,),
+        ).fetchone()
+
+
 def create_strategy(title: str, body: str) -> int:
     created = now_iso()
     with db() as conn:
@@ -30,6 +41,25 @@ def create_strategy(title: str, body: str) -> int:
         return int(cur.lastrowid)
 
 
+def ensure_strategy(title: str, body: str = "") -> Optional[dict]:
+    clean = (title or "").strip()
+    if not clean:
+        return None
+    existing = get_strategy_by_title(clean)
+    if existing:
+        row = dict(existing)
+        return {"id": int(row["id"]), "title": str(row["title"]).strip(), "body": str(row["body"] or "")}
+    sid = create_strategy(
+        title=clean,
+        body=(body or "").strip() or "Auto-created from trade review/import flow. Add your execution rules here.",
+    )
+    created = get_strategy(sid)
+    if not created:
+        return {"id": sid, "title": clean, "body": body}
+    row = dict(created)
+    return {"id": int(row["id"]), "title": str(row["title"]).strip(), "body": str(row["body"] or "")}
+
+
 def update_strategy(sid: int, title: str, body: str) -> None:
     updated = now_iso()
     with db() as conn:
@@ -41,8 +71,17 @@ def update_strategy(sid: int, title: str, body: str) -> None:
             """,
             (title.strip(), body.strip(), updated, sid),
         )
+        conn.execute(
+            """
+            UPDATE trade_reviews
+            SET strategy_label = ?, setup_tag = ?, updated_at = ?
+            WHERE strategy_id = ?
+            """,
+            (title.strip(), title.strip(), updated, sid),
+        )
 
 
 def delete_strategy(sid: int) -> None:
     with db() as conn:
+        conn.execute("UPDATE trade_reviews SET strategy_id = NULL WHERE strategy_id = ?", (sid,))
         conn.execute("DELETE FROM strategies WHERE id = ?", (sid,))

@@ -36,9 +36,9 @@
           <h1>{{ title }}</h1>
           <div class="brandSignature">
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-crown"></use></svg> McCain Capital Reserve</span>
-            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Private Trading Workspace</span>
+            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Elite Personal Trading Cockpit</span>
           </div>
-          <div class="sub">{% if active == 'dashboard' %}Journal · Trades · Dashboard{% else %}Trading Workspace{% endif %}</div>
+          <div class="sub">{% if active == 'dashboard' %}Command deck for execution, review, and control.{% else %}Private command deck for your edge.{% endif %}</div>
         </div>
       </div>
 
@@ -59,16 +59,17 @@
       <div class="nav">
         <div class="navGroup">
           <span class="navLabel">Workflow</span>
-          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">🧭 Run Day</a>
-          <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">⚡ Execute</a>
-          <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">📝 Debrief</a>
+          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">Run Day</a>
+          <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
+          <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Execute</a>
+          <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Debrief</a>
         </div>
         <div class="navDivider"></div>
         <div class="navGroup">
           <span class="navLabel">Decide</span>
-          <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">📈 Improve</a>
-          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">🧮 Plan Risk</a>
-          <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">🎯 Targets</a>
+          <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Review</a>
+          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Plan Risk</a>
+          <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payout Plan</a>
         </div>
 
         <div class="menuMore">
@@ -79,25 +80,28 @@
           <div id="moreMenu" class="moreMenu" role="menu">
             {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
             <div class="menuTitle">Workspace</div>
-            <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">📌 Strategies</a>
-            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">🚨 Ops Alerts</a>
-            <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">🧠 The Strat</a>
-            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">🕯️ Candle Opens</a>
-            <a class="btn {% if active=='books' %}active{% endif %}" href="/books">📚 Books</a>
-            <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">💸 Payouts</a>
+            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">P/L Calendar</a>
+            <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
+            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
+            <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
+            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
+            <a class="btn {% if active=='books' %}active{% endif %}" href="/books">Books</a>
+            <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
+            <div class="hr"></div>
+            <div class="menuTitle">Business</div>
+            <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">Income Tracker</a>
             <div class="hr"></div>
             <div class="menuTitle">Data</div>
-            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/backups">💾 Auto Backups</a>
-            <a class="btn" href="/admin/backup">💾 Download Backup</a>
-            <a class="btn" href="/admin/restore">♻️ Restore Backup</a>
-            <a class="btn" href="/setup">🔐 Setup Login</a>
+            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/backups">Auto Backups</a>
+            <a class="btn" href="/admin/backup">Download Backup</a>
+            <a class="btn" href="/admin/restore">Restore Backup</a>
+            <a class="btn" href="/setup">Setup Login</a>
             <div class="hr"></div>
             <div class="menuTitle">External</div>
-            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">📈 TradingView</a>
-            <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
-            <button class="btn" type="button" onclick="toggleShortcutHelp()">⌨️ Shortcuts</button>
-            <button class="btn" type="button" onclick="toggleTheme()">🖤 Toggle Black Mode</button>
-            <button class="btn" type="button" onclick="toggleGuidedMode()">🧭 Toggle Guided Mode</button>
+            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
+            <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+            <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
+            <button class="btn" type="button" onclick="toggleTheme()">Toggle Black Mode</button>
             {% if auth_enabled %}
               <div class="hr"></div>
               {% if authenticated %}
@@ -155,87 +159,98 @@
     </div>
     <div id="workflowRail" class="workflowRail">
       <div class="workflowHead">
-        <div class="pill">🧭 Today Workflow</div>
-        <button id="guidedModeBtn" class="btn btnCompact" type="button" onclick="toggleGuidedMode()">Guided Mode: On</button>
+        <div class="pill">🧭 Command Rail</div>
       </div>
-      <details id="guidedPanel" class="guidedPanel">
-        <summary>Show Guide</summary>
-        <div class="tiny stack8 line15">
-          Plan Risk → Upload Statement → Analyze Day → Weekly Debrief
-        </div>
-      </details>
       <div class="workflowGrid">
         <div class="workflowStep guideStep {% if active=='calc' %}flowActive{% endif %}" data-guide-item="plan-risk">
           <div class="workflowKicker">Plan</div>
           <div class="workflowText">Define risk and size first.</div>
-          <a class="btn primary {% if active=='calc' %}active{% endif %}" href="/calculator">🧮 Plan Risk</a>
+          <a class="btn primary {% if active=='calc' %}active{% endif %}" href="/calculator">Plan Risk</a>
         </div>
         <div class="workflowStep guideStep {% if active=='trades' %}flowActive{% endif %}" data-guide-item="upload-statement">
           <div class="workflowKicker">Execute</div>
           <div class="workflowText">Log activity while it is fresh.</div>
-          <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
+          <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
         </div>
         <div class="workflowStep guideStep {% if active=='analytics' %}flowActive{% endif %}" data-guide-item="review-trades">
           <div class="workflowKicker">Review</div>
           <div class="workflowText">Review edge, drawdown, and behavior.</div>
-          <a class="btn primary {% if active=='analytics' %}active{% endif %}" href="/analytics?tab=performance">📈 Analyze Day</a>
+          <a class="btn primary {% if active=='analytics' %}active{% endif %}" href="/analytics?tab=performance">Analyze Day</a>
         </div>
         <div class="workflowStep guideStep {% if active=='journal' %}flowActive{% endif %}" data-guide-item="weekly-debrief">
           <div class="workflowKicker">Improve</div>
           <div class="workflowText">Turn learning into playbook updates.</div>
-          <a class="btn primary {% if active=='journal' %}active{% endif %}" href="/journal/review/weekly">📝 Weekly Debrief</a>
+          <a class="btn primary {% if active=='journal' %}active{% endif %}" href="/journal/review/weekly">Weekly Debrief</a>
         </div>
       </div>
     </div>
     <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>
     <aside id="drawer" class="drawer" aria-label="Menu">
-      <div class="drawerHead">
-        <div class="drawerTitle">Menu</div>
-        <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
+      <div class="drawerInner">
+        <div class="drawerHead">
+          <div>
+            <div class="drawerTitle">Menu</div>
+          </div>
+          <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
+        </div>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Today</div>
+          <div class="drawerPrimaryGrid">
+            <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Run Day</a>
+            <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
+            <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Execute</a>
+            <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics?tab=performance">Analyze Day</a>
+            <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Debrief</a>
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Plan</div>
+          <div class="drawerStack">
+            <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Plan Risk</a>
+            <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payout Plan</a>
+            <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
+            <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">Strategies</a>
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Learn</div>
+          <div class="drawerStack">
+            <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>
+            <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">Books</a>
+            <a class="btn {% if active=='goals' %}primary{% endif %}" href="/goals">Income Tracker</a>
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Admin</div>
+          <div class="drawerStack">
+            <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">Backups</a>
+            <a class="btn" href="/admin/backup">Download Backup</a>
+            <a class="btn" href="/admin/restore">Restore Backup</a>
+            <a class="btn" href="/setup">Setup Login</a>
+            <button class="btn" type="button" onclick="toggleTheme()">Toggle Black Mode</button>
+            <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
+            {% if auth_enabled %}
+              {% if authenticated %}
+                <a class="btn danger" href="/logout">Sign Out</a>
+              {% else %}
+                <a class="btn primary" href="/login">Sign In</a>
+              {% endif %}
+            {% endif %}
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">External</div>
+          <div class="drawerStack">
+            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
+            <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+          </div>
+        </section>
       </div>
-
-      <div class="tiny">Quick navigation</div>
-      <div class="drawerSectionTitle">Core</div>
-
-      <div class="drawerGrid">
-        <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">🧭 Run Day</a>
-        <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">⚡ Execute</a>
-        <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝 Debrief</a>
-        <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸 Payout Plan</a>
-      </div>
-
-      <div class="drawerSectionTitle">Decide</div>
-      <div class="drawerGrid">
-        <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">🧮 Plan Risk</a>
-        <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">🕯️ Candle Opens</a>
-        <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">📌 Strategies</a>
-        <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">📈 Improve</a>
-        <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">🧠 The Strat</a>
-        <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">📚 Books</a>
-        <a class="btn" href="/admin/backup">💾 Backup</a>
-        <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">🗂️ Backups</a>
-        <a class="btn" href="/admin/restore">♻️ Restore</a>
-        <a class="btn" href="/setup">🔐 Setup Login</a>
-      </div>
-
-      <div class="drawerSectionTitle">External</div>
-      <div class="drawerGrid">
-        <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">📈 TradingView</a>
-        <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">🏦 Prop Firm</a>
-        <button class="btn" type="button" onclick="toggleShortcutHelp()">⌨️ Shortcuts</button>
-        <button class="btn" type="button" onclick="toggleTheme()">🖤 Toggle Black Mode</button>
-        <button class="btn" type="button" onclick="toggleGuidedMode()">🧭 Guided Mode</button>
-        {% if auth_enabled %}
-          {% if authenticated %}
-            <a class="btn danger" href="/logout">Sign Out</a>
-          {% else %}
-            <a class="btn primary" href="/login">Sign In</a>
-          {% endif %}
-        {% endif %}
-      </div>
-
-      <div class="hr"></div>
-      <div class="tiny">Tip: Keep your journal precise. Your edge compounds through consistency.</div>
     </aside>
 
     {{ content|safe }}
@@ -245,20 +260,20 @@
       <div id="quickPanel" class="quickPanel" role="menu">
         <div class="menuTitle">Quick Actions</div>
         <div class="quickList">
-          <a class="btn" href="/trades/new">➕ Add Trade</a>
-          <a class="btn" href="{{ url_for('new_entry') }}">📝 Add Journal</a>
-          <a class="btn" href="/trades/upload/statement">📄 Upload Statement</a>
-          <a class="btn" href="/trades/open-positions">📂 Open Positions</a>
+          <a class="btn" href="/trades/new">Add Trade</a>
+          <a class="btn" href="{{ url_for('new_entry') }}">Add Journal</a>
+          <a class="btn" href="/trades/upload/statement">Upload Statement</a>
+          <a class="btn" href="/trades/open-positions">Open Positions</a>
         </div>
       </div>
     </div>
 
     <nav class="mobileDock" aria-label="Quick navigation">
-      <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">📊</a>
-      <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">📅</a>
-      <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">🕯️</a>
-      <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">📝</a>
-      <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">💸</a>
+      <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Day</a>
+      <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
+      <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Open</a>
+      <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Notes</a>
+      <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Pay</a>
     </nav>
 
     <div class="tiny footerTip">
@@ -458,6 +473,7 @@ document.addEventListener('keydown', (e) => {
     function openDrawer(){
       document.getElementById('drawer').classList.add('open');
       document.getElementById('drawerOverlay').classList.add('open');
+      document.body.classList.add('drawer-open');
       const t = document.getElementById('menuToggleBtn');
       if(t) t.setAttribute('aria-expanded', 'true');
       document.body.style.overflow = "hidden";
@@ -465,6 +481,7 @@ document.addEventListener('keydown', (e) => {
     function closeDrawer(){
       document.getElementById('drawer').classList.remove('open');
       document.getElementById('drawerOverlay').classList.remove('open');
+      document.body.classList.remove('drawer-open');
       const t = document.getElementById('menuToggleBtn');
       if(t) t.setAttribute('aria-expanded', 'false');
       document.body.style.overflow = "";

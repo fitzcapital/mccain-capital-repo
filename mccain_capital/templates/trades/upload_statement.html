@@ -89,6 +89,9 @@
       <div><a class="btn" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">{{ rel }}</a></div>
       {% endfor %}
     </div>
+    <div id="sync-job-result-html">
+      {{ job.get('result_html', '')|safe }}
+    </div>
   </div>
 </div>
 {% endif %}
@@ -548,6 +551,7 @@
       const insertedEl = document.getElementById('sync-job-inserted');
       const summaryEl = document.getElementById('sync-job-summary');
       const artifactsEl = document.getElementById('sync-job-artifacts');
+      const resultHtmlEl = document.getElementById('sync-job-result-html');
       if (statusEl) statusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
       if (badgeEl) badgeEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
       if (stageEl) stageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
@@ -564,6 +568,9 @@
       if (artifactsEl) {
         const links = Array.isArray(summary.artifacts_rel) ? summary.artifacts_rel.slice(0, 6) : [];
         artifactsEl.innerHTML = links.map(rel => `<div><a class="btn" href="/trades/sync/debug/${rel}" target="_blank" rel="noopener">${rel}</a></div>`).join('');
+      }
+      if (resultHtmlEl) {
+        resultHtmlEl.innerHTML = job.result_html || '';
       }
       const steps = Array.from(card.querySelectorAll('.syncStep'));
       const trackBar = card.querySelector('.syncTrackBar');

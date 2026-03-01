@@ -37,6 +37,7 @@ from werkzeug.utils import secure_filename
 
 from mccain_capital.repositories import trades as repo
 from mccain_capital.repositories import analytics as analytics_repo
+from mccain_capital.repositories import strategies as strategies_repo
 from mccain_capital import auth
 from mccain_capital import runtime as app_runtime
 from mccain_capital.runtime import (
@@ -195,6 +196,7 @@ def _build_action_result_summary(
     warnings: Optional[List[str]] = None,
     next_action: str = "",
     metrics: Optional[List[Dict[str, str]]] = None,
+    actions: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     return {
         "tone": str(tone or "info"),
@@ -207,6 +209,15 @@ def _build_action_result_summary(
             {"label": str(m.get("label") or "").strip(), "value": str(m.get("value") or "").strip()}
             for m in (metrics or [])
             if str(m.get("label") or "").strip()
+        ],
+        "actions": [
+            {
+                "label": str(a.get("label") or "").strip(),
+                "href": str(a.get("href") or "").strip(),
+                "kind": str(a.get("kind") or "").strip() or "default",
+            }
+            for a in (actions or [])
+            if str(a.get("label") or "").strip() and str(a.get("href") or "").strip()
         ],
     }
 
@@ -1512,12 +1523,15 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
                   {{ reconciliation_html|safe }}
                   <div class="hr"></div>
                   <a class="btn primary" href="/trades">Trades 📅</a>
+                  <a class="btn" href="/analytics?tab=performance">Analyze Session 📈</a>
+                  <a class="btn" href="/journal/new?d={{ review_day }}&entry_type=trade_debrief&link_all_day=1">Journal This Session 📝</a>
                   <a class="btn" href="/trades/upload/statement">Upload Another</a>
                 </div></div>
                 """,
                 inserted=inserted,
                 msgs=msgs,
                 reconciliation_html=reconciliation_html,
+                review_day=today_iso(),
             ),
             active="trades",
         )
@@ -1661,7 +1675,7 @@ def trades_page():
     review_map = fetch_trade_reviews_map([int(t["id"]) for t in trades if t.get("id") is not None])
     for t in trades:
         rv = review_map.get(int(t["id"]), {})
-        t["setup_tag"] = rv.get("setup_tag", "")
+        t["setup_tag"] = rv.get("strategy_label", "") or rv.get("setup_tag", "")
         t["session_tag"] = rv.get("session_tag", "")
         t["checklist_score"] = rv.get("checklist_score", None)
         t["rule_break_tags"] = rv.get("rule_break_tags", "")
@@ -2125,7 +2139,7 @@ def trades_review(trade_id: int):
 
     if request.method == "POST":
         f = request.form
-        setup_tag = (f.get("setup_tag") or "").strip()
+        strategy_label = (f.get("strategy_label") or f.get("setup_tag") or "").strip()
         session_tag = (f.get("session_tag") or "").strip()
         score_raw = (f.get("checklist_score") or "").strip()
         checklist_score = parse_int(score_raw) if score_raw else None
@@ -2140,7 +2154,9 @@ def trades_review(trade_id: int):
         review_note = (f.get("review_note") or "").strip()
         repo.upsert_trade_review(
             trade_id=trade_id,
-            setup_tag=setup_tag,
+            strategy_id=rv.get("strategy_id"),
+            strategy_label=strategy_label,
+            setup_tag=strategy_label,
             session_tag=session_tag,
             checklist_score=checklist_score,
             rule_break_tags=rule_break_tags,
@@ -2148,6 +2164,7 @@ def trades_review(trade_id: int):
         )
         return redirect(url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page"))
 
+    strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
     content = render_template_string(
         """
         <div class="card"><div class="toolbar">
@@ -2156,7 +2173,10 @@ def trades_review(trade_id: int):
           <div class="hr"></div>
           <form method="post" action="/trades/review/{{ t.id }}?d={{ d }}&q={{ q }}">
             <div class="row">
-              <div><label>Setup Tag</label><input name="setup_tag" value="{{ rv.get('setup_tag','') }}" placeholder="FVG, ORB, Fade, Breakout"></div>
+              <div>
+                <label>Strategy</label>
+                <input name="strategy_label" list="strategy-options" value="{{ rv.get('strategy_label','') or rv.get('setup_tag','') }}" placeholder="FVG, ORB, Fade, Breakout">
+              </div>
               <div>
                 <label>Session Tag</label>
                 <select name="session_tag">
@@ -2176,6 +2196,11 @@ def trades_review(trade_id: int):
                 <input name="rule_break_tags" value="{{ rv.get('rule_break_tags','') }}" placeholder="oversized, late entry, no stop, revenge trade">
               </div>
             </div>
+            <datalist id="strategy-options">
+              {% for strategy in strategy_options %}
+                <option value="{{ strategy['title'] }}"></option>
+              {% endfor %}
+            </datalist>
             <div class="stack10">
               <label>Review Note</label>
               <textarea name="review_note" placeholder="What to repeat, what to remove next session">{{ rv.get('review_note','') }}</textarea>
@@ -2192,6 +2217,7 @@ def trades_review(trade_id: int):
         rv=rv,
         d=d,
         q=q,
+        strategy_options=strategy_options,
     )
     return render_page(content, active="trades")
 
@@ -2473,7 +2499,7 @@ def trades_new_manual():
         entry_price = parse_float(f.get("entry_price") or "")
         exit_price = parse_float(f.get("exit_price") or "")
         comm = parse_float(f.get("comm") or "") or 0.0
-        setup_tag = (f.get("setup_tag") or "").strip()
+        strategy_label = (f.get("strategy_label") or f.get("setup_tag") or "").strip()
         session_tag = (f.get("session_tag") or "").strip()
         checklist_score_raw = (f.get("checklist_score") or "").strip()
         checklist_score = parse_int(checklist_score_raw) if checklist_score_raw else None
@@ -2500,7 +2526,7 @@ def trades_new_manual():
         balance = (latest_balance_overall() or 50000.0) + net_pl
         violations = _playbook_violations(
             cfg=pb_cfg,
-            setup_tag=setup_tag,
+            setup_tag=strategy_label,
             checklist_score=checklist_score,
             entry_time=entry_time,
             total_spent=float(total_spent),
@@ -2544,7 +2570,7 @@ def trades_new_manual():
                 ),
             )
             trade_id = int(conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"])
-        if setup_tag or session_tag or checklist_score is not None:
+        if strategy_label or session_tag or checklist_score is not None:
             auto_tags = _merge_auto_rule_break_tags(
                 entry_price=entry_price,
                 exit_price=exit_price,
@@ -2552,7 +2578,8 @@ def trades_new_manual():
             )
             repo.upsert_trade_review(
                 trade_id=trade_id,
-                setup_tag=setup_tag,
+                strategy_label=strategy_label,
+                setup_tag=strategy_label,
                 session_tag=session_tag,
                 checklist_score=checklist_score,
                 rule_break_tags=auto_tags,
@@ -2560,6 +2587,7 @@ def trades_new_manual():
             )
         return redirect(url_for("trades_page", d=trade_date))
 
+    strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
     content = render_template_string(
         """
         <div class="card"><div class="toolbar">
@@ -2585,10 +2613,15 @@ def trades_new_manual():
               <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30"/></div>
             </div>
             <div class="row stack10">
-              <div><label>🏷️ Setup Tag</label><input name="setup_tag" placeholder="Fitz 2-2 REV"/></div>
+              <div><label>🏷️ Strategy</label><input name="strategy_label" list="strategy-options" placeholder="Fitz 2-2 REV"/></div>
               <div><label>🕒 Session Tag</label><input name="session_tag" placeholder="AM / Midday / PM"/></div>
               <div><label>✅ Checklist Score</label><input name="checklist_score" inputmode="numeric" placeholder="0-100"/></div>
             </div>
+            <datalist id="strategy-options">
+              {% for strategy in strategy_options %}
+                <option value="{{ strategy['title'] }}"></option>
+              {% endfor %}
+            </datalist>
             <div class="row stack10">
               <div class="fieldGrow2">
                 <label>🧱 Critical Checklist Gate</label>
@@ -2613,6 +2646,7 @@ def trades_new_manual():
         </div></div>
         """,
         today=today_iso(),
+        strategy_options=strategy_options,
         critical_items=pb_cfg.get("critical_items")
         or ["Bias Confirmed", "Risk Defined", "Stop Planned"],
     )
@@ -2658,6 +2692,8 @@ def trades_paste_broker():
               <div class="hr"></div>
               <div class="rightActions">
                 <a class="btn primary" href="/trades">Trades 📅</a>
+                <a class="btn" href="/analytics?tab=performance">Analyze Session 📈</a>
+                <a class="btn" href="/journal/new?d={{ review_day }}&entry_type=trade_debrief&link_all_day=1">Journal This Session 📝</a>
                 <a class="btn" href="/dashboard">Calendar 📊</a>
                 <a class="btn" href="/trades/paste/broker">Paste More 🔁</a>
               </div>
@@ -2666,6 +2702,7 @@ def trades_paste_broker():
             inserted=inserted,
             errors=errors,
             reconciliation_html=reconciliation_html,
+            review_day=today_iso(),
         )
         return render_page(content, active="trades")
 
@@ -3228,6 +3265,42 @@ def _start_sync_job(
                     message=summary["message"] or _sync_stage_label(stage),
                     duration_sec=duration_sec,
                     summary=summary,
+                    result_summary=_build_action_result_summary(
+                        tone="success" if run.get("ok") else ("warning" if run.get("debug_only") else "danger"),
+                        title="Live Sync Complete" if run.get("ok") else ("Debug Capture Complete" if run.get("debug_only") else "Live Sync Failed"),
+                        happened=str(run.get("message") or _sync_stage_label(stage)),
+                        changed=(
+                            f"Imported {int(run.get('inserted') or 0)} trade(s) into the execution log."
+                            if run.get("ok")
+                            else "No trade import was committed." if not run.get("debug_only") else "Captured artifacts only; no import was committed."
+                        ),
+                        warnings=[str(x) for x in (run.get("warns") or [])],
+                        next_action=(
+                            "Review imported trades, analyze the session, then debrief it while context is fresh."
+                            if run.get("ok")
+                            else "Open diagnostics or retry the sync after correcting the broker/session issue."
+                        ),
+                        metrics=[
+                            {"label": "Inserted", "value": str(int(run.get("inserted") or 0))},
+                            {"label": "Warnings", "value": str(len(run.get("warns") or []))},
+                            {"label": "Errors", "value": str(len(run.get("errors") or []))},
+                        ],
+                        actions=(
+                            [
+                                {"label": "Open Imported Trades", "href": f"/trades?d={to_date}", "kind": "primary"},
+                                {"label": "Analyze Session", "href": f"/analytics?tab=performance&start={from_date}&end={to_date}"},
+                                {
+                                    "label": "Journal This Session",
+                                    "href": f"/journal/new?d={to_date}&entry_type=trade_debrief&link_all_day=1",
+                                },
+                            ]
+                            if run.get("ok")
+                            else [
+                                {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
+                                {"label": "Open Reconcile", "href": "/trades/upload/statement?ws=reconcile"},
+                            ]
+                        ),
+                    ),
                 )
         except Exception as e:  # pragma: no cover
             duration_sec = round(max(0.0, time.time() - started), 2)
@@ -3247,6 +3320,17 @@ def _start_sync_job(
                 message=fail_message,
                 duration_sec=duration_sec,
                 summary={"message": fail_message, "warn_count": 0, "error_count": 1},
+                result_summary=_build_action_result_summary(
+                    tone="danger",
+                    title="Live Sync Failed",
+                    happened=fail_message,
+                    changed="No sync result was committed because the background worker terminated early.",
+                    next_action="Return to the Live Sync workspace, retry the run, and inspect any captured diagnostics.",
+                    actions=[
+                        {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
+                        {"label": "Open Ops Alerts", "href": "/ops/alerts"},
+                    ],
+                ),
             )
 
     threading.Thread(target=runner, daemon=True, name=f"sync-job-{job['id'][:8]}").start()
@@ -4890,6 +4974,10 @@ def _run_review_rebuild(
 
         payload = importing._auto_review_payload(t)
         if preserve_manual and existing:
+            payload["strategy_id"] = existing.get("strategy_id")
+            payload["strategy_label"] = (
+                existing.get("strategy_label") or existing.get("setup_tag") or payload.get("setup_tag", "")
+            )
             payload["setup_tag"] = (existing.get("setup_tag") or "").strip() or payload["setup_tag"]
             payload["session_tag"] = (existing.get("session_tag") or "").strip() or payload[
                 "session_tag"
@@ -4910,6 +4998,8 @@ def _run_review_rebuild(
 
         repo.upsert_trade_review(
             trade_id=tid,
+            strategy_id=payload.get("strategy_id"),
+            strategy_label=payload.get("strategy_label", "") or payload.get("setup_tag", ""),
             setup_tag=payload.get("setup_tag", ""),
             session_tag=payload.get("session_tag", ""),
             checklist_score=payload.get("checklist_score"),
@@ -4991,6 +5081,10 @@ def _start_review_rebuild_job(
                     {"label": "Updated", "value": str(int(out.get("rebuilt") or 0))},
                     {"label": "Skipped", "value": str(int(out.get("skipped_existing") or 0))},
                 ],
+                actions=[
+                    {"label": "Open Trades", "href": "/trades", "kind": "primary"},
+                    {"label": "Analyze Performance", "href": "/analytics?tab=performance"},
+                ],
             )
             _update_bg_job(
                 job["id"],
@@ -5008,6 +5102,10 @@ def _start_review_rebuild_job(
                 happened=f"Review rebuild did not complete: {e}",
                 changed="Trade review rows were not fully regenerated.",
                 next_action="Retry with a smaller date range, then inspect the affected trades.",
+                actions=[
+                    {"label": "Open Trades", "href": "/trades", "kind": "primary"},
+                    {"label": "Open Rebuild Workspace", "href": "/trades/reviews/rebuild"},
+                ],
             )
             _update_bg_job(
                 job["id"],

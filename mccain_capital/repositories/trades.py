@@ -107,7 +107,7 @@ def get_trade_review(trade_id: int) -> Optional[Dict[str, Any]]:
     with db() as conn:
         row = conn.execute(
             """
-            SELECT trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note
+            SELECT trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score, rule_break_tags, review_note
             FROM trade_reviews
             WHERE trade_id = ?
             """,
@@ -116,8 +116,47 @@ def get_trade_review(trade_id: int) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def _resolve_strategy_link(
+    conn: Any,
+    *,
+    strategy_id: Optional[int],
+    strategy_label: str,
+    setup_tag: str,
+) -> tuple[Optional[int], str]:
+    clean_label = (strategy_label or setup_tag or "").strip()
+    clean_id = int(strategy_id) if strategy_id not in (None, "", 0, "0") else None
+    if clean_id:
+        row = conn.execute("SELECT id, title FROM strategies WHERE id = ?", (clean_id,)).fetchone()
+        if row:
+            return int(row["id"]), str(row["title"] or "").strip()
+    if not clean_label:
+        return None, ""
+    row = conn.execute(
+        "SELECT id, title FROM strategies WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) LIMIT 1",
+        (clean_label,),
+    ).fetchone()
+    if row:
+        return int(row["id"]), str(row["title"] or "").strip()
+    created = now_iso()
+    cur = conn.execute(
+        """
+        INSERT INTO strategies (title, body, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            clean_label,
+            "Auto-created from trade review/import flow. Add your execution rules here.",
+            created,
+            created,
+        ),
+    )
+    return int(cur.lastrowid), clean_label
+
+
 def upsert_trade_review(
     trade_id: int,
+    strategy_id: Optional[int] = None,
+    strategy_label: str = "",
     setup_tag: str = "",
     session_tag: str = "",
     checklist_score: Optional[int] = None,
@@ -127,12 +166,20 @@ def upsert_trade_review(
     now = now_iso()
     score_val = None if checklist_score is None else max(0, min(100, int(checklist_score)))
     with db() as conn:
+        resolved_strategy_id, resolved_strategy_label = _resolve_strategy_link(
+            conn,
+            strategy_id=strategy_id,
+            strategy_label=strategy_label,
+            setup_tag=setup_tag,
+        )
         conn.execute(
             """
             INSERT INTO trade_reviews
-              (trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              (trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(trade_id) DO UPDATE SET
+              strategy_id=excluded.strategy_id,
+              strategy_label=excluded.strategy_label,
               setup_tag=excluded.setup_tag,
               session_tag=excluded.session_tag,
               checklist_score=excluded.checklist_score,
@@ -142,7 +189,9 @@ def upsert_trade_review(
             """,
             (
                 trade_id,
-                (setup_tag or "").strip(),
+                resolved_strategy_id,
+                resolved_strategy_label,
+                resolved_strategy_label,
                 (session_tag or "").strip(),
                 score_val,
                 (rule_break_tags or "").strip(),
@@ -163,7 +212,7 @@ def fetch_trade_reviews_map(trade_ids: List[int]) -> Dict[int, Dict[str, Any]]:
     with db() as conn:
         rows = conn.execute(
             f"""
-            SELECT trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note
+            SELECT trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score, rule_break_tags, review_note
             FROM trade_reviews
             WHERE trade_id IN ({marks})
             """,

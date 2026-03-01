@@ -155,13 +155,47 @@ def fetch_entries_range(start_date: str, end_date: str) -> List[object]:
         )
 
 
+def fetch_entry_day_rollups(start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    ensure_journal_schema()
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+              entry_date,
+              COUNT(*) AS entry_count,
+              COALESCE(SUM(COALESCE(pnl, 0)), 0) AS pnl_total,
+              GROUP_CONCAT(DISTINCT NULLIF(entry_type, '')) AS entry_types,
+              GROUP_CONCAT(DISTINCT NULLIF(mood, '')) AS moods,
+              GROUP_CONCAT(DISTINCT NULLIF(setup, '')) AS setups
+            FROM entries
+            WHERE entry_date BETWEEN ? AND ?
+            GROUP BY entry_date
+            ORDER BY entry_date ASC
+            """,
+            (start_date, end_date),
+        ).fetchall()
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        out.append(
+            {
+                "entry_date": str(row["entry_date"]),
+                "entry_count": int(row["entry_count"] or 0),
+                "pnl_total": float(row["pnl_total"] or 0.0),
+                "entry_types": [v.strip() for v in str(row["entry_types"] or "").split(",") if v.strip()],
+                "moods": [v.strip() for v in str(row["moods"] or "").split(",") if v.strip()],
+                "setups": [v.strip() for v in str(row["setups"] or "").split(",") if v.strip()],
+            }
+        )
+    return out
+
+
 def weekly_setup_stats(start_date: str, end_date: str) -> List[Dict[str, Any]]:
     ensure_journal_schema()
     with db() as conn:
         rows = conn.execute(
             """
             SELECT
-              COALESCE(NULLIF(r.setup_tag, ''), 'Unlabeled') AS setup,
+              COALESCE(NULLIF(r.strategy_label, ''), NULLIF(r.setup_tag, ''), 'Unlabeled') AS setup,
               COUNT(*) AS count,
               COALESCE(SUM(COALESCE(t.net_pl, 0)), 0) AS net,
               COALESCE(SUM(CASE WHEN COALESCE(t.net_pl,0) > 0 THEN 1 ELSE 0 END), 0) AS wins

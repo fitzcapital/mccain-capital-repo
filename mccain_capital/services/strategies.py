@@ -8,7 +8,9 @@ from flask import abort, redirect, render_template_string, request, url_for
 
 from mccain_capital.services import core as core_svc
 from mccain_capital.services.ui import render_page
+from mccain_capital.runtime import money
 from mccain_capital.repositories import strategies as repo
+from mccain_capital.repositories import analytics as analytics_repo
 
 
 def _strategy_form(title: str, t: str, body: str, errors: List[str]) -> str:
@@ -55,7 +57,15 @@ def _strategy_form(title: str, t: str, body: str, errors: List[str]) -> str:
 
 
 def strategies_page():
-    items = repo.fetch_strategies()
+    items = [dict(r) for r in repo.fetch_strategies()]
+    stats_rows = analytics_repo.group_table(analytics_repo.fetch_analytics_rows(), "setup_tag")
+    stats_map = {str(r.get("k") or "").strip(): r for r in stats_rows}
+    for item in items:
+        stat = stats_map.get(str(item.get("title") or "").strip(), {})
+        item["trade_count"] = int(stat.get("count") or 0)
+        item["expectancy"] = float(stat.get("expectancy") or 0.0)
+        item["win_rate"] = float(stat.get("win_rate") or 0.0)
+        item["net"] = float(stat.get("net") or 0.0)
     content = render_template_string(
         """
         <div class="twoCol">
@@ -88,6 +98,12 @@ def strategies_page():
                 <div>
                   <div class="pill">📌 {{ s['title'] }}</div>
                   <div class="meta" style="margin-top:6px">🕒 Updated: {{ s['updated_at'] }}</div>
+                  <div class="meta" style="margin-top:6px">
+                    Tracked trades: <b>{{ s['trade_count'] }}</b>
+                    · WR: <b>{{ '%.1f'|format(s['win_rate']) }}%</b>
+                    · Exp: <b>{{ money(s['expectancy']) }}</b>
+                    · Net: <b>{{ money(s['net']) }}</b>
+                  </div>
                 </div>
                 <div class="rightActions">
                   <a class="btn" href="/strategies/edit/{{ s['id'] }}">✏️ Edit</a>
@@ -105,6 +121,7 @@ def strategies_page():
         </div>
         """,
         items=items,
+        money=money,
     )
     return render_page(content, active="strategies")
 

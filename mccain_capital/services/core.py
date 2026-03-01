@@ -14,7 +14,7 @@ import os
 import shutil
 import tempfile
 import zipfile
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import abort, flash, jsonify, redirect, render_template, request, send_file, url_for
 
@@ -112,11 +112,17 @@ def dashboard():
             date(year, 1, 1).isoformat(), date(year + 1, 1, 1).isoformat()
         )
     ]
+    ytd_stats = trades_repo.trade_day_stats(ytd_trades_list)
     ytd_cons = trades_repo.calc_consistency(ytd_trades_list)
+    ytd_wins = int(ytd_stats.get("wins", 0) or 0)
+    ytd_losses = int(ytd_stats.get("losses", 0) or 0)
+    ytd_win_rate = float(ytd_stats.get("win_rate", 0.0))
     today_rows = [dict(r) for r in trades_repo.fetch_trades(d=app_runtime.today_iso(), q="")]
     today_stats = trades_repo.trade_day_stats(today_rows)
     today_net = float(today_stats.get("total", 0.0))
     today_win_rate = float(today_stats.get("win_rate", 0.0))
+    today_wins = int(today_stats.get("wins", 0) or 0)
+    today_losses = int(today_stats.get("losses", 0) or 0)
     today_count = len(today_rows)
     capital_pulse = max(8.0, min(100.0, 50.0 + ((mtd_net / 3000.0) * 50.0)))
     discipline_pulse = max(8.0, min(100.0, today_win_rate if today_count else 18.0))
@@ -144,10 +150,15 @@ def dashboard():
         ytd_net=ytd_net,
         mtd_trades=mtd_trades,
         ytd_trades=ytd_trades,
+        ytd_wins=ytd_wins,
+        ytd_losses=ytd_losses,
+        ytd_win_rate=ytd_win_rate,
         ytd_cons=ytd_cons,
         cons_threshold=0.30,
         today_net=today_net,
         today_win_rate=today_win_rate,
+        today_wins=today_wins,
+        today_losses=today_losses,
         today_count=today_count,
         capital_pulse=capital_pulse,
         discipline_pulse=discipline_pulse,
@@ -157,6 +168,97 @@ def dashboard():
         money_compact=_money_compact,
     )
     return render_page(content, active="dashboard")
+
+
+def command_calendar_page():
+    from mccain_capital.repositories import goals as goals_repo
+    from mccain_capital.repositories import journal as journal_repo
+    from mccain_capital.repositories import trades as trades_repo
+
+    anchor = trades_repo.latest_trade_day() or app_runtime.now_et().date()
+    year = int(request.args.get("y") or anchor.year)
+    month = max(1, min(12, int(request.args.get("m") or anchor.month)))
+    first = date(year, month, 1)
+    next_month = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    month_end = next_month - timedelta(days=1)
+
+    heat = trades_repo.month_heatmap(year, month)
+    journal_rows = journal_repo.fetch_entry_day_rollups(first.isoformat(), month_end.isoformat())
+    goal_rows = goals_repo.fetch_daily_goals(first.isoformat(), month_end.isoformat())
+
+    journal_map = {str(row["entry_date"]): row for row in journal_rows}
+    goal_map = {str(row["track_date"]): dict(row) for row in goal_rows}
+
+    activity_days = 0
+    journal_days = 0
+    project_days = 0
+    project_signals = 0
+    debrief_count = 0
+
+    for week in heat["weeks"]:
+        for day in week["days"]:
+            iso = str(day.get("iso") or "")
+            if not iso:
+                continue
+            journal = journal_map.get(iso) or {}
+            goals = goal_map.get(iso) or {}
+            goal_signal_count = _goal_signal_count(goals)
+            if day.get("has_trades") or journal or goal_signal_count:
+                activity_days += 1
+            if journal:
+                journal_days += 1
+                debrief_count += int(journal.get("entry_count") or 0)
+            if goal_signal_count:
+                project_days += 1
+                project_signals += goal_signal_count
+            day["journal"] = journal
+            day["goals"] = goals
+            day["goal_signal_count"] = goal_signal_count
+            day["has_projects"] = goal_signal_count > 0
+            day["activity_level"] = sum(
+                [
+                    1 if day.get("has_trades") else 0,
+                    1 if journal else 0,
+                    1 if goal_signal_count else 0,
+                ]
+            )
+            day["focus_label"] = _day_focus_label(day, journal, goals)
+            day["project_summary"] = _project_summary(goals)
+            day["journal_summary"] = _journal_summary(journal)
+
+    month_net = trades_repo.month_total_net(year, month)
+    month_trade_count = trades_repo.month_trade_count(year, month)
+    overall_balance = trades_repo.latest_balance_overall()
+    month_name = first.strftime("%B %Y")
+    prev_y, prev_m = (year, month - 1)
+    next_y, next_m = (year, month + 1)
+    if prev_m == 0:
+        prev_m = 12
+        prev_y -= 1
+    if next_m == 13:
+        next_m = 1
+        next_y += 1
+
+    content = render_template(
+        "core/command_calendar.html",
+        heat=heat,
+        month_name=month_name,
+        month_net=month_net,
+        month_trade_count=month_trade_count,
+        overall_balance=overall_balance,
+        prev_y=prev_y,
+        prev_m=prev_m,
+        next_y=next_y,
+        next_m=next_m,
+        activity_days=activity_days,
+        journal_days=journal_days,
+        debrief_count=debrief_count,
+        project_days=project_days,
+        project_signals=project_signals,
+        money=app_runtime.money,
+        money_compact=_money_compact,
+    )
+    return render_page(content, active="calendar", title=f"{month_name} Calendar")
 
 
 def dashboard_recompute_balances():
@@ -557,6 +659,80 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         "day_legend": ", ".join(f"{span}D" for span in DAY_OPEN_INTERVALS),
         "week_legend": ", ".join(f"{span}W" for span in WEEK_OPEN_INTERVALS),
     }
+
+
+def _goal_signal_count(goal_row: Dict[str, Any]) -> int:
+    if not goal_row:
+        return 0
+    count = 0
+    count += 1 if float(goal_row.get("debt_paid") or 0.0) > 0 else 0
+    count += 1 if int(goal_row.get("upwork_proposals") or 0) > 0 else 0
+    count += 1 if int(goal_row.get("upwork_interviews") or 0) > 0 else 0
+    count += 1 if float(goal_row.get("upwork_hours") or 0.0) > 0 else 0
+    count += 1 if float(goal_row.get("upwork_earnings") or 0.0) > 0 else 0
+    count += 1 if float(goal_row.get("other_income") or 0.0) > 0 else 0
+    count += 1 if str(goal_row.get("notes") or "").strip() else 0
+    return count
+
+
+def _project_summary(goal_row: Dict[str, Any]) -> List[str]:
+    if not goal_row:
+        return []
+    items: List[str] = []
+    proposals = int(goal_row.get("upwork_proposals") or 0)
+    interviews = int(goal_row.get("upwork_interviews") or 0)
+    hours = float(goal_row.get("upwork_hours") or 0.0)
+    debt_paid = float(goal_row.get("debt_paid") or 0.0)
+    other_income = float(goal_row.get("other_income") or 0.0)
+    if proposals:
+        items.append(f"{proposals} proposals")
+    if interviews:
+        items.append(f"{interviews} interviews")
+    if hours:
+        items.append(f"{hours:.1f}h outside work")
+    if debt_paid:
+        items.append(f"Debt {app_runtime.money(debt_paid)}")
+    if other_income:
+        items.append(f"Other {app_runtime.money(other_income)}")
+    if str(goal_row.get("notes") or "").strip():
+        items.append("project note")
+    return items[:3]
+
+
+def _journal_summary(journal_row: Dict[str, Any]) -> List[str]:
+    if not journal_row:
+        return []
+    items: List[str] = []
+    entry_count = int(journal_row.get("entry_count") or 0)
+    if entry_count:
+        items.append(f"{entry_count} debrief{'s' if entry_count != 1 else ''}")
+    moods = list(journal_row.get("moods") or [])
+    if moods:
+        items.append(moods[0].title())
+    setups = list(journal_row.get("setups") or [])
+    if setups:
+        items.append(setups[0])
+    return items[:3]
+
+
+def _day_focus_label(
+    day_row: Dict[str, Any], journal_row: Dict[str, Any], goal_row: Dict[str, Any]
+) -> str:
+    if day_row.get("has_trades") and journal_row and goal_row:
+        return "Full stack day"
+    if day_row.get("has_trades") and journal_row:
+        return "Traded and debriefed"
+    if day_row.get("has_trades") and goal_row:
+        return "Traded and built"
+    if journal_row and goal_row:
+        return "Review and project push"
+    if day_row.get("has_trades"):
+        return "Trading session"
+    if journal_row:
+        return "Debrief day"
+    if goal_row:
+        return "Project day"
+    return "No signal"
 
 
 def _trading_day_index_map(year: int) -> Dict[date, int]:

@@ -16,26 +16,34 @@
   </div>
 </div>
 
-<div class="card"><div class="toolbar">
-  <div class="pill">🛡️ Data Trust</div>
-  <div class="tiny stack8 line16">
-    Last sync status:
-    <b>{{ data_trust.status_label }}</b>
-    {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
-    {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
-  </div>
-  <div class="tiny stack8 line16 {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
-    {{ data_trust.message }}
-  </div>
-  {% if data_trust.primary_href and data_trust.primary_label %}
-    <div class="rightActions stack8">
-      <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-      {% if data_trust.secondary_href and data_trust.secondary_label %}
-        <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
-      {% endif %}
+<div class="dashboardSupportGrid">
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">🛡️ Data Trust</div>
+    <div class="supportLead">
+      {{ data_trust.status_label }}
+      {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
+      {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
     </div>
-  {% endif %}
-</div></div>
+    <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
+      {{ data_trust.message }}
+    </div>
+    {% if data_trust.primary_href and data_trust.primary_label %}
+      <div class="rightActions stack8">
+        <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+        {% if data_trust.secondary_href and data_trust.secondary_label %}
+          <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div></div>
+
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">🧠 Current Read</div>
+    <div class="supportLead">{{ insights.changed }}</div>
+    <div class="supportBody">{{ insights.next_action }}</div>
+    <div class="supportMeta">{{ insights.risk_now }}</div>
+  </div></div>
+</div>
 
 <div class="showcaseGrid">
   <div class="showcaseCard">
@@ -87,7 +95,7 @@
 </div>
 
 <div class="insightGrid stack12">
-  <div class="insightCard">
+  <div class="insightCard insightCardWide">
     <div class="insightTitle">🎯 Fitz 2-2 REV Indicator</div>
     <div class="insightBody">
       <div class="trendChips">
@@ -100,21 +108,15 @@
       <div class="stack8">{{ fitz_22.note }}</div>
     </div>
   </div>
-  <div class="insightCard">
-    <div class="insightTitle">🔎 What Changed</div>
-    <div class="insightBody">{{ insights.changed }}</div>
-  </div>
-  <div class="insightCard">
-    <div class="insightTitle">🛡️ Risk Now</div>
-    <div class="insightBody">{{ insights.risk_now }}</div>
-  </div>
-  <div class="insightCard">
-    <div class="insightTitle">➡️ Next Action</div>
-    <div class="insightBody">{{ insights.next_action }}</div>
-  </div>
 </div>
 
-<div class="card"><div class="toolbar">
+<div class="card controlPanel"><div class="toolbar">
+  <div class="controlHead">
+    <div>
+      <div class="pill">🧭 Analysis Controls</div>
+      <div class="summaryLead stack8">Switch tabs, tune the date range, and explain a specific day without leaving the analytics surface.</div>
+    </div>
+  </div>
   <div class="actionRow">
     <a class="btn {% if tab == 'performance' %}primary{% endif %}" href="/analytics?tab=performance&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Performance</a>
     <a class="btn {% if tab == 'behavior' %}primary{% endif %}" href="/analytics?tab=behavior&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Behavior</a>

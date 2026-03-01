@@ -2,40 +2,48 @@
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">📅 Trades Workspace</div>
+        <div class="pill">⚡ Execution Console</div>
         <h2 class="pageTitle">Execution Log</h2>
-        <div class="pageSub">Log, review, and import trades with fast context on risk, consistency, and current exposure.</div>
+        <div class="pageSub">Log, review, and import trades with fast context on risk, consistency, and exposure.</div>
       </div>
       <div class="actionRow">
-        <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
-        <a class="btn ctaLink" href="/trades/new">➕ Add Trade</a>
-        <a class="btn ctaLink" href="/trades/open-positions">📂 Open Positions</a>
-        <a class="btn ctaLink" href="/trades/playbook">📘 Playbook</a>
+        <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
+        <a class="btn ctaLink" href="/trades/new">Add Trade</a>
+        <a class="btn ctaLink" href="/trades/open-positions">Open Positions</a>
+        <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
       </div>
     </div>
   </div>
 </div>
 
-<div class="card"><div class="toolbar">
-  <div class="pill">🛡️ Data Trust</div>
-  <div class="tiny stack8 line16">
-    Last sync status:
-    <b>{{ data_trust.status_label }}</b>
-    {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
-    {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
-  </div>
-  <div class="tiny stack8 line16 {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
-    {{ data_trust.message }}
-  </div>
-  {% if data_trust.primary_href and data_trust.primary_label %}
-    <div class="rightActions stack8">
-      <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-      {% if data_trust.secondary_href and data_trust.secondary_label %}
-        <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
-      {% endif %}
+<div class="dashboardSupportGrid">
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Data Trust</div>
+    <div class="supportLead">
+      {{ data_trust.status_label }}
+      {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
+      {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
     </div>
-  {% endif %}
-</div></div>
+    <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
+      {{ data_trust.message }}
+    </div>
+    {% if data_trust.primary_href and data_trust.primary_label %}
+      <div class="rightActions stack8">
+        <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+        {% if data_trust.secondary_href and data_trust.secondary_label %}
+          <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div></div>
+
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Desk Focus</div>
+    <div class="supportLead">{{ execution_msg }}</div>
+    <div class="supportBody">{{ next_action_msg }}</div>
+    <div class="supportMeta">{{ risk_msg }}</div>
+  </div></div>
+</div>
 
 <div class="metricStrip">
   <div class="metric">
@@ -60,55 +68,46 @@
   </div>
 </div>
 
-<div class="insightGrid stack12">
-  <div class="insightCard">
-    <div class="insightTitle">🔎 Execution Read</div>
-    <div class="insightBody">{{ execution_msg }}</div>
-  </div>
-  <div class="insightCard">
-    <div class="insightTitle">🛡️ Risk State</div>
-    <div class="insightBody">{{ risk_msg }}</div>
-  </div>
-  <div class="insightCard">
-    <div class="insightTitle">➡️ Next Action</div>
-    <div class="insightBody">{{ next_action_msg }}</div>
-  </div>
-</div>
-
 <div class="twoCol">
-  <div class="card"><div class="toolbar">
+  <div class="card controlPanel"><div class="toolbar">
+    <div class="controlHead">
+      <div>
+        <div class="pill">🧭 Control Stack</div>
+        <div class="summaryLead stack8">Filter the day, manage imports, and move straight from raw execution into review.</div>
+      </div>
+    </div>
     <form method="get" action="/trades" class="row">
       <div class="fieldGrow2">
-        <label for="search">🔎 Search Trades 🎯</label>
+        <label for="search">Search</label>
         <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
       </div>
       <div class="fieldGrow1">
-        <label>📆 Date</label>
+        <label>Date</label>
         <input type="date" name="d" value="{{ d }}" />
       </div>
       <div class="actionRow">
-        <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">⬅️ Prev</a>
-        <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next ➡️</a>
-        <button class="btn" type="submit">🧲 Filter</button>
-        <a class="btn" href="/trades">♻️ Reset</a>
-        <a class="btn ctaLink" href="/trades/new">➕ Manual Add</a>
-        <a class="btn ctaLink" href="/trades/paste">📋 Table Paste</a>
-        <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
+        <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">Prev</a>
+        <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next</a>
+        <button class="btn" type="submit">Filter</button>
+        <a class="btn" href="/trades">Reset</a>
+        <a class="btn ctaLink" href="/trades/new">Manual Add</a>
+        <a class="btn ctaLink" href="/trades/paste">Table Paste</a>
+        <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
       </div>
     </form>
     <div class="tradesMobileActions">
       <div class="mobileActionGrid">
-        <a class="btn primary" href="/trades/upload/statement">📄 Upload</a>
-        <a class="btn" href="/trades/new">➕ Add</a>
-        <a class="btn" href="/trades/paste">📋 Paste</a>
-        <a class="btn" href="/trades/open-positions">📂 Open</a>
+        <a class="btn primary" href="/trades/upload/statement">Upload</a>
+        <a class="btn" href="/trades/new">Add</a>
+        <a class="btn" href="/trades/paste">Paste</a>
+        <a class="btn" href="/trades/open-positions">Open</a>
       </div>
     </div>
 
     <div class="hr"></div>
     <div class="statRow">
       <div class="stat {% if guardrail.locked %}glow-red{% else %}glow-green{% endif %}">
-        <div class="k">🛡️ Guardrail Status</div>
+        <div class="k">Guardrail Status</div>
         <div class="v">{% if guardrail.locked %}LOCKED{% else %}ACTIVE{% endif %}</div>
         <div class="tiny">
           Day Net {{ money(guardrail.day_net) }} / Max Loss {{ money(guardrail.daily_max_loss) }}
@@ -116,11 +115,11 @@
         <div class="tiny">Guardrail uses current trading day only</div>
       </div>
       <div class="stat">
-        <div class="k">⚙️ Risk Controls</div>
+        <div class="k">Risk Controls</div>
         <div class="v"><a class="btn primary btnCompact" href="/trades/risk-controls">Configure</a></div>
       </div>
       <div class="stat">
-        <div class="k">📈 Edge Analytics</div>
+        <div class="k">Edge Analytics</div>
         <div class="v"><a class="btn primary btnCompact" href="/analytics">Open</a></div>
       </div>
     </div>
@@ -140,37 +139,37 @@
       </div>
 
       <div class="stat">
-        <div class="k">🏦 Prior EOD Balance</div>
+        <div class="k">Prior EOD Balance</div>
         <div class="v">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
         <div class="tiny">Previous completed day's closing balance</div>
       </div>
 
       <div class="stat">
-        <div class="k">✅ Wins</div>
+        <div class="k">Wins</div>
         <div class="v">{{ stats['wins'] if stats is mapping else stats.wins }}</div>
       </div>
 
       <div class="stat">
-        <div class="k">❌ Losses</div>
+        <div class="k">Losses</div>
         <div class="v">{{ stats['losses'] if stats is mapping else stats.losses }}</div>
       </div>
 
       <div class="stat">
-        <div class="k">🎯 Win Rate</div>
+        <div class="k">Win Rate</div>
         <div class="v">
           {{ '%.1f'|format((stats['win_rate'] if stats is mapping else stats.win_rate)) }}%
         </div>
       </div>
 
       <div class="stat">
-        <div class="k">⚖️ W/L Ratio</div>
+        <div class="k">W/L Ratio</div>
         <div class="v">
           {{ '%.2f'|format((stats['wl_ratio'] if stats is mapping else stats.wl_ratio)) }}
         </div>
       </div>
 
       <div class="stat {{ cons.class }}">
-        <div class="k">🎯 Consistency</div>
+        <div class="k">Consistency</div>
         <div class="v">
           {% if cons.ratio is none %}
             —
@@ -185,7 +184,7 @@
     </div>
     </div>
     <details class="mobileOnly syncDetails stack10">
-      <summary>📊 Day Performance Snapshot</summary>
+      <summary>Day Performance Snapshot</summary>
       <div class="statRow stack10">
         <div class="stat">
           <div class="k">{{ primary_net_label }}</div>
@@ -196,19 +195,19 @@
           <div class="v">{{ money(secondary_total_value) }}</div>
         </div>
         <div class="stat">
-          <div class="k">🏦 Prior EOD Balance</div>
+          <div class="k">Prior EOD Balance</div>
           <div class="v">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
         </div>
         <div class="stat">
-          <div class="k">✅ Wins / ❌ Losses</div>
+          <div class="k">Wins / Losses</div>
           <div class="v">{{ stats['wins'] if stats is mapping else stats.wins }} / {{ stats['losses'] if stats is mapping else stats.losses }}</div>
         </div>
         <div class="stat">
-          <div class="k">🎯 Win Rate</div>
+          <div class="k">Win Rate</div>
           <div class="v">{{ '%.1f'|format((stats['win_rate'] if stats is mapping else stats.win_rate)) }}%</div>
         </div>
         <div class="stat {{ cons.class }}">
-          <div class="k">🎯 Consistency</div>
+          <div class="k">Consistency</div>
           <div class="v">{% if cons.ratio is none %}—{% else %}{{ '%.1f'|format(cons.ratio * 100) }}%{% endif %}</div>
         </div>
       </div>
@@ -217,33 +216,33 @@
     <div class="hr"></div>
     <div class="rightActions">
       <form id="clear-trades" method="post" action="/trades/clear" class="inlineForm"></form>
-      <button class="btn danger" type="button" onclick="confirmClear('clear-trades')">🧼 Clear</button>
-      <a class="btn" href="/trades/open-positions">📂 Open Positions</a>
-      <a class="btn" href="/trades/reviews/rebuild">🛠️ Rebuild Reviews</a>
-      <a class="btn" href="/dashboard">📊 Calendar</a>
-      <a class="btn" href="/calculator">🧮 Calculator</a>
+      <button class="btn danger" type="button" onclick="confirmClear('clear-trades')">Clear</button>
+      <a class="btn" href="/trades/open-positions">Open Positions</a>
+      <a class="btn" href="/trades/reviews/rebuild">Rebuild Reviews</a>
+      <a class="btn" href="/dashboard">Calendar</a>
+      <a class="btn" href="/calculator">Calculator</a>
     </div>
   </div></div>
 
-  <div class="card"><div class="toolbar">
-    <div class="pill">🧠 Paste Format</div>
+  <div class="card subtleCard"><div class="toolbar">
+    <div class="pill">Paste Format</div>
     <div class="tiny stack10 line15">
-      Table paste = tab-delimited rows. Broker paste = "instrument | dt | side | qty | price | fee". ✅
+      Table paste = tab-delimited rows. Broker paste = "instrument | dt | side | qty | price | fee".
     </div>
   </div></div>
 </div>
 
 <div class="card stack12"><div class="toolbar">
-      <div class="pill">🧾 Trades ({{ total_rows }})</div>
+      <div class="pill">Trades ({{ total_rows }})</div>
       <div class="tiny stack8 line15">
         Page {{ page }} / {{ page_count }} · showing {{ page_trades|length }} rows ({{ per }} per page).
       </div>
       <div class="actionRow stack8">
         {% if page > 1 %}
-          <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per={{ per }}&page={{ page - 1 }}">⬅️ Prev Page</a>
+          <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per={{ per }}&page={{ page - 1 }}">Prev Page</a>
         {% endif %}
         {% if page < page_count %}
-          <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per={{ per }}&page={{ page + 1 }}">Next Page ➡️</a>
+          <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per={{ per }}&page={{ page + 1 }}">Next Page</a>
         {% endif %}
         <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per=50&page=1">50 / page</a>
         <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per=100&page=1">100 / page</a>

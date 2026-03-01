@@ -2,12 +2,12 @@
   <div class="toolbar">
     <div class="dashboardHeroHead">
       <div>
-        <div class="pill">📊 Dashboard Control Center</div>
-        <h2 class="pageTitle">Trading Command Center</h2>
-        <div class="dashboardLead stack8">Track execution, review risk posture, drill into trade days.</div>
+        <div class="pill">🎛️ Command Center</div>
+        <h2 class="pageTitle">Trading Command Deck</h2>
+        <div class="dashboardLead stack8">Execution, review, and risk posture aligned for one operator: you.</div>
       </div>
       <div class="rightActions">
-        <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
+        <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
       </div>
     </div>
   </div>
@@ -15,7 +15,7 @@
 
 <div class="card subtleCard"><div class="toolbar">
   <details class="syncDetails">
-    <summary>🧭 Advanced Tools</summary>
+    <summary>Advanced Tools</summary>
     <div class="tiny stack8 line15">Use after the core workflow when deeper context is needed.</div>
     <div class="leftActions stack10">
       <a class="btn ctaLink" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
@@ -29,28 +29,28 @@
 
 <div class="dashboardSupportGrid">
   <div class="card supportCard"><div class="toolbar">
-    <div class="pill">🎯 Today Focus</div>
+    <div class="pill">Today Focus</div>
     <div class="supportLead">One next action beats five competing priorities.</div>
     {% if today_count == 0 %}
       <div class="supportBody">Upload statement to start today’s record.</div>
-      <div class="rightActions"><a class="btn primary" href="/trades/upload/statement">📄 Start With Statement</a></div>
+      <div class="rightActions"><a class="btn primary" href="/trades/upload/statement">Start With Statement</a></div>
     {% elif today_net < 0 %}
       <div class="supportBody">Run Session Replay and tag the rule-break pattern while context is fresh.</div>
       <div class="rightActions">
-        <a class="btn primary" href="/analytics/replay">🎬 Review Today</a>
-        <a class="btn ctaLink" href="/journal">📝 Open Journal</a>
+        <a class="btn primary" href="/analytics/replay">Review Today</a>
+        <a class="btn ctaLink" href="/journal">Open Journal</a>
       </div>
     {% else %}
       <div class="supportBody">Lock in the win with a short journal debrief.</div>
       <div class="rightActions">
-        <a class="btn primary" href="{{ url_for('new_entry') }}">📝 Debrief Now</a>
-        <a class="btn ctaLink" href="/analytics?tab=performance">📈 Analyze Day</a>
+        <a class="btn primary" href="{{ url_for('new_entry') }}">Debrief Now</a>
+        <a class="btn ctaLink" href="/analytics?tab=performance">Analyze Day</a>
       </div>
     {% endif %}
   </div></div>
 
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">🛡️ Data Trust</div>
+    <div class="pill">Data Trust</div>
     <div class="supportLead">
       {{ data_trust.status_label }}
       {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
@@ -75,6 +75,11 @@
     <div class="label">Today Net</div>
     <div class="value">{{ money(today_net) }}</div>
     <div class="sub">Live from today’s journaled trades</div>
+  </div>
+  <div class="metric">
+    <div class="label">Wins / Losses</div>
+    <div class="value">{{ today_wins }} / {{ today_losses }}</div>
+    <div class="sub">Closed winners versus losers today</div>
   </div>
   <div class="metric">
     <div class="label">Trades Today</div>
@@ -141,13 +146,13 @@
   <div class="card summaryPanel"><div class="toolbar">
     <div class="calendarHead">
       <div>
-        <div class="pill">📊 P/L Dashboard</div>
+        <div class="pill">📈 Performance Deck</div>
         <div class="summaryLead stack8">Month snapshot with balance, week pressure, and consistency guardrails.</div>
       </div>
       <div class="calendarNav">
-        <a class="btn" href="/dashboard?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
-        <a class="btn" href="/dashboard">🎯 This Month</a>
-        <a class="btn" href="/dashboard?y={{ next_y }}&m={{ next_m }}">Next ➡️</a>
+        <a class="btn" href="/dashboard?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
+        <a class="btn" href="/dashboard">This Month</a>
+        <a class="btn" href="/dashboard?y={{ next_y }}&m={{ next_m }}">Next</a>
       </div>
     </div>
 
@@ -160,27 +165,36 @@
       </div>
       <div class="summaryHeroSide">
         <div class="summaryChip {% if this_week_total > 0 %}summaryChipGain{% elif this_week_total < 0 %}summaryChipLoss{% endif %}">
-          <span>Week Total</span>
-          <strong>{{ money(this_week_total) }}</strong>
+          <div class="summaryChipLabel">
+            <span>Week Total</span>
+          </div>
+          <div class="summaryChipValue">
+            <strong>{{ money(this_week_total) }}</strong>
+          </div>
         </div>
         <div class="summaryChip">
-          <span>Tracked Trades</span>
-          <strong>{{ ytd_trades }}</strong>
+          <div class="summaryChipLabel">
+            <span>Tracked Trades</span>
+          </div>
+          <div class="summaryChipValue">
+            <strong>{{ ytd_trades }}</strong>
+            <small>{{ ytd_wins }}W / {{ ytd_losses }}L · {{ '%.1f'|format(ytd_win_rate) }}%</small>
+          </div>
         </div>
       </div>
     </div>
     <div class="summaryGrid">
       <div class="summaryStat">
-        <div class="k">🗓️ Month</div>
+        <div class="k">Month</div>
         <div class="v">{{ month_name }}</div>
       </div>
       <div class="summaryStat">
-        <div class="k">🏦 Balance</div>
+        <div class="k">Balance</div>
         <div class="v">{{ money(overall_balance) }}</div>
       </div>
 
       <div class="summaryStat {{ ytd_cons.class }}">
-        <div class="k">🎯 Consistency (YTD)</div>
+        <div class="k">Consistency (YTD)</div>
         <div class="v">
           {% if ytd_cons.ratio is none %}
             —
@@ -225,15 +239,15 @@
     <details class="syncDetails stack10">
       <summary>More Stats</summary>
       <div class="summaryGrid stack10">
-        <div class="summaryStat"><div class="k">🗓️ MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
-        <div class="summaryStat"><div class="k">📆 YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
-        <div class="summaryStat"><div class="k">🧾 Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
-        <div class="summaryStat"><div class="k">🧾 Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
+        <div class="summaryStat"><div class="k">MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
+        <div class="summaryStat"><div class="k">YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
+        <div class="summaryStat"><div class="k">Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
+        <div class="summaryStat"><div class="k">Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
       </div>
     </details>
     <div class="summaryGrid stack10">
       <div class="summaryStat">
-        <div class="k">🧮 Calculator</div>
+        <div class="k">Calculator</div>
         <div class="v"><a class="btn primary" href="/calculator">Open</a></div>
       </div>
     </div>
@@ -242,7 +256,7 @@
 
 <div class="card stack12"><div class="toolbar">
     <details class="syncDetails" id="advancedDashboardWidgets">
-    <summary>Daily P/L Calendar (Advanced)</summary>
+    <summary>Daily P/L Calendar</summary>
     <div class="tiny stack8 line15">Daily P/L calendar view. Open when you want date-level context after core workflow steps.</div>
     <div class="hr"></div>
     {% set cal = namespace(traded_days=0, green_days=0, red_days=0, flat_days=0) %}
@@ -261,16 +275,19 @@
       {% endfor %}
     {% endfor %}
     <div class="calendarLegend stack10" aria-label="Calendar legend and monthly summary">
-      <div class="legendRow">
-        <span class="legendItem"><span class="legendSwatch legendGain"></span> Green = profitable day</span>
-        <span class="legendItem"><span class="legendSwatch legendLoss"></span> Red = losing day</span>
-        <span class="legendItem"><span class="legendSwatch legendFlat"></span> Neutral = flat or no P/L</span>
-      </div>
       <div class="legendStats" aria-label="Month trading day summary">
         <span class="legendStat"><strong>{{ cal.traded_days }}</strong> weekdays</span>
         <span class="legendStat"><strong>{{ cal.green_days }}</strong> green</span>
         <span class="legendStat"><strong>{{ cal.red_days }}</strong> red</span>
         <span class="legendStat"><strong>{{ cal.flat_days }}</strong> flat</span>
+        <details class="calendarLegendHelp">
+          <summary aria-label="Calendar legend help">?</summary>
+          <div class="calendarLegendPopover">
+            <div><span class="legendSwatch legendGain"></span> Green = profitable day</div>
+            <div><span class="legendSwatch legendLoss"></span> Red = losing day</div>
+            <div><span class="legendSwatch legendFlat"></span> Neutral = flat or no P/L</div>
+          </div>
+        </details>
       </div>
     </div>
     <div class="calendarWeeks" aria-label="{{ month_name }} daily profit and loss calendar">

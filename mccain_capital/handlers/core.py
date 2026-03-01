@@ -32,6 +32,10 @@ def dashboard():
     return svc.dashboard()
 
 
+def command_calendar_page():
+    return svc.command_calendar_page()
+
+
 def dashboard_recompute_balances():
     return svc.dashboard_recompute_balances()
 

@@ -148,10 +148,79 @@ def _migration_0003_import_batches(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_import_batch ON trades(import_batch_id)")
 
 
+def _migration_0004_strategy_links(conn: sqlite3.Connection) -> None:
+    review_cols = [r["name"] for r in conn.execute("PRAGMA table_info(trade_reviews)").fetchall()]
+    if "strategy_id" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN strategy_id INTEGER DEFAULT NULL")
+    if "strategy_label" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN strategy_label TEXT DEFAULT ''")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_reviews_strategy_id ON trade_reviews(strategy_id)")
+
+    now = datetime.now().isoformat(timespec="seconds")
+    strategy_rows = conn.execute("SELECT id, title FROM strategies ORDER BY id").fetchall()
+    strategy_map = {str(r["title"]).strip().lower(): (int(r["id"]), str(r["title"]).strip()) for r in strategy_rows}
+
+    review_rows = conn.execute(
+        """
+        SELECT trade_id, setup_tag, strategy_id, strategy_label
+        FROM trade_reviews
+        ORDER BY trade_id
+        """
+    ).fetchall()
+    for row in review_rows:
+        raw_label = str(row["strategy_label"] or "").strip() or str(row["setup_tag"] or "").strip()
+        existing_id = row["strategy_id"]
+        if existing_id:
+            title_row = conn.execute(
+                "SELECT title FROM strategies WHERE id = ?",
+                (int(existing_id),),
+            ).fetchone()
+            if title_row:
+                canonical = str(title_row["title"] or "").strip()
+                conn.execute(
+                    """
+                    UPDATE trade_reviews
+                    SET strategy_label = ?, setup_tag = ?
+                    WHERE trade_id = ?
+                    """,
+                    (canonical, canonical, int(row["trade_id"])),
+                )
+                continue
+        if not raw_label:
+            continue
+        strategy_key = raw_label.lower()
+        strategy_id, canonical = strategy_map.get(strategy_key, (0, ""))
+        if not strategy_id:
+            cur = conn.execute(
+                """
+                INSERT INTO strategies (title, body, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    raw_label,
+                    "Auto-created from existing trade review labels. Add your execution rules here.",
+                    now,
+                    now,
+                ),
+            )
+            strategy_id = int(cur.lastrowid)
+            canonical = raw_label
+            strategy_map[strategy_key] = (strategy_id, canonical)
+        conn.execute(
+            """
+            UPDATE trade_reviews
+            SET strategy_id = ?, strategy_label = ?, setup_tag = ?
+            WHERE trade_id = ?
+            """,
+            (strategy_id, canonical, canonical, int(row["trade_id"])),
+        )
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
     ("0003_import_batches", _migration_0003_import_batches),
+    ("0004_strategy_links", _migration_0004_strategy_links),
 ]
 
 

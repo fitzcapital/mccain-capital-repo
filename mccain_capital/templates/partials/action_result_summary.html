@@ -24,5 +24,12 @@
     {% if summary.next_action %}
       <div class="tiny stack8 line16">Next best action: {{ summary.next_action }}</div>
     {% endif %}
+    {% if summary.actions %}
+      <div class="rightActions stack8">
+        {% for action in summary.actions %}
+          <a class="btn {% if action.kind == 'primary' %}primary{% endif %}" href="{{ action.href }}">{{ action.label }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
   </div></div>
 {% endif %}
