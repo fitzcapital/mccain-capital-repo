@@ -4,7 +4,7 @@
       <div>
         <div class="pill">⚡ Execution Console</div>
         <h2 class="pageTitle">Execution Log</h2>
-        <div class="pageSub">Log, review, and import trades with fast context on risk, consistency, and exposure.</div>
+        <div class="pageSub tradesPageSub">Log, review, and import trades with fast context on risk, consistency, and exposure.</div>
       </div>
       <div class="actionRow">
         <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
@@ -47,33 +47,27 @@
 
 <div class="metricStrip">
   <div class="metric">
-    <div class="label">YTD Net</div>
-    <div class="value">{{ money(ytd_net) }}</div>
-    <div class="sub">Year-to-date through selected day</div>
+    <div class="label">{{ primary_net_label }}</div>
+    <div class="value">{{ money(day_net) }}</div>
+    <div class="sub">{{ primary_net_sub }}</div>
   </div>
   <div class="metric">
-    <div class="label">All-Time Net</div>
-    <div class="value">{{ money(all_time_net) }}</div>
-    <div class="sub">Career P/L across all imported trades</div>
+    <div class="label">{{ secondary_total_label }}</div>
+    <div class="value">{{ money(secondary_total_value) }}</div>
+    <div class="sub">Context beyond the active day filter</div>
   </div>
   <div class="metric">
-    <div class="label">Current Running Balance</div>
+    <div class="label">Current Balance</div>
     <div class="value">{{ money(running_balance) }}</div>
-    <div class="sub">Same ledger balance source used by dashboard</div>
-  </div>
-  <div class="metric">
-    <div class="label">Prior EOD Balance</div>
-    <div class="value">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
-    <div class="sub">Last completed day close before selected day</div>
+    <div class="sub">Running ledger balance</div>
   </div>
 </div>
 
-<div class="twoCol">
-  <div class="card controlPanel"><div class="toolbar">
+<div class="card controlPanel"><div class="toolbar">
     <div class="controlHead">
       <div>
         <div class="pill">🧭 Control Stack</div>
-        <div class="summaryLead stack8">Filter the day, manage imports, and move straight from raw execution into review.</div>
+        <div class="summaryLead stack8 tradesControlLead">Filter the day, manage imports, and move straight from raw execution into review.</div>
       </div>
     </div>
     <form method="get" action="/trades" class="row">
@@ -83,26 +77,16 @@
       </div>
       <div class="fieldGrow1">
         <label>Date</label>
-        <input type="date" name="d" value="{{ d }}" />
+        <input class="tradeDateFilterInput" type="date" name="d" value="{{ d }}" />
       </div>
       <div class="actionRow">
         <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">Prev</a>
         <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next</a>
         <button class="btn" type="submit">Filter</button>
         <a class="btn" href="/trades">Reset</a>
-        <a class="btn ctaLink" href="/trades/new">Manual Add</a>
-        <a class="btn ctaLink" href="/trades/paste">Table Paste</a>
         <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
       </div>
     </form>
-    <div class="tradesMobileActions">
-      <div class="mobileActionGrid">
-        <a class="btn primary" href="/trades/upload/statement">Upload</a>
-        <a class="btn" href="/trades/new">Add</a>
-        <a class="btn" href="/trades/paste">Paste</a>
-        <a class="btn" href="/trades/open-positions">Open</a>
-      </div>
-    </div>
 
     <div class="hr"></div>
     <div class="statRow">
@@ -125,19 +109,9 @@
     </div>
 
     <div class="hr"></div>
-    <div class="desktopOnly">
+    <details class="syncDetails desktopOnly">
+    <summary>Day Performance Snapshot</summary>
     <div class="statRow">
-      <div class="stat">
-        <div class="k">{{ primary_net_label }}</div>
-        <div class="v">{{ money(day_net) }}</div>
-        <div class="tiny">{{ primary_net_sub }}</div>
-      </div>
-
-      <div class="stat {% if secondary_total_value > 0 %}glow-green{% elif secondary_total_value < 0 %}glow-red{% endif %}">
-        <div class="k">{{ secondary_total_label }}</div>
-        <div class="v">{{ money(secondary_total_value) }}</div>
-      </div>
-
       <div class="stat">
         <div class="k">Prior EOD Balance</div>
         <div class="v">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
@@ -182,7 +156,7 @@
         </div>
       </div>
     </div>
-    </div>
+    </details>
     <details class="mobileOnly syncDetails stack10">
       <summary>Day Performance Snapshot</summary>
       <div class="statRow stack10">
@@ -224,14 +198,6 @@
     </div>
   </div></div>
 
-  <div class="card subtleCard"><div class="toolbar">
-    <div class="pill">Paste Format</div>
-    <div class="tiny stack10 line15">
-      Table paste = tab-delimited rows. Broker paste = "instrument | dt | side | qty | price | fee".
-    </div>
-  </div></div>
-</div>
-
 <div class="card stack12"><div class="toolbar">
       <div class="pill">Trades ({{ total_rows }})</div>
       <div class="tiny stack8 line15">
@@ -272,83 +238,105 @@
       <thead>
         <tr>
           <th class="thSelect"></th>
-          <th>📆 Date</th>
-          <th>⏱️ Time</th>
-          <th>🏷️</th>
-          <th>📌</th>
-          <th>🧠 Setup</th>
-          <th>✅ Score</th>
-          <th>❌ Strike</th>
-          <th>🧾 C</th>
-          <th>💳 Spend</th>
-          <th>💰 Entry</th>
-          <th>💰 Exit</th>
-          <th>🛑20% Risk</th>
-          <th>💵 Net</th>
-          <th>📊%</th>
-          <th>🏦 Bal</th>
+          <th>Date</th>
+          <th>Window</th>
+          <th>Instrument</th>
+          <th>Setup</th>
+          <th>Score</th>
+          <th>Strike</th>
+          <th>Qty</th>
+          <th>Spend</th>
+          <th>Entry</th>
+          <th>Exit</th>
+          <th>Risk 20%</th>
+          <th>Net</th>
+          <th>Result</th>
+          <th>Balance</th>
           <th class="thActions">Actions</th>
 
         </tr>
       </thead>
       <tbody>
         {% for t in page_trades %}
+        {% set setup_label = t.get('setup_tag') or 'Unlabeled' %}
+        {% if setup_label == 'Statement Import' %}
+          {% set setup_label = 'Imported' %}
+        {% endif %}
         <tr>
           <td><input type="checkbox" class="tradeCheckbox" data-id="{{ t['id'] }}" aria-label="Select trade {{ t['id'] }}"></td>
-          <td>{{ t['trade_date'] }}</td>
+          <td>
+            <div class="tradeDateCell">
+              <strong>{{ t['trade_date'] }}</strong>
+            </div>
+          </td>
 
           <td>
             {% set et = t.get('entry_time') %}
             {% set xt = t.get('exit_time') %}
-            {% if et and xt %}
-              {{ et }} → {{ xt }}
-            {% elif et %}
-              {{ et }}
-            {% elif xt %}
-              {{ xt }}
-            {% else %}
-              —
-            {% endif %}
+            <div class="tradeWindowCell">
+              {% if et and xt %}
+                <strong>{{ et }}</strong>
+                <span>→ {{ xt }}</span>
+              {% elif et %}
+                <strong>{{ et }}</strong>
+              {% elif xt %}
+                <strong>{{ xt }}</strong>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </div>
           </td>
 
-          <td><b>{{ t['ticker'] }}</b></td>
-          <td>{{ t['opt_type'] }}</td>
-          <td>{{ t.get('setup_tag') or '—' }}</td>
-          <td>{% if t.get('checklist_score') is not none %}{{ t.get('checklist_score') }}{% else %}—{% endif %}</td>
-          <td>{{ '' if t['strike'] is none else t['strike'] }}</td>
-          <td>{{ '' if t['contracts'] is none else t['contracts'] }}</td>
-          <td>{{ money(t['total_spent']) }}</td>
-          <td>{{ money(t['entry_price']) }}</td>
-          <td>{{ money(t['exit_price']) }}</td>
-          <td><span class="cell-red">{{ money((t['total_spent'] or 0) * 0.20) }}</span></td>
+          <td>
+            <div class="tradeInstrumentCell">
+              <span class="tradeTicker">{{ t['ticker'] }}</span>
+              <span class="tradeOptionType">{{ t['opt_type'] or '—' }}</span>
+            </div>
+          </td>
+          <td>
+            <span class="tradeSetupPill">{{ setup_label }}</span>
+          </td>
+          <td>
+            {% if t.get('checklist_score') is not none %}
+              <span class="tradeScoreCell">{{ t.get('checklist_score') }}</span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="tradeNumberCell">{{ '' if t['strike'] is none else t['strike'] }}</td>
+          <td class="tradeNumberCell">{{ '' if t['contracts'] is none else t['contracts'] }}</td>
+          <td class="tradeMoneyCell">{{ money(t['total_spent']) }}</td>
+          <td class="tradeMoneyCell">{{ money(t['entry_price']) }}</td>
+          <td class="tradeMoneyCell">{{ money(t['exit_price']) }}</td>
+          <td><span class="tradeValueBubble tradeValueBubbleRisk">{{ money((t['total_spent'] or 0) * 0.20) }}</span></td>
           <td>
   {% set n = t.get('net_pl') %}
   {% if n is none %}
-    <span class="pl-zero">—</span>
+    <span class="tradeValueBubble tradeValueBubbleFlat">—</span>
   {% elif n > 0 %}
-    <span class="pl-pos">{{ money(n) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleGain">{{ money(n) }}</span>
   {% elif n < 0 %}
-    <span class="pl-neg">{{ money(n) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleLoss">{{ money(n) }}</span>
   {% else %}
-    <span class="pl-zero">{{ money(n) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleFlat">{{ money(n) }}</span>
   {% endif %}
 </td>
           {% set rp = t.get('result_pct') %}
 <td>
   {% if rp is none %}
-    <span class="muted">–</span>
+    <span class="tradeValueBubble tradeValueBubbleFlat">–</span>
   {% elif rp < 10 %}
-    <span class="cell-red">{{ pct(rp) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleLoss">{{ pct(rp) }}</span>
   {% elif rp > 20 %}
-    <span class="cell-green">{{ pct(rp) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleGain">{{ pct(rp) }}</span>
   {% elif rp > 15 %}
-    <span class="cell-orange">{{ pct(rp) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleWarm">{{ pct(rp) }}</span>
   {% else %}
-    <span class="muted">{{ pct(rp) }}</span>
+    <span class="tradeValueBubble tradeValueBubbleFlat">{{ pct(rp) }}</span>
   {% endif %}
 </td>
 
-          <td>{{ money(t['balance']) }}</td>
+          <td class="tradeBalanceCell">{{ money(t['balance']) }}</td>
           <td class="tdActions">
             <div class="rowActions" id="rowActions-{{ t['id'] }}">
               <button type="button" class="rowMoreBtn" onclick="toggleRowMenu('{{ t['id'] }}', event)" aria-label="Trade actions">▾</button>
@@ -386,33 +374,49 @@
     {% for t in page_trades %}
       {% set n = t.get('net_pl') %}
       {% set rp = t.get('result_pct') %}
+      {% set setup_label = t.get('setup_tag') or 'Unlabeled' %}
+      {% if setup_label == 'Statement Import' %}
+        {% set setup_label = 'Imported' %}
+      {% endif %}
       <article class="tradeCard">
         <div class="tradeCardHead">
           <div class="pill">{{ t['trade_date'] }}</div>
           <div class="pill">{{ t['ticker'] }} {{ t['opt_type'] or '' }}</div>
         </div>
+        <div class="tradeCardSignalRow">
+          <span class="tradeSetupPill">{{ setup_label }}</span>
+          {% if t.get('session_tag') %}
+            <span class="tradeSessionPill">{{ t.get('session_tag') }}</span>
+          {% endif %}
+          {% if t.get('checklist_score') is not none %}
+            <span class="tradeScoreCell">{{ t.get('checklist_score') }}</span>
+          {% endif %}
+        </div>
         <div class="tradeCardGrid">
-          <div><span class="meta">Time</span><div>{{ (t.get('entry_time') or '—') ~ (' → ' ~ t.get('exit_time') if t.get('exit_time') else '') }}</div></div>
-          <div><span class="meta">Strike / C</span><div>{{ '' if t['strike'] is none else t['strike'] }} / {{ '' if t['contracts'] is none else t['contracts'] }}</div></div>
-          <div><span class="meta">Setup / Session</span><div>{{ t.get('setup_tag') or '—' }} / {{ t.get('session_tag') or '—' }}</div></div>
-          <div><span class="meta">Checklist Score</span><div>{% if t.get('checklist_score') is not none %}{{ t.get('checklist_score') }}{% else %}—{% endif %}</div></div>
-          <div><span class="meta">Entry → Exit</span><div>{{ money(t['entry_price']) }} → {{ money(t['exit_price']) }}</div></div>
-          <div><span class="meta">Risk (20%)</span><div class="cell-red">{{ money((t['total_spent'] or 0) * 0.20) }}</div></div>
-          <div><span class="meta">Net</span>
+          <div class="tradeCardMetaCell"><span class="meta">Window</span><div>{{ (t.get('entry_time') or '—') ~ (' → ' ~ t.get('exit_time') if t.get('exit_time') else '') }}</div></div>
+          <div class="tradeCardMetaCell"><span class="meta">Strike / Qty</span><div>{{ '' if t['strike'] is none else t['strike'] }} / {{ '' if t['contracts'] is none else t['contracts'] }}</div></div>
+          <div class="tradeCardMetaCell"><span class="meta">Entry → Exit</span><div>{{ money(t['entry_price']) }} → {{ money(t['exit_price']) }}</div></div>
+          <div class="tradeCardMetricCell"><span class="meta">Risk 20%</span><div><span class="tradeValueBubble tradeValueBubbleRisk">{{ money((t['total_spent'] or 0) * 0.20) }}</span></div></div>
+          <div class="tradeCardMetricCell"><span class="meta">Net</span>
             <div>
-              {% if n is none %}<span class="pl-zero">—</span>
-              {% elif n > 0 %}<span class="pl-pos">{{ money(n) }}</span>
-              {% elif n < 0 %}<span class="pl-neg">{{ money(n) }}</span>
-              {% else %}<span class="pl-zero">{{ money(n) }}</span>{% endif %}
+              {% if n is none %}
+                <span class="tradeValueBubble tradeValueBubbleFlat">—</span>
+              {% elif n > 0 %}
+                <span class="tradeValueBubble tradeValueBubbleGain">{{ money(n) }}</span>
+              {% elif n < 0 %}
+                <span class="tradeValueBubble tradeValueBubbleLoss">{{ money(n) }}</span>
+              {% else %}
+                <span class="tradeValueBubble tradeValueBubbleFlat">{{ money(n) }}</span>
+              {% endif %}
             </div>
           </div>
-          <div><span class="meta">Result / Balance</span>
+          <div class="tradeCardMetricCell"><span class="meta">Result / Balance</span>
             <div>
-              {% if rp is none %}<span class="muted">–</span>
-              {% elif rp < 10 %}<span class="cell-red">{{ pct(rp) }}</span>
-              {% elif rp > 20 %}<span class="cell-green">{{ pct(rp) }}</span>
-              {% elif rp > 15 %}<span class="cell-orange">{{ pct(rp) }}</span>
-              {% else %}<span class="muted">{{ pct(rp) }}</span>{% endif %}
+              {% if rp is none %}<span class="tradeValueBubble tradeValueBubbleFlat">–</span>
+              {% elif rp < 10 %}<span class="tradeValueBubble tradeValueBubbleLoss">{{ pct(rp) }}</span>
+              {% elif rp > 20 %}<span class="tradeValueBubble tradeValueBubbleGain">{{ pct(rp) }}</span>
+              {% elif rp > 15 %}<span class="tradeValueBubble tradeValueBubbleWarm">{{ pct(rp) }}</span>
+              {% else %}<span class="tradeValueBubble tradeValueBubbleFlat">{{ pct(rp) }}</span>{% endif %}
               · {{ money(t['balance']) }}
             </div>
           </div>

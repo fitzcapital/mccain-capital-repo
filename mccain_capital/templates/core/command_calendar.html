@@ -2,11 +2,11 @@
   <div class="pageHeroTop">
     <div>
       <div class="pill">🗓️ P/L Command Calendar</div>
-      <h2 class="pageTitle">Month map for trading and outside projects</h2>
-      <div class="pageSub">Calendar-first view for session quality, debrief coverage, and side work.</div>
+      <h2 class="pageTitle">Month signal map</h2>
+      <div class="pageSub">Trading, debriefs, and outside projects in one scan.</div>
     </div>
     <div class="pageHeroActions">
-      <a class="btn" href="/dashboard">Dashboard</a>
+      <a class="btn" href="/dashboard">Run Day</a>
       <a class="btn primary" href="/trades">Trades</a>
     </div>
   </div>
@@ -15,8 +15,8 @@
 <div class="card summaryPanel commandCalendarPanel"><div class="toolbar">
   <div class="calendarHead">
     <div>
-      <div class="pill">📡 Month Signal Grid</div>
-      <div class="summaryLead stack8">{{ month_name }} with trading, debrief, and project context.</div>
+      <div class="pill">📡 {{ month_name }}</div>
+      <div class="summaryLead stack8">Scan the month, then open the exact day that matters.</div>
     </div>
     <div class="calendarNav">
       <a class="btn" href="/calendar?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
@@ -29,7 +29,7 @@
   <div class="commandCalendarTopline">
     <div class="commandCalendarMonthBlock">
       <div class="summaryMonth">{{ month_name }}</div>
-      <div class="summaryCaption">Balance {{ money(overall_balance) }}</div>
+      <div class="summaryCaption commandCalendarBalance">Balance <strong>{{ money(overall_balance) }}</strong></div>
     </div>
     <div class="commandCalendarStats">
       <div class="commandCalendarStat {% if month_net > 0 %}isGain{% elif month_net < 0 %}isLoss{% endif %}">
@@ -68,10 +68,10 @@
       {% endfor %}
     {% endfor %}
     <div class="legendStats" aria-label="Month trading day summary">
-      <span class="legendStat"><strong>{{ cal.weekday_count }}</strong> weekdays</span>
-      <span class="legendStat"><strong>{{ cal.green_days }}</strong> green</span>
-      <span class="legendStat"><strong>{{ cal.red_days }}</strong> red</span>
-      <span class="legendStat"><strong>{{ cal.flat_days }}</strong> flat</span>
+      <span class="legendStat legendStatWeekdays"><strong>{{ cal.weekday_count }}</strong> weekdays</span>
+      <span class="legendStat legendStatGreen"><strong>{{ cal.green_days }}</strong> green</span>
+      <span class="legendStat legendStatRed"><strong>{{ cal.red_days }}</strong> red</span>
+      <span class="legendStat legendStatFlat"><strong>{{ cal.flat_days }}</strong> flat</span>
       <details class="calendarLegendHelp">
         <summary aria-label="Calendar legend help">?</summary>
         <div class="calendarLegendPopover">

@@ -13,20 +13,6 @@
   </div>
 </div>
 
-<div class="card subtleCard"><div class="toolbar">
-  <details class="syncDetails">
-    <summary>Advanced Tools</summary>
-    <div class="tiny stack8 line15">Use after the core workflow when deeper context is needed.</div>
-    <div class="leftActions stack10">
-      <a class="btn ctaLink" href="/analytics?tab=diagnostics">🧪 Diagnostics</a>
-      <a class="btn ctaLink" href="/analytics?tab=behavior">🗺️ Heatmap</a>
-      <a class="btn ctaLink" href="/candle-opens">🕯️ Candle Opens</a>
-      <a class="btn ctaLink" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
-      <a class="btn ctaLink" href="/ops/alerts">🚨 Ops Alerts</a>
-    </div>
-  </details>
-</div></div>
-
 <div class="dashboardSupportGrid">
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">Today Focus</div>
@@ -74,12 +60,12 @@
   <div class="metric">
     <div class="label">Today Net</div>
     <div class="value">{{ money(today_net) }}</div>
-    <div class="sub">Live from today’s journaled trades</div>
+    <div class="sub">Live from today’s closed trades</div>
   </div>
   <div class="metric">
-    <div class="label">Wins / Losses</div>
-    <div class="value">{{ today_wins }} / {{ today_losses }}</div>
-    <div class="sub">Closed winners versus losers today</div>
+    <div class="label">Session Record</div>
+    <div class="value">{{ today_wins }}W / {{ today_losses }}L</div>
+    <div class="sub">Wins, losses, and control</div>
   </div>
   <div class="metric">
     <div class="label">Trades Today</div>
@@ -89,7 +75,7 @@
   <div class="metric">
     <div class="label">Current Balance</div>
     <div class="value">{{ money(overall_balance) }}</div>
-    <div class="sub">Starting balance plus cumulative net P/L.</div>
+    <div class="sub">Your running ledger balance</div>
   </div>
 </div>
 
@@ -184,15 +170,6 @@
       </div>
     </div>
     <div class="summaryGrid">
-      <div class="summaryStat">
-        <div class="k">Month</div>
-        <div class="v">{{ month_name }}</div>
-      </div>
-      <div class="summaryStat">
-        <div class="k">Balance</div>
-        <div class="v">{{ money(overall_balance) }}</div>
-      </div>
-
       <div class="summaryStat {{ ytd_cons.class }}">
         <div class="k">Consistency (YTD)</div>
         <div class="v">
@@ -243,14 +220,12 @@
         <div class="summaryStat"><div class="k">YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
         <div class="summaryStat"><div class="k">Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
         <div class="summaryStat"><div class="k">Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
+        <div class="summaryStat"><div class="k">Diagnostics</div><div class="v"><a class="btn primary" href="/analytics?tab=diagnostics">Open</a></div></div>
+        <div class="summaryStat"><div class="k">Behavior Heatmap</div><div class="v"><a class="btn primary" href="/analytics?tab=behavior">Open</a></div></div>
+        <div class="summaryStat"><div class="k">Reconcile</div><div class="v"><a class="btn primary" href="/trades/upload/statement?ws=reconcile">Open</a></div></div>
+        <div class="summaryStat"><div class="k">Ops Alerts</div><div class="v"><a class="btn primary" href="/ops/alerts">Open</a></div></div>
       </div>
     </details>
-    <div class="summaryGrid stack10">
-      <div class="summaryStat">
-        <div class="k">Calculator</div>
-        <div class="v"><a class="btn primary" href="/calculator">Open</a></div>
-      </div>
-    </div>
   </div></div>
 </div>
 
@@ -276,10 +251,10 @@
     {% endfor %}
     <div class="calendarLegend stack10" aria-label="Calendar legend and monthly summary">
       <div class="legendStats" aria-label="Month trading day summary">
-        <span class="legendStat"><strong>{{ cal.traded_days }}</strong> weekdays</span>
-        <span class="legendStat"><strong>{{ cal.green_days }}</strong> green</span>
-        <span class="legendStat"><strong>{{ cal.red_days }}</strong> red</span>
-        <span class="legendStat"><strong>{{ cal.flat_days }}</strong> flat</span>
+        <span class="legendStat legendStatWeekdays"><strong>{{ cal.traded_days }}</strong> weekdays</span>
+        <span class="legendStat legendStatGreen"><strong>{{ cal.green_days }}</strong> green</span>
+        <span class="legendStat legendStatRed"><strong>{{ cal.red_days }}</strong> red</span>
+        <span class="legendStat legendStatFlat"><strong>{{ cal.flat_days }}</strong> flat</span>
         <details class="calendarLegendHelp">
           <summary aria-label="Calendar legend help">?</summary>
           <div class="calendarLegendPopover">

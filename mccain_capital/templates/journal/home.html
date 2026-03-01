@@ -14,38 +14,26 @@
   </div>
 </div>
 
-<div class="twoCol">
-  <div class="card"><div class="toolbar">
-    <form method="get" action="/journal" class="row">
-      <div class="fieldGrow2">
-        <label for="search">Search</label>
-        <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
-      </div>
-      <div class="fieldGrow1">
-        <label>Date</label>
-        <input type="date" name="d" value="{{ d }}" />
-      </div>
-      <div class="actionRow">
-        <button class="btn" type="submit">Filter</button>
-        <a class="btn" href="/journal">Reset</a>
-        <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
-        <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
-      </div>
-    </form>
-    <div class="hr"></div>
-    <div class="meta">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} found</div>
-  </div></div>
-
-  <div class="card"><div class="toolbar">
-    <div class="pill">🎯 Daily Focus</div>
-    <div class="focusList">
-      <div>Rules first.</div>
-      <div>Confirmation over hope.</div>
-      <div>Size and stop respected.</div>
-      <div class="stack10">Journal in order: <b>what you saw</b> → <b>what you did</b> → <b>what you learned</b>.</div>
+<div class="card"><div class="toolbar">
+  <form method="get" action="/journal" class="row">
+    <div class="fieldGrow2">
+      <label for="search">Search</label>
+      <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
     </div>
-  </div></div>
-</div>
+    <div class="fieldGrow1">
+      <label>Date</label>
+      <input class="appDateInput" type="date" name="d" value="{{ d }}" />
+    </div>
+    <div class="actionRow">
+      <button class="btn" type="submit">Filter</button>
+      <a class="btn" href="/journal">Reset</a>
+      <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
+      <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+    </div>
+  </form>
+  <div class="hr"></div>
+  <div class="meta">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} found · Rules first · Journal what you saw → did → learned.</div>
+</div></div>
 
 <div class="grid">
   {% for e in entries %}
@@ -53,17 +41,37 @@
       <div class="entryTop">
         <div>
           <div class="pillRow">
-            <div class="pill">{{ e['entry_date'] }}</div>
-            <div class="pill">{{ (e.get('entry_type') or 'post_market').replace('_',' ').title() }}</div>
-            {% if e['market'] %}<div class="meta">Market: <b>{{ e['market'] }}</b></div>{% endif %}
-            {% if e['setup'] %}<div class="meta">Setup: <b>{{ e['setup'] }}</b></div>{% endif %}
+            <div class="pill">{{ e.get('entry_date_display') or e['entry_date'] }}</div>
+            {% if e['market'] %}<div class="entrySignal">Market <b>{{ e['market'] }}</b></div>{% endif %}
+            {% if e['setup'] %}<div class="entrySignal entrySignalWide">Setup <b>{{ e['setup'] }}</b></div>{% endif %}
           </div>
-          <div class="metaRow">
-            {% if e['grade'] %}<span class="meta">Grade: <b>{{ e['grade'] }}</b></span>{% endif %}
-            {% if e['mood'] %}<span class="meta">Mood: <b>{{ e['mood'] }}</b></span>{% endif %}
-            {% if e['pnl'] is not none %}<span class="meta">PnL: <b>{{ money(e['pnl']) }}</b></span>{% endif %}
-            {% if e.get('linked_trades', 0) > 0 %}<span class="meta">Trades: <b>{{ e.get('linked_trades') }}</b></span>{% endif %}
-            <span class="meta">Updated: {{ e['updated_at'] }}</span>
+          <div class="entryMetaBand">
+            {% if e['grade'] %}
+              {% set grade_value = (e['grade'] or '')|upper %}
+              <span class="entryChip entryChipGrade {% if grade_value.startswith('A') %}entryChipGradeA{% elif grade_value.startswith('B') %}entryChipGradeB{% elif grade_value.startswith('C') %}entryChipGradeC{% else %}entryChipGradeLow{% endif %}">
+                <span class="entryChipLabel">Grade</span>
+                <b>{{ e['grade'] }}</b>
+              </span>
+            {% endif %}
+            {% if e['mood'] %}
+              <span class="entryChip entryChipMood">
+                <span class="entryChipLabel">Mood</span>
+                <b>{{ e['mood'] }}</b>
+              </span>
+            {% endif %}
+            {% if e['pnl'] is not none %}
+              <span class="entryChip {% if e['pnl'] > 0 %}entryChipPnlGain{% elif e['pnl'] < 0 %}entryChipPnlLoss{% else %}entryChipPnlFlat{% endif %}">
+                <span class="entryChipLabel">PnL</span>
+                <b>{{ money(e['pnl']) }}</b>
+              </span>
+            {% endif %}
+            {% if e.get('linked_trades', 0) > 0 %}
+              <span class="entryChip">
+                <span class="entryChipLabel">Trades</span>
+                <b>{{ e.get('linked_trades') }}</b>
+              </span>
+            {% endif %}
+            <span class="entryTimestamp">Updated {{ e.get('updated_at_display') or e['updated_at'] }}</span>
           </div>
         </div>
 

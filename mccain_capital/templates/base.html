@@ -159,29 +159,37 @@
     </div>
     <div id="workflowRail" class="workflowRail">
       <div class="workflowHead">
-        <div class="pill">🧭 Command Rail</div>
+        <div>
+          <div class="pill">🧭 Command Rail</div>
+          <div class="workflowSub">One loop, kept visible: plan, execute, review, debrief, calendar.</div>
+        </div>
       </div>
       <div class="workflowGrid">
-        <div class="workflowStep guideStep {% if active=='calc' %}flowActive{% endif %}" data-guide-item="plan-risk">
+        <a class="workflowStep guideStep {% if active=='calc' %}flowActive{% endif %}" data-guide-item="plan-risk" href="/calculator">
           <div class="workflowKicker">Plan</div>
-          <div class="workflowText">Define risk and size first.</div>
-          <a class="btn primary {% if active=='calc' %}active{% endif %}" href="/calculator">Plan Risk</a>
-        </div>
-        <div class="workflowStep guideStep {% if active=='trades' %}flowActive{% endif %}" data-guide-item="upload-statement">
+          <div class="workflowTitle">Plan Risk</div>
+          <div class="workflowText">Set size and risk first.</div>
+        </a>
+        <a class="workflowStep guideStep {% if active=='trades' %}flowActive{% endif %}" data-guide-item="upload-statement" href="/trades">
           <div class="workflowKicker">Execute</div>
-          <div class="workflowText">Log activity while it is fresh.</div>
-          <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
-        </div>
-        <div class="workflowStep guideStep {% if active=='analytics' %}flowActive{% endif %}" data-guide-item="review-trades">
+          <div class="workflowTitle">Execution Log</div>
+          <div class="workflowText">Log and import the day cleanly.</div>
+        </a>
+        <a class="workflowStep guideStep {% if active=='analytics' %}flowActive{% endif %}" data-guide-item="review-trades" href="/analytics?tab=performance">
           <div class="workflowKicker">Review</div>
-          <div class="workflowText">Review edge, drawdown, and behavior.</div>
-          <a class="btn primary {% if active=='analytics' %}active{% endif %}" href="/analytics?tab=performance">Analyze Day</a>
-        </div>
-        <div class="workflowStep guideStep {% if active=='journal' %}flowActive{% endif %}" data-guide-item="weekly-debrief">
-          <div class="workflowKicker">Improve</div>
-          <div class="workflowText">Turn learning into playbook updates.</div>
-          <a class="btn primary {% if active=='journal' %}active{% endif %}" href="/journal/review/weekly">Weekly Debrief</a>
-        </div>
+          <div class="workflowTitle">Analyze Day</div>
+          <div class="workflowText">Check edge, drawdown, and discipline.</div>
+        </a>
+        <a class="workflowStep guideStep {% if active=='journal' %}flowActive{% endif %}" data-guide-item="weekly-debrief" href="/journal">
+          <div class="workflowKicker">Debrief</div>
+          <div class="workflowTitle">Journal</div>
+          <div class="workflowText">Lock in the lesson while it is fresh.</div>
+        </a>
+        <a class="workflowStep guideStep {% if active=='calendar' %}flowActive{% endif %}" href="/calendar">
+          <div class="workflowKicker">Map</div>
+          <div class="workflowTitle">Calendar</div>
+          <div class="workflowText">See the month as one signal map.</div>
+        </a>
       </div>
     </div>
     <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>

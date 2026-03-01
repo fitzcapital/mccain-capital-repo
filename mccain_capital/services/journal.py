@@ -52,6 +52,9 @@ def journal_home():
     q = request.args.get("q", "")
     d = request.args.get("d", "")
     entries = [dict(r) for r in repo.fetch_entries(q=q, d=d)]
+    for entry in entries:
+        entry["entry_date_display"] = _format_entry_date(entry.get("entry_date"))
+        entry["updated_at_display"] = _format_updated_timestamp(entry.get("updated_at"))
 
     content = render_template(
         "journal/home.html",
@@ -452,6 +455,28 @@ def _default_entry_date_for_journal() -> str:
     if not all_trades:
         return today
     return str(dict(all_trades[0]).get("trade_date") or today)
+
+
+def _format_entry_date(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").strftime("%b %d, %Y")
+    except ValueError:
+        return raw
+
+
+def _format_updated_timestamp(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(normalized)
+        return dt.strftime("%b %d, %Y %I:%M %p")
+    except ValueError:
+        return raw
 
 
 def _linked_trade_ids_from_form(entry_date: str, form: Any) -> List[int]:
