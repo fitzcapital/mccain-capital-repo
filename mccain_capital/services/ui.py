@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+import urllib.error
+import urllib.request
 from zoneinfo import ZoneInfo
 
 from flask import current_app, render_template, render_template_string
@@ -12,8 +14,12 @@ from flask import current_app, render_template, render_template_string
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital.runtime import UPLOAD_DIR, now_iso
 
-APP_TITLE = "McCain Capital 🏛️"
+APP_TITLE = "McCain Capital"
 TZ = ZoneInfo("America/New_York")
+FOREX_FACTORY_WEEKLY_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+FOREX_FACTORY_CACHE_TTL_SECONDS = 900
+_forex_factory_cache: dict[str, object] = {"fetched_at": None, "payload": None}
+FOREX_FACTORY_CACHE_FILE = os.path.join(UPLOAD_DIR, ".forex_factory_weekly_cache.json")
 
 
 def _static_version(static_root: str) -> str:
@@ -32,6 +38,20 @@ def _load_json(path: str) -> dict:
             return parsed if isinstance(parsed, dict) else {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
+
+
+def _load_forex_factory_disk_cache() -> list[dict] | None:
+    cached = _load_json(FOREX_FACTORY_CACHE_FILE)
+    payload = cached.get("payload")
+    return payload if isinstance(payload, list) else None
+
+
+def _save_forex_factory_disk_cache(payload: list[dict]) -> None:
+    try:
+        with open(FOREX_FACTORY_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"saved_at": now_iso(), "payload": payload}, f)
+    except OSError:
+        return
 
 
 def get_system_status() -> dict:
@@ -72,18 +92,99 @@ def get_system_status() -> dict:
     }
 
 
-def render_page(content_html: str, *, active: str, title: str = APP_TITLE):
+def _global_top_notice() -> dict | None:
+    now_et = datetime.now(TZ)
+    payload = get_forex_factory_feed()
+
+    if not isinstance(payload, list):
+        return None
+
+    cutoff = now_et - timedelta(minutes=1)
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("country") or "").upper() != "USD":
+            continue
+        if str(row.get("impact") or "").title() != "High":
+            continue
+        raw_date = str(row.get("date") or "").strip()
+        if not raw_date:
+            continue
+        try:
+            starts_at = datetime.fromisoformat(raw_date)
+        except ValueError:
+            continue
+        if starts_at < cutoff:
+            continue
+        day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "
+        title = str(row.get("title") or "USD high impact").strip() or "USD high impact"
+        detail_href = (
+            f"/candle-opens?y={starts_at.year}&m={starts_at.month}#news-day-{starts_at.date().isoformat()}"
+        )
+        return {
+            "label": "Red Folder",
+            "text": f"🔴 {day_prefix}{starts_at.strftime('%-I:%M %p ET')}",
+            "detail": f"High impact · {starts_at.strftime('%b %-d %I:%M %p ET')} · {title}",
+            "href": detail_href,
+            "level": "high",
+        }
+    return None
+
+
+def get_forex_factory_feed() -> list[dict] | None:
+    now_et = datetime.now(TZ)
+    fetched_at = _forex_factory_cache.get("fetched_at")
+    cached_payload = _forex_factory_cache.get("payload")
+    if (
+        isinstance(fetched_at, datetime)
+        and (now_et - fetched_at).total_seconds() < FOREX_FACTORY_CACHE_TTL_SECONDS
+    ):
+        return cached_payload if isinstance(cached_payload, list) else None
+
+    try:
+        req = urllib.request.Request(
+            FOREX_FACTORY_WEEKLY_URL,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json,*/*",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            payload = json.load(resp)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError):
+        if isinstance(cached_payload, list):
+            return cached_payload
+        disk_payload = _load_forex_factory_disk_cache()
+        if isinstance(disk_payload, list):
+            _forex_factory_cache["payload"] = disk_payload
+            return disk_payload
+        return None
+
+    if isinstance(payload, list):
+        _forex_factory_cache["fetched_at"] = now_et
+        _forex_factory_cache["payload"] = payload
+        _save_forex_factory_disk_cache(payload)
+        return payload
+
+    return cached_payload if isinstance(cached_payload, list) else _load_forex_factory_disk_cache()
+
+
+def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **page_ctx):
     static_root = current_app.static_folder or "static"
+    top_notice = page_ctx.pop("top_notice", None) or _global_top_notice()
     return render_template(
         "base.html",
         title=title,
+        brand_title=APP_TITLE,
         static_v=_static_version(static_root),
         auth_enabled=auth_enabled(),
         authenticated=is_authenticated(),
         auth_username=effective_username(),
         system_status=get_system_status(),
+        top_notice=top_notice,
         content=content_html,
         active=active,
+        **page_ctx,
     )
 
 

@@ -8,6 +8,7 @@ import statistics
 from flask import flash, get_flashed_messages, redirect, render_template_string, request, url_for
 
 from mccain_capital.repositories import goals as repo
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import (
     BASE_MONTHLY_INCOME,
     DEFAULT_PROTECT_BUFFER,
@@ -26,6 +27,7 @@ from mccain_capital.runtime import (
     db,
 )
 from mccain_capital.services.ui import render_page
+from mccain_capital.services.viewmodels import balance_state_badges
 
 # Compatibility aliases used by extracted route bodies.
 upsert_daily_goal = repo.upsert_daily_goal
@@ -568,7 +570,9 @@ def payouts_page():
         protect = parse_float(request.args.get("protect", "")) or protect
         biweekly_goal = parse_float(request.args.get("goal", "")) or biweekly_goal
 
-    overall_balance = latest_balance_overall() or 0.0
+    balance_integrity = trades_repo.balance_integrity_snapshot()
+    balance_badges = balance_state_badges(balance_integrity)
+    overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
     ps = payout_summary(overall_balance, protect)
 
     today = now_et().date()
@@ -591,30 +595,30 @@ def payouts_page():
         """
         <div class="twoCol">
           <div class="card"><div class="toolbar">
-            <div class="pill">💸 Payouts</div>
+            <div class="pill">Payouts</div>
             <div class="tiny stack10 line15">
-              Safe payout = protects cushion above the fixed loss limit 🛡️
+              Safe payout preserves a cushion above the fixed loss limit.
             </div>
 
             <div class="hr"></div>
             <form method="post" class="row">
               <div>
-                <label>🛡️ Protect Buffer ($)</label>
+                <label>Protect Buffer ($)</label>
                 <input name="protect_buffer" inputmode="decimal" value="{{ protect }}" />
               </div>
               <div>
-                <label>🎯 Bi-Weekly Goal ($)</label>
+                <label>Bi-Weekly Goal ($)</label>
                 <input name="biweekly_goal" inputmode="decimal" value="{{ biweekly_goal }}" />
               </div>
               <div class="actionRow">
-                <button class="btn primary" type="submit">🔄 Update</button>
-                <a class="btn" href="/payouts">♻️ Reset</a>
+                <button class="btn primary" type="submit">Update</button>
+                <a class="btn" href="/payouts">Reset</a>
               </div>
             </form>
           </div></div>
 
           <div class="card"><div class="toolbar">
-            <div class="pill">📌 Rule Snapshot (50K)</div>
+            <div class="pill">Rule Snapshot (50K)</div>
             <div class="tiny stack10 line16">
               • Buffer reached at: <b>{{ money(ps.profit_buffer_level) }}</b><br>
               • Fixed loss limit after buffer: <b>{{ money(ps.fixed_loss_limit) }}</b><br>
@@ -630,36 +634,44 @@ def payouts_page():
         </div>
 
         <div class="card stack12"><div class="toolbar">
-          <div class="pill">📊 Current Totals</div>
+          <div class="pill">Current Totals</div>
+          <div class="statusBadgeStrip">
+            {% for badge in balance_badges %}
+              <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+                <span class="statusBadgeLabel">{{ badge.label }}</span>
+                <strong>{{ badge.value }}</strong>
+              </div>
+            {% endfor %}
+          </div>
           <div class="hr"></div>
 
           <div class="statRow">
-            <div class="stat"><div class="k">🏦 Balance</div><div class="v">{{ money(ps.balance) }}</div></div>
-            <div class="stat"><div class="k">🗓️ MTD Net</div><div class="v">{{ money(mtd) }}</div></div>
-            <div class="stat"><div class="k">📆 Last 30 Days</div><div class="v">{{ money(last30) }}</div></div>
+            <div class="stat"><div class="k">Balance</div><div class="v">{{ money(ps.balance) }}</div></div>
+            <div class="stat"><div class="k">MTD Net</div><div class="v">{{ money(mtd) }}</div></div>
+            <div class="stat"><div class="k">Last 30 Days</div><div class="v">{{ money(last30) }}</div></div>
 
             <div class="stat {% if ps.safe_request > 0 %}glow-green{% endif %}">
-              <div class="k">🛡️ Safe Withdraw (now)</div>
+              <div class="k">Safe Withdraw (now)</div>
               <div class="v">{{ money(ps.safe_request) }}</div>
             </div>
 
             <div class="stat {% if ps.max_request > 0 %}glow-green{% endif %}">
-              <div class="k">⚠️ Max Withdraw (no cushion)</div>
+              <div class="k">Max Withdraw (no cushion)</div>
               <div class="v">{{ money(ps.max_request) }}</div>
             </div>
 
             <div class="stat {% if can_take_biweekly_now %}glow-green{% else %}glow-red{% endif %}">
-              <div class="k">🎯 ${{ '%.0f'|format(biweekly_goal) }} Bi-Weekly?</div>
-              <div class="v">{% if can_take_biweekly_now %}✅ Yes{% else %}⛔ Not yet{% endif %}</div>
+              <div class="k">${{ '%.0f'|format(biweekly_goal) }} Bi-Weekly?</div>
+              <div class="v">{% if can_take_biweekly_now %}Yes{% else %}Not yet{% endif %}</div>
               <div class="tiny">Needs Safe ≥ {{ money(biweekly_goal) }}</div>
             </div>
           </div>
 
           <div class="hr"></div>
-          <div class="pill">📈 Projections</div>
+          <div class="pill">Projections</div>
           <div class="hr"></div>
           <div class="statRow">
-            <div class="stat"><div class="k">📊 Daily Avg (recent)</div><div class="v">{{ money(proj.avg) }}</div></div>
+            <div class="stat"><div class="k">Daily Avg (recent)</div><div class="v">{{ money(proj.avg) }}</div></div>
             <div class="stat"><div class="k">5D Est Bal</div><div class="v">{{ money(proj.p5.est_balance) }}</div></div>
             <div class="stat"><div class="k">10D Est Bal</div><div class="v">{{ money(proj.p10.est_balance) }}</div></div>
             <div class="stat"><div class="k">20D Est Bal</div><div class="v">{{ money(proj.p20.est_balance) }}</div></div>
@@ -671,7 +683,7 @@ def payouts_page():
           </div>
         </div></div>
         <div class="card stack12"><div class="toolbar">
-          <div class="pill">🧠 Payout Readiness Planner</div>
+          <div class="pill">Payout Readiness Planner</div>
           <div class="tiny stack10 line16">Probability bands based on your recent daily expectancy/volatility profile.</div>
           <div class="hr"></div>
           <div class="statRow">
@@ -697,6 +709,7 @@ def payouts_page():
         last30=last30,
         proj=proj,
         readiness=readiness,
+        balance_badges=balance_badges,
         can_take_biweekly_now=can_take_biweekly_now,
         money=money,
     )

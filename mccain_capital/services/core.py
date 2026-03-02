@@ -6,13 +6,19 @@ keeps that dependency localized behind explicit delegator functions.
 
 from __future__ import annotations
 
-from calendar import Calendar
+from calendar import Calendar, monthrange
 from datetime import date
+from datetime import datetime
 from datetime import timedelta
+import html
 import json
 import os
+import re
 import shutil
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,21 +26,1011 @@ from flask import abort, flash, jsonify, redirect, render_template, request, sen
 
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital import runtime as app_runtime
-from mccain_capital.services.ui import get_system_status, render_page, simple_msg
-from mccain_capital.services.viewmodels import dashboard_data_trust
+from mccain_capital.services.ui import get_forex_factory_feed, get_system_status, render_page, simple_msg
+from mccain_capital.services.viewmodels import (
+    balance_state_badges,
+    dashboard_data_trust,
+    sync_state_badges,
+)
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
 DEFAULT_TARGET_PCT = 30.0
 DEFAULT_FEE_PER_CONTRACT = 0.70
 DAY_OPEN_INTERVALS = tuple(range(2, 13))
-WEEK_OPEN_INTERVALS = (2, 3, 4, 5)
+WEEK_OPEN_INTERVALS = (2, 3, 4, 5, 6)
+MONTH_OPEN_INTERVALS = (2,)
+MARKET_PULSE_CACHE_TTL_SECONDS = 300
+MARKET_PULSE_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_pulse_cache.json")
+MARKET_NEWS_CACHE_TTL_SECONDS = 900
+MARKET_NEWS_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_news_cache.json")
+FINNHUB_API_KEY = (os.environ.get("FINNHUB_API_KEY") or "").strip()
+FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
+MARKET_PULSE_QUOTES_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
+MARKET_PULSE_SYMBOLS: Tuple[Dict[str, str], ...] = (
+    {
+        "symbol": "^GSPC",
+        "label": "SPX",
+        "group": "core",
+        "focus": "Primary cash index proxy for SPX options context.",
+    },
+    {
+        "symbol": "SPY",
+        "label": "SPY",
+        "group": "core",
+        "focus": "S&P ETF liquidity and tape confirmation.",
+    },
+    {
+        "symbol": "QQQ",
+        "label": "QQQ",
+        "group": "core",
+        "focus": "Large-cap tech leadership and risk-on read.",
+    },
+    {
+        "symbol": "IWM",
+        "label": "IWM",
+        "group": "core",
+        "focus": "Small-cap breadth and participation.",
+    },
+    {
+        "symbol": "^VIX",
+        "label": "VIX",
+        "group": "core",
+        "focus": "Volatility regime and gamma proxy anchor.",
+    },
+    {
+        "symbol": "NVDA",
+        "label": "NVDA",
+        "group": "leaders",
+        "focus": "AI beta and high-beta leadership.",
+    },
+    {
+        "symbol": "MSFT",
+        "label": "MSFT",
+        "group": "leaders",
+        "focus": "Mega-cap software leadership.",
+    },
+    {
+        "symbol": "AAPL",
+        "label": "AAPL",
+        "group": "leaders",
+        "focus": "Consumer/mega-cap breadth signal.",
+    },
+    {
+        "symbol": "AMZN",
+        "label": "AMZN",
+        "group": "leaders",
+        "focus": "Consumer + cloud leadership check.",
+    },
+    {
+        "symbol": "META",
+        "label": "META",
+        "group": "leaders",
+        "focus": "Ad-tech and momentum leadership.",
+    },
+)
+_market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
+_market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 
 
 def _legacy():
     from mccain_capital import app_core
 
     return app_core
+
+
+def _load_market_pulse_disk_cache() -> Dict[str, Any] | None:
+    try:
+        with open(MARKET_PULSE_CACHE_FILE, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _save_market_pulse_disk_cache(payload: Dict[str, Any]) -> None:
+    try:
+        os.makedirs(app_runtime.UPLOAD_DIR, exist_ok=True)
+        with open(MARKET_PULSE_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except OSError:
+        return
+
+
+def _load_market_news_disk_cache() -> Dict[str, Any] | None:
+    try:
+        with open(MARKET_NEWS_CACHE_FILE, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _save_market_news_disk_cache(payload: Dict[str, Any]) -> None:
+    try:
+        os.makedirs(app_runtime.UPLOAD_DIR, exist_ok=True)
+        with open(MARKET_NEWS_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except OSError:
+        return
+
+
+def _market_pulse_yahoo_href(symbol: str) -> str:
+    return "https://finance.yahoo.com/quote/" + urllib.parse.quote(symbol, safe="")
+
+
+def _market_pulse_json_request_any(url: str, params: Dict[str, Any], timeout: int = 4) -> Any:
+    try:
+        req = urllib.request.Request(
+            url + "?" + urllib.parse.urlencode(params),
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json,*/*",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError):
+        return None
+
+
+def _market_pulse_json_request(url: str, params: Dict[str, Any], timeout: int = 4) -> Dict[str, Any] | None:
+    parsed = _market_pulse_json_request_any(url, params, timeout=timeout)
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _market_pulse_cached_row_map(cached_payload: Dict[str, Any] | None) -> Dict[str, Dict[str, Any]]:
+    if not isinstance(cached_payload, dict):
+        return {}
+    rows = cached_payload.get("quotes") or []
+    return {
+        str(row.get("label") or ""): row
+        for row in rows
+        if isinstance(row, dict) and str(row.get("label") or "")
+    }
+
+
+def _market_pulse_has_value(row: Dict[str, Any] | None) -> bool:
+    if not isinstance(row, dict):
+        return False
+    return isinstance(row.get("price"), (int, float))
+
+
+def _market_pulse_normalized_cached_row(cached_row: Dict[str, Any] | None, spec: Dict[str, str]) -> Dict[str, Any] | None:
+    if not isinstance(cached_row, dict):
+        return None
+    row = dict(cached_row)
+    row["symbol"] = spec["symbol"]
+    row["label"] = spec["label"]
+    row["group"] = spec["group"]
+    row["focus"] = spec["focus"]
+    row["yahoo_href"] = _market_pulse_yahoo_href(spec["symbol"])
+    return row
+
+
+def _market_pulse_quote_record(raw: Dict[str, Any], spec: Dict[str, str]) -> Dict[str, Any]:
+    fallback = raw if isinstance(raw, dict) else {}
+    price = fallback.get("regularMarketPrice")
+    if price is None:
+        price = fallback.get("postMarketPrice")
+    if price is None:
+        price = fallback.get("preMarketPrice")
+    change = fallback.get("regularMarketChange")
+    change_pct = fallback.get("regularMarketChangePercent")
+    day_low = fallback.get("regularMarketDayLow")
+    day_high = fallback.get("regularMarketDayHigh")
+    return {
+        "symbol": spec["symbol"],
+        "label": spec["label"],
+        "group": spec["group"],
+        "focus": spec["focus"],
+        "name": str(fallback.get("shortName") or fallback.get("longName") or spec["label"]),
+        "price": float(price) if isinstance(price, (int, float)) else None,
+        "change": float(change) if isinstance(change, (int, float)) else 0.0,
+        "change_pct": float(change_pct) if isinstance(change_pct, (int, float)) else 0.0,
+        "volume": int(fallback.get("regularMarketVolume") or 0),
+        "avg_volume": int(fallback.get("averageDailyVolume3Month") or 0),
+        "market_state": str(fallback.get("marketState") or "UNKNOWN").replace("_", " ").title(),
+        "day_range": (
+            f"{float(day_low):,.2f} to {float(day_high):,.2f}"
+            if isinstance(day_low, (int, float)) and isinstance(day_high, (int, float))
+            else "—"
+        ),
+        "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
+    }
+
+
+def _market_pulse_finnhub_quote_record(
+    raw: Dict[str, Any] | None,
+    spec: Dict[str, str],
+    cached_row: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    fallback = cached_row if isinstance(cached_row, dict) else {}
+    normalized_fallback = _market_pulse_normalized_cached_row(cached_row, spec)
+    if not isinstance(raw, dict):
+        raw = {}
+
+    price = raw.get("c")
+    change = raw.get("d")
+    change_pct = raw.get("dp")
+    day_high = raw.get("h")
+    day_low = raw.get("l")
+    prev_close = raw.get("pc")
+    market_state = "Live" if isinstance(raw.get("t"), (int, float)) and raw.get("t") else str(fallback.get("market_state") or "UNKNOWN")
+
+    if not isinstance(price, (int, float)):
+        if isinstance(normalized_fallback, dict):
+            return normalized_fallback
+        return _market_pulse_quote_record({}, spec)
+
+    record = {
+        "symbol": spec["symbol"],
+        "label": spec["label"],
+        "group": spec["group"],
+        "focus": spec["focus"],
+        "name": str(fallback.get("name") or spec["label"]),
+        "price": float(price),
+        "change": float(change) if isinstance(change, (int, float)) else 0.0,
+        "change_pct": float(change_pct) if isinstance(change_pct, (int, float)) else 0.0,
+        "volume": int(fallback.get("volume") or 0),
+        "avg_volume": int(fallback.get("avg_volume") or 0),
+        "market_state": str(market_state).replace("_", " ").title(),
+        "day_range": (
+            f"{float(day_low):,.2f} to {float(day_high):,.2f}"
+            if isinstance(day_low, (int, float)) and isinstance(day_high, (int, float))
+            else str(fallback.get("day_range") or "—")
+        ),
+        "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
+    }
+    if isinstance(prev_close, (int, float)):
+        record["prev_close"] = float(prev_close)
+    if "series" in fallback and isinstance(fallback.get("series"), list):
+        record["series"] = fallback["series"]
+    return record
+
+
+def _market_pulse_spx_proxy_ratio(
+    cached_spx: Dict[str, Any] | None,
+    cached_spy: Dict[str, Any] | None,
+) -> float:
+    try:
+        spx_price = float((cached_spx or {}).get("price"))
+        spy_price = float((cached_spy or {}).get("price"))
+        if spy_price > 0:
+            return spx_price / spy_price
+    except (TypeError, ValueError, ZeroDivisionError):
+        pass
+    return 10.0
+
+
+def _market_pulse_spx_proxy_record(
+    spy_raw: Dict[str, Any] | None,
+    spec: Dict[str, str],
+    cached_spx: Dict[str, Any] | None,
+    cached_spy: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    if not isinstance(spy_raw, dict) or not isinstance(spy_raw.get("c"), (int, float)):
+        fallback = _market_pulse_normalized_cached_row(cached_spx, spec)
+        return fallback if isinstance(fallback, dict) else _market_pulse_quote_record({}, spec)
+
+    ratio = _market_pulse_spx_proxy_ratio(cached_spx, cached_spy)
+    price = float(spy_raw.get("c")) * ratio
+    change = float(spy_raw.get("d") or 0.0) * ratio
+    change_pct = float(spy_raw.get("dp") or 0.0)
+    day_high = spy_raw.get("h")
+    day_low = spy_raw.get("l")
+    market_state = "Proxy via Spy"
+    row = {
+        "symbol": spec["symbol"],
+        "label": spec["label"],
+        "group": spec["group"],
+        "focus": spec["focus"],
+        "name": "SPX proxy via SPY",
+        "price": round(price, 2),
+        "change": round(change, 2),
+        "change_pct": change_pct,
+        "volume": int((cached_spx or {}).get("volume") or 0),
+        "avg_volume": int((cached_spx or {}).get("avg_volume") or 0),
+        "market_state": market_state,
+        "day_range": (
+            f"{float(day_low) * ratio:,.2f} to {float(day_high) * ratio:,.2f}"
+            if isinstance(day_low, (int, float)) and isinstance(day_high, (int, float))
+            else str((cached_spx or {}).get("day_range") or "—")
+        ),
+        "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
+    }
+    if isinstance((cached_spx or {}).get("series"), list):
+        row["series"] = (cached_spx or {}).get("series")
+    return row
+
+
+def _market_pulse_scale_series(series: List[Dict[str, Any]], ratio: float) -> List[Dict[str, Any]]:
+    scaled: List[Dict[str, Any]] = []
+    for point in series:
+        if not isinstance(point, dict):
+            continue
+        try:
+            value = float(point.get("v"))
+        except (TypeError, ValueError):
+            continue
+        scaled.append({"label": str(point.get("label") or ""), "v": round(value * ratio, 2)})
+    return scaled
+
+
+def _market_pulse_scale_candles(candles: List[Dict[str, Any]], ratio: float) -> List[Dict[str, Any]]:
+    scaled: List[Dict[str, Any]] = []
+    for candle in candles:
+        if not isinstance(candle, dict):
+            continue
+        try:
+            scaled.append(
+                {
+                    "label": str(candle.get("label") or ""),
+                    "stamp": int(candle.get("stamp") or 0),
+                    "o": round(float(candle.get("o")) * ratio, 2),
+                    "h": round(float(candle.get("h")) * ratio, 2),
+                    "l": round(float(candle.get("l")) * ratio, 2),
+                    "c": round(float(candle.get("c")) * ratio, 2),
+                    "v": int(candle.get("v") or 0),
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+    return scaled
+
+
+def _market_pulse_preserve_cached_rows(
+    quotes: List[Dict[str, Any]],
+    cached_rows: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    preserved: List[Dict[str, Any]] = []
+    for row in quotes:
+        label = str((row or {}).get("label") or "")
+        cached = cached_rows.get(label)
+        if not _market_pulse_has_value(row) and _market_pulse_has_value(cached):
+            spec = next((item for item in MARKET_PULSE_SYMBOLS if item["label"] == label), None)
+            if isinstance(spec, dict):
+                cached_row = _market_pulse_normalized_cached_row(cached, spec)
+                if isinstance(cached_row, dict):
+                    preserved.append(cached_row)
+                    continue
+        preserved.append(row)
+    return preserved
+
+
+def _market_pulse_finnhub_candles(symbol: str, now_et: datetime) -> List[Dict[str, Any]]:
+    if not FINNHUB_API_KEY:
+        return []
+    end_at = int(now_et.timestamp())
+    start_at = end_at - (7 * 60 * 60)
+    payload = _market_pulse_json_request(
+        FINNHUB_BASE_URL + "/stock/candle",
+        {
+            "symbol": symbol,
+            "resolution": "1",
+            "from": start_at,
+            "to": end_at,
+            "token": FINNHUB_API_KEY,
+        },
+    )
+    if not isinstance(payload, dict) or str(payload.get("s") or "").lower() != "ok":
+        return []
+    opens = payload.get("o") or []
+    highs = payload.get("h") or []
+    lows = payload.get("l") or []
+    closes = payload.get("c") or []
+    volumes = payload.get("v") or []
+    stamps = payload.get("t") or []
+    if not all(isinstance(item, list) for item in (opens, highs, lows, closes, volumes, stamps)):
+        return []
+    series: List[Dict[str, Any]] = []
+    for open_v, high_v, low_v, close_v, volume_v, stamp in zip(opens, highs, lows, closes, volumes, stamps):
+        if not all(isinstance(item, (int, float)) for item in (open_v, high_v, low_v, close_v, stamp)):
+            continue
+        ts = datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ)
+        series.append(
+            {
+                "label": ts.strftime("%H:%M"),
+                "stamp": int(stamp),
+                "o": float(open_v),
+                "h": float(high_v),
+                "l": float(low_v),
+                "c": float(close_v),
+                "v": int(volume_v) if isinstance(volume_v, (int, float)) else 0,
+            }
+        )
+    return series
+
+
+def _market_pulse_snapshot() -> Dict[str, Any]:
+    now_et = app_runtime.now_et()
+    fetched_at = _market_pulse_cache.get("fetched_at")
+    cached_payload = _market_pulse_cache.get("payload")
+    if (
+        isinstance(fetched_at, datetime)
+        and isinstance(cached_payload, dict)
+        and (now_et - fetched_at).total_seconds() < MARKET_PULSE_CACHE_TTL_SECONDS
+    ):
+        return cached_payload
+
+    disk_payload = _load_market_pulse_disk_cache()
+    cache_seed = cached_payload if isinstance(cached_payload, dict) else disk_payload
+    cached_rows = _market_pulse_cached_row_map(cache_seed)
+
+    if FINNHUB_API_KEY:
+        raw_map: Dict[str, Dict[str, Any] | None] = {}
+        for spec in MARKET_PULSE_SYMBOLS:
+            raw_map[spec["label"]] = _market_pulse_json_request(
+                FINNHUB_BASE_URL + "/quote",
+                {
+                    "symbol": spec["symbol"],
+                    "token": FINNHUB_API_KEY,
+                },
+            )
+
+        quotes = []
+        live_count = 0
+        spy_raw = raw_map.get("SPY")
+        cached_spy = cached_rows.get("SPY")
+        cached_spx = cached_rows.get("SPX")
+        for spec in MARKET_PULSE_SYMBOLS:
+            raw = raw_map.get(spec["label"])
+            if isinstance(raw, dict) and isinstance(raw.get("c"), (int, float)):
+                live_count += 1
+            if spec["label"] == "SPX" and not (isinstance(raw, dict) and isinstance(raw.get("c"), (int, float))):
+                row = _market_pulse_spx_proxy_record(spy_raw, spec, cached_spx, cached_spy)
+                spy_series = _market_pulse_finnhub_candles("SPY", now_et)
+                if spy_series:
+                    row["series"] = _market_pulse_scale_series(
+                        spy_series,
+                        _market_pulse_spx_proxy_ratio(cached_spx, cached_spy),
+                    )
+            else:
+                row = _market_pulse_finnhub_quote_record(raw, spec, cached_rows.get(spec["label"]))
+                if spec["label"] == "SPX":
+                    series = _market_pulse_finnhub_candles(spec["symbol"], now_et)
+                    if series:
+                        row["series"] = series
+            quotes.append(row)
+        quotes = _market_pulse_preserve_cached_rows(quotes, cached_rows)
+        if live_count:
+            result = {
+                "available": any(q.get("price") is not None for q in quotes),
+                "fetched_at": now_et.strftime("%b %d, %Y %I:%M %p ET"),
+                "source_label": "Finnhub market feed",
+                "source_note": (
+                    "Live quotes and SPX chart use Finnhub first. Missing fields may fall back to the last cached snapshot."
+                    if live_count < len(MARKET_PULSE_SYMBOLS)
+                    else "Live quotes and SPX candles are being served by Finnhub."
+                ),
+                "quotes": quotes,
+            }
+            _market_pulse_cache["fetched_at"] = now_et
+            _market_pulse_cache["payload"] = result
+            _save_market_pulse_disk_cache(result)
+            return result
+
+    symbol_csv = ",".join(spec["symbol"] for spec in MARKET_PULSE_SYMBOLS)
+    payload = _market_pulse_json_request(
+        MARKET_PULSE_QUOTES_URL,
+        {"symbols": symbol_csv},
+    )
+
+    if payload is None:
+        if isinstance(cached_payload, dict):
+            return cached_payload
+        if isinstance(disk_payload, dict):
+            _market_pulse_cache["payload"] = disk_payload
+            return disk_payload
+        return {
+            "available": False,
+            "fetched_at": "",
+            "source_label": "Finnhub / Yahoo market feeds",
+            "source_note": (
+                "Live market data is unavailable because the app runtime cannot currently reach Finnhub or the Yahoo quote host. "
+                "A cached snapshot will be shown when available."
+            ),
+            "quotes": [],
+        }
+
+    raw_rows = (
+        (((payload.get("quoteResponse") or {}) if isinstance(payload.get("quoteResponse"), dict) else {}).get("result"))
+        or []
+    )
+    raw_map = {
+        str(row.get("symbol") or ""): row
+        for row in raw_rows
+        if isinstance(row, dict) and str(row.get("symbol") or "")
+    }
+    quotes: List[Dict[str, Any]] = []
+    for spec in MARKET_PULSE_SYMBOLS:
+        row = raw_map.get(spec["symbol"], {})
+        quotes.append(_market_pulse_quote_record(row if isinstance(row, dict) else {}, spec))
+
+    result = {
+        "available": bool(quotes),
+        "fetched_at": now_et.strftime("%b %d, %Y %I:%M %p ET"),
+        "source_label": "Yahoo Finance quote feed",
+        "source_note": "Live quote data may be delayed by the upstream feed depending on the symbol.",
+        "quotes": quotes,
+    }
+    _market_pulse_cache["fetched_at"] = now_et
+    _market_pulse_cache["payload"] = result
+    _save_market_pulse_disk_cache(result)
+    return result
+
+
+def _market_pulse_context(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    by_label = {str(q.get("label") or ""): q for q in quotes}
+    vix_val = float((by_label.get("VIX") or {}).get("price") or 0.0)
+    spy_pct = float((by_label.get("SPY") or {}).get("change_pct") or 0.0)
+    qqq_pct = float((by_label.get("QQQ") or {}).get("change_pct") or 0.0)
+    iwm_pct = float((by_label.get("IWM") or {}).get("change_pct") or 0.0)
+    spx_pct = float((by_label.get("SPX") or {}).get("change_pct") or 0.0)
+
+    if vix_val and vix_val < 16:
+        gamma_label = "Likely pin / lower-vol"
+        gamma_tone = "positive"
+        gamma_note = "Calmer vol regime. Expect tighter rotations unless catalysts break range."
+    elif vix_val and vix_val < 21:
+        gamma_label = "Balanced / two-way"
+        gamma_tone = ""
+        gamma_note = "Mixed regime. Expect cleaner reactions at key levels, but less pinning."
+    elif vix_val:
+        gamma_label = "Higher-vol / expansion"
+        gamma_tone = "negative"
+        gamma_note = "Higher vol regime. Expect faster range expansion and weaker pin behavior."
+    else:
+        gamma_label = "Proxy unavailable"
+        gamma_tone = ""
+        gamma_note = "Gamma proxy could not be derived because VIX data is unavailable."
+
+    if qqq_pct > spy_pct and qqq_pct > iwm_pct:
+        leadership = "Tech-led"
+    elif iwm_pct > spy_pct and iwm_pct > qqq_pct:
+        leadership = "Broad risk-on"
+    elif spy_pct >= 0 and qqq_pct < 0 and iwm_pct < 0:
+        leadership = "Defensive large-cap"
+    else:
+        leadership = "Mixed tape"
+
+    breadth_delta = round(iwm_pct - spy_pct, 2)
+    breadth_label = "Broadening"
+    if breadth_delta < -0.3:
+        breadth_label = "Narrowing"
+    elif abs(breadth_delta) <= 0.3:
+        breadth_label = "Balanced"
+
+    return {
+        "gamma_label": gamma_label,
+        "gamma_tone": gamma_tone,
+        "gamma_note": gamma_note,
+        "vix_value": vix_val,
+        "leadership": leadership,
+        "breadth_label": breadth_label,
+        "breadth_delta": breadth_delta,
+        "spx_pct": spx_pct,
+        "headline_note": (
+            f"SPX {spx_pct:+.2f}% · QQQ {qqq_pct:+.2f}% · IWM {iwm_pct:+.2f}% vs SPY {spy_pct:+.2f}%."
+            if quotes
+            else "Live quote data is unavailable right now."
+        ),
+    }
+
+
+def _market_news_timestamp_label(stamp: Any) -> str:
+    if not isinstance(stamp, (int, float)):
+        return ""
+    return datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ).strftime("%b %-d, %-I:%M %p ET")
+
+
+def _market_news_theme(text: str) -> Tuple[str, str]:
+    raw = text.lower()
+    themes = [
+        (("fed", "powell", "rates", "yield", "treasury", "bond"), ("Rates", "Rates / liquidity backdrop")),
+        (("cpi", "pce", "inflation", "jobs", "payrolls", "ism"), ("Macro", "Macro release with index impact")),
+        (("oil", "iran", "middle east", "crude"), ("Energy", "Energy and geopolitics can move the tape")),
+        (("vix", "volatility", "options"), ("Vol", "Volatility regime shift")),
+        (("nvidia", "ai", "semiconductor", "chip"), ("AI", "AI leadership / semis can drag QQQ and SPX")),
+        (("apple", "microsoft", "amazon", "meta"), ("Mega-cap", "Mega-cap leadership watch")),
+        (("s&p", "spx", "spy", "qqq", "iwm", "nasdaq", "dow"), ("Index", "Direct index / ETF driver")),
+    ]
+    for keywords, result in themes:
+        if any(word in raw for word in keywords):
+            return result
+    return ("Market", "General market-moving headline")
+
+
+def _market_news_score(row: Dict[str, Any]) -> int:
+    text = f"{row.get('headline') or ''} {row.get('summary') or ''} {row.get('related') or ''}".lower()
+    score = 0
+    weighted = {
+        "fed": 5,
+        "powell": 5,
+        "rates": 4,
+        "yield": 4,
+        "treasury": 4,
+        "cpi": 5,
+        "pce": 5,
+        "inflation": 5,
+        "jobs": 4,
+        "payroll": 4,
+        "ism": 4,
+        "oil": 3,
+        "iran": 3,
+        "vix": 4,
+        "volatility": 4,
+        "s&p": 5,
+        "spx": 5,
+        "spy": 4,
+        "qqq": 4,
+        "iwm": 4,
+        "nvidia": 4,
+        "apple": 3,
+        "microsoft": 3,
+        "amazon": 3,
+        "meta": 3,
+        "ai": 3,
+        "earnings": 2,
+    }
+    for term, value in weighted.items():
+        if term in text:
+            score += value
+    return score
+
+
+def _market_news_item(row: Dict[str, Any], *, symbol: str = "", forced_tag: str = "") -> Dict[str, Any]:
+    headline = str(row.get("headline") or "").strip()
+    summary = str(row.get("summary") or "").strip()
+    source = str(row.get("source") or "Source").strip() or "Source"
+    url = str(row.get("url") or "").strip()
+    tag, why = _market_news_theme(f"{headline} {summary} {row.get('related') or ''}")
+    return {
+        "headline": headline or "Market headline",
+        "summary": summary or why,
+        "source": source,
+        "url": url,
+        "published_label": _market_news_timestamp_label(row.get("datetime")),
+        "tag": forced_tag or tag,
+        "why": why,
+        "symbol": symbol,
+    }
+
+
+def _market_news_snapshot() -> Dict[str, Any]:
+    now_et = app_runtime.now_et()
+    fetched_at = _market_news_cache.get("fetched_at")
+    cached_payload = _market_news_cache.get("payload")
+    if (
+        isinstance(fetched_at, datetime)
+        and isinstance(cached_payload, dict)
+        and (now_et - fetched_at).total_seconds() < MARKET_NEWS_CACHE_TTL_SECONDS
+    ):
+        return cached_payload
+
+    if not FINNHUB_API_KEY:
+        disk = _load_market_news_disk_cache()
+        if isinstance(disk, dict):
+            _market_news_cache["payload"] = disk
+            return disk
+        return {"available": False, "source_note": "Finnhub news feed is not configured.", "macro_events": [], "market_items": [], "watchlist_items": []}
+
+    general_payload = _market_pulse_json_request_any(
+        FINNHUB_BASE_URL + "/news",
+        {"category": "general", "token": FINNHUB_API_KEY},
+        timeout=8,
+    )
+    market_rows = general_payload if isinstance(general_payload, list) else []
+    relevant_general = [
+        row for row in market_rows
+        if isinstance(row, dict) and _market_news_score(row) >= 4
+    ]
+    relevant_general.sort(
+        key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
+        reverse=True,
+    )
+    market_items = [_market_news_item(row) for row in relevant_general[:8]]
+
+    watchlist_items: List[Dict[str, Any]] = []
+    from_day = (now_et.date() - timedelta(days=5)).isoformat()
+    to_day = now_et.date().isoformat()
+    for symbol in ("SPY", "QQQ", "IWM", "NVDA", "MSFT", "AAPL", "AMZN", "META"):
+        payload = _market_pulse_json_request_any(
+            FINNHUB_BASE_URL + "/company-news",
+            {"symbol": symbol, "from": from_day, "to": to_day, "token": FINNHUB_API_KEY},
+            timeout=8,
+        )
+        if not isinstance(payload, list):
+            continue
+        best = next((row for row in payload if isinstance(row, dict) and str(row.get("headline") or "").strip()), None)
+        if best is None:
+            continue
+        item = _market_news_item(best, symbol=symbol, forced_tag=symbol)
+        watchlist_items.append(item)
+
+    macro_overlay = _forex_factory_usd_week_events(now_et.date())
+    macro_events = []
+    for event in list(macro_overlay.get("events") or [])[:6]:
+        macro_events.append(
+            {
+                "headline": str(event.get("title") or "USD event"),
+                "summary": f"{event.get('impact') or ''} impact scheduled for {event.get('time_label') or ''}.",
+                "source": "Forex Factory",
+                "url": str(event.get("jump_href") or "/candle-opens"),
+                "published_label": str(event.get("date_label") or ""),
+                "tag": "Macro",
+                "why": str(event.get("tooltip") or "Calendar event"),
+            }
+        )
+
+    result = {
+        "available": bool(market_items or watchlist_items or macro_events),
+        "source_note": "Finnhub market news plus Forex Factory macro triggers.",
+        "macro_events": macro_events,
+        "market_items": market_items,
+        "watchlist_items": watchlist_items,
+    }
+    _market_news_cache["fetched_at"] = now_et
+    _market_news_cache["payload"] = result
+    _save_market_news_disk_cache(result)
+    return result
+
+
+def _market_pulse_parse_range(day_range: str) -> Tuple[float | None, float | None]:
+    parts = [part.strip().replace(",", "") for part in str(day_range or "").split(" to ")]
+    if len(parts) != 2:
+        return None, None
+    try:
+        return float(parts[0]), float(parts[1])
+    except ValueError:
+        return None, None
+
+
+def _market_pulse_spx_series(spx_quote: Dict[str, Any]) -> List[Dict[str, Any]]:
+    candles = _market_pulse_spx_candles(spx_quote)
+    if candles:
+        return [{"label": str(candle.get("label") or ""), "v": float(candle.get("c") or 0.0)} for candle in candles]
+    return []
+
+
+def _market_pulse_spx_candles(spx_quote: Dict[str, Any]) -> List[Dict[str, Any]]:
+    explicit = spx_quote.get("series")
+    if isinstance(explicit, list) and len(explicit) >= 2:
+        clean: List[Dict[str, Any]] = []
+        for idx, row in enumerate(explicit):
+            if not isinstance(row, dict):
+                continue
+            try:
+                open_v = float(row.get("o", row.get("v")))
+                high_v = float(row.get("h", row.get("v")))
+                low_v = float(row.get("l", row.get("v")))
+                close_v = float(row.get("c", row.get("v")))
+            except (TypeError, ValueError):
+                continue
+            clean.append(
+                {
+                    "label": str(row.get("label") or f"P{idx + 1}"),
+                    "stamp": int(row.get("stamp") or 0),
+                    "o": open_v,
+                    "h": high_v,
+                    "l": low_v,
+                    "c": close_v,
+                    "v": int(row.get("v") or 0),
+                }
+            )
+        if len(clean) >= 2:
+            return clean
+
+    try:
+        current = float(spx_quote.get("price"))
+        delta = float(spx_quote.get("change"))
+    except (TypeError, ValueError):
+        return []
+
+    prev_close = current - delta
+    low, high = _market_pulse_parse_range(str(spx_quote.get("day_range") or ""))
+    if low is None or high is None:
+        band = max(abs(delta) * 1.6, max(current * 0.004, 8.0))
+        low = min(prev_close, current) - (band * 0.45)
+        high = max(prev_close, current) + (band * 0.55)
+
+    anchor = app_runtime.now_et().replace(hour=9, minute=30, second=0, microsecond=0)
+    path = [
+        prev_close + (delta * 0.18),
+        (prev_close + low) / 2.0,
+        low,
+        prev_close + (delta * 0.48),
+        high,
+        (high + current) / 2.0,
+        current,
+    ]
+    candles: List[Dict[str, Any]] = []
+    prior_close = prev_close
+    for idx, close_v in enumerate(path):
+        close_px = max(min(close_v, high), low)
+        open_px = prior_close
+        high_px = max(open_px, close_px, high if idx == 4 else max(open_px, close_px) + abs(delta * 0.08))
+        low_px = min(open_px, close_px, low if idx == 2 else min(open_px, close_px) - abs(delta * 0.08))
+        candles.append(
+            {
+                "label": (anchor + timedelta(minutes=60 * idx)).strftime("%H:%M" if idx < len(path) - 1 else "Now"),
+                "stamp": int((anchor + timedelta(minutes=60 * idx)).timestamp()),
+                "o": round(open_px, 2),
+                "h": round(low if idx == 2 else min(high_px, high), 2),
+                "l": round(high if idx == 4 else max(low_px, low), 2) if False else round(max(min(low_px, high), low), 2),
+                "c": round(close_px, 2),
+                "v": max(1200 - (idx * 90), 320) * 1000,
+            }
+        )
+        candles[-1]["h"] = round(max(candles[-1]["o"], candles[-1]["c"], candles[-1]["h"]), 2)
+        candles[-1]["l"] = round(min(candles[-1]["o"], candles[-1]["c"], candles[-1]["l"]), 2)
+        prior_close = close_px
+    return candles
+
+
+def _market_pulse_today_markers(candles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if len(candles) < 2:
+        return []
+    payload = get_forex_factory_feed()
+    if not isinstance(payload, list):
+        return []
+    start_stamp = min(int(candle.get("stamp") or 0) for candle in candles if int(candle.get("stamp") or 0) > 0)
+    end_stamp = max(int(candle.get("stamp") or 0) for candle in candles if int(candle.get("stamp") or 0) > 0)
+    if not start_stamp or not end_stamp:
+        return []
+    start_dt = datetime.fromtimestamp(start_stamp, tz=app_runtime.TZ)
+    session_day = start_dt.date()
+    markers: List[Dict[str, Any]] = []
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("country") or "").upper() != "USD":
+            continue
+        impact = str(row.get("impact") or "").title()
+        if impact not in {"High", "Medium"}:
+            continue
+        raw_date = str(row.get("date") or "").strip()
+        if not raw_date:
+            continue
+        try:
+            dt = datetime.fromisoformat(raw_date)
+        except ValueError:
+            continue
+        if dt.date() != session_day:
+            continue
+        stamp = int(dt.timestamp())
+        if stamp < start_stamp or stamp > end_stamp:
+            continue
+        markers.append(
+            {
+                "stamp": stamp,
+                "time_label": dt.strftime("%-I:%M %p ET"),
+                "title": str(row.get("title") or "USD event").strip() or "USD event",
+                "impact_class": "high" if impact == "High" else "medium",
+            }
+        )
+    markers.sort(key=lambda item: (item["stamp"], item["title"]))
+    return markers[:4]
+
+
+def _market_pulse_chart_svg(candles: List[Dict[str, Any]], markers: List[Dict[str, Any]]) -> str:
+    if len(candles) < 2:
+        return """
+        <div class="chartEmpty">
+          <div class="chartEmptyTitle">SPX chart unavailable.</div>
+          <div class="chartEmptySub">Need at least two intraday points to render the tape.</div>
+        </div>
+        """
+
+    width = 960.0
+    height = 340.0
+    pad_x = 24.0
+    top_pad = 18.0
+    bottom_pad = 26.0
+    volume_height = 56.0
+    gap = 12.0
+    price_height = height - top_pad - bottom_pad - volume_height - gap
+
+    highs = [float(candle.get("h") or candle.get("c") or 0.0) for candle in candles]
+    lows = [float(candle.get("l") or candle.get("c") or 0.0) for candle in candles]
+    opens = [float(candle.get("o") or candle.get("c") or 0.0) for candle in candles]
+    closes = [float(candle.get("c") or 0.0) for candle in candles]
+    volumes = [int(candle.get("v") or 0) for candle in candles]
+    min_v = min(lows)
+    max_v = max(highs)
+    if abs(max_v - min_v) < 1e-9:
+        max_v = min_v + 1.0
+    max_vol = max(volumes) if any(volumes) else 1
+
+    first_stamp = int(candles[0].get("stamp") or 0)
+    last_stamp = int(candles[-1].get("stamp") or 0)
+
+    def sx(idx: int) -> float:
+        return pad_x + (idx / max(len(candles) - 1, 1)) * (width - (2 * pad_x))
+
+    def sx_from_stamp(stamp: int) -> float:
+        if last_stamp <= first_stamp:
+            return sx(0)
+        ratio = (stamp - first_stamp) / (last_stamp - first_stamp)
+        return pad_x + max(0.0, min(1.0, ratio)) * (width - (2 * pad_x))
+
+    def sy_price(value: float) -> float:
+        return top_pad + ((max_v - value) / (max_v - min_v)) * price_height
+
+    def sy_vol(value: int) -> float:
+        base_y = top_pad + price_height + gap + volume_height
+        return base_y - ((value / max_vol) * volume_height)
+
+    grid_lines = "".join(
+        f'<line x1="{pad_x:.2f}" y1="{y:.2f}" x2="{width - pad_x:.2f}" y2="{y:.2f}" class="chartGridLine" />'
+        for y in [top_pad + (price_height * frac) for frac in (0.0, 0.25, 0.5, 0.75, 1.0)]
+    )
+    line_points = " ".join(f"{sx(idx):.2f},{sy_price(close_px):.2f}" for idx, close_px in enumerate(closes))
+    area_points = f"{pad_x:.2f},{top_pad + price_height:.2f} {line_points} {width - pad_x:.2f},{top_pad + price_height:.2f}"
+    volume_markup: List[str] = []
+    label_markup: List[str] = []
+    for idx, candle in enumerate(candles):
+        x = sx(idx)
+        close_px = float(candle.get("c") or 0.0)
+        open_px = float(candle.get("o") or close_px)
+        tone = "up" if close_px >= open_px else "down"
+        bar_width = max(2.0, min(6.0, ((width - (2 * pad_x)) / max(len(candles), 1)) * 0.82))
+        vol_y = sy_vol(int(candle.get("v") or 0))
+        volume_markup.append(
+            f'<rect x="{x - (bar_width / 2):.2f}" y="{vol_y:.2f}" width="{bar_width:.2f}" height="{(top_pad + price_height + gap + volume_height) - vol_y:.2f}" class="marketVolumeBar {tone}" rx="1.5" />'
+        )
+        if idx in {0, len(candles) // 2, len(candles) - 1}:
+            label_markup.append(
+                f'<text x="{x:.2f}" y="{height - 4:.2f}" text-anchor="middle" class="marketPulseAxisLabel">{html.escape(str(candle.get("label") or ""))}</text>'
+            )
+
+    marker_lines: List[str] = []
+    marker_chips: List[str] = []
+    for marker in markers:
+        x = sx_from_stamp(int(marker.get("stamp") or 0))
+        tone = str(marker.get("impact_class") or "medium")
+        marker_lines.append(
+            f'<line x1="{x:.2f}" y1="{top_pad:.2f}" x2="{x:.2f}" y2="{top_pad + price_height + gap + volume_height:.2f}" class="marketEventLine {tone}" />'
+        )
+        marker_lines.append(
+            f'<circle cx="{x:.2f}" cy="{top_pad + 10:.2f}" r="5.0" class="marketEventDot {tone}" />'
+        )
+        chip_class = "marketPulseNegative" if tone == "high" else "marketPulseMarker"
+        marker_chips.append(
+            f'<span class="{chip_class}">{html.escape(str(marker.get("time_label") or ""))} {html.escape(str(marker.get("title") or ""))}</span>'
+        )
+
+    latest = closes[-1]
+    first = closes[0]
+    tone = "marketPulsePositive" if latest >= first else "marketPulseNegative"
+    latest_y = sy_price(latest)
+    gradient_id = "marketPulseIntradayArea"
+
+    return f"""
+    <svg viewBox="0 0 {int(width)} {int(height)}" role="img" aria-label="SPX 1 minute chart" style="width:100%;height:auto;display:block">
+      <defs>
+        <linearGradient id="{gradient_id}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#6ed4ff" stop-opacity="0.24" />
+          <stop offset="100%" stop-color="#6ed4ff" stop-opacity="0.02" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="{int(width)}" height="{int(height)}" fill="rgba(4,10,20,.18)" rx="14" />
+      {grid_lines}
+      {''.join(marker_lines)}
+      <line x1="{pad_x:.2f}" y1="{latest_y:.2f}" x2="{width - pad_x:.2f}" y2="{latest_y:.2f}" class="marketLastLine" />
+      <polygon points="{area_points}" class="marketIntradayArea" fill="url(#{gradient_id})" />
+      <polyline points="{line_points}" class="marketIntradayLine" />
+      <circle cx="{width - pad_x:.2f}" cy="{latest_y:.2f}" r="4.5" class="marketIntradayLast" />
+      {''.join(volume_markup)}
+      {''.join(label_markup)}
+    </svg>
+    <div class="chartMeta">
+      <span>1m Range: {min_v:,.2f} to {max_v:,.2f}</span>
+      <span class="{tone}">Session: {latest - first:+,.2f}</span>
+      <span>Now: {latest:,.2f}</span>
+    </div>
+    {f'<div class="chartMeta">{"".join(marker_chips)}</div>' if marker_chips else ""}
+    """
 
 
 def home():
@@ -86,10 +1082,17 @@ def dashboard():
         next_y += 1
 
     month_name = date(year, month, 1).strftime("%B %Y")
-    overall_balance = trades_repo.latest_balance_overall()
     balance_integrity = trades_repo.balance_integrity_snapshot()
+    overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
     sync_status = get_system_status()
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
+    balance_badges = balance_state_badges(balance_integrity)
+    sync_badges = sync_state_badges(
+        sync_status,
+        status_key="last_sync_status",
+        stage_key="last_sync_stage",
+        updated_key="last_sync_updated_human",
+    )
     admin_recompute_allowed = auth_enabled() and is_authenticated()
 
     week_anchor = (
@@ -189,7 +1192,9 @@ def dashboard():
         month_name=month_name,
         overall_balance=overall_balance,
         balance_integrity=balance_integrity,
+        balance_badges=balance_badges,
         sync_status=sync_status,
+        sync_badges=sync_badges,
         data_trust=data_trust,
         admin_recompute_allowed=admin_recompute_allowed,
         this_week_total=this_week_total,
@@ -221,6 +1226,34 @@ def dashboard():
         money_compact=_money_compact,
     )
     return render_page(content, active="dashboard")
+
+
+def market_pulse_page():
+    snapshot = _market_pulse_snapshot()
+    news_snapshot = _market_news_snapshot()
+    quotes = list(snapshot.get("quotes") or [])
+    context = _market_pulse_context(quotes)
+    core_quotes = [q for q in quotes if str(q.get("group") or "") == "core"]
+    leader_quotes = [q for q in quotes if str(q.get("group") or "") == "leaders"]
+
+    content = render_template(
+        "core/market_pulse.html",
+        available=bool(snapshot.get("available")),
+        fetched_at=str(snapshot.get("fetched_at") or ""),
+        source_label=str(snapshot.get("source_label") or "Finnhub market feed"),
+        source_note=str(snapshot.get("source_note") or ""),
+        core_quotes=core_quotes,
+        leader_quotes=leader_quotes,
+        context=context,
+        news_available=bool(news_snapshot.get("available")),
+        news_source_note=str(news_snapshot.get("source_note") or ""),
+        macro_events=list(news_snapshot.get("macro_events") or []),
+        market_items=list(news_snapshot.get("market_items") or []),
+        watchlist_items=list(news_snapshot.get("watchlist_items") or []),
+        money=app_runtime.money,
+        money_compact=_money_compact,
+    )
+    return render_page(content, active="market-pulse", title="McCain Capital · Market Pulse")
 
 
 def command_calendar_page():
@@ -363,6 +1396,7 @@ def candle_opens_page():
         content,
         active="candle-opens",
         title=f"{model['month_name']} Candle Opens",
+        top_notice=model["top_notice"],
     )
 
 
@@ -677,7 +1711,9 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
     cal = Calendar(firstweekday=6)
     session_index = _trading_day_index_map(year)
     week_index, week_open_dates = _trading_week_index_map(year)
-
+    month_index, month_open_dates = _trading_month_index_map(year)
+    now_et = app_runtime.now_et()
+    news_overlay = _forex_factory_usd_week_events(now_et.date())
     prev_y, prev_m = (year, month - 1)
     next_y, next_m = (year, month + 1)
     if prev_m == 0:
@@ -700,6 +1736,7 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
             is_trading = in_month and not is_weekend and not is_holiday
             day_labels = []
             week_labels = []
+            month_labels = []
             if is_trading:
                 trading_days += 1
                 idx = session_index.get(day)
@@ -709,7 +1746,11 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
                     widx = week_index.get(day)
                     if widx is not None:
                         week_labels = [f"{span}W" for span in WEEK_OPEN_INTERVALS if widx % span == 1]
-                total_signals += len(day_labels) + len(week_labels)
+                if day in month_open_dates:
+                    midx = month_index.get(day)
+                    if midx is not None:
+                        month_labels = [f"{span}M" for span in MONTH_OPEN_INTERVALS if midx % span == 1]
+                total_signals += len(day_labels) + len(week_labels) + len(month_labels)
             cells.append(
                 {
                     "day": day.day,
@@ -722,7 +1763,9 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
                     "holiday_name": holiday_name,
                     "day_labels": day_labels,
                     "week_labels": week_labels,
-                    "labels": day_labels + week_labels,
+                    "month_labels": month_labels,
+                    "news_events": news_overlay["events_by_day"].get(day.isoformat(), []),
+                    "labels": day_labels + week_labels + month_labels,
                 }
             )
         weeks.append(cells)
@@ -741,7 +1784,140 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         "signal_count": total_signals,
         "day_legend": ", ".join(f"{span}D" for span in DAY_OPEN_INTERVALS),
         "week_legend": ", ".join(f"{span}W" for span in WEEK_OPEN_INTERVALS),
+        "month_legend": ", ".join(f"{span}M" for span in MONTH_OPEN_INTERVALS),
+        "news_week_range": news_overlay["week_range_label"],
+        "news_summary": news_overlay["summary"],
+        "news_total": news_overlay["total"],
+        "news_high": news_overlay["high_count"],
+        "news_medium": news_overlay["medium_count"],
+        "news_events": news_overlay["events"],
+        "news_days": news_overlay["days"],
+        "news_available": news_overlay["available"],
+        "top_notice": _candle_page_top_notice(now_et, news_overlay["events"]),
     }
+
+
+def _candle_page_top_notice(
+    now_et: datetime,
+    news_events: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    for event in news_events:
+        raw = str(event.get("starts_at") or "")
+        if not raw or str(event.get("impact_class") or "") != "high":
+            continue
+        try:
+            starts_at = datetime.fromisoformat(raw)
+        except ValueError:
+            continue
+        if starts_at < now_et:
+            continue
+        day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "
+        return {
+            "label": "Red Folder",
+            "text": f"🔴 {day_prefix}{event['time_label']}",
+            "detail": event["tooltip"],
+            "href": event.get("jump_href") or "",
+            "level": "high",
+        }
+    return None
+
+
+def _forex_factory_usd_week_events(anchor: date) -> Dict[str, Any]:
+    week_start = anchor - timedelta(days=(anchor.weekday() + 1) % 7)
+    week_end = week_start + timedelta(days=6)
+    result: Dict[str, Any] = {
+        "available": False,
+        "week_range_label": f"{week_start.strftime('%b %-d')} to {week_end.strftime('%b %-d')}",
+        "events": [],
+        "events_by_day": {},
+        "days": [],
+        "total": 0,
+        "high_count": 0,
+        "medium_count": 0,
+        "summary": "Live USD red/orange events unavailable right now.",
+    }
+    payload = get_forex_factory_feed()
+    if payload is None:
+        return result
+
+    events: List[Dict[str, Any]] = []
+    events_by_day: Dict[str, List[Dict[str, Any]]] = {}
+    high_count = 0
+    medium_count = 0
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("country") or "").upper() != "USD":
+            continue
+        impact = str(row.get("impact") or "").title()
+        if impact not in {"High", "Medium"}:
+            continue
+        raw_date = str(row.get("date") or "").strip()
+        if not raw_date:
+            continue
+        try:
+            dt = datetime.fromisoformat(raw_date)
+        except ValueError:
+            continue
+        event_day = dt.date()
+        if event_day < week_start or event_day > week_end:
+            continue
+        time_label = dt.strftime("%-I:%M %p ET")
+        item = {
+            "title": str(row.get("title") or "USD event").strip() or "USD event",
+            "impact": impact,
+            "iso": event_day.isoformat(),
+            "date_label": event_day.strftime("%a, %b %-d"),
+            "starts_at": raw_date,
+            "time_label": time_label,
+            "impact_class": "high" if impact == "High" else "medium",
+            "icon": "🔴" if impact == "High" else "🟠",
+            "jump_href": (
+                f"/candle-opens?y={event_day.year}&m={event_day.month}"
+                f"#news-day-{event_day.isoformat()}"
+            ),
+            "tooltip": f"{impact} impact • {time_label} • {str(row.get('title') or 'USD event').strip() or 'USD event'}",
+        }
+        events.append(item)
+        events_by_day.setdefault(item["iso"], []).append(item)
+        if impact == "High":
+            high_count += 1
+        else:
+            medium_count += 1
+
+    events.sort(key=lambda item: (item["iso"], item["time_label"], item["title"]))
+    for items in events_by_day.values():
+        items.sort(key=lambda item: (item["time_label"], item["title"]))
+
+    news_days: List[Dict[str, Any]] = []
+    for iso in sorted(events_by_day.keys()):
+        day_events = list(events_by_day.get(iso, []))
+        if not day_events:
+            continue
+        news_days.append(
+            {
+                "iso": iso,
+                "date_label": day_events[0]["date_label"],
+                "high_count": len([e for e in day_events if e.get("impact_class") == "high"]),
+                "medium_count": len([e for e in day_events if e.get("impact_class") == "medium"]),
+                "events": day_events,
+            }
+        )
+
+    if events:
+        result.update(
+            {
+                "available": True,
+                "events": events,
+                "events_by_day": events_by_day,
+                "days": news_days,
+                "total": len(events),
+                "high_count": high_count,
+                "medium_count": medium_count,
+                "summary": f"{len(events)} USD red/orange events this week.",
+            }
+        )
+    return result
 
 
 def _goal_signal_count(goal_row: Dict[str, Any]) -> int:
@@ -908,6 +2084,23 @@ def _trading_week_index_map(year: int) -> Tuple[Dict[date, int], set[date]]:
             out[cursor] = idx
         cursor += timedelta(days=1)
     return out, week_open_dates
+
+
+def _trading_month_index_map(year: int) -> Tuple[Dict[date, int], set[date]]:
+    idx = 0
+    out: Dict[date, int] = {}
+    month_open_dates: set[date] = set()
+    for month in range(1, 13):
+        cursor = date(year, month, 1)
+        end = date(year, month, monthrange(year, month)[1])
+        while cursor <= end:
+            if _is_market_session(cursor):
+                idx += 1
+                out[cursor] = idx
+                month_open_dates.add(cursor)
+                break
+            cursor += timedelta(days=1)
+    return out, month_open_dates
 
 
 def _is_market_session(day: date) -> bool:

@@ -1,10 +1,25 @@
 {% from "partials/async_job_macros.html" import runway %}
 {% set ws = workspace or 'live' %}
 {% set last = sync_status or {} %}
+{% if sync_badges %}
+<div class="statusBadgeStrip">
+  {% for badge in sync_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
 <div class="card stack12">
   <div class="toolbar">
-    <div class="pill">🧭 Import Workspace</div>
-    <div class="tiny stack8 line15">Use focused tabs to avoid clutter while keeping all import tools in one place.</div>
+    <div class="pillRow">
+      <div class="pill">🧭 Import Workspace</div>
+      <details class="inlineHelp">
+        <summary aria-label="Import workspace help">?</summary>
+        <div class="helpPopover">Focused tabs keep live sync, manual upload, and reconcile tools together without stacking all of the copy on mobile.</div>
+      </details>
+    </div>
     <div class="hr"></div>
     <div class="leftActions">
       <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">🤖 Live Sync</a>
@@ -18,7 +33,7 @@
 {% if ws == 'upload' %}
 <div class="card">
   <div class="toolbar">
-    <div class="pill">📄 Upload Statement (PDF / HTML)</div>
+    <div class="pill">Upload Statement</div>
     <div class="hr"></div>
     <form method="post" enctype="multipart/form-data" id="statement-upload-form">
       <div class="row">
@@ -32,9 +47,14 @@
       </div>
 
       <div class="stack12">
-        <label>📎 File</label>
+        <div class="pillRow">
+          <label>File</label>
+          <details class="inlineHelp">
+            <summary aria-label="Upload file help">?</summary>
+            <div class="helpPopover">HTML statements are cleaner than OCR and should be preferred when available.</div>
+          </details>
+        </div>
         <input type="file" name="pdf" accept="application/pdf,text/html" />
-        <div class="tiny stack8">Upload the Vanquish Account Statement HTML if you have it — it’s cleaner than OCR ✅</div>
       </div>
 
       <div class="hr"></div>
@@ -55,7 +75,7 @@
 {% if job %}
 <div class="card stack12" id="sync-job-card" data-job-id="{{ job.get('id') }}">
   <div class="toolbar">
-    <div class="pill">🛰️ Sync Job Status</div>
+    <div class="pill">Sync Job Status</div>
     <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
     {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
     <div class="statRow">
@@ -98,8 +118,13 @@
 {% if last %}
 <div class="card stack12">
   <div class="toolbar">
-    <div class="pill">🩺 Live Sync Diagnostics</div>
-    <div class="tiny stack8 line15">Last run status, failure stage, and quick-retry controls.</div>
+    <div class="pillRow">
+      <div class="pill">Live Sync Diagnostics</div>
+      <details class="inlineHelp">
+        <summary aria-label="Live sync diagnostics help">?</summary>
+        <div class="helpPopover">Shows the last run status, failure stage, and quick retry controls.</div>
+      </details>
+    </div>
     <div class="hr"></div>
     <div class="statRow">
       <div class="stat">
@@ -132,10 +157,13 @@
     {% endif %}
     <div class="hr"></div>
     <div class="rightActions">
-      <button class="btn" type="button" id="quick-retry-btn">🔁 Quick Retry Last Settings</button>
+      <button class="btn" type="button" id="quick-retry-btn">Quick Retry</button>
       <a class="btn" href="/trades/upload/statement">Reset</a>
+      <details class="inlineHelp">
+        <summary aria-label="Quick retry help">?</summary>
+        <div class="helpPopover">Quick retry reuses the last sync settings and moves focus to the password field.</div>
+      </details>
     </div>
-    <div class="tiny stack8" id="quick-retry-note">Quick retry pre-fills last sync inputs and focuses password.</div>
   </div>
 </div>
 {% endif %}
@@ -145,8 +173,13 @@
 {% set rel = sync_reliability or {} %}
 <div class="card stack12">
   <div class="toolbar">
-    <div class="pill">📊 Sync Reliability (30D)</div>
-    <div class="tiny stack8 line15">Success rate, runtime, and failure-stage trend for live + auto sync runs.</div>
+    <div class="pillRow">
+      <div class="pill">Sync Reliability (30D)</div>
+      <details class="inlineHelp">
+        <summary aria-label="Sync reliability help">?</summary>
+        <div class="helpPopover">Tracks success rate, runtime, and failure-stage trends for live and auto sync runs.</div>
+      </details>
+    </div>
     <div class="hr"></div>
     <div class="statRow">
       <div class="stat">
@@ -178,11 +211,14 @@
     </div>
     {% if rel.get('by_source') %}
       <div class="hr"></div>
-      <div class="tiny stack8 line16">
-        {% for src, bucket in rel.get('by_source', {}).items() %}
-          • {{ src }}: {{ bucket.get('success', 0) }}/{{ bucket.get('attempts', 0) }} success<br>
-        {% endfor %}
-      </div>
+      <details class="syncDetails">
+        <summary>Source Mix</summary>
+        <div class="tiny stack8 line16">
+          {% for src, bucket in rel.get('by_source', {}).items() %}
+            • {{ src }}: {{ bucket.get('success', 0) }}/{{ bucket.get('attempts', 0) }} success<br>
+          {% endfor %}
+        </div>
+      </details>
     {% endif %}
     {% if rel.get('recent') %}
       <div class="hr"></div>
@@ -212,8 +248,13 @@
 {% set rec = reconcile_summary or {} %}
 <div class="card stack12">
   <div class="toolbar">
-    <div class="pill">🧮 Reconcile Import Batches (30D)</div>
-    <div class="tiny stack8 line15">Review import quality before relying on downstream analytics and decisions.</div>
+    <div class="pillRow">
+      <div class="pill">Reconcile Import Batches (30D)</div>
+      <details class="inlineHelp">
+        <summary aria-label="Reconcile batches help">?</summary>
+        <div class="helpPopover">Use this view to catch dirty imports before they distort analytics, balances, or review coverage.</div>
+      </details>
+    </div>
     <div class="hr"></div>
     <div class="statRow">
       <div class="stat"><div class="k">Batches</div><div class="v">{{ rec.get('batches', 0) }}</div></div>
@@ -268,8 +309,13 @@
 {% set auto = auto_sync_cfg or {} %}
 <div class="card stack12">
   <div class="toolbar">
-    <div class="pill">⏰ After-Market Auto Sync</div>
-    <div class="tiny stack8 line15">Set a daily sync time so your statement import runs automatically even if you forget.</div>
+    <div class="pillRow">
+      <div class="pill">After-Market Auto Sync</div>
+      <details class="inlineHelp">
+        <summary aria-label="Auto sync help">?</summary>
+        <div class="helpPopover">Set a daily sync time so the statement import can run automatically after the market closes.</div>
+      </details>
+    </div>
     <div class="hr"></div>
     <form method="post" action="/trades/sync/auto/config" id="auto-sync-config-form">
       <div class="row">
@@ -353,8 +399,18 @@
       </details>
       <div class="hr"></div>
       <div class="rightActions">
-        <button class="btn primary" type="submit" id="auto-sync-config-submit">💾 Save Auto Sync</button>
-        <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if not auto.get('password_stored') %}disabled title="Save Auto Sync first so credentials are stored"{% endif %}>▶ Run Now</button>
+        <button class="btn primary" type="submit" id="auto-sync-config-submit">Save Auto Sync</button>
+        <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if not auto.get('password_stored') %}disabled title="Save Auto Sync first so credentials are stored"{% endif %}>Run Now</button>
+        <details class="inlineHelp">
+          <summary aria-label="Auto sync security help">?</summary>
+          <div class="helpPopover">
+            {% if auto_sync_password_fallback %}
+            Auto sync prefers OS keychain; if unavailable, the password is stored encrypted in container config.
+            {% else %}
+            Auto sync stores the password in the OS keychain, not in app config files.
+            {% endif %}
+          </div>
+        </details>
       </div>
       <div class="tiny stack8" id="auto-sync-config-loading" style="display:none;" aria-live="polite">
         ⏳ Saving auto sync settings...
@@ -363,13 +419,6 @@
         ⏳ Running auto sync now (login + generate + import)...
       </div>
       {{ runway('auto-sync-runway', ['Load credentials', 'Login', 'Generate', 'Import'], badge='Running', label='Preparing sync run...', label_id='auto-sync-stage-label') }}
-      <div class="tiny stack10 line16">
-        {% if auto_sync_password_fallback %}
-        Security note: prefers OS keychain; if unavailable, password is stored encrypted in container config.
-        {% else %}
-        Security note: auto sync password is stored in OS keychain (not in app config files).
-        {% endif %}
-      </div>
     </form>
     <form method="post" action="/trades/sync/auto/run" id="auto-sync-run-form"></form>
   </div>
@@ -379,8 +428,13 @@
 {% if ws == 'live' %}
 <div class="card stack12">
   <div class="toolbar">
-    <div class="pill">🔐 Live Login Sync (Auto Generate Statement)</div>
-    <div class="tiny stack10 line15">Logs into Vanquish, opens statement, clicks Generate Statement, then imports HTML output.</div>
+    <div class="pillRow">
+      <div class="pill">Live Login Sync</div>
+      <details class="inlineHelp">
+        <summary aria-label="Live login sync help">?</summary>
+        <div class="helpPopover">Logs into Vanquish, opens the statement flow, generates the statement, and imports the HTML output.</div>
+      </details>
+    </div>
     <div class="hr"></div>
     <form method="post" action="/trades/sync/live" id="live-sync-form">
       <div class="row">
@@ -461,7 +515,7 @@
 
       <div class="hr"></div>
       <div class="rightActions">
-        <button class="btn primary" type="submit" id="live-sync-submit">🤖 Login + Generate + Import</button>
+        <button class="btn primary" type="submit" id="live-sync-submit">Run Live Sync</button>
         <a class="btn" href="/trades/upload/statement">Reset</a>
       </div>
       <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">

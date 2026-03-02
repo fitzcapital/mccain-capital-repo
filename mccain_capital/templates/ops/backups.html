@@ -2,20 +2,39 @@
 <div class="card pageHero"><div class="toolbar">
   <div class="pageHeroHead">
     <div>
-      <div class="pill">💾 Auto Backup Center</div>
-      <h2 class="pageTitle">Backups & Restore Safety</h2>
-      <div class="pageSub">Configure schedule, run manual snapshots, and review saved backup archives.</div>
+      <div class="pill">Auto Backup Center</div>
+      <div class="pageTitleRow">
+        <h2 class="pageTitle">Backups & Restore Safety</h2>
+        <details class="inlineHelp">
+          <summary aria-label="Backups page help">?</summary>
+          <div class="helpPopover">Configure the schedule, run manual snapshots, and review saved backup archives.</div>
+        </details>
+      </div>
     </div>
     <div class="actionRow">
-      <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
-      <a class="btn" href="/admin/restore">♻️ Restore Backup</a>
+      <a class="btn" href="/ops/alerts">Ops Alerts</a>
+      <a class="btn" href="/admin/restore">Restore Backup</a>
     </div>
   </div>
 </div></div>
 
+<div class="statusBadgeStrip">
+  {% for badge in backup_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+</div>
+
 <div class="card"><div class="toolbar">
-  <div class="pill">🩺 Integrity Check</div>
-  <div class="tiny stack8 line15">One-click ledger + review integrity pass after restore/import/recompute.</div>
+  <div class="pillRow">
+    <div class="pill">Integrity Check</div>
+    <details class="inlineHelp">
+      <summary aria-label="Integrity check help">?</summary>
+      <div class="helpPopover">Runs a ledger, review, and balance integrity pass after a restore, import, or recompute.</div>
+    </details>
+  </div>
   <div class="actionRow stack10">
     <form method="post" action="/ops/integrity/run" class="inlineForm" id="integrity-check-form">
       <button class="btn primary" type="submit" id="integrity-check-submit">Run Integrity Check</button>
@@ -40,7 +59,18 @@
 </div>
 
 <div class="card"><div class="toolbar">
-  <div class="pill">⚙️ Schedule Settings</div>
+  <div class="pill">Live Data Reset</div>
+  <div class="supportLead stack8">Clear live app data without deleting saved backup archives.</div>
+  <div class="supportBody">Wipes the mounted database, uploads, and books. Use it before a hard restore or when you want a clean slate.</div>
+  <div class="rightActions stack10">
+    <form method="post" action="/ops/backups/clear-live" class="inlineForm" onsubmit="return confirm('Clear live app data? This keeps backup archives but wipes the current database, uploads, and books.');">
+      <button class="btn danger" type="submit">Clear Live Data</button>
+    </form>
+  </div>
+</div></div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">Schedule Settings</div>
   <div class="hr"></div>
   <form method="post" action="/ops/backups/config" class="row">
     <div><label><input type="checkbox" name="enabled" value="1" {% if cfg.get('enabled') %}checked{% endif %}/> Enable auto backups</label></div>
@@ -69,20 +99,25 @@
     <form method="post" action="/ops/backups/run" class="inlineForm" id="backup-run-form">
       <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
     </form>
-    <form method="post" action="/ops/backups/clear-live" class="inlineForm" onsubmit="return confirm('Clear live app data? This keeps backup archives but wipes the current database, uploads, and books.');">
-      <button class="btn danger" type="submit">Clear Live Data</button>
-    </form>
   </div>
   {{ runway('backup-job-runway', ['Archive', 'Verify', 'Summary', 'Ready'], label='Creating backup archive from current app data.') }}
   <div id="ops-job-summary" style="display:none;"></div>
 </div></div>
 
 <div class="card"><div class="toolbar">
-  <div class="pill">🗂️ Saved Backups</div>
+  <div class="pillRow">
+    <div class="pill">Saved Backups</div>
+    <details class="inlineHelp">
+      <summary aria-label="Saved backups help">?</summary>
+      <div class="helpPopover">Use saved snapshots for restore, dry-run validation, or offline download.</div>
+    </details>
+  </div>
   <div class="tiny stack8 line15">Stored in {{ backup_dir }}</div>
   {% if not backups %}
-    <div class="tiny stack8 line16">Why this matters: without snapshots, rollback and restore are blind when imports or syncs misfire.</div>
-    <div class="tiny stack8 line16">Next best action: run one manual backup now, then keep auto backup enabled.</div>
+    <div class="emptyState">
+      <div class="emptyStateTitle">No backups saved yet.</div>
+      <div class="emptyStateBody">Run a manual backup now, then keep auto backup enabled.</div>
+    </div>
   {% endif %}
   <div class="hr"></div>
   <div class="tableWrap"><table class="tableDense">
@@ -131,7 +166,7 @@
 
 {% if dry_run_report %}
 <div class="card"><div class="toolbar">
-  <div class="pill">🧪 Restore Dry Run: {{ dry_run_name }}</div>
+  <div class="pill">Restore Dry Run: {{ dry_run_name }}</div>
   <div class="tiny stack8 line15">Preview only. No files were written.</div>
   <div class="trendChips">
     <span class="trendChip">Trade delta {{ dry_run_report.delta.trades }}</span>
@@ -153,8 +188,13 @@
 {% endif %}
 
 <div class="card"><div class="toolbar">
-  <div class="pill">🧾 System Activity History</div>
-  <div class="tiny stack8 line15">Review backups, restores, integrity runs, review rebuilds, alerts, and rollback events in one timeline.</div>
+  <div class="pillRow">
+    <div class="pill">System Activity History</div>
+    <details class="inlineHelp">
+      <summary aria-label="System activity help">?</summary>
+      <div class="helpPopover">Review backups, restores, integrity runs, rebuilds, alerts, and rollback events in one timeline.</div>
+    </details>
+  </div>
   <form method="get" action="/ops/backups" class="row stack10">
     <div>
       <label>Action Filter</label>

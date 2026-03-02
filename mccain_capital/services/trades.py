@@ -62,7 +62,12 @@ from mccain_capital.services import trades_importing as importing
 from mccain_capital.services import vanquish_live_sync
 from mccain_capital.services.background_jobs import BackgroundJobStore
 from mccain_capital.services.ui import render_page, simple_msg
-from mccain_capital.services.viewmodels import trades_data_trust
+from mccain_capital.services.viewmodels import (
+    balance_state_badges,
+    backup_state_badges,
+    sync_state_badges,
+    trades_data_trust,
+)
 
 # Compatibility aliases used by extracted route bodies.
 fetch_trades = repo.fetch_trades
@@ -1701,8 +1706,16 @@ def trades_page():
     cons = calc_consistency(trades)  # dict-like expected
     guardrail = trade_lockout_state(active_day)
     sync_status = _load_last_sync_status() or {}
+    balance_integrity = repo.balance_integrity_snapshot(as_of=active_day)
+    balance_badges = balance_state_badges(balance_integrity)
     data_trust = trades_data_trust(
         sync_status, guardrail_locked=bool(guardrail.get("locked")), active_day=active_day
+    )
+    sync_badges = sync_state_badges(
+        sync_status,
+        status_key="status",
+        stage_key="stage",
+        updated_key="updated_at_human",
     )
 
     week_total = week_total_net(d or None)
@@ -1816,6 +1829,9 @@ def trades_page():
         next_action_msg=next_action_msg,
         guardrail=guardrail,
         data_trust=data_trust,
+        balance_integrity=balance_integrity,
+        balance_badges=balance_badges,
+        sync_badges=sync_badges,
         primary_net_label=primary_net_label,
         primary_net_sub=primary_net_sub,
         secondary_total_label=secondary_total_label,
@@ -2901,6 +2917,12 @@ def trades_upload_pdf():
         auto_sync_password_fallback=AUTO_SYNC_PASSWORD_FALLBACK,
         default_day=default_day,
         sync_status=sync_status,
+        sync_badges=sync_state_badges(
+            sync_status,
+            status_key="status",
+            stage_key="stage",
+            updated_key="updated_at_human",
+        ),
         sync_reliability=sync_reliability,
         sync_job=sync_job,
         reconcile_summary=reconcile_summary,
@@ -4565,6 +4587,7 @@ def ops_backups_page():
         dry_run_name=dry_run_name,
         dry_run_report=dry_run_report,
         audit_rows=audit_rows,
+        backup_badges=backup_state_badges(cfg, audit_rows),
         audit_action=audit_action,
         audit_limit=audit_limit,
     )

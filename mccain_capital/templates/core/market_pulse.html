@@ -1,0 +1,166 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">Market News</div>
+        <div class="pageTitleRow candleTitleRow">
+          <h2 class="pageTitle">What Matters For SPX</h2>
+          <details class="candleInlineNote">
+            <summary class="candleInlineNoteToggle" aria-label="Market news help">?</summary>
+            <div class="candleInlineNoteBody">Live market context for SPX-first trading: macro triggers, broad tape drivers, and watchlist headlines that can shift the session.</div>
+          </details>
+        </div>
+        <div class="pageSub">{{ source_label }} · {{ fetched_at or 'Awaiting live refresh' }}</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn primary" href="/market-pulse">Refresh</a>
+        <a class="btn" href="/candle-opens">Candle Opens</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">Core Tape</div>
+  <div class="statRow">
+    {% for q in core_quotes %}
+      <div class="stat {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}">
+        <div class="k">{{ q.label }}</div>
+        <div class="v">
+          {% if q.price is not none %}
+            {{ '%.2f'|format(q.price) }}
+          {% else %}
+            —
+          {% endif %}
+        </div>
+        <div class="tiny">{{ '%+.2f'|format(q.change) }} · {{ '%+.2f'|format(q.change_pct) }}%</div>
+        <div class="tiny">State: {{ q.market_state }}</div>
+        <div class="tiny">Range: {{ q.day_range }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div></div>
+
+<div class="dashboardSupportGrid">
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">SPX Focus</div>
+    <div class="supportLead">{{ context.headline_note }}</div>
+    <div class="supportBody">Use this page as a fast read on what can move the index, not as a replacement for your levels.</div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Gamma Proxy</div>
+    <div class="supportLead">{{ context.gamma_label }}</div>
+    <div class="supportBody">{{ context.gamma_note }}</div>
+    <div class="supportMeta">VIX remains a proxy, not true dealer gamma exposure.</div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Leadership</div>
+    <div class="supportLead">{{ context.leadership }}</div>
+    <div class="supportBody">Breadth: {{ context.breadth_label }} (IWM vs SPY {{ '%+.2f'|format(context.breadth_delta) }}%).</div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Feed State</div>
+    <div class="supportLead">{% if news_available %}News briefing ready{% else %}Fallback mode{% endif %}</div>
+    <div class="supportBody">{{ news_source_note or source_note }}</div>
+  </div></div>
+</div>
+
+<div class="metricStrip">
+  <div class="metric">
+    <div class="label">SPX Tape</div>
+    <div class="value">{{ '%+.2f'|format(context.spx_pct) }}%</div>
+    <div class="sub">Current index session move</div>
+  </div>
+  <div class="metric">
+    <div class="label">VIX</div>
+    <div class="value">{% if context.vix_value %}{{ '%.2f'|format(context.vix_value) }}{% else %}—{% endif %}</div>
+    <div class="sub">Volatility anchor</div>
+  </div>
+  <div class="metric">
+    <div class="label">Macro</div>
+    <div class="value">{{ macro_events|length }}</div>
+    <div class="sub">USD triggers queued</div>
+  </div>
+  <div class="metric">
+    <div class="label">Drivers</div>
+    <div class="value">{{ market_items|length }}</div>
+    <div class="sub">Relevant market headlines</div>
+  </div>
+</div>
+
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">Macro Triggers</div>
+    <div class="tiny stack8">Upcoming USD calendar items that can shift SPX, rates, and volatility.</div>
+    <div class="hr"></div>
+    {% if macro_events %}
+      <div class="stack12">
+        {% for item in macro_events %}
+          <a class="newsLinkCard" href="{{ item.url }}">
+            <div class="pillRow">
+              <span class="trendChip">{{ item.tag }}</span>
+              <span class="tiny">{{ item.published_label }}</span>
+            </div>
+            <div class="supportLead">{{ item.headline }}</div>
+            <div class="tiny stack8">{{ item.summary }}</div>
+            <div class="tiny stack8 muted">{{ item.why }}</div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="chartEmpty">
+        <div class="chartEmptyTitle">No macro triggers loaded.</div>
+        <div class="chartEmptySub">Forex Factory feed did not return any near-term USD events for this view.</div>
+      </div>
+    {% endif %}
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">Market Drivers</div>
+    <div class="tiny stack8">Filtered live headlines that are most likely to move SPX, QQQ, IWM, SPY, rates, or vol.</div>
+    <div class="hr"></div>
+    {% if market_items %}
+      <div class="stack12">
+        {% for item in market_items %}
+          <a class="newsLinkCard" href="{{ item.url }}" target="_blank" rel="noopener">
+            <div class="pillRow">
+              <span class="trendChip">{{ item.tag }}</span>
+              <span class="tiny">{{ item.source }}{% if item.published_label %} · {{ item.published_label }}{% endif %}</span>
+            </div>
+            <div class="supportLead">{{ item.headline }}</div>
+            <div class="tiny stack8">{{ item.summary }}</div>
+            <div class="tiny stack8 muted">{{ item.why }}</div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="chartEmpty">
+        <div class="chartEmptyTitle">No market headlines loaded.</div>
+        <div class="chartEmptySub">Finnhub did not return a usable market-news set in this refresh window.</div>
+      </div>
+    {% endif %}
+  </div></div>
+</div>
+
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">Watchlist Headlines</div>
+  <div class="tiny stack8">One live headline for each ticker on your leadership watch so you can spot what is dragging or lifting the tape.</div>
+  <div class="hr"></div>
+  {% if watchlist_items %}
+    <div class="statRow">
+      {% for item in watchlist_items %}
+        <a class="stat newsStatCard" href="{{ item.url }}" target="_blank" rel="noopener">
+          <div class="k">{{ item.symbol or item.tag }}</div>
+          <div class="tiny">{{ item.source }}{% if item.published_label %} · {{ item.published_label }}{% endif %}</div>
+          <div class="supportLead">{{ item.headline }}</div>
+          <div class="tiny stack8">{{ item.summary }}</div>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="chartEmpty">
+      <div class="chartEmptyTitle">Watchlist news unavailable.</div>
+      <div class="chartEmptySub">Ticker-specific headlines were not returned by Finnhub in this refresh window.</div>
+    </div>
+  {% endif %}
+</div></div>

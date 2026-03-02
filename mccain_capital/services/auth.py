@@ -42,7 +42,7 @@ def setup_page():
     return render_page(
         render_template("setup_login.html", err=err, msg=msg, default_user=default_user),
         active="auth",
-        title="McCain Capital 🏛️ · Setup Login",
+        title="McCain Capital · Setup Login",
     )
 
 
@@ -70,7 +70,7 @@ def login_page():
     return render_page(
         render_template("login.html", err=err, next_url=request.args.get("next", "")),
         active="auth",
-        title="McCain Capital 🏛️ · Login",
+        title="McCain Capital · Login",
     )
 
 

@@ -2,23 +2,72 @@
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">📈 Analytics Workspace</div>
-        <h2 class="pageTitle">Performance Intelligence</h2>
-        <div class="pageSub">Track edge quality over time with expectancy, drawdown, behavior, and setup/session diagnostics.</div>
+        <div class="pill">Analytics Workspace</div>
+        <div class="pageTitleRow">
+          <h2 class="pageTitle">Performance Intelligence</h2>
+          <details class="inlineHelp">
+            <summary aria-label="Analytics page help">?</summary>
+            <div class="helpPopover">Track expectancy, drawdown, behavior, and setup or session quality without keeping that guidance on-screen full time.</div>
+          </details>
+        </div>
       </div>
       <div class="actionRow">
-        <a class="btn primary" href="/analytics/replay">🎬 Session Replay</a>
-        <a class="btn ctaLink" href="/trades">📅 Trades</a>
-        <a class="btn ctaLink" href="/journal/review/weekly">📘 Weekly Review</a>
-        <a class="btn ctaLink" href="/trades/playbook">📘 Playbook</a>
+        <a class="btn primary" href="/analytics/replay">Session Replay</a>
+        <a class="btn ctaLink" href="/trades">Trades</a>
+        <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
+        <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
       </div>
     </div>
   </div>
 </div>
 
+<div class="card analyticsToplineCard">
+  <div class="toolbar">
+    <div class="analyticsTopline">
+      <div class="analyticsBalanceBlock">
+        <div class="summaryMonth">Analytics Balance</div>
+        <div class="summaryCaption analyticsBalanceCaption">Current account <strong>{{ money(balance_integrity.canonical_balance) }}</strong></div>
+      </div>
+      <div class="analyticsTopStats">
+        <div class="analyticsTopStat {% if perf.total_net > 0 %}isGain{% elif perf.total_net < 0 %}isLoss{% endif %}">
+          <span>Net P/L</span>
+          <strong>{{ money(perf.total_net) }}</strong>
+        </div>
+        <div class="analyticsTopStat">
+          <span>Win Rate</span>
+          <strong>{{ '%.1f'|format(perf.win_rate) }}%</strong>
+        </div>
+        <div class="analyticsTopStat">
+          <span>Expectancy</span>
+          <strong>{{ money(perf.expectancy) }}</strong>
+        </div>
+        <div class="analyticsTopStat {% if dd.current_drawdown > 0 %}isLoss{% endif %}">
+          <span>Live Drawdown</span>
+          <strong>{{ money(dd.current_drawdown) }}</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusBadgeStrip">
+  {% for badge in balance_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+  {% for badge in sync_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+</div>
+
 <div class="dashboardSupportGrid">
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">🛡️ Data Trust</div>
+    <div class="pill">Data Trust</div>
     <div class="supportLead">
       {{ data_trust.status_label }}
       {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
@@ -38,7 +87,7 @@
   </div></div>
 
   <div class="card supportCard"><div class="toolbar">
-    <div class="pill">🧠 Current Read</div>
+    <div class="pill">Current Read</div>
     <div class="supportLead">{{ insights.changed }}</div>
     <div class="supportBody">{{ insights.next_action }}</div>
     <div class="supportMeta">{{ insights.risk_now }}</div>
@@ -94,26 +143,10 @@
   <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div><div class="sub">Checklist score alignment with outcome</div></div>
 </div>
 
-<div class="insightGrid stack12">
-  <div class="insightCard insightCardWide">
-    <div class="insightTitle">🎯 Fitz 2-2 REV Indicator</div>
-    <div class="insightBody">
-      <div class="trendChips">
-        <span class="trendChip {{ fitz_22.tone }}">{{ fitz_22.status }}</span>
-        <span class="trendChip">{{ fitz_22.trades }} tagged trades</span>
-        <span class="trendChip">WR {{ '%.1f'|format(fitz_22.win_rate) }}%</span>
-        <span class="trendChip">Exp {{ money(fitz_22.expectancy) }}</span>
-      </div>
-      <div class="meta">Recent 10: {{ money(fitz_22.recent_net) }} · {{ '%.1f'|format(fitz_22.recent_win_rate) }}% win rate</div>
-      <div class="stack8">{{ fitz_22.note }}</div>
-    </div>
-  </div>
-</div>
-
 <div class="card controlPanel"><div class="toolbar">
   <div class="controlHead">
     <div>
-      <div class="pill">🧭 Analysis Controls</div>
+      <div class="pill">Analysis Controls</div>
       <div class="summaryLead stack8">Switch tabs, tune the date range, and explain a specific day without leaving the analytics surface.</div>
     </div>
   </div>
@@ -149,7 +182,7 @@
 {% if tab == 'performance' %}
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">📈 Equity Curve</div>
+    <div class="pill">Equity Curve</div>
     <div class="hr"></div>
     <div class="trendChips">
       <span class="trendChip {{ equity_story.tone }}">Latest {{ money(equity_story.latest) }}</span>
@@ -162,7 +195,7 @@
     {{ equity_chart|safe }}
   </div></div>
   <div class="card"><div class="toolbar">
-    <div class="pill">📉 Drawdown Curve</div>
+    <div class="pill">Drawdown Curve</div>
     <div class="hr"></div>
     <div class="trendChips">
       <span class="trendChip {{ drawdown_story.tone }}">Latest {{ money(drawdown_story.latest) }}</span>
@@ -177,13 +210,13 @@
 </div>
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">🧭 Equity vs SPX Benchmark</div>
+    <div class="pill">Equity vs SPX Benchmark</div>
     <div class="tiny stack8 line15">SPX benchmark applies only SPX ticker outcomes across the same trade timeline.</div>
     <div class="hr"></div>
     {{ benchmark_chart|safe }}
   </div></div>
   <div class="card"><div class="toolbar">
-    <div class="pill">🌪️ Day Volatility Regime (5D)</div>
+    <div class="pill">Day Volatility Regime (5D)</div>
     <div class="trendChips">
       <span class="trendChip">Regime {{ vol_summary.regime }}</span>
       <span class="trendChip">Current {{ money(vol_summary.current) }}</span>
@@ -196,14 +229,14 @@
 </div>
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">🧠 {{ day_story.title }}</div>
+    <div class="pill">{{ day_story.title }}</div>
     <div class="hr"></div>
     <div class="tiny stack8 line16">• {{ day_story.pnl_driver }}</div>
     <div class="tiny stack8 line16">• {{ day_story.risk_driver }}</div>
     <div class="tiny stack8 line16">• {{ day_story.edge_driver }}</div>
   </div></div>
   <div class="card"><div class="toolbar">
-    <div class="pill">📐 Regime-Aware Sizing</div>
+    <div class="pill">Regime-Aware Sizing</div>
     <div class="trendChips">
       <span class="trendChip">Regime {{ sizing.regime }}</span>
       <span class="trendChip">{{ sizing.action }}</span>
@@ -214,10 +247,13 @@
   </div></div>
 </div>
 <div class="card"><div class="toolbar">
-  <div class="pill">🧪 What-If Day Simulator</div>
-  <div class="tiny stack8 line15">Project your ending balance from current balance using your real consistency profile.</div>
-  <div class="tiny stack8 line16"><b>Why this matters:</b> plan quality is measured by expected ending balance, not isolated trade outcomes.</div>
-  <div class="tiny stack8 line16"><b>Next best action:</b> set max trades + stop streak, then compare projected end balance vs your real average day.</div>
+  <div class="pillRow">
+    <div class="pill">What-If Day Simulator</div>
+    <details class="inlineHelp">
+      <summary aria-label="What-if simulator help">?</summary>
+      <div class="helpPopover">Project ending balance from the current ledger using your actual consistency profile, then compare it against your real average day.</div>
+    </details>
+  </div>
   <div class="hr"></div>
   <form method="get" class="row">
     <input type="hidden" name="tab" value="{{ tab }}">
@@ -244,7 +280,7 @@
   </div>
 </div></div>
 <div class="card stack12"><div class="toolbar">
-  <div class="pill">🧠 Expectancy Trend ({{ expectancy_granularity|upper }})</div>
+  <div class="pill">Expectancy Trend ({{ expectancy_granularity|upper }})</div>
   {% if expectancy_auto_switched %}
     <div class="tiny stack8 line15">Auto-switched to weekly because monthly has too few points.</div>
   {% endif %}
@@ -261,7 +297,7 @@
 </div></div>
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">📈 Performance Summary</div>
+    <div class="pill">Performance Summary</div>
     <div class="statRow stack10">
       <div class="stat"><div class="k">Total Net</div><div class="v">{{ money(perf.total_net) }}</div></div>
       <div class="stat"><div class="k">Gross Profit</div><div class="v">{{ money(perf.gross_profit) }}</div></div>
@@ -284,7 +320,7 @@
     </details>
   </div></div>
   <div class="card"><div class="toolbar">
-    <div class="pill">🔥 Streaks</div>
+    <div class="pill">Streaks</div>
     <div class="statRow stack10">
       <div class="stat"><div class="k">Longest Win Streak</div><div class="v">{{ perf.max_win_streak }}</div></div>
       <div class="stat"><div class="k">Longest Loss Streak</div><div class="v">{{ perf.max_loss_streak }}</div></div>
@@ -308,7 +344,7 @@
 {% elif tab == 'behavior' %}
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">🕒 Session Breakdown</div>
+    <div class="pill">Session Breakdown</div>
     {% set s_top = session_rows[0] if session_rows|length else none %}
     <div class="statRow stack10">
       <div class="stat"><div class="k">Top Session</div><div class="v">{% if s_top %}{{ s_top.k }}{% else %}—{% endif %}</div></div>
@@ -344,7 +380,7 @@
     </details>
   </div></div>
   <div class="card"><div class="toolbar">
-    <div class="pill">⚠️ Rule Break Tags</div>
+    <div class="pill">Rule Break Tags</div>
     {% set rb_top = rule_breaks[0] if rule_breaks|length else none %}
     <div class="statRow stack10">
       <div class="stat"><div class="k">Top Rule Break</div><div class="v">{% if rb_top %}{{ rb_top.tag }}{% else %}None logged{% endif %}</div></div>
@@ -363,7 +399,7 @@
           <tr><td colspan="2">
             <div class="emptyState">
               <div class="emptyStateTitle">No rule-break tags in this range.</div>
-              <div class="emptyStateBody">Next best action: keep tagging rule breaks during reviews so behavior drift is measurable.</div>
+              <div class="emptyStateBody">Keep tagging rule breaks during reviews so behavior drift stays measurable.</div>
             </div>
           </td></tr>
         {% endif %}
@@ -380,7 +416,7 @@
           {% if rule_breaks|length == 0 %}
             <div class="emptyState">
               <div class="emptyStateTitle">No rule-break tags in this range.</div>
-              <div class="emptyStateBody">Next best action: tag rule breaks on each review to keep behavior analytics reliable.</div>
+              <div class="emptyStateBody">Tag rule breaks on each review to keep behavior analytics reliable.</div>
             </div>
           {% endif %}
         </div>
@@ -389,14 +425,18 @@
   </div></div>
 </div>
 <div class="card stack12"><div class="toolbar">
-  <div class="pill">🗺️ Setup Expectancy Heatmap by Time Block</div>
-  <div class="tiny stack8 line15">Color intensity reflects expectancy magnitude for top setups across intraday blocks.</div>
+  <div class="pillRow">
+    <div class="pill">Setup Expectancy Heatmap by Time Block</div>
+    <details class="inlineHelp">
+      <summary aria-label="Heatmap help">?</summary>
+      <div class="helpPopover">Color intensity reflects expectancy magnitude for the top tagged setups across intraday blocks.</div>
+    </details>
+  </div>
   <div class="hr"></div>
   {% if heatmap.setups|length == 0 %}
     <div class="emptyState">
       <div class="emptyStateTitle">No heatmap data in this range.</div>
-      <div class="emptyStateBody">Why this matters: time-block expectancy needs setup tags + entry times across multiple trades.</div>
-      <div class="emptyStateBody">Next best action: widen date range or log more tagged trades.</div>
+      <div class="emptyStateBody">Widen the date range or log more tagged trades.</div>
     </div>
   {% else %}
     <div class="tableWrap desktopOnly">
@@ -443,8 +483,13 @@
 </div></div>
 {% elif tab == 'diagnostics' %}
 <div class="card stack12"><div class="toolbar">
-  <div class="pill">🧪 Data Integrity Diagnostics</div>
-  <div class="tiny stack8 line15">Find data quality issues that can distort analytics and decision quality.</div>
+  <div class="pillRow">
+    <div class="pill">Data Integrity Diagnostics</div>
+    <details class="inlineHelp">
+      <summary aria-label="Diagnostics help">?</summary>
+      <div class="helpPopover">Use this tab to catch missing review data, stale balances, or duplicates before they distort analytics.</div>
+    </details>
+  </div>
   <div class="hr"></div>
   <div class="statRow">
     <div class="stat"><div class="k">Missing Setup Tags</div><div class="v">{{ integrity.missing_setup }}</div></div>
@@ -454,29 +499,31 @@
     <div class="stat"><div class="k">Stale Balance Rows</div><div class="v">{{ integrity.stale_balance_rows }}</div></div>
   </div>
   <div class="hr"></div>
-  <div class="tiny stack8 line15">
-    Priority actions:
-    {% if integrity.stale_balance_rows > 0 %}
-      • Recompute stored balances from dashboard drift action.<br>
-    {% endif %}
-    {% if integrity.missing_setup or integrity.missing_session %}
-      • Rebuild/fill trade reviews to restore setup/session analytics.<br>
-    {% endif %}
-    {% if integrity.missing_score > 0 %}
-      • Backfill checklist scores for quality-vs-PnL correlation.<br>
-    {% endif %}
-    {% if integrity.duplicate_candidates > 0 %}
-      • Review recent imports for duplicate signatures.<br>
-    {% endif %}
-    {% if not (integrity.stale_balance_rows or integrity.missing_setup or integrity.missing_session or integrity.missing_score or integrity.duplicate_candidates) %}
-      • No major integrity issues detected in this range.
-    {% endif %}
-  </div>
+  <details class="syncDetails stack10">
+    <summary>Priority Actions</summary>
+    <div class="tiny stack8 line15">
+      {% if integrity.stale_balance_rows > 0 %}
+        • Recompute stored balances from the dashboard drift action.<br>
+      {% endif %}
+      {% if integrity.missing_setup or integrity.missing_session %}
+        • Rebuild or fill trade reviews to restore setup and session analytics.<br>
+      {% endif %}
+      {% if integrity.missing_score > 0 %}
+        • Backfill checklist scores for quality-vs-PnL correlation.<br>
+      {% endif %}
+      {% if integrity.duplicate_candidates > 0 %}
+        • Review recent imports for duplicate signatures.<br>
+      {% endif %}
+      {% if not (integrity.stale_balance_rows or integrity.missing_setup or integrity.missing_session or integrity.missing_score or integrity.duplicate_candidates) %}
+        • No major integrity issues detected in this range.
+      {% endif %}
+    </div>
+  </details>
 </div></div>
 {% else %}
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">📌 Setup Edge</div>
+    <div class="pill">Setup Edge</div>
     {% set setup_top = setup_rows[0] if setup_rows|length else none %}
     <div class="statRow stack10">
       <div class="stat"><div class="k">Top Setup</div><div class="v">{% if setup_top %}{{ setup_top.k }}{% else %}—{% endif %}</div></div>
@@ -512,7 +559,7 @@
     </details>
   </div></div>
   <div class="card"><div class="toolbar">
-    <div class="pill">⏱️ Time of Day Edge</div>
+    <div class="pill">Time of Day Edge</div>
     {% set hour_top = hour_rows[0] if hour_rows|length else none %}
     <div class="statRow stack10">
       <div class="stat"><div class="k">Top Hour</div><div class="v">{% if hour_top %}{{ hour_top.k }}{% else %}—{% endif %}</div></div>
@@ -550,7 +597,7 @@
 
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">📈 Setup Edge Over Time (Monthly)</div>
+    <div class="pill">Setup Edge Over Time (Monthly)</div>
     {% set setup_trend_top = setup_trend_rows[0] if setup_trend_rows|length else none %}
     <div class="statRow stack10">
       <div class="stat"><div class="k">Top Setup Trend</div><div class="v">{% if setup_trend_top %}{{ setup_trend_top.key }}{% else %}—{% endif %}</div></div>
@@ -570,7 +617,7 @@
           <tr><td colspan="6">
             <div class="emptyState">
               <div class="emptyStateTitle">No setup trend data in this range.</div>
-              <div class="emptyStateBody">Next best action: expand date range or increase tagged setup samples.</div>
+              <div class="emptyStateBody">Expand the date range or increase tagged setup samples.</div>
             </div>
           </td></tr>
         {% endif %}
@@ -592,7 +639,7 @@
           {% if setup_trend_rows|length == 0 %}
             <div class="emptyState">
               <div class="emptyStateTitle">No setup trend data in this range.</div>
-              <div class="emptyStateBody">Next best action: expand date range or increase tagged setup samples.</div>
+              <div class="emptyStateBody">Expand the date range or increase tagged setup samples.</div>
             </div>
           {% endif %}
         </div>
@@ -600,7 +647,7 @@
     </details>
   </div></div>
   <div class="card"><div class="toolbar">
-    <div class="pill">📈 Session Edge Over Time (Monthly)</div>
+    <div class="pill">Session Edge Over Time (Monthly)</div>
     {% set session_trend_top = session_trend_rows[0] if session_trend_rows|length else none %}
     <div class="statRow stack10">
       <div class="stat"><div class="k">Top Session Trend</div><div class="v">{% if session_trend_top %}{{ session_trend_top.key }}{% else %}—{% endif %}</div></div>
@@ -620,7 +667,7 @@
           <tr><td colspan="6">
             <div class="emptyState">
               <div class="emptyStateTitle">No session trend data in this range.</div>
-              <div class="emptyStateBody">Next best action: keep tagging session context to unlock session edge tracking.</div>
+              <div class="emptyStateBody">Keep tagging session context to unlock session edge tracking.</div>
             </div>
           </td></tr>
         {% endif %}
@@ -642,7 +689,7 @@
           {% if session_trend_rows|length == 0 %}
             <div class="emptyState">
               <div class="emptyStateTitle">No session trend data in this range.</div>
-              <div class="emptyStateBody">Next best action: keep tagging session context to unlock session edge tracking.</div>
+              <div class="emptyStateBody">Keep tagging session context to unlock session edge tracking.</div>
             </div>
           {% endif %}
         </div>
@@ -676,6 +723,10 @@
       if(prefix === "$"){ return `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`; }
       return `${prefix || ""}${v.toFixed(2)}`;
     }
+    function positionTip(evt){
+      tip.style.left = `${evt.clientX + 12}px`;
+      tip.style.top = `${evt.clientY + 12}px`;
+    }
     function showTip(el, evt){
       const label = el.dataset.label || "Point";
       const series = el.dataset.series ? `${el.dataset.series} · ` : "";
@@ -685,15 +736,14 @@
       const drill = day ? `<div style="opacity:.8;margin-top:4px">Click to open ${day} trades</div>` : "";
       tip.innerHTML = `<div style="font-weight:800">${series}${label}</div><div>${value}</div>${drill}`;
       tip.style.display = "block";
-      tip.style.left = `${evt.clientX + 12}px`;
-      tip.style.top = `${evt.clientY + 12}px`;
+      positionTip(evt);
     }
     function hideTip(){ tip.style.display = "none"; }
 
     points.forEach((pt)=>{
       pt.style.cursor = "pointer";
       pt.addEventListener("mouseenter", (e)=>showTip(pt, e));
-      pt.addEventListener("mousemove", (e)=>showTip(pt, e));
+      pt.addEventListener("mousemove", positionTip);
       pt.addEventListener("mouseleave", hideTip);
       pt.addEventListener("click", ()=>{
         const day = (pt.dataset.day || "").trim();

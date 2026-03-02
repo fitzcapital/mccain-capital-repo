@@ -69,6 +69,21 @@
   </div></div>
 </div>
 
+<div class="statusBadgeStrip">
+  {% for badge in balance_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+  {% for badge in sync_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+</div>
+
 <div class="metricStrip">
   <div class="metric">
     <div class="label">Today Net</div>
@@ -88,7 +103,7 @@
   <div class="metric">
     <div class="label">Current Balance</div>
     <div class="value">{{ money(overall_balance) }}</div>
-    <div class="sub">Your running ledger balance</div>
+    <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
   </div>
 </div>
 
@@ -102,6 +117,9 @@
       <span class="trendChip">MTD {{ money(mtd_net) }}</span>
     </div>
     <div class="showcaseValue">{{ money(overall_balance) }}</div>
+    <div class="tiny" style="margin-top:6px; color:rgba(237,244,255,.72);" title="{{ balance_integrity.source_detail }}">
+      {{ balance_integrity.source_label }} · Start {{ money(balance_integrity.starting_balance) }}
+    </div>
     <div class="showcaseMeta">
       Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked
     </div>
@@ -297,9 +315,9 @@
               <div class="weekCardRange">{{ wk.label }}</div>
             </div>
             <div class="weekCardMeta">
-              <span>{{ wk.trade_count }} trades</span>
-              <span>{{ wk.traded_days }} active days</span>
-              <span class="{% if wk.net > 0 %}metaGreen{% elif wk.net < 0 %}metaRed{% endif %}">{{ money_compact(wk.net) }}</span>
+              <span class="weekMetaPill">{{ wk.trade_count }} trades</span>
+              <span class="weekMetaPill">{{ wk.traded_days }} active days</span>
+              <span class="weekNetPill {% if wk.net > 0 %}isGain{% elif wk.net < 0 %}isLoss{% else %}isFlat{% endif %}">{{ money_compact(wk.net) }}</span>
             </div>
           </div>
           <div class="weekDaysGrid">

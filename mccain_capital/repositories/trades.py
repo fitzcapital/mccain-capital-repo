@@ -440,7 +440,12 @@ def latest_balance_overall(as_of: str | None = None) -> float:
 
 def balance_integrity_snapshot(as_of: str | None = None, tolerance: float = 0.01) -> Dict[str, Any]:
     derived = float(latest_balance_overall(as_of=as_of))
+    starting = float(get_setting_float("starting_balance", 50000.0))
     out: Dict[str, Any] = {
+        "starting_balance": starting,
+        "canonical_balance": derived,
+        "source_label": "Derived ledger",
+        "source_detail": "Starting balance plus closed trade net P/L.",
         "derived_balance": derived,
         "stored_balance": None,
         "delta": None,
@@ -498,6 +503,8 @@ def balance_integrity_snapshot(as_of: str | None = None, tolerance: float = 0.01
     out["stored_balance"] = stored
     out["delta"] = delta
     out["has_drift"] = abs(delta) > float(tolerance)
+    if not out["has_drift"]:
+        out["source_detail"] = "Stored trade balances match the derived ledger."
     return out
 
 

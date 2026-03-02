@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any, List, Mapping, Optional
 
 from mccain_capital.runtime import money
 
@@ -21,6 +21,14 @@ class DataTrustViewModel:
     secondary_label: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class StateBadgeViewModel:
+    label: str
+    value: str
+    tone: str = "neutral"
+    title: str = ""
+
+
 def _status_line(
     raw_status: str, raw_stage: str, raw_updated: str, unknown_status: str = "unknown"
 ) -> tuple[str, str, str]:
@@ -28,6 +36,137 @@ def _status_line(
     stage_label = raw_stage.replace("_", " ").title() if raw_stage else ""
     updated_label = raw_updated or ""
     return status_label, stage_label, updated_label
+
+
+def _tone_for_status(raw_status: str) -> str:
+    state = (raw_status or "").strip().lower()
+    if state in {"success", "succeeded", "ok", "healthy", "debug_only"}:
+        return "healthy"
+    if state in {"failed", "error", "blocked"}:
+        return "critical"
+    if state in {"running", "queued", "pending", "started", "in_progress"}:
+        return "caution"
+    return "neutral"
+
+
+def balance_state_badges(balance_integrity: Mapping[str, Any]) -> List[StateBadgeViewModel]:
+    canonical = float(balance_integrity.get("canonical_balance") or 0.0)
+    starting = float(balance_integrity.get("starting_balance") or 0.0)
+    stored = balance_integrity.get("stored_balance")
+    has_drift = bool(balance_integrity.get("has_drift"))
+    delta = float(balance_integrity.get("delta") or 0.0)
+    stored_value = "No snapshot"
+    stored_tone = "neutral"
+    stored_title = "No stored per-trade balance snapshot is available yet."
+    if stored is not None:
+        stored_value = "Drift " + money(delta) if has_drift else "In sync"
+        stored_tone = "critical" if has_drift else "healthy"
+        stored_title = (
+            f"Stored row balance {'lags' if has_drift else 'matches'} the derived ledger."
+        )
+    return [
+        StateBadgeViewModel(
+            label="Source",
+            value=str(balance_integrity.get("source_label") or "Derived ledger"),
+            tone="healthy",
+            title=str(balance_integrity.get("source_detail") or ""),
+        ),
+        StateBadgeViewModel(
+            label="Start",
+            value=money(starting),
+            tone="neutral",
+            title="Configured ledger starting balance.",
+        ),
+        StateBadgeViewModel(
+            label="Now",
+            value=money(canonical),
+            tone="healthy",
+            title="Canonical balance used across the app.",
+        ),
+        StateBadgeViewModel(
+            label="Stored",
+            value=stored_value,
+            tone=stored_tone,
+            title=stored_title,
+        ),
+    ]
+
+
+def sync_state_badges(
+    sync_status: Mapping[str, Any],
+    *,
+    status_key: str,
+    stage_key: str,
+    updated_key: str,
+) -> List[StateBadgeViewModel]:
+    raw_status = str(sync_status.get(status_key) or "")
+    raw_stage = str(sync_status.get(stage_key) or "")
+    raw_updated = str(sync_status.get(updated_key) or "")
+    status_label, stage_label, updated_label = _status_line(raw_status, raw_stage, raw_updated)
+    return [
+        StateBadgeViewModel(
+            label="Sync",
+            value=status_label,
+            tone=_tone_for_status(raw_status),
+            title="Latest sync or import state.",
+        ),
+        StateBadgeViewModel(
+            label="Stage",
+            value=stage_label or "Idle",
+            tone="neutral",
+            title="Most recent sync step reached.",
+        ),
+        StateBadgeViewModel(
+            label="Updated",
+            value=updated_label or "No run",
+            tone="neutral",
+            title="Last recorded sync timestamp.",
+        ),
+    ]
+
+
+def backup_state_badges(
+    cfg: Mapping[str, Any], audit_rows: List[Mapping[str, Any]]
+) -> List[StateBadgeViewModel]:
+    last_backup_status = str(cfg.get("last_status") or "").strip()
+    last_backup_label = last_backup_status.replace("_", " ").title() if last_backup_status else "Never"
+    last_restore = next(
+        (
+            row
+            for row in audit_rows
+            if "restore" in str(row.get("label") or "").strip().lower()
+        ),
+        None,
+    )
+    last_restore_label = "None yet"
+    last_restore_tone = "neutral"
+    last_restore_title = "No restore action recorded in the current activity window."
+    if last_restore:
+        restore_event = str(last_restore.get("label") or "restore").replace("_", " ").title()
+        restore_at = str(last_restore.get("at_human") or "").strip()
+        last_restore_label = restore_event if not restore_at else f"{restore_event} · {restore_at}"
+        last_restore_tone = "caution"
+        last_restore_title = str(last_restore.get("summary") or "Most recent restore-related action.")
+    return [
+        StateBadgeViewModel(
+            label="Schedule",
+            value="On" if bool(cfg.get("enabled")) else "Off",
+            tone="healthy" if bool(cfg.get("enabled")) else "caution",
+            title="Auto backup schedule state.",
+        ),
+        StateBadgeViewModel(
+            label="Last Backup",
+            value=last_backup_label,
+            tone=_tone_for_status(last_backup_status),
+            title=str(cfg.get("last_message") or "Most recent backup result."),
+        ),
+        StateBadgeViewModel(
+            label="Last Restore",
+            value=last_restore_label,
+            tone=last_restore_tone,
+            title=last_restore_title,
+        ),
+    ]
 
 
 def dashboard_data_trust(

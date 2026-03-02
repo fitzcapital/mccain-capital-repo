@@ -3,8 +3,13 @@
     <div class="pageHeroHead">
       <div>
         <div class="pill">🕯️ Timing Map</div>
-        <h2 class="pageTitle">{{ month_name }} Candle Opens</h2>
-        <div class="pageSub">A clean month view of session-based resets. Day intervals follow the market-session count from the first session of the year, and week intervals print on the first tradable session of qualifying weeks.</div>
+        <div class="pageTitleRow candleTitleRow">
+          <h2 class="pageTitle">{{ month_name }} Candle Opens</h2>
+          <details class="candleInlineNote">
+            <summary class="candleInlineNoteToggle" aria-label="Candle opens help">?</summary>
+            <div class="candleInlineNoteBody">Day intervals use the market-session count from the first session of the year. Week and month intervals print on the first tradable session that qualifies.</div>
+          </details>
+        </div>
       </div>
       <div class="actionRow">
         <a class="btn" href="/candle-opens?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
@@ -15,7 +20,7 @@
   </div>
 </div>
 
-<div class="metricStrip">
+<div class="metricStrip metricStripCompact candleMetricStrip" data-no-mobile-compact="1">
   <div class="metric">
     <div class="label">Trading Days</div>
     <div class="value">{{ trading_days }}</div>
@@ -36,13 +41,83 @@
     <div class="value">{{ week_legend }}</div>
     <div class="sub">First tradable day only</div>
   </div>
+  <div class="metric">
+    <div class="label">Month Cycles</div>
+    <div class="value">{{ month_legend }}</div>
+    <div class="sub">From January month opens</div>
+  </div>
+</div>
+
+<div class="card candleSignalBar">
+  <div class="candleSignalHead">
+    <div class="candleNewsPulse">
+      <div>
+        <div class="pill">🗞️ USD News</div>
+        <div class="pageSub candleCondensedSub">{{ news_week_range }} · {{ news_summary }}</div>
+      </div>
+      <div class="candleNewsCounts">
+        <span class="newsCountChip is-high">{{ news_high }} red</span>
+        <span class="newsCountChip is-medium">{{ news_medium }} orange</span>
+      </div>
+    </div>
+  </div>
+  {% if not news_available or not news_events %}
+    <div class="pageSub">Live USD news is unavailable right now.</div>
+  {% endif %}
+</div>
+
+<div class="card candleNewsPanel">
+  <div class="candleNewsHead compact">
+    <div class="pillRow candlePillHelpRow">
+      <div class="pill">🔎 Markers</div>
+      <details class="candleInlineNote">
+        <summary class="candleInlineNoteToggle" aria-label="News markers help">?</summary>
+        <div class="candleInlineNoteBody">Tap a red or orange marker in the calendar to jump to that day&apos;s exact event times below.</div>
+      </details>
+    </div>
+  </div>
+  {% if news_available and news_days %}
+    <div class="candleNewsDayGrid">
+      {% for news_day in news_days %}
+        <section class="candleNewsDayCard" id="news-day-{{ news_day.iso }}">
+          <div class="candleNewsDayHead">
+            <div class="candleNewsDayTitle">{{ news_day.date_label }}</div>
+            <div class="candleNewsCounts">
+              {% if news_day.high_count %}
+                <span class="newsCountChip is-high">{{ news_day.high_count }} red</span>
+              {% endif %}
+              {% if news_day.medium_count %}
+                <span class="newsCountChip is-medium">{{ news_day.medium_count }} orange</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="candleNewsDayList">
+            {% for event in news_day.events %}
+              <div class="candleNewsEventRow is-{{ event.impact_class }}">
+                <span class="candleNewsEventTime">{{ event.time_label }}</span>
+                <span>{{ event.title }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+      {% endfor %}
+    </div>
+  {% endif %}
 </div>
 
 <div class="card candleShell">
   <div class="toolbar">
+    <div class="candleLegendCompact candlePillHelpRow">
+      <div class="pill">Legend</div>
+      <details class="candleInlineNote">
+        <summary class="candleInlineNoteToggle" aria-label="Candle legend help">?</summary>
+        <div class="candleInlineNoteBody">Gold = day reset. Blue = week reset. Green = month reset. Dark green = holiday or market closed.</div>
+      </details>
+    </div>
     <div class="candleLegend">
       <span class="candleLegendItem"><span class="candleLegendDot candleLegendDay"></span> Day reset</span>
       <span class="candleLegendItem"><span class="candleLegendDot candleLegendWeek"></span> Week reset</span>
+      <span class="candleLegendItem"><span class="candleLegendDot candleLegendMonth"></span> Month reset</span>
       <span class="candleLegendItem"><span class="candleLegendDot candleLegendHoliday"></span> Holiday / market closed</span>
     </div>
     <div class="mobileCandleWeeks">
@@ -60,8 +135,8 @@
           <details class="mobileCandleWeek" {% if loop.first %}open{% endif %}>
             <summary>
               <span class="mobileCandleWeekTitle">Week {{ loop.index }}</span>
-              <span class="mobileCandleWeekMeta">{{ ns.first }} to {{ ns.last }}</span>
-              <span class="mobileCandleWeekMeta">{{ ns.signals }} signals</span>
+              <span class="mobileCandleWeekMeta">{{ ns.first[5:] }} to {{ ns.last[5:] }}</span>
+              <span class="mobileCandleWeekMeta">{{ ns.signals }} opens</span>
             </summary>
             <div class="mobileCandleWeekGrid">
               {% for cell in week %}
@@ -89,7 +164,19 @@
                         {% for label in cell.week_labels %}
                           <span class="candleTag candleTagWeek">{{ label }}</span>
                         {% endfor %}
+                        {% for label in cell.month_labels %}
+                          <span class="candleTag candleTagMonth">{{ label }}</span>
+                        {% endfor %}
                       </div>
+                    {% endif %}
+                    {% if cell.news_events %}
+                      <a class="candleNewsJump" href="#news-day-{{ cell.iso }}" aria-label="Open {{ cell.iso }} news details">
+                        <div class="candleNewsIcons">
+                          {% for event in cell.news_events %}
+                            <span class="candleNewsIcon is-{{ event.impact_class }}" title="{{ event.tooltip }}">{{ event.icon }}</span>
+                          {% endfor %}
+                        </div>
+                      </a>
                     {% endif %}
                   </div>
                 {% endif %}
@@ -131,7 +218,19 @@
                 {% for label in cell.week_labels %}
                   <span class="candleTag candleTagWeek">{{ label }}</span>
                 {% endfor %}
+                {% for label in cell.month_labels %}
+                  <span class="candleTag candleTagMonth">{{ label }}</span>
+                {% endfor %}
               </div>
+            {% endif %}
+            {% if cell.news_events %}
+              <a class="candleNewsJump" href="#news-day-{{ cell.iso }}" aria-label="Open {{ cell.iso }} news details">
+                <div class="candleNewsIcons">
+                  {% for event in cell.news_events %}
+                    <span class="candleNewsIcon is-{{ event.impact_class }}" title="{{ event.tooltip }}">{{ event.icon }}</span>
+                  {% endfor %}
+                </div>
+              </a>
             {% endif %}
           </div>
         {% endfor %}

@@ -3,8 +3,13 @@
     <div class="pageHeroHead">
       <div>
         <div class="pill">⚡ Execution Console</div>
-        <h2 class="pageTitle">Execution Log</h2>
-        <div class="pageSub tradesPageSub">Log, review, and import trades with fast context on risk, consistency, and exposure.</div>
+        <div class="pageTitleRow">
+          <h2 class="pageTitle">Execution Log</h2>
+          <details class="inlineHelp">
+            <summary aria-label="Execution log help">?</summary>
+            <div class="helpPopover">Log, review, and import trades with quick context on risk, consistency, and exposure.</div>
+          </details>
+        </div>
       </div>
       <div class="actionRow">
         <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
@@ -45,6 +50,21 @@
   </div></div>
 </div>
 
+<div class="statusBadgeStrip">
+  {% for badge in balance_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+  {% for badge in sync_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+</div>
+
 <div class="metricStrip">
   <div class="metric">
     <div class="label">{{ primary_net_label }}</div>
@@ -59,7 +79,7 @@
   <div class="metric">
     <div class="label">Current Balance</div>
     <div class="value">{{ money(running_balance) }}</div>
-    <div class="sub">Running ledger balance</div>
+    <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
   </div>
 </div>
 

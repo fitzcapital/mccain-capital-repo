@@ -114,8 +114,8 @@
             <div class="weekCardRange">{{ wk.label }}</div>
           </div>
           <div class="weekCardMeta">
-            <span>{{ wk.trade_count }} trades</span>
-            <span class="{% if wk.net > 0 %}metaGreen{% elif wk.net < 0 %}metaRed{% endif %}">{{ money_compact(wk.net) }}</span>
+            <span class="weekMetaPill">{{ wk.trade_count }} trades</span>
+            <span class="weekNetPill {% if wk.net > 0 %}isGain{% elif wk.net < 0 %}isLoss{% else %}isFlat{% endif %}">{{ money_compact(wk.net) }}</span>
           </div>
         </div>
         <div class="weekDaysGrid">

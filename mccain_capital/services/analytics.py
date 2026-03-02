@@ -11,9 +11,14 @@ from flask import render_template, request
 
 from mccain_capital.repositories import analytics as repo
 from mccain_capital.repositories import journal as journal_repo
-from mccain_capital.runtime import get_setting_float, money
+from mccain_capital.repositories import trades as trades_repo
+from mccain_capital.runtime import money
 from mccain_capital.services.ui import get_system_status, render_page
-from mccain_capital.services.viewmodels import analytics_data_trust
+from mccain_capital.services.viewmodels import (
+    analytics_data_trust,
+    balance_state_badges,
+    sync_state_badges,
+)
 
 
 def _series_day_from_label(label: str) -> str:
@@ -42,6 +47,7 @@ def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "
     width = 820.0
     height = 200.0
     pad = 18.0
+    inner_height = height - (2 * pad)
 
     values = [float(p.get("v") or 0.0) for p in series]
     min_v = min(values)
@@ -56,9 +62,21 @@ def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "
         return height - pad - ((v - min_v) / (max_v - min_v)) * (height - (2 * pad))
 
     points = " ".join(f"{sx(i):.2f},{sy(v):.2f}" for i, v in enumerate(values))
+    area_points = (
+        f"{pad:.2f},{height - pad:.2f} "
+        + points
+        + f" {width - pad:.2f},{height - pad:.2f}"
+    )
     zero_in_range = min_v <= 0.0 <= max_v
     zero_y = sy(0.0) if zero_in_range else None
     latest_label = html.escape(str(series[-1].get("label") or "latest"))
+    gradient_id = f"chartArea{re.sub(r'[^a-zA-Z0-9]+', '', stroke)}"
+    y_steps = [pad + (inner_height * frac) for frac in (0.0, 0.33, 0.66, 1.0)]
+    grid_lines = "".join(
+        f'<line x1="{pad:.2f}" y1="{y:.2f}" x2="{width - pad:.2f}" y2="{y:.2f}" '
+        f'class="chartGridLine" />'
+        for y in y_steps
+    )
 
     points_markup = []
     for i, p in enumerate(series):
@@ -67,17 +85,25 @@ def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "
         day = _series_day_from_label(str(p.get("label") or ""))
         points_markup.append(
             (
-                f'<circle class="chartPoint" cx="{sx(i):.2f}" cy="{sy(values[i]):.2f}" r="6.5" '
+                f'<circle class="chartPoint" cx="{sx(i):.2f}" cy="{sy(values[i]):.2f}" r="5.0" '
                 f'fill="transparent" data-label="{label}" data-value="{value:.2f}" data-prefix="{html.escape(y_prefix)}" '
                 f'data-day="{html.escape(day)}" />'
             )
         )
     return f"""
     <svg viewBox="0 0 {int(width)} {int(height)}" role="img" aria-label="analytics line chart" style="width:100%;height:auto;display:block">
-      <rect x="0" y="0" width="{int(width)}" height="{int(height)}" fill="rgba(4,10,20,.35)" rx="10" />
-      {f'<line x1="{pad}" y1="{zero_y:.2f}" x2="{width - pad}" y2="{zero_y:.2f}" stroke="rgba(255,255,255,.2)" stroke-dasharray="4 4" />' if zero_y is not None else ""}
+      <defs>
+        <linearGradient id="{gradient_id}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="{stroke}" stop-opacity="0.22" />
+          <stop offset="100%" stop-color="{stroke}" stop-opacity="0.02" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="{int(width)}" height="{int(height)}" fill="rgba(4,10,20,.26)" rx="10" />
+      {grid_lines}
+      {f'<line x1="{pad}" y1="{zero_y:.2f}" x2="{width - pad}" y2="{zero_y:.2f}" class="chartZeroLine" />' if zero_y is not None else ""}
+      <polygon class="chartArea" fill="url(#{gradient_id})" points="{area_points}" />
       <polyline class="chartLine" fill="none" stroke="{stroke}" stroke-width="3" points="{points}" />
-      <circle cx="{sx(len(values) - 1):.2f}" cy="{sy(values[-1]):.2f}" r="4.5" fill="{stroke}" />
+      <circle class="chartLastPoint" cx="{sx(len(values) - 1):.2f}" cy="{sy(values[-1]):.2f}" r="4.5" fill="{stroke}" />
       {''.join(points_markup)}
     </svg>
     <div class="chartMeta">
@@ -97,6 +123,7 @@ def _multi_line_chart_svg(series_list: List[Dict[str, Any]], y_prefix: str = "$"
     width = 820.0
     height = 210.0
     pad = 18.0
+    inner_height = height - (2 * pad)
 
     all_vals: List[float] = []
     for s in active:
@@ -117,6 +144,12 @@ def _multi_line_chart_svg(series_list: List[Dict[str, Any]], y_prefix: str = "$"
     dots: List[str] = []
     point_hits: List[str] = []
     legend_items: List[str] = []
+    y_steps = [pad + (inner_height * frac) for frac in (0.0, 0.33, 0.66, 1.0)]
+    grid_lines = "".join(
+        f'<line x1="{pad:.2f}" y1="{y:.2f}" x2="{width - pad:.2f}" y2="{y:.2f}" '
+        f'class="chartGridLine" />'
+        for y in y_steps
+    )
     for s in active:
         color = str(s.get("color") or "#35d4ff")
         name = html.escape(str(s.get("name") or "Series"))
@@ -133,7 +166,7 @@ def _multi_line_chart_svg(series_list: List[Dict[str, Any]], y_prefix: str = "$"
             day = _series_day_from_label(str(p.get("label") or ""))
             point_hits.append(
                 (
-                    f'<circle class="chartPoint" cx="{sx(i, len(vals)):.2f}" cy="{sy(vals[i]):.2f}" r="6.0" '
+                    f'<circle class="chartPoint" cx="{sx(i, len(vals)):.2f}" cy="{sy(vals[i]):.2f}" r="5.0" '
                     f'fill="transparent" data-label="{label}" data-value="{vals[i]:.2f}" data-prefix="{html.escape(y_prefix)}" '
                     f'data-series="{name}" data-day="{html.escape(day)}" />'
                 )
@@ -144,9 +177,10 @@ def _multi_line_chart_svg(series_list: List[Dict[str, Any]], y_prefix: str = "$"
 
     return f"""
     <svg viewBox="0 0 {int(width)} {int(height)}" role="img" aria-label="analytics multi line chart" style="width:100%;height:auto;display:block">
-      <rect x="0" y="0" width="{int(width)}" height="{int(height)}" fill="rgba(4,10,20,.35)" rx="10" />
+      <rect x="0" y="0" width="{int(width)}" height="{int(height)}" fill="rgba(4,10,20,.26)" rx="10" />
+      {grid_lines}
       {''.join(lines)}
-      {''.join(dots)}
+      {''.join(f'<g class="chartLastPoint">{dot}</g>' for dot in dots)}
       {''.join(point_hits)}
     </svg>
     <div class="trendChips">{''.join(legend_items)}</div>
@@ -351,17 +385,7 @@ def _what_if_day_simulator(
     if consistency_avg_win <= 0 and consistency_avg_loss <= 0:
         consistency_avg_win = 1.0
 
-    current_balance = float(get_setting_float("starting_balance", 50000.0))
-    for r in reversed(rows):
-        try:
-            bal = float(r.get("balance")) if r.get("balance") is not None else None
-        except (TypeError, ValueError):
-            bal = None
-        if bal is not None:
-            current_balance = bal
-            break
-    else:
-        current_balance += float(perf.get("total_net") or 0.0)
+    current_balance = float(trades_repo.latest_balance_overall())
 
     p_win = consistency_win_rate / 100.0
     p_loss = 1.0 - p_win
@@ -481,6 +505,14 @@ def analytics_page():
         + (integrity.get("stale_balance_rows") or 0)
     )
     sync_status = get_system_status() or {}
+    balance_integrity = trades_repo.balance_integrity_snapshot()
+    balance_badges = balance_state_badges(balance_integrity)
+    sync_badges = sync_state_badges(
+        sync_status,
+        status_key="last_sync_status",
+        stage_key="last_sync_stage",
+        updated_key="last_sync_updated_human",
+    )
     data_trust = analytics_data_trust(sync_status, integrity_issue_count=integrity_issue_count)
     if data_trust.primary_href == "/analytics?tab=diagnostics":
         data_trust = data_trust.__class__(
@@ -538,7 +570,10 @@ def analytics_page():
         fitz_22=fitz_22,
         integrity=integrity,
         integrity_issue_count=integrity_issue_count,
+        balance_integrity=balance_integrity,
+        balance_badges=balance_badges,
         sync_status=sync_status,
+        sync_badges=sync_badges,
         data_trust=data_trust,
         edge_pulse=edge_pulse,
         control_pulse=control_pulse,
@@ -554,7 +589,7 @@ def analytics_page():
         sim=sim,
         heatmap=heatmap,
     )
-    return render_page(content, active="analytics", title="McCain Capital 🏛️ · Analytics")
+    return render_page(content, active="analytics", title="McCain Capital · Analytics")
 
 
 def session_replay_page():
@@ -692,4 +727,4 @@ def session_replay_page():
         replay_journal_href=replay_journal_href,
         money=money,
     )
-    return render_page(content, active="analytics", title="McCain Capital 🏛️ · Session Replay")
+    return render_page(content, active="analytics", title="McCain Capital · Session Replay")

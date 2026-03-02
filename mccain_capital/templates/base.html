@@ -33,7 +33,7 @@
           <img src="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}" alt="logo"/>
         </div>
         <div class="brandText">
-          <h1>{{ title }}</h1>
+          <h1 class="brandTitle">{{ brand_title or 'McCain Capital' }}</h1>
           <div class="brandSignature">
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-crown"></use></svg> McCain Capital Reserve</span>
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Elite Personal Trading Cockpit</span>
@@ -43,8 +43,23 @@
       </div>
 
       <div class="topRight">
-        <div id="modePill" class="clockPill">⏳ Loading…</div>
-        <div class="clockPill">🕒 <span id="etClock" class="clockTime">--:--:--</span> ET <span id="marketState" class="marketState marketClosed">Closed</span></div>
+        {% if top_notice %}
+          {% if top_notice.href %}
+            <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
+              <span class="topNoticeText">{{ top_notice.text }}</span>
+            </a>
+          {% else %}
+            <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
+              <span class="topNoticeText">{{ top_notice.text }}</span>
+            </div>
+          {% endif %}
+        {% endif %}
+        <div id="modePill" class="clockPill">Loading…</div>
+        <div class="clockPill" aria-label="Eastern time and market status">
+          <span id="etClock" class="clockTime">--:--:--</span>
+          <span class="clockMeta">ET</span>
+          <span id="marketState" class="marketState marketClosed">Closed</span>
+        </div>
 
         <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -81,6 +96,7 @@
             {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
             <div class="menuTitle">Workspace</div>
             <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">P/L Calendar</a>
+            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse">Market Pulse</a>
             <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
@@ -101,7 +117,7 @@
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
             <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
-            <button class="btn" type="button" onclick="toggleTheme()">Toggle Black Mode</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
             {% if auth_enabled %}
               <div class="hr"></div>
               {% if authenticated %}
@@ -210,6 +226,7 @@
             <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
             <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Debrief</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
+            <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse">Market Pulse</a>
           </div>
         </section>
 
@@ -239,7 +256,7 @@
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/setup">Setup Login</a>
-            <button class="btn" type="button" onclick="toggleTheme()">Toggle Black Mode</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}
               {% if authenticated %}
@@ -555,13 +572,26 @@ document.addEventListener('keydown', (e) => {
     setInterval(updateETClock, 1000);
     updateETClock();
 
+    const THEME_ORDER = ["default", "black", "steel"];
+    const THEME_LABELS = {
+      default: "Theme: Classic",
+      black: "Theme: Midnight",
+      steel: "Theme: Steel"
+    };
+    function syncThemeButtons(theme){
+      document.querySelectorAll("[data-theme-toggle-label]").forEach((btn) => {
+        btn.textContent = THEME_LABELS[theme] || THEME_LABELS.default;
+      });
+    }
     function applyTheme(theme){
-      const t = (theme === "black") ? "black" : "default";
+      const t = THEME_ORDER.includes(theme) ? theme : "default";
       document.body.setAttribute("data-theme", t);
+      syncThemeButtons(t);
     }
     function toggleTheme(){
-      const current = document.body.getAttribute("data-theme") === "black" ? "black" : "default";
-      const next = current === "black" ? "default" : "black";
+      const current = document.body.getAttribute("data-theme") || "default";
+      const idx = THEME_ORDER.indexOf(current);
+      const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
       localStorage.setItem("mc_theme", next);
       applyTheme(next);
     }
@@ -673,13 +703,20 @@ document.addEventListener('keydown', (e) => {
       cards.forEach((card, i) => {
         if (i >= keepCount) card.classList.add('mobileDenseExtra');
       });
+      const moreLabel = 'More';
+      const lessLabel = 'Less';
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'btn statToggleBtn';
-      toggle.textContent = `Show More ${label}`;
+      toggle.textContent = moreLabel;
+      toggle.title = `Show more ${label.toLowerCase()}`;
+      toggle.setAttribute('aria-label', `Show more ${label.toLowerCase()}`);
       toggle.addEventListener('click', () => {
         const expanded = grid.classList.toggle('showAllStats');
-        toggle.textContent = expanded ? `Show Fewer ${label}` : `Show More ${label}`;
+        toggle.textContent = expanded ? lessLabel : moreLabel;
+        const nextTitle = expanded ? `Show fewer ${label.toLowerCase()}` : `Show more ${label.toLowerCase()}`;
+        toggle.title = nextTitle;
+        toggle.setAttribute('aria-label', nextTitle);
       });
       grid.insertAdjacentElement('afterend', toggle);
       grid.dataset.compacted = '1';
@@ -688,8 +725,11 @@ document.addEventListener('keydown', (e) => {
     function setupMobileDensityCompaction(){
       if (window.innerWidth > 760) return;
       document.querySelectorAll('.statRow').forEach((row) => compactDenseGrid(row, '.stat', 3, 'Stats'));
-      document.querySelectorAll('.metricStrip').forEach((row) => compactDenseGrid(row, '.metric', 2, 'Metrics'));
+      document.querySelectorAll('.metricStrip:not([data-no-mobile-compact="1"])').forEach((row) => compactDenseGrid(row, '.metric', 2, 'Metrics'));
       document.querySelectorAll('.insightGrid').forEach((row) => compactDenseGrid(row, '.insightCard', 2, 'Insights'));
+      document.querySelectorAll('.dashboardSupportGrid').forEach((row) => compactDenseGrid(row, '.supportCard', 2, 'Panels'));
+      document.querySelectorAll('.analyticsTopStats').forEach((row) => compactDenseGrid(row, '.analyticsTopStat', 2, 'Stats'));
+      document.querySelectorAll('.statusBadgeStrip').forEach((row) => compactDenseGrid(row, '.statusBadge', 4, 'Status'));
     }
     enforcePrimaryCta();
     setupMobileDensityCompaction();
