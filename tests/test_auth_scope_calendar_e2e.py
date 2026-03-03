@@ -89,7 +89,8 @@ def test_calendar_allows_authenticated_session_when_auth_enabled(tmp_path: Path,
 
     calendar_resp = client.get("/calendar", follow_redirects=True)
     assert calendar_resp.status_code == 200
-    assert b"calendarPreviewBackdrop" in calendar_resp.data
+    assert b'id="calendarPreview"' in calendar_resp.data
+    assert b"dayPreviewButton" in calendar_resp.data
 
 
 def test_payouts_scope_switch_changes_balance_output(client):
@@ -124,5 +125,5 @@ def test_payouts_scope_switch_changes_balance_output(client):
 def test_calendar_preview_backdrop_contract(client):
     resp = client.get("/calendar", follow_redirects=True)
     assert resp.status_code == 200
-    assert b'id="calendarPreviewBackdrop"' in resp.data
-    assert b"has-calendar-preview" in resp.data
+    assert b'id="calendarPreview"' in resp.data
+    assert b"dayPreviewButton" in resp.data
