@@ -277,6 +277,14 @@
       </div>
     </aside>
 
+    <div id="marketPulseNavLoading" class="marketPulseLoadingOverlay" aria-hidden="true">
+      <div class="marketPulseLoadingCard">
+        <div class="marketPulseSpinner"></div>
+        <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
+        <div class="marketPulseLoadingSub">Pulling Yahoo chart data and rebuilding tape context…</div>
+      </div>
+    </div>
+
     {{ content|safe }}
 
     <div id="quickLauncher" class="quickLauncher" aria-label="Quick actions">
@@ -514,9 +522,34 @@ document.addEventListener('keydown', (e) => {
     window.openDrawer = openDrawer;
     window.closeDrawer = closeDrawer;
 
+    function showMarketPulseNavLoading(){
+      const overlay = document.getElementById("marketPulseNavLoading");
+      if(!overlay) return;
+      overlay.classList.add("show");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    window.showMarketPulseNavLoading = showMarketPulseNavLoading;
+
     document.addEventListener('click', (e)=>{
       const link = e.target.closest && e.target.closest('#drawer a');
       if(link) closeDrawer();
+    });
+    document.addEventListener("click", (e)=>{
+      if(e.defaultPrevented || e.button !== 0) return;
+      if(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = e.target.closest && e.target.closest("a[href]");
+      if(!link || link.target === "_blank") return;
+      const rawHref = link.getAttribute("href") || "";
+      if(!rawHref || rawHref.startsWith("#")) return;
+      let url = null;
+      try{
+        url = new URL(link.href, window.location.origin);
+      }catch(_err){
+        return;
+      }
+      if(url.origin !== window.location.origin) return;
+      if(url.pathname !== "/market-pulse") return;
+      showMarketPulseNavLoading();
     });
 
     function updateETClock(){
