@@ -1,4 +1,4 @@
-"""Visual smoke guardrail: capture key routes on desktop/mobile and fail if capture fails."""
+"""Visual smoke guardrail with desktop + iOS-like viewport/state coverage."""
 
 from __future__ import annotations
 
@@ -11,22 +11,36 @@ BASE_URL = os.environ.get("VISUAL_BASE_URL", "http://127.0.0.1:5001")
 OUT_DIR = Path(os.environ.get("VISUAL_OUT_DIR", "artifacts/visual"))
 
 SCENARIOS = [
-    ("desktop-dashboard", "/dashboard", {"width": 1600, "height": 1000}),
-    ("desktop-trades", "/trades", {"width": 1600, "height": 1100}),
-    ("desktop-journal", "/journal", {"width": 1600, "height": 1000}),
-    ("desktop-calculator", "/calculator", {"width": 1600, "height": 1000}),
-    ("desktop-analytics", "/analytics?tab=performance", {"width": 1600, "height": 1100}),
-    ("mobile-dashboard", "/dashboard", {"width": 390, "height": 844}),
-    ("mobile-trades", "/trades", {"width": 390, "height": 844}),
-    ("mobile-journal", "/journal", {"width": 390, "height": 844}),
-    ("mobile-calculator", "/calculator", {"width": 390, "height": 844}),
-    ("mobile-analytics", "/analytics?tab=performance", {"width": 390, "height": 844}),
+    ("desktop-dashboard", "/dashboard", {"width": 1600, "height": 1000}, None),
+    ("desktop-trades", "/trades", {"width": 1600, "height": 1100}, None),
+    ("desktop-journal", "/journal", {"width": 1600, "height": 1000}, None),
+    ("desktop-calculator", "/calculator", {"width": 1600, "height": 1000}, None),
+    ("desktop-analytics", "/analytics?tab=performance", {"width": 1600, "height": 1100}, None),
+    ("mobile-dashboard-390x844", "/dashboard", {"width": 390, "height": 844}, None),
+    ("mobile-trades-390x844", "/trades", {"width": 390, "height": 844}, None),
+    ("mobile-journal-390x844", "/journal", {"width": 390, "height": 844}, None),
+    ("mobile-calculator-390x844", "/calculator", {"width": 390, "height": 844}, None),
+    ("mobile-analytics-390x844", "/analytics?tab=performance", {"width": 390, "height": 844}, None),
+    ("mobile-calendar-393x852", "/calendar", {"width": 393, "height": 852}, None),
+    (
+        "mobile-calendar-preview-393x852",
+        "/calendar",
+        {"width": 393, "height": 852},
+        ".dayPreviewButton",
+    ),
+    ("mobile-calendar-390x780", "/calendar", {"width": 390, "height": 780}, None),
+    ("mobile-calendar-375x667", "/calendar", {"width": 375, "height": 667}, None),
+    ("mobile-payouts-390x844", "/payouts", {"width": 390, "height": 844}, None),
+    ("mobile-payouts-390x780", "/payouts", {"width": 390, "height": 780}, None),
 ]
 
 
-def _capture(page, name: str, path: str) -> None:
+def _capture(page, name: str, path: str, tap_selector: str | None = None) -> None:
     url = f"{BASE_URL}{path}"
     page.goto(url, wait_until="networkidle", timeout=45000)
+    if tap_selector:
+        page.locator(tap_selector).first.click(timeout=5000)
+        page.wait_for_timeout(200)
     page.screenshot(path=str(OUT_DIR / f"{name}.png"), full_page=True)
 
 
@@ -46,10 +60,11 @@ def main() -> int:
             ),
         )
 
-        for name, route, viewport in SCENARIOS:
+        for name, route, viewport, tap_selector in SCENARIOS:
             ctx = mobile if viewport["width"] <= 430 else desktop
             page = ctx.new_page()
-            _capture(page, name=name, path=route)
+            page.set_viewport_size(viewport)
+            _capture(page, name=name, path=route, tap_selector=tap_selector)
             page.close()
 
         browser.close()

@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+import math
 import random
 import statistics
-from flask import flash, get_flashed_messages, redirect, render_template_string, request, url_for
+from flask import flash, redirect, render_template, request, url_for
 
 from mccain_capital.repositories import goals as repo
 from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import (
     BASE_MONTHLY_INCOME,
     DEFAULT_PROTECT_BUFFER,
-    last_30d_total_net,
-    last_n_trading_day_totals,
-    latest_balance_overall,
     money,
     month_bounds,
-    month_total_net,
     now_et,
     parse_float,
     parse_int,
@@ -176,6 +173,221 @@ def _payout_readiness_planner(
     }
 
 
+def _required_profit_to_target(current_withdrawable: float, payout_goal: float) -> float:
+    return max(0.0, float(payout_goal) - float(current_withdrawable))
+
+
+def _quantile_int(values: list[int], q: float) -> int | None:
+    if not values:
+        return None
+    ordered = sorted(int(v) for v in values)
+    idx = max(0, min(len(ordered) - 1, int(math.ceil(q * len(ordered)) - 1)))
+    return int(ordered[idx])
+
+
+def _trading_day_quantiles_to_goal(
+    required_profit: float,
+    mu: float,
+    sigma: float,
+    *,
+    runs: int = 1000,
+    horizon: int = 60,
+    balance: float = 0.0,
+    safe_floor: float | None = None,
+    seed: int = 11,
+) -> dict[str, float | int | None]:
+    req = float(required_profit)
+    if req <= 0:
+        return {
+            "days_p50": 0,
+            "days_p70": 0,
+            "days_p90": 0,
+            "hit_prob_5d": 100.0,
+            "hit_prob_10d": 100.0,
+            "hit_prob_20d": 100.0,
+            "floor_breach_prob_at_target_horizon": 0.0,
+        }
+
+    vol = max(0.0, float(sigma))
+    rng = random.Random(seed)
+    reached_days: list[int] = []
+    breach_days: list[int | None] = []
+
+    for _ in range(max(1, int(runs))):
+        pnl = 0.0
+        bal = float(balance)
+        reached_day: int | None = None
+        breach_day: int | None = None
+        for day in range(1, int(horizon) + 1):
+            step = rng.gauss(float(mu), vol) if vol > 0 else float(mu)
+            pnl += step
+            bal += step
+            if breach_day is None and safe_floor is not None and bal < float(safe_floor):
+                breach_day = day
+            if reached_day is None and pnl >= req:
+                reached_day = day
+        if reached_day is not None:
+            reached_days.append(reached_day)
+        breach_days.append(breach_day)
+
+    def _hit_prob(days: int) -> float:
+        hits = sum(1 for d in reached_days if d <= days)
+        return round((hits / max(1, runs)) * 100.0, 1)
+
+    p50 = _quantile_int(reached_days, 0.50)
+    p70 = _quantile_int(reached_days, 0.70)
+    p90 = _quantile_int(reached_days, 0.90)
+    target_horizon = p70 or p90 or int(horizon)
+    floor_hits = sum(
+        1
+        for d in breach_days
+        if d is not None and d <= int(target_horizon)
+    )
+    floor_prob = round((floor_hits / max(1, runs)) * 100.0, 1)
+
+    return {
+        "days_p50": p50,
+        "days_p70": p70,
+        "days_p90": p90,
+        "hit_prob_5d": _hit_prob(5),
+        "hit_prob_10d": _hit_prob(10),
+        "hit_prob_20d": _hit_prob(20),
+        "floor_breach_prob_at_target_horizon": floor_prob,
+    }
+
+
+def _build_unlock_forecast(
+    *,
+    safe_request: float,
+    max_request: float,
+    biweekly_goal: float,
+    overall_balance: float,
+    safe_floor: float,
+    daily20: list[float],
+    daily60: list[float],
+    risk_threshold: float = 30.0,
+) -> dict[str, object]:
+    near = [float(v) for v in daily20 if isinstance(v, (int, float))]
+    stable = [float(v) for v in daily60 if isinstance(v, (int, float))]
+    sample_count = len(stable) if stable else len(near)
+    mu_20 = statistics.mean(near) if near else 0.0
+    sigma_60 = statistics.pstdev(stable) if len(stable) > 1 else (abs(mu_20) * 0.6)
+    sigma_60 = max(0.0, float(sigma_60))
+
+    warnings: list[str] = []
+    low_confidence = sample_count < 10
+    if low_confidence:
+        warnings.append("Low confidence: fewer than 10 trading days in scope.")
+    if mu_20 <= 0:
+        warnings.append("Drift is non-positive; payout unlock ETA is not statistically favorable.")
+
+    method = "deterministic_low_confidence" if low_confidence else "probabilistic_bands"
+
+    def _build_path(label: str, current_withdrawable: float) -> dict[str, object]:
+        required = _required_profit_to_target(current_withdrawable, biweekly_goal)
+        path: dict[str, object] = {
+            "label": label,
+            "required_profit": required,
+            "can_unlock_now": required <= 0.0,
+            "days_p50": 0 if required <= 0.0 else None,
+            "days_p70": 0 if required <= 0.0 else None,
+            "days_p90": 0 if required <= 0.0 else None,
+            "hit_prob_5d": 100.0 if required <= 0.0 else 0.0,
+            "hit_prob_10d": 100.0 if required <= 0.0 else 0.0,
+            "hit_prob_20d": 100.0 if required <= 0.0 else 0.0,
+            "floor_breach_prob": 0.0,
+            "risk_flag": "PASS",
+            "risk_tone": "ok",
+            "eta_note": "Unlocked now." if required <= 0.0 else "",
+        }
+        if required <= 0.0:
+            return path
+
+        if low_confidence:
+            if mu_20 > 0:
+                deterministic_days = int(math.ceil(required / mu_20))
+                path.update(
+                    {
+                        "days_p50": deterministic_days,
+                        "days_p70": deterministic_days,
+                        "days_p90": deterministic_days,
+                        "eta_note": "Deterministic fallback from average daily P/L.",
+                    }
+                )
+            else:
+                path.update(
+                    {
+                        "eta_note": "Not statistically favorable (non-positive drift).",
+                        "risk_flag": "RISK",
+                        "risk_tone": "critical",
+                    }
+                )
+            return path
+
+        quantiles = _trading_day_quantiles_to_goal(
+            required,
+            mu_20,
+            sigma_60,
+            runs=1000,
+            horizon=60,
+            balance=float(overall_balance),
+            safe_floor=float(safe_floor),
+        )
+        path.update(
+            {
+                "days_p50": quantiles["days_p50"],
+                "days_p70": quantiles["days_p70"],
+                "days_p90": quantiles["days_p90"],
+                "hit_prob_5d": quantiles["hit_prob_5d"],
+                "hit_prob_10d": quantiles["hit_prob_10d"],
+                "hit_prob_20d": quantiles["hit_prob_20d"],
+                "floor_breach_prob": quantiles["floor_breach_prob_at_target_horizon"],
+            }
+        )
+        floor_prob = float(path["floor_breach_prob"] or 0.0)
+        if floor_prob > float(risk_threshold) or mu_20 <= 0:
+            path["risk_flag"] = "RISK"
+            path["risk_tone"] = "critical"
+        if mu_20 <= 0:
+            path["days_p50"] = None
+            path["days_p70"] = None
+            path["days_p90"] = None
+            path["eta_note"] = "Not statistically favorable (non-positive drift)."
+        return path
+
+    return {
+        "method": method,
+        "risk_threshold": float(risk_threshold),
+        "model": {
+            "mu_20": mu_20,
+            "sigma_60": sigma_60,
+            "sample_20": len(near),
+            "sample_60": len(stable),
+        },
+        "warnings": warnings,
+        "safe": _build_path("Safe Withdrawal Path", safe_request),
+        "max": _build_path("Max Withdrawal Path", max_request),
+    }
+
+
+def _sum_net_between(*, start_date: str, end_date: str, scope_start: str = "") -> float:
+    where = ["trade_date >= ?", "trade_date < ?"]
+    params: list[object] = [start_date, end_date]
+    if scope_start:
+        where.append("trade_date >= ?")
+        params.append(scope_start)
+    with db() as conn:
+        row = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(net_pl), 0) AS net
+            FROM trades
+            WHERE {' AND '.join(where)}
+            """,
+            tuple(params),
+        ).fetchone()
+    return float(row["net"] or 0.0)
+
+
 def goals_tracker():
     # which day are we viewing/editing?
     d_iso = (request.args.get("date") or today_iso()).strip()
@@ -274,261 +486,8 @@ def goals_tracker():
     gap_15 = round(max(15000 - total_scenario, 0), 2)
     gap_20 = round(max(20000 - total_scenario, 0), 2)
 
-    content = render_template_string(
-        """
-        <div class="card pageHero">
-          <div class="toolbar">
-            <div class="pageHeroHead">
-              <div>
-                <div class="pill">🎯 Goals Workspace</div>
-                <h2 class="pageTitle">Income & Discipline Tracker</h2>
-                <div class="pageSub">Track daily input actions, project income scenarios, and keep your execution aligned with monthly targets.</div>
-              </div>
-              <div class="actionRow">
-                <a class="btn" href="/payouts">💸 Payouts</a>
-                <a class="btn" href="/calculator">🧮 Calculator</a>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <div class="pill">🎯 Daily Goals Tracker</div>
-            <div class="tiny stack10 line16">
-              Track *inputs* daily: debt actions + Upwork pipeline. Then let the math bully you into consistency 😈
-            </div>
-
-            {% with messages = get_flashed_messages(with_categories=true, category_filter=['goals_ok']) %}
-              {% if messages %}
-                <div class="hr"></div>
-                {% for cat,msg in messages %}
-                  <div class="tiny metaGreen">• {{ msg }}</div>
-                {% endfor %}
-              {% endif %}
-            {% endwith %}
-
-            <div class="hr"></div>
-            <form method="post">
-              <div class="row">
-                <div>
-                  <label>📆 Date</label>
-                  <input type="date" name="track_date" value="{{ vals.track_date }}">
-                </div>
-                <div>
-                  <label>💳 Debt Paid Today</label>
-                  <input name="debt_paid" inputmode="decimal" value="{{ vals.debt_paid }}">
-                </div>
-              </div>
-
-              <div class="stack10">
-                <label>🧾 Debt Notes (what did you resolve?)</label>
-                <input name="debt_note" value="{{ vals.debt_note }}" placeholder="e.g. called CBNA, negotiated, paid Zip installment...">
-              </div>
-
-              <div class="row stack10">
-                <div>
-                  <label>🧲 Upwork Proposals</label>
-                  <input name="upwork_proposals" inputmode="numeric" value="{{ vals.upwork_proposals }}">
-                </div>
-                <div>
-                  <label>🗣️ Upwork Interviews</label>
-                  <input name="upwork_interviews" inputmode="numeric" value="{{ vals.upwork_interviews }}">
-                </div>
-                <div>
-                  <label>⏱️ Upwork Hours</label>
-                  <input name="upwork_hours" inputmode="decimal" value="{{ vals.upwork_hours }}">
-                </div>
-                <div>
-                  <label>💵 Upwork Earnings</label>
-                  <input name="upwork_earnings" inputmode="decimal" value="{{ vals.upwork_earnings }}">
-                </div>
-                <div>
-                  <label>➕ Other Income</label>
-                  <input name="other_income" inputmode="decimal" value="{{ vals.other_income }}">
-                </div>
-              </div>
-
-              <div class="stack10">
-                <label>📝 Notes</label>
-                <input name="notes" value="{{ vals.notes }}" placeholder="What moved the needle today?">
-              </div>
-
-              <div class="hr"></div>
-              <div class="rightActions">
-                <button class="btn primary" type="submit">💾 Save</button>
-                <a class="btn" href="/calculator">🧮 Calc</a>
-                <a class="btn" href="/dashboard">📊 Calendar</a>
-              </div>
-            </form>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">📅 This Month: {{ m_first }} → {{ m_last }}</div>
-
-            <div class="calcGrid stack10">
-              <div class="calcCard"><div class="k">💳 Debt Paid</div><div class="v">{{ money(sum_debt) }}</div></div>
-              <div class="calcCard"><div class="k">💵 Upwork Earned</div><div class="v">{{ money(sum_upwork) }}</div></div>
-              <div class="calcCard"><div class="k">➕ Other Income</div><div class="v">{{ money(sum_other) }}</div></div>
-              <div class="calcCard"><div class="k">🧠 Recorded Days</div><div class="v">{{ recorded_days }}</div></div>
-              <div class="calcCard"><div class="k">📈 Projected Upwork (30d)</div><div class="v">{{ money(projected_upwork) }}</div></div>
-              <div class="calcCard"><div class="k">📈 Projected Other (30d)</div><div class="v">{{ money(projected_other) }}</div></div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="tiny line16">
-              Projection is based on <b>days you actually recorded</b> — not wishful calendar math. Record daily. ✅
-            </div>
-          </div></div>
-        </div>
-
-        <div class="twoCol stack12">
-          <div class="card"><div class="toolbar">
-            <div class="pill">📈 Income Projection (Goal: $15k–$20k)</div>
-            <div class="tiny stack10 line16">
-              Your baseline income is set to <b>{{ money(base_income) }}</b> monthly.
-              You need <b>{{ money(15000 - base_income) }}</b> to reach $15k and <b>{{ money(20000 - base_income) }}</b> to reach $20k.
-            </div>
-
-            <div class="hr"></div>
-            <form method="get">
-              <input type="hidden" name="date" value="{{ vals.track_date }}">
-              <div class="row">
-                <div>
-                  <label>💼 Upwork Hourly Rate</label>
-                  <input name="hourly_rate" inputmode="decimal" value="{{ hourly_rate }}" placeholder="e.g. 75">
-                </div>
-                <div>
-                  <label>⏱️ Billable Hours / Week</label>
-                  <input name="hours_per_week" inputmode="decimal" value="{{ hours_per_week }}" placeholder="e.g. 10">
-                </div>
-                <div>
-                  <label>📦 Fixed Deals / Month</label>
-                  <input name="fixed_deals" inputmode="numeric" value="{{ fixed_deals }}" placeholder="e.g. 2">
-                </div>
-                <div>
-                  <label>💰 Avg Deal Value</label>
-                  <input name="avg_deal" inputmode="decimal" value="{{ avg_deal }}" placeholder="e.g. 1500">
-                </div>
-              </div>
-
-              <div class="row stack10">
-                <div>
-                  <label>📊 Trading (Monthly)</label>
-                  <input name="trading_monthly" inputmode="decimal" value="{{ trading_monthly }}" placeholder="e.g. 3000">
-                </div>
-                <div>
-                  <label>➕ Other (Monthly)</label>
-                  <input name="other_monthly" inputmode="decimal" value="{{ other_monthly }}" placeholder="e.g. 500">
-                </div>
-              </div>
-
-              <div class="hr"></div>
-              <div class="rightActions">
-                <button class="btn primary" type="submit">⚡ Project</button>
-                <a class="btn" href="/goals">Reset</a>
-              </div>
-            </form>
-
-            <div class="hr"></div>
-            <div class="calcGrid">
-              <div class="calcCard"><div class="k">🧱 Base Income</div><div class="v">{{ money(base_income) }}</div></div>
-              <div class="calcCard"><div class="k">🧑‍💻 Upwork (Hourly)</div><div class="v">{{ money(upwork_from_hourly) }}</div></div>
-              <div class="calcCard"><div class="k">📦 Upwork (Fixed)</div><div class="v">{{ money(upwork_from_fixed) }}</div></div>
-              <div class="calcCard"><div class="k">🔥 Upwork Total</div><div class="v">{{ money(upwork_scenario) }}</div></div>
-              <div class="calcCard"><div class="k">📊 Trading</div><div class="v">{{ money(trading_monthly) }}</div></div>
-              <div class="calcCard"><div class="k">➕ Other</div><div class="v">{{ money(other_monthly) }}</div></div>
-              <div class="calcCard"><div class="k">✅ Total Projected</div><div class="v">{{ money(total_scenario) }}</div></div>
-              <div class="calcCard"><div class="k">⬆️ Gap to $15k</div><div class="v">{{ money(gap_15) }}</div></div>
-              <div class="calcCard"><div class="k">⬆️ Gap to $20k</div><div class="v">{{ money(gap_20) }}</div></div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="tiny line16">
-              Reality check: if the gap is big, don't "motivate" yourself — <b>engineer a system</b>:
-              proposals/day, follow-ups/day, and a weekly billable-hours target. ✅
-            </div>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">🗓️ Month Log</div>
-            <div class="tiny stack10 line16">
-              Click a date to edit it.
-            </div>
-            <div class="hr"></div>
-
-            <div class="tableWrap desktopOnly">
-              <table class="tableDense">
-                <thead>
-                  <tr>
-                    <th>📆 Date</th>
-                    <th>💳 Debt</th>
-                    <th>💵 Upwork</th>
-                    <th>🧲 Props</th>
-                    <th>🗣️ Intv</th>
-                    <th>➕ Other</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for r in rows %}
-                    <tr>
-                      <td><a class="btn btnCompact" href="/goals?date={{ r.track_date }}">{{ r.track_date }}</a></td>
-                      <td>{{ money(r.debt_paid) }}</td>
-                      <td>{{ money(r.upwork_earnings) }}</td>
-                      <td>{{ r.upwork_proposals }}</td>
-                      <td>{{ r.upwork_interviews }}</td>
-                      <td>{{ money(r.other_income) }}</td>
-                    </tr>
-                  {% endfor %}
-                  {% if not rows %}
-                    <tr><td colspan="6" class="tiny">No entries yet for this month.</td></tr>
-                  {% endif %}
-                </tbody>
-              </table>
-            </div>
-            <div class="mobileOnly">
-              <div class="grid">
-                {% for r in rows %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">📆 {{ r.track_date }}</div>
-                    <div class="metaRow">
-                      <span class="meta">💳 Debt: <b>{{ money(r.debt_paid) }}</b></span>
-                      <span class="meta">💵 Upwork: <b>{{ money(r.upwork_earnings) }}</b></span>
-                      <span class="meta">🧲 Props: <b>{{ r.upwork_proposals }}</b></span>
-                      <span class="meta">🗣️ Intv: <b>{{ r.upwork_interviews }}</b></span>
-                      <span class="meta">➕ Other: <b>{{ money(r.other_income) }}</b></span>
-                    </div>
-                    <div class="stack10">
-                      <a class="btn btnCompact" href="/goals?date={{ r.track_date }}">Open Day</a>
-                    </div>
-                  </div></div>
-                {% endfor %}
-                {% if not rows %}
-                  <div class="card"><div class="toolbar"><div class="tiny">No entries yet for this month.</div></div></div>
-                {% endif %}
-              </div>
-            </div>
-          </div></div>
-        </div>
-
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧭 Goal-to-Execution Bridge (Weekly)</div>
-          <div class="tiny stack10 line16">Connect planned actions to actual trade execution quality and weekly drift.</div>
-          <div class="hr"></div>
-          <div class="statRow">
-            <div class="stat"><div class="k">Week</div><div class="v">{{ bridge.week_start }} → {{ bridge.week_end }}</div></div>
-            <div class="stat"><div class="k">Compliance</div><div class="v">{{ '%.1f'|format(bridge.compliance_score) }}%</div></div>
-            <div class="stat"><div class="k">Planned vs Traded Days</div><div class="v">{{ bridge.planned_days }} / {{ bridge.trade_days }}</div></div>
-            <div class="stat"><div class="k">Aligned Days</div><div class="v">{{ bridge.aligned_days }}</div></div>
-            <div class="stat"><div class="k">Avg Checklist Score</div><div class="v">{{ '%.1f'|format(bridge.avg_checklist_score) }}</div></div>
-            <div class="stat"><div class="k">Weekly Drift</div><div class="v">{{ '%.1f'|format(bridge.drift_vs_prev_week) }} ({{ bridge.drift_flag }})</div></div>
-          </div>
-          <div class="hr"></div>
-          <div class="tiny line16">
-            Pipeline: proposals {{ bridge.proposals }}/{{ bridge.proposal_target }} · interviews {{ bridge.interviews }}/{{ bridge.interview_target }}.
-          </div>
-        </div></div>
-        """,
+    content = render_template(
+        "goals/index.html",
         vals=vals,
         rows=rows,
         m_first=m_first.isoformat(),
@@ -554,7 +513,6 @@ def goals_tracker():
         gap_15=gap_15,
         gap_20=gap_20,
         money=money,
-        get_flashed_messages=get_flashed_messages,
     )
     return render_page(content, active="goals")
 
@@ -570,17 +528,35 @@ def payouts_page():
         protect = parse_float(request.args.get("protect", "")) or protect
         biweekly_goal = parse_float(request.args.get("goal", "")) or biweekly_goal
 
-    balance_integrity = trades_repo.balance_integrity_snapshot()
+    scope = trades_repo.account_scope_snapshot()
+    scope_enabled = bool(scope.get("enabled"))
+    scope_mode_raw = (request.args.get("scope") or "").strip().lower()
+    scope_active = scope_enabled and scope_mode_raw != "all"
+    scope_start = str(scope.get("start_date") or "")
+    scope_starting_balance = float(scope.get("starting_balance") or 50000.0)
+
+    balance_integrity = trades_repo.balance_integrity_snapshot(
+        start_date=scope_start if scope_active else None,
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
     balance_badges = balance_state_badges(balance_integrity)
     overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
     ps = payout_summary(overall_balance, protect)
 
     today = now_et().date()
-    mtd = month_total_net(today.year, today.month)
-    last30 = last_30d_total_net()
+    m_first = date(today.year, today.month, 1).isoformat()
+    m_next = date(today.year + (today.month == 12), 1 if today.month == 12 else today.month + 1, 1).isoformat()
+    mtd = _sum_net_between(start_date=m_first, end_date=m_next, scope_start=scope_start if scope_active else "")
+    last30_start = (today - timedelta(days=30)).isoformat()
+    last30_end = (today + timedelta(days=1)).isoformat()
+    last30 = _sum_net_between(
+        start_date=last30_start,
+        end_date=last30_end,
+        scope_start=scope_start if scope_active else "",
+    )
 
-    daily20 = last_n_trading_day_totals(20)
-    daily60 = last_n_trading_day_totals(60)
+    daily20 = trades_repo.last_n_trading_day_totals(20, since_date=scope_start if scope_active else "")
+    daily60 = trades_repo.last_n_trading_day_totals(60, since_date=scope_start if scope_active else "")
     proj = projections_from_daily(daily20, overall_balance)
     readiness = _payout_readiness_planner(
         daily_vals=daily60,
@@ -588,120 +564,21 @@ def payouts_page():
         safe_floor=float(ps["safe_floor"]),
         biweekly_goal=float(biweekly_goal),
     )
+    unlock_forecast = _build_unlock_forecast(
+        safe_request=float(ps["safe_request"]),
+        max_request=float(ps["max_request"]),
+        biweekly_goal=float(biweekly_goal),
+        overall_balance=float(overall_balance),
+        safe_floor=float(ps["safe_floor"]),
+        daily20=daily20,
+        daily60=daily60,
+        risk_threshold=30.0,
+    )
 
     can_take_biweekly_now = ps["safe_request"] >= biweekly_goal
 
-    content = render_template_string(
-        """
-        <div class="twoCol">
-          <div class="card"><div class="toolbar">
-            <div class="pill">Payouts</div>
-            <div class="tiny stack10 line15">
-              Safe payout preserves a cushion above the fixed loss limit.
-            </div>
-
-            <div class="hr"></div>
-            <form method="post" class="row">
-              <div>
-                <label>Protect Buffer ($)</label>
-                <input name="protect_buffer" inputmode="decimal" value="{{ protect }}" />
-              </div>
-              <div>
-                <label>Bi-Weekly Goal ($)</label>
-                <input name="biweekly_goal" inputmode="decimal" value="{{ biweekly_goal }}" />
-              </div>
-              <div class="actionRow">
-                <button class="btn primary" type="submit">Update</button>
-                <a class="btn" href="/payouts">Reset</a>
-              </div>
-            </form>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">Rule Snapshot (50K)</div>
-            <div class="tiny stack10 line16">
-              • Buffer reached at: <b>{{ money(ps.profit_buffer_level) }}</b><br>
-              • Fixed loss limit after buffer: <b>{{ money(ps.fixed_loss_limit) }}</b><br>
-              • Safe floor (loss limit + cushion): <b>{{ money(ps.safe_floor) }}</b><br>
-              <div class="hr"></div>
-              {% if ps.buffer_reached %}
-                ✅ Buffer reached — payouts can be calculated.
-              {% else %}
-                ⛔ Buffer NOT reached — eligibility = $0.00 until you pass <b>{{ money(ps.profit_buffer_level) }}</b>.
-              {% endif %}
-            </div>
-          </div></div>
-        </div>
-
-        <div class="card stack12"><div class="toolbar">
-          <div class="pill">Current Totals</div>
-          <div class="statusBadgeStrip">
-            {% for badge in balance_badges %}
-              <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-                <span class="statusBadgeLabel">{{ badge.label }}</span>
-                <strong>{{ badge.value }}</strong>
-              </div>
-            {% endfor %}
-          </div>
-          <div class="hr"></div>
-
-          <div class="statRow">
-            <div class="stat"><div class="k">Balance</div><div class="v">{{ money(ps.balance) }}</div></div>
-            <div class="stat"><div class="k">MTD Net</div><div class="v">{{ money(mtd) }}</div></div>
-            <div class="stat"><div class="k">Last 30 Days</div><div class="v">{{ money(last30) }}</div></div>
-
-            <div class="stat {% if ps.safe_request > 0 %}glow-green{% endif %}">
-              <div class="k">Safe Withdraw (now)</div>
-              <div class="v">{{ money(ps.safe_request) }}</div>
-            </div>
-
-            <div class="stat {% if ps.max_request > 0 %}glow-green{% endif %}">
-              <div class="k">Max Withdraw (no cushion)</div>
-              <div class="v">{{ money(ps.max_request) }}</div>
-            </div>
-
-            <div class="stat {% if can_take_biweekly_now %}glow-green{% else %}glow-red{% endif %}">
-              <div class="k">${{ '%.0f'|format(biweekly_goal) }} Bi-Weekly?</div>
-              <div class="v">{% if can_take_biweekly_now %}Yes{% else %}Not yet{% endif %}</div>
-              <div class="tiny">Needs Safe ≥ {{ money(biweekly_goal) }}</div>
-            </div>
-          </div>
-
-          <div class="hr"></div>
-          <div class="pill">Projections</div>
-          <div class="hr"></div>
-          <div class="statRow">
-            <div class="stat"><div class="k">Daily Avg (recent)</div><div class="v">{{ money(proj.avg) }}</div></div>
-            <div class="stat"><div class="k">5D Est Bal</div><div class="v">{{ money(proj.p5.est_balance) }}</div></div>
-            <div class="stat"><div class="k">10D Est Bal</div><div class="v">{{ money(proj.p10.est_balance) }}</div></div>
-            <div class="stat"><div class="k">20D Est Bal</div><div class="v">{{ money(proj.p20.est_balance) }}</div></div>
-          </div>
-
-          <div class="hr"></div>
-          <div class="tiny">
-            Respect risk. One impulsive day can erase progress.
-          </div>
-        </div></div>
-        <div class="card stack12"><div class="toolbar">
-          <div class="pill">Payout Readiness Planner</div>
-          <div class="tiny stack10 line16">Probability bands based on your recent daily expectancy/volatility profile.</div>
-          <div class="hr"></div>
-          <div class="statRow">
-            <div class="stat"><div class="k">Drift (μ/day)</div><div class="v">{{ money(readiness.mu) }}</div></div>
-            <div class="stat"><div class="k">Vol (σ/day)</div><div class="v">{{ money(readiness.sigma) }}</div></div>
-            <div class="stat"><div class="k">Target Balance</div><div class="v">{{ money(readiness.target_balance) }}</div></div>
-          </div>
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>Horizon</th><th>Target Hit %</th><th>Floor Breach %</th><th>P10 PnL</th><th>P50 PnL</th><th>P90 PnL</th></tr></thead>
-            <tbody>
-              <tr><td>5D</td><td>{{ readiness.h5.target_hit_prob }}%</td><td>{{ readiness.h5.floor_breach_prob }}%</td><td>{{ money(readiness.h5.p10_pnl) }}</td><td>{{ money(readiness.h5.p50_pnl) }}</td><td>{{ money(readiness.h5.p90_pnl) }}</td></tr>
-              <tr><td>10D</td><td>{{ readiness.h10.target_hit_prob }}%</td><td>{{ readiness.h10.floor_breach_prob }}%</td><td>{{ money(readiness.h10.p10_pnl) }}</td><td>{{ money(readiness.h10.p50_pnl) }}</td><td>{{ money(readiness.h10.p90_pnl) }}</td></tr>
-              <tr><td>20D</td><td>{{ readiness.h20.target_hit_prob }}%</td><td>{{ readiness.h20.floor_breach_prob }}%</td><td>{{ money(readiness.h20.p10_pnl) }}</td><td>{{ money(readiness.h20.p50_pnl) }}</td><td>{{ money(readiness.h20.p90_pnl) }}</td></tr>
-            </tbody>
-          </table></div>
-        </div></div>
-        """,
+    content = render_template(
+        "goals/payouts.html",
         ps=ps,
         protect=protect,
         biweekly_goal=biweekly_goal,
@@ -709,8 +586,13 @@ def payouts_page():
         last30=last30,
         proj=proj,
         readiness=readiness,
+        unlock_forecast=unlock_forecast,
         balance_badges=balance_badges,
         can_take_biweekly_now=can_take_biweekly_now,
+        account_scope=scope,
+        scope_mode=("active" if scope_active else "all"),
+        scope_active_href=f"/payouts?scope=active&protect={protect}&goal={biweekly_goal}",
+        scope_all_href=f"/payouts?scope=all&protect={protect}&goal={biweekly_goal}",
         money=money,
     )
     return render_page(content, active="payouts")
