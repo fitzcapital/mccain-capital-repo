@@ -95,7 +95,7 @@
             {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
             <div class="menuTitle">Workspace</div>
             <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">P/L Calendar</a>
-            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse">Market Pulse</a>
+            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
             <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
@@ -225,7 +225,7 @@
             <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
             <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Debrief</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
-            <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse">Market Pulse</a>
+            <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
           </div>
         </section>
 
