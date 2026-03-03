@@ -12,7 +12,6 @@ from datetime import datetime
 from datetime import timedelta
 import json
 import os
-import re
 import shutil
 import tempfile
 import time
