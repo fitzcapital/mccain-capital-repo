@@ -12,6 +12,13 @@
         </div>
       </div>
       <div class="actionRow">
+        {% if account_scope and account_scope.enabled %}
+          <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
+          <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
+          <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
+        {% else %}
+          <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
+        {% endif %}
         <a class="btn primary" href="/analytics/replay">Session Replay</a>
         <a class="btn ctaLink" href="/trades">Trades</a>
         <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
@@ -27,6 +34,9 @@
       <div class="analyticsBalanceBlock">
         <div class="summaryMonth">Analytics Balance</div>
         <div class="summaryCaption analyticsBalanceCaption">Current account <strong>{{ money(balance_integrity.canonical_balance) }}</strong></div>
+        {% if account_scope and account_scope.enabled %}
+          <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
+        {% endif %}
       </div>
       <div class="analyticsTopStats">
         <div class="analyticsTopStat {% if perf.total_net > 0 %}isGain{% elif perf.total_net < 0 %}isLoss{% endif %}">

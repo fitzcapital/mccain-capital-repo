@@ -16,13 +16,14 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import abort, flash, jsonify, redirect, render_template, request, send_file, url_for
+from flask import abort, flash, jsonify, make_response, redirect, render_template, request, send_file, url_for
 
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital import runtime as app_runtime
@@ -41,12 +42,20 @@ DAY_OPEN_INTERVALS = tuple(range(2, 13))
 WEEK_OPEN_INTERVALS = (2, 3, 4, 5, 6)
 MONTH_OPEN_INTERVALS = (2,)
 MARKET_PULSE_CACHE_TTL_SECONDS = 300
+MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD = 2
 MARKET_PULSE_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_pulse_cache.json")
 MARKET_NEWS_CACHE_TTL_SECONDS = 900
 MARKET_NEWS_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_news_cache.json")
 FINNHUB_API_KEY = (os.environ.get("FINNHUB_API_KEY") or "").strip()
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
-MARKET_PULSE_QUOTES_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
+MARKET_PULSE_QUOTES_URLS: Tuple[str, ...] = (
+    "https://query2.finance.yahoo.com/v7/finance/quote",
+    "https://query1.finance.yahoo.com/v7/finance/quote",
+)
+MARKET_PULSE_CHART_URLS: Tuple[str, ...] = (
+    "https://query2.finance.yahoo.com/v8/finance/chart/",
+    "https://query1.finance.yahoo.com/v8/finance/chart/",
+)
 MARKET_PULSE_SYMBOLS: Tuple[Dict[str, str], ...] = (
     {
         "symbol": "^GSPC",
@@ -108,6 +117,23 @@ MARKET_PULSE_SYMBOLS: Tuple[Dict[str, str], ...] = (
         "group": "leaders",
         "focus": "Ad-tech and momentum leadership.",
     },
+    {
+        "symbol": "TSLA",
+        "label": "TSLA",
+        "group": "leaders",
+        "focus": "EV beta and retail-momentum leadership pulse.",
+    },
+)
+MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS: Tuple[str, ...] = (
+    "SPY",
+    "QQQ",
+    "IWM",
+    "NVDA",
+    "MSFT",
+    "AAPL",
+    "AMZN",
+    "META",
+    "TSLA",
 )
 _market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
@@ -179,6 +205,27 @@ def _market_pulse_json_request(url: str, params: Dict[str, Any], timeout: int = 
     return parsed if isinstance(parsed, dict) else None
 
 
+def _market_pulse_yahoo_quote_payload(symbol_csv: str) -> Dict[str, Any] | None:
+    for base_url in MARKET_PULSE_QUOTES_URLS:
+        payload = _market_pulse_json_request(
+            base_url,
+            {"symbols": symbol_csv},
+        )
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def _market_pulse_yahoo_chart_payload(symbol: str) -> Dict[str, Any] | None:
+    encoded = urllib.parse.quote(symbol, safe="")
+    params = {"interval": "1m", "range": "1d"}
+    for base_url in MARKET_PULSE_CHART_URLS:
+        payload = _market_pulse_json_request(base_url + encoded, params)
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
 def _market_pulse_cached_row_map(cached_payload: Dict[str, Any] | None) -> Dict[str, Dict[str, Any]]:
     if not isinstance(cached_payload, dict):
         return {}
@@ -205,6 +252,8 @@ def _market_pulse_normalized_cached_row(cached_row: Dict[str, Any] | None, spec:
     row["group"] = spec["group"]
     row["focus"] = spec["focus"]
     row["yahoo_href"] = _market_pulse_yahoo_href(spec["symbol"])
+    row["data_state"] = str(row.get("data_state") or "cached")
+    row["data_status_label"] = str(row.get("data_status_label") or "Cached")
     return row
 
 
@@ -237,7 +286,117 @@ def _market_pulse_quote_record(raw: Dict[str, Any], spec: Dict[str, str]) -> Dic
             else "—"
         ),
         "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
+        "data_state": "missing",
+        "data_status_label": "Missing",
     }
+
+
+def _market_pulse_yahoo_chart_record(
+    payload: Dict[str, Any] | None,
+    spec: Dict[str, str],
+    cached_row: Dict[str, Any] | None = None,
+    fetched_label: str = "",
+    fetched_epoch: int = 0,
+) -> Dict[str, Any]:
+    fallback = cached_row if isinstance(cached_row, dict) else {}
+    chart = payload.get("chart") if isinstance(payload, dict) else {}
+    result_rows = chart.get("result") if isinstance(chart, dict) else []
+    row0 = result_rows[0] if isinstance(result_rows, list) and result_rows and isinstance(result_rows[0], dict) else {}
+    meta = row0.get("meta") if isinstance(row0.get("meta"), dict) else {}
+    indicators = row0.get("indicators") if isinstance(row0.get("indicators"), dict) else {}
+    quote_rows = indicators.get("quote") if isinstance(indicators.get("quote"), list) else []
+    quote0 = quote_rows[0] if quote_rows and isinstance(quote_rows[0], dict) else {}
+
+    price = meta.get("regularMarketPrice")
+    prev_close = meta.get("previousClose")
+    day_low = meta.get("regularMarketDayLow")
+    day_high = meta.get("regularMarketDayHigh")
+
+    highs = quote0.get("high") if isinstance(quote0.get("high"), list) else []
+    lows = quote0.get("low") if isinstance(quote0.get("low"), list) else []
+    volumes = quote0.get("volume") if isinstance(quote0.get("volume"), list) else []
+    closes = quote0.get("close") if isinstance(quote0.get("close"), list) else []
+    stamps = row0.get("timestamp") if isinstance(row0.get("timestamp"), list) else []
+
+    if day_low is None:
+        numeric_lows = [float(v) for v in lows if isinstance(v, (int, float))]
+        day_low = min(numeric_lows) if numeric_lows else None
+    if day_high is None:
+        numeric_highs = [float(v) for v in highs if isinstance(v, (int, float))]
+        day_high = max(numeric_highs) if numeric_highs else None
+
+    price_source = "live"
+    if not isinstance(price, (int, float)):
+        if isinstance(prev_close, (int, float)):
+            price = float(prev_close)
+            price_source = "delayed"
+        elif isinstance(cached_row, dict) and isinstance(cached_row.get("price"), (int, float)):
+            price = float(cached_row.get("price"))
+            price_source = "cached"
+
+    change = 0.0
+    change_pct = 0.0
+    if isinstance(price, (int, float)) and isinstance(prev_close, (int, float)) and float(prev_close) != 0.0:
+        change = float(price) - float(prev_close)
+        change_pct = (change / float(prev_close)) * 100.0
+
+    if isinstance(price, (int, float)):
+        mini_series = [float(v) for v in closes if isinstance(v, (int, float))]
+        out: Dict[str, Any] = {
+            "symbol": spec["symbol"],
+            "label": spec["label"],
+            "group": spec["group"],
+            "focus": spec["focus"],
+            "name": str(meta.get("shortName") or meta.get("longName") or fallback.get("name") or spec["label"]),
+            "price": float(price),
+            "change": float(change),
+            "change_pct": float(change_pct),
+            "volume": int(meta.get("regularMarketVolume") or 0),
+            "avg_volume": int(meta.get("averageDailyVolume3Month") or fallback.get("avg_volume") or 0),
+            "market_state": str(meta.get("marketState") or fallback.get("market_state") or "Unknown").replace("_", " ").title(),
+            "day_range": (
+                f"{float(day_low):,.2f} to {float(day_high):,.2f}"
+                if isinstance(day_low, (int, float)) and isinstance(day_high, (int, float))
+                else str(fallback.get("day_range") or "—")
+            ),
+            "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
+            "data_state": "live" if price_source == "live" else ("delayed" if price_source == "delayed" else "cached"),
+            "data_status_label": "Live" if price_source == "live" else ("Delayed" if price_source == "delayed" else "Cached"),
+            "asof": str(fallback.get("asof") or fetched_label) if price_source == "cached" else fetched_label,
+            "asof_epoch": int(fallback.get("asof_epoch") or fetched_epoch) if price_source == "cached" else fetched_epoch,
+            "mini_series": (mini_series[-60:] if mini_series else list(fallback.get("mini_series") or [])),
+        }
+        if spec["label"] == "SPX":
+            series = []
+            for stamp, close_v, volume_v in zip(stamps, closes, volumes):
+                if not isinstance(stamp, (int, float)) or not isinstance(close_v, (int, float)):
+                    continue
+                ts = datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ)
+                series.append(
+                    {
+                        "label": ts.strftime("%H:%M"),
+                        "stamp": int(stamp),
+                        "o": float(close_v),
+                        "h": float(close_v),
+                        "l": float(close_v),
+                        "c": float(close_v),
+                        "v": int(volume_v) if isinstance(volume_v, (int, float)) else 0,
+                    }
+                )
+            if series:
+                out["series"] = series
+        return out
+
+    if isinstance(cached_row, dict):
+        normalized = _market_pulse_normalized_cached_row(cached_row, spec)
+        if isinstance(normalized, dict):
+            normalized["asof"] = fetched_label
+            normalized["asof_epoch"] = int(cached_row.get("asof_epoch") or fetched_epoch)
+            return normalized
+    missing = _market_pulse_quote_record({}, spec)
+    missing["asof"] = fetched_label
+    missing["asof_epoch"] = fetched_epoch
+    return missing
 
 
 def _market_pulse_finnhub_quote_record(
@@ -309,8 +468,12 @@ def _market_pulse_spx_proxy_record(
     cached_spx: Dict[str, Any] | None,
     cached_spy: Dict[str, Any] | None,
 ) -> Dict[str, Any]:
+    fallback = _market_pulse_normalized_cached_row(cached_spx, spec)
+    if _market_pulse_has_value(fallback):
+        if isinstance(fallback, dict):
+            fallback["market_state"] = str(fallback.get("market_state") or "Cached SPX")
+            return fallback
     if not isinstance(spy_raw, dict) or not isinstance(spy_raw.get("c"), (int, float)):
-        fallback = _market_pulse_normalized_cached_row(cached_spx, spec)
         return fallback if isinstance(fallback, dict) else _market_pulse_quote_record({}, spec)
 
     ratio = _market_pulse_spx_proxy_ratio(cached_spx, cached_spy)
@@ -392,10 +555,54 @@ def _market_pulse_preserve_cached_rows(
             if isinstance(spec, dict):
                 cached_row = _market_pulse_normalized_cached_row(cached, spec)
                 if isinstance(cached_row, dict):
+                    cached_row["data_state"] = "cached"
+                    cached_row["data_status_label"] = "Cached"
                     preserved.append(cached_row)
                     continue
         preserved.append(row)
     return preserved
+
+
+def _market_pulse_force_yahoo_source(payload: Dict[str, Any] | None) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {"available": False, "fetched_at": "", "source_label": "Yahoo Finance chart feed", "source_note": "", "quotes": []}
+    normalized = dict(payload)
+    normalized["source_label"] = "Yahoo Finance chart feed"
+    note = str(normalized.get("source_note") or "").strip()
+    if (not note) or ("finnhub" in note.lower()):
+        normalized["source_note"] = "Live quote data may be delayed by the upstream feed depending on the symbol."
+    return normalized
+
+
+def _market_pulse_force_symbol_set(payload: Dict[str, Any] | None) -> Dict[str, Any]:
+    normalized = _market_pulse_force_yahoo_source(payload)
+    cached_rows = _market_pulse_cached_row_map(normalized)
+    quotes: List[Dict[str, Any]] = []
+    for spec in MARKET_PULSE_SYMBOLS:
+        cached = cached_rows.get(spec["label"])
+        if isinstance(cached, dict):
+            row = _market_pulse_normalized_cached_row(cached, spec)
+            if isinstance(row, dict):
+                quotes.append(row)
+                continue
+        quotes.append(_market_pulse_quote_record({}, spec))
+    normalized["quotes"] = quotes
+    normalized["available"] = any(q.get("price") is not None for q in quotes)
+    counts = {"live": 0, "delayed": 0, "cached": 0, "missing": 0}
+    for row in quotes:
+        state = str(row.get("data_state") or "missing").lower()
+        counts[state if state in counts else "missing"] += 1
+    normalized["integrity"] = {
+        "latency_ms": 0,
+        "forced_refresh": False,
+        "cached_only": True,
+        "live_count": counts["live"],
+        "delayed_count": counts["delayed"],
+        "cached_count": counts["cached"],
+        "missing_count": counts["missing"],
+        "tracked_count": len(quotes),
+    }
+    return normalized
 
 
 def _market_pulse_finnhub_candles(symbol: str, now_et: datetime) -> List[Dict[str, Any]]:
@@ -442,117 +649,94 @@ def _market_pulse_finnhub_candles(symbol: str, now_et: datetime) -> List[Dict[st
     return series
 
 
-def _market_pulse_snapshot() -> Dict[str, Any]:
+def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
+    started = time.perf_counter()
     now_et = app_runtime.now_et()
+    fetched_label = now_et.strftime("%b %d, %Y %I:%M:%S %p ET")
+    fetched_epoch = int(now_et.timestamp())
     fetched_at = _market_pulse_cache.get("fetched_at")
     cached_payload = _market_pulse_cache.get("payload")
     if (
+        (not force_refresh)
+        and
         isinstance(fetched_at, datetime)
         and isinstance(cached_payload, dict)
         and (now_et - fetched_at).total_seconds() < MARKET_PULSE_CACHE_TTL_SECONDS
     ):
-        return cached_payload
+        return _market_pulse_force_symbol_set(cached_payload)
 
     disk_payload = _load_market_pulse_disk_cache()
     cache_seed = cached_payload if isinstance(cached_payload, dict) else disk_payload
     cached_rows = _market_pulse_cached_row_map(cache_seed)
 
-    if FINNHUB_API_KEY:
-        raw_map: Dict[str, Dict[str, Any] | None] = {}
-        for spec in MARKET_PULSE_SYMBOLS:
-            raw_map[spec["label"]] = _market_pulse_json_request(
-                FINNHUB_BASE_URL + "/quote",
-                {
-                    "symbol": spec["symbol"],
-                    "token": FINNHUB_API_KEY,
-                },
-            )
+    quotes: List[Dict[str, Any]] = []
+    live_count = 0
+    for spec in MARKET_PULSE_SYMBOLS:
+        payload = _market_pulse_yahoo_chart_payload(spec["symbol"])
+        row = _market_pulse_yahoo_chart_record(
+            payload,
+            spec,
+            cached_rows.get(spec["label"]),
+            fetched_label=fetched_label,
+            fetched_epoch=fetched_epoch,
+        )
+        if str(row.get("data_state") or "") == "live":
+            live_count += 1
+        quotes.append(row)
+    quotes = _market_pulse_preserve_cached_rows(quotes, cached_rows)
+    counts = {"live": 0, "delayed": 0, "cached": 0, "missing": 0}
+    for row in quotes:
+        state = str(row.get("data_state") or "missing").lower()
+        counts[state if state in counts else "missing"] += 1
+    latency_ms = int((time.perf_counter() - started) * 1000)
 
-        quotes = []
-        live_count = 0
-        spy_raw = raw_map.get("SPY")
-        cached_spy = cached_rows.get("SPY")
-        cached_spx = cached_rows.get("SPX")
-        for spec in MARKET_PULSE_SYMBOLS:
-            raw = raw_map.get(spec["label"])
-            if isinstance(raw, dict) and isinstance(raw.get("c"), (int, float)):
-                live_count += 1
-            if spec["label"] == "SPX" and not (isinstance(raw, dict) and isinstance(raw.get("c"), (int, float))):
-                row = _market_pulse_spx_proxy_record(spy_raw, spec, cached_spx, cached_spy)
-                spy_series = _market_pulse_finnhub_candles("SPY", now_et)
-                if spy_series:
-                    row["series"] = _market_pulse_scale_series(
-                        spy_series,
-                        _market_pulse_spx_proxy_ratio(cached_spx, cached_spy),
-                    )
-            else:
-                row = _market_pulse_finnhub_quote_record(raw, spec, cached_rows.get(spec["label"]))
-                if spec["label"] == "SPX":
-                    series = _market_pulse_finnhub_candles(spec["symbol"], now_et)
-                    if series:
-                        row["series"] = series
-            quotes.append(row)
-        quotes = _market_pulse_preserve_cached_rows(quotes, cached_rows)
-        if live_count:
-            result = {
-                "available": any(q.get("price") is not None for q in quotes),
-                "fetched_at": now_et.strftime("%b %d, %Y %I:%M %p ET"),
-                "source_label": "Finnhub market feed",
-                "source_note": (
-                    "Live quotes and SPX chart use Finnhub first. Missing fields may fall back to the last cached snapshot."
-                    if live_count < len(MARKET_PULSE_SYMBOLS)
-                    else "Live quotes and SPX candles are being served by Finnhub."
-                ),
-                "quotes": quotes,
-            }
-            _market_pulse_cache["fetched_at"] = now_et
-            _market_pulse_cache["payload"] = result
-            _save_market_pulse_disk_cache(result)
-            return result
-
-    symbol_csv = ",".join(spec["symbol"] for spec in MARKET_PULSE_SYMBOLS)
-    payload = _market_pulse_json_request(
-        MARKET_PULSE_QUOTES_URL,
-        {"symbols": symbol_csv},
-    )
-
-    if payload is None:
+    if not live_count:
         if isinstance(cached_payload, dict):
-            return cached_payload
+            return _market_pulse_force_symbol_set(cached_payload)
         if isinstance(disk_payload, dict):
             _market_pulse_cache["payload"] = disk_payload
-            return disk_payload
+            return _market_pulse_force_symbol_set(disk_payload)
         return {
             "available": False,
             "fetched_at": "",
-            "source_label": "Finnhub / Yahoo market feeds",
+            "source_label": "Yahoo Finance chart feed",
             "source_note": (
-                "Live market data is unavailable because the app runtime cannot currently reach Finnhub or the Yahoo quote host. "
+                "Live market data is unavailable because the app runtime cannot currently reach the Yahoo quote host. "
                 "A cached snapshot will be shown when available."
             ),
             "quotes": [],
+            "integrity": {
+                "latency_ms": latency_ms,
+                "forced_refresh": bool(force_refresh),
+                "cached_only": True,
+                "live_count": 0,
+                "delayed_count": 0,
+                "cached_count": 0,
+                "missing_count": len(MARKET_PULSE_SYMBOLS),
+                "tracked_count": len(MARKET_PULSE_SYMBOLS),
+            },
         }
 
-    raw_rows = (
-        (((payload.get("quoteResponse") or {}) if isinstance(payload.get("quoteResponse"), dict) else {}).get("result"))
-        or []
-    )
-    raw_map = {
-        str(row.get("symbol") or ""): row
-        for row in raw_rows
-        if isinstance(row, dict) and str(row.get("symbol") or "")
-    }
-    quotes: List[Dict[str, Any]] = []
-    for spec in MARKET_PULSE_SYMBOLS:
-        row = raw_map.get(spec["symbol"], {})
-        quotes.append(_market_pulse_quote_record(row if isinstance(row, dict) else {}, spec))
-
     result = {
-        "available": bool(quotes),
-        "fetched_at": now_et.strftime("%b %d, %Y %I:%M %p ET"),
-        "source_label": "Yahoo Finance quote feed",
-        "source_note": "Live quote data may be delayed by the upstream feed depending on the symbol.",
+        "available": any(q.get("price") is not None for q in quotes),
+        "fetched_at": fetched_label,
+        "source_label": "Yahoo Finance chart feed",
+        "source_note": (
+            "Live quote data is being derived from Yahoo chart metadata."
+            if live_count == len(MARKET_PULSE_SYMBOLS)
+            else "Yahoo chart data is partially available; missing fields may use the last cached snapshot."
+        ),
         "quotes": quotes,
+        "integrity": {
+            "latency_ms": latency_ms,
+            "forced_refresh": bool(force_refresh),
+            "cached_only": False,
+            "live_count": counts["live"],
+            "delayed_count": counts["delayed"],
+            "cached_count": counts["cached"],
+            "missing_count": counts["missing"],
+            "tracked_count": len(quotes),
+        },
     }
     _market_pulse_cache["fetched_at"] = now_et
     _market_pulse_cache["payload"] = result
@@ -616,6 +800,157 @@ def _market_pulse_context(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
             else "Live quote data is unavailable right now."
         ),
     }
+
+
+def _market_pulse_stats(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    advancers = 0
+    decliners = 0
+    unchanged = 0
+    missing = 0
+    biggest_label = "—"
+    biggest_move = 0.0
+    for q in quotes:
+        try:
+            price = q.get("price")
+            if not isinstance(price, (int, float)):
+                missing += 1
+                continue
+            pct = float(q.get("change_pct") or 0.0)
+            if pct > 0:
+                advancers += 1
+            elif pct < 0:
+                decliners += 1
+            else:
+                unchanged += 1
+            if abs(pct) > abs(biggest_move):
+                biggest_move = pct
+                biggest_label = str(q.get("label") or "—")
+        except (TypeError, ValueError):
+            missing += 1
+            continue
+    return {
+        "advancers": advancers,
+        "decliners": decliners,
+        "unchanged": unchanged,
+        "missing": missing,
+        "biggest_label": biggest_label,
+        "biggest_move": biggest_move,
+        "tracked": len(quotes),
+    }
+
+
+def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
+    values = [float(v) for v in series if isinstance(v, (int, float))]
+    if len(values) < 2:
+        return '<div class="marketMiniSparkEmpty">No trend</div>'
+    width = 120.0
+    height = 28.0
+    min_v = min(values)
+    max_v = max(values)
+    if abs(max_v - min_v) < 1e-9:
+        max_v = min_v + 1.0
+    step = width / max(len(values) - 1, 1)
+    points = []
+    for idx, value in enumerate(values):
+        x = idx * step
+        y = ((max_v - value) / (max_v - min_v)) * (height - 2) + 1
+        points.append(f"{x:.2f},{y:.2f}")
+    cls = "up" if tone == "up" else "down" if tone == "down" else "flat"
+    return (
+        '<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">'
+        f'<polyline class="marketMiniSparkLine {cls}" points="{" ".join(points)}" />'
+        "</svg>"
+    )
+
+
+def _market_pulse_enrich_quotes(quotes: List[Dict[str, Any]], now_et: datetime) -> List[Dict[str, Any]]:
+    enriched: List[Dict[str, Any]] = []
+    now_epoch = int(now_et.timestamp())
+    for row in quotes:
+        if not isinstance(row, dict):
+            continue
+        q = dict(row)
+        state = str(q.get("data_state") or "missing").lower()
+        asof_epoch = int(q.get("asof_epoch") or 0) if str(q.get("asof_epoch") or "").strip() else 0
+        age_s = max(0, now_epoch - asof_epoch) if asof_epoch else 999999
+        if state == "missing":
+            band = "critical"
+            fresh_label = "No live data"
+        elif age_s <= 60:
+            band = "live"
+            fresh_label = f"Live · {age_s}s old"
+        elif age_s <= 180:
+            band = "warn"
+            fresh_label = f"Stale · {age_s}s old"
+        else:
+            band = "critical"
+            fresh_label = f"Critical · {age_s}s old"
+        q["freshness_band"] = band
+        q["freshness_age_s"] = age_s
+        q["freshness_label"] = fresh_label
+
+        mini = q.get("mini_series")
+        if not isinstance(mini, list):
+            mini = []
+        if not mini and isinstance(q.get("series"), list):
+            mini = [float(p.get("v")) for p in q.get("series") if isinstance(p, dict) and isinstance(p.get("v"), (int, float))]
+        tone = "flat"
+        if len(mini) >= 2:
+            delta = float(mini[-1]) - float(mini[0])
+            if delta > 0:
+                tone = "up"
+            elif delta < 0:
+                tone = "down"
+        q["sparkline_svg"] = _market_pulse_sparkline_svg(mini[-40:], tone)
+        enriched.append(q)
+    return enriched
+
+
+def _market_pulse_alert(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    warn = [q for q in quotes if str(q.get("freshness_band") or "") == "warn"]
+    critical = [q for q in quotes if str(q.get("freshness_band") or "") == "critical"]
+    if not warn and not critical:
+        return {"show": False, "tone": "ok", "message": "All ticker data is fresh."}
+    if critical:
+        names = ", ".join(str(q.get("label") or "") for q in critical[:4])
+        more = f" +{len(critical)-4} more" if len(critical) > 4 else ""
+        return {
+            "show": True,
+            "tone": "critical",
+            "message": f"Critical stale data on {len(critical)} tickers: {names}{more}. Verify before entry.",
+        }
+    names = ", ".join(str(q.get("label") or "") for q in warn[:4])
+    more = f" +{len(warn)-4} more" if len(warn) > 4 else ""
+    return {
+        "show": True,
+        "tone": "warn",
+        "message": f"Stale data on {len(warn)} tickers: {names}{more}.",
+    }
+
+
+def _market_pulse_guardrail(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    critical = [q for q in quotes if str(q.get("freshness_band") or "") == "critical"]
+    active = len(critical) >= MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD
+    labels = [str(q.get("label") or "—") for q in critical]
+    msg = (
+        f"Data Unsafe: {len(critical)} critical-stale tickers ({', '.join(labels[:5])}). Trading actions are locked."
+        if active
+        else ""
+    )
+    return {
+        "active": active,
+        "critical_count": len(critical),
+        "threshold": MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD,
+        "labels": labels,
+        "message": msg,
+    }
+
+
+def _market_pulse_market_hours(now_et: datetime) -> bool:
+    if int(now_et.weekday()) >= 5:
+        return False
+    minute_of_day = (int(now_et.hour) * 60) + int(now_et.minute)
+    return (9 * 60 + 30) <= minute_of_day < (16 * 60)
 
 
 def _market_news_timestamp_label(stamp: Any) -> str:
@@ -734,7 +1069,7 @@ def _market_news_snapshot() -> Dict[str, Any]:
     watchlist_items: List[Dict[str, Any]] = []
     from_day = (now_et.date() - timedelta(days=5)).isoformat()
     to_day = now_et.date().isoformat()
-    for symbol in ("SPY", "QQQ", "IWM", "NVDA", "MSFT", "AAPL", "AMZN", "META"):
+    for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS:
         payload = _market_pulse_json_request_any(
             FINNHUB_BASE_URL + "/company-news",
             {"symbol": symbol, "from": from_day, "to": to_day, "token": FINNHUB_API_KEY},
@@ -1067,6 +1402,12 @@ def dashboard():
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
 
+    scope = trades_repo.account_scope_snapshot()
+    scope_enabled = bool(scope.get("enabled"))
+    scope_mode_raw = (request.args.get("scope") or "").strip().lower()
+    scope_active = scope_enabled and scope_mode_raw != "all"
+    scope_start = str(scope.get("start_date") or "")
+    scope_starting_balance = float(scope.get("starting_balance") or 50000.0)
     anchor = trades_repo.latest_trade_day() or app_runtime.now_et().date()
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
@@ -1082,7 +1423,10 @@ def dashboard():
         next_y += 1
 
     month_name = date(year, month, 1).strftime("%B %Y")
-    balance_integrity = trades_repo.balance_integrity_snapshot()
+    balance_integrity = trades_repo.balance_integrity_snapshot(
+        start_date=scope_start if scope_active else None,
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
     overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
     sync_status = get_system_status()
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
@@ -1105,8 +1449,47 @@ def dashboard():
     ytd_net = trades_repo.ytd_total_net(year)
     mtd_trades = trades_repo.month_trade_count(year, month)
     ytd_trades = trades_repo.ytd_trade_count(year)
+    if scope_active and scope_start:
+        with app_runtime.db() as conn:
+            this_week_range_start, this_week_range_end = trades_repo.week_range_for(week_anchor)
+            this_week_row = conn.execute(
+                """
+                SELECT COALESCE(SUM(net_pl), 0) AS net
+                FROM trades
+                WHERE trade_date >= ? AND trade_date < ?
+                  AND trade_date >= ?
+                """,
+                (this_week_range_start, this_week_range_end, scope_start),
+            ).fetchone()
+            mtd_first = date(year, month, 1).isoformat()
+            mtd_next = date(year + (month == 12), 1 if month == 12 else month + 1, 1).isoformat()
+            mtd_row = conn.execute(
+                """
+                SELECT COALESCE(SUM(net_pl), 0) AS net, COUNT(*) AS count
+                FROM trades
+                WHERE trade_date >= ? AND trade_date < ?
+                  AND trade_date >= ?
+                """,
+                (mtd_first, mtd_next, scope_start),
+            ).fetchone()
+            ytd_first = date(year, 1, 1).isoformat()
+            ytd_next = date(year + 1, 1, 1).isoformat()
+            ytd_row = conn.execute(
+                """
+                SELECT COALESCE(SUM(net_pl), 0) AS net, COUNT(*) AS count
+                FROM trades
+                WHERE trade_date >= ? AND trade_date < ?
+                  AND trade_date >= ?
+                """,
+                (ytd_first, ytd_next, scope_start),
+            ).fetchone()
+        this_week_total = float((this_week_row["net"] if this_week_row else 0.0) or 0.0)
+        mtd_net = float((mtd_row["net"] if mtd_row else 0.0) or 0.0)
+        ytd_net = float((ytd_row["net"] if ytd_row else 0.0) or 0.0)
+        mtd_trades = int((mtd_row["count"] if mtd_row else 0) or 0)
+        ytd_trades = int((ytd_row["count"] if ytd_row else 0) or 0)
     proj = trades_repo.projections_from_daily(
-        trades_repo.last_n_trading_day_totals(20),
+        trades_repo.last_n_trading_day_totals(20, since_date=scope_start if scope_active else ""),
         overall_balance,
     )
 
@@ -1116,12 +1499,16 @@ def dashboard():
             date(year, 1, 1).isoformat(), date(year + 1, 1, 1).isoformat()
         )
     ]
+    if scope_active and scope_start:
+        ytd_trades_list = [r for r in ytd_trades_list if str(r.get("trade_date") or "") >= scope_start]
     ytd_stats = trades_repo.trade_day_stats(ytd_trades_list)
     ytd_cons = trades_repo.calc_consistency(ytd_trades_list)
     ytd_wins = int(ytd_stats.get("wins", 0) or 0)
     ytd_losses = int(ytd_stats.get("losses", 0) or 0)
     ytd_win_rate = float(ytd_stats.get("win_rate", 0.0))
     today_rows = [dict(r) for r in trades_repo.fetch_trades(d=app_runtime.today_iso(), q="")]
+    if scope_active and scope_start and app_runtime.today_iso() < scope_start:
+        today_rows = []
     today_stats = trades_repo.trade_day_stats(today_rows)
     today_net = float(today_stats.get("total", 0.0))
     today_win_rate = float(today_stats.get("win_rate", 0.0))
@@ -1222,6 +1609,10 @@ def dashboard():
         pattern_watch=pattern_watch,
         setup_focus=setup_focus,
         proj=proj,
+        account_scope=scope,
+        scope_mode=("active" if scope_active else "all"),
+        scope_active_href=f"/dashboard?y={year}&m={month}&scope=active",
+        scope_all_href=f"/dashboard?y={year}&m={month}&scope=all",
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -1229,22 +1620,33 @@ def dashboard():
 
 
 def market_pulse_page():
-    snapshot = _market_pulse_snapshot()
+    force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    now_et = app_runtime.now_et()
+    snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
     news_snapshot = _market_news_snapshot()
-    quotes = list(snapshot.get("quotes") or [])
+    quotes = _market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
+    alert = _market_pulse_alert(quotes)
+    guardrail = _market_pulse_guardrail(quotes)
     context = _market_pulse_context(quotes)
-    core_quotes = [q for q in quotes if str(q.get("group") or "") == "core"]
+    integrity = dict(snapshot.get("integrity") or {})
+    stats = _market_pulse_stats(quotes)
+    core_quotes = list(quotes)
     leader_quotes = [q for q in quotes if str(q.get("group") or "") == "leaders"]
 
     content = render_template(
         "core/market_pulse.html",
         available=bool(snapshot.get("available")),
         fetched_at=str(snapshot.get("fetched_at") or ""),
-        source_label=str(snapshot.get("source_label") or "Finnhub market feed"),
+        source_label=str(snapshot.get("source_label") or "Yahoo Finance chart feed"),
         source_note=str(snapshot.get("source_note") or ""),
         core_quotes=core_quotes,
         leader_quotes=leader_quotes,
         context=context,
+        integrity=integrity,
+        alert=alert,
+        guardrail=guardrail,
+        market_hours=bool(_market_pulse_market_hours(now_et)),
+        stats=stats,
         news_available=bool(news_snapshot.get("available")),
         news_source_note=str(news_snapshot.get("source_note") or ""),
         macro_events=list(news_snapshot.get("macro_events") or []),
@@ -1253,7 +1655,10 @@ def market_pulse_page():
         money=app_runtime.money,
         money_compact=_money_compact,
     )
-    return render_page(content, active="market-pulse", title="McCain Capital · Market Pulse")
+    resp = make_response(render_page(content, active="market-pulse", title="McCain Capital · Market Pulse"))
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 def command_calendar_page():

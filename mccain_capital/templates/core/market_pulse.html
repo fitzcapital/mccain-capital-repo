@@ -1,4 +1,12 @@
-<div class="card pageHero">
+<div id="marketPulseLoading" class="marketPulseLoadingOverlay" aria-hidden="true">
+  <div class="marketPulseLoadingCard">
+    <div class="marketPulseSpinner"></div>
+    <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
+    <div class="marketPulseLoadingSub">Pulling Yahoo chart data and rebuilding tape context…</div>
+  </div>
+</div>
+
+<div class="card pageHero marketPulseSection">
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
@@ -13,19 +21,80 @@
         <div class="pageSub">{{ source_label }} · {{ fetched_at or 'Awaiting live refresh' }}</div>
       </div>
       <div class="actionRow">
-        <a class="btn primary" href="/market-pulse">Refresh</a>
+        <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
+        <button class="btn" id="autoRefreshToggle" type="button" aria-pressed="false">Auto Refresh Off</button>
+        <button class="btn" id="viewModeToggle" type="button" aria-pressed="false">Execution Mode</button>
+        <span class="tiny muted" id="autoRefreshLabel" data-seconds="30">Next refresh in 30s</span>
         <a class="btn" href="/candle-opens">Candle Opens</a>
       </div>
     </div>
   </div>
 </div>
 
-<div class="card stack12"><div class="toolbar">
+<div class="card stack12 marketPulseSection"><div class="toolbar">
+  <div class="pill">Data Integrity</div>
+  {% if guardrail.active %}
+    <div class="integrityAlert integrityAlert-critical">{{ guardrail.message }}</div>
+  {% endif %}
+  {% if alert.show %}
+    <div class="integrityAlert integrityAlert-{{ alert.tone }}">{{ alert.message }}</div>
+  {% endif %}
+  <div class="integrityGrid">
+    <div class="integrityCell">
+      <div class="tiny muted">Source</div>
+      <div class="supportLead">{{ source_label }}</div>
+    </div>
+    <div class="integrityCell">
+      <div class="tiny muted">Latency</div>
+      <div class="supportLead">{{ integrity.latency_ms or 0 }} ms</div>
+    </div>
+    <div class="integrityCell">
+      <div class="tiny muted">Coverage</div>
+      <div class="supportLead">{{ integrity.live_count or 0 }} live · {{ integrity.delayed_count or 0 }} delayed · {{ integrity.cached_count or 0 }} cached · {{ integrity.missing_count or 0 }} missing</div>
+    </div>
+    <div class="integrityCell">
+      <div class="tiny muted">Mode</div>
+      <div class="supportLead">{% if integrity.forced_refresh %}Forced refresh{% else %}Standard refresh{% endif %}</div>
+    </div>
+  </div>
+</div></div>
+
+<div class="card stack12 marketPulseSection"><div class="toolbar">
   <div class="pill">Core Tape</div>
+  <div class="tiny stack8">Tracking {{ core_quotes|length }} tickers in this tape refresh.</div>
+  <div class="metricStrip marketPulseSummaryStrip">
+    <div class="metric">
+      <div class="label">Advancers</div>
+      <div class="value">{{ stats.advancers }}</div>
+      <div class="sub">Positive change</div>
+    </div>
+    <div class="metric">
+      <div class="label">Decliners</div>
+      <div class="value">{{ stats.decliners }}</div>
+      <div class="sub">Negative change</div>
+    </div>
+    <div class="metric">
+      <div class="label">Missing</div>
+      <div class="value">{{ stats.missing }}</div>
+      <div class="sub">Needs refresh/fallback</div>
+    </div>
+    <div class="metric">
+      <div class="label">Biggest Move</div>
+      <div class="value">{{ stats.biggest_label }} {{ '%+.2f'|format(stats.biggest_move) }}%</div>
+      <div class="sub">Top absolute mover</div>
+    </div>
+  </div>
   <div class="statRow">
     {% for q in core_quotes %}
       <div class="stat {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}">
+        {% set q_state = (q.data_state or 'missing') %}
+        {% set q_label = (q.data_status_label or q_state|title) %}
+        <div class="pillRow marketCardMeta">
+          <span class="trendChip stateChip state-{{ q_state }}">{{ q_label }}</span>
+          <span class="tiny muted">{{ q.freshness_label or (q.asof or fetched_at) }}</span>
+        </div>
         <div class="k">{{ q.label }}</div>
+        <div class="marketMiniSparkWrap">{{ q.sparkline_svg|safe }}</div>
         <div class="v">
           {% if q.price is not none %}
             {{ '%.2f'|format(q.price) }}
@@ -36,12 +105,14 @@
         <div class="tiny">{{ '%+.2f'|format(q.change) }} · {{ '%+.2f'|format(q.change_pct) }}%</div>
         <div class="tiny">State: {{ q.market_state }}</div>
         <div class="tiny">Range: {{ q.day_range }}</div>
+        <div class="tiny muted">{{ q.focus }}</div>
+        <div class="tiny"><a href="{{ q.yahoo_href }}" target="_blank" rel="noopener">View on Yahoo</a></div>
       </div>
     {% endfor %}
   </div>
 </div></div>
 
-<div class="dashboardSupportGrid">
+<div class="dashboardSupportGrid researchOnly marketPulseSection">
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">SPX Focus</div>
     <div class="supportLead">{{ context.headline_note }}</div>
@@ -65,7 +136,7 @@
   </div></div>
 </div>
 
-<div class="metricStrip">
+<div class="metricStrip researchOnly marketPulseSection">
   <div class="metric">
     <div class="label">SPX Tape</div>
     <div class="value">{{ '%+.2f'|format(context.spx_pct) }}%</div>
@@ -88,23 +159,28 @@
   </div>
 </div>
 
-<div class="twoCol stack12">
+<div class="twoCol stack12 researchOnly marketPulseSection">
   <div class="card"><div class="toolbar">
     <div class="pill">Macro Triggers</div>
     <div class="tiny stack8">Upcoming USD calendar items that can shift SPX, rates, and volatility.</div>
     <div class="hr"></div>
     {% if macro_events %}
-      <div class="stack12">
+      <div class="newsListCompact">
         {% for item in macro_events %}
-          <a class="newsLinkCard" href="{{ item.url }}">
-            <div class="pillRow">
+          <details class="newsCollapse">
+            <summary class="newsCollapseSummary">
               <span class="trendChip">{{ item.tag }}</span>
-              <span class="tiny">{{ item.published_label }}</span>
+              <span class="newsCollapseTitle">{{ item.headline }}</span>
+              <span class="tiny muted">{{ item.published_label }}</span>
+            </summary>
+            <div class="newsCollapseBody">
+              <div class="tiny">{{ item.summary }}</div>
+              <div class="tiny muted">{{ item.why }}</div>
+              {% if item.url %}
+                <a class="btn" href="{{ item.url }}">Open source</a>
+              {% endif %}
             </div>
-            <div class="supportLead">{{ item.headline }}</div>
-            <div class="tiny stack8">{{ item.summary }}</div>
-            <div class="tiny stack8 muted">{{ item.why }}</div>
-          </a>
+          </details>
         {% endfor %}
       </div>
     {% else %}
@@ -120,17 +196,22 @@
     <div class="tiny stack8">Filtered live headlines that are most likely to move SPX, QQQ, IWM, SPY, rates, or vol.</div>
     <div class="hr"></div>
     {% if market_items %}
-      <div class="stack12">
+      <div class="newsListCompact">
         {% for item in market_items %}
-          <a class="newsLinkCard" href="{{ item.url }}" target="_blank" rel="noopener">
-            <div class="pillRow">
+          <details class="newsCollapse">
+            <summary class="newsCollapseSummary">
               <span class="trendChip">{{ item.tag }}</span>
-              <span class="tiny">{{ item.source }}{% if item.published_label %} · {{ item.published_label }}{% endif %}</span>
+              <span class="newsCollapseTitle">{{ item.headline }}</span>
+              <span class="tiny muted">{{ item.source }}{% if item.published_label %} · {{ item.published_label }}{% endif %}</span>
+            </summary>
+            <div class="newsCollapseBody">
+              <div class="tiny">{{ item.summary }}</div>
+              <div class="tiny muted">{{ item.why }}</div>
+              {% if item.url %}
+                <a class="btn" href="{{ item.url }}" target="_blank" rel="noopener">Open source</a>
+              {% endif %}
             </div>
-            <div class="supportLead">{{ item.headline }}</div>
-            <div class="tiny stack8">{{ item.summary }}</div>
-            <div class="tiny stack8 muted">{{ item.why }}</div>
-          </a>
+          </details>
         {% endfor %}
       </div>
     {% else %}
@@ -142,19 +223,26 @@
   </div></div>
 </div>
 
-<div class="card stack12"><div class="toolbar">
+<div class="card stack12 researchOnly marketPulseSection"><div class="toolbar">
   <div class="pill">Watchlist Headlines</div>
   <div class="tiny stack8">One live headline for each ticker on your leadership watch so you can spot what is dragging or lifting the tape.</div>
   <div class="hr"></div>
   {% if watchlist_items %}
-    <div class="statRow">
+    <div class="newsWatchGrid">
       {% for item in watchlist_items %}
-        <a class="stat newsStatCard" href="{{ item.url }}" target="_blank" rel="noopener">
-          <div class="k">{{ item.symbol or item.tag }}</div>
-          <div class="tiny">{{ item.source }}{% if item.published_label %} · {{ item.published_label }}{% endif %}</div>
-          <div class="supportLead">{{ item.headline }}</div>
-          <div class="tiny stack8">{{ item.summary }}</div>
-        </a>
+        <details class="newsCollapse watch">
+          <summary class="newsCollapseSummary">
+            <span class="trendChip">{{ item.symbol or item.tag }}</span>
+            <span class="newsCollapseTitle watchHeadline">{{ item.headline }}</span>
+            <span class="tiny muted">{{ item.source }}{% if item.published_label %} · {{ item.published_label }}{% endif %}</span>
+          </summary>
+          <div class="newsCollapseBody">
+            <div class="tiny">{{ item.summary }}</div>
+            {% if item.url %}
+              <a class="btn" href="{{ item.url }}" target="_blank" rel="noopener">Open source</a>
+            {% endif %}
+          </div>
+        </details>
       {% endfor %}
     </div>
   {% else %}
@@ -164,3 +252,107 @@
     </div>
   {% endif %}
 </div></div>
+
+<div id="marketGuardrailMeta"
+     data-active="{{ '1' if guardrail.active else '0' }}"
+     data-message="{{ guardrail.message or '' }}"
+     data-market-hours="{{ '1' if market_hours else '0' }}"
+     hidden></div>
+
+<script>
+(() => {
+  const KEY = "marketPulseAutoRefresh";
+  const MODE_KEY = "marketPulseViewMode";
+  const toggle = document.getElementById("autoRefreshToggle");
+  const modeToggle = document.getElementById("viewModeToggle");
+  const label = document.getElementById("autoRefreshLabel");
+  const guardMeta = document.getElementById("marketGuardrailMeta");
+  const refreshLink = document.getElementById("marketPulseRefreshLink");
+  const loadingOverlay = document.getElementById("marketPulseLoading");
+  if (!toggle || !label || !modeToggle || !guardMeta) return;
+  const baseSeconds = Number(label.dataset.seconds || "30");
+  let enabled = localStorage.getItem(KEY) === "on";
+  const marketHours = guardMeta.dataset.marketHours === "1";
+  const storedMode = localStorage.getItem(MODE_KEY);
+  let mode = storedMode || (marketHours ? "execution" : "research");
+  const guardrailActive = guardMeta.dataset.active === "1";
+  const guardrailMessage = guardMeta.dataset.message || "Data Unsafe guardrail active.";
+  let remaining = baseSeconds;
+  let timer = null;
+  const showLoading = () => {
+    if (!loadingOverlay) return;
+    loadingOverlay.classList.add("show");
+    loadingOverlay.setAttribute("aria-hidden", "false");
+  };
+
+  const applyGuardrailLock = () => {
+    if (!guardrailActive) return;
+    const blockedPrefixes = ["/trades", "/calculator"];
+    const links = Array.from(document.querySelectorAll("a[href]"));
+    links.forEach((a) => {
+      const href = String(a.getAttribute("href") || "");
+      if (!blockedPrefixes.some((p) => href.startsWith(p))) return;
+      a.classList.add("guardrailBlocked");
+      a.setAttribute("aria-disabled", "true");
+      a.setAttribute("title", guardrailMessage);
+      a.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+      }, true);
+    });
+  };
+
+  const applyMode = () => {
+    const execution = mode === "execution";
+    document.body.classList.toggle("marketPulseExecutionMode", execution);
+    modeToggle.setAttribute("aria-pressed", execution ? "true" : "false");
+    modeToggle.textContent = execution ? "Research Mode" : "Execution Mode";
+  };
+
+  const updateUi = () => {
+    toggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+    toggle.textContent = enabled ? "Auto Refresh On" : "Auto Refresh Off";
+    label.textContent = enabled ? `Next refresh in ${remaining}s` : "Auto refresh disabled";
+  };
+
+  const tick = () => {
+    if (!enabled) return;
+    remaining -= 1;
+    if (remaining <= 0) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("refresh", "1");
+      showLoading();
+      window.location.assign(url.toString());
+      return;
+    }
+    updateUi();
+  };
+
+  toggle.addEventListener("click", () => {
+    enabled = !enabled;
+    localStorage.setItem(KEY, enabled ? "on" : "off");
+    remaining = baseSeconds;
+    updateUi();
+  });
+  modeToggle.addEventListener("click", () => {
+    mode = (mode === "execution") ? "research" : "execution";
+    localStorage.setItem(MODE_KEY, mode);
+    applyMode();
+  });
+  if (refreshLink) {
+    refreshLink.addEventListener("click", () => {
+      showLoading();
+    });
+  }
+
+  timer = window.setInterval(tick, 1000);
+  updateUi();
+  applyMode();
+  applyGuardrailLock();
+
+  // Entry motion once DOM is ready.
+  window.requestAnimationFrame(() => {
+    document.body.classList.add("marketPulseReady");
+  });
+})();
+</script>

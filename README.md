@@ -126,46 +126,30 @@ With the `mccain-capital-data` volume, all app data persists across rebuilds/res
 ---
 
 ## 🖼️ Screenshots
-Refreshed from the live container on **February 27, 2026**.
+Refreshed from the live authenticated container on **March 2, 2026**.
 
-Refresh command:
+Capture command:
 ```bash
-./scripts/refresh_readme_screenshots.sh http://127.0.0.1:5001
+.venv/bin/python scripts/capture_portfolio_screenshots.py
 ```
 
-### 💻 Desktop
+### 💻 Desktop Views
+| Dashboard | Market Pulse |
+|---|---|
+| ![Desktop Dashboard](docs/images/desktop-dashboard.png) | ![Desktop Market Pulse](docs/images/desktop-market-pulse.png) |
 
-#### 📊 Dashboard
-![Desktop Dashboard](docs/images/desktop-dashboard.png)
+| Trades | Analytics |
+|---|---|
+| ![Desktop Trades](docs/images/desktop-trades.png) | ![Desktop Analytics](docs/images/desktop-analytics.png) |
 
-#### 📋 Trades
-![Desktop Trades](docs/images/desktop-trades.png)
+### 📱 Mobile Views
+| Dashboard | Market Pulse |
+|---|---|
+| ![Mobile Dashboard](docs/images/mobile-dashboard.png) | ![Mobile Market Pulse](docs/images/mobile-market-pulse.png) |
 
-#### 📝 Journal
-![Desktop Journal](docs/images/desktop-journal.png)
-
-#### 🧮 Calculator
-![Desktop Calculator](docs/images/desktop-calculator.png)
-
-#### 📈 Analytics
-![Desktop Analytics](docs/images/desktop-analytics.png)
-
-### 📱 Mobile
-
-#### 📊 Dashboard
-![Mobile Dashboard](docs/images/mobile-dashboard.png)
-
-#### 📋 Trades
-![Mobile Trades](docs/images/mobile-trades.png)
-
-#### 📝 Journal
-![Mobile Journal](docs/images/mobile-journal.png)
-
-#### 🧮 Calculator
-![Mobile Calculator](docs/images/mobile-calculator.png)
-
-#### 📈 Analytics
-![Mobile Analytics](docs/images/mobile-analytics.png)
+| Trades | Analytics |
+|---|---|
+| ![Mobile Trades](docs/images/mobile-trades.png) | ![Mobile Analytics](docs/images/mobile-analytics.png) |
 
 ---
 

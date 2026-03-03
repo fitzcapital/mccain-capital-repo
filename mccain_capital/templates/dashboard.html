@@ -7,6 +7,13 @@
         <div class="dashboardLead stack8">Execution, review, and risk posture aligned for one operator: you.</div>
       </div>
       <div class="rightActions">
+        {% if account_scope and account_scope.enabled %}
+          <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
+          <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
+          <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
+        {% else %}
+          <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
+        {% endif %}
         <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
       </div>
     </div>
@@ -104,6 +111,9 @@
     <div class="label">Current Balance</div>
     <div class="value">{{ money(overall_balance) }}</div>
     <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
+    {% if account_scope and account_scope.enabled %}
+      <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
+    {% endif %}
   </div>
 </div>
 

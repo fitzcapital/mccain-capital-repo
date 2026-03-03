@@ -318,27 +318,49 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
 
     balance_val: Optional[float] = None
     try:
-        for tbl in tables[:4]:
+        balance_keys = (
+            "balance",
+            "ending balance",
+            "account value",
+            "net liquidating value",
+            "net liq",
+            "equity",
+            "available funds",
+        )
+        for tbl in tables:
             if tbl.shape[1] < 2:
                 continue
             for _, row in tbl.iterrows():
-                k = str(row.iloc[0]).strip().lower()
-                v = str(row.iloc[1]).strip()
-                if k in (
-                    "balance",
-                    "ending balance",
-                    "account value",
-                    "net liquidating value",
-                    "net liq",
-                ):
-                    maybe = parse_float(v)
-                    if maybe is not None:
-                        balance_val = maybe
+                row_vals = [str(x).strip() for x in list(row.values)]
+                for idx, cell in enumerate(row_vals):
+                    key = cell.lower()
+                    if key not in balance_keys:
+                        continue
+                    # Try the next cell in the same row first.
+                    for probe in row_vals[idx + 1 :]:
+                        maybe = parse_float(probe)
+                        if maybe is not None:
+                            balance_val = maybe
+                            break
+                    if balance_val is not None:
                         break
+                if balance_val is not None:
+                    break
             if balance_val is not None:
                 break
     except Exception as e:
         warnings.append(f"Could not parse balance tables: {e}")
+
+    # Last-chance fallback: parse the raw HTML text.
+    if balance_val is None:
+        try:
+            with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+                raw_html = f.read()
+            fallback = extract_statement_balance(raw_html)
+            if fallback is not None:
+                balance_val = fallback
+        except Exception:
+            pass
 
     tx_tbl = None
     inst_c = time_c = side_c = qty_c = price_c = comm_c = bal_c = None

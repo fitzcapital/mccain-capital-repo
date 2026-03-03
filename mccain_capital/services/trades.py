@@ -1100,10 +1100,11 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
         st = str(e.get("stage") or "unknown")
         fail_stage_counts[st] = fail_stage_counts.get(st, 0) + 1
     top_failure_stage = None
+    top_failure_count = 0
     if fail_stage_counts:
-        top_failure_stage = sorted(fail_stage_counts.items(), key=lambda kv: kv[1], reverse=True)[
-            0
-        ][0]
+        top_failure_stage, top_failure_count = sorted(
+            fail_stage_counts.items(), key=lambda kv: kv[1], reverse=True
+        )[0]
     by_source: Dict[str, Dict[str, int]] = {}
     for e in recent:
         src = str(e.get("source") or "unknown")
@@ -1121,6 +1122,7 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
         "success_rate": success_rate,
         "avg_duration_sec": avg_duration_sec,
         "top_failure_stage": top_failure_stage,
+        "top_failure_count": int(top_failure_count),
         "by_source": by_source,
         "recent": list(reversed(recent[-8:])),
     }
@@ -1431,8 +1433,51 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
     paste_text, balance_val, warns = importing.parse_statement_html_to_broker_paste(path)
 
     if mode == "broker":
-        batch_id = _new_import_batch_id("stmt")
         if not paste_text:
+            if balance_val is not None:
+                batch_id = _new_import_batch_id("bal")
+                importing.insert_balance_snapshot(today_iso(), balance_val, raw_line=source_label)
+                ledger_balance = latest_balance_overall()
+                _record_import_batch(
+                    batch_id=batch_id,
+                    source=source_label,
+                    mode="balance",
+                    report={
+                        "inserted_trades": 0,
+                        "duplicates_skipped": 0,
+                        "open_contracts": 0,
+                        "errors_count": 0,
+                        "warnings_count": len(warns or []),
+                        "statement_ending_balance": balance_val,
+                        "ledger_ending_balance": ledger_balance,
+                        "balance_delta": (ledger_balance - float(balance_val)),
+                    },
+                    status="success",
+                    message="No trade rows found; imported statement ending balance snapshot.",
+                )
+                return render_page(
+                    render_template_string(
+                        """
+                        <div class="card"><div class="toolbar">
+                          <div class="pill">🧾 Balance Snapshot Imported ✅</div>
+                          <div class="stack10">No trade rows were present in this statement window. Imported ending balance <b>{{ money(balance_val) }}</b>.</div>
+                          {% if warns %}
+                            <div class="hr"></div>
+                            <div class="tiny metaBlue line16">
+                              {% for m in warns %}• {{ m }}<br>{% endfor %}
+                            </div>
+                          {% endif %}
+                          <div class="hr"></div>
+                          <a class="btn primary" href="/trades">Trades</a>
+                          <a class="btn" href="/trades/upload/statement">Upload Another</a>
+                        </div></div>
+                        """,
+                        warns=warns or [],
+                        balance_val=balance_val,
+                        money=money,
+                    ),
+                    active="trades",
+                )
             return render_page(
                 render_template_string(
                     """
@@ -1451,6 +1496,7 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
                 active="trades",
             )
 
+        batch_id = _new_import_batch_id("stmt")
         _, _, pre_report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
             ending_balance=balance_val,
@@ -3029,6 +3075,7 @@ def _run_live_sync_once(
         date_range_fallback = any(
             "Could not set custom From/To" in str(w) for w in (result.get("warns") or [])
         )
+        balance_for_snapshot = balance_val
         if date_range_fallback and balance_val is not None:
             # When broker UI keeps visible defaults, captured statement can span a wider range
             # than requested dates. Reconcile using ending balance would be misleading.
@@ -3037,6 +3084,42 @@ def _run_live_sync_once(
                 "Date-range fallback detected; skipped ending-balance reconcile for this run."
             )
         if not paste_text:
+            if balance_for_snapshot is not None:
+                balance_batch_id = _new_import_batch_id("livebal")
+                importing.insert_balance_snapshot(
+                    today_iso(), balance_for_snapshot, raw_line=source_label
+                )
+                ledger_balance = latest_balance_overall()
+                _record_import_batch(
+                    batch_id=balance_batch_id,
+                    source=source_label,
+                    mode="balance",
+                    report={
+                        "inserted_trades": 0,
+                        "duplicates_skipped": 0,
+                        "open_contracts": 0,
+                        "errors_count": 0,
+                        "warnings_count": len(warns_all or []),
+                        "statement_ending_balance": balance_for_snapshot,
+                        "ledger_ending_balance": ledger_balance,
+                        "balance_delta": (ledger_balance - float(balance_for_snapshot)),
+                    },
+                    status="success",
+                    message="No trade rows found; imported statement ending balance snapshot.",
+                )
+                result.update(
+                    {
+                        "ok": True,
+                        "stage": "import_complete",
+                        "message": f"{source_label}: no trade rows found; imported balance snapshot {money(balance_for_snapshot)}.",
+                        "inserted": 0,
+                        "warns": warns_all,
+                        "artifacts_rel": artifacts_rel,
+                        "statement_path": path,
+                        "batch_id": balance_batch_id,
+                    }
+                )
+                return result
             result.update(
                 {
                     "ok": False,
@@ -4284,6 +4367,22 @@ def ops_backups_config():
     )
     cfg["keep_count"] = max(3, min(120, parse_int(request.form.get("keep_count") or "21") or 21))
     _save_auto_backup_config(cfg)
+    scope_enabled = request.form.get("account_scope_enabled") == "1"
+    scope_start = (request.form.get("account_scope_start") or "").strip()
+    scope_label = (request.form.get("account_scope_label") or "").strip()
+    scope_balance_raw = request.form.get("account_scope_start_balance") or ""
+    if scope_enabled:
+        try:
+            datetime.strptime(scope_start, "%Y-%m-%d")
+            scope_balance = parse_float(scope_balance_raw)
+            if scope_balance is None:
+                raise ValueError("invalid account scope balance")
+            repo.save_account_scope(scope_start, float(scope_balance), label=scope_label)
+        except Exception:
+            flash("Account scope not saved: use a valid date and starting balance.", "warn")
+            return redirect(url_for("ops_backups_page"))
+    else:
+        repo.clear_account_scope()
     record_admin_audit(
         "auto_backup_config_saved",
         {
@@ -4292,9 +4391,12 @@ def ops_backups_config():
             "run_times_et": cfg["run_times_et"],
             "frequency_hours": cfg["frequency_hours"],
             "keep_count": cfg["keep_count"],
+            "account_scope_enabled": scope_enabled,
+            "account_scope_start": scope_start if scope_enabled else "",
+            "account_scope_label": scope_label if scope_enabled else "",
         },
     )
-    flash("Auto backup settings saved.", "success")
+    flash("Backup settings and account scope saved.", "success")
     return redirect(url_for("ops_backups_page"))
 
 
@@ -4566,6 +4668,7 @@ def _list_saved_backups() -> List[Dict[str, Any]]:
 def ops_backups_page():
     cfg = _load_auto_backup_config()
     backups = _list_saved_backups()
+    account_scope = repo.account_scope_snapshot()
     dry_run_name = (request.args.get("dry_run") or "").strip()
     dry_run_report: Dict[str, Any] | None = None
     if dry_run_name:
@@ -4590,6 +4693,7 @@ def ops_backups_page():
         backup_badges=backup_state_badges(cfg, audit_rows),
         audit_action=audit_action,
         audit_limit=audit_limit,
+        account_scope=account_scope,
     )
     return render_page(content, active="ops")
 

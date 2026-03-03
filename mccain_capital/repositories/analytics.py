@@ -73,8 +73,14 @@ def _streaks(net_values: Iterable[float]) -> tuple[int, int]:
     return max_win_streak, max_loss_streak
 
 
-def _derived_equity_curve(rows: List[Dict[str, Any]]) -> List[float]:
-    running = float(get_setting_float("starting_balance", 50000.0))
+def _derived_equity_curve(
+    rows: List[Dict[str, Any]], starting_balance: Optional[float] = None
+) -> List[float]:
+    running = (
+        float(starting_balance)
+        if starting_balance is not None
+        else float(get_setting_float("starting_balance", 50000.0))
+    )
     curve: List[float] = []
     for r in rows:
         n = _safe_float(r.get("net_pl"))
@@ -84,8 +90,8 @@ def _derived_equity_curve(rows: List[Dict[str, Any]]) -> List[float]:
     return curve
 
 
-def _max_drawdown(rows: List[Dict[str, Any]]) -> float:
-    series = _derived_equity_curve(rows)
+def _max_drawdown(rows: List[Dict[str, Any]], starting_balance: Optional[float] = None) -> float:
+    series = _derived_equity_curve(rows, starting_balance=starting_balance)
     if not series:
         return 0.0
 
@@ -97,7 +103,9 @@ def _max_drawdown(rows: List[Dict[str, Any]]) -> float:
     return max_dd
 
 
-def performance_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def performance_metrics(
+    rows: List[Dict[str, Any]], starting_balance: Optional[float] = None
+) -> Dict[str, Any]:
     net_values = [n for n in (_safe_float(r.get("net_pl")) for r in rows) if n is not None]
     total_trades = len(net_values)
     wins = [n for n in net_values if n > 0]
@@ -115,7 +123,7 @@ def performance_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     max_loss = min(losses) if losses else 0.0
     win_rate = (len(wins) / total_trades * 100.0) if total_trades else 0.0
     max_win_streak, max_loss_streak = _streaks(net_values)
-    max_drawdown = _max_drawdown(rows)
+    max_drawdown = _max_drawdown(rows, starting_balance=starting_balance)
 
     return {
         "total_trades": total_trades,
@@ -202,8 +210,10 @@ def rule_break_counts(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [{"tag": k, "count": v} for k, v in c.most_common(12)]
 
 
-def drawdown_diagnostics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    curve = _derived_equity_curve(rows)
+def drawdown_diagnostics(
+    rows: List[Dict[str, Any]], starting_balance: Optional[float] = None
+) -> Dict[str, Any]:
+    curve = _derived_equity_curve(rows, starting_balance=starting_balance)
 
     peak = float("-inf")
     current_dd = 0.0
@@ -307,8 +317,10 @@ def edge_over_time(
     return out
 
 
-def equity_curve_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    curve = _derived_equity_curve(rows)
+def equity_curve_series(
+    rows: List[Dict[str, Any]], starting_balance: Optional[float] = None
+) -> List[Dict[str, Any]]:
+    curve = _derived_equity_curve(rows, starting_balance=starting_balance)
     out: List[Dict[str, Any]] = []
     for idx, (r, v) in enumerate(zip(rows, curve), start=1):
         out.append(
@@ -321,8 +333,10 @@ def equity_curve_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def drawdown_curve_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    curve = _derived_equity_curve(rows)
+def drawdown_curve_series(
+    rows: List[Dict[str, Any]], starting_balance: Optional[float] = None
+) -> List[Dict[str, Any]]:
+    curve = _derived_equity_curve(rows, starting_balance=starting_balance)
 
     out: List[Dict[str, Any]] = []
     peak = float("-inf")
@@ -367,12 +381,18 @@ def expectancy_trend_series(
     return out
 
 
-def spx_benchmark_series(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def spx_benchmark_series(
+    rows: List[Dict[str, Any]], starting_balance: Optional[float] = None
+) -> List[Dict[str, Any]]:
     """
     Benchmark curve: only applies P/L from SPX ticker rows, keeping other rows flat.
     This provides a simple in-book benchmark overlay without external market data.
     """
-    running = float(get_setting_float("starting_balance", 50000.0))
+    running = (
+        float(starting_balance)
+        if starting_balance is not None
+        else float(get_setting_float("starting_balance", 50000.0))
+    )
     out: List[Dict[str, Any]] = []
     for idx, r in enumerate(rows, start=1):
         ticker = str(r.get("ticker") or "").strip().upper()
@@ -493,13 +513,15 @@ def fitz_22_rev_indicator(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def integrity_diagnostics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def integrity_diagnostics(
+    rows: List[Dict[str, Any]], starting_balance: Optional[float] = None
+) -> Dict[str, Any]:
     missing_setup = 0
     missing_session = 0
     missing_score = 0
     sig_counts: Dict[tuple[str, str, str, str], int] = {}
 
-    curve = _derived_equity_curve(rows)
+    curve = _derived_equity_curve(rows, starting_balance=starting_balance)
     stale_balance_rows = 0
     for idx, r in enumerate(rows):
         setup = str(r.get("setup_tag") or "").strip()

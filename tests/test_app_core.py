@@ -1,6 +1,7 @@
 """Core app behavior tests."""
 
 from mccain_capital.runtime import db, now_iso
+from mccain_capital.services import core as core_service
 from werkzeug.security import generate_password_hash
 
 
@@ -33,6 +34,155 @@ def test_core_pages_are_reachable(client):
     ]:
         resp = client.get(path, follow_redirects=True)
         assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
+
+
+def test_market_pulse_includes_tesla_in_quotes_and_watchlist():
+    labels = {item["label"] for item in core_service.MARKET_PULSE_SYMBOLS}
+    assert "TSLA" in labels
+    assert "TSLA" in set(core_service.MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS)
+
+
+def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 2, 2026 09:45 AM ET",
+            "source_label": "Yahoo Finance chart feed",
+            "source_note": "",
+            "quotes": [
+                {"label": "SPX", "group": "core", "price": 5100.0, "change": 10.0, "change_pct": 0.2, "market_state": "Regular", "day_range": "5000.00 to 5150.00"},
+                {"label": "TSLA", "group": "leaders", "price": 210.0, "change": 2.0, "change_pct": 0.96, "market_state": "Regular", "day_range": "205.00 to 212.00"},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {"available": False, "source_note": "", "macro_events": [], "market_items": [], "watchlist_items": []},
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Core Tape" in resp.data
+    assert b"SPX" in resp.data
+    assert b"TSLA" in resp.data
+
+
+def test_market_pulse_refresh_query_forces_snapshot_refresh(client, monkeypatch):
+    force_flags = []
+
+    def _fake_snapshot(*, force_refresh=False):
+        force_flags.append(bool(force_refresh))
+        return {
+            "available": True,
+            "fetched_at": "Mar 2, 2026 10:30 AM ET",
+            "source_label": "Yahoo Finance chart feed",
+            "source_note": "",
+            "quotes": [],
+        }
+
+    monkeypatch.setattr(core_service, "_market_pulse_snapshot", _fake_snapshot)
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {"available": False, "source_note": "", "macro_events": [], "market_items": [], "watchlist_items": []},
+    )
+
+    resp = client.get("/market-pulse?refresh=1", follow_redirects=True)
+    assert resp.status_code == 200
+    assert force_flags == [True]
+    assert b"/market-pulse?refresh=1" in resp.data
+    assert b'url.searchParams.set("refresh", "1")' in resp.data
+
+
+def test_market_pulse_source_is_normalized_to_yahoo():
+    out = core_service._market_pulse_force_yahoo_source(
+        {
+            "available": True,
+            "fetched_at": "Mar 2, 2026 10:16 AM ET",
+            "source_label": "Finnhub market feed",
+            "source_note": "Live quotes and SPX candles are being served by Finnhub.",
+            "quotes": [],
+        }
+    )
+    assert out["source_label"] == "Yahoo Finance chart feed"
+    assert "finnhub" not in str(out["source_note"]).lower()
+
+
+def test_market_pulse_cached_payload_is_expanded_to_current_symbol_set():
+    old_payload = {
+        "available": True,
+        "fetched_at": "Mar 2, 2026 10:16 AM ET",
+        "source_label": "Finnhub market feed",
+        "source_note": "legacy cached snapshot",
+        "quotes": [
+            {"label": "SPX", "symbol": "^GSPC", "price": 6878.88, "group": "core", "focus": "", "yahoo_href": "", "change": 0.0, "change_pct": 0.0, "volume": 0, "avg_volume": 0, "market_state": "At Close", "day_range": "—", "name": "SPX"},
+            {"label": "META", "symbol": "META", "price": 649.54, "group": "leaders", "focus": "", "yahoo_href": "", "change": 0.0, "change_pct": 0.0, "volume": 0, "avg_volume": 0, "market_state": "Live", "day_range": "—", "name": "META"},
+        ],
+    }
+    out = core_service._market_pulse_force_symbol_set(old_payload)
+    labels = {q["label"] for q in out["quotes"]}
+    assert out["source_label"] == "Yahoo Finance chart feed"
+    assert "TSLA" in labels
+    assert "SPX" in labels
+    assert len(out["quotes"]) == len(core_service.MARKET_PULSE_SYMBOLS)
+
+
+def test_market_pulse_stale_transition_and_alert_escalation():
+    now_et = core_service.app_runtime.now_et()
+    now_epoch = int(now_et.timestamp())
+    base = [
+        {"label": "SPY", "data_state": "live", "asof_epoch": now_epoch - 20, "mini_series": [1, 2, 3]},
+        {"label": "QQQ", "data_state": "live", "asof_epoch": now_epoch - 120, "mini_series": [3, 2, 1]},
+        {"label": "TSLA", "data_state": "cached", "asof_epoch": now_epoch - 400, "mini_series": [2, 2, 2]},
+    ]
+    enriched = core_service._market_pulse_enrich_quotes(base, now_et)
+    by_label = {q["label"]: q for q in enriched}
+    assert by_label["SPY"]["freshness_band"] == "live"
+    assert by_label["QQQ"]["freshness_band"] == "warn"
+    assert by_label["TSLA"]["freshness_band"] == "critical"
+    alert = core_service._market_pulse_alert(enriched)
+    assert alert["show"] is True
+    assert alert["tone"] == "critical"
+
+
+def test_market_pulse_guardrail_activates_on_threshold():
+    quotes = [
+        {"label": "SPY", "freshness_band": "critical"},
+        {"label": "QQQ", "freshness_band": "critical"},
+        {"label": "IWM", "freshness_band": "warn"},
+    ]
+    guard = core_service._market_pulse_guardrail(quotes)
+    assert guard["active"] is True
+    assert guard["critical_count"] >= guard["threshold"]
+
+
+def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 2, 2026 10:30:00 AM ET",
+            "source_label": "Yahoo Finance chart feed",
+            "source_note": "",
+            "quotes": [],
+            "integrity": {},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {"available": False, "source_note": "", "macro_events": [], "market_items": [], "watchlist_items": []},
+    )
+    monkeypatch.setattr(core_service, "_market_pulse_market_hours", lambda now_et: True)
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'data-market-hours="1"' in resp.data
+    assert b'let mode = storedMode || (marketHours ? "execution" : "research");' in resp.data
 
 
 def test_calculator_shows_projected_balances_for_stop_and_target(client):

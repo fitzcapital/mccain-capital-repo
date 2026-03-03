@@ -55,9 +55,8 @@
           {% endif %}
         {% endif %}
         <div id="modePill" class="clockPill">Loading…</div>
-        <div class="clockPill" aria-label="Eastern time and market status">
+        <div class="clockPill clockStatusPill" aria-label="Eastern time and market status">
           <span id="etClock" class="clockTime">--:--:--</span>
-          <span class="clockMeta">ET</span>
           <span id="marketState" class="marketState marketClosed">Closed</span>
         </div>
 
@@ -361,6 +360,7 @@
   });
 </script>
 <script>
+if (!window.toggleRowMenu) {
 function toggleRowMenu(tradeId, ev) {
   ev.preventDefault();
   ev.stopPropagation();
@@ -418,6 +418,7 @@ document.addEventListener('keydown', (e) => {
     document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
   }
 });
+}
 </script>
 
 
@@ -541,7 +542,7 @@ document.addEventListener('keydown', (e) => {
         const clock = document.getElementById("etClock");
         const mode = document.getElementById("modePill");
         const market = document.getElementById("marketState");
-        if(clock) clock.textContent = timeStr;
+        if(clock) clock.textContent = `${timeStr} ET`;
 
         if(mode){
           const isWeekend = (weekday === "Sat" || weekday === "Sun");

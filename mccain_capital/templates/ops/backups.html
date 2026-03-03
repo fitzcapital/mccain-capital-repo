@@ -87,6 +87,19 @@
       <label>Keep Last (files)</label>
       <input type="number" name="keep_count" min="3" max="120" step="1" value="{{ cfg.get('keep_count', 21) }}" />
     </div>
+    <div><label><input type="checkbox" name="account_scope_enabled" value="1" {% if account_scope and account_scope.enabled %}checked{% endif %}/> Use active account scope</label></div>
+    <div>
+      <label>Scope Start Date</label>
+      <input type="date" name="account_scope_start" value="{{ account_scope.start_date if account_scope else '' }}" />
+    </div>
+    <div>
+      <label>Scope Start Balance</label>
+      <input type="text" name="account_scope_start_balance" value="{{ '%.2f'|format(account_scope.starting_balance) if account_scope else '' }}" placeholder="54396.20" />
+    </div>
+    <div>
+      <label>Scope Label</label>
+      <input name="account_scope_label" value="{{ account_scope.label if account_scope else '' }}" placeholder="Funded Account 2" />
+    </div>
     <div class="tiny stack10">
       Last run: {{ cfg.get('last_run_at') or 'Never' }}<br>
       Status: {{ cfg.get('last_status') or 'n/a' }}<br>

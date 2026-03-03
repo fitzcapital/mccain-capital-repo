@@ -22,10 +22,10 @@
     </div>
     <div class="hr"></div>
     <div class="leftActions">
-      <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">🤖 Live Sync</a>
-      <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">📄 Upload</a>
-      <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile</a>
-      <a class="btn" href="/ops/alerts">🚨 Ops Alerts</a>
+      <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">Live Sync</a>
+      <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">Upload</a>
+      <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">Reconcile</a>
+      <a class="btn" href="/ops/alerts">Ops Alerts</a>
     </div>
   </div>
 </div>
@@ -129,28 +129,32 @@
     <div class="statRow">
       <div class="stat">
         <div class="k">Status</div>
-        <div class="v">{{ (last.get('status') or 'unknown')|upper }}</div>
+        <div class="v">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}</div>
         <div class="tiny">Updated: {{ last.get('updated_at_human') or last.get('updated_at') or '—' }}</div>
       </div>
       <div class="stat">
-        <div class="k">Failure Stage</div>
-        <div class="v">{{ last.get('stage') or '—' }}</div>
+        <div class="k">{% if (last.get('status') or '')|lower == 'failed' %}Failure Stage{% else %}Stage{% endif %}</div>
+        <div class="v syncStageCode">{{ (last.get('stage') or '—')|replace('_', ' ')|title }}</div>
         {% if last.get('stage_help') %}
           <div class="tiny">{{ last.get('stage_help') }}</div>
         {% endif %}
       </div>
       <div class="stat">
         <div class="k">Message</div>
-        <div class="tiny line16">{{ last.get('message') or 'No message' }}</div>
+        <div class="tiny line16 syncMessageClamp" title="{{ last.get('message') or 'No message' }}">{{ last.get('message') or 'No message' }}</div>
       </div>
     </div>
     {% if last.get('artifacts_rel') %}
       <div class="hr"></div>
       <details class="syncDetails">
-        <summary>🧪 Debug Artifacts ({{ last.get('artifacts_rel')|length }})</summary>
-        <div class="stack10">
+        <summary>Debug Artifacts ({{ last.get('artifacts_rel')|length }})</summary>
+        <div class="syncArtifactList stack10">
           {% for rel in last.get('artifacts_rel')[:8] %}
-            <div><a class="btn" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">{{ rel }}</a></div>
+            {% set label = rel.rsplit('/', 1)[-1] if '/' in rel else rel %}
+            <div class="syncArtifactRow">
+              <span class="syncArtifactName" title="{{ rel }}">{{ label }}</span>
+              <a class="btn btnCompact" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">Open</a>
+            </div>
           {% endfor %}
         </div>
       </details>
@@ -206,7 +210,13 @@
       </div>
       <div class="stat">
         <div class="k">Top Failure Stage</div>
-        <div class="v">{{ rel.get('top_failure_stage') or '—' }}</div>
+        <div class="v syncStageCode">
+          {% if rel.get('top_failure_stage') %}
+            {{ rel.get('top_failure_stage')|replace('_', ' ')|title }}{% if rel.get('top_failure_count') %} ({{ rel.get('top_failure_count') }}){% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </div>
       </div>
     </div>
     {% if rel.get('by_source') %}

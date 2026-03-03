@@ -515,6 +515,22 @@ function openRowMenu(tradeId, btn, menu) {
   menu.style.visibility = '';
 }
 
+function toggleRowMenu(tradeId, ev) {
+  if (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+  const btn = ev?.currentTarget || document.querySelector(`#rowActions-${tradeId} .rowMoreBtn`);
+  const menu = document.getElementById(`rowMenu-${tradeId}`);
+  if (!btn || !menu) return;
+  if (menu.classList.contains('open')) {
+    closeRowMenu(menu);
+    return;
+  }
+  closeAllRowMenus();
+  openRowMenu(tradeId, btn, menu);
+}
+
 // Close on outside click / escape
 document.addEventListener('click', function(e){
   if (e.target.closest('.rowMoreMenu') || e.target.closest('.rowMoreBtn')) return;

@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from mccain_capital.runtime import db, get_setting_float, now_iso
+from mccain_capital.runtime import db, get_setting_float, get_setting_value, now_iso, set_setting_value
 
 
 def fetch_trades(d: str = "", q: str = ""):
@@ -351,6 +351,50 @@ def week_total_net(day_iso: str) -> float:
     return float(row["net"] or 0.0)
 
 
+def account_scope_snapshot() -> Dict[str, Any]:
+    start_date = str(get_setting_value("active_account_start_date", "") or "").strip()
+    label = str(get_setting_value("active_account_label", "") or "").strip()
+    if not start_date:
+        return {
+            "enabled": False,
+            "start_date": "",
+            "starting_balance": float(get_setting_float("starting_balance", 50000.0)),
+            "label": label,
+        }
+    try:
+        datetime.strptime(start_date, "%Y-%m-%d")
+    except ValueError:
+        return {
+            "enabled": False,
+            "start_date": "",
+            "starting_balance": float(get_setting_float("starting_balance", 50000.0)),
+            "label": label,
+        }
+    scoped_starting = float(
+        get_setting_float(
+            "active_account_start_balance", float(get_setting_float("starting_balance", 50000.0))
+        )
+    )
+    return {
+        "enabled": True,
+        "start_date": start_date,
+        "starting_balance": scoped_starting,
+        "label": label,
+    }
+
+
+def save_account_scope(start_date: str, starting_balance: float, label: str = "") -> None:
+    set_setting_value("active_account_start_date", str(start_date).strip())
+    set_setting_value("active_account_start_balance", f"{float(starting_balance):.2f}")
+    set_setting_value("active_account_label", str(label or "").strip())
+
+
+def clear_account_scope() -> None:
+    set_setting_value("active_account_start_date", "")
+    set_setting_value("active_account_start_balance", "")
+    set_setting_value("active_account_label", "")
+
+
 def clear_trades() -> None:
     with db() as conn:
         conn.execute("DELETE FROM trades")
@@ -394,8 +438,14 @@ def latest_trade_day() -> Optional[date]:
         return None
 
 
-def latest_balance_overall(as_of: str | None = None) -> float:
-    starting = get_setting_float("starting_balance", 50000.0)
+def latest_balance_overall(
+    as_of: str | None = None, *, start_date: str | None = None, starting_balance: float | None = None
+) -> float:
+    starting = (
+        float(starting_balance)
+        if starting_balance is not None
+        else float(get_setting_float("starting_balance", 50000.0))
+    )
     with db() as conn:
         try:
             cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
@@ -423,10 +473,18 @@ def latest_balance_overall(as_of: str | None = None) -> float:
 
         try:
             pnl_q = _q(pnl_col)
-            if as_of and date_col:
+            where: list[str] = []
+            params: list[Any] = []
+            if date_col and start_date:
+                where.append(f"{_q(date_col)} >= ?")
+                params.append(str(start_date))
+            if date_col and as_of:
+                where.append(f"{_q(date_col)} <= ?")
+                params.append(str(as_of))
+            if where:
                 row = conn.execute(
-                    f"SELECT COALESCE(SUM(CAST({pnl_q} AS REAL)), 0) FROM trades WHERE {_q(date_col)} <= ?",
-                    (str(as_of),),
+                    f"SELECT COALESCE(SUM(CAST({pnl_q} AS REAL)), 0) FROM trades WHERE {' AND '.join(where)}",
+                    params,
                 ).fetchone()
             else:
                 row = conn.execute(
@@ -438,14 +496,30 @@ def latest_balance_overall(as_of: str | None = None) -> float:
     return float(starting + total)
 
 
-def balance_integrity_snapshot(as_of: str | None = None, tolerance: float = 0.01) -> Dict[str, Any]:
-    derived = float(latest_balance_overall(as_of=as_of))
-    starting = float(get_setting_float("starting_balance", 50000.0))
+def balance_integrity_snapshot(
+    as_of: str | None = None,
+    tolerance: float = 0.01,
+    *,
+    start_date: str | None = None,
+    starting_balance: float | None = None,
+) -> Dict[str, Any]:
+    derived = float(
+        latest_balance_overall(as_of=as_of, start_date=start_date, starting_balance=starting_balance)
+    )
+    starting = (
+        float(starting_balance)
+        if starting_balance is not None
+        else float(get_setting_float("starting_balance", 50000.0))
+    )
     out: Dict[str, Any] = {
         "starting_balance": starting,
         "canonical_balance": derived,
         "source_label": "Derived ledger",
-        "source_detail": "Starting balance plus closed trade net P/L.",
+        "source_detail": (
+            f"Scoped from {start_date}; start balance plus closed trade net P/L."
+            if start_date
+            else "Starting balance plus closed trade net P/L."
+        ),
         "derived_balance": derived,
         "stored_balance": None,
         "delta": None,
@@ -473,25 +547,37 @@ def balance_integrity_snapshot(as_of: str | None = None, tolerance: float = 0.01
 
         acct_filter = " AND COALESCE(ticker, '') <> 'ACCT'" if "ticker" in cols else ""
         if as_of and date_col:
+            params: list[Any] = []
+            where = [f"{_q(bal_col)} IS NOT NULL", f"{_q(date_col)} <= ?{acct_filter}"]
+            params.append(str(as_of))
+            if start_date:
+                where.insert(1, f"{_q(date_col)} >= ?")
+                params.insert(0, str(start_date))
             row = conn.execute(
                 f"""
                 SELECT {_q(bal_col)}
                 FROM trades
-                WHERE {_q(bal_col)} IS NOT NULL AND {_q(date_col)} <= ?{acct_filter}
+                WHERE {' AND '.join(where)}
                 ORDER BY {_q(date_col)} DESC, id DESC
                 LIMIT 1
                 """,
-                (str(as_of),),
+                params,
             ).fetchone()
         else:
+            where = [f"{_q(bal_col)} IS NOT NULL{acct_filter}"]
+            params: list[Any] = []
+            if start_date and date_col:
+                where.append(f"{_q(date_col)} >= ?")
+                params.append(str(start_date))
             row = conn.execute(
                 f"""
                 SELECT {_q(bal_col)}
                 FROM trades
-                WHERE {_q(bal_col)} IS NOT NULL{acct_filter}
+                WHERE {' AND '.join(where)}
                 ORDER BY id DESC
                 LIMIT 1
-                """
+                """,
+                params,
             ).fetchone()
     if not row or row[0] is None:
         return out
@@ -655,17 +741,30 @@ def month_heatmap(year: int, month: int) -> Dict[str, Any]:
     }
 
 
-def last_n_trading_day_totals(n: int = 20) -> List[float]:
+def last_n_trading_day_totals(n: int = 20, since_date: str = "") -> List[float]:
     with db() as conn:
-        rows = conn.execute(
-            """
-            SELECT trade_date, COALESCE(SUM(net_pl),0) AS net
-            FROM trades
-            GROUP BY trade_date
-            ORDER BY trade_date DESC
-            LIMIT 200
-            """
-        ).fetchall()
+        if since_date:
+            rows = conn.execute(
+                """
+                SELECT trade_date, COALESCE(SUM(net_pl),0) AS net
+                FROM trades
+                WHERE trade_date >= ?
+                GROUP BY trade_date
+                ORDER BY trade_date DESC
+                LIMIT 200
+                """,
+                (since_date,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT trade_date, COALESCE(SUM(net_pl),0) AS net
+                FROM trades
+                GROUP BY trade_date
+                ORDER BY trade_date DESC
+                LIMIT 200
+                """
+            ).fetchall()
     out: List[float] = []
     for r in rows:
         try:

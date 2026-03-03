@@ -365,7 +365,12 @@ def _regime_sizing_suggestion(
 
 
 def _what_if_day_simulator(
-    rows: List[Dict[str, Any]], args: Dict[str, str], perf: Dict[str, Any]
+    rows: List[Dict[str, Any]],
+    args: Dict[str, str],
+    perf: Dict[str, Any],
+    *,
+    scope_start: str = "",
+    scope_starting_balance: float | None = None,
 ) -> Dict[str, Any]:
     try:
         max_trades = int(args.get("sim_max_trades") or 5)
@@ -385,7 +390,12 @@ def _what_if_day_simulator(
     if consistency_avg_win <= 0 and consistency_avg_loss <= 0:
         consistency_avg_win = 1.0
 
-    current_balance = float(trades_repo.latest_balance_overall())
+    current_balance = float(
+        trades_repo.latest_balance_overall(
+            start_date=(scope_start or None),
+            starting_balance=scope_starting_balance,
+        )
+    )
 
     p_win = consistency_win_rate / 100.0
     p_loss = 1.0 - p_win
@@ -459,9 +469,23 @@ def analytics_page():
     if tab not in {"performance", "behavior", "edge", "diagnostics"}:
         tab = "performance"
 
+    scope = trades_repo.account_scope_snapshot()
+    scope_enabled = bool(scope.get("enabled"))
+    scope_mode_raw = (request.args.get("scope") or "").strip().lower()
+    scope_active = scope_enabled and scope_mode_raw != "all"
+    scope_start = str(scope.get("start_date") or "")
+    scope_starting_balance = float(scope.get("starting_balance") or 50000.0)
+    if scope_active and scope_start:
+        if not start_date or start_date < scope_start:
+            start_date = scope_start
+
     rows = repo.fetch_analytics_rows(start_date=start_date, end_date=end_date)
-    perf = repo.performance_metrics(rows)
-    dd = repo.drawdown_diagnostics(rows)
+    perf = repo.performance_metrics(
+        rows, starting_balance=scope_starting_balance if scope_active else None
+    )
+    dd = repo.drawdown_diagnostics(
+        rows, starting_balance=scope_starting_balance if scope_active else None
+    )
     corr = repo.score_pnl_correlation(rows)
     setup_rows = repo.group_table(rows, "setup_tag")
     session_rows = repo.group_table(rows, "session_tag")
@@ -469,15 +493,21 @@ def analytics_page():
     session_trend_rows = repo.edge_over_time(rows, "session_tag", top_n=3)
     hour_rows = repo.hour_bucket_table(rows)
     rule_breaks = repo.rule_break_counts(rows)
-    equity_series = repo.equity_curve_series(rows)
-    drawdown_series = repo.drawdown_curve_series(rows)
+    equity_series = repo.equity_curve_series(
+        rows, starting_balance=scope_starting_balance if scope_active else None
+    )
+    drawdown_series = repo.drawdown_curve_series(
+        rows, starting_balance=scope_starting_balance if scope_active else None
+    )
     expectancy_series = repo.expectancy_trend_series(rows, granularity=expectancy_granularity)
     expectancy_auto_switched = False
     if expectancy_granularity == "monthly" and len(expectancy_series) < 2:
         expectancy_granularity = "weekly"
         expectancy_series = repo.expectancy_trend_series(rows, granularity=expectancy_granularity)
         expectancy_auto_switched = True
-    spx_benchmark_series = repo.spx_benchmark_series(rows)
+    spx_benchmark_series = repo.spx_benchmark_series(
+        rows, starting_balance=scope_starting_balance if scope_active else None
+    )
     vol_summary = repo.volatility_regime_summary(rows)
     heatmap = repo.setup_expectancy_heatmap(rows, top_n_setups=5)
     vol_series = vol_summary.get("series") or []
@@ -496,7 +526,9 @@ def analytics_page():
     drawdown_story = _series_story(drawdown_series, favorable_direction="down")
     expectancy_story = _series_story(expectancy_series, favorable_direction="up")
     fitz_22 = repo.fitz_22_rev_indicator(rows)
-    integrity = repo.integrity_diagnostics(rows)
+    integrity = repo.integrity_diagnostics(
+        rows, starting_balance=scope_starting_balance if scope_active else None
+    )
     integrity_issue_count = int(
         (integrity.get("missing_setup") or 0)
         + (integrity.get("missing_session") or 0)
@@ -505,7 +537,10 @@ def analytics_page():
         + (integrity.get("stale_balance_rows") or 0)
     )
     sync_status = get_system_status() or {}
-    balance_integrity = trades_repo.balance_integrity_snapshot()
+    balance_integrity = trades_repo.balance_integrity_snapshot(
+        start_date=scope_start if scope_active else None,
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
     balance_badges = balance_state_badges(balance_integrity)
     sync_badges = sync_state_badges(
         sync_status,
@@ -540,6 +575,8 @@ def analytics_page():
             "sim_stop_loss_streak": (request.args.get("sim_stop_loss_streak") or "").strip(),
         },
         perf=perf,
+        scope_start=scope_start if scope_enabled else "",
+        scope_starting_balance=scope_starting_balance if scope_enabled else None,
     )
     insights = _insight_panels(perf, dd, corr)
     edge_pulse = max(8.0, min(100.0, 50.0 + (float(perf.get("expectancy") or 0.0) * 8.0)))
@@ -583,6 +620,34 @@ def analytics_page():
         expectancy_granularity=expectancy_granularity,
         expectancy_auto_switched=expectancy_auto_switched,
         tab=tab,
+        account_scope=scope,
+        scope_mode=("active" if scope_active else "all"),
+        scope_active_href=(
+            "/analytics?"
+            + urlencode(
+                {
+                    "tab": tab,
+                    "start": start_date,
+                    "end": end_date,
+                    "explain_day": explain_day,
+                    "expectancy_granularity": expectancy_granularity,
+                    "scope": "active",
+                }
+            )
+        ),
+        scope_all_href=(
+            "/analytics?"
+            + urlencode(
+                {
+                    "tab": tab,
+                    "start": start_date,
+                    "end": end_date,
+                    "explain_day": explain_day,
+                    "expectancy_granularity": expectancy_granularity,
+                    "scope": "all",
+                }
+            )
+        ),
         money=money,
         day_story=day_story,
         sizing=sizing,
