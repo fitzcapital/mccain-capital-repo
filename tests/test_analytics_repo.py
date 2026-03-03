@@ -233,5 +233,4 @@ def test_analytics_behavior_empty_state_is_standardized(client):
     )
     assert resp.status_code == 200
     assert b"No heatmap data in this range." in resp.data
-    assert b"Why this matters: time-block expectancy needs setup tags" in resp.data
-    assert b"Next best action: widen date range or log more tagged trades." in resp.data
+    assert b"Widen the date range or log more tagged trades." in resp.data

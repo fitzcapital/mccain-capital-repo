@@ -181,7 +181,9 @@ def fetch_entry_day_rollups(start_date: str, end_date: str) -> List[Dict[str, An
                 "entry_date": str(row["entry_date"]),
                 "entry_count": int(row["entry_count"] or 0),
                 "pnl_total": float(row["pnl_total"] or 0.0),
-                "entry_types": [v.strip() for v in str(row["entry_types"] or "").split(",") if v.strip()],
+                "entry_types": [
+                    v.strip() for v in str(row["entry_types"] or "").split(",") if v.strip()
+                ],
                 "moods": [v.strip() for v in str(row["moods"] or "").split(",") if v.strip()],
                 "setups": [v.strip() for v in str(row["setups"] or "").split(",") if v.strip()],
             }

@@ -154,11 +154,16 @@ def _migration_0004_strategy_links(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE trade_reviews ADD COLUMN strategy_id INTEGER DEFAULT NULL")
     if "strategy_label" not in review_cols:
         conn.execute("ALTER TABLE trade_reviews ADD COLUMN strategy_label TEXT DEFAULT ''")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_trade_reviews_strategy_id ON trade_reviews(strategy_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trade_reviews_strategy_id ON trade_reviews(strategy_id)"
+    )
 
     now = datetime.now().isoformat(timespec="seconds")
     strategy_rows = conn.execute("SELECT id, title FROM strategies ORDER BY id").fetchall()
-    strategy_map = {str(r["title"]).strip().lower(): (int(r["id"]), str(r["title"]).strip()) for r in strategy_rows}
+    strategy_map = {
+        str(r["title"]).strip().lower(): (int(r["id"]), str(r["title"]).strip())
+        for r in strategy_rows
+    }
 
     review_rows = conn.execute(
         """

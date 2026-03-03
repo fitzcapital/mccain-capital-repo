@@ -1,0 +1,175 @@
+<div class="twoCol">
+  <div class="card"><div class="toolbar">
+    <div class="pill">Payouts</div>
+    {% if account_scope and account_scope.enabled %}
+      <div class="rightActions stack8">
+        <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
+        <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
+        <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
+      </div>
+      <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
+    {% else %}
+      <div class="rightActions stack8">
+        <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
+      </div>
+    {% endif %}
+    <div class="tiny stack10 line15">
+      Safe payout preserves a cushion above the fixed loss limit.
+    </div>
+
+    <div class="hr"></div>
+    <form method="post" class="row">
+      <div>
+        <label>Protect Buffer ($)</label>
+        <input name="protect_buffer" inputmode="decimal" value="{{ protect }}" />
+      </div>
+      <div>
+        <label>Bi-Weekly Goal ($)</label>
+        <input name="biweekly_goal" inputmode="decimal" value="{{ biweekly_goal }}" />
+      </div>
+      <div class="actionRow">
+        <button class="btn primary" type="submit">Update</button>
+        <a class="btn" href="/payouts">Reset</a>
+      </div>
+    </form>
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">Rule Snapshot (50K)</div>
+    <div class="tiny stack10 line16">
+      • Buffer reached at: <b>{{ money(ps.profit_buffer_level) }}</b><br>
+      • Fixed loss limit after buffer: <b>{{ money(ps.fixed_loss_limit) }}</b><br>
+      • Safe floor (loss limit + cushion): <b>{{ money(ps.safe_floor) }}</b><br>
+      <div class="hr"></div>
+      {% if ps.buffer_reached %}
+        ✅ Buffer reached — payouts can be calculated.
+      {% else %}
+        ⛔ Buffer NOT reached — eligibility = $0.00 until you pass <b>{{ money(ps.profit_buffer_level) }}</b>.
+      {% endif %}
+    </div>
+  </div></div>
+</div>
+
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">Current Totals</div>
+  <div class="statusBadgeStrip">
+    {% for badge in balance_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+  <div class="hr"></div>
+
+  <div class="statRow">
+    <div class="stat"><div class="k">Balance</div><div class="v">{{ money(ps.balance) }}</div></div>
+    <div class="stat"><div class="k">MTD Net</div><div class="v">{{ money(mtd) }}</div></div>
+    <div class="stat"><div class="k">Last 30 Days</div><div class="v">{{ money(last30) }}</div></div>
+
+    <div class="stat {% if ps.safe_request > 0 %}glow-green{% endif %}">
+      <div class="k">Safe Withdraw (now)</div>
+      <div class="v">{{ money(ps.safe_request) }}</div>
+    </div>
+
+    <div class="stat {% if ps.max_request > 0 %}glow-green{% endif %}">
+      <div class="k">Max Withdraw (no cushion)</div>
+      <div class="v">{{ money(ps.max_request) }}</div>
+    </div>
+
+    <div class="stat {% if can_take_biweekly_now %}glow-green{% else %}glow-red{% endif %}">
+      <div class="k">${{ '%.0f'|format(biweekly_goal) }} Bi-Weekly?</div>
+      <div class="v">{% if can_take_biweekly_now %}Yes{% else %}Not yet{% endif %}</div>
+      <div class="tiny">Needs Safe ≥ {{ money(biweekly_goal) }}</div>
+    </div>
+  </div>
+
+  <div class="hr"></div>
+  <div class="pill">Projections</div>
+  <div class="hr"></div>
+  <div class="statRow">
+    <div class="stat"><div class="k">Daily Avg (recent)</div><div class="v">{{ money(proj.avg) }}</div></div>
+    <div class="stat"><div class="k">5D Est Bal</div><div class="v">{{ money(proj.p5.est_balance) }}</div></div>
+    <div class="stat"><div class="k">10D Est Bal</div><div class="v">{{ money(proj.p10.est_balance) }}</div></div>
+    <div class="stat"><div class="k">20D Est Bal</div><div class="v">{{ money(proj.p20.est_balance) }}</div></div>
+  </div>
+
+  <div class="hr"></div>
+  <div class="tiny">
+    Respect risk. One impulsive day can erase progress.
+  </div>
+</div></div>
+
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">Payout Unlock Forecast</div>
+  <div class="tiny stack10 line16">
+    How much profit is still needed to unlock your goal, and how long it may take under current drift/volatility.
+  </div>
+  <div class="hr"></div>
+  <div class="twoCol">
+    {% for path in [unlock_forecast.safe, unlock_forecast.max] %}
+      <div class="card"><div class="toolbar">
+        <div class="pill">{{ path.label }}</div>
+        <div class="statRow">
+          <div class="stat">
+            <div class="k">$ Needed</div>
+            <div class="v">{{ money(path.required_profit) }}</div>
+          </div>
+          <div class="stat">
+            <div class="k">Risk Gate</div>
+            <div class="v">{% if path.risk_flag == 'PASS' %}PASS{% else %}RISK{% endif %}</div>
+            <div class="tiny">Breach ≤ {{ '%.0f'|format(unlock_forecast.risk_threshold) }}% to pass</div>
+          </div>
+        </div>
+        <div class="hr"></div>
+        <div class="statRow">
+          <div class="stat"><div class="k">ETA P50</div><div class="v">{% if path.days_p50 is not none %}{{ path.days_p50 }}d{% else %}—{% endif %}</div></div>
+          <div class="stat"><div class="k">ETA P70</div><div class="v">{% if path.days_p70 is not none %}{{ path.days_p70 }}d{% else %}—{% endif %}</div></div>
+          <div class="stat"><div class="k">ETA P90</div><div class="v">{% if path.days_p90 is not none %}{{ path.days_p90 }}d{% else %}—{% endif %}</div></div>
+        </div>
+        <div class="hr"></div>
+        <div class="statRow">
+          <div class="stat"><div class="k">Hit ≤ 5D</div><div class="v">{{ '%.1f'|format(path.hit_prob_5d) }}%</div></div>
+          <div class="stat"><div class="k">Hit ≤ 10D</div><div class="v">{{ '%.1f'|format(path.hit_prob_10d) }}%</div></div>
+          <div class="stat"><div class="k">Hit ≤ 20D</div><div class="v">{{ '%.1f'|format(path.hit_prob_20d) }}%</div></div>
+          <div class="stat"><div class="k">Floor Breach</div><div class="v">{{ '%.1f'|format(path.floor_breach_prob) }}%</div></div>
+        </div>
+        {% if path.eta_note %}
+          <div class="hr"></div>
+          <div class="tiny {% if path.risk_flag == 'PASS' %}metaGreen{% else %}metaAmber{% endif %}">{{ path.eta_note }}</div>
+        {% endif %}
+      </div></div>
+    {% endfor %}
+  </div>
+  <div class="hr"></div>
+  <div class="tiny line16">
+    Model: {{ unlock_forecast.method|replace('_', ' ')|title }} · μ(20D): {{ money(unlock_forecast.model.mu_20) }} · σ(60D): {{ money(unlock_forecast.model.sigma_60) }} · Samples: {{ unlock_forecast.model.sample_20 }} / {{ unlock_forecast.model.sample_60 }}
+  </div>
+  {% if unlock_forecast.warnings %}
+    <div class="stack8">
+      {% for warning in unlock_forecast.warnings %}
+        <div class="tiny metaAmber">• {{ warning }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div></div>
+
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">Payout Readiness Planner</div>
+  <div class="tiny stack10 line16">Probability bands based on your recent daily expectancy/volatility profile.</div>
+  <div class="hr"></div>
+  <div class="statRow">
+    <div class="stat"><div class="k">Drift (μ/day)</div><div class="v">{{ money(readiness.mu) }}</div></div>
+    <div class="stat"><div class="k">Vol (σ/day)</div><div class="v">{{ money(readiness.sigma) }}</div></div>
+    <div class="stat"><div class="k">Target Balance</div><div class="v">{{ money(readiness.target_balance) }}</div></div>
+  </div>
+  <div class="hr"></div>
+  <div class="tableWrap"><table class="tableDense">
+    <thead><tr><th>Horizon</th><th>Target Hit %</th><th>Floor Breach %</th><th>P10 PnL</th><th>P50 PnL</th><th>P90 PnL</th></tr></thead>
+    <tbody>
+      <tr><td>5D</td><td>{{ readiness.h5.target_hit_prob }}%</td><td>{{ readiness.h5.floor_breach_prob }}%</td><td>{{ money(readiness.h5.p10_pnl) }}</td><td>{{ money(readiness.h5.p50_pnl) }}</td><td>{{ money(readiness.h5.p90_pnl) }}</td></tr>
+      <tr><td>10D</td><td>{{ readiness.h10.target_hit_prob }}%</td><td>{{ readiness.h10.floor_breach_prob }}%</td><td>{{ money(readiness.h10.p10_pnl) }}</td><td>{{ money(readiness.h10.p50_pnl) }}</td><td>{{ money(readiness.h10.p90_pnl) }}</td></tr>
+      <tr><td>20D</td><td>{{ readiness.h20.target_hit_prob }}%</td><td>{{ readiness.h20.floor_breach_prob }}%</td><td>{{ money(readiness.h20.p10_pnl) }}</td><td>{{ money(readiness.h20.p50_pnl) }}</td><td>{{ money(readiness.h20.p90_pnl) }}</td></tr>
+    </tbody>
+  </table></div>
+</div></div>

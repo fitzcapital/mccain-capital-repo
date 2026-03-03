@@ -52,15 +52,37 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
             "source_label": "Yahoo Finance chart feed",
             "source_note": "",
             "quotes": [
-                {"label": "SPX", "group": "core", "price": 5100.0, "change": 10.0, "change_pct": 0.2, "market_state": "Regular", "day_range": "5000.00 to 5150.00"},
-                {"label": "TSLA", "group": "leaders", "price": 210.0, "change": 2.0, "change_pct": 0.96, "market_state": "Regular", "day_range": "205.00 to 212.00"},
+                {
+                    "label": "SPX",
+                    "group": "core",
+                    "price": 5100.0,
+                    "change": 10.0,
+                    "change_pct": 0.2,
+                    "market_state": "Regular",
+                    "day_range": "5000.00 to 5150.00",
+                },
+                {
+                    "label": "TSLA",
+                    "group": "leaders",
+                    "price": 210.0,
+                    "change": 2.0,
+                    "change_pct": 0.96,
+                    "market_state": "Regular",
+                    "day_range": "205.00 to 212.00",
+                },
             ],
         },
     )
     monkeypatch.setattr(
         core_service,
         "_market_news_snapshot",
-        lambda: {"available": False, "source_note": "", "macro_events": [], "market_items": [], "watchlist_items": []},
+        lambda: {
+            "available": False,
+            "source_note": "",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
     )
 
     resp = client.get("/market-pulse", follow_redirects=True)
@@ -87,7 +109,13 @@ def test_market_pulse_refresh_query_forces_snapshot_refresh(client, monkeypatch)
     monkeypatch.setattr(
         core_service,
         "_market_news_snapshot",
-        lambda: {"available": False, "source_note": "", "macro_events": [], "market_items": [], "watchlist_items": []},
+        lambda: {
+            "available": False,
+            "source_note": "",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
     )
 
     resp = client.get("/market-pulse?refresh=1", follow_redirects=True)
@@ -118,8 +146,36 @@ def test_market_pulse_cached_payload_is_expanded_to_current_symbol_set():
         "source_label": "Finnhub market feed",
         "source_note": "legacy cached snapshot",
         "quotes": [
-            {"label": "SPX", "symbol": "^GSPC", "price": 6878.88, "group": "core", "focus": "", "yahoo_href": "", "change": 0.0, "change_pct": 0.0, "volume": 0, "avg_volume": 0, "market_state": "At Close", "day_range": "—", "name": "SPX"},
-            {"label": "META", "symbol": "META", "price": 649.54, "group": "leaders", "focus": "", "yahoo_href": "", "change": 0.0, "change_pct": 0.0, "volume": 0, "avg_volume": 0, "market_state": "Live", "day_range": "—", "name": "META"},
+            {
+                "label": "SPX",
+                "symbol": "^GSPC",
+                "price": 6878.88,
+                "group": "core",
+                "focus": "",
+                "yahoo_href": "",
+                "change": 0.0,
+                "change_pct": 0.0,
+                "volume": 0,
+                "avg_volume": 0,
+                "market_state": "At Close",
+                "day_range": "—",
+                "name": "SPX",
+            },
+            {
+                "label": "META",
+                "symbol": "META",
+                "price": 649.54,
+                "group": "leaders",
+                "focus": "",
+                "yahoo_href": "",
+                "change": 0.0,
+                "change_pct": 0.0,
+                "volume": 0,
+                "avg_volume": 0,
+                "market_state": "Live",
+                "day_range": "—",
+                "name": "META",
+            },
         ],
     }
     out = core_service._market_pulse_force_symbol_set(old_payload)
@@ -134,9 +190,24 @@ def test_market_pulse_stale_transition_and_alert_escalation():
     now_et = core_service.app_runtime.now_et()
     now_epoch = int(now_et.timestamp())
     base = [
-        {"label": "SPY", "data_state": "live", "asof_epoch": now_epoch - 20, "mini_series": [1, 2, 3]},
-        {"label": "QQQ", "data_state": "live", "asof_epoch": now_epoch - 120, "mini_series": [3, 2, 1]},
-        {"label": "TSLA", "data_state": "cached", "asof_epoch": now_epoch - 400, "mini_series": [2, 2, 2]},
+        {
+            "label": "SPY",
+            "data_state": "live",
+            "asof_epoch": now_epoch - 20,
+            "mini_series": [1, 2, 3],
+        },
+        {
+            "label": "QQQ",
+            "data_state": "live",
+            "asof_epoch": now_epoch - 120,
+            "mini_series": [3, 2, 1],
+        },
+        {
+            "label": "TSLA",
+            "data_state": "cached",
+            "asof_epoch": now_epoch - 400,
+            "mini_series": [2, 2, 2],
+        },
     ]
     enriched = core_service._market_pulse_enrich_quotes(base, now_et)
     by_label = {q["label"]: q for q in enriched}
@@ -175,7 +246,13 @@ def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):
     monkeypatch.setattr(
         core_service,
         "_market_news_snapshot",
-        lambda: {"available": False, "source_note": "", "macro_events": [], "market_items": [], "watchlist_items": []},
+        lambda: {
+            "available": False,
+            "source_note": "",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
     )
     monkeypatch.setattr(core_service, "_market_pulse_market_hours", lambda now_et: True)
 
@@ -371,9 +448,9 @@ def test_dashboard_shows_balance_basis_and_drift_signal(client):
 
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Starting balance plus cumulative net P/L." in resp.data
+    assert b"Starting balance plus closed trade net P/L." in resp.data
     assert b"Ledger drift detected" in resp.data
-    assert b"Advanced Tools" in resp.data
+    assert b"Daily P/L Calendar" in resp.data
     assert b"/ops/alerts" in resp.data
 
 
@@ -444,7 +521,8 @@ def test_dashboard_renders_calendar_week_cards_and_preview_metadata(client):
     assert resp.status_code == 200
     assert b"weekCardTitle" in resp.data
     assert b"2T" in resp.data
-    assert b"1W/1L" in resp.data
+    assert b'data-wins="1"' in resp.data
+    assert b'data-losses="1"' in resp.data
     assert b"calendarPreview" in resp.data
     assert b"Preview 2026-02-24" in resp.data
 

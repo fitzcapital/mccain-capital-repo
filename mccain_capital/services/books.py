@@ -93,10 +93,14 @@ def books_page():
                 "title": title,
                 "author": str(meta.get("author") or "Trading Reference"),
                 "focus": str(meta.get("focus") or "Reference PDF"),
-                "why": str(meta.get("why") or "Keep as a quick reference inside your private library."),
+                "why": str(
+                    meta.get("why") or "Keep as a quick reference inside your private library."
+                ),
                 "quote": str(meta.get("quote") or ""),
                 "lane": str(meta.get("lane") or "Reference"),
-                "tone_class": tone_map.get(str(meta.get("tone") or ""), "tradeValueBubble tradeValueBubbleFlat"),
+                "tone_class": tone_map.get(
+                    str(meta.get("tone") or ""), "tradeValueBubble tradeValueBubbleFlat"
+                ),
                 "size_label": f"{size_mb:.1f} MB" if size_mb else "PDF",
             }
         )

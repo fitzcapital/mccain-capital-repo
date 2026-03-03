@@ -39,6 +39,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0001_baseline",
             "0002_journal_phase2",
             "0003_import_batches",
+            "0004_strategy_links",
         ]
     finally:
         conn.close()

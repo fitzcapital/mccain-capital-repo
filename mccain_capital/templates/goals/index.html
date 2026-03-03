@@ -1,0 +1,252 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">🎯 Goals Workspace</div>
+        <h2 class="pageTitle">Income & Discipline Tracker</h2>
+        <div class="pageSub">Track daily input actions, project income scenarios, and keep your execution aligned with monthly targets.</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn" href="/payouts">💸 Payouts</a>
+        <a class="btn" href="/calculator">🧮 Calculator</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="twoCol">
+  <div class="card"><div class="toolbar">
+    <div class="pill">🎯 Daily Goals Tracker</div>
+    <div class="tiny stack10 line16">
+      Track *inputs* daily: debt actions + Upwork pipeline. Then let the math bully you into consistency 😈
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true, category_filter=['goals_ok']) %}
+      {% if messages %}
+        <div class="hr"></div>
+        {% for cat,msg in messages %}
+          <div class="tiny metaGreen">• {{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="hr"></div>
+    <form method="post">
+      <div class="row">
+        <div>
+          <label>📆 Date</label>
+          <input type="date" name="track_date" value="{{ vals.track_date }}">
+        </div>
+        <div>
+          <label>💳 Debt Paid Today</label>
+          <input name="debt_paid" inputmode="decimal" value="{{ vals.debt_paid }}">
+        </div>
+      </div>
+
+      <div class="stack10">
+        <label>🧾 Debt Notes (what did you resolve?)</label>
+        <input name="debt_note" value="{{ vals.debt_note }}" placeholder="e.g. called CBNA, negotiated, paid Zip installment...">
+      </div>
+
+      <div class="row stack10">
+        <div>
+          <label>🧲 Upwork Proposals</label>
+          <input name="upwork_proposals" inputmode="numeric" value="{{ vals.upwork_proposals }}">
+        </div>
+        <div>
+          <label>🗣️ Upwork Interviews</label>
+          <input name="upwork_interviews" inputmode="numeric" value="{{ vals.upwork_interviews }}">
+        </div>
+        <div>
+          <label>⏱️ Upwork Hours</label>
+          <input name="upwork_hours" inputmode="decimal" value="{{ vals.upwork_hours }}">
+        </div>
+        <div>
+          <label>💵 Upwork Earnings</label>
+          <input name="upwork_earnings" inputmode="decimal" value="{{ vals.upwork_earnings }}">
+        </div>
+        <div>
+          <label>➕ Other Income</label>
+          <input name="other_income" inputmode="decimal" value="{{ vals.other_income }}">
+        </div>
+      </div>
+
+      <div class="stack10">
+        <label>📝 Notes</label>
+        <input name="notes" value="{{ vals.notes }}" placeholder="What moved the needle today?">
+      </div>
+
+      <div class="hr"></div>
+      <div class="rightActions">
+        <button class="btn primary" type="submit">💾 Save</button>
+        <a class="btn" href="/calculator">🧮 Calc</a>
+        <a class="btn" href="/dashboard">📊 Calendar</a>
+      </div>
+    </form>
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">📅 This Month: {{ m_first }} → {{ m_last }}</div>
+
+    <div class="calcGrid stack10">
+      <div class="calcCard"><div class="k">💳 Debt Paid</div><div class="v">{{ money(sum_debt) }}</div></div>
+      <div class="calcCard"><div class="k">💵 Upwork Earned</div><div class="v">{{ money(sum_upwork) }}</div></div>
+      <div class="calcCard"><div class="k">➕ Other Income</div><div class="v">{{ money(sum_other) }}</div></div>
+      <div class="calcCard"><div class="k">🧠 Recorded Days</div><div class="v">{{ recorded_days }}</div></div>
+      <div class="calcCard"><div class="k">📈 Projected Upwork (30d)</div><div class="v">{{ money(projected_upwork) }}</div></div>
+      <div class="calcCard"><div class="k">📈 Projected Other (30d)</div><div class="v">{{ money(projected_other) }}</div></div>
+    </div>
+
+    <div class="hr"></div>
+    <div class="tiny line16">
+      Projection is based on <b>days you actually recorded</b> — not wishful calendar math. Record daily. ✅
+    </div>
+  </div></div>
+</div>
+
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">📈 Income Projection (Goal: $15k–$20k)</div>
+    <div class="tiny stack10 line16">
+      Your baseline income is set to <b>{{ money(base_income) }}</b> monthly.
+      You need <b>{{ money(15000 - base_income) }}</b> to reach $15k and <b>{{ money(20000 - base_income) }}</b> to reach $20k.
+    </div>
+
+    <div class="hr"></div>
+    <form method="get">
+      <input type="hidden" name="date" value="{{ vals.track_date }}">
+      <div class="row">
+        <div>
+          <label>💼 Upwork Hourly Rate</label>
+          <input name="hourly_rate" inputmode="decimal" value="{{ hourly_rate }}" placeholder="e.g. 75">
+        </div>
+        <div>
+          <label>⏱️ Billable Hours / Week</label>
+          <input name="hours_per_week" inputmode="decimal" value="{{ hours_per_week }}" placeholder="e.g. 10">
+        </div>
+        <div>
+          <label>📦 Fixed Deals / Month</label>
+          <input name="fixed_deals" inputmode="numeric" value="{{ fixed_deals }}" placeholder="e.g. 2">
+        </div>
+        <div>
+          <label>💰 Avg Deal Value</label>
+          <input name="avg_deal" inputmode="decimal" value="{{ avg_deal }}" placeholder="e.g. 1500">
+        </div>
+      </div>
+
+      <div class="row stack10">
+        <div>
+          <label>📊 Trading (Monthly)</label>
+          <input name="trading_monthly" inputmode="decimal" value="{{ trading_monthly }}" placeholder="e.g. 3000">
+        </div>
+        <div>
+          <label>➕ Other (Monthly)</label>
+          <input name="other_monthly" inputmode="decimal" value="{{ other_monthly }}" placeholder="e.g. 500">
+        </div>
+      </div>
+
+      <div class="hr"></div>
+      <div class="rightActions">
+        <button class="btn primary" type="submit">⚡ Project</button>
+        <a class="btn" href="/goals">Reset</a>
+      </div>
+    </form>
+
+    <div class="hr"></div>
+    <div class="calcGrid">
+      <div class="calcCard"><div class="k">🧱 Base Income</div><div class="v">{{ money(base_income) }}</div></div>
+      <div class="calcCard"><div class="k">🧑‍💻 Upwork (Hourly)</div><div class="v">{{ money(upwork_from_hourly) }}</div></div>
+      <div class="calcCard"><div class="k">📦 Upwork (Fixed)</div><div class="v">{{ money(upwork_from_fixed) }}</div></div>
+      <div class="calcCard"><div class="k">🔥 Upwork Total</div><div class="v">{{ money(upwork_scenario) }}</div></div>
+      <div class="calcCard"><div class="k">📊 Trading</div><div class="v">{{ money(trading_monthly) }}</div></div>
+      <div class="calcCard"><div class="k">➕ Other</div><div class="v">{{ money(other_monthly) }}</div></div>
+      <div class="calcCard"><div class="k">✅ Total Projected</div><div class="v">{{ money(total_scenario) }}</div></div>
+      <div class="calcCard"><div class="k">⬆️ Gap to $15k</div><div class="v">{{ money(gap_15) }}</div></div>
+      <div class="calcCard"><div class="k">⬆️ Gap to $20k</div><div class="v">{{ money(gap_20) }}</div></div>
+    </div>
+
+    <div class="hr"></div>
+    <div class="tiny line16">
+      Reality check: if the gap is big, don't "motivate" yourself — <b>engineer a system</b>:
+      proposals/day, follow-ups/day, and a weekly billable-hours target. ✅
+    </div>
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">🗓️ Month Log</div>
+    <div class="tiny stack10 line16">
+      Click a date to edit it.
+    </div>
+    <div class="hr"></div>
+
+    <div class="tableWrap desktopOnly">
+      <table class="tableDense">
+        <thead>
+          <tr>
+            <th>📆 Date</th>
+            <th>💳 Debt</th>
+            <th>💵 Upwork</th>
+            <th>🧲 Props</th>
+            <th>🗣️ Intv</th>
+            <th>➕ Other</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td><a class="btn btnCompact" href="/goals?date={{ r.track_date }}">{{ r.track_date }}</a></td>
+              <td>{{ money(r.debt_paid) }}</td>
+              <td>{{ money(r.upwork_earnings) }}</td>
+              <td>{{ r.upwork_proposals }}</td>
+              <td>{{ r.upwork_interviews }}</td>
+              <td>{{ money(r.other_income) }}</td>
+            </tr>
+          {% endfor %}
+          {% if not rows %}
+            <tr><td colspan="6" class="tiny">No entries yet for this month.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="mobileOnly">
+      <div class="grid">
+        {% for r in rows %}
+          <div class="card"><div class="toolbar">
+            <div class="pill">📆 {{ r.track_date }}</div>
+            <div class="metaRow">
+              <span class="meta">💳 Debt: <b>{{ money(r.debt_paid) }}</b></span>
+              <span class="meta">💵 Upwork: <b>{{ money(r.upwork_earnings) }}</b></span>
+              <span class="meta">🧲 Props: <b>{{ r.upwork_proposals }}</b></span>
+              <span class="meta">🗣️ Intv: <b>{{ r.upwork_interviews }}</b></span>
+              <span class="meta">➕ Other: <b>{{ money(r.other_income) }}</b></span>
+            </div>
+            <div class="stack10">
+              <a class="btn btnCompact" href="/goals?date={{ r.track_date }}">Open Day</a>
+            </div>
+          </div></div>
+        {% endfor %}
+        {% if not rows %}
+          <div class="card"><div class="toolbar"><div class="tiny">No entries yet for this month.</div></div></div>
+        {% endif %}
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">🧭 Goal-to-Execution Bridge (Weekly)</div>
+  <div class="tiny stack10 line16">Connect planned actions to actual trade execution quality and weekly drift.</div>
+  <div class="hr"></div>
+  <div class="statRow">
+    <div class="stat"><div class="k">Week</div><div class="v">{{ bridge.week_start }} → {{ bridge.week_end }}</div></div>
+    <div class="stat"><div class="k">Compliance</div><div class="v">{{ '%.1f'|format(bridge.compliance_score) }}%</div></div>
+    <div class="stat"><div class="k">Planned vs Traded Days</div><div class="v">{{ bridge.planned_days }} / {{ bridge.trade_days }}</div></div>
+    <div class="stat"><div class="k">Aligned Days</div><div class="v">{{ bridge.aligned_days }}</div></div>
+    <div class="stat"><div class="k">Avg Checklist Score</div><div class="v">{{ '%.1f'|format(bridge.avg_checklist_score) }}</div></div>
+    <div class="stat"><div class="k">Weekly Drift</div><div class="v">{{ '%.1f'|format(bridge.drift_vs_prev_week) }} ({{ bridge.drift_flag }})</div></div>
+  </div>
+  <div class="hr"></div>
+  <div class="tiny line16">
+    Pipeline: proposals {{ bridge.proposals }}/{{ bridge.proposal_target }} · interviews {{ bridge.interviews }}/{{ bridge.interview_target }}.
+  </div>
+</div></div>

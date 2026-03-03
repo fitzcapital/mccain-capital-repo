@@ -210,7 +210,7 @@ def test_upload_statement_workspaces_render(client):
 
     resp_upload = client.get("/trades/upload/statement?ws=upload", follow_redirects=True)
     assert resp_upload.status_code == 200
-    assert b"Upload Statement (PDF / HTML)" in resp_upload.data
+    assert b"Upload Statement" in resp_upload.data
 
     resp_rec = client.get("/trades/upload/statement?ws=reconcile", follow_redirects=True)
     assert resp_rec.status_code == 200

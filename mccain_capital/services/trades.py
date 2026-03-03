@@ -3376,13 +3376,29 @@ def _start_sync_job(
                     duration_sec=duration_sec,
                     summary=summary,
                     result_summary=_build_action_result_summary(
-                        tone="success" if run.get("ok") else ("warning" if run.get("debug_only") else "danger"),
-                        title="Live Sync Complete" if run.get("ok") else ("Debug Capture Complete" if run.get("debug_only") else "Live Sync Failed"),
+                        tone=(
+                            "success"
+                            if run.get("ok")
+                            else ("warning" if run.get("debug_only") else "danger")
+                        ),
+                        title=(
+                            "Live Sync Complete"
+                            if run.get("ok")
+                            else (
+                                "Debug Capture Complete"
+                                if run.get("debug_only")
+                                else "Live Sync Failed"
+                            )
+                        ),
                         happened=str(run.get("message") or _sync_stage_label(stage)),
                         changed=(
                             f"Imported {int(run.get('inserted') or 0)} trade(s) into the execution log."
                             if run.get("ok")
-                            else "No trade import was committed." if not run.get("debug_only") else "Captured artifacts only; no import was committed."
+                            else (
+                                "No trade import was committed."
+                                if not run.get("debug_only")
+                                else "Captured artifacts only; no import was committed."
+                            )
                         ),
                         warnings=[str(x) for x in (run.get("warns") or [])],
                         next_action=(
@@ -3397,8 +3413,15 @@ def _start_sync_job(
                         ],
                         actions=(
                             [
-                                {"label": "Open Imported Trades", "href": f"/trades?d={to_date}", "kind": "primary"},
-                                {"label": "Analyze Session", "href": f"/analytics?tab=performance&start={from_date}&end={to_date}"},
+                                {
+                                    "label": "Open Imported Trades",
+                                    "href": f"/trades?d={to_date}",
+                                    "kind": "primary",
+                                },
+                                {
+                                    "label": "Analyze Session",
+                                    "href": f"/analytics?tab=performance&start={from_date}&end={to_date}",
+                                },
                                 {
                                     "label": "Journal This Session",
                                     "href": f"/journal/new?d={to_date}&entry_type=trade_debrief&link_all_day=1",
@@ -3406,8 +3429,15 @@ def _start_sync_job(
                             ]
                             if run.get("ok")
                             else [
-                                {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
-                                {"label": "Open Reconcile", "href": "/trades/upload/statement?ws=reconcile"},
+                                {
+                                    "label": "Open Live Sync",
+                                    "href": "/trades/upload/statement?ws=live",
+                                    "kind": "primary",
+                                },
+                                {
+                                    "label": "Open Reconcile",
+                                    "href": "/trades/upload/statement?ws=reconcile",
+                                },
                             ]
                         ),
                     ),
@@ -3437,7 +3467,11 @@ def _start_sync_job(
                     changed="No sync result was committed because the background worker terminated early.",
                     next_action="Return to the Live Sync workspace, retry the run, and inspect any captured diagnostics.",
                     actions=[
-                        {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
+                        {
+                            "label": "Open Live Sync",
+                            "href": "/trades/upload/statement?ws=live",
+                            "kind": "primary",
+                        },
                         {"label": "Open Ops Alerts", "href": "/ops/alerts"},
                     ],
                 ),
@@ -4932,7 +4966,10 @@ def ops_backups_clear_live():
     try:
         _clear_live_app_data(preserve_backups=True)
         record_admin_audit("live_data_cleared", {"mode": "manual_clear"})
-        flash("Live database, uploads, and books were cleared. Saved backups were preserved.", "success")
+        flash(
+            "Live database, uploads, and books were cleared. Saved backups were preserved.",
+            "success",
+        )
     except Exception as e:
         flash(f"Clear failed: {e}", "warn")
     return redirect(url_for("ops_backups_page"))
@@ -5191,7 +5228,9 @@ def _run_review_rebuild(
         if preserve_manual and existing:
             payload["strategy_id"] = existing.get("strategy_id")
             payload["strategy_label"] = (
-                existing.get("strategy_label") or existing.get("setup_tag") or payload.get("setup_tag", "")
+                existing.get("strategy_label")
+                or existing.get("setup_tag")
+                or payload.get("setup_tag", "")
             )
             payload["setup_tag"] = (existing.get("setup_tag") or "").strip() or payload["setup_tag"]
             payload["session_tag"] = (existing.get("session_tag") or "").strip() or payload[
