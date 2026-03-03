@@ -238,11 +238,7 @@ def _trading_day_quantiles_to_goal(
     p70 = _quantile_int(reached_days, 0.70)
     p90 = _quantile_int(reached_days, 0.90)
     target_horizon = p70 or p90 or int(horizon)
-    floor_hits = sum(
-        1
-        for d in breach_days
-        if d is not None and d <= int(target_horizon)
-    )
+    floor_hits = sum(1 for d in breach_days if d is not None and d <= int(target_horizon))
     floor_prob = round((floor_hits / max(1, runs)) * 100.0, 1)
 
     return {
@@ -545,8 +541,12 @@ def payouts_page():
 
     today = now_et().date()
     m_first = date(today.year, today.month, 1).isoformat()
-    m_next = date(today.year + (today.month == 12), 1 if today.month == 12 else today.month + 1, 1).isoformat()
-    mtd = _sum_net_between(start_date=m_first, end_date=m_next, scope_start=scope_start if scope_active else "")
+    m_next = date(
+        today.year + (today.month == 12), 1 if today.month == 12 else today.month + 1, 1
+    ).isoformat()
+    mtd = _sum_net_between(
+        start_date=m_first, end_date=m_next, scope_start=scope_start if scope_active else ""
+    )
     last30_start = (today - timedelta(days=30)).isoformat()
     last30_end = (today + timedelta(days=1)).isoformat()
     last30 = _sum_net_between(
@@ -555,8 +555,12 @@ def payouts_page():
         scope_start=scope_start if scope_active else "",
     )
 
-    daily20 = trades_repo.last_n_trading_day_totals(20, since_date=scope_start if scope_active else "")
-    daily60 = trades_repo.last_n_trading_day_totals(60, since_date=scope_start if scope_active else "")
+    daily20 = trades_repo.last_n_trading_day_totals(
+        20, since_date=scope_start if scope_active else ""
+    )
+    daily60 = trades_repo.last_n_trading_day_totals(
+        60, since_date=scope_start if scope_active else ""
+    )
     proj = projections_from_daily(daily20, overall_balance)
     readiness = _payout_readiness_planner(
         daily_vals=daily60,

@@ -273,7 +273,9 @@ def ensure_auto_sync_worker_started(app) -> None:
     global _AUTO_SYNC_THREAD_STARTED, _AUTO_BACKUP_THREAD_STARTED
     with _AUTO_SYNC_THREAD_LOCK:
         if not _AUTO_SYNC_THREAD_STARTED:
-            t = threading.Thread(target=_auto_sync_worker, args=(app,), daemon=True, name="auto-sync-worker")
+            t = threading.Thread(
+                target=_auto_sync_worker, args=(app,), daemon=True, name="auto-sync-worker"
+            )
             t.start()
             _AUTO_SYNC_THREAD_STARTED = True
     with _AUTO_BACKUP_THREAD_LOCK:
@@ -333,7 +335,9 @@ def _auto_sync_worker(app) -> None:
                 time.sleep(60)
                 continue
             try:
-                fd = os.open(legacy.BROKER_AUTO_SYNC_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                fd = os.open(
+                    legacy.BROKER_AUTO_SYNC_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                )
                 os.close(fd)
             except FileExistsError:
                 time.sleep(20)
@@ -375,7 +379,9 @@ def _auto_sync_worker(app) -> None:
                             "stage": run.get("stage")
                             or ("import_complete" if run.get("ok") else "unknown"),
                             "message": run.get("message") or "",
-                            "stage_help": legacy.SYNC_STAGE_HELP.get(str(run.get("stage") or ""), ""),
+                            "stage_help": legacy.SYNC_STAGE_HELP.get(
+                                str(run.get("stage") or ""), ""
+                            ),
                             "requested": {
                                 "source": "scheduler",
                                 "scheduled_for": f"{today} {target_h:02d}:{target_m:02d}",

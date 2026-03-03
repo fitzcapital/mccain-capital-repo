@@ -63,9 +63,7 @@ def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "
 
     points = " ".join(f"{sx(i):.2f},{sy(v):.2f}" for i, v in enumerate(values))
     area_points = (
-        f"{pad:.2f},{height - pad:.2f} "
-        + points
-        + f" {width - pad:.2f},{height - pad:.2f}"
+        f"{pad:.2f},{height - pad:.2f} " + points + f" {width - pad:.2f},{height - pad:.2f}"
     )
     zero_in_range = min_v <= 0.0 <= max_v
     zero_y = sy(0.0) if zero_in_range else None
@@ -718,11 +716,11 @@ def session_replay_page():
     replay_status = (
         "No trades logged"
         if not timeline
-        else "Controlled green day"
-        if day_net > 0 and not rule_break_rows
-        else "Review behavior"
-        if day_net < 0 or rule_break_rows
-        else "Logged and stable"
+        else (
+            "Controlled green day"
+            if day_net > 0 and not rule_break_rows
+            else "Review behavior" if day_net < 0 or rule_break_rows else "Logged and stable"
+        )
     )
     first_trade = timeline[0] if timeline else None
     last_trade = timeline[-1] if timeline else None

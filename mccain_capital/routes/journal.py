@@ -15,7 +15,9 @@ def register(app):
         endpoint="journal_weekly_review",
         view_func=h.journal_weekly_review,
     )
-    app.add_url_rule("/journal/new", endpoint="new_entry", view_func=h.new_entry, methods=["GET", "POST"])
+    app.add_url_rule(
+        "/journal/new", endpoint="new_entry", view_func=h.new_entry, methods=["GET", "POST"]
+    )
     app.add_url_rule(
         "/new",
         endpoint="new_entry_legacy",

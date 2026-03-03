@@ -6,7 +6,13 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from mccain_capital.runtime import db, get_setting_float, get_setting_value, now_iso, set_setting_value
+from mccain_capital.runtime import (
+    db,
+    get_setting_float,
+    get_setting_value,
+    now_iso,
+    set_setting_value,
+)
 
 
 def fetch_trades(d: str = "", q: str = ""):
@@ -439,7 +445,10 @@ def latest_trade_day() -> Optional[date]:
 
 
 def latest_balance_overall(
-    as_of: str | None = None, *, start_date: str | None = None, starting_balance: float | None = None
+    as_of: str | None = None,
+    *,
+    start_date: str | None = None,
+    starting_balance: float | None = None,
 ) -> float:
     starting = (
         float(starting_balance)
@@ -504,7 +513,9 @@ def balance_integrity_snapshot(
     starting_balance: float | None = None,
 ) -> Dict[str, Any]:
     derived = float(
-        latest_balance_overall(as_of=as_of, start_date=start_date, starting_balance=starting_balance)
+        latest_balance_overall(
+            as_of=as_of, start_date=start_date, starting_balance=starting_balance
+        )
     )
     starting = (
         float(starting_balance)

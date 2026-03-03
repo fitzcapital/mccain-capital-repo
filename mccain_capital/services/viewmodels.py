@@ -129,13 +129,11 @@ def backup_state_badges(
     cfg: Mapping[str, Any], audit_rows: List[Mapping[str, Any]]
 ) -> List[StateBadgeViewModel]:
     last_backup_status = str(cfg.get("last_status") or "").strip()
-    last_backup_label = last_backup_status.replace("_", " ").title() if last_backup_status else "Never"
+    last_backup_label = (
+        last_backup_status.replace("_", " ").title() if last_backup_status else "Never"
+    )
     last_restore = next(
-        (
-            row
-            for row in audit_rows
-            if "restore" in str(row.get("label") or "").strip().lower()
-        ),
+        (row for row in audit_rows if "restore" in str(row.get("label") or "").strip().lower()),
         None,
     )
     last_restore_label = "None yet"
@@ -146,7 +144,9 @@ def backup_state_badges(
         restore_at = str(last_restore.get("at_human") or "").strip()
         last_restore_label = restore_event if not restore_at else f"{restore_event} · {restore_at}"
         last_restore_tone = "caution"
-        last_restore_title = str(last_restore.get("summary") or "Most recent restore-related action.")
+        last_restore_title = str(
+            last_restore.get("summary") or "Most recent restore-related action."
+        )
     return [
         StateBadgeViewModel(
             label="Schedule",

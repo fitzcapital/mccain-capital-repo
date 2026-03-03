@@ -123,7 +123,9 @@ def strat_page():
     return core_svc.strat_page()
 
 
-def _build_strategy_scorecards(items: List[Dict[str, Any]], analytics_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _build_strategy_scorecards(
+    items: List[Dict[str, Any]], analytics_rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     grouped: Dict[str, List[Dict[str, Any]]] = {
         str(item.get("title") or "").strip(): [] for item in items
     }
@@ -146,7 +148,9 @@ def _build_strategy_scorecards(items: List[Dict[str, Any]], analytics_rows: List
         ]
         updated_label = str(item.get("updated_at") or "")
         try:
-            updated_label = datetime.fromisoformat(updated_label.replace("Z", "+00:00")).strftime("%b %d, %Y")
+            updated_label = datetime.fromisoformat(updated_label.replace("Z", "+00:00")).strftime(
+                "%b %d, %Y"
+            )
         except Exception:
             pass
         scorecards.append(
@@ -162,7 +166,9 @@ def _build_strategy_scorecards(items: List[Dict[str, Any]], analytics_rows: List
                 "max_drawdown": perf["max_drawdown"],
                 "recent_net": recent_perf["total_net"],
                 "recent_win_rate": recent_perf["win_rate"],
-                "avg_score": (sum(avg_score_values) / len(avg_score_values)) if avg_score_values else None,
+                "avg_score": (
+                    (sum(avg_score_values) / len(avg_score_values)) if avg_score_values else None
+                ),
                 "status": _strategy_status(perf, recent_perf),
                 "status_tone": _strategy_status_tone(perf, recent_perf),
                 "updated_label": updated_label,

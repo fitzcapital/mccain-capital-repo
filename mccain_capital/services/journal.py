@@ -489,7 +489,9 @@ def _linked_trade_ids_from_form(entry_date: str, form: Any) -> List[int]:
     return sorted(set(multi_ids + comma_ids))
 
 
-def _build_debrief_scaffold(entry_date: str, entry_type: str, linked_trade_ids: List[int]) -> Dict[str, str]:
+def _build_debrief_scaffold(
+    entry_date: str, entry_type: str, linked_trade_ids: List[int]
+) -> Dict[str, str]:
     entry_kind = (entry_type or "").strip() or "post_market"
     if entry_kind == "pre_market":
         return {
@@ -506,12 +508,16 @@ def _build_debrief_scaffold(entry_date: str, entry_type: str, linked_trade_ids: 
     review_map = trades_repo.fetch_trade_reviews_map(
         [int(t["id"]) for t in trades if t.get("id") is not None]
     )
-    tickers = sorted({str(t.get("ticker") or "").strip() for t in trades if str(t.get("ticker") or "").strip()})
+    tickers = sorted(
+        {str(t.get("ticker") or "").strip() for t in trades if str(t.get("ticker") or "").strip()}
+    )
     strategy_labels = sorted(
         {
-            str((review_map.get(int(t["id"]), {}) or {}).get("strategy_label")
+            str(
+                (review_map.get(int(t["id"]), {}) or {}).get("strategy_label")
                 or (review_map.get(int(t["id"]), {}) or {}).get("setup_tag")
-                or "").strip()
+                or ""
+            ).strip()
             for t in trades
             if t.get("id") is not None
         }

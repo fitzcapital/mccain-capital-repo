@@ -118,9 +118,7 @@ def _global_top_notice() -> dict | None:
             continue
         day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "
         title = str(row.get("title") or "USD high impact").strip() or "USD high impact"
-        detail_href = (
-            f"/candle-opens?y={starts_at.year}&m={starts_at.month}#news-day-{starts_at.date().isoformat()}"
-        )
+        detail_href = f"/candle-opens?y={starts_at.year}&m={starts_at.month}#news-day-{starts_at.date().isoformat()}"
         return {
             "label": "Red Folder",
             "text": f"🔴 {day_prefix}{starts_at.strftime('%-I:%M %p ET')}",

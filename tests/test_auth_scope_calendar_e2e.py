@@ -117,8 +117,8 @@ def test_payouts_scope_switch_changes_balance_output(client):
     assert active_resp.status_code == 200
     assert b"$51,200.00" in all_resp.data
     assert b"$55,200.00" in active_resp.data
-    assert b'Active Account</a>' in active_resp.data
-    assert b'All History</a>' in all_resp.data
+    assert b"Active Account</a>" in active_resp.data
+    assert b"All History</a>" in all_resp.data
 
 
 def test_calendar_preview_backdrop_contract(client):

@@ -23,7 +23,12 @@ def test_trading_day_quantiles_probabilities_and_ordering():
     assert out["days_p70"] is not None
     assert out["days_p90"] is not None
     assert int(out["days_p50"]) <= int(out["days_p70"]) <= int(out["days_p90"])
-    for key in ("hit_prob_5d", "hit_prob_10d", "hit_prob_20d", "floor_breach_prob_at_target_horizon"):
+    for key in (
+        "hit_prob_5d",
+        "hit_prob_10d",
+        "hit_prob_20d",
+        "floor_breach_prob_at_target_horizon",
+    ):
         assert 0.0 <= float(out[key]) <= 100.0
 
 

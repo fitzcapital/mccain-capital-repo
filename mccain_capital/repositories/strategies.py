@@ -48,16 +48,25 @@ def ensure_strategy(title: str, body: str = "") -> Optional[dict]:
     existing = get_strategy_by_title(clean)
     if existing:
         row = dict(existing)
-        return {"id": int(row["id"]), "title": str(row["title"]).strip(), "body": str(row["body"] or "")}
+        return {
+            "id": int(row["id"]),
+            "title": str(row["title"]).strip(),
+            "body": str(row["body"] or ""),
+        }
     sid = create_strategy(
         title=clean,
-        body=(body or "").strip() or "Auto-created from trade review/import flow. Add your execution rules here.",
+        body=(body or "").strip()
+        or "Auto-created from trade review/import flow. Add your execution rules here.",
     )
     created = get_strategy(sid)
     if not created:
         return {"id": sid, "title": clean, "body": body}
     row = dict(created)
-    return {"id": int(row["id"]), "title": str(row["title"]).strip(), "body": str(row["body"] or "")}
+    return {
+        "id": int(row["id"]),
+        "title": str(row["title"]).strip(),
+        "body": str(row["body"] or ""),
+    }
 
 
 def update_strategy(sid: int, title: str, body: str) -> None:
