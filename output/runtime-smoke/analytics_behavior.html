@@ -1,0 +1,1124 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" href="/static/logo.png?v=1771803929">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>McCain Capital · Analytics</title>
+  <link rel="stylesheet" href="/static/css/app.css?v=1771803929">
+</head>
+
+<body>
+  <svg width="0" height="0" class="svgSpriteHidden" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="mc-crest" viewBox="0 0 24 24">
+        <path d="M12 2l8 3v6c0 5.2-3.2 9.2-8 11-4.8-1.8-8-5.8-8-11V5l8-3z" fill="currentColor"/>
+        <path d="M12 6.3l3.8 1.4V11c0 2.3-1.4 4.2-3.8 5.2-2.4-1-3.8-2.9-3.8-5.2V7.7L12 6.3z" fill="#02131e"/>
+      </symbol>
+      <symbol id="mc-orbit" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+        <circle cx="12" cy="12" r="2.4" fill="currentColor"/>
+        <path d="M4.5 9.5c2.3-2.1 5-3.1 7.5-3.1 3.2 0 5.8 1.7 7.5 3.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="mc-crown" viewBox="0 0 24 24">
+        <path d="M3 18l1.7-9 4.4 4.2L12 6l2.9 7.2L19.3 9 21 18H3z" fill="currentColor"/>
+        <rect x="3" y="18" width="18" height="2" rx="1" fill="currentColor"/>
+      </symbol>
+    </defs>
+  </svg>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">
+          <img src="/static/logo.png?v=1771803929" alt="logo"/>
+        </div>
+        <div class="brandText">
+          <h1 class="brandTitle">McCain Capital</h1>
+          <div class="brandSignature">
+            <span class="mcMark"><svg class="mcIcon"><use href="#mc-crown"></use></svg> McCain Capital Reserve</span>
+            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Elite Personal Trading Cockpit</span>
+          </div>
+          <div class="sub">Private command deck for your edge.</div>
+        </div>
+      </div>
+
+      <div class="topRight">
+        
+          
+            <a class="clockPill topNoticePill is-high" href="/candle-opens?y=2026&amp;m=3#news-day-2026-03-04" title="High impact · Mar 4 08:15 AM ET · ADP Non-Farm Employment Change">
+              <span class="topNoticeText">🔴 Wed 8:15 AM ET</span>
+            </a>
+          
+        
+        <div id="modePill" class="clockPill">Loading…</div>
+        <div class="clockPill clockStatusPill" aria-label="Eastern time and market status">
+          <span id="etClock" class="clockTime">--:--:--</span>
+          <span id="marketState" class="marketState marketClosed">Closed</span>
+        </div>
+
+        <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="18" x2="20" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="nav">
+        <div class="navGroup">
+          <span class="navLabel">Workflow</span>
+          <a class="btn " href="/dashboard">Run Day</a>
+          <a class="btn " href="/calendar">Calendar</a>
+          <a class="btn " href="/trades">Execute</a>
+          <a class="btn " href="/journal">Debrief</a>
+        </div>
+        <div class="navDivider"></div>
+        <div class="navGroup">
+          <span class="navLabel">Decide</span>
+          <a class="btn active" href="/analytics">Review</a>
+          <a class="btn " href="/calculator">Plan Risk</a>
+          <a class="btn " href="/payouts">Payout Plan</a>
+        </div>
+
+        <div class="menuMore">
+          <button class="btn moreBtn" type="button" onclick="toggleMoreMenu()" aria-haspopup="true" aria-expanded="false">
+            More ▾
+          </button>
+
+          <div id="moreMenu" class="moreMenu" role="menu">
+            <div class="menuTitle">Signed in as fitz</div>
+            <div class="menuTitle">Workspace</div>
+            <a class="btn " href="/calendar">P/L Calendar</a>
+            <a class="btn " href="/market-pulse?refresh=1">Market Pulse</a>
+            <a class="btn " href="/strategies">Strategies</a>
+            <a class="btn " href="/ops/alerts">Ops Alerts</a>
+            <a class="btn " href="/strat">The Strat</a>
+            <a class="btn " href="/candle-opens">Candle Opens</a>
+            <a class="btn " href="/books">Books</a>
+            <a class="btn " href="/payouts">Payouts</a>
+            <div class="hr"></div>
+            <div class="menuTitle">Business</div>
+            <a class="btn " href="/goals">Income Tracker</a>
+            <div class="hr"></div>
+            <div class="menuTitle">Data</div>
+            <a class="btn " href="/ops/backups">Auto Backups</a>
+            <a class="btn" href="/admin/backup">Download Backup</a>
+            <a class="btn" href="/admin/restore">Restore Backup</a>
+            <a class="btn" href="/setup">Setup Login</a>
+            <div class="hr"></div>
+            <div class="menuTitle">External</div>
+            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
+            <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+            <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
+            
+              <div class="hr"></div>
+              
+                <a class="btn danger" href="/logout">Sign Out</a>
+              
+            
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
+    <div class="systemStatusStrip" role="status" aria-live="polite">
+      <div class="statusChip">
+        <span class="statusKey">Last Sync</span>
+        <span class="statusVal">
+          
+          
+            Succeeded
+          
+        </span>
+      </div>
+      <div class="statusChip">
+        <span class="statusKey">Next Auto Sync</span>
+        <span class="statusVal">
+          
+            04:15 PM ET
+          
+        </span>
+      </div>
+      <div class="statusChip">
+        <span class="statusKey">Last Sync Update</span>
+        <span class="statusVal">
+          
+            Mar 03, 2026 04:18 PM ET
+          
+        </span>
+      </div>
+    </div>
+    <div id="workflowRail" class="workflowRail">
+      <div class="workflowHead">
+        <div>
+          <div class="pill">🧭 Command Rail</div>
+          <div class="workflowSub">One loop, kept visible: plan, execute, review, debrief, calendar.</div>
+        </div>
+      </div>
+      <div class="workflowGrid">
+        <a class="workflowStep guideStep " data-guide-item="plan-risk" href="/calculator">
+          <div class="workflowKicker">Plan</div>
+          <div class="workflowTitle">Plan Risk</div>
+          <div class="workflowText">Set size and risk first.</div>
+        </a>
+        <a class="workflowStep guideStep " data-guide-item="upload-statement" href="/trades">
+          <div class="workflowKicker">Execute</div>
+          <div class="workflowTitle">Execution Log</div>
+          <div class="workflowText">Log and import the day cleanly.</div>
+        </a>
+        <a class="workflowStep guideStep flowActive" data-guide-item="review-trades" href="/analytics?tab=performance">
+          <div class="workflowKicker">Review</div>
+          <div class="workflowTitle">Analyze Day</div>
+          <div class="workflowText">Check edge, drawdown, and discipline.</div>
+        </a>
+        <a class="workflowStep guideStep " data-guide-item="weekly-debrief" href="/journal">
+          <div class="workflowKicker">Debrief</div>
+          <div class="workflowTitle">Journal</div>
+          <div class="workflowText">Lock in the lesson while it is fresh.</div>
+        </a>
+        <a class="workflowStep guideStep " href="/calendar">
+          <div class="workflowKicker">Map</div>
+          <div class="workflowTitle">Calendar</div>
+          <div class="workflowText">See the month as one signal map.</div>
+        </a>
+      </div>
+    </div>
+    <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>
+    <aside id="drawer" class="drawer" aria-label="Menu">
+      <div class="drawerInner">
+        <div class="drawerHead">
+          <div>
+            <div class="drawerTitle">Menu</div>
+          </div>
+          <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
+        </div>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Today</div>
+          <div class="drawerPrimaryGrid">
+            <a class="btn " href="/dashboard">Run Day</a>
+            <a class="btn " href="/trades">Execute</a>
+            <a class="btn primary" href="/analytics/replay">Replay</a>
+            <a class="btn " href="/journal">Debrief</a>
+            <a class="btn " href="/calendar">Calendar</a>
+            <a class="btn " href="/market-pulse?refresh=1">Market Pulse</a>
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Plan</div>
+          <div class="drawerStack">
+            <a class="btn " href="/calculator">Plan Risk</a>
+            <a class="btn " href="/payouts">Payout Plan</a>
+            <a class="btn " href="/candle-opens">Candle Opens</a>
+            <a class="btn " href="/strategies">Strategies</a>
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Learn</div>
+          <div class="drawerStack">
+            <a class="btn " href="/strat">The Strat</a>
+            <a class="btn " href="/books">Books</a>
+            <a class="btn " href="/goals">Income Tracker</a>
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Admin</div>
+          <div class="drawerStack">
+            <a class="btn " href="/ops/backups">Backups</a>
+            <a class="btn" href="/admin/backup">Download Backup</a>
+            <a class="btn" href="/admin/restore">Restore Backup</a>
+            <a class="btn" href="/setup">Setup Login</a>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
+            <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
+            
+              
+                <a class="btn danger" href="/logout">Sign Out</a>
+              
+            
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">External</div>
+          <div class="drawerStack">
+            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
+            <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <div id="marketPulseNavLoading" class="marketPulseLoadingOverlay" aria-hidden="true">
+      <div class="marketPulseLoadingCard">
+        <div class="marketPulseSpinner"></div>
+        <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
+        <div class="marketPulseLoadingSub">Pulling Yahoo chart data and rebuilding tape context…</div>
+      </div>
+    </div>
+
+    <div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">Analytics Workspace</div>
+        <div class="pageTitleRow">
+          <h2 class="pageTitle">Performance Intelligence</h2>
+          <details class="inlineHelp">
+            <summary aria-label="Analytics page help">?</summary>
+            <div class="helpPopover">Track expectancy, drawdown, behavior, and setup or session quality without keeping that guidance on-screen full time.</div>
+          </details>
+        </div>
+      </div>
+      <div class="actionRow">
+        
+          <a class="btn primary" href="/analytics?tab=behavior&amp;start=2026-03-03&amp;end=&amp;explain_day=&amp;expectancy_granularity=weekly&amp;scope=active">Active Account</a>
+          <a class="btn " href="/analytics?tab=behavior&amp;start=2026-03-03&amp;end=&amp;explain_day=&amp;expectancy_granularity=weekly&amp;scope=all">All History</a>
+          <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
+        
+        <a class="btn primary" href="/analytics/replay">Session Replay</a>
+        <a class="btn ctaLink" href="/trades">Trades</a>
+        <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
+        <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card analyticsToplineCard">
+  <div class="toolbar">
+    <div class="analyticsTopline">
+      <div class="analyticsBalanceBlock">
+        <div class="summaryMonth">Analytics Balance</div>
+        <div class="summaryCaption analyticsBalanceCaption">Current account <strong>$50,000.00</strong></div>
+        
+          <div class="tiny stack6">Scope: 2026-03-03 · To Wealth</div>
+        
+      </div>
+      <div class="analyticsTopStats">
+        <div class="analyticsTopStat ">
+          <span>Net P/L</span>
+          <strong>$0.00</strong>
+        </div>
+        <div class="analyticsTopStat">
+          <span>Win Rate</span>
+          <strong>0.0%</strong>
+        </div>
+        <div class="analyticsTopStat">
+          <span>Expectancy</span>
+          <strong>$0.00</strong>
+        </div>
+        <div class="analyticsTopStat ">
+          <span>Live Drawdown</span>
+          <strong>$0.00</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusBadgeStrip">
+  
+    <div class="statusBadge is-healthy" title="Scoped from 2026-03-03; start balance plus closed trade net P/L.">
+      <span class="statusBadgeLabel">Source</span>
+      <strong>Derived ledger</strong>
+    </div>
+  
+    <div class="statusBadge is-neutral" title="Configured ledger starting balance.">
+      <span class="statusBadgeLabel">Start</span>
+      <strong>$50,000.00</strong>
+    </div>
+  
+    <div class="statusBadge is-healthy" title="Canonical balance used across the app.">
+      <span class="statusBadgeLabel">Now</span>
+      <strong>$50,000.00</strong>
+    </div>
+  
+    <div class="statusBadge is-neutral" title="No stored per-trade balance snapshot is available yet.">
+      <span class="statusBadgeLabel">Stored</span>
+      <strong>No snapshot</strong>
+    </div>
+  
+  
+    <div class="statusBadge is-healthy" title="Latest sync or import state.">
+      <span class="statusBadgeLabel">Sync</span>
+      <strong>Success</strong>
+    </div>
+  
+    <div class="statusBadge is-neutral" title="Most recent sync step reached.">
+      <span class="statusBadgeLabel">Stage</span>
+      <strong>Import Complete</strong>
+    </div>
+  
+    <div class="statusBadge is-neutral" title="Last recorded sync timestamp.">
+      <span class="statusBadgeLabel">Updated</span>
+      <strong>Mar 03, 2026 04:18 PM ET</strong>
+    </div>
+  
+</div>
+
+<div class="dashboardSupportGrid">
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Data Trust</div>
+    <div class="supportLead">
+      Success
+      · Stage Import Complete
+      · Updated Mar 03, 2026 04:18 PM ET
+    </div>
+    <div class="supportBody metaGreen">
+      Data quality checks are clean for this range. Safe to use analytics for decisioning.
+    </div>
+    
+  </div></div>
+
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Current Read</div>
+    <div class="supportLead">Expectancy is flat/negative. Recent trade selection or exits are suppressing edge.</div>
+    <div class="supportBody">Score more trades consistently to unlock quality-vs-PnL feedback loops.</div>
+    <div class="supportMeta">No active drawdown streak. Risk posture is stable for planned sizing.</div>
+  </div></div>
+</div>
+
+<div class="showcaseGrid">
+  <div class="showcaseCard">
+    <div class="showcaseHead">
+      <div class="showcaseTitle">
+        <svg class="mcIcon"><use href="#mc-crown"></use></svg>
+        Edge Intensity
+      </div>
+      <span class="trendChip">0 trades</span>
+    </div>
+    <div class="showcaseValue">$0.00</div>
+    <div class="showcaseMeta">
+      Profit factor ∞
+      · Win rate 0.0%.
+    </div>
+    <div class="showcasePulse" style="--pulse-w: 50.0%">
+      <div class="showcasePulseFill"></div>
+      <div class="showcaseWave"></div>
+    </div>
+  </div>
+  <div class="showcaseCard">
+    <div class="showcaseHead">
+      <div class="showcaseTitle">
+        <svg class="mcIcon"><use href="#mc-crest"></use></svg>
+        Risk Control State
+      </div>
+      <span class="trendChip">DD streak 0</span>
+    </div>
+    <div class="showcaseValue">$0.00</div>
+    <div class="showcaseMeta">
+      Max DD $0.00 · Current streak 0.
+    </div>
+    <div class="showcasePulse" style="--pulse-w: 100.0%">
+      <div class="showcasePulseFill"></div>
+      <div class="showcaseWave"></div>
+    </div>
+  </div>
+</div>
+
+<div class="metricStrip">
+  <div class="metric"><div class="label">Trades</div><div class="value">0</div><div class="sub">Reviewed sample in selected range</div></div>
+  <div class="metric"><div class="label">Win Rate</div><div class="value">0.0%</div><div class="sub">Execution hit-rate across reviewed trades</div></div>
+  <div class="metric"><div class="label">Expectancy</div><div class="value">$0.00</div><div class="sub">Average outcome per trade</div></div>
+  <div class="metric"><div class="label">Profit Factor</div><div class="value">∞</div><div class="sub">Gross wins divided by gross losses</div></div>
+  <div class="metric"><div class="label">Max Drawdown</div><div class="value">$0.00</div><div class="sub">Largest peak-to-trough decline</div></div>
+  <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">0</div><div class="sub">Longest drawdown trade streak</div></div>
+  <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">0</div><div class="sub">Active drawdown streak right now</div></div>
+  <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">—</div><div class="sub">Checklist score alignment with outcome</div></div>
+</div>
+
+<div class="card controlPanel"><div class="toolbar">
+  <div class="controlHead">
+    <div>
+      <div class="pill">Analysis Controls</div>
+      <div class="summaryLead stack8">Switch tabs, tune the date range, and explain a specific day without leaving the analytics surface.</div>
+    </div>
+  </div>
+  <div class="actionRow">
+    <a class="btn " href="/analytics?tab=performance&start=2026-03-03&end=&explain_day=&expectancy_granularity=weekly">Performance</a>
+    <a class="btn primary" href="/analytics?tab=behavior&start=2026-03-03&end=&explain_day=&expectancy_granularity=weekly">Behavior</a>
+    <a class="btn " href="/analytics?tab=edge&start=2026-03-03&end=&explain_day=&expectancy_granularity=weekly">Edge</a>
+    <a class="btn " href="/analytics?tab=diagnostics&start=2026-03-03&end=&explain_day=&expectancy_granularity=weekly">Diagnostics</a>
+  </div>
+  <div class="hr"></div>
+  <form method="get" class="row">
+    <input type="hidden" name="tab" value="behavior">
+    <div><label>Start</label><input class="appDateInput" type="date" name="start" value="2026-03-03"></div>
+    <div><label>End</label><input class="appDateInput" type="date" name="end" value=""></div>
+    <div>
+      <label>Explain Day</label>
+      <input class="appDateInput" type="date" name="explain_day" value="" />
+    </div>
+    <div>
+      <label>Expectancy View</label>
+      <select name="expectancy_granularity">
+        <option value="monthly" >Monthly</option>
+        <option value="weekly" selected>Weekly</option>
+      </select>
+    </div>
+    <div class="actionRow">
+      <button class="btn" type="submit">Apply</button>
+      <a class="btn" href="/analytics">Reset</a>
+    </div>
+  </form>
+</div></div>
+
+
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">Session Breakdown</div>
+    
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Top Session</div><div class="v">—</div></div>
+      <div class="stat"><div class="k">Top Session Net</div><div class="v">—</div></div>
+      <div class="stat"><div class="k">Top Session Win Rate</div><div class="v">—</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open session breakdown table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
+        <tbody>
+        
+        </tbody>
+      </table></div>
+      <div class="mobileOnly">
+        <div class="grid">
+          
+        </div>
+      </div>
+    </details>
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">Rule Break Tags</div>
+    
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Top Rule Break</div><div class="v">None logged</div></div>
+      <div class="stat"><div class="k">Occurrences</div><div class="v">0</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open full rule-break list</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Tag</th><th>Count</th></tr></thead>
+        <tbody>
+        
+        
+          <tr><td colspan="2">
+            <div class="emptyState">
+              <div class="emptyStateTitle">No rule-break tags in this range.</div>
+              <div class="emptyStateBody">Keep tagging rule breaks during reviews so behavior drift stays measurable.</div>
+            </div>
+          </td></tr>
+        
+        </tbody>
+      </table></div>
+      <div class="mobileOnly">
+        <div class="grid">
+          
+          
+            <div class="emptyState">
+              <div class="emptyStateTitle">No rule-break tags in this range.</div>
+              <div class="emptyStateBody">Tag rule breaks on each review to keep behavior analytics reliable.</div>
+            </div>
+          
+        </div>
+      </div>
+    </details>
+  </div></div>
+</div>
+<div class="card stack12"><div class="toolbar">
+  <div class="pillRow">
+    <div class="pill">Setup Expectancy Heatmap by Time Block</div>
+    <details class="inlineHelp">
+      <summary aria-label="Heatmap help">?</summary>
+      <div class="helpPopover">Color intensity reflects expectancy magnitude for the top tagged setups across intraday blocks.</div>
+    </details>
+  </div>
+  <div class="hr"></div>
+  
+    <div class="emptyState">
+      <div class="emptyStateTitle">No heatmap data in this range.</div>
+      <div class="emptyStateBody">Widen the date range or log more tagged trades.</div>
+    </div>
+  
+</div></div>
+
+<script>
+  (function(){
+    const points = Array.from(document.querySelectorAll(".chartPoint"));
+    if(!points.length){ return; }
+    const tip = document.createElement("div");
+    tip.style.position = "fixed";
+    tip.style.zIndex = "9999";
+    tip.style.pointerEvents = "none";
+    tip.style.padding = "8px 10px";
+    tip.style.borderRadius = "10px";
+    tip.style.border = "1px solid rgba(53,212,255,.35)";
+    tip.style.background = "rgba(4,12,20,.95)";
+    tip.style.color = "#dff8ff";
+    tip.style.fontSize = "12px";
+    tip.style.lineHeight = "1.35";
+    tip.style.boxShadow = "0 10px 24px rgba(0,0,0,.45)";
+    tip.style.display = "none";
+    document.body.appendChild(tip);
+
+    function fmt(prefix, raw){
+      const v = Number(raw || 0);
+      if(prefix === "%"){ return `${v.toFixed(2)}%`; }
+      if(prefix === "$"){ return `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`; }
+      return `${prefix || ""}${v.toFixed(2)}`;
+    }
+    function positionTip(evt){
+      tip.style.left = `${evt.clientX + 12}px`;
+      tip.style.top = `${evt.clientY + 12}px`;
+    }
+    function showTip(el, evt){
+      const label = el.dataset.label || "Point";
+      const series = el.dataset.series ? `${el.dataset.series} · ` : "";
+      const prefix = el.dataset.prefix || "$";
+      const value = fmt(prefix, el.dataset.value);
+      const day = el.dataset.day || "";
+      const drill = day ? `<div style="opacity:.8;margin-top:4px">Click to open ${day} trades</div>` : "";
+      tip.innerHTML = `<div style="font-weight:800">${series}${label}</div><div>${value}</div>${drill}`;
+      tip.style.display = "block";
+      positionTip(evt);
+    }
+    function hideTip(){ tip.style.display = "none"; }
+
+    points.forEach((pt)=>{
+      pt.style.cursor = "pointer";
+      pt.addEventListener("mouseenter", (e)=>showTip(pt, e));
+      pt.addEventListener("mousemove", positionTip);
+      pt.addEventListener("mouseleave", hideTip);
+      pt.addEventListener("click", ()=>{
+        const day = (pt.dataset.day || "").trim();
+        if(day){
+          window.location.href = `/trades?d=${encodeURIComponent(day)}`;
+        }
+      });
+    });
+  })();
+</script>
+
+    <div id="quickLauncher" class="quickLauncher" aria-label="Quick actions">
+      <button id="quickToggleBtn" class="btn primary quickToggle" type="button" aria-expanded="false" onclick="toggleQuickPanel()">+</button>
+      <div id="quickPanel" class="quickPanel" role="menu">
+        <div class="menuTitle">Quick Actions</div>
+        <div class="quickList">
+          <a class="btn" href="/trades/new">Add Trade</a>
+          <a class="btn" href="/journal/new">Add Journal</a>
+          <a class="btn" href="/trades/upload/statement">Upload Statement</a>
+          <a class="btn" href="/trades/open-positions">Open Positions</a>
+        </div>
+      </div>
+    </div>
+
+    <nav class="mobileDock" aria-label="Quick navigation">
+      <a class="btn " href="/dashboard">Day</a>
+      <a class="btn " href="/trades">Trades</a>
+      <a class="btn primary" href="/analytics/replay">Replay</a>
+      <a class="btn " href="/journal">Notes</a>
+    </nav>
+
+    <div class="tiny footerTip">
+      Tip: Keep your journal precise. Your edge compounds through consistency.
+      <span class="kbd">Ctrl</span> + <span class="kbd">K</span> focuses Search.
+    </div>
+  </div>
+    <script>
+  function toggleMoreMenu(){
+    const m = document.getElementById("moreMenu");
+    const btn = document.querySelector(".moreBtn");
+    if(!m) return;
+    m.classList.toggle("open");
+    if(btn) btn.setAttribute("aria-expanded", m.classList.contains("open") ? "true" : "false");
+  }
+  window.toggleMoreMenu = toggleMoreMenu;
+
+  window.addEventListener("click", (e)=>{
+    const menu = document.getElementById("moreMenu");
+    if(!menu) return;
+
+    const isButton = e.target.closest && e.target.closest(".moreBtn");
+    const isInside = e.target.closest && e.target.closest("#moreMenu");
+    if(!isButton && !isInside){
+      menu.classList.remove("open");
+      const btn = document.querySelector(".moreBtn");
+      if(btn) btn.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  window.addEventListener("keydown", (e)=>{
+    if(e.key === "Escape"){
+      const menu = document.getElementById("moreMenu");
+      if(menu) menu.classList.remove("open");
+      const btn = document.querySelector(".moreBtn");
+      if(btn) btn.setAttribute("aria-expanded", "false");
+    }
+  });
+</script>
+<script>
+  function toggleQuickPanel(){
+    const panel = document.getElementById("quickPanel");
+    const btn = document.getElementById("quickToggleBtn");
+    if(!panel || !btn) return;
+    panel.classList.toggle("open");
+    const isOpen = panel.classList.contains("open");
+    btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
+  window.toggleQuickPanel = toggleQuickPanel;
+
+  window.addEventListener("click", (e)=>{
+    const panel = document.getElementById("quickPanel");
+    const btn = document.getElementById("quickToggleBtn");
+    if(!panel || !btn) return;
+    const insidePanel = e.target.closest && e.target.closest("#quickPanel");
+    const toggle = e.target.closest && e.target.closest("#quickToggleBtn");
+    if(!insidePanel && !toggle){
+      panel.classList.remove("open");
+      btn.setAttribute("aria-expanded", "false");
+    }
+  });
+</script>
+<script>
+if (!window.toggleRowMenu) {
+function toggleRowMenu(tradeId, ev) {
+  ev.preventDefault();
+  ev.stopPropagation();
+
+  const menu = document.getElementById(`rowMenu-${tradeId}`);
+  const btn  = ev.currentTarget;
+
+  // Close any other open menus
+  document.querySelectorAll('.rowMoreMenu.open').forEach(m => {
+    if (m !== menu) m.classList.remove('open');
+  });
+
+  // Toggle this menu
+  menu.classList.toggle('open');
+
+  if (menu.classList.contains('open')) {
+    // Make it immune to overflow clipping
+    menu.style.position = 'fixed';
+    menu.style.zIndex = '999999';
+
+    // Need it visible to measure height
+    menu.style.visibility = 'hidden';
+    menu.style.display = 'block';
+
+    const btnRect = btn.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+
+    // Default: open downward
+    let top = btnRect.bottom + 6;
+
+    // If it would go off-screen, open upward
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = btnRect.top - menuRect.height - 6;
+    }
+
+    // Keep inside viewport horizontally
+    let left = btnRect.right - menuRect.width;
+    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+
+    menu.style.visibility = 'visible';
+  }
+}
+
+// Close menus when clicking elsewhere
+document.addEventListener('click', () => {
+  document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
+});
+
+// Close on ESC
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
+  }
+});
+}
+</script>
+
+
+
+
+  <script>
+    const _navShortcutMap = {
+      "gd": "/dashboard",
+      "gt": "/trades",
+      "gj": "/journal",
+      "ga": "/analytics",
+      "gc": "/calculator",
+      "ng": "/goals",
+      "nt": "/trades/new",
+      "nj": "/journal/new"
+    };
+    let _comboBuffer = "";
+    let _comboTs = 0;
+    function _isTypingContext(el){
+      if(!el) return false;
+      const tag = (el.tagName || "").toLowerCase();
+      return tag === "input" || tag === "textarea" || tag === "select" || !!el.isContentEditable;
+    }
+    function _handlePowerShortcut(e){
+      const now = Date.now();
+      if(now - _comboTs > 900) _comboBuffer = "";
+      _comboTs = now;
+      const k = (e.key || "").toLowerCase();
+      if(!/^[a-z\/\?]$/.test(k)) return false;
+      if(k === "/"){
+        const s = document.getElementById('search');
+        if(s){ e.preventDefault(); s.focus(); return true; }
+      }
+      if(k === "?"){
+        const panel = document.getElementById("shortcutHelp");
+        if(panel){
+          panel.classList.toggle("open");
+          e.preventDefault();
+          return true;
+        }
+      }
+      _comboBuffer = (_comboBuffer + k).slice(-2);
+      const href = _navShortcutMap[_comboBuffer];
+      if(href){
+        e.preventDefault();
+        window.location.href = href;
+        return true;
+      }
+      return false;
+    }
+
+    window.addEventListener('keydown', (e)=>{
+      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='k'){
+        const s = document.getElementById('search');
+        if(s){ e.preventDefault(); s.focus(); }
+      }
+      if(!_isTypingContext(document.activeElement) && !e.ctrlKey && !e.metaKey && !e.altKey){
+        _handlePowerShortcut(e);
+      }
+      if(e.key === "Escape"){ closeDrawer(); }
+    });
+
+    function confirmDelete(formId){
+      if(confirm("Delete this? This can't be undone.")){
+        document.getElementById(formId).submit();
+      }
+    }
+    window.confirmDelete = confirmDelete;
+
+    function confirmClear(formId){
+      if(confirm("Clear ALL trade data? This wipes the trades table.")){
+        document.getElementById(formId).submit();
+      }
+    }
+    window.confirmClear = confirmClear;
+
+    function openDrawer(){
+      document.getElementById('drawer').classList.add('open');
+      document.getElementById('drawerOverlay').classList.add('open');
+      document.body.classList.add('drawer-open');
+      const t = document.getElementById('menuToggleBtn');
+      if(t) t.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = "hidden";
+    }
+    function closeDrawer(){
+      document.getElementById('drawer').classList.remove('open');
+      document.getElementById('drawerOverlay').classList.remove('open');
+      document.body.classList.remove('drawer-open');
+      const t = document.getElementById('menuToggleBtn');
+      if(t) t.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = "";
+    }
+    window.openDrawer = openDrawer;
+    window.closeDrawer = closeDrawer;
+
+    function showMarketPulseNavLoading(){
+      const overlay = document.getElementById("marketPulseNavLoading");
+      if(!overlay) return;
+      overlay.classList.add("show");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    window.showMarketPulseNavLoading = showMarketPulseNavLoading;
+
+    document.addEventListener('click', (e)=>{
+      const link = e.target.closest && e.target.closest('#drawer a');
+      if(link) closeDrawer();
+    });
+    document.addEventListener("click", (e)=>{
+      if(e.defaultPrevented || e.button !== 0) return;
+      if(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = e.target.closest && e.target.closest("a[href]");
+      if(!link || link.target === "_blank") return;
+      const rawHref = link.getAttribute("href") || "";
+      if(!rawHref || rawHref.startsWith("#")) return;
+      let url = null;
+      try{
+        url = new URL(link.href, window.location.origin);
+      }catch(_err){
+        return;
+      }
+      if(url.origin !== window.location.origin) return;
+      if(url.pathname !== "/market-pulse") return;
+      showMarketPulseNavLoading();
+    });
+
+    function updateETClock(){
+      try{
+        const now = new Date();
+        const timeStr = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          hour: "2-digit", minute:"2-digit", second:"2-digit",
+          hour12:true
+        }).format(now);
+
+        const weekday = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          weekday: "short"
+        }).format(now);
+
+        const hour24 = Number(new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          hour: "2-digit",
+          hour12: false
+        }).format(now));
+
+        const clock = document.getElementById("etClock");
+        const mode = document.getElementById("modePill");
+        const market = document.getElementById("marketState");
+        if(clock) clock.textContent = `${timeStr} ET`;
+
+        if(mode){
+          const isWeekend = (weekday === "Sat" || weekday === "Sun");
+          if(isWeekend) mode.textContent = "🧠 Weekend Mode";
+          else if(hour24 >= 16) mode.textContent = "📚 Study Mode";
+          else mode.textContent = "📈 Trading Day";
+        }
+        if(market){
+          const hm = new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/New_York",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+          }).format(now).split(":");
+          const nyMinutes = (Number(hm[0] || 0) * 60) + Number(hm[1] || 0);
+          const isWeekend = (weekday === "Sat" || weekday === "Sun");
+          const isOpen = !isWeekend && nyMinutes >= 570 && nyMinutes < 960;
+          market.textContent = isOpen ? "Open" : "Closed";
+          market.classList.toggle("marketOpen", isOpen);
+          market.classList.toggle("marketClosed", !isOpen);
+          market.title = isOpen ? "US market is open (9:30 AM - 4:00 PM ET)" : "US market is closed";
+        }
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    setInterval(updateETClock, 1000);
+    updateETClock();
+
+    const THEME_ORDER = ["default", "black", "steel", "galaxy"];
+    const THEME_LABELS = {
+      default: "Theme: Classic",
+      black: "Theme: Midnight",
+      steel: "Theme: Steel",
+      galaxy: "Theme: Galaxy"
+    };
+    function syncThemeButtons(theme){
+      document.querySelectorAll("[data-theme-toggle-label]").forEach((btn) => {
+        btn.textContent = THEME_LABELS[theme] || THEME_LABELS.default;
+      });
+    }
+    function applyTheme(theme){
+      const t = THEME_ORDER.includes(theme) ? theme : "default";
+      document.body.setAttribute("data-theme", t);
+      syncThemeButtons(t);
+    }
+    function toggleTheme(){
+      const current = document.body.getAttribute("data-theme") || "default";
+      const idx = THEME_ORDER.indexOf(current);
+      const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+      localStorage.setItem("mc_theme", next);
+      applyTheme(next);
+    }
+    window.toggleTheme = toggleTheme;
+    applyTheme(localStorage.getItem("mc_theme") || "default");
+
+    function setGuidedMode(on){
+      const enabled = !!on;
+      document.body.classList.toggle("guidedMode", enabled);
+      const btn = document.getElementById("guidedModeBtn");
+      if(btn) btn.textContent = `Guided Mode: ${enabled ? "On" : "Off"}`;
+      applyGuidedHighlights(enabled);
+      localStorage.setItem("mc_guided_mode", enabled ? "1" : "0");
+      localStorage.setItem("mc_guided_seen", "1");
+    }
+    function applyGuidedHighlights(enabled){
+      const anchors = Array.from(document.querySelectorAll("a.btn[href]"));
+      anchors.forEach((a)=>a.classList.remove("guideHot"));
+      if(!enabled) return;
+      const paths = [
+        "/calculator",
+        "/trades/upload/statement",
+        "/trades",
+        "/analytics?tab=performance",
+        "/journal/review/weekly"
+      ];
+      anchors.forEach((a)=>{
+        const href = (a.getAttribute("href") || "").trim();
+        if(!href) return;
+        if(paths.some((p)=> href === p || href.startsWith(p + "&") || href.startsWith(p + "?"))){
+          a.classList.add("guideHot");
+        }
+      });
+    }
+    function toggleGuidedMode(){
+      const on = !(document.body.classList.contains("guidedMode"));
+      setGuidedMode(on);
+    }
+    window.toggleGuidedMode = toggleGuidedMode;
+    const savedGuide = localStorage.getItem("mc_guided_mode");
+    const firstRunSeen = localStorage.getItem("mc_guided_seen");
+    if(savedGuide === "1"){
+      setGuidedMode(true);
+    }else if(savedGuide === "0"){
+      setGuidedMode(false);
+    }else{
+      setGuidedMode(!firstRunSeen);
+    }
+
+    function enforcePrimaryCta(){
+      const actionScopes = document.querySelectorAll('.actionRow, .rightActions, .leftActions, .mobileActionGrid');
+      const isExcluded = (btn) => {
+        return !!(
+          btn.closest('.nav') ||
+          btn.closest('.drawer') ||
+          btn.closest('.mobileDock') ||
+          btn.closest('.quickPanel') ||
+          btn.closest('.workflowRail') ||
+          btn.classList.contains('danger')
+        );
+      };
+      const candidates = [];
+      actionScopes.forEach((scope)=>{
+        Array.from(scope.querySelectorAll('.btn, button.btn')).forEach((btn)=>{
+          if (btn.disabled || btn.offsetParent === null || isExcluded(btn)) return;
+          candidates.push(btn);
+        });
+      });
+      if(!candidates.length) return;
+
+      const scoreButton = (btn) => {
+        const txt = (btn.textContent || '').trim().toLowerCase();
+        const href = (btn.getAttribute('href') || '').toLowerCase();
+        const inHero = !!btn.closest('.pageHero, .dashboardHero');
+        let score = 0;
+        if (inHero) score += 7;
+        if (btn.classList.contains('primary')) score += 4;
+        if (/(calculate|upload|save|add|new|import|analyze|review|run|start|open)/.test(txt)) score += 5;
+        if (/(calculator|upload|import|analytics|journal\/new|journal\/review|trades\/new)/.test(href)) score += 3;
+        if (/(back|cancel|reset|delete|clear|prev|next|more)/.test(txt)) score -= 6;
+        return score;
+      };
+
+      let winner = candidates[0];
+      let best = -999;
+      candidates.forEach((btn)=>{
+        const s = scoreButton(btn);
+        if (s > best){
+          best = s;
+          winner = btn;
+        }
+      });
+
+      candidates.forEach((btn)=>{
+        btn.classList.remove('primary', 'ctaSecondary', 'ctaLink');
+        if (btn === winner){
+          btn.classList.add('primary');
+        } else {
+          const inHero = !!btn.closest('.pageHero, .dashboardHero');
+          if (inHero) btn.classList.add('ctaSecondary');
+          else btn.classList.add('ctaLink');
+        }
+      });
+    }
+
+    function compactDenseGrid(grid, itemSelector, keepCount, label){
+      const cards = Array.from(grid.querySelectorAll(`:scope > ${itemSelector}`));
+      if (cards.length <= keepCount || grid.dataset.compacted === '1') return;
+      cards.forEach((card, i) => {
+        if (i >= keepCount) card.classList.add('mobileDenseExtra');
+      });
+      const moreLabel = 'More';
+      const lessLabel = 'Less';
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'btn statToggleBtn';
+      toggle.textContent = moreLabel;
+      toggle.title = `Show more ${label.toLowerCase()}`;
+      toggle.setAttribute('aria-label', `Show more ${label.toLowerCase()}`);
+      toggle.addEventListener('click', () => {
+        const expanded = grid.classList.toggle('showAllStats');
+        toggle.textContent = expanded ? lessLabel : moreLabel;
+        const nextTitle = expanded ? `Show fewer ${label.toLowerCase()}` : `Show more ${label.toLowerCase()}`;
+        toggle.title = nextTitle;
+        toggle.setAttribute('aria-label', nextTitle);
+      });
+      grid.insertAdjacentElement('afterend', toggle);
+      grid.dataset.compacted = '1';
+    }
+
+    function setupMobileDensityCompaction(){
+      if (window.innerWidth > 760) return;
+      document.querySelectorAll('.statRow').forEach((row) => compactDenseGrid(row, '.stat', 3, 'Stats'));
+      document.querySelectorAll('.metricStrip:not([data-no-mobile-compact="1"])').forEach((row) => compactDenseGrid(row, '.metric', 2, 'Metrics'));
+      document.querySelectorAll('.insightGrid').forEach((row) => compactDenseGrid(row, '.insightCard', 2, 'Insights'));
+      document.querySelectorAll('.dashboardSupportGrid').forEach((row) => compactDenseGrid(row, '.supportCard', 2, 'Panels'));
+      document.querySelectorAll('.analyticsTopStats').forEach((row) => compactDenseGrid(row, '.analyticsTopStat', 2, 'Stats'));
+      document.querySelectorAll('.statusBadgeStrip').forEach((row) => compactDenseGrid(row, '.statusBadge', 4, 'Status'));
+    }
+    enforcePrimaryCta();
+    setupMobileDensityCompaction();
+
+    const staggerTargets = document.querySelectorAll(".card, .metric, .calcCard, .insightCard");
+    staggerTargets.forEach((el, i) => {
+      el.style.setProperty("--stagger", String(i % 8));
+    });
+  </script>
+  <script>
+    (function(){
+      const host = document.createElement("div");
+      host.id = "shortcutHelp";
+      host.className = "quickPanel";
+      host.style.left = "14px";
+      host.style.right = "auto";
+      host.style.bottom = "18px";
+      host.style.width = "320px";
+      host.innerHTML = `
+        <div class="menuTitle">Power Shortcuts</div>
+        <div class="tiny line16">
+          <b>/</b> focus search · <b>g d</b> dashboard · <b>g t</b> trades · <b>g j</b> journal ·
+          <b>g a</b> analytics · <b>g c</b> plan risk · <b>n t</b> new trade · <b>n j</b> new journal
+        </div>
+      `;
+      document.body.appendChild(host);
+      window.toggleShortcutHelp = function(){
+        host.classList.toggle("open");
+      };
+      document.addEventListener("keydown", (e)=>{
+        if(e.key === "Escape") host.classList.remove("open");
+      });
+    })();
+  </script>
+</body>
+</html>
