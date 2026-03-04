@@ -52,6 +52,73 @@
     </div>
   </div></div>
 
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Milestone</div>
+    <div class="supportLead">{{ milestone.name }}</div>
+    <div class="supportBody">
+      {{ milestone.profit_source_label }} Profit {{ money(milestone.profit_current) }}
+      {% if milestone.has_profit_goal %} / {{ money(milestone.profit_goal) }}{% endif %}
+      · Balance {{ money(overall_balance) }}
+      {% if milestone.has_balance_goal %} / {{ money(milestone.target_balance) }}{% endif %}
+    </div>
+    <div class="milestoneProgress" style="--milestone-pct: {{ '%.1f'|format(milestone.overall_progress_pct) }}%">
+      <div class="milestoneProgressFill"></div>
+    </div>
+    <div class="tiny stack8">
+      Progress {{ '%.1f'|format(milestone.overall_progress_pct) }}%
+      {% if milestone.has_profit_goal %}
+        · Profit left {{ money(milestone.profit_remaining) }}
+      {% endif %}
+      {% if milestone.has_balance_goal %}
+        · Balance left {{ money(milestone.balance_remaining) }}
+      {% endif %}
+    </div>
+    <div class="tiny stack8">
+      Pace {{ money(milestone.avg_daily_profit) }}/day
+      {% if milestone.projected_days_overall is not none %}
+        · ~{{ milestone.projected_days_overall }} trading day{% if milestone.projected_days_overall != 1 %}s{% endif %} to complete
+      {% else %}
+        · Add winning pace to project completion days
+      {% endif %}
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Set Milestone</summary>
+      <form method="post" action="/dashboard/milestone" class="stack10">
+        <input type="hidden" name="y" value="{{ dashboard_year }}"/>
+        <input type="hidden" name="m" value="{{ dashboard_month }}"/>
+        <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+        <div class="row stack10">
+          <div>
+            <label>Milestone Name</label>
+            <input name="milestone_name" value="{{ milestone.name }}" maxlength="80"/>
+          </div>
+          <div>
+            <label>Profit Source</label>
+            <select name="milestone_profit_source">
+              <option value="today" {% if milestone.profit_source == 'today' %}selected{% endif %}>Today</option>
+              <option value="week" {% if milestone.profit_source == 'week' %}selected{% endif %}>Week</option>
+              <option value="mtd" {% if milestone.profit_source == 'mtd' %}selected{% endif %}>MTD</option>
+              <option value="ytd" {% if milestone.profit_source == 'ytd' %}selected{% endif %}>YTD</option>
+            </select>
+          </div>
+        </div>
+        <div class="row stack10">
+          <div>
+            <label>Profit Goal ($)</label>
+            <input name="milestone_profit_goal" inputmode="decimal" value="{{ '%.2f'|format(milestone.profit_goal) }}"/>
+          </div>
+          <div>
+            <label>Target Balance ($)</label>
+            <input name="milestone_target_balance" inputmode="decimal" value="{{ '%.2f'|format(milestone.target_balance) }}"/>
+          </div>
+        </div>
+        <div class="rightActions">
+          <button class="btn primary" type="submit">Save Milestone</button>
+        </div>
+      </form>
+    </details>
+  </div></div>
+
   <div class="card supportCard subtleCard"><div class="toolbar">
     <div class="pill">Risk Posture</div>
     <div class="supportLead">{{ risk_posture_title }}</div>
