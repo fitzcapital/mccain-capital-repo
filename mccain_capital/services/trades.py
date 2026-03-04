@@ -1685,10 +1685,29 @@ def trade_lockout_state(day_iso: str):
     )
 
 
-def _derived_balance_map(as_of: Optional[str] = None) -> Dict[int, float]:
-    starting = float(get_setting_float("starting_balance", 50000.0))
+def _derived_balance_map(
+    as_of: Optional[str] = None,
+    *,
+    start_date: str = "",
+    starting_balance: Optional[float] = None,
+) -> Dict[int, float]:
+    starting = (
+        float(starting_balance)
+        if starting_balance is not None
+        else float(get_setting_float("starting_balance", 50000.0))
+    )
     with db() as conn:
-        if as_of:
+        if as_of and start_date:
+            rows = conn.execute(
+                """
+                SELECT id, net_pl
+                FROM trades
+                WHERE trade_date >= ? AND trade_date <= ? AND net_pl IS NOT NULL
+                ORDER BY trade_date ASC, id ASC
+                """,
+                (start_date, as_of),
+            ).fetchall()
+        elif as_of:
             rows = conn.execute(
                 """
                 SELECT id, net_pl
@@ -1697,6 +1716,16 @@ def _derived_balance_map(as_of: Optional[str] = None) -> Dict[int, float]:
                 ORDER BY trade_date ASC, id ASC
                 """,
                 (as_of,),
+            ).fetchall()
+        elif start_date:
+            rows = conn.execute(
+                """
+                SELECT id, net_pl
+                FROM trades
+                WHERE trade_date >= ? AND net_pl IS NOT NULL
+                ORDER BY trade_date ASC, id ASC
+                """,
+                (start_date,),
             ).fetchall()
         else:
             rows = conn.execute(
@@ -1805,6 +1834,11 @@ def trades_page():
     page = max(1, parse_int(request.args.get("page") or "1") or 1)
     per = parse_int(request.args.get("per") or "50") or 50
     per = max(25, min(200, per))
+    account_scope = repo.account_scope_snapshot()
+    scope_enabled = bool(account_scope.get("enabled"))
+    scope_start = str(account_scope.get("start_date") or "").strip()
+    scope_starting_balance = float(account_scope.get("starting_balance") or 50000.0)
+    scope_active = scope_enabled and bool(scope_start) and active_day >= scope_start
 
     # ✅ Convert sqlite3.Row -> dict so Jinja can use .get() and ['key']
     raw_trades = fetch_trades(d=d, q=q)
@@ -1816,7 +1850,11 @@ def trades_page():
         t["session_tag"] = rv.get("session_tag", "")
         t["checklist_score"] = rv.get("checklist_score", None)
         t["rule_break_tags"] = rv.get("rule_break_tags", "")
-    derived_balances = _derived_balance_map(as_of=active_day)
+    derived_balances = _derived_balance_map(
+        as_of=active_day,
+        start_date=scope_start if scope_active else "",
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
     for t in trades:
         trade_id = t.get("id")
         if trade_id in derived_balances:
@@ -1833,9 +1871,12 @@ def trades_page():
     cons = calc_consistency(trades)  # dict-like expected
     guardrail = trade_lockout_state(active_day)
     sync_status = _load_last_sync_status() or {}
-    account_scope = repo.account_scope_snapshot()
     history_starting_balance = float(get_setting_float("starting_balance", 50000.0))
-    balance_integrity = repo.balance_integrity_snapshot(as_of=active_day)
+    balance_integrity = repo.balance_integrity_snapshot(
+        as_of=active_day,
+        start_date=scope_start if scope_active else None,
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
     balance_badges = balance_state_badges(balance_integrity)
     data_trust = trades_data_trust(
         sync_status, guardrail_locked=bool(guardrail.get("locked")), active_day=active_day
@@ -1848,10 +1889,18 @@ def trades_page():
     )
 
     week_total = week_total_net(d or None)
-    overall_bal = latest_balance_overall(as_of=active_day)
+    overall_bal = repo.latest_balance_overall(
+        as_of=active_day,
+        start_date=scope_start if scope_active else None,
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
     running_balance = overall_bal
     with db() as conn:
-        starting_balance = float(get_setting_float("starting_balance", 50000.0))
+        starting_balance = (
+            scope_starting_balance
+            if scope_active
+            else float(get_setting_float("starting_balance", 50000.0))
+        )
         y_start = f"{active_day[:4]}-01-01"
         ytd_row = conn.execute(
             """
@@ -1861,14 +1910,24 @@ def trades_page():
             """,
             (y_start, active_day),
         ).fetchone()
-        prior_eod_row = conn.execute(
-            """
-            SELECT COALESCE(SUM(net_pl), 0) AS net, COUNT(*) AS cnt
-            FROM trades
-            WHERE trade_date < ? AND net_pl IS NOT NULL
-            """,
-            (active_day,),
-        ).fetchone()
+        if scope_active:
+            prior_eod_row = conn.execute(
+                """
+                SELECT COALESCE(SUM(net_pl), 0) AS net, COUNT(*) AS cnt
+                FROM trades
+                WHERE trade_date < ? AND trade_date >= ? AND net_pl IS NOT NULL
+                """,
+                (active_day, scope_start),
+            ).fetchone()
+        else:
+            prior_eod_row = conn.execute(
+                """
+                SELECT COALESCE(SUM(net_pl), 0) AS net, COUNT(*) AS cnt
+                FROM trades
+                WHERE trade_date < ? AND net_pl IS NOT NULL
+                """,
+                (active_day,),
+            ).fetchone()
         all_time_row = conn.execute(
             """
             SELECT COALESCE(SUM(net_pl), 0) AS net

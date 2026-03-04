@@ -205,3 +205,27 @@ def test_dashboard_scope_rebases_stored_balance_for_drift_check(client):
     assert b"Start $50,000.00" in resp.data
     assert b"$50,100.00" in resp.data
     assert b"Ledger drift detected" not in resp.data
+
+
+def test_trades_scope_rebases_row_balances_for_selected_day(client):
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("starting_balance", "50000"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("active_account_start_date", "2026-03-03"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("active_account_start_balance", "50000"),
+        )
+
+    _insert_trade(trade_date="2026-03-02", net_pl=500.0, balance=55500.0)
+    _insert_trade(trade_date="2026-03-04", net_pl=100.0, balance=55600.0)
+
+    resp = client.get("/trades?d=2026-03-04", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"$50,100.00" in resp.data
+    assert b"$55,600.00" not in resp.data
