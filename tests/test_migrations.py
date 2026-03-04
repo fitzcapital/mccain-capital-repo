@@ -19,6 +19,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
     assert "0001_baseline" in first
     assert "0002_journal_phase2" in first
     assert "0003_import_batches" in first
+    assert "0004_strategy_links" in first
 
     second = run_migrations(str(db_path))
     assert second == []
