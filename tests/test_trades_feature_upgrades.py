@@ -218,6 +218,71 @@ def test_upload_statement_workspaces_render(client):
     assert b"Unresolved Batches" in resp_rec.data
 
 
+def test_trades_balance_bases_section_renders(client):
+    resp = client.get("/trades", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Balance Bases (History + Active Account)" in resp.data
+    assert b"History Ledger Basis" in resp.data
+    assert b"Active Account Basis" in resp.data
+
+
+def test_trades_update_balance_bases_updates_history_and_scope(client):
+    _insert_trade(trade_date="2026-03-02", net_pl=100.0)
+    _insert_trade(trade_date="2026-03-04", net_pl=258.6)
+
+    resp_history = client.post(
+        "/trades/balance-bases?d=2026-03-04&q=SPX",
+        data={"mode": "history", "history_starting_balance": "60000"},
+        follow_redirects=True,
+    )
+    assert resp_history.status_code == 200
+    assert b"$60,358.60" in resp_history.data
+
+    with db() as conn:
+        start_val = conn.execute(
+            "SELECT value FROM settings WHERE key = 'starting_balance'"
+        ).fetchone()
+        latest_row = conn.execute(
+            "SELECT balance FROM trades ORDER BY trade_date DESC, id DESC LIMIT 1"
+        ).fetchone()
+    assert start_val is not None
+    assert float(start_val["value"]) == 60000.0
+    assert latest_row is not None
+    assert round(float(latest_row["balance"]), 2) == 60358.60
+
+    resp_scope = client.post(
+        "/trades/balance-bases?d=2026-03-04&q=SPX",
+        data={
+            "mode": "scope",
+            "scope_enabled": "1",
+            "scope_start_date": "2026-03-03",
+            "scope_starting_balance": "50000",
+            "scope_label": "Funded Account",
+        },
+        follow_redirects=True,
+    )
+    assert resp_scope.status_code == 200
+
+    with db() as conn:
+        scope_settings = {
+            r["key"]: r["value"]
+            for r in conn.execute(
+                """
+                SELECT key, value
+                FROM settings
+                WHERE key IN (
+                  'active_account_start_date',
+                  'active_account_start_balance',
+                  'active_account_label'
+                )
+                """
+            ).fetchall()
+        }
+    assert scope_settings.get("active_account_start_date") == "2026-03-03"
+    assert float(scope_settings.get("active_account_start_balance") or 0.0) == 50000.0
+    assert scope_settings.get("active_account_label") == "Funded Account"
+
+
 def test_trades_page_data_trust_shows_sync_failure_next_action(client, monkeypatch, tmp_path):
     from mccain_capital.services import trades as trades_svc
 

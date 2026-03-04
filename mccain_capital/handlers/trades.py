@@ -149,3 +149,7 @@ def trades_open_positions():
 
 def trades_rebuild_reviews():
     return svc.trades_rebuild_reviews()
+
+
+def trades_update_balance_bases():
+    return svc.trades_update_balance_bases()

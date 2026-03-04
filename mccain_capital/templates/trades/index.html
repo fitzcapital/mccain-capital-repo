@@ -109,6 +109,93 @@
     </form>
 
     <div class="hr"></div>
+    <details class="syncDetails stack10">
+      <summary>Balance Bases (History + Active Account)</summary>
+      <div class="row">
+        <form
+          method="post"
+          action="/trades/balance-bases?d={{ d|urlencode }}&q={{ q|urlencode }}"
+          class="fieldGrow2 stack10"
+        >
+          <input type="hidden" name="mode" value="history" />
+          <div class="pill">History Ledger Basis</div>
+          <div class="tiny line16">
+            Updates <code>starting_balance</code> for all-history ledger math and recomputes stored row balances.
+          </div>
+          <div class="row">
+            <div class="fieldGrow1">
+              <label>History Starting Balance</label>
+              <input
+                type="number"
+                step="0.01"
+                name="history_starting_balance"
+                value="{{ '%.2f'|format(history_starting_balance) }}"
+                required
+              />
+            </div>
+            <div class="rightActions">
+              <button class="btn primary" type="submit">Update History</button>
+            </div>
+          </div>
+        </form>
+
+        <form
+          method="post"
+          action="/trades/balance-bases?d={{ d|urlencode }}&q={{ q|urlencode }}"
+          class="fieldGrow2 stack10"
+        >
+          <input type="hidden" name="mode" value="scope" />
+          <div class="pill">Active Account Basis</div>
+          <div class="tiny line16">
+            Sets the active account start date + balance used by scoped dashboards and payouts.
+          </div>
+          <div class="stack10">
+            <label>
+              <input
+                type="checkbox"
+                name="scope_enabled"
+                value="1"
+                {% if account_scope.enabled %}checked{% endif %}
+              />
+              Enable active account scope
+            </label>
+          </div>
+          <div class="row">
+            <div class="fieldGrow1">
+              <label>Scope Start Date</label>
+              <input
+                type="date"
+                name="scope_start_date"
+                value="{{ account_scope.start_date or '' }}"
+              />
+            </div>
+            <div class="fieldGrow1">
+              <label>Scope Starting Balance</label>
+              <input
+                type="number"
+                step="0.01"
+                name="scope_starting_balance"
+                value="{{ '%.2f'|format(account_scope.starting_balance) }}"
+              />
+            </div>
+            <div class="fieldGrow1">
+              <label>Scope Label</label>
+              <input
+                type="text"
+                name="scope_label"
+                value="{{ account_scope.label or '' }}"
+                placeholder="Funded Account"
+              />
+            </div>
+            <div class="rightActions">
+              <button class="btn primary" type="submit">Update Active</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </details>
+
+    <div class="hr"></div>
     <div class="statRow">
       <div class="stat {% if guardrail.locked %}glow-red{% else %}glow-green{% endif %}">
         <div class="k">Guardrail Status</div>

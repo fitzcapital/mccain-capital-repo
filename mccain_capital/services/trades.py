@@ -137,6 +137,8 @@ _AUDIT_ACTION_META = {
     "backup_deleted": {"label": "Backup Deleted", "group": "backup"},
     "integrity_check_run": {"label": "Integrity Check", "group": "integrity"},
     "trades_rebuild_reviews": {"label": "Review Rebuild", "group": "review"},
+    "trades_history_balance_updated": {"label": "History Balance Updated", "group": "config"},
+    "trades_scope_balance_updated": {"label": "Active Scope Updated", "group": "config"},
     "rollback_import_batch": {"label": "Import Batch Rolled Back", "group": "rollback"},
     "dashboard_recompute_balances": {"label": "Balances Recomputed", "group": "recompute"},
     "auto_backup_config_saved": {"label": "Backup Settings Saved", "group": "config"},
@@ -1713,6 +1715,85 @@ def _derived_balance_map(as_of: Optional[str] = None) -> Dict[int, float]:
     return out
 
 
+def trades_update_balance_bases():
+    if request.method != "POST":
+        return redirect(url_for("trades_page"))
+    if auth.auth_enabled() and not auth.is_authenticated():
+        abort(403)
+
+    d = (request.args.get("d") or "").strip()
+    q = (request.args.get("q") or "").strip()
+    mode = (request.form.get("mode") or "").strip().lower()
+
+    if mode == "history":
+        raw = (request.form.get("history_starting_balance") or "").strip()
+        bal = parse_float(raw)
+        if bal is None:
+            flash("History balance not updated: enter a valid starting balance.", "warn")
+            return redirect(url_for("trades_page", d=d, q=q))
+        starting = float(bal)
+        app_runtime.set_setting_value("starting_balance", f"{starting:.2f}")
+        repo.recompute_balances(starting_balance=starting)
+        record_admin_audit(
+            "trades_history_balance_updated",
+            {"starting_balance": starting},
+            actor=auth.effective_username(),
+        )
+        flash(
+            "History starting balance updated and stored row balances recomputed.",
+            "success",
+        )
+        return redirect(url_for("trades_page", d=d, q=q))
+
+    if mode == "scope":
+        scope_enabled = request.form.get("scope_enabled") == "1"
+        scope_start = (request.form.get("scope_start_date") or "").strip()
+        scope_label = (request.form.get("scope_label") or "").strip()
+        scope_balance_raw = (request.form.get("scope_starting_balance") or "").strip()
+
+        if not scope_enabled:
+            repo.clear_account_scope()
+            record_admin_audit(
+                "trades_scope_balance_updated",
+                {"enabled": False},
+                actor=auth.effective_username(),
+            )
+            flash(
+                "Active account scope disabled. Trades page remains on all-history basis.",
+                "success",
+            )
+            return redirect(url_for("trades_page", d=d, q=q))
+
+        bal = parse_float(scope_balance_raw)
+        try:
+            datetime.strptime(scope_start, "%Y-%m-%d")
+            if bal is None:
+                raise ValueError("invalid scope balance")
+            scope_balance = float(bal)
+        except Exception:
+            flash(
+                "Active account not updated: use a valid start date and starting balance.", "warn"
+            )
+            return redirect(url_for("trades_page", d=d, q=q))
+
+        repo.save_account_scope(scope_start, scope_balance, label=scope_label)
+        record_admin_audit(
+            "trades_scope_balance_updated",
+            {
+                "enabled": True,
+                "start_date": scope_start,
+                "starting_balance": scope_balance,
+                "label": scope_label,
+            },
+            actor=auth.effective_username(),
+        )
+        flash("Active account basis updated for scoped dashboards and payouts.", "success")
+        return redirect(url_for("trades_page", d=d, q=q))
+
+    flash("Balance settings update ignored: invalid mode.", "warn")
+    return redirect(url_for("trades_page", d=d, q=q))
+
+
 def trades_page():
     d = request.args.get("d", "")
     active_day = d or today_iso()
@@ -1752,6 +1833,8 @@ def trades_page():
     cons = calc_consistency(trades)  # dict-like expected
     guardrail = trade_lockout_state(active_day)
     sync_status = _load_last_sync_status() or {}
+    account_scope = repo.account_scope_snapshot()
+    history_starting_balance = float(get_setting_float("starting_balance", 50000.0))
     balance_integrity = repo.balance_integrity_snapshot(as_of=active_day)
     balance_badges = balance_state_badges(balance_integrity)
     data_trust = trades_data_trust(
@@ -1878,6 +1961,8 @@ def trades_page():
         balance_integrity=balance_integrity,
         balance_badges=balance_badges,
         sync_badges=sync_badges,
+        account_scope=account_scope,
+        history_starting_balance=history_starting_balance,
         primary_net_label=primary_net_label,
         primary_net_sub=primary_net_sub,
         secondary_total_label=secondary_total_label,

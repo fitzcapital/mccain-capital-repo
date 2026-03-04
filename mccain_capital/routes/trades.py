@@ -209,3 +209,9 @@ def register(app):
         view_func=h.trades_rebuild_reviews,
         methods=["GET", "POST"],
     )
+    app.add_url_rule(
+        "/trades/balance-bases",
+        endpoint="trades_update_balance_bases",
+        view_func=h.trades_update_balance_bases,
+        methods=["POST"],
+    )
