@@ -127,3 +127,81 @@ def test_calendar_preview_backdrop_contract(client):
     assert resp.status_code == 200
     assert b'id="calendarPreview"' in resp.data
     assert b"dayPreviewButton" in resp.data
+
+
+def test_dashboard_scope_rebases_stored_balance_for_drift_check(client):
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("starting_balance", "50000"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("active_account_start_date", "2026-03-03"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("active_account_start_balance", "50000"),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-03-02",
+                "09:30",
+                "10:00",
+                "SPX",
+                "CALL",
+                5100.0,
+                2.0,
+                2.3,
+                1,
+                200.0,
+                1.0,
+                501.0,
+                500.0,
+                0.0,
+                55500.0,
+                "pre-scope",
+                "2026-03-02T10:00:00-05:00",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-03-04",
+                "09:30",
+                "10:00",
+                "SPX",
+                "CALL",
+                5100.0,
+                2.0,
+                2.3,
+                1,
+                200.0,
+                1.0,
+                101.0,
+                100.0,
+                0.0,
+                55600.0,
+                "in-scope",
+                "2026-03-04T10:00:00-05:00",
+            ),
+        )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Start $50,000.00" in resp.data
+    assert b"$50,100.00" in resp.data
+    assert b"Ledger drift detected" not in resp.data
