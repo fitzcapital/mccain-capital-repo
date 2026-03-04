@@ -116,7 +116,7 @@
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
             <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Classic</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
             {% if auth_enabled %}
               <div class="hr"></div>
               {% if authenticated %}
@@ -255,7 +255,7 @@
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/setup">Setup Login</a>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Classic</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}
               {% if authenticated %}
@@ -606,12 +606,14 @@ document.addEventListener('keydown', (e) => {
     setInterval(updateETClock, 1000);
     updateETClock();
 
-    const THEME_ORDER = ["default", "galaxy", "redgreen", "black", "steel"];
+    const THEME_ORDER = ["black", "default", "galaxy", "red", "green", "white", "steel"];
     const THEME_LABELS = {
+      black: "Theme: Midnight",
       default: "Theme: Classic",
       galaxy: "Theme: Galaxy",
-      redgreen: "Theme: Red/Green",
-      black: "Theme: Midnight",
+      red: "Theme: Red",
+      green: "Theme: Green",
+      white: "Theme: White",
       steel: "Theme: Steel"
     };
     function syncThemeButtons(theme){
@@ -620,19 +622,19 @@ document.addEventListener('keydown', (e) => {
       });
     }
     function applyTheme(theme){
-      const t = THEME_ORDER.includes(theme) ? theme : "default";
+      const t = THEME_ORDER.includes(theme) ? theme : "black";
       document.body.setAttribute("data-theme", t);
       syncThemeButtons(t);
     }
     function toggleTheme(){
-      const current = document.body.getAttribute("data-theme") || "default";
+      const current = document.body.getAttribute("data-theme") || "black";
       const idx = THEME_ORDER.indexOf(current);
       const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
       localStorage.setItem("mc_theme", next);
       applyTheme(next);
     }
     window.toggleTheme = toggleTheme;
-    applyTheme(localStorage.getItem("mc_theme") || "default");
+    applyTheme(localStorage.getItem("mc_theme") || "black");
 
     function setGuidedMode(on){
       const enabled = !!on;
