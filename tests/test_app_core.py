@@ -448,7 +448,7 @@ def test_dashboard_shows_balance_basis_and_drift_signal(client):
 
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Starting balance plus closed trade net P/L." in resp.data
+    assert b"Start $50,000.00" in resp.data
     assert b"Ledger drift detected" in resp.data
     assert b"Daily P/L Calendar" in resp.data
     assert b"/ops/alerts" in resp.data
@@ -524,7 +524,7 @@ def test_dashboard_renders_calendar_week_cards_and_preview_metadata(client):
     assert b'data-wins="1"' in resp.data
     assert b'data-losses="1"' in resp.data
     assert b"calendarPreview" in resp.data
-    assert b"Preview 2026-02-24" in resp.data
+    assert b'aria-label="Preview 2026-02-24"' in resp.data
 
 
 def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):

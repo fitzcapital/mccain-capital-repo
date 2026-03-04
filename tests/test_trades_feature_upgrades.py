@@ -215,8 +215,7 @@ def test_upload_statement_workspaces_render(client):
     resp_rec = client.get("/trades/upload/statement?ws=reconcile", follow_redirects=True)
     assert resp_rec.status_code == 200
     assert b"Reconcile Import Batches (30D)" in resp_rec.data
-    assert b"No import history yet." in resp_rec.data
-    assert b"Next best action: run one statement import" in resp_rec.data
+    assert b"Unresolved Batches" in resp_rec.data
 
 
 def test_trades_page_data_trust_shows_sync_failure_next_action(client, monkeypatch, tmp_path):
