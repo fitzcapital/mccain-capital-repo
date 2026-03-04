@@ -110,12 +110,13 @@ isBearTF(float c, float o) => c < o
 //──────────────────────────────────────────────────────────────────────────────
 // SESSION STATE
 //──────────────────────────────────────────────────────────────────────────────
-isRTH      = not na(time(timeframe.period, rthSession))
-inTradeWin = not na(time(timeframe.period, tradeWindow))
-isPremarket = session.ispremarket
+isIntradayChart = timeframe.isintraday
+isRTH      = isIntradayChart ? session.ismarket : true
+inTradeWin = isIntradayChart ? not na(time(timeframe.period, tradeWindow)) : true
+isPremarket = isIntradayChart ? session.ispremarket : false
 newDay = ta.change(time("D")) != 0
 prevIsRTH   = bar_index > 0 ? isRTH[1] : false
-firstRTHBar = isRTH and not prevIsRTH
+firstRTHBar = isRTH and (newDay or not prevIsRTH)
 firstPMBar  = isPremarket and (newDay or not isPremarket[1])
 
 // RTH open timestamp (for CDH backup timing)
@@ -187,31 +188,12 @@ is2FRevBear = failed2U(1) and twoDown(0)
 is2FRevBull = failed2D(1) and twoUp(0)
 
 //──────────────────────────────────────────────────────────────────────────────
-// DEVELOPING HTF CANDLES (NO LOOKAHEAD)
+// FIXED TF CONTEXT (NO LOOKAHEAD)
 //──────────────────────────────────────────────────────────────────────────────
-f_devOhlc(tf) =>
-    isNewHTF = ta.change(time(tf)) != 0
-    var float o = na
-    var float h = na
-    var float l = na
-    var float c = na
-    if isNewHTF
-        o := open
-        h := high
-        l := low
-        c := close
-    else
-        h := math.max(h, high)
-        l := math.min(l, low)
-        c := close
-    [o, h, l, c]
-
-[o60d,  h60d,  l60d,  c60d]  = f_devOhlc("60")
-[o240d, h240d, l240d, c240d] = f_devOhlc("240")
-
-[o5, c5] = request.security(syminfo.tickerid, "5", [open, close], lookahead=barmerge.lookahead_off)
-o15 = open
-c15 = close
+[o60d, c60d]   = request.security(syminfo.tickerid, "60",  [open, close], lookahead=barmerge.lookahead_off)
+[o240d, c240d] = request.security(syminfo.tickerid, "240", [open, close], lookahead=barmerge.lookahead_off)
+[o15, c15]     = request.security(syminfo.tickerid, "15",  [open, close], lookahead=barmerge.lookahead_off)
+[o5, c5]       = request.security(syminfo.tickerid, "5",   [open, close], lookahead=barmerge.lookahead_off)
 
 //──────────────────────────────────────────────────────────────────────────────
 // RTH + PREMARKET LEVELS (LONG EXTENSIONS + CHART LABELS)
@@ -545,7 +527,7 @@ inForceDnPD   = useInForceFilter and hasPD and close < prevLow  and ta.highest(c
 inForceUpCD   = useInForceFilter and useCDHBackup and cdhBackupReady and hasCD and close > currHigh and ta.lowest(close, inForceHoldBars) > currHigh
 inForceDnCD   = useInForceFilter and useCDHBackup and cdhBackupReady and hasCD and close < currLow  and ta.highest(close, inForceHoldBars) < currLow
 
-inForce = not useInForceFilter ? true : (inForceUpPD or inForceDnPD or inForceUpCD or inForceDnCD)
+inForce = (not isIntradayChart) ? true : (not useInForceFilter ? true : (inForceUpPD or inForceDnPD or inForceUpCD or inForceDnCD))
 
 forceText  = inForce ? "FORCE: ✅ IN-FORCE" : "FORCE: ⛔ ROTATION"
 forceColor = inForce ? color.lime : color.orange

@@ -556,44 +556,65 @@ def balance_integrity_snapshot(
                 raise ValueError(f"Unsafe column name: {col}")
             return f'"{col}"'
 
-        acct_filter = " AND COALESCE(ticker, '') <> 'ACCT'" if "ticker" in cols else ""
-        if as_of and date_col:
-            params: list[Any] = []
-            where = [f"{_q(bal_col)} IS NOT NULL", f"{_q(date_col)} <= ?{acct_filter}"]
+        acct_filter = "COALESCE(ticker, '') <> 'ACCT'" if "ticker" in cols else ""
+
+        where: list[str] = [f"{_q(bal_col)} IS NOT NULL"]
+        params: list[Any] = []
+        if acct_filter:
+            where.append(acct_filter)
+        if date_col and start_date:
+            where.append(f"{_q(date_col)} >= ?")
+            params.append(str(start_date))
+        if date_col and as_of:
+            where.append(f"{_q(date_col)} <= ?")
             params.append(str(as_of))
-            if start_date:
-                where.insert(1, f"{_q(date_col)} >= ?")
-                params.insert(0, str(start_date))
-            row = conn.execute(
+
+        order_by = f"{_q(date_col)} DESC, id DESC" if date_col else "id DESC"
+        row = conn.execute(
+            f"""
+            SELECT {_q(bal_col)} AS bal, id{f", {_q(date_col)} AS d" if date_col else ""}
+            FROM trades
+            WHERE {' AND '.join(where)}
+            ORDER BY {order_by}
+            LIMIT 1
+            """,
+            params,
+        ).fetchone()
+
+        # Stored balance rows are all-history cumulative. In active-account mode we
+        # rebase them at the scope boundary so drift compares like-for-like.
+        if row and row["bal"] is not None and start_date and date_col:
+            pre_where: list[str] = [f"{_q(bal_col)} IS NOT NULL", f"{_q(date_col)} < ?"]
+            pre_params: list[Any] = [str(start_date)]
+            if acct_filter:
+                pre_where.append(acct_filter)
+            if as_of:
+                pre_where.append(f"{_q(date_col)} <= ?")
+                pre_params.append(str(as_of))
+            pre_row = conn.execute(
                 f"""
-                SELECT {_q(bal_col)}
+                SELECT {_q(bal_col)} AS bal
                 FROM trades
-                WHERE {' AND '.join(where)}
+                WHERE {' AND '.join(pre_where)}
                 ORDER BY {_q(date_col)} DESC, id DESC
                 LIMIT 1
                 """,
-                params,
+                pre_params,
             ).fetchone()
-        else:
-            where = [f"{_q(bal_col)} IS NOT NULL{acct_filter}"]
-            params: list[Any] = []
-            if start_date and date_col:
-                where.append(f"{_q(date_col)} >= ?")
-                params.append(str(start_date))
-            row = conn.execute(
-                f"""
-                SELECT {_q(bal_col)}
-                FROM trades
-                WHERE {' AND '.join(where)}
-                ORDER BY id DESC
-                LIMIT 1
-                """,
-                params,
-            ).fetchone()
-    if not row or row[0] is None:
+            try:
+                latest_raw = float(row["bal"])
+                if pre_row and pre_row["bal"] is not None:
+                    pre_raw = float(pre_row["bal"])
+                    row = {"bal": starting + (latest_raw - pre_raw)}
+                else:
+                    global_start = float(get_setting_float("starting_balance", 50000.0))
+                    row = {"bal": starting + (latest_raw - global_start)}
+            except Exception:
+                pass
+    if not row or row["bal"] is None:
         return out
     try:
-        stored = float(row[0])
+        stored = float(row["bal"])
     except Exception:
         return out
     delta = derived - stored

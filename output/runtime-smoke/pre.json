@@ -1,0 +1,13 @@
+{
+  "ts": "2026-03-03T21:23:09",
+  "db_path": "persistent-data/journal.db",
+  "db_sha256": "16a27cde5da86f144638e5d358263cb4842c109615d90e1d7f41d6826b346018",
+  "db_size": 155648,
+  "counts": {
+    "trades": 26,
+    "entries": 8,
+    "trade_reviews": 45,
+    "settings": 6
+  },
+  "auth_username": "fitz"
+}

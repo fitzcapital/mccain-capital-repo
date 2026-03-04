@@ -49,13 +49,10 @@ from mccain_capital.runtime import (
     get_setting_float,
     latest_balance_overall,
     money,
-    next_trading_day_iso,
     now_iso,
     normalize_opt_type,
     parse_float,
     parse_int,
-    pct,
-    prev_trading_day_iso,
     today_iso,
 )
 from mccain_capital.services import trades_importing as importing
@@ -63,10 +60,8 @@ from mccain_capital.services import vanquish_live_sync
 from mccain_capital.services.background_jobs import BackgroundJobStore
 from mccain_capital.services.ui import render_page, simple_msg
 from mccain_capital.services.viewmodels import (
-    balance_state_badges,
     backup_state_badges,
     sync_state_badges,
-    trades_data_trust,
 )
 
 # Compatibility aliases used by extracted route bodies.
@@ -137,6 +132,8 @@ _AUDIT_ACTION_META = {
     "backup_deleted": {"label": "Backup Deleted", "group": "backup"},
     "integrity_check_run": {"label": "Integrity Check", "group": "integrity"},
     "trades_rebuild_reviews": {"label": "Review Rebuild", "group": "review"},
+    "trades_history_balance_updated": {"label": "History Balance Updated", "group": "config"},
+    "trades_scope_balance_updated": {"label": "Active Scope Updated", "group": "config"},
     "rollback_import_batch": {"label": "Import Batch Rolled Back", "group": "rollback"},
     "dashboard_recompute_balances": {"label": "Balances Recomputed", "group": "recompute"},
     "auto_backup_config_saved": {"label": "Backup Settings Saved", "group": "config"},
@@ -1683,208 +1680,89 @@ def trade_lockout_state(day_iso: str):
     )
 
 
-def _derived_balance_map(as_of: Optional[str] = None) -> Dict[int, float]:
-    starting = float(get_setting_float("starting_balance", 50000.0))
-    with db() as conn:
-        if as_of:
-            rows = conn.execute(
-                """
-                SELECT id, net_pl
-                FROM trades
-                WHERE trade_date <= ? AND net_pl IS NOT NULL
-                ORDER BY trade_date ASC, id ASC
-                """,
-                (as_of,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT id, net_pl
-                FROM trades
-                WHERE net_pl IS NOT NULL
-                ORDER BY trade_date ASC, id ASC
-                """
-            ).fetchall()
-    out: Dict[int, float] = {}
-    bal = starting
-    for r in rows:
-        bal += float(r["net_pl"] or 0.0)
-        out[int(r["id"])] = float(bal)
-    return out
+def trades_update_balance_bases():
+    if request.method != "POST":
+        return redirect(url_for("trades_page"))
+    if auth.auth_enabled() and not auth.is_authenticated():
+        abort(403)
+
+    d = (request.args.get("d") or "").strip()
+    q = (request.args.get("q") or "").strip()
+    mode = (request.form.get("mode") or "").strip().lower()
+
+    if mode == "history":
+        raw = (request.form.get("history_starting_balance") or "").strip()
+        bal = parse_float(raw)
+        if bal is None:
+            flash("History balance not updated: enter a valid starting balance.", "warn")
+            return redirect(url_for("trades_page", d=d, q=q))
+        starting = float(bal)
+        app_runtime.set_setting_value("starting_balance", f"{starting:.2f}")
+        repo.recompute_balances(starting_balance=starting)
+        record_admin_audit(
+            "trades_history_balance_updated",
+            {"starting_balance": starting},
+            actor=auth.effective_username(),
+        )
+        flash(
+            "History starting balance updated and stored row balances recomputed.",
+            "success",
+        )
+        return redirect(url_for("trades_page", d=d, q=q))
+
+    if mode == "scope":
+        scope_enabled = request.form.get("scope_enabled") == "1"
+        scope_start = (request.form.get("scope_start_date") or "").strip()
+        scope_label = (request.form.get("scope_label") or "").strip()
+        scope_balance_raw = (request.form.get("scope_starting_balance") or "").strip()
+
+        if not scope_enabled:
+            repo.clear_account_scope()
+            record_admin_audit(
+                "trades_scope_balance_updated",
+                {"enabled": False},
+                actor=auth.effective_username(),
+            )
+            flash(
+                "Active account scope disabled. Trades page remains on all-history basis.",
+                "success",
+            )
+            return redirect(url_for("trades_page", d=d, q=q))
+
+        bal = parse_float(scope_balance_raw)
+        try:
+            datetime.strptime(scope_start, "%Y-%m-%d")
+            if bal is None:
+                raise ValueError("invalid scope balance")
+            scope_balance = float(bal)
+        except Exception:
+            flash(
+                "Active account not updated: use a valid start date and starting balance.", "warn"
+            )
+            return redirect(url_for("trades_page", d=d, q=q))
+
+        repo.save_account_scope(scope_start, scope_balance, label=scope_label)
+        record_admin_audit(
+            "trades_scope_balance_updated",
+            {
+                "enabled": True,
+                "start_date": scope_start,
+                "starting_balance": scope_balance,
+                "label": scope_label,
+            },
+            actor=auth.effective_username(),
+        )
+        flash("Active account basis updated for scoped dashboards and payouts.", "success")
+        return redirect(url_for("trades_page", d=d, q=q))
+
+    flash("Balance settings update ignored: invalid mode.", "warn")
+    return redirect(url_for("trades_page", d=d, q=q))
 
 
 def trades_page():
-    d = request.args.get("d", "")
-    active_day = d or today_iso()
+    from mccain_capital.services import trades_page as trades_page_svc
 
-    prev_day = prev_trading_day_iso(active_day)
-    next_day = next_trading_day_iso(active_day)
-
-    q = request.args.get("q", "")
-    page = max(1, parse_int(request.args.get("page") or "1") or 1)
-    per = parse_int(request.args.get("per") or "50") or 50
-    per = max(25, min(200, per))
-
-    # ✅ Convert sqlite3.Row -> dict so Jinja can use .get() and ['key']
-    raw_trades = fetch_trades(d=d, q=q)
-    trades = [dict(r) for r in raw_trades]
-    review_map = fetch_trade_reviews_map([int(t["id"]) for t in trades if t.get("id") is not None])
-    for t in trades:
-        rv = review_map.get(int(t["id"]), {})
-        t["setup_tag"] = rv.get("strategy_label", "") or rv.get("setup_tag", "")
-        t["session_tag"] = rv.get("session_tag", "")
-        t["checklist_score"] = rv.get("checklist_score", None)
-        t["rule_break_tags"] = rv.get("rule_break_tags", "")
-    derived_balances = _derived_balance_map(as_of=active_day)
-    for t in trades:
-        trade_id = t.get("id")
-        if trade_id in derived_balances:
-            t["balance"] = derived_balances[trade_id]
-    total_rows = len(trades)
-    page_count = max(1, (total_rows + per - 1) // per)
-    if page > page_count:
-        page = page_count
-    row_start = (page - 1) * per
-    row_end = row_start + per
-    page_trades = trades[row_start:row_end]
-
-    stats = trade_day_stats(trades)  # likely dict
-    cons = calc_consistency(trades)  # dict-like expected
-    guardrail = trade_lockout_state(active_day)
-    sync_status = _load_last_sync_status() or {}
-    balance_integrity = repo.balance_integrity_snapshot(as_of=active_day)
-    balance_badges = balance_state_badges(balance_integrity)
-    data_trust = trades_data_trust(
-        sync_status, guardrail_locked=bool(guardrail.get("locked")), active_day=active_day
-    )
-    sync_badges = sync_state_badges(
-        sync_status,
-        status_key="status",
-        stage_key="stage",
-        updated_key="updated_at_human",
-    )
-
-    week_total = week_total_net(d or None)
-    overall_bal = latest_balance_overall(as_of=active_day)
-    running_balance = overall_bal
-    with db() as conn:
-        starting_balance = float(get_setting_float("starting_balance", 50000.0))
-        y_start = f"{active_day[:4]}-01-01"
-        ytd_row = conn.execute(
-            """
-            SELECT COALESCE(SUM(net_pl), 0) AS net
-            FROM trades
-            WHERE trade_date >= ? AND trade_date <= ?
-            """,
-            (y_start, active_day),
-        ).fetchone()
-        prior_eod_row = conn.execute(
-            """
-            SELECT COALESCE(SUM(net_pl), 0) AS net, COUNT(*) AS cnt
-            FROM trades
-            WHERE trade_date < ? AND net_pl IS NOT NULL
-            """,
-            (active_day,),
-        ).fetchone()
-        all_time_row = conn.execute(
-            """
-            SELECT COALESCE(SUM(net_pl), 0) AS net
-            FROM trades
-            """
-        ).fetchone()
-    ytd_net = float(ytd_row["net"] or 0.0)
-    all_time_net = float(all_time_row["net"] or 0.0)
-    prior_eod_balance = (
-        starting_balance + float(prior_eod_row["net"] or 0.0)
-        if prior_eod_row and int(prior_eod_row["cnt"] or 0) > 0
-        else None
-    )
-    day_net = float(
-        (stats["total"] if isinstance(stats, dict) else getattr(stats, "total", 0.0)) or 0.0
-    )
-    win_rate = float(
-        (stats["win_rate"] if isinstance(stats, dict) else getattr(stats, "win_rate", 0.0)) or 0.0
-    )
-    trades_count = len(trades)
-    avg_net = (day_net / trades_count) if trades_count else 0.0
-    if trades_count == 0:
-        execution_msg = (
-            "No trades logged for the current filter. Start with one clean, rules-based setup."
-        )
-    elif win_rate >= 60 and day_net >= 0:
-        execution_msg = "Execution quality is stable today. Keep sizing disciplined and avoid late-session forcing."
-    elif day_net < 0:
-        execution_msg = "P/L is under pressure. Prioritize A+ entries and reduce pace until process quality improves."
-    else:
-        execution_msg = (
-            "Mixed session so far. Focus on setup clarity and post-trade review accuracy."
-        )
-
-    if guardrail.get("locked"):
-        risk_msg = "Guardrail is locked. New trades should pause until next session or risk controls are adjusted."
-    else:
-        risk_msg = (
-            f"Guardrail active with day net at {money(guardrail.get('day_net') or 0)}. "
-            "Current risk posture is tradable."
-        )
-
-    next_action_msg = (
-        "Tag every trade with setup/session and complete missing review scores before day end."
-        if trades_count
-        else "Import statement or add first trade, then complete setup/session review tags."
-    )
-    is_day_view = bool(d)
-    primary_net_label = (
-        f"💰 Day Net ({d})" if is_day_view else "💰 Filtered Net (All Visible Trades)"
-    )
-    primary_net_sub = (
-        "Net for the selected trading day"
-        if is_day_view
-        else "Net across the current filter (all dates when no date is set)"
-    )
-    secondary_total_label = "📅 Week Total" if is_day_view else "🏁 All-Time Net"
-    secondary_total_value = week_total if is_day_view else all_time_net
-
-    content = render_template(
-        "trades/index.html",
-        trades=trades,
-        page_trades=page_trades,
-        total_rows=total_rows,
-        page=page,
-        page_count=page_count,
-        per=per,
-        d=d,
-        q=q,
-        stats=stats,
-        cons=cons,  # ✅ THIS was missing and caused your crash
-        week_total=week_total,
-        running_balance=running_balance,
-        ytd_net=ytd_net,
-        all_time_net=all_time_net,
-        prior_eod_balance=prior_eod_balance,
-        money=money,
-        pct=pct,
-        prev_day=prev_day,
-        next_day=next_day,
-        day_net=day_net,
-        win_rate=win_rate,
-        trades_count=trades_count,
-        avg_net=avg_net,
-        execution_msg=execution_msg,
-        risk_msg=risk_msg,
-        next_action_msg=next_action_msg,
-        guardrail=guardrail,
-        data_trust=data_trust,
-        balance_integrity=balance_integrity,
-        balance_badges=balance_badges,
-        sync_badges=sync_badges,
-        primary_net_label=primary_net_label,
-        primary_net_sub=primary_net_sub,
-        secondary_total_label=secondary_total_label,
-        secondary_total_value=secondary_total_value,
-    )
-
-    return render_page(content, active="trades")
+    return trades_page_svc.trades_page()
 
 
 def get_trade(trade_id: int) -> Optional[sqlite3.Row]:
@@ -1892,450 +1770,52 @@ def get_trade(trade_id: int) -> Optional[sqlite3.Row]:
         return conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
 
 
-def _parse_ids_from_request() -> List[int]:
-    """Parse a list of trade ids from JSON or form data."""
-    ids: Any = None
-    if request.is_json:
-        payload = request.get_json(silent=True) or {}
-        ids = payload.get("ids")
-    if ids is None:
-        ids = request.form.getlist("ids") or request.form.get("ids")
-
-    if isinstance(ids, str):
-        raw = [x.strip() for x in ids.split(",") if x.strip()]
-    elif isinstance(ids, list):
-        raw = ids
-    else:
-        raw = []
-
-    clean: List[int] = []
-    for x in raw:
-        try:
-            clean.append(int(x))
-        except Exception:
-            continue
-
-    seen = set()
-    out: List[int] = []
-    for i in clean:
-        if i not in seen:
-            out.append(i)
-            seen.add(i)
-    return out
-
-
-def _trades_table_columns(conn: sqlite3.Connection) -> List[str]:
-    """Return the current trades table columns (sqlite)."""
-    return [r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
-
-
 def trades_duplicate(trade_id: int):
-    """Clone a trade row (useful for scaling in/out or repeating a similar fill)."""
-    src = get_trade(trade_id)
-    if not src:
-        abort(404)
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
 
-    net_pl = float(src["net_pl"] or 0.0)
-    new_balance = (latest_balance_overall() or 50000.0) + net_pl
-
-    with db() as conn:
-        conn.execute(
-            """
-            INSERT INTO trades (
-                trade_date, entry_time, exit_time, ticker, opt_type, strike,
-                entry_price, exit_price, contracts, total_spent,
-                stop_pct, target_pct, stop_price, take_profit,
-                risk, comm, gross_pl, net_pl, result_pct, balance,
-                raw_line, created_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                src["trade_date"],
-                src["entry_time"] or "",
-                src["exit_time"] or "",
-                src["ticker"] or "",
-                src["opt_type"] or "",
-                src["strike"],
-                src["entry_price"],
-                src["exit_price"],
-                src["contracts"],
-                src["total_spent"],
-                src["stop_pct"],
-                src["target_pct"],
-                src["stop_price"],
-                src["take_profit"],
-                src["risk"],
-                src["comm"],
-                src["gross_pl"],
-                src["net_pl"],
-                src["result_pct"],
-                new_balance,
-                f"DUPLICATE OF #{trade_id}",
-                now_iso(),
-            ),
-        )
-
-    d = request.args.get("d", "") or (src["trade_date"] or "")
-    q = request.args.get("q", "")
-    return redirect(url_for("trades_page", d=d, q=q))
+    return trades_mutations_svc.trades_duplicate(trade_id)
 
 
 def trades_delete(trade_id: int):
-    with db() as conn:
-        conn.execute("DELETE FROM trades WHERE id = ?", (trade_id,))
-    d = request.args.get("d", "")
-    q = request.args.get("q", "")
-    return redirect(url_for("trades_page", d=d, q=q))
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
+
+    return trades_mutations_svc.trades_delete(trade_id)
 
 
 def trades_delete_many():
-    ids = _parse_ids_from_request()
-    if not ids:
-        if request.is_json:
-            return jsonify({"ok": True, "deleted": 0})
-        flash("No trades selected.", "warning")
-        return redirect(
-            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
-        )
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
 
-    placeholders = ",".join(["?"] * len(ids))
-    with db() as conn:
-        cur = conn.execute(f"DELETE FROM trades WHERE id IN ({placeholders})", ids)
-        deleted = cur.rowcount if cur.rowcount is not None else 0
-
-    if request.is_json:
-        return jsonify({"ok": True, "deleted": int(deleted)})
-    flash(f"Deleted {deleted} trade(s).", "success")
-    return redirect(
-        url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
-    )
+    return trades_mutations_svc.trades_delete_many()
 
 
 def trades_copy_many():
-    ids = _parse_ids_from_request()
-    target_date = None
-    if request.is_json:
-        payload = request.get_json(silent=True) or {}
-        target_date = payload.get("target_date")
-    if not target_date:
-        target_date = request.form.get("target_date")
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
 
-    if not ids:
-        if request.is_json:
-            return jsonify({"ok": True, "copied": 0})
-        flash("No trades selected.", "warning")
-        return redirect(
-            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
-        )
-
-    try:
-        datetime.strptime(str(target_date), "%Y-%m-%d")
-    except Exception:
-        if request.is_json:
-            return jsonify({"ok": False, "error": "Invalid target_date. Use YYYY-MM-DD."}), 400
-        flash("Invalid target date (use YYYY-MM-DD).", "danger")
-        return redirect(
-            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
-        )
-
-    with db() as conn:
-        cols = _trades_table_columns(conn)
-        insert_cols = [c for c in cols if c != "id"]
-        select_cols = ",".join([f"{c}" for c in insert_cols])
-        placeholders = ",".join(["?"] * len(ids))
-        rows = conn.execute(
-            f"SELECT {select_cols} FROM trades WHERE id IN ({placeholders}) ORDER BY trade_date, id",
-            ids,
-        ).fetchall()
-
-        copied = 0
-        if rows:
-            now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            qmarks = ",".join(["?"] * len(insert_cols))
-            insert_sql = f"INSERT INTO trades ({','.join(insert_cols)}) VALUES ({qmarks})"
-            for r in rows:
-                data = dict(r)
-                data["trade_date"] = str(target_date)
-                if "created_at" in data:
-                    data["created_at"] = now_iso
-                if "balance" in data:
-                    data["balance"] = None
-                values = [data.get(c) for c in insert_cols]
-                conn.execute(insert_sql, values)
-                copied += 1
-
-    if request.is_json:
-        return jsonify({"ok": True, "copied": copied})
-    flash(f"Copied {copied} trade(s) to {target_date}.", "success")
-    return redirect(url_for("trades_page", d=str(target_date), q=request.args.get("q", "")))
+    return trades_mutations_svc.trades_copy_many()
 
 
 def trades_edit(trade_id: int):
-    row = get_trade(trade_id)
-    if not row:
-        abort(404)
+    from mccain_capital.services import trades_forms as trades_forms_svc
 
-    d = request.args.get("d", "")
-    q = request.args.get("q", "")
-
-    if request.method == "POST":
-        f = request.form
-
-        trade_date = (f.get("trade_date") or today_iso()).strip()
-        entry_time = (f.get("entry_time") or "").strip()
-        exit_time = (f.get("exit_time") or "").strip()
-
-        ticker = (f.get("ticker") or "").strip().upper()
-        opt_type = normalize_opt_type(f.get("opt_type") or "")
-        strike = parse_float(f.get("strike") or "")
-
-        contracts = parse_int(f.get("contracts") or "") or 0
-        entry_price = parse_float(f.get("entry_price") or "")
-        exit_price = parse_float(f.get("exit_price") or "")
-        comm = parse_float(f.get("comm") or "") or 0.0
-
-        if (
-            not ticker
-            or opt_type not in ("CALL", "PUT")
-            or contracts <= 0
-            or entry_price is None
-            or exit_price is None
-        ):
-            return render_page(
-                simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                active="trades",
-            )
-
-        gross_pl = (exit_price - entry_price) * 100.0 * contracts
-        net_pl = gross_pl - comm
-        total_spent = entry_price * 100.0 * contracts
-        result_pct = (net_pl / total_spent * 100.0) if total_spent > 0 else None
-
-        with db() as conn:
-            conn.execute(
-                """
-                UPDATE trades
-                SET trade_date=?, entry_time=?, exit_time=?, ticker=?, opt_type=?, strike=?,
-                    entry_price=?, exit_price=?, contracts=?, comm=?,
-                    total_spent=?, gross_pl=?, net_pl=?, result_pct=?
-                WHERE id=?
-                """,
-                (
-                    trade_date,
-                    entry_time,
-                    exit_time,
-                    ticker,
-                    opt_type,
-                    strike,
-                    entry_price,
-                    exit_price,
-                    contracts,
-                    comm,
-                    total_spent,
-                    gross_pl,
-                    net_pl,
-                    result_pct,
-                    trade_id,
-                ),
-            )
-
-        repo.recompute_balances()
-        return redirect(
-            url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page", d=trade_date)
-        )
-
-    t = dict(row)
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">✏️ Edit Trade #{{ t.id }}</div>
-          <div class="hr"></div>
-
-          <form method="post" action="/trades/edit/{{ t.id }}?d={{ d }}&q={{ q }}">
-            <div class="row">
-              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ t.trade_date }}"/></div>
-              <div><label>⏱️ Entry Time</label><input name="entry_time" value="{{ t.entry_time or '' }}"/></div>
-              <div><label>⏱️ Exit Time</label><input name="exit_time" value="{{ t.exit_time or '' }}"/></div>
-            </div>
-
-            <div class="row stack10">
-              <div><label>🏷️ Ticker</label><input name="ticker" value="{{ t.ticker or '' }}"/></div>
-              <div>
-                <label>📌 Type</label>
-                <select name="opt_type">
-                  <option value="CALL" {% if (t.opt_type or '')=='CALL' %}selected{% endif %}>CALL</option>
-                  <option value="PUT"  {% if (t.opt_type or '')=='PUT' %}selected{% endif %}>PUT</option>
-                </select>
-              </div>
-              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" value="{{ '' if t.strike is none else t.strike }}"/></div>
-            </div>
-
-            <div class="row stack10">
-              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ t.contracts or 1 }}"/></div>
-              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" value="{{ '' if t.entry_price is none else t.entry_price }}"/></div>
-              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" value="{{ '' if t.exit_price is none else t.exit_price }}"/></div>
-            </div>
-
-            <div class="row stack10">
-              <div><label>💵 Fees (total)</label><input name="comm" inputmode="decimal" value="{{ t.comm or 0.70 }}"/></div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save</button>
-              <a class="btn" href="/trades?d={{ d }}&q={{ q }}">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        t=t,
-        d=d,
-        q=q,
-    )
-    return render_page(content, active="trades")
+    return trades_forms_svc.trades_edit(trade_id)
 
 
 def trades_review(trade_id: int):
-    row = get_trade(trade_id)
-    if not row:
-        abort(404)
+    from mccain_capital.services import trades_forms as trades_forms_svc
 
-    d = request.args.get("d", "")
-    q = request.args.get("q", "")
-    rv = repo.get_trade_review(trade_id) or {}
-
-    if request.method == "POST":
-        f = request.form
-        strategy_label = (f.get("strategy_label") or f.get("setup_tag") or "").strip()
-        session_tag = (f.get("session_tag") or "").strip()
-        score_raw = (f.get("checklist_score") or "").strip()
-        checklist_score = parse_int(score_raw) if score_raw else None
-        rule_break_tags = (f.get("rule_break_tags") or "").strip()
-        rule_break_tags = _merge_auto_rule_break_tags(
-            entry_price=parse_float(
-                str(row["entry_price"]) if row["entry_price"] is not None else ""
-            ),
-            exit_price=parse_float(str(row["exit_price"]) if row["exit_price"] is not None else ""),
-            existing_tags=rule_break_tags,
-        )
-        review_note = (f.get("review_note") or "").strip()
-        repo.upsert_trade_review(
-            trade_id=trade_id,
-            strategy_id=rv.get("strategy_id"),
-            strategy_label=strategy_label,
-            setup_tag=strategy_label,
-            session_tag=session_tag,
-            checklist_score=checklist_score,
-            rule_break_tags=rule_break_tags,
-            review_note=review_note,
-        )
-        return redirect(url_for("trades_page", d=d, q=q) if (d or q) else url_for("trades_page"))
-
-    strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧠 Trade Review #{{ t.id }}</div>
-          <div class="tiny stack8">{{ t.trade_date }} · {{ t.ticker }} {{ t.opt_type }}</div>
-          <div class="hr"></div>
-          <form method="post" action="/trades/review/{{ t.id }}?d={{ d }}&q={{ q }}">
-            <div class="row">
-              <div>
-                <label>Strategy</label>
-                <input name="strategy_label" list="strategy-options" value="{{ rv.get('strategy_label','') or rv.get('setup_tag','') }}" placeholder="FVG, ORB, Fade, Breakout">
-              </div>
-              <div>
-                <label>Session Tag</label>
-                <select name="session_tag">
-                  {% set s = rv.get('session_tag','') %}
-                  <option value="" {% if s=='' %}selected{% endif %}>—</option>
-                  <option value="Open" {% if s=='Open' %}selected{% endif %}>Open</option>
-                  <option value="Midday" {% if s=='Midday' %}selected{% endif %}>Midday</option>
-                  <option value="Power Hour" {% if s=='Power Hour' %}selected{% endif %}>Power Hour</option>
-                  <option value="After Hours" {% if s=='After Hours' %}selected{% endif %}>After Hours</option>
-                </select>
-              </div>
-              <div><label>Checklist Score (0-100)</label><input name="checklist_score" inputmode="numeric" value="{{ '' if rv.get('checklist_score') is none else rv.get('checklist_score') }}"></div>
-            </div>
-            <div class="row stack10">
-              <div>
-                <label>Rule-Break Tags (comma separated)</label>
-                <input name="rule_break_tags" value="{{ rv.get('rule_break_tags','') }}" placeholder="oversized, late entry, no stop, revenge trade">
-              </div>
-            </div>
-            <datalist id="strategy-options">
-              {% for strategy in strategy_options %}
-                <option value="{{ strategy['title'] }}"></option>
-              {% endfor %}
-            </datalist>
-            <div class="stack10">
-              <label>Review Note</label>
-              <textarea name="review_note" placeholder="What to repeat, what to remove next session">{{ rv.get('review_note','') }}</textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save Review</button>
-              <a class="btn" href="/trades?d={{ d }}&q={{ q }}">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        t=dict(row),
-        rv=rv,
-        d=d,
-        q=q,
-        strategy_options=strategy_options,
-    )
-    return render_page(content, active="trades")
+    return trades_forms_svc.trades_review(trade_id)
 
 
 def trades_risk_controls():
-    if request.method == "POST":
-        daily_max_loss = parse_float(request.form.get("daily_max_loss", "")) or 0.0
-        enforce_lockout = 1 if request.form.get("enforce_lockout") == "1" else 0
-        repo.save_risk_controls(daily_max_loss, enforce_lockout)
-        return redirect(url_for("trades_risk_controls"))
+    from mccain_capital.services import trades_forms as trades_forms_svc
 
-    rc = repo.get_risk_controls()
-    state = trade_lockout_state(today_iso())
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🛡️ Risk Controls</div>
-          <div class="tiny stack8">
-            Today's net: {{ money(state.day_net) }} · Max loss: {{ money(state.daily_max_loss) }} ·
-            Status: {% if state.locked %}<b class="statusLock">LOCKED</b>{% else %}<b class="statusActive">ACTIVE</b>{% endif %}
-          </div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div><label>Daily Max Loss ($)</label><input name="daily_max_loss" inputmode="decimal" value="{{ rc.daily_max_loss }}"></div>
-              <div>
-                <label>Enforce Lockout</label>
-                <select name="enforce_lockout">
-                  <option value="0" {% if not rc.enforce_lockout %}selected{% endif %}>Off</option>
-                  <option value="1" {% if rc.enforce_lockout %}selected{% endif %}>On</option>
-                </select>
-              </div>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">Save Controls</button>
-              <a class="btn" href="/trades">Back to Trades</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        rc=rc,
-        state=state,
-        money=money,
-    )
-    return render_page(content, active="trades")
+    return trades_forms_svc.trades_risk_controls()
 
 
 def trades_clear():
-    repo.clear_trades()
-    return redirect(url_for("trades_page"))
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
+
+    return trades_mutations_svc.trades_clear()
 
 
 def trades_paste():

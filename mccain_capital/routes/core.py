@@ -25,6 +25,12 @@ def register(app):
         view_func=h.dashboard_recompute_balances,
         methods=["POST"],
     )
+    app.add_url_rule(
+        "/dashboard/milestone",
+        endpoint="dashboard_milestone_update",
+        view_func=h.dashboard_milestone_update,
+        methods=["POST"],
+    )
     app.add_url_rule("/candle-opens", endpoint="candle_opens_page", view_func=h.candle_opens_page)
     app.add_url_rule("/analytics", endpoint="analytics_page", view_func=h.analytics_page)
     app.add_url_rule(

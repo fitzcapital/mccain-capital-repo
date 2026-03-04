@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}">
+    <link rel="icon" type="image/png" href="/static/logo.png?v=1771803929">
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>{{ title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}">
+  <title>McCain Capital</title>
+  <link rel="stylesheet" href="/static/css/app.css?v=1771803929">
 </head>
 
 <body>
@@ -30,30 +30,26 @@
     <div class="topbar">
       <div class="brand">
         <div class="logo">
-          <img src="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}" alt="logo"/>
+          <img src="/static/logo.png?v=1771803929" alt="logo"/>
         </div>
         <div class="brandText">
-          <h1 class="brandTitle">{{ brand_title or 'McCain Capital' }}</h1>
+          <h1 class="brandTitle">McCain Capital</h1>
           <div class="brandSignature">
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-crown"></use></svg> McCain Capital Reserve</span>
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Elite Personal Trading Cockpit</span>
           </div>
-          <div class="sub">{% if active == 'dashboard' %}Command deck for execution, review, and control.{% else %}Private command deck for your edge.{% endif %}</div>
+          <div class="sub">Private command deck for your edge.</div>
         </div>
       </div>
 
       <div class="topRight">
-        {% if top_notice %}
-          {% if top_notice.href %}
-            <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
-              <span class="topNoticeText">{{ top_notice.text }}</span>
+        
+          
+            <a class="clockPill topNoticePill is-high" href="/candle-opens?y=2026&amp;m=3#news-day-2026-03-04" title="High impact · Mar 4 08:15 AM ET · ADP Non-Farm Employment Change">
+              <span class="topNoticeText">🔴 Wed 8:15 AM ET</span>
             </a>
-          {% else %}
-            <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
-              <span class="topNoticeText">{{ top_notice.text }}</span>
-            </div>
-          {% endif %}
-        {% endif %}
+          
+        
         <div id="modePill" class="clockPill">Loading…</div>
         <div class="clockPill clockStatusPill" aria-label="Eastern time and market status">
           <span id="etClock" class="clockTime">--:--:--</span>
@@ -73,17 +69,17 @@
       <div class="nav">
         <div class="navGroup">
           <span class="navLabel">Workflow</span>
-          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">Run Day</a>
-          <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
-          <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Execute</a>
-          <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Debrief</a>
+          <a class="btn " href="/dashboard">Run Day</a>
+          <a class="btn " href="/calendar">Calendar</a>
+          <a class="btn active" href="/trades">Execute</a>
+          <a class="btn " href="/journal">Debrief</a>
         </div>
         <div class="navDivider"></div>
         <div class="navGroup">
           <span class="navLabel">Decide</span>
-          <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Review</a>
-          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Plan Risk</a>
-          <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payout Plan</a>
+          <a class="btn " href="/analytics">Review</a>
+          <a class="btn " href="/calculator">Plan Risk</a>
+          <a class="btn " href="/payouts">Payout Plan</a>
         </div>
 
         <div class="menuMore">
@@ -92,22 +88,22 @@
           </button>
 
           <div id="moreMenu" class="moreMenu" role="menu">
-            {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
+            <div class="menuTitle">Signed in as fitz</div>
             <div class="menuTitle">Workspace</div>
-            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">P/L Calendar</a>
-            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
-            <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
-            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
-            <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
-            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
-            <a class="btn {% if active=='books' %}active{% endif %}" href="/books">Books</a>
-            <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
+            <a class="btn " href="/calendar">P/L Calendar</a>
+            <a class="btn " href="/market-pulse?refresh=1">Market Pulse</a>
+            <a class="btn " href="/strategies">Strategies</a>
+            <a class="btn " href="/ops/alerts">Ops Alerts</a>
+            <a class="btn " href="/strat">The Strat</a>
+            <a class="btn " href="/candle-opens">Candle Opens</a>
+            <a class="btn " href="/books">Books</a>
+            <a class="btn " href="/payouts">Payouts</a>
             <div class="hr"></div>
             <div class="menuTitle">Business</div>
-            <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">Income Tracker</a>
+            <a class="btn " href="/goals">Income Tracker</a>
             <div class="hr"></div>
             <div class="menuTitle">Data</div>
-            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/backups">Auto Backups</a>
+            <a class="btn " href="/ops/backups">Auto Backups</a>
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/setup">Setup Login</a>
@@ -117,58 +113,42 @@
             <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
-            {% if auth_enabled %}
+            
               <div class="hr"></div>
-              {% if authenticated %}
+              
                 <a class="btn danger" href="/logout">Sign Out</a>
-              {% else %}
-                <a class="btn primary" href="/login">Sign In</a>
-              {% endif %}
-            {% endif %}
+              
+            
           </div>
         </div>
       </div>
     </div>
 
-    {% set ss = system_status if system_status is defined else {} %}
+    
     <div class="systemStatusStrip" role="status" aria-live="polite">
       <div class="statusChip">
         <span class="statusKey">Last Sync</span>
         <span class="statusVal">
-          {% set sync_status = (ss.last_sync_status or '')|lower %}
-          {% if sync_status in ['success', 'succeeded', 'ok', 'healthy'] %}
+          
+          
             Succeeded
-          {% elif sync_status in ['failed', 'error', 'blocked'] %}
-            Failed
-          {% elif sync_status %}
-            {{ sync_status|replace('_', ' ')|title }}
-          {% else %}
-            Not yet recorded
-          {% endif %}
+          
         </span>
       </div>
       <div class="statusChip">
         <span class="statusKey">Next Auto Sync</span>
         <span class="statusVal">
-          {% if ss.auto_sync_enabled and ss.auto_sync_time %}
-            {{ ss.auto_sync_time }} ET
-          {% else %}
-            Auto sync is off
-          {% endif %}
+          
+            04:15 PM ET
+          
         </span>
       </div>
       <div class="statusChip">
         <span class="statusKey">Last Sync Update</span>
         <span class="statusVal">
-          {% if ss.last_sync_updated_human %}
-            {{ ss.last_sync_updated_human }}
-          {% elif ss.last_sync_updated_at %}
-            {{ ss.last_sync_updated_at }}
-          {% elif ss.last_sync_stage %}
-            {{ ss.last_sync_stage|replace('_', ' ')|title }}
-          {% else %}
-            Not yet recorded
-          {% endif %}
+          
+            Mar 03, 2026 04:18 PM ET
+          
         </span>
       </div>
     </div>
@@ -180,27 +160,27 @@
         </div>
       </div>
       <div class="workflowGrid">
-        <a class="workflowStep guideStep {% if active=='calc' %}flowActive{% endif %}" data-guide-item="plan-risk" href="/calculator">
+        <a class="workflowStep guideStep " data-guide-item="plan-risk" href="/calculator">
           <div class="workflowKicker">Plan</div>
           <div class="workflowTitle">Plan Risk</div>
           <div class="workflowText">Set size and risk first.</div>
         </a>
-        <a class="workflowStep guideStep {% if active=='trades' %}flowActive{% endif %}" data-guide-item="upload-statement" href="/trades">
+        <a class="workflowStep guideStep flowActive" data-guide-item="upload-statement" href="/trades">
           <div class="workflowKicker">Execute</div>
           <div class="workflowTitle">Execution Log</div>
           <div class="workflowText">Log and import the day cleanly.</div>
         </a>
-        <a class="workflowStep guideStep {% if active=='analytics' %}flowActive{% endif %}" data-guide-item="review-trades" href="/analytics?tab=performance">
+        <a class="workflowStep guideStep " data-guide-item="review-trades" href="/analytics?tab=performance">
           <div class="workflowKicker">Review</div>
           <div class="workflowTitle">Analyze Day</div>
           <div class="workflowText">Check edge, drawdown, and discipline.</div>
         </a>
-        <a class="workflowStep guideStep {% if active=='journal' %}flowActive{% endif %}" data-guide-item="weekly-debrief" href="/journal">
+        <a class="workflowStep guideStep " data-guide-item="weekly-debrief" href="/journal">
           <div class="workflowKicker">Debrief</div>
           <div class="workflowTitle">Journal</div>
           <div class="workflowText">Lock in the lesson while it is fresh.</div>
         </a>
-        <a class="workflowStep guideStep {% if active=='calendar' %}flowActive{% endif %}" href="/calendar">
+        <a class="workflowStep guideStep " href="/calendar">
           <div class="workflowKicker">Map</div>
           <div class="workflowTitle">Calendar</div>
           <div class="workflowText">See the month as one signal map.</div>
@@ -220,50 +200,48 @@
         <section class="drawerSection">
           <div class="drawerSectionTitle">Today</div>
           <div class="drawerPrimaryGrid">
-            <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Run Day</a>
-            <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Execute</a>
-            <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
-            <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Debrief</a>
-            <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
-            <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
+            <a class="btn " href="/dashboard">Run Day</a>
+            <a class="btn primary" href="/trades">Execute</a>
+            <a class="btn " href="/analytics/replay">Replay</a>
+            <a class="btn " href="/journal">Debrief</a>
+            <a class="btn " href="/calendar">Calendar</a>
+            <a class="btn " href="/market-pulse?refresh=1">Market Pulse</a>
           </div>
         </section>
 
         <section class="drawerSection">
           <div class="drawerSectionTitle">Plan</div>
           <div class="drawerStack">
-            <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Plan Risk</a>
-            <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payout Plan</a>
-            <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
-            <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">Strategies</a>
+            <a class="btn " href="/calculator">Plan Risk</a>
+            <a class="btn " href="/payouts">Payout Plan</a>
+            <a class="btn " href="/candle-opens">Candle Opens</a>
+            <a class="btn " href="/strategies">Strategies</a>
           </div>
         </section>
 
         <section class="drawerSection">
           <div class="drawerSectionTitle">Learn</div>
           <div class="drawerStack">
-            <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>
-            <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">Books</a>
-            <a class="btn {% if active=='goals' %}primary{% endif %}" href="/goals">Income Tracker</a>
+            <a class="btn " href="/strat">The Strat</a>
+            <a class="btn " href="/books">Books</a>
+            <a class="btn " href="/goals">Income Tracker</a>
           </div>
         </section>
 
         <section class="drawerSection">
           <div class="drawerSectionTitle">Admin</div>
           <div class="drawerStack">
-            <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">Backups</a>
+            <a class="btn " href="/ops/backups">Backups</a>
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/setup">Setup Login</a>
             <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
-            {% if auth_enabled %}
-              {% if authenticated %}
+            
+              
                 <a class="btn danger" href="/logout">Sign Out</a>
-              {% else %}
-                <a class="btn primary" href="/login">Sign In</a>
-              {% endif %}
-            {% endif %}
+              
+            
           </div>
         </section>
 
@@ -285,7 +263,540 @@
       </div>
     </div>
 
-    {{ content|safe }}
+    
+
+
+
+<div class="statusBadgeStrip">
+  
+    <div class="statusBadge is-healthy" title="Latest sync or import state.">
+      <span class="statusBadgeLabel">Sync</span>
+      <strong>Success</strong>
+    </div>
+  
+    <div class="statusBadge is-neutral" title="Most recent sync step reached.">
+      <span class="statusBadgeLabel">Stage</span>
+      <strong>Import Complete</strong>
+    </div>
+  
+    <div class="statusBadge is-neutral" title="Last recorded sync timestamp.">
+      <span class="statusBadgeLabel">Updated</span>
+      <strong>Mar 03, 2026 04:18 PM ET</strong>
+    </div>
+  
+</div>
+
+<div class="card stack12">
+  <div class="toolbar">
+    <div class="pillRow">
+      <div class="pill">🧭 Import Workspace</div>
+      <details class="inlineHelp">
+        <summary aria-label="Import workspace help">?</summary>
+        <div class="helpPopover">Focused tabs keep live sync, manual upload, and reconcile tools together without stacking all of the copy on mobile.</div>
+      </details>
+    </div>
+    <div class="hr"></div>
+    <div class="leftActions">
+      <a class="btn " href="/trades/upload/statement?ws=live">Live Sync</a>
+      <a class="btn " href="/trades/upload/statement?ws=upload">Upload</a>
+      <a class="btn primary" href="/trades/upload/statement?ws=reconcile">Reconcile</a>
+      <a class="btn" href="/ops/alerts">Ops Alerts</a>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+<div class="card stack12">
+  <div class="toolbar">
+    <div class="pillRow">
+      <div class="pill">Reconcile Import Batches (30D)</div>
+      <details class="inlineHelp">
+        <summary aria-label="Reconcile batches help">?</summary>
+        <div class="helpPopover">Use this view to catch dirty imports before they distort analytics, balances, or review coverage.</div>
+      </details>
+    </div>
+    <div class="hr"></div>
+    <div class="statRow">
+      <div class="stat"><div class="k">Batches</div><div class="v">5</div></div>
+      <div class="stat"><div class="k">Trades Inserted</div><div class="v">6</div></div>
+      <div class="stat"><div class="k">Unresolved Batches</div><div class="v">2</div></div>
+      <div class="stat"><div class="k">Clean Rate</div><div class="v">60.0%</div></div>
+    </div>
+    <div class="hr"></div>
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Batch</th><th>Source</th><th>Status</th><th>Inserted</th><th>Open</th><th>Err/Warn</th><th>Delta</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+      
+        <tr>
+          <td>2026-03-03T16:18:21-05:00</td>
+          <td><code>livebal_20260303211821_09131a6fb0</code></td>
+          <td>AUTO SYNC MANUAL RUN</td>
+          <td>SUCCESS</td>
+          <td>0</td>
+          <td>0</td>
+          <td>0/0</td>
+          <td>—</td>
+          <td>
+            
+              <span class="tiny">—</span>
+            
+          </td>
+        </tr>
+      
+        <tr>
+          <td>2026-03-03T16:18:21-05:00</td>
+          <td><code>livebal_20260303211821_09131a6fb0</code></td>
+          <td>AUTO SYNC HTML</td>
+          <td>SUCCESS</td>
+          <td>0</td>
+          <td>0</td>
+          <td>0/6</td>
+          <td>$5,035.50</td>
+          <td>
+            
+              <span class="tiny">—</span>
+            
+          </td>
+        </tr>
+      
+        <tr>
+          <td>2026-03-03T16:15:41-05:00</td>
+          <td><code>livebal_20260303211541_bf70e6ac7f</code></td>
+          <td>AUTO SYNC SCHEDULER</td>
+          <td>SUCCESS</td>
+          <td>0</td>
+          <td>0</td>
+          <td>0/0</td>
+          <td>—</td>
+          <td>
+            
+              <span class="tiny">—</span>
+            
+          </td>
+        </tr>
+      
+        <tr>
+          <td>2026-03-03T16:15:41-05:00</td>
+          <td><code>livebal_20260303211541_bf70e6ac7f</code></td>
+          <td>AUTO SYNC HTML</td>
+          <td>SUCCESS</td>
+          <td>0</td>
+          <td>0</td>
+          <td>0/6</td>
+          <td>$5,035.50</td>
+          <td>
+            
+              <span class="tiny">—</span>
+            
+          </td>
+        </tr>
+      
+        <tr>
+          <td>2026-03-01T20:26:54-05:00</td>
+          <td><code>live_20260302012653_ceccea48e9</code></td>
+          <td>AUTO SYNC MANUAL RUN</td>
+          <td>SUCCESS</td>
+          <td>6</td>
+          <td>0</td>
+          <td>0/2</td>
+          <td>—</td>
+          <td>
+            
+              <span class="tiny">—</span>
+            
+          </td>
+        </tr>
+      
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+
+
+
+
+<script>
+  window.McAsyncJobs = window.McAsyncJobs || (function() {
+    function setTerminalTrack(trackBar, failed) {
+      if (!trackBar) return;
+      trackBar.style.animation = 'none';
+      trackBar.style.transform = 'translateX(0)';
+      trackBar.style.left = '0';
+      trackBar.style.width = failed ? '42%' : '100%';
+      trackBar.style.background = failed
+        ? 'linear-gradient(90deg, rgba(231,76,60,.9) 0%, rgba(231,76,60,.55) 100%)'
+        : 'linear-gradient(90deg, rgba(46,204,113,.92) 0%, rgba(var(--accent-rgb),.95) 100%)';
+    }
+
+    function resetTrack(trackBar) {
+      if (!trackBar) return;
+      trackBar.style.animation = '';
+      trackBar.style.transform = '';
+      trackBar.style.left = '';
+      trackBar.style.width = '';
+      trackBar.style.background = '';
+    }
+
+    function setRunwayState(runway, options) {
+      if (!runway) return;
+      const badge = runway.querySelector('.syncBadge');
+      const label = runway.querySelector('.syncStageLabel');
+      const trackBar = runway.querySelector('.syncTrackBar');
+      const steps = Array.from(runway.querySelectorAll('.syncStep'));
+      const idx = Math.max(0, Math.min(Number(options.stepIndex || 0), Math.max(steps.length - 1, 0)));
+      runway.style.display = 'block';
+      if (badge && options.badge) badge.textContent = options.badge;
+      if (label && options.label) label.textContent = options.label;
+      steps.forEach((step, stepIdx) => {
+        step.classList.toggle('is-done', stepIdx < idx || (!!options.complete && stepIdx <= idx));
+        step.classList.toggle('is-active', !options.complete && stepIdx === idx);
+      });
+      if (options.complete) {
+        setTerminalTrack(trackBar, !!options.failed);
+      } else {
+        resetTrack(trackBar);
+      }
+    }
+
+    function bindAsyncJob(config) {
+      const form = config.form;
+      const button = config.button;
+      const runway = config.runway;
+      const summary = config.summary;
+      if (!form || !button || !runway || !summary) return;
+      const startLabel = config.startLabel || 'Running...';
+      const doneLabel = config.doneLabel || 'Run';
+      const confirmText = config.confirmText || '';
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (confirmText && !window.confirm(confirmText)) return;
+        button.disabled = true;
+        button.textContent = startLabel;
+        summary.style.display = 'none';
+        summary.innerHTML = '';
+        setRunwayState(runway, {
+          badge: config.badge || 'Running',
+          label: config.startMessage || 'Working...',
+          stepIndex: 0
+        });
+        fetch(form.action + '?async=1', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' },
+          body: new FormData(form)
+        })
+          .then(r => r.ok ? r.json() : Promise.reject(new Error('start_failed')))
+          .then(payload => {
+            if (!payload || !payload.ok || !payload.job || !payload.job.id) {
+              throw new Error('start_failed');
+            }
+            const poll = function() {
+              fetch((config.pollBase || '/ops/jobs/') + payload.job.id, { headers: { 'Accept': 'application/json' } })
+                .then(r => r.ok ? r.json() : Promise.reject(new Error('poll_failed')))
+                .then(statusPayload => {
+                  if (!statusPayload || !statusPayload.ok || !statusPayload.job) {
+                    throw new Error('poll_failed');
+                  }
+                  const job = statusPayload.job;
+                  const stageIndex = (config.stageMap || {})[String(job.stage || '')] ?? 0;
+                  const done = !['queued', 'running'].includes(String(job.status || ''));
+                  const failed = String(job.status || '') === 'failed';
+                  setRunwayState(runway, {
+                    badge: failed ? 'Failed' : (String(job.status || '').toLowerCase() === 'success' ? 'Complete' : (config.badge || 'Running')),
+                    label: job.message || config.startMessage || 'Working...',
+                    stepIndex: done ? Math.max(stageIndex, runway.querySelectorAll('.syncStep').length - 1) : stageIndex,
+                    complete: done,
+                    failed: failed
+                  });
+                  if (!done) {
+                    window.setTimeout(poll, Number(config.pollDelayMs || 700));
+                    return;
+                  }
+                  button.disabled = false;
+                  button.textContent = doneLabel;
+                  summary.innerHTML = job.result_html || '';
+                  summary.style.display = summary.innerHTML ? 'block' : 'none';
+                  if (typeof config.onComplete === 'function') config.onComplete(job);
+                })
+                .catch(() => {
+                  setRunwayState(runway, {
+                    badge: 'Failed',
+                    label: 'Status polling failed.',
+                    stepIndex: 1,
+                    complete: true,
+                    failed: true
+                  });
+                  button.disabled = false;
+                  button.textContent = doneLabel;
+                });
+            };
+            window.setTimeout(poll, Number(config.startPollDelayMs || 300));
+          })
+          .catch(() => {
+            setRunwayState(runway, {
+              badge: 'Failed',
+              label: 'Could not start the job.',
+              stepIndex: 1,
+              complete: true,
+              failed: true
+            });
+            button.disabled = false;
+            button.textContent = doneLabel;
+          });
+      });
+    }
+
+    return {
+      setTerminalTrack,
+      resetTrack,
+      setRunwayState,
+      bindAsyncJob
+    };
+  })();
+</script>
+<script>
+  (function() {
+    const jobs = window.McAsyncJobs;
+    function bindLoading(formId, submitId, loadingId, busyText) {
+      const form = document.getElementById(formId);
+      const submitBtn = document.getElementById(submitId);
+      const loading = document.getElementById(loadingId);
+      if (!form || !submitBtn || !loading) return;
+      form.addEventListener('submit', function() {
+        submitBtn.disabled = true;
+        submitBtn.textContent = busyText;
+        loading.style.display = 'block';
+      });
+    }
+
+    function bindSyncRunway(formId, runwayId, labelId, stageLabels) {
+      const form = document.getElementById(formId);
+      const runway = document.getElementById(runwayId);
+      const label = document.getElementById(labelId);
+      if (!form || !runway || !label || !Array.isArray(stageLabels) || stageLabels.length === 0) return;
+      const steps = Array.from(runway.querySelectorAll('.syncStep'));
+      form.addEventListener('submit', function() {
+        let idx = 0;
+        if (jobs) {
+          jobs.setRunwayState(runway, { badge: runway.querySelector('.syncBadge')?.textContent || 'Running', label: stageLabels[0], stepIndex: 0 });
+        } else {
+          runway.style.display = 'block';
+          label.textContent = stageLabels[0];
+          steps.forEach((step, stepIdx) => {
+            step.classList.toggle('is-active', stepIdx === 0);
+            step.classList.toggle('is-done', false);
+          });
+        }
+        const tick = window.setInterval(function() {
+          idx = Math.min(idx + 1, stageLabels.length - 1);
+          if (jobs) {
+            jobs.setRunwayState(runway, { badge: runway.querySelector('.syncBadge')?.textContent || 'Running', label: stageLabels[idx], stepIndex: idx });
+          } else {
+            label.textContent = stageLabels[idx];
+            steps.forEach((step, stepIdx) => {
+              step.classList.toggle('is-done', stepIdx < idx);
+              step.classList.toggle('is-active', stepIdx === idx);
+            });
+          }
+          if (idx >= stageLabels.length - 1) {
+            window.clearInterval(tick);
+          }
+        }, 1400);
+      });
+    }
+
+    function syncStepIndex(stage) {
+      const order = ['open_login', 'submit_login', 'generate_statement', 'import_complete'];
+      const idx = order.indexOf(stage);
+      if (idx >= 0) return idx;
+      if (stage === 'locate_username' || stage === 'fill_username' || stage === 'locate_password') return 0;
+      if (stage === 'open_workspace_menu' || stage === 'open_statement_dialog' || stage === 'configure_statement_period') return 2;
+      if (stage === 'parse_statement_html' || stage === 'reconcile_gate' || stage === 'import_trades' || stage === 'capture_statement_html') return 3;
+      return 0;
+    }
+
+    function updateJobCard(job) {
+      const card = document.getElementById('sync-job-card');
+      if (!card || !job) return;
+      const statusText = String(job.status || 'queued').replaceAll('_', ' ');
+      const stageText = String(job.stage || 'start').replaceAll('_', ' ');
+      const terminal = !['queued', 'running'].includes(String(job.status || ''));
+      const summary = job.summary || {};
+      const statusEl = document.getElementById('sync-job-status');
+      const badgeEl = document.getElementById('sync-job-badge');
+      const stageEl = document.getElementById('sync-job-stage');
+      const stageLabelEl = document.getElementById('sync-job-stage-label');
+      const messageEl = document.getElementById('sync-job-message');
+      const durationEl = document.getElementById('sync-job-duration');
+      const insertedEl = document.getElementById('sync-job-inserted');
+      const summaryEl = document.getElementById('sync-job-summary');
+      const artifactsEl = document.getElementById('sync-job-artifacts');
+      const resultHtmlEl = document.getElementById('sync-job-result-html');
+      if (statusEl) statusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
+      if (badgeEl) badgeEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
+      if (stageEl) stageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
+      if (stageLabelEl) stageLabelEl.textContent = job.message || stageText;
+      if (messageEl) messageEl.textContent = job.message || 'Working...';
+      if (durationEl) durationEl.textContent = (job.duration_sec !== null && job.duration_sec !== undefined) ? `${Number(job.duration_sec).toFixed(1)}s` : '—';
+      if (insertedEl) insertedEl.textContent = String(summary.inserted || 0);
+      if (summaryEl) {
+        let txt = summary.message || job.message || 'Working...';
+        if (summary.warn_count) txt += ` · Warnings: ${summary.warn_count}`;
+        if (summary.error_count) txt += ` · Errors: ${summary.error_count}`;
+        summaryEl.textContent = txt;
+      }
+      if (artifactsEl) {
+        const links = Array.isArray(summary.artifacts_rel) ? summary.artifacts_rel.slice(0, 6) : [];
+        artifactsEl.innerHTML = links.map(rel => `<div><a class="btn" href="/trades/sync/debug/${rel}" target="_blank" rel="noopener">${rel}</a></div>`).join('');
+      }
+      if (resultHtmlEl) {
+        resultHtmlEl.innerHTML = job.result_html || '';
+      }
+      const steps = Array.from(card.querySelectorAll('.syncStep'));
+      const trackBar = card.querySelector('.syncTrackBar');
+      const idx = syncStepIndex(String(job.stage || 'start'));
+      steps.forEach((step, stepIdx) => {
+        const done = stepIdx < idx || ['success', 'debug_only'].includes(String(job.status || ''));
+        const active = !done && stepIdx === idx && !['success', 'failed', 'debug_only'].includes(String(job.status || ''));
+        step.classList.toggle('is-done', done);
+        step.classList.toggle('is-active', active);
+      });
+      if (trackBar) {
+        if (terminal) {
+          if (jobs) {
+            jobs.setTerminalTrack(trackBar, String(job.status || '') === 'failed');
+          } else {
+            trackBar.style.animation = 'none';
+            trackBar.style.transform = 'translateX(0)';
+            trackBar.style.left = '0';
+            trackBar.style.width = String(job.status || '') === 'failed' ? '42%' : '100%';
+            trackBar.style.background = String(job.status || '') === 'failed'
+              ? 'linear-gradient(90deg, rgba(231,76,60,.9) 0%, rgba(231,76,60,.55) 100%)'
+              : 'linear-gradient(90deg, rgba(46,204,113,.92) 0%, rgba(var(--accent-rgb),.95) 100%)';
+          }
+        } else {
+          if (jobs) {
+            jobs.resetTrack(trackBar);
+          } else {
+            trackBar.style.animation = '';
+            trackBar.style.transform = '';
+            trackBar.style.left = '';
+            trackBar.style.width = '';
+            trackBar.style.background = '';
+          }
+        }
+      }
+    }
+
+    function pollJobCard() {
+      const card = document.getElementById('sync-job-card');
+      if (!card) return;
+      const jobId = card.getAttribute('data-job-id');
+      if (!jobId) return;
+      const tick = function() {
+        fetch(`/trades/sync/job/${jobId}`, { headers: { 'Accept': 'application/json' } })
+          .then(r => r.ok ? r.json() : Promise.reject(new Error('poll_failed')))
+          .then(payload => {
+            if (!payload || !payload.ok || !payload.job) return;
+            updateJobCard(payload.job);
+            if (!['queued', 'running'].includes(String(payload.job.status || ''))) return;
+            window.setTimeout(tick, 1200);
+          })
+          .catch(() => {
+            window.setTimeout(tick, 2000);
+          });
+      };
+      tick();
+    }
+
+    bindLoading('statement-upload-form', 'statement-upload-submit', 'statement-upload-loading', '⏳ Processing...');
+    bindLoading('live-sync-form', 'live-sync-submit', 'live-sync-loading', '⏳ Syncing...');
+    bindLoading('auto-sync-config-form', 'auto-sync-config-submit', 'auto-sync-config-loading', '⏳ Saving...');
+    bindLoading('auto-sync-run-form', 'auto-sync-run-submit', 'auto-sync-run-loading', '⏳ Running...');
+    bindSyncRunway(
+      'live-sync-form',
+      'live-sync-runway',
+      'live-sync-stage-label',
+      ['Opening broker session...', 'Submitting login...', 'Generating statement...', 'Importing fills and checks...']
+    );
+    bindSyncRunway(
+      'auto-sync-run-form',
+      'auto-sync-runway',
+      'auto-sync-stage-label',
+      ['Preparing sync run...', 'Logging into broker...', 'Generating statement...', 'Importing fills and checks...']
+    );
+
+    const quickRetryBtn = document.getElementById('quick-retry-btn');
+    const quickRetryNote = document.getElementById('quick-retry-note');
+    const liveForm = document.getElementById('live-sync-form');
+    const autoPwd = document.querySelector('#auto-sync-config-form [name="auto_password"]');
+    const autoStatus = document.getElementById('auto-sync-credential-status');
+    const autoRunBtn = document.getElementById('auto-sync-run-submit');
+    const autoPasswordStored = true;
+
+    function updateAutoSyncIntentState() {
+      if (!autoPwd || !autoStatus || !autoRunBtn) return;
+      const hasTypedPassword = Boolean((autoPwd.value || '').trim());
+      if (autoPasswordStored) {
+        autoRunBtn.disabled = false;
+        autoRunBtn.title = '';
+        autoStatus.innerHTML = 'Credential status: <b>ready</b> for scheduled runs.';
+        return;
+      }
+      autoRunBtn.disabled = true;
+      autoRunBtn.title = 'Save Auto Sync first so credentials are stored';
+      if (hasTypedPassword) {
+        autoStatus.innerHTML = 'Credential status: <b>password entered but not saved</b>. Click <b>Save Auto Sync</b>, then use <b>Run Now</b>.';
+      } else {
+        autoStatus.innerHTML = 'Credential status: <b>setup needed</b>. Run Now uses saved credentials only. Click <b>Save Auto Sync</b> first.';
+      }
+    }
+
+    if (autoPwd) {
+      autoPwd.addEventListener('input', updateAutoSyncIntentState);
+      updateAutoSyncIntentState();
+    }
+
+    if (quickRetryBtn && liveForm) {
+      const requested = {"account": "default:OEV0035974", "base_url": "https://trade.vanquishtrader.com", "date_locale": "en-US", "debug_capture": true, "debug_only": false, "from_date": "2026-03-03", "headless": true, "mode": "broker", "report_locale": "en", "source": "manual_auto_run", "time_zone": "America/New_York", "to_date": "2026-03-03", "username": "VANQ00002971", "wl": "vanquishtrader"};
+      quickRetryBtn.addEventListener('click', function() {
+        if (!requested || Object.keys(requested).length === 0) {
+          if (quickRetryNote) quickRetryNote.textContent = 'No previous sync request found.';
+          return;
+        }
+        Object.entries(requested).forEach(([key, val]) => {
+          const input = liveForm.querySelector(`[name="${key}"]`);
+          if (!input) return;
+          if (input.type === 'checkbox') {
+            input.checked = Boolean(val);
+          } else if (val !== null && val !== undefined) {
+            input.value = String(val);
+          }
+        });
+        const pwd = liveForm.querySelector('[name="password"]');
+        if (pwd) {
+          pwd.focus();
+          pwd.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (quickRetryNote) {
+          quickRetryNote.textContent = 'Last settings loaded. Enter password if needed, then run sync.';
+        }
+      });
+    }
+
+    pollJobCard();
+  })();
+</script>
 
     <div id="quickLauncher" class="quickLauncher" aria-label="Quick actions">
       <button id="quickToggleBtn" class="btn primary quickToggle" type="button" aria-expanded="false" onclick="toggleQuickPanel()">+</button>
@@ -293,7 +804,7 @@
         <div class="menuTitle">Quick Actions</div>
         <div class="quickList">
           <a class="btn" href="/trades/new">Add Trade</a>
-          <a class="btn" href="{{ url_for('new_entry') }}">Add Journal</a>
+          <a class="btn" href="/journal/new">Add Journal</a>
           <a class="btn" href="/trades/upload/statement">Upload Statement</a>
           <a class="btn" href="/trades/open-positions">Open Positions</a>
         </div>
@@ -301,10 +812,10 @@
     </div>
 
     <nav class="mobileDock" aria-label="Quick navigation">
-      <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Day</a>
-      <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
-      <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
-      <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Notes</a>
+      <a class="btn " href="/dashboard">Day</a>
+      <a class="btn primary" href="/trades">Trades</a>
+      <a class="btn " href="/analytics/replay">Replay</a>
+      <a class="btn " href="/journal">Notes</a>
     </nav>
 
     <div class="tiny footerTip">
@@ -441,7 +952,7 @@ document.addEventListener('keydown', (e) => {
       "gc": "/calculator",
       "ng": "/goals",
       "nt": "/trades/new",
-      "nj": "{{ url_for('new_entry') }}"
+      "nj": "/journal/new"
     };
     let _comboBuffer = "";
     let _comboTs = 0;
@@ -606,14 +1117,12 @@ document.addEventListener('keydown', (e) => {
     setInterval(updateETClock, 1000);
     updateETClock();
 
-    const THEME_ORDER = ["black", "default", "galaxy", "red", "green", "steel"];
+    const THEME_ORDER = ["default", "black", "steel", "galaxy"];
     const THEME_LABELS = {
-      black: "Theme: Midnight",
       default: "Theme: Classic",
-      galaxy: "Theme: Galaxy",
-      red: "Theme: Red",
-      green: "Theme: Green",
-      steel: "Theme: Steel"
+      black: "Theme: Midnight",
+      steel: "Theme: Steel",
+      galaxy: "Theme: Galaxy"
     };
     function syncThemeButtons(theme){
       document.querySelectorAll("[data-theme-toggle-label]").forEach((btn) => {
@@ -621,19 +1130,19 @@ document.addEventListener('keydown', (e) => {
       });
     }
     function applyTheme(theme){
-      const t = THEME_ORDER.includes(theme) ? theme : "black";
+      const t = THEME_ORDER.includes(theme) ? theme : "default";
       document.body.setAttribute("data-theme", t);
       syncThemeButtons(t);
     }
     function toggleTheme(){
-      const current = document.body.getAttribute("data-theme") || "black";
+      const current = document.body.getAttribute("data-theme") || "default";
       const idx = THEME_ORDER.indexOf(current);
       const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
       localStorage.setItem("mc_theme", next);
       applyTheme(next);
     }
     window.toggleTheme = toggleTheme;
-    applyTheme(localStorage.getItem("mc_theme") || "black");
+    applyTheme(localStorage.getItem("mc_theme") || "default");
 
     function setGuidedMode(on){
       const enabled = !!on;

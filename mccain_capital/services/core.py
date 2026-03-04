@@ -59,6 +59,7 @@ MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD = 2
 MARKET_PULSE_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_pulse_cache.json")
 MARKET_NEWS_CACHE_TTL_SECONDS = 900
 MARKET_NEWS_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_news_cache.json")
+MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 FINNHUB_API_KEY = (os.environ.get("FINNHUB_API_KEY") or "").strip()
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 MARKET_PULSE_QUOTES_URLS: Tuple[str, ...] = (
@@ -1251,6 +1252,165 @@ def favicon():
     return _legacy().favicon()
 
 
+def _load_dashboard_milestone_settings() -> Dict[str, Any]:
+    name = str(
+        app_runtime.get_setting_value("dashboard_milestone_name", "Profit Milestone") or ""
+    ).strip()
+    if not name:
+        name = "Profit Milestone"
+    profit_goal = float(app_runtime.get_setting_float("dashboard_milestone_profit_goal", 5000.0))
+    target_balance = float(app_runtime.get_setting_float("dashboard_milestone_target_balance", 0.0))
+    profit_source = (
+        str(app_runtime.get_setting_value("dashboard_milestone_profit_source", "ytd") or "ytd")
+        .strip()
+        .lower()
+    )
+    if profit_source not in MILESTONE_PROFIT_SOURCES:
+        profit_source = "ytd"
+    return {
+        "name": name,
+        "profit_goal": max(0.0, profit_goal),
+        "target_balance": max(0.0, target_balance),
+        "profit_source": profit_source,
+    }
+
+
+def _milestone_profit_value(
+    source: str, *, today_net: float, this_week_total: float, mtd_net: float, ytd_net: float
+) -> float:
+    if source == "today":
+        return float(today_net)
+    if source == "week":
+        return float(this_week_total)
+    if source == "mtd":
+        return float(mtd_net)
+    return float(ytd_net)
+
+
+def _dashboard_milestone_viewmodel(
+    settings: Dict[str, Any],
+    *,
+    today_net: float,
+    this_week_total: float,
+    mtd_net: float,
+    ytd_net: float,
+    overall_balance: float,
+    starting_balance: float,
+    avg_daily_profit: float,
+) -> Dict[str, Any]:
+    source = str(settings.get("profit_source") or "ytd")
+    profit_current = _milestone_profit_value(
+        source,
+        today_net=today_net,
+        this_week_total=this_week_total,
+        mtd_net=mtd_net,
+        ytd_net=ytd_net,
+    )
+    profit_goal = float(settings.get("profit_goal") or 0.0)
+    target_balance = float(settings.get("target_balance") or 0.0)
+
+    profit_progress_pct = 0.0
+    if profit_goal > 0.0:
+        profit_progress_pct = max(0.0, min(100.0, (profit_current / profit_goal) * 100.0))
+
+    balance_progress_pct = 0.0
+    if target_balance > 0.0:
+        if target_balance <= starting_balance:
+            balance_progress_pct = 100.0 if overall_balance >= target_balance else 0.0
+        else:
+            balance_progress_pct = max(
+                0.0,
+                min(
+                    100.0,
+                    ((overall_balance - starting_balance) / (target_balance - starting_balance))
+                    * 100.0,
+                ),
+            )
+
+    if profit_goal > 0.0 and target_balance > 0.0:
+        overall_progress_pct = min(profit_progress_pct, balance_progress_pct)
+    elif profit_goal > 0.0:
+        overall_progress_pct = profit_progress_pct
+    elif target_balance > 0.0:
+        overall_progress_pct = balance_progress_pct
+    else:
+        overall_progress_pct = 0.0
+
+    source_labels = {"today": "Today", "week": "Week", "mtd": "MTD", "ytd": "YTD"}
+    pace = float(avg_daily_profit)
+    projected_days_profit: Optional[int] = None
+    projected_days_balance: Optional[int] = None
+    projected_days_overall: Optional[int] = None
+    if pace > 0.0:
+        if profit_goal > 0.0:
+            projected_days_profit = int((max(0.0, profit_goal - profit_current) / pace) + 0.9999)
+        if target_balance > 0.0:
+            projected_days_balance = int(
+                (max(0.0, target_balance - overall_balance) / pace) + 0.9999
+            )
+        if projected_days_profit is not None and projected_days_balance is not None:
+            projected_days_overall = max(projected_days_profit, projected_days_balance)
+        elif projected_days_profit is not None:
+            projected_days_overall = projected_days_profit
+        elif projected_days_balance is not None:
+            projected_days_overall = projected_days_balance
+
+    return {
+        "name": str(settings.get("name") or "Profit Milestone"),
+        "profit_source": source,
+        "profit_source_label": source_labels.get(source, "YTD"),
+        "profit_current": float(profit_current),
+        "profit_goal": profit_goal,
+        "profit_remaining": max(0.0, profit_goal - profit_current),
+        "target_balance": target_balance,
+        "balance_remaining": max(0.0, target_balance - overall_balance),
+        "overall_progress_pct": overall_progress_pct,
+        "profit_progress_pct": profit_progress_pct,
+        "balance_progress_pct": balance_progress_pct,
+        "profit_done": profit_goal > 0.0 and profit_current >= profit_goal,
+        "balance_done": target_balance > 0.0 and overall_balance >= target_balance,
+        "has_profit_goal": profit_goal > 0.0,
+        "has_balance_goal": target_balance > 0.0,
+        "avg_daily_profit": pace,
+        "projected_days_profit": projected_days_profit,
+        "projected_days_balance": projected_days_balance,
+        "projected_days_overall": projected_days_overall,
+    }
+
+
+def dashboard_milestone_update():
+    name = str(request.form.get("milestone_name") or "").strip()[:80]
+    if not name:
+        name = "Profit Milestone"
+    profit_source = str(request.form.get("milestone_profit_source") or "ytd").strip().lower()
+    if profit_source not in MILESTONE_PROFIT_SOURCES:
+        profit_source = "ytd"
+    profit_goal = app_runtime.parse_float(request.form.get("milestone_profit_goal") or "") or 0.0
+    target_balance = (
+        app_runtime.parse_float(request.form.get("milestone_target_balance") or "") or 0.0
+    )
+
+    app_runtime.set_setting_value("dashboard_milestone_name", name)
+    app_runtime.set_setting_value("dashboard_milestone_profit_source", profit_source)
+    app_runtime.set_setting_value("dashboard_milestone_profit_goal", f"{max(0.0, profit_goal):.2f}")
+    app_runtime.set_setting_value(
+        "dashboard_milestone_target_balance", f"{max(0.0, target_balance):.2f}"
+    )
+    flash("Milestone updated.", "success")
+
+    y = str(request.form.get("y") or "").strip()
+    m = str(request.form.get("m") or "").strip()
+    scope = str(request.form.get("scope") or "").strip().lower()
+    params: Dict[str, str] = {}
+    if y:
+        params["y"] = y
+    if m:
+        params["m"] = m
+    if scope in {"active", "all"}:
+        params["scope"] = scope
+    return redirect(url_for("dashboard", **params))
+
+
 def dashboard():
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
@@ -1419,6 +1579,17 @@ def dashboard():
         if top_setup
         else "No dominant labeled setup yet."
     )
+    milestone_settings = _load_dashboard_milestone_settings()
+    milestone = _dashboard_milestone_viewmodel(
+        milestone_settings,
+        today_net=today_net,
+        this_week_total=this_week_total,
+        mtd_net=mtd_net,
+        ytd_net=ytd_net,
+        overall_balance=overall_balance,
+        starting_balance=float(balance_integrity.get("starting_balance") or 50000.0),
+        avg_daily_profit=float(proj.get("avg") or 0.0),
+    )
 
     content = render_template(
         "dashboard.html",
@@ -1464,6 +1635,9 @@ def dashboard():
         scope_mode=("active" if scope_active else "all"),
         scope_active_href=f"/dashboard?y={year}&m={month}&scope=active",
         scope_all_href=f"/dashboard?y={year}&m={month}&scope=all",
+        dashboard_year=year,
+        dashboard_month=month,
+        milestone=milestone,
         money=app_runtime.money,
         money_compact=_money_compact,
     )

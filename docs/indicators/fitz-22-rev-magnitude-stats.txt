@@ -1,0 +1,192 @@
+//@version=6
+indicator("Fitz 2-2 REV Magnitude Stats", overlay=true, max_labels_count=500)
+
+//------------------------------------------------------------------------------
+// Inputs
+//------------------------------------------------------------------------------
+groupSig = "Signals"
+showBull = input.bool(true, "Show Bull 2-2", group=groupSig)
+showBear = input.bool(true, "Show Bear 2-2", group=groupSig)
+labelOffset = input.int(0, "Signal Offset Bars", minval=0, maxval=50, group=groupSig)
+useStrict22Filter = input.bool(false, "Use Strict 2-2 Filter", group=groupSig, tooltip="Off = identify all base 2-2 reversals. On = adds extra historical guards.")
+
+groupMag = "Magnitude Rules"
+targetMultiple = input.float(1.0, "Magnitude Target (x Setup Range)", minval=0.1, step=0.1, group=groupMag)
+maxBarsToResolve = input.int(20, "Max Bars To Resolve", minval=1, maxval=500, group=groupMag)
+countUnresolvedAsLoss = input.bool(true, "Count Unresolved As Loss", group=groupMag)
+sameBarRule = input.string("Loss First", "If Target And Invalidation Hit Same Bar", options=["Loss First", "Win First"], group=groupMag)
+
+groupTable = "Table"
+showTable = input.bool(true, "Show Stats Table", group=groupTable)
+tableSizeOpt = input.string("Small", "Table Text Size", options=["Tiny", "Small", "Normal"], group=groupTable)
+
+groupMarks = "Outcome Marks"
+showOutcomeMarks = input.bool(true, "Show WIN/LOSS Marks On Chart", group=groupMarks)
+
+txtSize =
+     tableSizeOpt == "Tiny"  ? size.tiny  :
+     tableSizeOpt == "Small" ? size.small :
+                               size.normal
+
+//------------------------------------------------------------------------------
+// Strat scenario helpers
+//------------------------------------------------------------------------------
+oneBar(k)   => high[k] <= high[k + 1] and low[k] >= low[k + 1]
+twoUp(k)    => high[k] >  high[k + 1] and low[k] >= low[k + 1]
+twoDown(k)  => low[k]  <  low[k + 1] and high[k] <= high[k + 1]
+threeBar(k) => high[k] >  high[k + 1] and low[k] <  low[k + 1]
+
+// 2-2 reversal filter (same guardrails as your prior script)
+is22BearBase = twoUp(1) and twoDown(0)
+is22BullBase = twoDown(1) and twoUp(0)
+is22BearStrict = is22BearBase and not oneBar(2) and not twoDown(2) and not twoDown(3) and not threeBar(2)
+is22BullStrict = is22BullBase and not oneBar(2) and not twoUp(2) and not twoUp(3) and not threeBar(2)
+is22BearRev = useStrict22Filter ? is22BearStrict : is22BearBase
+is22BullRev = useStrict22Filter ? is22BullStrict : is22BullBase
+
+plotshape(showBull and is22BullRev, title="22 Bull", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), text="22B", textcolor=color.black, offset=labelOffset, size=size.tiny)
+plotshape(showBear and is22BearRev, title="22 Bear", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), text="22S", textcolor=color.white, offset=labelOffset, size=size.tiny)
+
+//------------------------------------------------------------------------------
+// Trade outcome engine
+//------------------------------------------------------------------------------
+var dirArr = array.new_int()        // 1 bull, -1 bear
+var targetArr = array.new_float()   // target price
+var invalidArr = array.new_float()  // invalidation price
+var bornArr = array.new_int()       // signal bar index
+var markYArr = array.new_float()    // y-price for outcome label
+
+var int bullWins = 0
+var int bullLosses = 0
+var int bearWins = 0
+var int bearLosses = 0
+var int unresolved = 0
+
+// Evaluate existing setups first so fresh setups start resolving next bar.
+if array.size(dirArr) > 0
+    i = array.size(dirArr) - 1
+    while i >= 0
+        _dir = array.get(dirArr, i)
+        _target = array.get(targetArr, i)
+        _invalid = array.get(invalidArr, i)
+        _born = array.get(bornArr, i)
+        _markY = array.get(markYArr, i)
+        _age = bar_index - _born
+
+        _winHit = _dir == 1 ? (high >= _target) : (low <= _target)
+        _lossHit = _dir == 1 ? (low <= _invalid) : (high >= _invalid)
+        _expired = _age > maxBarsToResolve
+
+        _done = false
+        _isWin = false
+
+        if _winHit and _lossHit
+            _done := true
+            _isWin := sameBarRule == "Win First"
+        else if _winHit
+            _done := true
+            _isWin := true
+        else if _lossHit
+            _done := true
+            _isWin := false
+        else if _expired
+            _done := true
+            if countUnresolvedAsLoss
+                _isWin := false
+            else
+                unresolved += 1
+
+        if _done
+            if _winHit or _lossHit or (countUnresolvedAsLoss and _expired)
+                if _dir == 1
+                    if _isWin
+                        bullWins += 1
+                        if showOutcomeMarks
+                            label.new(_born, _markY, "22B WIN", style=label.style_label_up, textcolor=color.white, color=color.new(color.green, 0), size=size.tiny)
+                    else
+                        bullLosses += 1
+                        if showOutcomeMarks
+                            label.new(_born, _markY, "22B LOSS", style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0), size=size.tiny)
+                else
+                    if _isWin
+                        bearWins += 1
+                        if showOutcomeMarks
+                            label.new(_born, _markY, "22S WIN", style=label.style_label_down, textcolor=color.white, color=color.new(color.green, 0), size=size.tiny)
+                    else
+                        bearLosses += 1
+                        if showOutcomeMarks
+                            label.new(_born, _markY, "22S LOSS", style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0), size=size.tiny)
+            array.remove(dirArr, i)
+            array.remove(targetArr, i)
+            array.remove(invalidArr, i)
+            array.remove(bornArr, i)
+            array.remove(markYArr, i)
+        i -= 1
+
+// Register new setups at close of signal bar.
+if bar_index >= 3
+    if showBull and is22BullRev
+        _setupRange = high[1] - low[1]
+        _entry = high[1]
+        _target = _entry + _setupRange * targetMultiple
+        _invalid = low[1]
+        array.push(dirArr, 1)
+        array.push(targetArr, _target)
+        array.push(invalidArr, _invalid)
+        array.push(bornArr, bar_index)
+        array.push(markYArr, low)
+
+    if showBear and is22BearRev
+        _setupRange = high[1] - low[1]
+        _entry = low[1]
+        _target = _entry - _setupRange * targetMultiple
+        _invalid = high[1]
+        array.push(dirArr, -1)
+        array.push(targetArr, _target)
+        array.push(invalidArr, _invalid)
+        array.push(bornArr, bar_index)
+        array.push(markYArr, high)
+
+//------------------------------------------------------------------------------
+// Stats table
+//------------------------------------------------------------------------------
+bullClosed = bullWins + bullLosses
+bearClosed = bearWins + bearLosses
+totalWins = bullWins + bearWins
+totalLosses = bullLosses + bearLosses
+totalClosed = totalWins + totalLosses
+
+pct(w, t) => t > 0 ? (100.0 * w / t) : na
+fmtPct(v) => na(v) ? "n/a" : str.tostring(v, "#.0") + "%"
+
+bullWinPct = pct(bullWins, bullClosed)
+bearWinPct = pct(bearWins, bearClosed)
+totalWinPct = pct(totalWins, totalClosed)
+
+var table statsTbl = table.new(position.bottom_right, 2, 8, bgcolor=color.new(color.black, 15))
+if barstate.islast and showTable
+    table.cell(statsTbl, 0, 0, "2-2 REV", text_color=color.white, bgcolor=color.new(color.blue, 0), text_size=txtSize)
+    table.cell(statsTbl, 1, 0, "Win %", text_color=color.white, bgcolor=color.new(color.blue, 0), text_size=txtSize)
+
+    table.cell(statsTbl, 0, 1, "Bull", text_color=color.white, bgcolor=color.new(color.green, 75), text_size=txtSize)
+    table.cell(statsTbl, 1, 1, fmtPct(bullWinPct), text_color=color.white, bgcolor=color.new(color.green, 75), text_size=txtSize)
+
+    table.cell(statsTbl, 0, 2, "Bear", text_color=color.white, bgcolor=color.new(color.red, 75), text_size=txtSize)
+    table.cell(statsTbl, 1, 2, fmtPct(bearWinPct), text_color=color.white, bgcolor=color.new(color.red, 75), text_size=txtSize)
+
+    table.cell(statsTbl, 0, 3, "Total", text_color=color.white, bgcolor=color.new(color.gray, 70), text_size=txtSize)
+    table.cell(statsTbl, 1, 3, fmtPct(totalWinPct), text_color=color.white, bgcolor=color.new(color.gray, 70), text_size=txtSize)
+
+    table.cell(statsTbl, 0, 4, "Wins", text_color=color.white, bgcolor=color.new(color.green, 85), text_size=txtSize)
+    table.cell(statsTbl, 1, 4, str.tostring(totalWins), text_color=color.white, bgcolor=color.new(color.green, 85), text_size=txtSize)
+
+    table.cell(statsTbl, 0, 5, "Losses", text_color=color.white, bgcolor=color.new(color.red, 85), text_size=txtSize)
+    table.cell(statsTbl, 1, 5, str.tostring(totalLosses), text_color=color.white, bgcolor=color.new(color.red, 85), text_size=txtSize)
+
+    table.cell(statsTbl, 0, 6, "Open", text_color=color.white, bgcolor=color.new(color.orange, 85), text_size=txtSize)
+    table.cell(statsTbl, 1, 6, str.tostring(array.size(dirArr)), text_color=color.white, bgcolor=color.new(color.orange, 85), text_size=txtSize)
+
+    table.cell(statsTbl, 0, 7, "Unresolved", text_color=color.white, bgcolor=color.new(color.purple, 85), text_size=txtSize)
+    table.cell(statsTbl, 1, 7, str.tostring(unresolved), text_color=color.white, bgcolor=color.new(color.purple, 85), text_size=txtSize)
+else if barstate.islast and not showTable
+    table.clear(statsTbl, 0, 0, 1, 7)
