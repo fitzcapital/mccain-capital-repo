@@ -1770,182 +1770,28 @@ def get_trade(trade_id: int) -> Optional[sqlite3.Row]:
         return conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
 
 
-def _parse_ids_from_request() -> List[int]:
-    """Parse a list of trade ids from JSON or form data."""
-    ids: Any = None
-    if request.is_json:
-        payload = request.get_json(silent=True) or {}
-        ids = payload.get("ids")
-    if ids is None:
-        ids = request.form.getlist("ids") or request.form.get("ids")
-
-    if isinstance(ids, str):
-        raw = [x.strip() for x in ids.split(",") if x.strip()]
-    elif isinstance(ids, list):
-        raw = ids
-    else:
-        raw = []
-
-    clean: List[int] = []
-    for x in raw:
-        try:
-            clean.append(int(x))
-        except Exception:
-            continue
-
-    seen = set()
-    out: List[int] = []
-    for i in clean:
-        if i not in seen:
-            out.append(i)
-            seen.add(i)
-    return out
-
-
-def _trades_table_columns(conn: sqlite3.Connection) -> List[str]:
-    """Return the current trades table columns (sqlite)."""
-    return [r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
-
-
 def trades_duplicate(trade_id: int):
-    """Clone a trade row (useful for scaling in/out or repeating a similar fill)."""
-    src = get_trade(trade_id)
-    if not src:
-        abort(404)
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
 
-    net_pl = float(src["net_pl"] or 0.0)
-    new_balance = (latest_balance_overall() or 50000.0) + net_pl
-
-    with db() as conn:
-        conn.execute(
-            """
-            INSERT INTO trades (
-                trade_date, entry_time, exit_time, ticker, opt_type, strike,
-                entry_price, exit_price, contracts, total_spent,
-                stop_pct, target_pct, stop_price, take_profit,
-                risk, comm, gross_pl, net_pl, result_pct, balance,
-                raw_line, created_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                src["trade_date"],
-                src["entry_time"] or "",
-                src["exit_time"] or "",
-                src["ticker"] or "",
-                src["opt_type"] or "",
-                src["strike"],
-                src["entry_price"],
-                src["exit_price"],
-                src["contracts"],
-                src["total_spent"],
-                src["stop_pct"],
-                src["target_pct"],
-                src["stop_price"],
-                src["take_profit"],
-                src["risk"],
-                src["comm"],
-                src["gross_pl"],
-                src["net_pl"],
-                src["result_pct"],
-                new_balance,
-                f"DUPLICATE OF #{trade_id}",
-                now_iso(),
-            ),
-        )
-
-    d = request.args.get("d", "") or (src["trade_date"] or "")
-    q = request.args.get("q", "")
-    return redirect(url_for("trades_page", d=d, q=q))
+    return trades_mutations_svc.trades_duplicate(trade_id)
 
 
 def trades_delete(trade_id: int):
-    with db() as conn:
-        conn.execute("DELETE FROM trades WHERE id = ?", (trade_id,))
-    d = request.args.get("d", "")
-    q = request.args.get("q", "")
-    return redirect(url_for("trades_page", d=d, q=q))
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
+
+    return trades_mutations_svc.trades_delete(trade_id)
 
 
 def trades_delete_many():
-    ids = _parse_ids_from_request()
-    if not ids:
-        if request.is_json:
-            return jsonify({"ok": True, "deleted": 0})
-        flash("No trades selected.", "warning")
-        return redirect(
-            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
-        )
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
 
-    placeholders = ",".join(["?"] * len(ids))
-    with db() as conn:
-        cur = conn.execute(f"DELETE FROM trades WHERE id IN ({placeholders})", ids)
-        deleted = cur.rowcount if cur.rowcount is not None else 0
-
-    if request.is_json:
-        return jsonify({"ok": True, "deleted": int(deleted)})
-    flash(f"Deleted {deleted} trade(s).", "success")
-    return redirect(
-        url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
-    )
+    return trades_mutations_svc.trades_delete_many()
 
 
 def trades_copy_many():
-    ids = _parse_ids_from_request()
-    target_date = None
-    if request.is_json:
-        payload = request.get_json(silent=True) or {}
-        target_date = payload.get("target_date")
-    if not target_date:
-        target_date = request.form.get("target_date")
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
 
-    if not ids:
-        if request.is_json:
-            return jsonify({"ok": True, "copied": 0})
-        flash("No trades selected.", "warning")
-        return redirect(
-            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
-        )
-
-    try:
-        datetime.strptime(str(target_date), "%Y-%m-%d")
-    except Exception:
-        if request.is_json:
-            return jsonify({"ok": False, "error": "Invalid target_date. Use YYYY-MM-DD."}), 400
-        flash("Invalid target date (use YYYY-MM-DD).", "danger")
-        return redirect(
-            url_for("trades_page", d=request.args.get("d", ""), q=request.args.get("q", ""))
-        )
-
-    with db() as conn:
-        cols = _trades_table_columns(conn)
-        insert_cols = [c for c in cols if c != "id"]
-        select_cols = ",".join([f"{c}" for c in insert_cols])
-        placeholders = ",".join(["?"] * len(ids))
-        rows = conn.execute(
-            f"SELECT {select_cols} FROM trades WHERE id IN ({placeholders}) ORDER BY trade_date, id",
-            ids,
-        ).fetchall()
-
-        copied = 0
-        if rows:
-            now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            qmarks = ",".join(["?"] * len(insert_cols))
-            insert_sql = f"INSERT INTO trades ({','.join(insert_cols)}) VALUES ({qmarks})"
-            for r in rows:
-                data = dict(r)
-                data["trade_date"] = str(target_date)
-                if "created_at" in data:
-                    data["created_at"] = now_iso
-                if "balance" in data:
-                    data["balance"] = None
-                values = [data.get(c) for c in insert_cols]
-                conn.execute(insert_sql, values)
-                copied += 1
-
-    if request.is_json:
-        return jsonify({"ok": True, "copied": copied})
-    flash(f"Copied {copied} trade(s) to {target_date}.", "success")
-    return redirect(url_for("trades_page", d=str(target_date), q=request.args.get("q", "")))
+    return trades_mutations_svc.trades_copy_many()
 
 
 def trades_edit(trade_id: int):
@@ -2212,8 +2058,9 @@ def trades_risk_controls():
 
 
 def trades_clear():
-    repo.clear_trades()
-    return redirect(url_for("trades_page"))
+    from mccain_capital.services import trades_mutations as trades_mutations_svc
+
+    return trades_mutations_svc.trades_clear()
 
 
 def trades_paste():
