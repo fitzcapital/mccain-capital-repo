@@ -116,7 +116,7 @@
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
             <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Classic</button>
             {% if auth_enabled %}
               <div class="hr"></div>
               {% if authenticated %}
@@ -255,7 +255,7 @@
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/setup">Setup Login</a>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Classic</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}
               {% if authenticated %}
@@ -606,9 +606,11 @@ document.addEventListener('keydown', (e) => {
     setInterval(updateETClock, 1000);
     updateETClock();
 
-    const THEME_ORDER = ["default", "black", "steel"];
+    const THEME_ORDER = ["default", "galaxy", "redgreen", "black", "steel"];
     const THEME_LABELS = {
       default: "Theme: Classic",
+      galaxy: "Theme: Galaxy",
+      redgreen: "Theme: Red/Green",
       black: "Theme: Midnight",
       steel: "Theme: Steel"
     };
