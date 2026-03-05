@@ -1696,15 +1696,18 @@ def dashboard():
 
 def stream_market():
     from mccain_capital.services import market_worker
+    from mccain_capital.services import options_panel_service
 
     is_testing = bool(current_app.config.get("TESTING"))
     if not is_testing:
         market_worker.start_market_worker_once()
+        options_panel_service.start_options_worker_once()
 
     @stream_with_context
     def generate():
         while True:
             payload = market_worker.get_market_snapshot()
+            payload["options"] = options_panel_service.get_options_snapshot()
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
                 break

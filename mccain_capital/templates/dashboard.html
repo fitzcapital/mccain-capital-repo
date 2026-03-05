@@ -653,6 +653,7 @@
     source.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data || "{}");
+        window.dispatchEvent(new CustomEvent("marketPulsePayload", { detail: payload }));
         const prices = payload.prices || {};
         Object.keys(prices).forEach((symbol) => {
           const row = rowBySymbol[symbol];
@@ -743,12 +744,11 @@
       }
     };
 
-    const source = new EventSource("/stream/options_panel");
     state.textContent = "Live";
-    source.onmessage = (event) => {
+    const updateFromPayload = (payload) => {
       try {
-        const payload = JSON.parse(event.data || "{}");
-        const spx = ((payload.symbols || {}).SPX || {});
+        const options = payload.options || payload;
+        const spx = ((options.symbols || {}).SPX || {});
         const under = spx.underlying || {};
         const gamma = spx.gamma || {};
         const contracts = Array.isArray(spx.contracts) ? spx.contracts.slice(0, 5) : [];
@@ -792,15 +792,15 @@
           });
         }
 
-        updated.textContent = fmtUpdated(payload.asof || "");
+        updated.textContent = fmtUpdated(options.asof || "");
         state.textContent = "Live";
       } catch (_) {
         state.textContent = "Reconnecting…";
       }
     };
-    source.onerror = () => {
-      state.textContent = "Reconnecting…";
-    };
+    window.addEventListener("marketPulsePayload", (event) => {
+      updateFromPayload(event.detail || {});
+    });
   })();
 </script>
 

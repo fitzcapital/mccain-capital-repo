@@ -392,14 +392,15 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
     assert b"/stream/market" in resp.data
     assert b'EventSource("/stream/market")' in resp.data
     assert b"SPX Gamma" in resp.data
-    assert b"/stream/options_panel" in resp.data
-    assert b'EventSource("/stream/options_panel")' in resp.data
+    assert b"/stream/options_panel" not in resp.data
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):
     from mccain_capital.services import market_worker
+    from mccain_capital.services import options_panel_service
 
     monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
     monkeypatch.setattr(
         market_worker,
         "get_market_snapshot",
@@ -411,6 +412,11 @@ def test_stream_market_sse_emits_json_payload(client, monkeypatch):
             "updated_at": "2026-03-05T12:00:00",
         },
     )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {"asof": "2026-03-05T12:00:00-05:00", "symbols": {"SPX": {}}},
+    )
     monkeypatch.setattr(core_service.time, "sleep", lambda _: None)
 
     resp = client.get("/stream/market", follow_redirects=True)
@@ -418,6 +424,7 @@ def test_stream_market_sse_emits_json_payload(client, monkeypatch):
     assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
     assert b"data: " in resp.data
     assert b"QQQ" in resp.data
+    assert b"options" in resp.data
 
 
 def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):
