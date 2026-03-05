@@ -23,13 +23,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import (
     abort,
+    current_app,
     flash,
     jsonify,
     make_response,
+    Response,
     redirect,
     render_template,
     request,
     send_file,
+    stream_with_context,
     url_for,
 )
 
@@ -1414,6 +1417,7 @@ def dashboard_milestone_update():
 def dashboard():
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
+    from mccain_capital.services import market_worker
 
     scope = trades_repo.account_scope_snapshot()
     scope_enabled = bool(scope.get("enabled"))
@@ -1590,6 +1594,9 @@ def dashboard():
         starting_balance=float(balance_integrity.get("starting_balance") or 50000.0),
         avg_daily_profit=float(proj.get("avg") or 0.0),
     )
+    market_snapshot = market_worker.get_market_snapshot()
+    if not current_app.config.get("TESTING"):
+        market_worker.start_market_worker_once()
 
     content = render_template(
         "dashboard.html",
@@ -1638,10 +1645,36 @@ def dashboard():
         dashboard_year=year,
         dashboard_month=month,
         milestone=milestone,
+        market_watchlist=list(market_worker.WATCHLIST),
+        market_prices=market_snapshot.get("prices") or {},
+        market_alerts=market_snapshot.get("alerts") or [],
+        market_updated_at=str(market_snapshot.get("updated_at") or ""),
         money=app_runtime.money,
         money_compact=_money_compact,
     )
     return render_page(content, active="dashboard")
+
+
+def stream_market():
+    from mccain_capital.services import market_worker
+
+    is_testing = bool(current_app.config.get("TESTING"))
+    if not is_testing:
+        market_worker.start_market_worker_once()
+
+    @stream_with_context
+    def generate():
+        while True:
+            payload = market_worker.get_market_snapshot()
+            yield f"data: {json.dumps(payload)}\\n\\n"
+            if is_testing:
+                break
+            time.sleep(2)
+
+    response = Response(generate(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    return response
 
 
 def market_pulse_page():

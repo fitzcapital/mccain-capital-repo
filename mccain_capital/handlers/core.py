@@ -36,6 +36,10 @@ def market_pulse_page():
     return svc.market_pulse_page()
 
 
+def stream_market():
+    return svc.stream_market()
+
+
 def command_calendar_page():
     return svc.command_calendar_page()
 

@@ -221,11 +221,40 @@ def _migration_0004_strategy_links(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migration_0005_market_alerts(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            rule_type TEXT NOT NULL CHECK (rule_type IN ('above', 'below')),
+            threshold REAL NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_alerts_symbol_enabled ON alerts(symbol, enabled);
+
+        CREATE TABLE IF NOT EXISTS alert_fires (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            alert_id INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            price REAL NOT NULL,
+            message TEXT NOT NULL,
+            fired_at TEXT NOT NULL,
+            UNIQUE(alert_id, fired_at)
+        );
+        CREATE INDEX IF NOT EXISTS idx_alert_fires_symbol_time ON alert_fires(symbol, fired_at DESC);
+        """
+    )
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
     ("0003_import_batches", _migration_0003_import_batches),
     ("0004_strategy_links", _migration_0004_strategy_links),
+    ("0005_market_alerts", _migration_0005_market_alerts),
 ]
 
 

@@ -321,6 +321,7 @@ def test_expected_endpoints_registered(app):
         "healthz",
         "dashboard",
         "dashboard_recompute_balances",
+        "stream_market",
         "candle_opens_page",
         "trades_page",
         "journal_home",
@@ -329,6 +330,80 @@ def test_expected_endpoints_registered(app):
         "books_page",
     }
     assert expected.issubset(endpoints)
+
+
+def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_load_dashboard_milestone_settings",
+        lambda: {
+            "name": "Profit Milestone",
+            "profit_goal": 0.0,
+            "target_balance": 0.0,
+            "profit_source": "ytd",
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_dashboard_milestone_viewmodel",
+        lambda *args, **kwargs: {
+            "name": "Profit Milestone",
+            "profit_source": "ytd",
+            "profit_source_label": "YTD",
+            "profit_current": 0.0,
+            "profit_goal": 0.0,
+            "profit_remaining": 0.0,
+            "target_balance": 0.0,
+            "balance_remaining": 0.0,
+            "overall_progress_pct": 0.0,
+            "profit_progress_pct": 0.0,
+            "balance_progress_pct": 0.0,
+            "profit_done": False,
+            "balance_done": False,
+            "has_profit_goal": False,
+            "has_balance_goal": False,
+            "avg_daily_profit": 0.0,
+            "projected_days_profit": None,
+            "projected_days_balance": None,
+            "projected_days_overall": None,
+        },
+    )
+    from mccain_capital.services import market_worker
+
+    monkeypatch.setattr(
+        market_worker, "get_market_snapshot", lambda: {"prices": {}, "alerts": [], "updated_at": ""}
+    )
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Live Market Pulse" in resp.data
+    assert b"/stream/market" in resp.data
+    assert b'EventSource("/stream/market")' in resp.data
+
+
+def test_stream_market_sse_emits_json_payload(client, monkeypatch):
+    from mccain_capital.services import market_worker
+
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "prices": {
+                "QQQ": {"price": 456.12, "pct_change": 0.42, "as_of": "2026-03-05T12:00:00"}
+            },
+            "alerts": ["QQQ crossed above 456.00 at 456.12"],
+            "updated_at": "2026-03-05T12:00:00",
+        },
+    )
+    monkeypatch.setattr(core_service.time, "sleep", lambda _: None)
+
+    resp = client.get("/stream/market", follow_redirects=True)
+    assert resp.status_code == 200
+    assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
+    assert b"data: " in resp.data
+    assert b"QQQ" in resp.data
 
 
 def test_candle_opens_page_renders_monthly_market_calendar(client):

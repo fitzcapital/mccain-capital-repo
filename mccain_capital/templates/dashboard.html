@@ -53,6 +53,36 @@
   </div></div>
 
   <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Live Market Pulse</div>
+    <div class="supportLead">
+      <span id="liveMarketState">Connecting…</span>
+      <span class="tiny stack8" id="liveMarketUpdated">{% if market_updated_at %}Updated {{ market_updated_at }}{% else %}Waiting for first tick{% endif %}</span>
+    </div>
+    <div class="marketPulseRows" id="liveMarketRows">
+      {% for symbol in market_watchlist %}
+        {% set quote = market_prices.get(symbol, {}) %}
+        <div class="marketPulseRow" data-symbol="{{ symbol }}">
+          <div class="marketPulseSymbol">{{ symbol }}</div>
+          <div class="marketPulsePrice" data-price>{{ money(quote.get('price')) if quote.get('price') is not none else '—' }}</div>
+          <div class="marketPulsePct {% if quote.get('pct_change') and quote.get('pct_change') > 0 %}metaGreen{% elif quote.get('pct_change') and quote.get('pct_change') < 0 %}metaRed{% endif %}" data-pct>
+            {% if quote.get('pct_change') is not none %}{{ '%.2f'|format(quote.get('pct_change')) }}%{% else %}—{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="tiny stack8">Alerts</div>
+    <div class="marketPulseAlerts" id="liveMarketAlerts">
+      {% if market_alerts %}
+        {% for msg in market_alerts[:6] %}
+          <div class="marketPulseAlert">{{ msg }}</div>
+        {% endfor %}
+      {% else %}
+        <div class="marketPulseAlert muted">No live alert triggers yet.</div>
+      {% endif %}
+    </div>
+  </div></div>
+
+  <div class="card supportCard"><div class="toolbar">
     <div class="pill">Milestone</div>
     <div class="supportLead">{{ milestone.name }}</div>
     <div class="supportBody">
@@ -520,6 +550,77 @@
     </script>
   </details>
 </div></div>
+
+<script>
+  (() => {
+    const state = document.getElementById("liveMarketState");
+    const updated = document.getElementById("liveMarketUpdated");
+    const rowsWrap = document.getElementById("liveMarketRows");
+    const alertsWrap = document.getElementById("liveMarketAlerts");
+    if (!state || !updated || !rowsWrap || !alertsWrap || typeof EventSource === "undefined") return;
+
+    const rowBySymbol = {};
+    rowsWrap.querySelectorAll(".marketPulseRow[data-symbol]").forEach((row) => {
+      rowBySymbol[row.dataset.symbol || ""] = row;
+    });
+
+    const fmtMoney = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "—";
+      return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+    };
+    const fmtPct = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "—";
+      return `${n.toFixed(2)}%`;
+    };
+
+    const source = new EventSource("/stream/market");
+    state.textContent = "Live";
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        const prices = payload.prices || {};
+        Object.keys(prices).forEach((symbol) => {
+          const row = rowBySymbol[symbol];
+          if (!row) return;
+          const quote = prices[symbol] || {};
+          const priceEl = row.querySelector("[data-price]");
+          const pctEl = row.querySelector("[data-pct]");
+          if (priceEl) priceEl.textContent = fmtMoney(quote.price);
+          if (pctEl) {
+            pctEl.textContent = fmtPct(quote.pct_change);
+            pctEl.classList.remove("metaGreen", "metaRed");
+            const pct = Number(quote.pct_change);
+            if (Number.isFinite(pct) && pct > 0) pctEl.classList.add("metaGreen");
+            if (Number.isFinite(pct) && pct < 0) pctEl.classList.add("metaRed");
+          }
+        });
+        if (payload.updated_at) {
+          updated.textContent = `Updated ${payload.updated_at}`;
+        }
+        const alerts = Array.isArray(payload.alerts) ? payload.alerts.slice(0, 6) : [];
+        alertsWrap.innerHTML = "";
+        if (!alerts.length) {
+          alertsWrap.innerHTML = '<div class="marketPulseAlert muted">No live alert triggers yet.</div>';
+        } else {
+          alerts.forEach((msg) => {
+            const div = document.createElement("div");
+            div.className = "marketPulseAlert";
+            div.textContent = String(msg || "");
+            alertsWrap.appendChild(div);
+          });
+        }
+        state.textContent = "Live";
+      } catch (_) {
+        state.textContent = "Reconnecting…";
+      }
+    };
+    source.onerror = () => {
+      state.textContent = "Reconnecting…";
+    };
+  })();
+</script>
 
 <div class="card stack12"><div class="toolbar">
   <details class="syncDetails" id="advancedProjectionWidget">
