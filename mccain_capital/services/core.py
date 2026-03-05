@@ -1414,10 +1414,37 @@ def dashboard_milestone_update():
     return redirect(url_for("dashboard", **params))
 
 
+def dashboard_options_mode_update():
+    active_raw = str(request.form.get("options_trade_active") or "").strip().lower()
+    active = active_raw in {"1", "true", "yes", "on"}
+    entry = app_runtime.parse_float(request.form.get("options_trade_entry") or "")
+    stop = app_runtime.parse_float(request.form.get("options_trade_stop") or "")
+    target = app_runtime.parse_float(request.form.get("options_trade_target") or "")
+
+    app_runtime.set_setting_value("options_trade_active", "1" if active else "0")
+    app_runtime.set_setting_value("options_trade_entry", "" if entry is None else f"{entry:.2f}")
+    app_runtime.set_setting_value("options_trade_stop", "" if stop is None else f"{stop:.2f}")
+    app_runtime.set_setting_value("options_trade_target", "" if target is None else f"{target:.2f}")
+    flash("Live options trade mode updated.", "success")
+
+    y = str(request.form.get("y") or "").strip()
+    m = str(request.form.get("m") or "").strip()
+    scope = str(request.form.get("scope") or "").strip().lower()
+    params: Dict[str, str] = {}
+    if y:
+        params["y"] = y
+    if m:
+        params["m"] = m
+    if scope in {"active", "all"}:
+        params["scope"] = scope
+    return redirect(url_for("dashboard", **params))
+
+
 def dashboard():
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
     from mccain_capital.services import market_worker
+    from mccain_capital.services import options_panel_service
 
     scope = trades_repo.account_scope_snapshot()
     scope_enabled = bool(scope.get("enabled"))
@@ -1607,8 +1634,28 @@ def dashboard():
             )
         except Exception:
             market_updated_at_human = market_updated_at
+
+    options_snapshot = options_panel_service.get_options_snapshot()
+    options_asof = str(options_snapshot.get("asof") or "")
+    options_asof_human = ""
+    if options_asof:
+        try:
+            dt = datetime.fromisoformat(options_asof)
+            options_asof_human = (
+                dt.astimezone(app_runtime.TZ)
+                .strftime("%b %d, %Y %I:%M:%S %p ET")
+                .replace(" 0", " ")
+            )
+        except Exception:
+            options_asof_human = options_asof
+    options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
+    options_underlying = dict(options_spx.get("underlying") or {})
+    options_contracts = list(options_spx.get("contracts") or [])
+    options_trade_mode = dict(options_spx.get("trade_mode") or {})
+
     if not current_app.config.get("TESTING"):
         market_worker.start_market_worker_once()
+        options_panel_service.start_options_worker_once()
 
     content = render_template(
         "dashboard.html",
@@ -1662,6 +1709,11 @@ def dashboard():
         market_alerts=market_snapshot.get("alerts") or [],
         market_updated_at=market_updated_at,
         market_updated_at_human=market_updated_at_human,
+        options_underlying=options_underlying,
+        options_contracts=options_contracts,
+        options_trade_mode=options_trade_mode,
+        options_asof=options_asof,
+        options_asof_human=options_asof_human,
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -1679,6 +1731,28 @@ def stream_market():
     def generate():
         while True:
             payload = market_worker.get_market_snapshot()
+            yield f"data: {json.dumps(payload)}\\n\\n"
+            if is_testing:
+                break
+            time.sleep(2)
+
+    response = Response(generate(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    return response
+
+
+def stream_options_panel():
+    from mccain_capital.services import options_panel_service
+
+    is_testing = bool(current_app.config.get("TESTING"))
+    if not is_testing:
+        options_panel_service.start_options_worker_once()
+
+    @stream_with_context
+    def generate():
+        while True:
+            payload = options_panel_service.get_options_snapshot()
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
                 break

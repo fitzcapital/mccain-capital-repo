@@ -40,6 +40,10 @@ def stream_market():
     return svc.stream_market()
 
 
+def stream_options_panel():
+    return svc.stream_options_panel()
+
+
 def command_calendar_page():
     return svc.command_calendar_page()
 
@@ -50,6 +54,10 @@ def dashboard_recompute_balances():
 
 def dashboard_milestone_update():
     return svc.dashboard_milestone_update()
+
+
+def dashboard_options_mode_update():
+    return svc.dashboard_options_mode_update()
 
 
 def candle_opens_page():

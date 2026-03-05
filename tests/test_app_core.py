@@ -322,6 +322,7 @@ def test_expected_endpoints_registered(app):
         "dashboard",
         "dashboard_recompute_balances",
         "stream_market",
+        "stream_options_panel",
         "candle_opens_page",
         "trades_page",
         "journal_home",
@@ -369,17 +370,30 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
         },
     )
     from mccain_capital.services import market_worker
+    from mccain_capital.services import options_panel_service
 
     monkeypatch.setattr(
         market_worker, "get_market_snapshot", lambda: {"prices": {}, "alerts": [], "updated_at": ""}
     )
     monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {
+            "asof": "",
+            "symbols": {"SPX": {"underlying": {}, "contracts": [], "trade_mode": {}}},
+        },
+    )
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
 
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Live Market Pulse" in resp.data
     assert b"/stream/market" in resp.data
     assert b'EventSource("/stream/market")' in resp.data
+    assert b"Live Options (SPX)" in resp.data
+    assert b"/stream/options_panel" in resp.data
+    assert b'EventSource("/stream/options_panel")' in resp.data
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):
@@ -404,6 +418,50 @@ def test_stream_market_sse_emits_json_payload(client, monkeypatch):
     assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
     assert b"data: " in resp.data
     assert b"QQQ" in resp.data
+
+
+def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {
+            "asof": "2026-03-05T12:00:00-05:00",
+            "symbols": {
+                "SPX": {
+                    "underlying": {"price": 5120.35, "change_pct": 0.42, "source": "massive"},
+                    "contracts": [
+                        {
+                            "label": "SPXW 2026-03-06 5125C",
+                            "mid": 24.10,
+                            "delta": 0.47,
+                            "vol": 9200,
+                            "oi": 18400,
+                            "spread": 0.60,
+                            "liq": "Tight",
+                        }
+                    ],
+                    "trade_mode": {
+                        "active": True,
+                        "entry": 5118.0,
+                        "stop": 5110.0,
+                        "target": 5135.0,
+                        "dist_stop": -10.35,
+                        "dist_target": 14.65,
+                    },
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(core_service.time, "sleep", lambda _: None)
+
+    resp = client.get("/stream/options_panel", follow_redirects=True)
+    assert resp.status_code == 200
+    assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
+    assert b"data: " in resp.data
+    assert b"SPXW 2026-03-06 5125C" in resp.data
 
 
 def test_candle_opens_page_renders_monthly_market_calendar(client):

@@ -18,6 +18,11 @@ def register(app):
     app.add_url_rule("/market-pulse", endpoint="market_pulse_page", view_func=h.market_pulse_page)
     app.add_url_rule("/stream/market", endpoint="stream_market", view_func=h.stream_market)
     app.add_url_rule(
+        "/stream/options_panel",
+        endpoint="stream_options_panel",
+        view_func=h.stream_options_panel,
+    )
+    app.add_url_rule(
         "/calendar", endpoint="command_calendar_page", view_func=h.command_calendar_page
     )
     app.add_url_rule(
@@ -30,6 +35,12 @@ def register(app):
         "/dashboard/milestone",
         endpoint="dashboard_milestone_update",
         view_func=h.dashboard_milestone_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/options-mode",
+        endpoint="dashboard_options_mode_update",
+        view_func=h.dashboard_options_mode_update,
         methods=["POST"],
     )
     app.add_url_rule("/candle-opens", endpoint="candle_opens_page", view_func=h.candle_opens_page)

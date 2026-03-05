@@ -4335,6 +4335,92 @@ body.marketPulseExecutionMode .researchOnly{
   font-size:12px;
   line-height:1.45;
 }
+.optionsUnderlyingRow{
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  gap:10px;
+  align-items:center;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.03);
+}
+.optionsSymbol{
+  font-weight:800;
+}
+.optionsPrice{
+  font-weight:800;
+}
+.optionsPct{
+  min-width:74px;
+  text-align:right;
+  font-weight:800;
+}
+.optionsTradeMode{
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;
+  padding:8px 10px;
+  background:rgba(255,255,255,.02);
+}
+.modeDot{
+  display:inline-block;
+  width:8px;
+  height:8px;
+  margin-right:6px;
+  border-radius:999px;
+  background:rgba(190, 203, 220, .5);
+}
+.modeDot.isLive{
+  background:#4ed8a2;
+  box-shadow:0 0 12px rgba(78,216,162,.4);
+}
+.optionsContracts{
+  display:grid;
+  gap:8px;
+}
+.optionsContractRow{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px 10px;
+  align-items:center;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:10px;
+  background:rgba(255,255,255,.03);
+  padding:8px 10px;
+}
+.optionsContractLabel{
+  font-weight:800;
+}
+.optionsContractMeta{
+  grid-column:1 / 2;
+  color:var(--muted);
+}
+.optionsLiqBadge{
+  grid-column:2 / 3;
+  grid-row:1 / span 2;
+  align-self:center;
+  justify-self:end;
+  font-size:11px;
+  font-weight:800;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.2);
+  padding:3px 8px;
+}
+.optionsLiqBadge.badge-tight{
+  color:#bafad6;
+  border-color:rgba(74, 216, 140, .5);
+  background:rgba(74, 216, 140, .18);
+}
+.optionsLiqBadge.badge-ok{
+  color:#c6ecff;
+  border-color:rgba(112, 184, 255, .5);
+  background:rgba(112, 184, 255, .16);
+}
+.optionsLiqBadge.badge-wide{
+  color:#ffd4b0;
+  border-color:rgba(255, 173, 104, .5);
+  background:rgba(255, 173, 104, .16);
+}
 @media (max-width: 980px){
   .workflowGrid{ grid-template-columns: repeat(3, minmax(0,1fr)); }
 }

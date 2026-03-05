@@ -83,6 +83,88 @@
   </div></div>
 
   <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Live Options (SPX)</div>
+    <div class="supportLead">
+      <span id="liveOptionsState">Connecting…</span>
+      <span class="tiny stack8" id="liveOptionsUpdated">{% if options_asof %}Updated {{ options_asof_human or options_asof }}{% else %}Waiting for first tick{% endif %}</span>
+    </div>
+    <div class="optionsUnderlyingRow" id="liveOptionsUnderlying">
+      <div class="optionsSymbol">SPX</div>
+      <div class="optionsPrice" data-under-price>{{ money(options_underlying.get('price')) if options_underlying.get('price') is not none else '—' }}</div>
+      <div class="optionsPct {% if options_underlying.get('change_pct') and options_underlying.get('change_pct') > 0 %}metaGreen{% elif options_underlying.get('change_pct') and options_underlying.get('change_pct') < 0 %}metaRed{% endif %}" data-under-pct>
+        {% if options_underlying.get('change_pct') is not none %}{{ '%.2f'|format(options_underlying.get('change_pct')) }}%{% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="optionsTradeMode" id="liveOptionsTradeMode">
+      <div class="tiny stack8">
+        <span class="modeDot {% if options_trade_mode.get('active') %}isLive{% endif %}"></span>
+        <strong data-mode-active>{% if options_trade_mode.get('active') %}ACTIVE{% else %}INACTIVE{% endif %}</strong>
+        · Entry <span data-mode-entry>{% if options_trade_mode.get('entry') is not none %}{{ '%.2f'|format(options_trade_mode.get('entry')) }}{% else %}—{% endif %}</span>
+        · Stop <span data-mode-stop>{% if options_trade_mode.get('stop') is not none %}{{ '%.2f'|format(options_trade_mode.get('stop')) }}{% else %}—{% endif %}</span>
+        · Target <span data-mode-target>{% if options_trade_mode.get('target') is not none %}{{ '%.2f'|format(options_trade_mode.get('target')) }}{% else %}—{% endif %}</span>
+      </div>
+      <div class="tiny stack6">
+        Dist to Stop <span data-mode-dist-stop>{% if options_trade_mode.get('dist_stop') is not none %}{{ '%.2f'|format(options_trade_mode.get('dist_stop')) }}{% else %}—{% endif %}</span>
+        · Dist to Target <span data-mode-dist-target>{% if options_trade_mode.get('dist_target') is not none %}+{{ '%.2f'|format(options_trade_mode.get('dist_target')) }}{% else %}—{% endif %}</span>
+      </div>
+    </div>
+    <div class="tiny stack8">Best Contracts (≤ 7 DTE)</div>
+    <div class="optionsContracts" id="liveOptionsContracts">
+      {% if options_contracts %}
+        {% for c in options_contracts[:5] %}
+          <div class="optionsContractRow">
+            <div class="optionsContractLabel">{{ c.get('label') or '—' }}</div>
+            <div class="tiny optionsContractMeta">
+              Mid {{ '%.2f'|format(c.get('mid')) if c.get('mid') is not none else '—' }}
+              · Δ {{ '%.2f'|format(c.get('delta')) if c.get('delta') is not none else '—' }}
+              · Vol {{ c.get('vol') if c.get('vol') is not none else '—' }}
+              · OI {{ c.get('oi') if c.get('oi') is not none else '—' }}
+              · Spr {{ '%.2f'|format(c.get('spread')) if c.get('spread') is not none else '—' }}
+            </div>
+            <div class="optionsLiqBadge badge-{{ (c.get('liq') or 'Wide')|lower }}">{{ c.get('liq') or 'Wide' }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="marketPulseAlert muted">Waiting for contracts…</div>
+      {% endif %}
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Set Trade Mode</summary>
+      <form method="post" action="/dashboard/options-mode" class="stack10">
+        <input type="hidden" name="y" value="{{ dashboard_year }}"/>
+        <input type="hidden" name="m" value="{{ dashboard_month }}"/>
+        <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+        <div class="row stack10">
+          <div>
+            <label>Active</label>
+            <select name="options_trade_active">
+              <option value="1" {% if options_trade_mode.get('active') %}selected{% endif %}>Yes</option>
+              <option value="0" {% if not options_trade_mode.get('active') %}selected{% endif %}>No</option>
+            </select>
+          </div>
+          <div>
+            <label>Entry</label>
+            <input name="options_trade_entry" inputmode="decimal" value="{% if options_trade_mode.get('entry') is not none %}{{ '%.2f'|format(options_trade_mode.get('entry')) }}{% endif %}"/>
+          </div>
+        </div>
+        <div class="row stack10">
+          <div>
+            <label>Stop</label>
+            <input name="options_trade_stop" inputmode="decimal" value="{% if options_trade_mode.get('stop') is not none %}{{ '%.2f'|format(options_trade_mode.get('stop')) }}{% endif %}"/>
+          </div>
+          <div>
+            <label>Target</label>
+            <input name="options_trade_target" inputmode="decimal" value="{% if options_trade_mode.get('target') is not none %}{{ '%.2f'|format(options_trade_mode.get('target')) }}{% endif %}"/>
+          </div>
+        </div>
+        <div class="rightActions">
+          <button class="btn primary" type="submit">Save Trade Mode</button>
+        </div>
+      </form>
+    </details>
+  </div></div>
+
+  <div class="card supportCard"><div class="toolbar">
     <div class="pill">Milestone</div>
     <div class="supportLead">{{ milestone.name }}</div>
     <div class="supportBody">
@@ -629,6 +711,129 @@
             alertsWrap.appendChild(div);
           });
         }
+        state.textContent = "Live";
+      } catch (_) {
+        state.textContent = "Reconnecting…";
+      }
+    };
+    source.onerror = () => {
+      state.textContent = "Reconnecting…";
+    };
+  })();
+</script>
+
+<script>
+  (() => {
+    const state = document.getElementById("liveOptionsState");
+    const updated = document.getElementById("liveOptionsUpdated");
+    const underWrap = document.getElementById("liveOptionsUnderlying");
+    const contractsWrap = document.getElementById("liveOptionsContracts");
+    const modeWrap = document.getElementById("liveOptionsTradeMode");
+    if (!state || !updated || !underWrap || !contractsWrap || !modeWrap || typeof EventSource === "undefined") return;
+
+    const fmtMoney = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "—";
+      return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+    };
+    const fmtNum = (v, digits = 2) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "—";
+      return n.toFixed(digits);
+    };
+    const fmtSigned = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "—";
+      return `${n > 0 ? "+" : ""}${n.toFixed(2)}`;
+    };
+    const fmtPct = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "—";
+      return `${n.toFixed(2)}%`;
+    };
+    const fmtInt = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "—";
+      return n.toLocaleString("en-US");
+    };
+    const fmtUpdated = (iso) => {
+      try {
+        if (!iso) return "Waiting for first tick";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return `Updated ${iso}`;
+        const text = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        }).format(d);
+        return `Updated ${text} ET`;
+      } catch (_) {
+        return `Updated ${iso || ""}`;
+      }
+    };
+
+    const source = new EventSource("/stream/options_panel");
+    state.textContent = "Live";
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        const spx = ((payload.symbols || {}).SPX || {});
+        const under = spx.underlying || {};
+        const mode = spx.trade_mode || {};
+        const contracts = Array.isArray(spx.contracts) ? spx.contracts.slice(0, 5) : [];
+
+        const underPrice = underWrap.querySelector("[data-under-price]");
+        const underPct = underWrap.querySelector("[data-under-pct]");
+        if (underPrice) underPrice.textContent = fmtMoney(under.price);
+        if (underPct) {
+          underPct.textContent = fmtPct(under.change_pct);
+          underPct.classList.remove("metaGreen", "metaRed");
+          const pct = Number(under.change_pct);
+          if (Number.isFinite(pct) && pct > 0) underPct.classList.add("metaGreen");
+          if (Number.isFinite(pct) && pct < 0) underPct.classList.add("metaRed");
+        }
+
+        const dot = modeWrap.querySelector(".modeDot");
+        const active = modeWrap.querySelector("[data-mode-active]");
+        const entry = modeWrap.querySelector("[data-mode-entry]");
+        const stop = modeWrap.querySelector("[data-mode-stop]");
+        const target = modeWrap.querySelector("[data-mode-target]");
+        const distStop = modeWrap.querySelector("[data-mode-dist-stop]");
+        const distTarget = modeWrap.querySelector("[data-mode-dist-target]");
+        const isActive = Boolean(mode.active);
+        if (dot) dot.classList.toggle("isLive", isActive);
+        if (active) active.textContent = isActive ? "ACTIVE" : "INACTIVE";
+        if (entry) entry.textContent = fmtNum(mode.entry);
+        if (stop) stop.textContent = fmtNum(mode.stop);
+        if (target) target.textContent = fmtNum(mode.target);
+        if (distStop) distStop.textContent = fmtSigned(mode.dist_stop);
+        if (distTarget) distTarget.textContent = fmtSigned(mode.dist_target);
+
+        contractsWrap.innerHTML = "";
+        if (!contracts.length) {
+          contractsWrap.innerHTML = '<div class="marketPulseAlert muted">Waiting for contracts…</div>';
+        } else {
+          contracts.forEach((c) => {
+            const row = document.createElement("div");
+            row.className = "optionsContractRow";
+            const liq = String(c.liq || "Wide");
+            row.innerHTML = `
+              <div class="optionsContractLabel">${String(c.label || "—")}</div>
+              <div class="tiny optionsContractMeta">
+                Mid ${fmtNum(c.mid)} · Δ ${fmtNum(c.delta)} · Vol ${fmtInt(c.vol)} · OI ${fmtInt(c.oi)} · Spr ${fmtNum(c.spread)}
+              </div>
+              <div class="optionsLiqBadge badge-${liq.toLowerCase()}">${liq}</div>
+            `;
+            contractsWrap.appendChild(row);
+          });
+        }
+
+        updated.textContent = fmtUpdated(payload.asof || "");
         state.textContent = "Live";
       } catch (_) {
         state.textContent = "Reconnecting…";
