@@ -728,10 +728,11 @@ def _market_pulse_finnhub_candles(symbol: str, now_et: datetime) -> List[Dict[st
 
 
 def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
+    from mccain_capital.services import market_data_service
+
     started = time.perf_counter()
     now_et = app_runtime.now_et()
     fetched_label = now_et.strftime("%b %d, %Y %I:%M:%S %p ET")
-    fetched_epoch = int(now_et.timestamp())
     fetched_at = _market_pulse_cache.get("fetched_at")
     cached_payload = _market_pulse_cache.get("payload")
     if (
@@ -742,50 +743,19 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
     ):
         return _market_pulse_force_symbol_set(cached_payload)
 
-    disk_payload = _load_market_pulse_disk_cache()
-    cache_seed = cached_payload if isinstance(cached_payload, dict) else disk_payload
-    cached_rows = _market_pulse_cached_row_map(cache_seed)
-
-    quotes: List[Dict[str, Any]] = []
-    live_count = 0
-    for spec in MARKET_PULSE_SYMBOLS:
-        payload = _market_pulse_yahoo_chart_payload(spec["symbol"])
-        row = _market_pulse_yahoo_chart_record(
-            payload,
-            spec,
-            cached_rows.get(spec["label"]),
-            fetched_label=fetched_label,
-            fetched_epoch=fetched_epoch,
-        )
-        if str(row.get("data_state") or "") == "live":
-            live_count += 1
-        quotes.append(row)
-    quotes = _market_pulse_preserve_cached_rows(quotes, cached_rows)
-    counts = {"live": 0, "delayed": 0, "cached": 0, "missing": 0}
-    for row in quotes:
-        state = str(row.get("data_state") or "missing").lower()
-        counts[state if state in counts else "missing"] += 1
-    latency_ms = int((time.perf_counter() - started) * 1000)
-
-    if not live_count:
-        if isinstance(cached_payload, dict):
-            return _market_pulse_force_symbol_set(cached_payload)
-        if isinstance(disk_payload, dict):
-            _market_pulse_cache["payload"] = disk_payload
-            return _market_pulse_force_symbol_set(disk_payload)
+    symbols = [str(spec.get("symbol") or "").strip().upper() for spec in MARKET_PULSE_SYMBOLS]
+    quotes_by_symbol = market_data_service.get_watchlist_massive(symbols)
+    if not quotes_by_symbol:
         return {
             "available": False,
             "fetched_at": "",
-            "source_label": "Yahoo Finance chart feed",
-            "source_note": (
-                "Live market data is unavailable because the app runtime cannot currently reach the Yahoo quote host. "
-                "A cached snapshot will be shown when available."
-            ),
+            "source_label": "Massive market feed",
+            "source_note": "Massive feed unavailable or missing entitlement for requested symbols.",
             "quotes": [],
             "integrity": {
-                "latency_ms": latency_ms,
+                "latency_ms": int((time.perf_counter() - started) * 1000),
                 "forced_refresh": bool(force_refresh),
-                "cached_only": True,
+                "cached_only": False,
                 "live_count": 0,
                 "delayed_count": 0,
                 "cached_count": 0,
@@ -794,15 +764,61 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
             },
         }
 
+    quotes: List[Dict[str, Any]] = []
+    counts = {"live": 0, "delayed": 0, "cached": 0, "missing": 0}
+    for spec in MARKET_PULSE_SYMBOLS:
+        symbol = str(spec.get("symbol") or "").strip().upper()
+        quote = dict(quotes_by_symbol.get(symbol) or {})
+        price = quote.get("price")
+        pct = quote.get("pct_change")
+        as_of = str(quote.get("as_of") or "")
+        asof_epoch = 0
+        if as_of:
+            try:
+                asof_epoch = int(datetime.fromisoformat(as_of).timestamp())
+            except Exception:
+                asof_epoch = 0
+        price_num = float(price) if isinstance(price, (int, float)) else None
+        pct_num = float(pct) if isinstance(pct, (int, float)) else 0.0
+        prev_close = (
+            price_num / (1.0 + (pct_num / 100.0))
+            if (price_num is not None and abs(100.0 + pct_num) > 1e-9)
+            else None
+        )
+        change = (
+            (price_num - prev_close) if (price_num is not None and prev_close is not None) else 0.0
+        )
+        state = "live" if price_num is not None else "missing"
+        counts[state] += 1
+        quotes.append(
+            {
+                "symbol": symbol,
+                "label": spec["label"],
+                "group": spec["group"],
+                "focus": spec["focus"],
+                "name": spec["label"],
+                "price": price_num,
+                "change": change,
+                "change_pct": pct_num,
+                "volume": 0,
+                "avg_volume": 0,
+                "market_state": "Live" if state == "live" else "Unavailable",
+                "day_range": "—",
+                "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
+                "asof": as_of or fetched_label,
+                "asof_epoch": asof_epoch,
+                "data_state": state,
+                "data_status_label": "Live" if state == "live" else "Missing",
+                "mini_series": [price_num] if price_num is not None else [],
+                "series": [],
+            }
+        )
+    latency_ms = int((time.perf_counter() - started) * 1000)
     result = {
         "available": any(q.get("price") is not None for q in quotes),
         "fetched_at": fetched_label,
-        "source_label": "Yahoo Finance chart feed",
-        "source_note": (
-            "Live quote data is being derived from Yahoo chart metadata."
-            if live_count == len(MARKET_PULSE_SYMBOLS)
-            else "Yahoo chart data is partially available; missing fields may use the last cached snapshot."
-        ),
+        "source_label": "Massive market feed",
+        "source_note": "Live quote data is being served by Massive.",
         "quotes": quotes,
         "integrity": {
             "latency_ms": latency_ms,
@@ -1417,9 +1433,6 @@ def dashboard_milestone_update():
 def dashboard():
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
-    from mccain_capital.services import gamma_map_service
-    from mccain_capital.services import market_worker
-    from mccain_capital.services import options_panel_service
 
     scope = trades_repo.account_scope_snapshot()
     scope_enabled = bool(scope.get("enabled"))
@@ -1596,53 +1609,6 @@ def dashboard():
         starting_balance=float(balance_integrity.get("starting_balance") or 50000.0),
         avg_daily_profit=float(proj.get("avg") or 0.0),
     )
-    market_snapshot = market_worker.get_market_snapshot()
-    market_updated_at = str(market_snapshot.get("updated_at") or "")
-    market_updated_at_human = ""
-    if market_updated_at:
-        try:
-            dt = datetime.fromisoformat(market_updated_at)
-            market_updated_at_human = (
-                dt.astimezone(app_runtime.TZ)
-                .strftime("%b %d, %Y %I:%M:%S %p ET")
-                .replace(" 0", " ")
-            )
-        except Exception:
-            market_updated_at_human = market_updated_at
-
-    options_snapshot = options_panel_service.get_options_snapshot()
-    options_asof = str(options_snapshot.get("asof") or "")
-    options_asof_human = ""
-    if options_asof:
-        try:
-            dt = datetime.fromisoformat(options_asof)
-            options_asof_human = (
-                dt.astimezone(app_runtime.TZ)
-                .strftime("%b %d, %Y %I:%M:%S %p ET")
-                .replace(" 0", " ")
-            )
-        except Exception:
-            options_asof_human = options_asof
-    options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
-    options_underlying = dict(options_spx.get("underlying") or {})
-    options_contracts = list(options_spx.get("contracts") or [])
-    gamma_snapshot = gamma_map_service.get_gamma_snapshot()
-    options_gamma = {
-        "gamma_flip": gamma_snapshot.get("gamma_flip"),
-        "call_wall": gamma_snapshot.get("call_wall"),
-        "put_wall": gamma_snapshot.get("put_wall"),
-        "net_gamma": gamma_snapshot.get("net_gamma_label") or gamma_snapshot.get("net_gex") or "—",
-        "regime": gamma_snapshot.get("regime") or "unavailable",
-        "bias": gamma_snapshot.get("bias") or "insufficient_data",
-        "gamma_walls_top3": list(gamma_snapshot.get("gamma_walls_top3") or []),
-        "void_zone": dict(gamma_snapshot.get("void_zone") or {"start": None, "end": None}),
-    }
-
-    if not current_app.config.get("TESTING"):
-        market_worker.start_market_worker_once()
-        options_panel_service.start_options_worker_once()
-        gamma_map_service.start_gamma_worker_once()
-
     content = render_template(
         "dashboard.html",
         heat=heat,
@@ -1690,17 +1656,6 @@ def dashboard():
         dashboard_year=year,
         dashboard_month=month,
         milestone=milestone,
-        market_watchlist=list(market_worker.WATCHLIST),
-        market_prices=market_snapshot.get("prices") or {},
-        market_alerts=market_snapshot.get("alerts") or [],
-        market_updated_at=market_updated_at,
-        market_updated_at_human=market_updated_at_human,
-        options_underlying=options_underlying,
-        options_gamma=options_gamma,
-        options_contracts=options_contracts,
-        options_asof=options_asof,
-        options_asof_human=options_asof_human,
-        gamma_snapshot=gamma_snapshot,
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -1765,33 +1720,25 @@ def stream_options_panel():
     return response
 
 
-def gamma_map_page():
-    from mccain_capital.services import gamma_map_service
-
-    is_testing = bool(current_app.config.get("TESTING"))
-    if not is_testing:
-        gamma_map_service.start_gamma_worker_once()
-
-    snapshot = gamma_map_service.get_gamma_snapshot()
-    if not snapshot.get("asof") and not is_testing:
-        try:
-            snapshot = gamma_map_service.run_gamma_refresh_once()
-        except Exception:
-            snapshot = gamma_map_service.get_gamma_snapshot()
-
-    content = render_template(
-        "core/gamma_map.html",
-        gamma=snapshot,
-        money=app_runtime.money,
-        money_compact=_money_compact,
-    )
-    return render_page(content, active="market-pulse", title="McCain Capital · Gamma Map")
-
-
 def market_pulse_page():
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
     force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     now_et = app_runtime.now_et()
+    if not current_app.config.get("TESTING"):
+        options_panel_service.start_options_worker_once()
+        gamma_map_service.start_gamma_worker_once()
     snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
+    gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    if force_refresh or not gamma_snapshot.get("asof"):
+        try:
+            gamma_snapshot = gamma_map_service.run_gamma_refresh_once()
+        except Exception:
+            gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    options_snapshot = options_panel_service.get_options_snapshot()
+    options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
+    options_contracts = list(options_spx.get("contracts") or [])
     news_snapshot = _market_news_snapshot()
     quotes = _market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
     alert = _market_pulse_alert(quotes)
@@ -1816,6 +1763,8 @@ def market_pulse_page():
         guardrail=guardrail,
         market_hours=bool(_market_pulse_market_hours(now_et)),
         stats=stats,
+        gamma_snapshot=gamma_snapshot,
+        options_contracts=options_contracts,
         news_available=bool(news_snapshot.get("available")),
         news_source_note=str(news_snapshot.get("source_note") or ""),
         macro_events=list(news_snapshot.get("macro_events") or []),

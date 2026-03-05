@@ -24,6 +24,9 @@ YF_SYMBOL_ALIASES = {
 
 MASSIVE_SYMBOL_ALIASES = {
     "SPX": "I:SPX",
+    "^GSPC": "I:SPX",
+    "^VIX": "I:VIX",
+    "VIX": "I:VIX",
 }
 
 
@@ -287,4 +290,16 @@ def get_watchlist(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         if quote.get("price") is None and use_massive:
             quote = _yf_watch_quote(symbol)
         snapshot[symbol] = quote
+    return snapshot
+
+
+def get_watchlist_massive(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+    snapshot: Dict[str, Dict[str, Any]] = {}
+    if not _massive_api_key():
+        return snapshot
+    for raw in symbols:
+        symbol = str(raw or "").strip().upper()
+        if not symbol:
+            continue
+        snapshot[symbol] = _massive_watch_quote(symbol)
     return snapshot

@@ -36,10 +36,6 @@ def market_pulse_page():
     return svc.market_pulse_page()
 
 
-def gamma_map_page():
-    return svc.gamma_map_page()
-
-
 def stream_market():
     return svc.stream_market()
 

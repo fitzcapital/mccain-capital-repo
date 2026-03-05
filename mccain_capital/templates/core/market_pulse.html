@@ -2,7 +2,7 @@
   <div class="marketPulseLoadingCard">
     <div class="marketPulseSpinner"></div>
     <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
-    <div class="marketPulseLoadingSub">Pulling Yahoo chart data and rebuilding tape context…</div>
+    <div class="marketPulseLoadingSub">Pulling Massive data and rebuilding tape context…</div>
   </div>
 </div>
 
@@ -118,11 +118,60 @@
     <div class="supportLead">{{ context.headline_note }}</div>
     <div class="supportBody">Use this page as a fast read on what can move the index, not as a replacement for your levels.</div>
   </div></div>
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Gamma Proxy</div>
-    <div class="supportLead">{{ context.gamma_label }}</div>
-    <div class="supportBody">{{ context.gamma_note }}</div>
-    <div class="supportMeta">VIX remains a proxy, not true dealer gamma exposure.</div>
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">SPX Gamma</div>
+    <div class="supportLead">
+      Spot {% if gamma_snapshot.get('spot') is not none %}{{ '%.2f'|format(gamma_snapshot.get('spot')) }}{% else %}—{% endif %}
+      · Net {{ gamma_snapshot.get('net_gamma_label') or gamma_snapshot.get('net_gex') or '—' }}
+    </div>
+    <div class="optionsGammaGrid">
+      <div class="optionsGammaCell">
+        <div class="tiny">Gamma Flip</div>
+        <strong>{% if gamma_snapshot.get('gamma_flip') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip')) }}{% else %}—{% endif %}</strong>
+      </div>
+      <div class="optionsGammaCell">
+        <div class="tiny">Call Wall</div>
+        <strong>{% if gamma_snapshot.get('call_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall')) }}{% else %}—{% endif %}</strong>
+      </div>
+      <div class="optionsGammaCell">
+        <div class="tiny">Put Wall</div>
+        <strong>{% if gamma_snapshot.get('put_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall')) }}{% else %}—{% endif %}</strong>
+      </div>
+      <div class="optionsGammaCell">
+        <div class="tiny">Bias</div>
+        <strong>{{ gamma_snapshot.get('bias') or 'insufficient_data' }}</strong>
+      </div>
+    </div>
+    <div class="tiny stack8">
+      Updated {{ gamma_snapshot.get('asof') or '—' }}
+      {% set vz = gamma_snapshot.get('void_zone') or {} %}
+      {% if vz.get('start') is not none and vz.get('end') is not none %}
+        · Void {{ vz.get('start') }} to {{ vz.get('end') }}
+      {% endif %}
+      {% if gamma_snapshot.get('gamma_walls_top3') %}
+        · Walls {{ gamma_snapshot.get('gamma_walls_top3')|join(', ') }}
+      {% endif %}
+    </div>
+    <div class="tiny stack8">Best Contracts (≤ 7 DTE)</div>
+    <div class="optionsContracts">
+      {% if options_contracts %}
+        {% for c in options_contracts[:5] %}
+          <div class="optionsContractRow">
+            <div class="optionsContractLabel">{{ c.get('label') or '—' }}</div>
+            <div class="tiny optionsContractMeta">
+              Mid {{ '%.2f'|format(c.get('mid')) if c.get('mid') is not none else '—' }}
+              · Δ {{ '%.2f'|format(c.get('delta')) if c.get('delta') is not none else '—' }}
+              · Vol {{ c.get('vol') if c.get('vol') is not none else '—' }}
+              · OI {{ c.get('oi') if c.get('oi') is not none else '—' }}
+              · Spr {{ '%.2f'|format(c.get('spread')) if c.get('spread') is not none else '—' }}
+            </div>
+            <div class="optionsLiqBadge badge-{{ (c.get('liq') or 'Wide')|lower }}">{{ c.get('liq') or 'Wide' }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="marketPulseAlert muted">No contract rows loaded yet.</div>
+      {% endif %}
+    </div>
   </div></div>
   <div class="card supportCard subtleCard"><div class="toolbar">
     <div class="pill">Leadership</div>

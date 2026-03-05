@@ -16,7 +16,6 @@ def register(app):
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)
     app.add_url_rule("/market-pulse", endpoint="market_pulse_page", view_func=h.market_pulse_page)
-    app.add_url_rule("/gamma-map", endpoint="gamma_map_page", view_func=h.gamma_map_page)
     app.add_url_rule("/stream/market", endpoint="stream_market", view_func=h.stream_market)
     app.add_url_rule(
         "/stream/options_panel",
