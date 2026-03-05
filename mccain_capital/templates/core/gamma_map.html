@@ -1,0 +1,94 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="dashboardHeroHead">
+      <div>
+        <div class="pill">📍 Gamma Map</div>
+        <h2 class="pageTitle">SPX Gamma Wall Engine</h2>
+        <div class="dashboardLead stack8">0DTE + 1DTE exposures with live walls, voids, and flip context.</div>
+      </div>
+      <div class="rightActions">
+        <a class="btn primary" href="/dashboard">Back To Dashboard</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dashboardSupportGrid">
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Executive Summary</div>
+    <div class="supportLead">Current Spot {{ money(gamma.get('spot')) if gamma.get('spot') is not none else '—' }}</div>
+    <div class="supportBody">
+      Regime <strong>{{ gamma.get('regime') or 'unavailable' }}</strong>
+      · Net GEX <strong>{{ gamma.get('net_gamma_label') or gamma.get('net_gex') or '—' }}</strong>
+      · Bias <strong>{{ gamma.get('bias') or 'insufficient_data' }}</strong>
+    </div>
+    <div class="tiny stack8">
+      Gamma Flip {{ gamma.get('gamma_flip') if gamma.get('gamma_flip') is not none else '—' }}
+      · Call Wall {{ gamma.get('call_wall') if gamma.get('call_wall') is not none else '—' }}
+      · Put Wall {{ gamma.get('put_wall') if gamma.get('put_wall') is not none else '—' }}
+    </div>
+    <div class="tiny stack8">
+      Top 3 Walls:
+      {% set walls = gamma.get('gamma_walls_top3') or [] %}
+      {% if walls %}
+        {{ walls|join(', ') }}
+      {% else %}
+        —
+      {% endif %}
+      · Void:
+      {% set vz = gamma.get('void_zone') or {} %}
+      {% if vz.get('start') is not none and vz.get('end') is not none %}
+        {{ vz.get('start') }} to {{ vz.get('end') }}
+      {% else %}
+        —
+      {% endif %}
+    </div>
+    <div class="tiny stack8">
+      Updated {{ gamma.get('asof') or '—' }}
+      · Refresh {{ ((gamma.get('diagnostics') or {}).get('refresh_ms') or 0) }}ms
+      · Rows {{ ((gamma.get('diagnostics') or {}).get('contracts_used') or 0) }}
+    </div>
+    <div class="rightActions stack8">
+      {% set paths = gamma.get('paths') or {} %}
+      {% if paths.get('csv') %}
+        <a class="btn" href="/export.json">Export JSON</a>
+      {% endif %}
+      {% if paths.get('csv') %}
+        <span class="btn ctaLink" title="{{ paths.get('csv') }}">CSV: gamma_data.csv</span>
+      {% endif %}
+      {% if paths.get('png') %}
+        <span class="btn ctaLink" title="{{ paths.get('png') }}">PNG: gamma_map.png</span>
+      {% endif %}
+    </div>
+  </div></div>
+</div>
+
+<div class="card summaryPanel"><div class="toolbar">
+  <div class="pill">GEX By Strike</div>
+  <div id="gammaGexChart" style="width:100%; min-height:420px;"></div>
+  <div class="hr"></div>
+  <div class="pill">VEX By Strike</div>
+  <div id="gammaVexChart" style="width:100%; min-height:360px;"></div>
+</div></div>
+
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+  (() => {
+    const gexWrap = document.getElementById("gammaGexChart");
+    const vexWrap = document.getElementById("gammaVexChart");
+    if (!gexWrap || !vexWrap || typeof Plotly === "undefined") return;
+    const chart = {{ (gamma.get('chart_json') or {})|tojson }};
+    const gex = chart.gex || null;
+    const vex = chart.vex || null;
+    if (gex && gex.data && gex.layout) {
+      Plotly.newPlot(gexWrap, gex.data, gex.layout, {displayModeBar: false, responsive: true});
+    } else {
+      gexWrap.innerHTML = '<div class="tiny muted">No GEX chart data yet.</div>';
+    }
+    if (vex && vex.data && vex.layout) {
+      Plotly.newPlot(vexWrap, vex.data, vex.layout, {displayModeBar: false, responsive: true});
+    } else {
+      vexWrap.innerHTML = '<div class="tiny muted">No VEX chart data yet.</div>';
+    }
+  })();
+</script>

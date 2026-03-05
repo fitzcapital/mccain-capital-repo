@@ -25,6 +25,7 @@ def test_core_pages_are_reachable(client):
     for path in [
         "/",
         "/dashboard",
+        "/gamma-map",
         "/candle-opens",
         "/trades",
         "/journal",
@@ -323,6 +324,7 @@ def test_expected_endpoints_registered(app):
         "dashboard_recompute_balances",
         "stream_market",
         "stream_options_panel",
+        "gamma_map_page",
         "candle_opens_page",
         "trades_page",
         "journal_home",
@@ -371,6 +373,7 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
     )
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
+    from mccain_capital.services import gamma_map_service
 
     monkeypatch.setattr(
         market_worker, "get_market_snapshot", lambda: {"prices": {}, "alerts": [], "updated_at": ""}
@@ -385,6 +388,22 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
         },
     )
     monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {
+            "asof": "2026-03-05T12:00:00-05:00",
+            "gamma_flip": 5110.0,
+            "call_wall": 5150.0,
+            "put_wall": 5050.0,
+            "net_gamma_label": "+2.1B",
+            "regime": "positive",
+            "bias": "buy_dips_above_flip",
+            "gamma_walls_top3": [5150.0, 5125.0, 5100.0],
+            "void_zone": {"start": 5060.0, "end": 5090.0},
+        },
+    )
+    monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
 
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
@@ -393,14 +412,17 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
     assert b'EventSource("/stream/market")' in resp.data
     assert b"SPX Gamma" in resp.data
     assert b"/stream/options_panel" not in resp.data
+    assert b"/gamma-map" in resp.data
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
+    from mccain_capital.services import gamma_map_service
 
     monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
     monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
     monkeypatch.setattr(
         market_worker,
         "get_market_snapshot",
@@ -417,6 +439,26 @@ def test_stream_market_sse_emits_json_payload(client, monkeypatch):
         "get_options_snapshot",
         lambda: {"asof": "2026-03-05T12:00:00-05:00", "symbols": {"SPX": {}}},
     )
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {
+            "asof": "2026-03-05T12:00:00-05:00",
+            "spot": 5120.35,
+            "regime": "positive",
+            "net_gex": 2100000000.0,
+            "gamma_flip": 5110.0,
+            "call_wall": 5150.0,
+            "put_wall": 5050.0,
+            "gamma_walls_top3": [5150.0, 5125.0, 5100.0],
+            "void_zone": {"start": 5060.0, "end": 5090.0},
+            "bias": "buy_dips_above_flip",
+            "paths": {
+                "csv": "/app/persistent/uploads/gamma_data.csv",
+                "png": "/app/persistent/uploads/gamma_map.png",
+            },
+        },
+    )
     monkeypatch.setattr(core_service.time, "sleep", lambda _: None)
 
     resp = client.get("/stream/market", follow_redirects=True)
@@ -425,6 +467,43 @@ def test_stream_market_sse_emits_json_payload(client, monkeypatch):
     assert b"data: " in resp.data
     assert b"QQQ" in resp.data
     assert b"options" in resp.data
+    assert b"gamma_map" in resp.data
+
+
+def test_gamma_map_page_renders_summary_and_charts(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+
+    monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {
+            "asof": "2026-03-05T12:00:00-05:00",
+            "spot": 5120.35,
+            "regime": "positive",
+            "net_gex": 2100000000.0,
+            "net_gamma_label": "+2.10B",
+            "gamma_flip": 5110.0,
+            "call_wall": 5150.0,
+            "put_wall": 5050.0,
+            "gamma_walls_top3": [5150.0, 5125.0, 5100.0],
+            "void_zone": {"start": 5060.0, "end": 5090.0},
+            "bias": "buy_dips_above_flip",
+            "paths": {
+                "csv": "/app/persistent/uploads/gamma_data.csv",
+                "png": "/app/persistent/uploads/gamma_map.png",
+            },
+            "diagnostics": {"refresh_ms": 250, "contracts_used": 42},
+            "chart_json": {"gex": {"data": [], "layout": {}}, "vex": {"data": [], "layout": {}}},
+        },
+    )
+
+    resp = client.get("/gamma-map", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"SPX Gamma Wall Engine" in resp.data
+    assert b"Executive Summary" in resp.data
+    assert b"gamma_data.csv" in resp.data
+    assert b"gamma_map.png" in resp.data
 
 
 def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):

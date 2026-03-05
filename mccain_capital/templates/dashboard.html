@@ -86,7 +86,7 @@
     <div class="pill">SPX Gamma</div>
     <div class="supportLead">
       <span id="liveOptionsState">Connecting…</span>
-      <span class="tiny stack8" id="liveOptionsUpdated">{% if options_asof %}Updated {{ options_asof_human or options_asof }}{% else %}Waiting for first tick{% endif %}</span>
+      <span class="tiny stack8" id="liveOptionsUpdated">{% if gamma_snapshot and gamma_snapshot.get('asof') %}Updated {{ gamma_snapshot.get('asof') }}{% else %}Waiting for first tick{% endif %}</span>
     </div>
     <div class="optionsUnderlyingRow" id="liveOptionsUnderlying">
       <div class="optionsSymbol">SPX</div>
@@ -113,6 +113,16 @@
         <strong data-gamma-net>{{ options_gamma.get('net_gamma') or '—' }}</strong>
       </div>
     </div>
+    <div class="tiny stack8" id="liveGammaMeta">
+      Regime {{ options_gamma.get('regime') or 'unavailable' }}
+      · Bias {{ options_gamma.get('bias') or 'insufficient_data' }}
+      {% if options_gamma.get('gamma_walls_top3') %}
+        · Top walls {{ options_gamma.get('gamma_walls_top3')|join(', ') }}
+      {% endif %}
+      {% if options_gamma.get('void_zone') and options_gamma.get('void_zone').get('start') is not none %}
+        · Void {{ options_gamma.get('void_zone').get('start') }} to {{ options_gamma.get('void_zone').get('end') }}
+      {% endif %}
+    </div>
     <div class="tiny stack8">Best Contracts (≤ 7 DTE)</div>
     <div class="optionsContracts" id="liveOptionsContracts">
       {% if options_contracts %}
@@ -132,6 +142,9 @@
       {% else %}
         <div class="marketPulseAlert muted">Waiting for contracts…</div>
       {% endif %}
+    </div>
+    <div class="rightActions stack8">
+      <a class="btn primary" href="/gamma-map">Open Gamma Map</a>
     </div>
   </div></div>
 
@@ -700,8 +713,9 @@
     const updated = document.getElementById("liveOptionsUpdated");
     const underWrap = document.getElementById("liveOptionsUnderlying");
     const gammaWrap = document.getElementById("liveOptionsGamma");
+    const gammaMeta = document.getElementById("liveGammaMeta");
     const contractsWrap = document.getElementById("liveOptionsContracts");
-    if (!state || !updated || !underWrap || !gammaWrap || !contractsWrap || typeof EventSource === "undefined") return;
+    if (!state || !updated || !underWrap || !gammaWrap || !contractsWrap || !gammaMeta || typeof EventSource === "undefined") return;
 
     const fmtMoney = (v) => {
       const n = Number(v);
@@ -748,9 +762,10 @@
     const updateFromPayload = (payload) => {
       try {
         const options = payload.options || payload;
+        const gammaMap = payload.gamma_map || {};
         const spx = ((options.symbols || {}).SPX || {});
         const under = spx.underlying || {};
-        const gamma = spx.gamma || {};
+        const gamma = gammaMap || spx.gamma || {};
         const contracts = Array.isArray(spx.contracts) ? spx.contracts.slice(0, 5) : [];
 
         const underPrice = underWrap.querySelector("[data-under-price]");
@@ -771,7 +786,13 @@
         if (gammaFlip) gammaFlip.textContent = fmtNum(gamma.gamma_flip, 0);
         if (gammaCall) gammaCall.textContent = fmtNum(gamma.call_wall, 0);
         if (gammaPut) gammaPut.textContent = fmtNum(gamma.put_wall, 0);
-        if (gammaNet) gammaNet.textContent = String(gamma.net_gamma || "—");
+        if (gammaNet) gammaNet.textContent = String(gamma.net_gamma_label || gamma.net_gamma || fmtNum(gamma.net_gex));
+        const walls = Array.isArray(gamma.gamma_walls_top3) ? gamma.gamma_walls_top3 : [];
+        const vz = gamma.void_zone || {};
+        gammaMeta.textContent =
+          `Regime ${String(gamma.regime || "unavailable")} · Bias ${String(gamma.bias || "insufficient_data")}`
+          + (walls.length ? ` · Top walls ${walls.join(", ")}` : "")
+          + ((vz.start != null && vz.end != null) ? ` · Void ${vz.start} to ${vz.end}` : "");
 
         contractsWrap.innerHTML = "";
         if (!contracts.length) {
@@ -792,7 +813,7 @@
           });
         }
 
-        updated.textContent = fmtUpdated(options.asof || "");
+        updated.textContent = fmtUpdated(gammaMap.asof || options.asof || "");
         state.textContent = "Live";
       } catch (_) {
         state.textContent = "Reconnecting…";

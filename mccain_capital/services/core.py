@@ -1417,6 +1417,7 @@ def dashboard_milestone_update():
 def dashboard():
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
+    from mccain_capital.services import gamma_map_service
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
 
@@ -1624,12 +1625,23 @@ def dashboard():
             options_asof_human = options_asof
     options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
     options_underlying = dict(options_spx.get("underlying") or {})
-    options_gamma = dict(options_spx.get("gamma") or {})
     options_contracts = list(options_spx.get("contracts") or [])
+    gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    options_gamma = {
+        "gamma_flip": gamma_snapshot.get("gamma_flip"),
+        "call_wall": gamma_snapshot.get("call_wall"),
+        "put_wall": gamma_snapshot.get("put_wall"),
+        "net_gamma": gamma_snapshot.get("net_gamma_label") or gamma_snapshot.get("net_gex") or "—",
+        "regime": gamma_snapshot.get("regime") or "unavailable",
+        "bias": gamma_snapshot.get("bias") or "insufficient_data",
+        "gamma_walls_top3": list(gamma_snapshot.get("gamma_walls_top3") or []),
+        "void_zone": dict(gamma_snapshot.get("void_zone") or {"start": None, "end": None}),
+    }
 
     if not current_app.config.get("TESTING"):
         market_worker.start_market_worker_once()
         options_panel_service.start_options_worker_once()
+        gamma_map_service.start_gamma_worker_once()
 
     content = render_template(
         "dashboard.html",
@@ -1688,6 +1700,7 @@ def dashboard():
         options_contracts=options_contracts,
         options_asof=options_asof,
         options_asof_human=options_asof_human,
+        gamma_snapshot=gamma_snapshot,
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -1695,6 +1708,7 @@ def dashboard():
 
 
 def stream_market():
+    from mccain_capital.services import gamma_map_service
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
 
@@ -1702,12 +1716,14 @@ def stream_market():
     if not is_testing:
         market_worker.start_market_worker_once()
         options_panel_service.start_options_worker_once()
+        gamma_map_service.start_gamma_worker_once()
 
     @stream_with_context
     def generate():
         while True:
             payload = market_worker.get_market_snapshot()
             payload["options"] = options_panel_service.get_options_snapshot()
+            payload["gamma_map"] = gamma_map_service.get_gamma_snapshot()
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
                 break
@@ -1739,6 +1755,29 @@ def stream_options_panel():
     response.headers["Cache-Control"] = "no-cache"
     response.headers["Connection"] = "keep-alive"
     return response
+
+
+def gamma_map_page():
+    from mccain_capital.services import gamma_map_service
+
+    is_testing = bool(current_app.config.get("TESTING"))
+    if not is_testing:
+        gamma_map_service.start_gamma_worker_once()
+
+    snapshot = gamma_map_service.get_gamma_snapshot()
+    if not snapshot.get("asof") and not is_testing:
+        try:
+            snapshot = gamma_map_service.run_gamma_refresh_once()
+        except Exception:
+            snapshot = gamma_map_service.get_gamma_snapshot()
+
+    content = render_template(
+        "core/gamma_map.html",
+        gamma=snapshot,
+        money=app_runtime.money,
+        money_compact=_money_compact,
+    )
+    return render_page(content, active="market-pulse", title="McCain Capital · Gamma Map")
 
 
 def market_pulse_page():
