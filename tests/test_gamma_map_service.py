@@ -90,3 +90,16 @@ def test_parse_cboe_option_symbol():
     assert out["expiration"] == "2026-03-20"
     assert out["cp"] == "C"
     assert out["strike"] == 200.0
+
+
+def test_identify_levels_prefers_split_call_put_walls_around_spot():
+    df = pd.DataFrame(
+        [
+            {"strike": 5090.0, "gex": -10.0, "call_side_gex": 20.0, "put_side_gex": 80.0},
+            {"strike": 5100.0, "gex": 5.0, "call_side_gex": 200.0, "put_side_gex": 250.0},
+            {"strike": 5110.0, "gex": 12.0, "call_side_gex": 300.0, "put_side_gex": 150.0},
+        ]
+    )
+    levels = svc.identify_levels(df, spot=5102.0)
+    assert levels["call_wall"] == 5110.0
+    assert levels["put_wall"] == 5100.0

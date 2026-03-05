@@ -432,10 +432,27 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
     pos = expo_df[expo_df["gex"] > 0].sort_values("gex", ascending=False)
     gamma_walls = [float(v) for v in pos["strike"].head(3).tolist()]
 
-    call_idx = int(expo_df["call_side_gex"].idxmax())
-    put_idx = int(expo_df["put_side_gex"].idxmax())
+    above = expo_df[expo_df["strike"] >= float(spot)]
+    below = expo_df[expo_df["strike"] <= float(spot)]
+    call_base = above if not above.empty else expo_df
+    put_base = below if not below.empty else expo_df
+
+    call_idx = int(call_base["call_side_gex"].idxmax())
+    put_idx = int(put_base["put_side_gex"].idxmax())
     call_wall = float(expo_df.loc[call_idx, "strike"]) if len(expo_df.index) else None
     put_wall = float(expo_df.loc[put_idx, "strike"]) if len(expo_df.index) else None
+
+    if (
+        call_wall is not None
+        and put_wall is not None
+        and abs(call_wall - put_wall) < 0.001
+        and len(expo_df.index) > 1
+    ):
+        alt_put = put_base.sort_values("put_side_gex", ascending=False)["strike"].tolist()
+        for strike in alt_put:
+            if abs(float(strike) - float(call_wall)) >= 0.001:
+                put_wall = float(strike)
+                break
 
     return {
         "net_gex": net_gex,

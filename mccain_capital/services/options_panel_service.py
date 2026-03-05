@@ -202,7 +202,9 @@ def _fetch_spx_contracts() -> List[Dict[str, Any]]:
                 contracts.append(c)
 
     if not contracts:
-        return []
+        contracts = _fetch_spx_contracts_from_cboe()
+        if not contracts:
+            return []
 
     # Prefer <=7 DTE, then SPXW root, then tight liquidity, then volume.
     window = [c for c in contracts if int(c.get("_dte") or 999) <= 7]
@@ -227,6 +229,82 @@ def _fetch_spx_contracts() -> List[Dict[str, Any]]:
         }
         for c in work[:MAX_CONTRACTS]
     ]
+
+
+def _parse_cboe_option_symbol(symbol: str) -> Dict[str, Any]:
+    raw = str(symbol or "").strip().upper()
+    m = re.match(r"^(SPXW?|SPX)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$", raw)
+    if not m:
+        return {"root": "", "expiration": "", "cp": "", "strike": None}
+    root = m.group(1)
+    yy = int(m.group(2))
+    mm = int(m.group(3))
+    dd = int(m.group(4))
+    cp = m.group(5)
+    strike = int(m.group(6)) / 1000.0
+    exp = f"20{yy:02d}-{mm:02d}-{dd:02d}"
+    return {"root": root, "expiration": exp, "cp": cp, "strike": strike}
+
+
+def _fetch_spx_contracts_from_cboe() -> List[Dict[str, Any]]:
+    url = "https://cdn.cboe.com/api/global/delayed_quotes/options/_SPX.json"
+    req = urllib.request.Request(url, headers={"User-Agent": "mccain-capital/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+    except Exception:
+        return []
+
+    rows = ((payload.get("data") or {}).get("options") or []) if isinstance(payload, dict) else []
+    contracts: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        parsed = _parse_cboe_option_symbol(str(row.get("option") or ""))
+        root = str(parsed.get("root") or "").upper()
+        expiration = str(parsed.get("expiration") or "")
+        cp = str(parsed.get("cp") or "")
+        strike = _safe_float(parsed.get("strike"))
+        if root not in {"SPX", "SPXW"} or not expiration or cp not in {"C", "P"} or strike is None:
+            continue
+        try:
+            exp_d = datetime.strptime(expiration, "%Y-%m-%d").date()
+            dte = (exp_d - date.today()).days
+        except Exception:
+            dte = 999
+        if dte < 0:
+            continue
+
+        bid = _safe_float(row.get("bid"))
+        ask = _safe_float(row.get("ask"))
+        spread = (ask - bid) if (bid is not None and ask is not None) else None
+        mid = (
+            ((bid + ask) / 2.0)
+            if (bid is not None and ask is not None)
+            else _safe_float(row.get("last_trade_price"))
+        )
+        delta = _safe_float(row.get("delta"))
+        vol = _safe_int(row.get("volume"))
+        oi = _safe_int(row.get("open_interest"))
+        liq = liquidity_badge(spread, vol)
+        label = format_contract_label(root, expiration, float(strike), cp)
+        liq_rank = {"Tight": 0, "OK": 1, "Wide": 2}.get(liq, 3)
+        root_rank = 0 if (root == "SPXW" and dte <= 7) else 1
+        contracts.append(
+            {
+                "label": label,
+                "mid": mid,
+                "delta": delta,
+                "vol": vol,
+                "oi": oi,
+                "spread": spread,
+                "liq": liq,
+                "_root_rank": root_rank,
+                "_liq_rank": liq_rank,
+                "_dte": dte,
+            }
+        )
+    return contracts
 
 
 def _spx_gamma_snapshot() -> Dict[str, Any]:
