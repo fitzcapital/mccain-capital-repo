@@ -83,7 +83,7 @@
   </div></div>
 
   <div class="card supportCard"><div class="toolbar">
-    <div class="pill">Live Options (SPX)</div>
+    <div class="pill">SPX Gamma</div>
     <div class="supportLead">
       <span id="liveOptionsState">Connecting…</span>
       <span class="tiny stack8" id="liveOptionsUpdated">{% if options_asof %}Updated {{ options_asof_human or options_asof }}{% else %}Waiting for first tick{% endif %}</span>
@@ -95,17 +95,22 @@
         {% if options_underlying.get('change_pct') is not none %}{{ '%.2f'|format(options_underlying.get('change_pct')) }}%{% else %}—{% endif %}
       </div>
     </div>
-    <div class="optionsTradeMode" id="liveOptionsTradeMode">
-      <div class="tiny stack8">
-        <span class="modeDot {% if options_trade_mode.get('active') %}isLive{% endif %}"></span>
-        <strong data-mode-active>{% if options_trade_mode.get('active') %}ACTIVE{% else %}INACTIVE{% endif %}</strong>
-        · Entry <span data-mode-entry>{% if options_trade_mode.get('entry') is not none %}{{ '%.2f'|format(options_trade_mode.get('entry')) }}{% else %}—{% endif %}</span>
-        · Stop <span data-mode-stop>{% if options_trade_mode.get('stop') is not none %}{{ '%.2f'|format(options_trade_mode.get('stop')) }}{% else %}—{% endif %}</span>
-        · Target <span data-mode-target>{% if options_trade_mode.get('target') is not none %}{{ '%.2f'|format(options_trade_mode.get('target')) }}{% else %}—{% endif %}</span>
+    <div class="optionsGammaGrid" id="liveOptionsGamma">
+      <div class="optionsGammaCell">
+        <div class="tiny">Gamma Flip</div>
+        <strong data-gamma-flip>{{ '%.0f'|format(options_gamma.get('gamma_flip')) if options_gamma.get('gamma_flip') is not none else '—' }}</strong>
       </div>
-      <div class="tiny stack6">
-        Dist to Stop <span data-mode-dist-stop>{% if options_trade_mode.get('dist_stop') is not none %}{{ '%.2f'|format(options_trade_mode.get('dist_stop')) }}{% else %}—{% endif %}</span>
-        · Dist to Target <span data-mode-dist-target>{% if options_trade_mode.get('dist_target') is not none %}+{{ '%.2f'|format(options_trade_mode.get('dist_target')) }}{% else %}—{% endif %}</span>
+      <div class="optionsGammaCell">
+        <div class="tiny">Call Wall</div>
+        <strong data-gamma-call>{{ '%.0f'|format(options_gamma.get('call_wall')) if options_gamma.get('call_wall') is not none else '—' }}</strong>
+      </div>
+      <div class="optionsGammaCell">
+        <div class="tiny">Put Wall</div>
+        <strong data-gamma-put>{{ '%.0f'|format(options_gamma.get('put_wall')) if options_gamma.get('put_wall') is not none else '—' }}</strong>
+      </div>
+      <div class="optionsGammaCell">
+        <div class="tiny">Net Gamma</div>
+        <strong data-gamma-net>{{ options_gamma.get('net_gamma') or '—' }}</strong>
       </div>
     </div>
     <div class="tiny stack8">Best Contracts (≤ 7 DTE)</div>
@@ -128,40 +133,6 @@
         <div class="marketPulseAlert muted">Waiting for contracts…</div>
       {% endif %}
     </div>
-    <details class="syncDetails stack10">
-      <summary>Set Trade Mode</summary>
-      <form method="post" action="/dashboard/options-mode" class="stack10">
-        <input type="hidden" name="y" value="{{ dashboard_year }}"/>
-        <input type="hidden" name="m" value="{{ dashboard_month }}"/>
-        <input type="hidden" name="scope" value="{{ scope_mode }}"/>
-        <div class="row stack10">
-          <div>
-            <label>Active</label>
-            <select name="options_trade_active">
-              <option value="1" {% if options_trade_mode.get('active') %}selected{% endif %}>Yes</option>
-              <option value="0" {% if not options_trade_mode.get('active') %}selected{% endif %}>No</option>
-            </select>
-          </div>
-          <div>
-            <label>Entry</label>
-            <input name="options_trade_entry" inputmode="decimal" value="{% if options_trade_mode.get('entry') is not none %}{{ '%.2f'|format(options_trade_mode.get('entry')) }}{% endif %}"/>
-          </div>
-        </div>
-        <div class="row stack10">
-          <div>
-            <label>Stop</label>
-            <input name="options_trade_stop" inputmode="decimal" value="{% if options_trade_mode.get('stop') is not none %}{{ '%.2f'|format(options_trade_mode.get('stop')) }}{% endif %}"/>
-          </div>
-          <div>
-            <label>Target</label>
-            <input name="options_trade_target" inputmode="decimal" value="{% if options_trade_mode.get('target') is not none %}{{ '%.2f'|format(options_trade_mode.get('target')) }}{% endif %}"/>
-          </div>
-        </div>
-        <div class="rightActions">
-          <button class="btn primary" type="submit">Save Trade Mode</button>
-        </div>
-      </form>
-    </details>
   </div></div>
 
   <div class="card supportCard"><div class="toolbar">
@@ -727,9 +698,9 @@
     const state = document.getElementById("liveOptionsState");
     const updated = document.getElementById("liveOptionsUpdated");
     const underWrap = document.getElementById("liveOptionsUnderlying");
+    const gammaWrap = document.getElementById("liveOptionsGamma");
     const contractsWrap = document.getElementById("liveOptionsContracts");
-    const modeWrap = document.getElementById("liveOptionsTradeMode");
-    if (!state || !updated || !underWrap || !contractsWrap || !modeWrap || typeof EventSource === "undefined") return;
+    if (!state || !updated || !underWrap || !gammaWrap || !contractsWrap || typeof EventSource === "undefined") return;
 
     const fmtMoney = (v) => {
       const n = Number(v);
@@ -740,11 +711,6 @@
       const n = Number(v);
       if (!Number.isFinite(n)) return "—";
       return n.toFixed(digits);
-    };
-    const fmtSigned = (v) => {
-      const n = Number(v);
-      if (!Number.isFinite(n)) return "—";
-      return `${n > 0 ? "+" : ""}${n.toFixed(2)}`;
     };
     const fmtPct = (v) => {
       const n = Number(v);
@@ -784,7 +750,7 @@
         const payload = JSON.parse(event.data || "{}");
         const spx = ((payload.symbols || {}).SPX || {});
         const under = spx.underlying || {};
-        const mode = spx.trade_mode || {};
+        const gamma = spx.gamma || {};
         const contracts = Array.isArray(spx.contracts) ? spx.contracts.slice(0, 5) : [];
 
         const underPrice = underWrap.querySelector("[data-under-price]");
@@ -798,21 +764,14 @@
           if (Number.isFinite(pct) && pct < 0) underPct.classList.add("metaRed");
         }
 
-        const dot = modeWrap.querySelector(".modeDot");
-        const active = modeWrap.querySelector("[data-mode-active]");
-        const entry = modeWrap.querySelector("[data-mode-entry]");
-        const stop = modeWrap.querySelector("[data-mode-stop]");
-        const target = modeWrap.querySelector("[data-mode-target]");
-        const distStop = modeWrap.querySelector("[data-mode-dist-stop]");
-        const distTarget = modeWrap.querySelector("[data-mode-dist-target]");
-        const isActive = Boolean(mode.active);
-        if (dot) dot.classList.toggle("isLive", isActive);
-        if (active) active.textContent = isActive ? "ACTIVE" : "INACTIVE";
-        if (entry) entry.textContent = fmtNum(mode.entry);
-        if (stop) stop.textContent = fmtNum(mode.stop);
-        if (target) target.textContent = fmtNum(mode.target);
-        if (distStop) distStop.textContent = fmtSigned(mode.dist_stop);
-        if (distTarget) distTarget.textContent = fmtSigned(mode.dist_target);
+        const gammaFlip = gammaWrap.querySelector("[data-gamma-flip]");
+        const gammaCall = gammaWrap.querySelector("[data-gamma-call]");
+        const gammaPut = gammaWrap.querySelector("[data-gamma-put]");
+        const gammaNet = gammaWrap.querySelector("[data-gamma-net]");
+        if (gammaFlip) gammaFlip.textContent = fmtNum(gamma.gamma_flip, 0);
+        if (gammaCall) gammaCall.textContent = fmtNum(gamma.call_wall, 0);
+        if (gammaPut) gammaPut.textContent = fmtNum(gamma.put_wall, 0);
+        if (gammaNet) gammaNet.textContent = String(gamma.net_gamma || "—");
 
         contractsWrap.innerHTML = "";
         if (!contracts.length) {

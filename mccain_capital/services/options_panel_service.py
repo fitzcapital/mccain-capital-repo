@@ -28,15 +28,13 @@ _CACHE: Dict[str, Any] = {
     "symbols": {
         "SPX": {
             "underlying": {"price": None, "change_pct": None, "source": "massive"},
-            "contracts": [],
-            "trade_mode": {
-                "active": False,
-                "entry": None,
-                "stop": None,
-                "target": None,
-                "dist_stop": None,
-                "dist_target": None,
+            "gamma": {
+                "gamma_flip": 5110.0,
+                "call_wall": 5150.0,
+                "put_wall": 5050.0,
+                "net_gamma": "+2.1B",
             },
+            "contracts": [],
         }
     },
 }
@@ -231,25 +229,16 @@ def _fetch_spx_contracts() -> List[Dict[str, Any]]:
     ]
 
 
-def _trade_mode(price: Optional[float]) -> Dict[str, Any]:
-    active = str(app_runtime.get_setting_value("options_trade_active", "0") or "0").strip() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    entry = _safe_float(app_runtime.get_setting_value("options_trade_entry", ""))
-    stop = _safe_float(app_runtime.get_setting_value("options_trade_stop", ""))
-    target = _safe_float(app_runtime.get_setting_value("options_trade_target", ""))
-    dist_stop = (stop - price) if (price is not None and stop is not None) else None
-    dist_target = (target - price) if (price is not None and target is not None) else None
+def _spx_gamma_snapshot() -> Dict[str, Any]:
+    gamma_flip = _safe_float(app_runtime.get_setting_value("spx_gamma_flip", ""))
+    call_wall = _safe_float(app_runtime.get_setting_value("spx_call_wall", ""))
+    put_wall = _safe_float(app_runtime.get_setting_value("spx_put_wall", ""))
+    net_gamma = str(app_runtime.get_setting_value("spx_net_gamma", "") or "").strip()
     return {
-        "active": active,
-        "entry": entry,
-        "stop": stop,
-        "target": target,
-        "dist_stop": dist_stop,
-        "dist_target": dist_target,
+        "gamma_flip": gamma_flip if gamma_flip is not None else 5110.0,
+        "call_wall": call_wall if call_wall is not None else 5150.0,
+        "put_wall": put_wall if put_wall is not None else 5050.0,
+        "net_gamma": net_gamma or "+2.1B",
     }
 
 
@@ -264,8 +253,8 @@ def _poll_once() -> None:
         "symbols": {
             "SPX": {
                 "underlying": {"price": price, "change_pct": change_pct, "source": "massive"},
+                "gamma": _spx_gamma_snapshot(),
                 "contracts": contracts,
-                "trade_mode": _trade_mode(price),
             }
         },
     }

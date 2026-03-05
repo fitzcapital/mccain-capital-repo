@@ -381,7 +381,7 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
         "get_options_snapshot",
         lambda: {
             "asof": "",
-            "symbols": {"SPX": {"underlying": {}, "contracts": [], "trade_mode": {}}},
+            "symbols": {"SPX": {"underlying": {}, "gamma": {}, "contracts": []}},
         },
     )
     monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
@@ -391,7 +391,7 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
     assert b"Live Market Pulse" in resp.data
     assert b"/stream/market" in resp.data
     assert b'EventSource("/stream/market")' in resp.data
-    assert b"Live Options (SPX)" in resp.data
+    assert b"SPX Gamma" in resp.data
     assert b"/stream/options_panel" in resp.data
     assert b'EventSource("/stream/options_panel")' in resp.data
 
@@ -443,13 +443,11 @@ def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):
                             "liq": "Tight",
                         }
                     ],
-                    "trade_mode": {
-                        "active": True,
-                        "entry": 5118.0,
-                        "stop": 5110.0,
-                        "target": 5135.0,
-                        "dist_stop": -10.35,
-                        "dist_target": 14.65,
+                    "gamma": {
+                        "gamma_flip": 5110.0,
+                        "call_wall": 5150.0,
+                        "put_wall": 5050.0,
+                        "net_gamma": "+2.1B",
                     },
                 }
             },
@@ -462,6 +460,7 @@ def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):
     assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
     assert b"data: " in resp.data
     assert b"SPXW 2026-03-06 5125C" in resp.data
+    assert b"gamma_flip" in resp.data
 
 
 def test_candle_opens_page_renders_monthly_market_calendar(client):

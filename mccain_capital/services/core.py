@@ -1414,32 +1414,6 @@ def dashboard_milestone_update():
     return redirect(url_for("dashboard", **params))
 
 
-def dashboard_options_mode_update():
-    active_raw = str(request.form.get("options_trade_active") or "").strip().lower()
-    active = active_raw in {"1", "true", "yes", "on"}
-    entry = app_runtime.parse_float(request.form.get("options_trade_entry") or "")
-    stop = app_runtime.parse_float(request.form.get("options_trade_stop") or "")
-    target = app_runtime.parse_float(request.form.get("options_trade_target") or "")
-
-    app_runtime.set_setting_value("options_trade_active", "1" if active else "0")
-    app_runtime.set_setting_value("options_trade_entry", "" if entry is None else f"{entry:.2f}")
-    app_runtime.set_setting_value("options_trade_stop", "" if stop is None else f"{stop:.2f}")
-    app_runtime.set_setting_value("options_trade_target", "" if target is None else f"{target:.2f}")
-    flash("Live options trade mode updated.", "success")
-
-    y = str(request.form.get("y") or "").strip()
-    m = str(request.form.get("m") or "").strip()
-    scope = str(request.form.get("scope") or "").strip().lower()
-    params: Dict[str, str] = {}
-    if y:
-        params["y"] = y
-    if m:
-        params["m"] = m
-    if scope in {"active", "all"}:
-        params["scope"] = scope
-    return redirect(url_for("dashboard", **params))
-
-
 def dashboard():
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
@@ -1650,8 +1624,8 @@ def dashboard():
             options_asof_human = options_asof
     options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
     options_underlying = dict(options_spx.get("underlying") or {})
+    options_gamma = dict(options_spx.get("gamma") or {})
     options_contracts = list(options_spx.get("contracts") or [])
-    options_trade_mode = dict(options_spx.get("trade_mode") or {})
 
     if not current_app.config.get("TESTING"):
         market_worker.start_market_worker_once()
@@ -1710,8 +1684,8 @@ def dashboard():
         market_updated_at=market_updated_at,
         market_updated_at_human=market_updated_at_human,
         options_underlying=options_underlying,
+        options_gamma=options_gamma,
         options_contracts=options_contracts,
-        options_trade_mode=options_trade_mode,
         options_asof=options_asof,
         options_asof_human=options_asof_human,
         money=app_runtime.money,

@@ -4356,23 +4356,16 @@ body.marketPulseExecutionMode .researchOnly{
   text-align:right;
   font-weight:800;
 }
-.optionsTradeMode{
+.optionsGammaGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:8px;
+}
+.optionsGammaCell{
   border:1px solid rgba(255,255,255,.1);
   border-radius:12px;
   padding:8px 10px;
   background:rgba(255,255,255,.02);
-}
-.modeDot{
-  display:inline-block;
-  width:8px;
-  height:8px;
-  margin-right:6px;
-  border-radius:999px;
-  background:rgba(190, 203, 220, .5);
-}
-.modeDot.isLive{
-  background:#4ed8a2;
-  box-shadow:0 0 12px rgba(78,216,162,.4);
 }
 .optionsContracts{
   display:grid;
