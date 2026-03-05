@@ -237,8 +237,91 @@ def fetch_spx_chain_for_expiries(expiries: List[str]) -> pd.DataFrame:
 
     df = pd.DataFrame(list(rows.values()))
     if df.empty:
+        fallback = _fetch_spx_chain_from_cboe(expiry_set)
+        if not fallback.empty:
+            fallback.attrs["contracts_seen"] = int(fallback.attrs.get("contracts_seen") or 0)
+            return fallback
+    if df.empty:
         return df
     df.attrs["contracts_seen"] = seen
+    return df
+
+
+def _parse_cboe_option_symbol(symbol: str) -> Dict[str, Any]:
+    raw = str(symbol or "").strip().upper()
+    m = re.match(r"^(SPXW?|SPX)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$", raw)
+    if not m:
+        return {"root": "", "expiration": "", "cp": "", "strike": None}
+    root = m.group(1)
+    yy = int(m.group(2))
+    mm = int(m.group(3))
+    dd = int(m.group(4))
+    cp = m.group(5)
+    strike = int(m.group(6)) / 1000.0
+    exp = f"20{yy:02d}-{mm:02d}-{dd:02d}"
+    return {"root": root, "expiration": exp, "cp": cp, "strike": strike}
+
+
+def _fetch_spx_chain_from_cboe(expiry_set: set[str]) -> pd.DataFrame:
+    url = "https://cdn.cboe.com/api/global/delayed_quotes/options/_SPX.json"
+    req = urllib.request.Request(url, headers={"User-Agent": "mccain-capital/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+    except Exception:
+        return pd.DataFrame()
+
+    options = (
+        ((payload.get("data") or {}).get("options") or []) if isinstance(payload, dict) else []
+    )
+    rows: Dict[Tuple[str, float], Dict[str, Any]] = {}
+    seen = 0
+    for item in options:
+        if not isinstance(item, dict):
+            continue
+        seen += 1
+        parsed = _parse_cboe_option_symbol(str(item.get("option") or ""))
+        expiration = str(parsed.get("expiration") or "")
+        strike = _safe_float(parsed.get("strike"))
+        cp = str(parsed.get("cp") or "")
+        if expiration not in expiry_set or strike is None or cp not in {"C", "P"}:
+            continue
+
+        key = (expiration, float(strike))
+        bucket = rows.setdefault(
+            key,
+            {
+                "expiration": expiration,
+                "strike": float(strike),
+                "call_oi": 0.0,
+                "put_oi": 0.0,
+                "call_gamma": 0.0,
+                "put_gamma": 0.0,
+                "call_vega": 0.0,
+                "put_vega": 0.0,
+                "call_delta": 0.0,
+                "put_delta": 0.0,
+            },
+        )
+
+        oi = float(_safe_float(item.get("open_interest")) or 0.0)
+        gamma = float(_safe_float(item.get("gamma")) or 0.0)
+        vega = float(_safe_float(item.get("vega")) or 0.0)
+        delta = float(_safe_float(item.get("delta")) or 0.0)
+        if cp == "C":
+            bucket["call_oi"] = oi
+            bucket["call_gamma"] = gamma
+            bucket["call_vega"] = vega
+            bucket["call_delta"] = delta
+        else:
+            bucket["put_oi"] = oi
+            bucket["put_gamma"] = gamma
+            bucket["put_vega"] = vega
+            bucket["put_delta"] = abs(delta)
+
+    df = pd.DataFrame(list(rows.values()))
+    if not df.empty:
+        df.attrs["contracts_seen"] = seen
     return df
 
 

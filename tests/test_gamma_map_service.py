@@ -83,3 +83,10 @@ def test_build_summary_bias_and_regime_negative():
     summary = svc.build_summary({"gamma_flip": 5110.0}, spot=5100.0, net_gex=-100.0)
     assert summary["regime"] == "negative"
     assert summary["bias"] == "sell_rips_below_flip"
+
+
+def test_parse_cboe_option_symbol():
+    out = svc._parse_cboe_option_symbol("SPX260320C00200000")
+    assert out["expiration"] == "2026-03-20"
+    assert out["cp"] == "C"
+    assert out["strike"] == 200.0
