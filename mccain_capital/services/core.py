@@ -1713,17 +1713,25 @@ def stream_market():
     from mccain_capital.services import options_panel_service
 
     is_testing = bool(current_app.config.get("TESTING"))
+    gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     if not is_testing:
         market_worker.start_market_worker_once()
         options_panel_service.start_options_worker_once()
         gamma_map_service.start_gamma_worker_once()
+        if not gamma_snapshot.get("asof"):
+            try:
+                gamma_snapshot = gamma_map_service.run_gamma_refresh_once()
+            except Exception:
+                gamma_snapshot = gamma_map_service.get_gamma_snapshot()
 
     @stream_with_context
     def generate():
         while True:
             payload = market_worker.get_market_snapshot()
             payload["options"] = options_panel_service.get_options_snapshot()
-            payload["gamma_map"] = gamma_map_service.get_gamma_snapshot()
+            payload["gamma_map"] = (
+                gamma_snapshot if is_testing else gamma_map_service.get_gamma_snapshot()
+            )
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
                 break
