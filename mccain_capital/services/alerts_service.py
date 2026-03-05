@@ -39,7 +39,7 @@ def ensure_alert_tables() -> None:
         count = int((count_row["c"] if count_row else 0) or 0)
         if count == 0:
             now = app_runtime.now_iso()
-            for sym in ("SPY", "QQQ", "NVDA", "TSLA"):
+            for sym in ("SPX", "QQQ", "NVDA", "TSLA"):
                 conn.execute(
                     """
                     INSERT INTO alerts(symbol, rule_type, threshold, enabled, created_at, updated_at)

@@ -10,7 +10,7 @@ from mccain_capital import runtime as app_runtime
 from mccain_capital.services import alerts_service
 from mccain_capital.services import market_data_service
 
-WATCHLIST = ["SPY", "QQQ", "NVDA", "TSLA"]
+WATCHLIST = ["SPX", "QQQ", "NVDA", "TSLA"]
 POLL_SECONDS = 10
 MAX_ALERT_MESSAGES = 100
 

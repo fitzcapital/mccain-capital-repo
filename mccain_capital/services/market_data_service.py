@@ -7,8 +7,18 @@ from datetime import timezone
 from typing import Any, Dict, List, Optional
 
 
+SYMBOL_ALIASES = {
+    "SPX": "^GSPC",
+}
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _resolve_symbol(symbol: str) -> str:
+    sym = str(symbol or "").strip().upper()
+    return SYMBOL_ALIASES.get(sym, sym)
 
 
 def _load_yfinance():
@@ -20,35 +30,81 @@ def _load_yfinance():
         return None
 
 
-def _history(symbol: str):
+def _ticker(symbol: str):
     yf = _load_yfinance()
     if yf is None:
         return None
     try:
-        ticker = yf.Ticker(str(symbol or "").strip().upper())
-        return ticker.history(period="1d", interval="1m")
+        return yf.Ticker(_resolve_symbol(symbol))
     except Exception:
         return None
+
+
+def _history(symbol: str):
+    ticker = _ticker(symbol)
+    if ticker is None:
+        return None
+    try:
+        # prepost=True captures after-hours and pre-market for supported tickers.
+        return ticker.history(period="1d", interval="1m", prepost=True)
+    except Exception:
+        return None
+
+
+def _safe_float(v: Any) -> Optional[float]:
+    try:
+        if v is None:
+            return None
+        return float(v)
+    except Exception:
+        return None
+
+
+def _previous_close_from_ticker(ticker) -> Optional[float]:
+    if ticker is None:
+        return None
+    try:
+        fi = getattr(ticker, "fast_info", None)
+        if fi:
+            for key in ("previous_close", "regular_market_previous_close", "last_price"):
+                val = _safe_float(fi.get(key))
+                if val is not None and val > 0:
+                    return val
+    except Exception:
+        pass
+    try:
+        info = getattr(ticker, "info", None) or {}
+        for key in ("previousClose", "regularMarketPreviousClose", "regularMarketPrice"):
+            val = _safe_float(info.get(key))
+            if val is not None and val > 0:
+                return val
+    except Exception:
+        pass
+    return None
+
+
+def _last_price_from_ticker_or_history(ticker, hist) -> Optional[float]:
+    try:
+        if hist is not None and not hist.empty:
+            close = hist["Close"].dropna()
+            if not close.empty:
+                return float(close.iloc[-1])
+    except Exception:
+        pass
+    return _previous_close_from_ticker(ticker)
 
 
 def get_price(symbol: str) -> Optional[float]:
-    """Return latest 1m close for symbol, or None when unavailable."""
+    """Return latest trade/close for symbol, with close fallback when market is shut."""
+    ticker = _ticker(symbol)
+    if ticker is None:
+        return None
     hist = _history(symbol)
-    if hist is None:
-        return None
-    try:
-        if hist.empty:
-            return None
-        close = hist["Close"].dropna()
-        if close.empty:
-            return None
-        return float(close.iloc[-1])
-    except Exception:
-        return None
+    return _last_price_from_ticker_or_history(ticker, hist)
 
 
 def get_intraday(symbol: str) -> List[Dict[str, Any]]:
-    """Return today's 1m candles as normalized list."""
+    """Return today's 1m candles as normalized list (includes pre/post when available)."""
     hist = _history(symbol)
     if hist is None:
         return []
@@ -58,10 +114,7 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
             return out
         for idx, row in hist.iterrows():
             ts = getattr(idx, "to_pydatetime", lambda: idx)()
-            if hasattr(ts, "isoformat"):
-                ts_iso = ts.isoformat(timespec="seconds")
-            else:
-                ts_iso = str(ts)
+            ts_iso = ts.isoformat(timespec="seconds") if hasattr(ts, "isoformat") else str(ts)
             out.append(
                 {
                     "ts": ts_iso,
@@ -77,21 +130,28 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
     return out
 
 
-def _pct_change_from_history(hist) -> Optional[float]:
+def _pct_change_from_history_or_close(hist, previous_close: Optional[float]) -> Optional[float]:
     try:
-        if hist is None or hist.empty:
+        last_close = None
+        if hist is not None and not hist.empty:
+            close = hist["Close"].dropna()
+            if not close.empty:
+                last_close = float(close.iloc[-1])
+        if last_close is None:
             return None
-        close = hist["Close"].dropna()
-        open_ = hist["Open"].dropna()
-        if close.empty:
-            return None
-        last_close = float(close.iloc[-1])
+
         base = None
-        if not open_.empty:
-            base = float(open_.iloc[0])
-        if (not base or base <= 0.0) and len(close) >= 2:
-            base = float(close.iloc[0])
-        if not base or base <= 0.0:
+        if previous_close is not None and previous_close > 0.0:
+            base = previous_close
+        elif hist is not None and not hist.empty:
+            open_ = hist["Open"].dropna()
+            if not open_.empty:
+                base = float(open_.iloc[0])
+            if base is None or base <= 0.0:
+                close = hist["Close"].dropna()
+                if len(close) >= 2:
+                    base = float(close.iloc[0])
+        if base is None or base <= 0.0:
             return None
         return ((last_close - base) / base) * 100.0
     except Exception:
@@ -99,25 +159,23 @@ def _pct_change_from_history(hist) -> Optional[float]:
 
 
 def get_watchlist(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
-    """Return latest price and percent change for a symbol list."""
+    """Return latest price and percent change for symbols.
+
+    Uses after-hours/pre-market when available, otherwise falls back to previous close.
+    """
     snapshot: Dict[str, Dict[str, Any]] = {}
     as_of = _now_iso()
     for raw in symbols:
         symbol = str(raw or "").strip().upper()
         if not symbol:
             continue
+
+        ticker = _ticker(symbol)
         hist = _history(symbol)
-        price = None
-        pct = None
-        try:
-            if hist is not None and not hist.empty:
-                close = hist["Close"].dropna()
-                if not close.empty:
-                    price = float(close.iloc[-1])
-                pct = _pct_change_from_history(hist)
-        except Exception:
-            price = None
-            pct = None
+        previous_close = _previous_close_from_ticker(ticker)
+        price = _last_price_from_ticker_or_history(ticker, hist)
+        pct = _pct_change_from_history_or_close(hist, previous_close)
+
         snapshot[symbol] = {
             "price": price,
             "pct_change": pct,

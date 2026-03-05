@@ -278,11 +278,14 @@ def run_migrations(db_path: str) -> List[str]:
         if mid in applied:
             continue
         fn(conn)
-        conn.execute(
-            "INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)",
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (id, applied_at) VALUES (?, ?)",
             (mid, datetime.now().isoformat(timespec="seconds")),
         )
-        new_applied.append(mid)
+        # In multi-worker boot, another process may win the insert race.
+        if int(cur.rowcount or 0) > 0:
+            new_applied.append(mid)
+        applied.add(mid)
     conn.commit()
     conn.close()
     return new_applied
