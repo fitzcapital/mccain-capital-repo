@@ -56,7 +56,7 @@
     <div class="pill">Live Market Pulse</div>
     <div class="supportLead">
       <span id="liveMarketState">Connecting…</span>
-      <span class="tiny stack8" id="liveMarketUpdated">{% if market_updated_at %}Updated {{ market_updated_at }}{% else %}Waiting for first tick{% endif %}</span>
+      <span class="tiny stack8" id="liveMarketUpdated">{% if market_updated_at %}Updated {{ market_updated_at_human or market_updated_at }}{% else %}Waiting for first tick{% endif %}</span>
     </div>
     <div class="marketPulseRows" id="liveMarketRows">
       {% for symbol in market_watchlist %}
@@ -574,6 +574,26 @@
       if (!Number.isFinite(n)) return "—";
       return `${n.toFixed(2)}%`;
     };
+    const fmtUpdated = (iso) => {
+      try {
+        if (!iso) return "Waiting for first tick";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return `Updated ${iso}`;
+        const text = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        }).format(d);
+        return `Updated ${text} ET`;
+      } catch (_) {
+        return `Updated ${iso || ""}`;
+      }
+    };
 
     const source = new EventSource("/stream/market");
     state.textContent = "Live";
@@ -596,9 +616,7 @@
             if (Number.isFinite(pct) && pct < 0) pctEl.classList.add("metaRed");
           }
         });
-        if (payload.updated_at) {
-          updated.textContent = `Updated ${payload.updated_at}`;
-        }
+        updated.textContent = fmtUpdated(payload.updated_at || "");
         const alerts = Array.isArray(payload.alerts) ? payload.alerts.slice(0, 6) : [];
         alertsWrap.innerHTML = "";
         if (!alerts.length) {

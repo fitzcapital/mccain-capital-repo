@@ -1595,6 +1595,18 @@ def dashboard():
         avg_daily_profit=float(proj.get("avg") or 0.0),
     )
     market_snapshot = market_worker.get_market_snapshot()
+    market_updated_at = str(market_snapshot.get("updated_at") or "")
+    market_updated_at_human = ""
+    if market_updated_at:
+        try:
+            dt = datetime.fromisoformat(market_updated_at)
+            market_updated_at_human = (
+                dt.astimezone(app_runtime.TZ)
+                .strftime("%b %d, %Y %I:%M:%S %p ET")
+                .replace(" 0", " ")
+            )
+        except Exception:
+            market_updated_at_human = market_updated_at
     if not current_app.config.get("TESTING"):
         market_worker.start_market_worker_once()
 
@@ -1648,7 +1660,8 @@ def dashboard():
         market_watchlist=list(market_worker.WATCHLIST),
         market_prices=market_snapshot.get("prices") or {},
         market_alerts=market_snapshot.get("alerts") or [],
-        market_updated_at=str(market_snapshot.get("updated_at") or ""),
+        market_updated_at=market_updated_at,
+        market_updated_at_human=market_updated_at_human,
         money=app_runtime.money,
         money_compact=_money_compact,
     )
