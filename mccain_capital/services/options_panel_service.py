@@ -55,6 +55,36 @@ def _massive_key() -> str:
     )
 
 
+def _tradier_key() -> str:
+    return (
+        (os.environ.get("TRADIER_API_KEY") or "").strip()
+        or str(app_runtime.get_setting_value("tradier_api_key", "") or "").strip()
+    )
+
+
+def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
+    key = _tradier_key()
+    if not key:
+        return None
+    base = (os.environ.get("TRADIER_BASE_URL") or "https://api.tradier.com").strip().rstrip("/")
+    url = base + path + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+            "User-Agent": "mccain-capital/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            parsed = json.loads(body)
+            return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
 def _massive_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
     key = _massive_key()
     if not key:
@@ -189,6 +219,10 @@ def _extract_contract_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _fetch_spx_contracts() -> List[Dict[str, Any]]:
+    tradier = _fetch_spx_contracts_from_tradier()
+    if tradier:
+        return tradier
+
     payload = _massive_json("/v3/snapshot/options/SPX", {"limit": 250})
     rows = payload.get("results") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
@@ -307,6 +341,90 @@ def _fetch_spx_contracts_from_cboe() -> List[Dict[str, Any]]:
     return contracts
 
 
+def _fetch_spx_contracts_from_tradier() -> List[Dict[str, Any]]:
+    if not _tradier_key():
+        return []
+    today = app_runtime.today_iso()
+    expiries = [today, app_runtime.next_trading_day_iso(today)]
+    contracts: List[Dict[str, Any]] = []
+    for expiry in expiries:
+        payload = _tradier_json(
+            "/v1/markets/options/chains",
+            {"symbol": "SPX", "expiration": expiry, "greeks": "true"},
+        )
+        options = ((payload or {}).get("options") or {}).get("option")
+        if isinstance(options, dict):
+            rows = [options]
+        elif isinstance(options, list):
+            rows = [o for o in options if isinstance(o, dict)]
+        else:
+            rows = []
+        for row in rows:
+            strike = _safe_float(row.get("strike"))
+            expiration = str(row.get("expiration_date") or expiry)
+            cp_raw = str(row.get("option_type") or "").lower()
+            cp = "C" if cp_raw.startswith("c") else "P" if cp_raw.startswith("p") else ""
+            if strike is None or not expiration or cp not in {"C", "P"}:
+                continue
+            bid = _safe_float(row.get("bid"))
+            ask = _safe_float(row.get("ask"))
+            spread = (ask - bid) if (bid is not None and ask is not None) else None
+            mid = ((bid + ask) / 2.0) if (bid is not None and ask is not None) else _safe_float(
+                row.get("last")
+            )
+            greeks = row.get("greeks") if isinstance(row.get("greeks"), dict) else {}
+            delta = _safe_float(greeks.get("delta"))
+            vol = _safe_int(row.get("volume"))
+            oi = _safe_int(row.get("open_interest"))
+            liq = liquidity_badge(spread, vol)
+            try:
+                exp_d = datetime.strptime(expiration, "%Y-%m-%d").date()
+                dte = (exp_d - date.today()).days
+            except Exception:
+                dte = 999
+            if dte < 0:
+                continue
+            liq_rank = {"Tight": 0, "OK": 1, "Wide": 2}.get(liq, 3)
+            contracts.append(
+                {
+                    "label": format_contract_label("SPXW" if dte <= 7 else "SPX", expiration, float(strike), cp),
+                    "mid": mid,
+                    "delta": delta,
+                    "vol": vol,
+                    "oi": oi,
+                    "spread": spread,
+                    "liq": liq,
+                    "_root_rank": 0 if dte <= 7 else 1,
+                    "_liq_rank": liq_rank,
+                    "_dte": dte,
+                }
+            )
+    if not contracts:
+        return []
+    window = [c for c in contracts if int(c.get("_dte") or 999) <= 7]
+    work = window if window else contracts
+    work.sort(
+        key=lambda c: (
+            int(c.get("_root_rank") or 9),
+            int(c.get("_liq_rank") or 9),
+            -int(c.get("vol") or 0),
+            float(c.get("spread") or 9999.0),
+        )
+    )
+    return [
+        {
+            "label": c.get("label"),
+            "mid": c.get("mid"),
+            "delta": c.get("delta"),
+            "vol": c.get("vol"),
+            "oi": c.get("oi"),
+            "spread": c.get("spread"),
+            "liq": c.get("liq"),
+        }
+        for c in work[:MAX_CONTRACTS]
+    ]
+
+
 def _spx_gamma_snapshot() -> Dict[str, Any]:
     gamma_flip = _safe_float(app_runtime.get_setting_value("spx_gamma_flip", ""))
     call_wall = _safe_float(app_runtime.get_setting_value("spx_call_wall", ""))
@@ -324,13 +442,14 @@ def _poll_once() -> None:
     under = market_data_service.get_watchlist(["SPX"]).get("SPX", {})
     price = _safe_float(under.get("price"))
     change_pct = _safe_float(under.get("pct_change"))
-    contracts = _fetch_spx_contracts() if _massive_key() else []
+    provider = str(under.get("provider") or "massive").strip().lower() or "massive"
+    contracts = _fetch_spx_contracts()
 
     snap = {
         "asof": _now_iso(),
         "symbols": {
             "SPX": {
-                "underlying": {"price": price, "change_pct": change_pct, "source": "massive"},
+                "underlying": {"price": price, "change_pct": change_pct, "source": provider},
                 "gamma": _spx_gamma_snapshot(),
                 "contracts": contracts,
             }
@@ -363,3 +482,8 @@ def start_options_worker_once() -> None:
 def get_options_snapshot() -> Dict[str, Any]:
     with _LOCK:
         return json.loads(json.dumps(_CACHE))
+
+
+def run_options_refresh_once() -> Dict[str, Any]:
+    _poll_once()
+    return get_options_snapshot()

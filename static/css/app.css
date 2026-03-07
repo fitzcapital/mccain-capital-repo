@@ -4240,15 +4240,93 @@ body.marketPulseReady .marketPulseSection{
   stroke-linecap:round;
   stroke-linejoin:round;
 }
+.marketMiniSparkArea{
+  stroke:none;
+}
 .marketMiniSparkLine.up{ stroke:rgba(78, 219, 164, .95); }
 .marketMiniSparkLine.down{ stroke:rgba(255, 102, 133, .95); }
 .marketMiniSparkLine.flat{ stroke:rgba(181, 197, 217, .9); }
+.marketMiniSparkArea.up{ fill:rgba(78, 219, 164, .22); }
+.marketMiniSparkArea.down{ fill:rgba(255, 102, 133, .22); }
+.marketMiniSparkArea.flat{ fill:rgba(181, 197, 217, .16); }
+/* Keep ticker cards clean like the classic look in your screenshot. */
+.marketMiniSparkWrap .marketMiniSparkArea{
+  display:none;
+}
+.marketMiniSparkWrap .marketMiniSparkLine{
+  stroke-width:2.8;
+}
 .marketMiniSparkEmpty{
   height:28px;
   display:flex;
   align-items:center;
   color:var(--muted);
   font-size:11px;
+}
+.spxPriorityChart{
+  margin-top:6px;
+  padding:10px 12px;
+  border:1px solid rgba(var(--accent-rgb), .24);
+  border-radius:12px;
+  background:
+    linear-gradient(120deg, rgba(var(--accent-rgb), .12), rgba(255,255,255,.02) 52%, rgba(255,255,255,.01) 100%),
+    rgba(255,255,255,.02);
+}
+.spxBrokerChartCanvas{
+  min-height:172px;
+}
+.spxBrokerSvg{
+  width:100%;
+  height:172px;
+  display:block;
+}
+.spxGridLine{
+  stroke:rgba(200, 220, 255, .10);
+  stroke-width:1;
+}
+.spxArea{
+  fill:url(#spxAreaGrad);
+  stroke:none;
+}
+.spxLine{
+  fill:none;
+  stroke-width:3;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.spxLine.up{ stroke:rgba(88, 228, 186, .96); }
+.spxLine.down{ stroke:rgba(255, 102, 133, .96); }
+.spxLine.flat{ stroke:rgba(181, 197, 217, .92); }
+.spxLastGuide{
+  stroke-width:1.1;
+  stroke-dasharray:5 4;
+}
+.spxLastGuide.up{ stroke:rgba(88, 228, 186, .35); }
+.spxLastGuide.down{ stroke:rgba(255, 102, 133, .35); }
+.spxLastGuide.flat{ stroke:rgba(181, 197, 217, .32); }
+.spxLastDot{
+  stroke:rgba(6, 16, 32, .95);
+  stroke-width:2;
+}
+.spxLastDot.up{ fill:rgba(88, 228, 186, .98); }
+.spxLastDot.down{ fill:rgba(255, 102, 133, .98); }
+.spxLastDot.flat{ fill:rgba(181, 197, 217, .95); }
+.spxBrokerStats{
+  margin-top:8px;
+  font-size:12px;
+  color:rgba(226, 238, 255, .78);
+  letter-spacing:.02em;
+}
+.spxPriorityChart .marketMiniSpark,
+.spxPriorityChart svg.marketMiniSpark{
+  height:172px;
+}
+.spxPriorityChart .marketMiniSparkLine{
+  stroke-width:2.6;
+}
+.spxPriorityChart .marketMiniSparkEmpty{
+  height:172px;
+  font-size:12px;
 }
 .stateChip{
   border:1px solid rgba(var(--accent-rgb),.28);
@@ -4269,6 +4347,36 @@ body.marketPulseReady .marketPulseSection{
 .stateChip.state-missing{
   border-color:rgba(255, 102, 133, .5);
   background:rgba(255, 102, 133, .16);
+}
+.spxStaticCard{
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:14px;
+  padding:12px;
+  background:
+    radial-gradient(110% 120% at 100% 50%, rgba(74, 212, 197, .22), rgba(74, 212, 197, 0) 42%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+}
+.spxStaticCard .k{
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.spxStaticCard .v{
+  font-size:54px;
+  line-height:1;
+  letter-spacing:-.03em;
+  margin-top:8px;
+}
+.spxStaticCard .marketMiniSparkWrap{
+  margin:8px 0 10px;
+}
+.spxStaticCard .marketMiniSpark{
+  height:72px;
+}
+.spxStaticCard .marketMiniSparkLine{
+  stroke-width:2.6;
 }
 .guardrailBlocked{
   pointer-events:none !important;
@@ -4371,28 +4479,49 @@ body.marketPulseExecutionMode .researchOnly{
   display:grid;
   gap:8px;
 }
-.optionsContractRow{
-  display:grid;
-  grid-template-columns:1fr auto;
-  gap:8px 10px;
+.optionsContractsDropdown{
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;
+  background:rgba(255,255,255,.02);
+  padding:8px 10px;
+}
+.optionsContractsSummary{
+  display:flex;
   align-items:center;
+  justify-content:space-between;
+  cursor:pointer;
+  font-weight:800;
+  list-style:none;
+}
+.optionsContractsSummary::-webkit-details-marker{
+  display:none;
+}
+.optionsContractRow{
   border:1px solid rgba(255,255,255,.1);
   border-radius:10px;
   background:rgba(255,255,255,.03);
   padding:8px 10px;
 }
+.optionsContractSummary{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px 10px;
+  align-items:center;
+  cursor:pointer;
+  list-style:none;
+}
+.optionsContractSummary::-webkit-details-marker{
+  display:none;
+}
 .optionsContractLabel{
   font-weight:800;
 }
 .optionsContractMeta{
-  grid-column:1 / 2;
+  margin-top:8px;
   color:var(--muted);
 }
 .optionsLiqBadge{
-  grid-column:2 / 3;
-  grid-row:1 / span 2;
   align-self:center;
-  justify-self:end;
   font-size:11px;
   font-weight:800;
   border-radius:999px;

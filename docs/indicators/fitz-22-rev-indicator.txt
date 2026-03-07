@@ -10,6 +10,7 @@ isStudy = mode == "Study"
 
 showMarketFlow      = input.bool(true,  "Show Market Flow Panel")
 showMarketFlowTitle = input.bool(false, "Show Market Flow Title")
+panelCompactMode    = input.bool(true,  "Panel Compact Mode")
 panelPadCols        = input.int(1, "Panel Padding (Left Columns)", minval=0, maxval=5)
 panelPadRows        = input.int(1, "Panel Padding (Top Rows)",   minval=0, maxval=5)
 txtSize             = input.string("small","Panel Text Size",["tiny","small","normal","large","huge","auto"])
@@ -24,10 +25,8 @@ show22  = input.bool(true, "Show 22 Reversal Flags")
 show212 = input.bool(true, "Show 212 Reversal Flags")
 show312 = input.bool(true, "Show 312 Reversal Flags")
 show322 = input.bool(true, "Show 322 Reversal Flags")
-
-// 2F REV always on
-show2FREV  = input.bool(true, "Show 2F REV (ALWAYS ON)")
-twoFOffset = input.int(1, "2F: Side-by-Side Offset (bars)", minval=0, maxval=10)
+show22LevelHighlight = input.bool(true, "Highlight 22 At PDH/PDL/CDH/CDL")
+levelTouchTicks      = input.int(2, "22 Highlight: Touch Tolerance (ticks)", minval=0, maxval=20)
 
 // Active levels
 showActiveLevels = input.bool(true, "Show Active Structure Levels")
@@ -35,12 +34,18 @@ projStyleInp     = input.string("dashed", "Active Levels Style", options=["solid
 
 // Candle arrows
 showArrows = input.bool(true, "Show 2U/2D Arrows (Every Candle)")
+num1Color      = input.color(color.new(color.white, 0), "Candle #1 Color")
+num2UpColor    = input.color(color.new(color.lime, 0),  "Candle #2U Color")
+num2DownColor  = input.color(color.new(color.red, 0),   "Candle #2D Color")
+num3Color      = input.color(color.new(color.orange, 0),"Candle #3 Color")
+arrowUpColor   = input.color(color.new(color.lime, 0),  "Arrow 2U Color")
+arrowDownColor = input.color(color.new(color.red, 0),   "Arrow 2D Color")
 
 // Sessions
 rthSession  = input.session("0930-1600", "Regular Trading Hours Session")
 tradeWindow = input.session("0930-1430", "Trade Allowed Window (ET)")
 
-// Leash for Tier-1 + active levels (2F ignores)
+// Leash for Tier-1 + active levels
 signalMode = input.string("Fade when blocked", "Signals When Blocked", options=["Normal","Fade when blocked","Hide when blocked"])
 
 //──────────────────────────────────────────────────────────────────────────────
@@ -141,13 +146,13 @@ is2D = twoDown(0)
 is3  = threeBar(0)
 
 // Minimal prints
-plotchar(is1,  "1",  "1", location=location.belowbar, color=color.white,  size=size.tiny)
-plotchar(is2U, "2U", "2", location=location.belowbar, color=color.lime,   size=size.tiny)
-plotchar(is2D, "2D", "2", location=location.belowbar, color=color.red,    size=size.tiny)
-plotchar(is3,  "3",  "3", location=location.belowbar, color=color.orange, size=size.tiny)
+plotchar(is1,  "1",  "1", location=location.belowbar, color=num1Color,     size=size.tiny)
+plotchar(is2U, "2U", "2", location=location.belowbar, color=num2UpColor,   size=size.tiny)
+plotchar(is2D, "2D", "2", location=location.belowbar, color=num2DownColor, size=size.tiny)
+plotchar(is3,  "3",  "3", location=location.belowbar, color=num3Color,     size=size.tiny)
 
-plotshape(showArrows and is2U, "2U Arrow", shape.arrowup,   location=location.abovebar, color=color.lime, size=size.small)
-plotshape(showArrows and is2D, "2D Arrow", shape.arrowdown, location=location.abovebar, color=color.red,  size=size.small)
+plotshape(showArrows and is2U, "2U Arrow", shape.arrowup,   location=location.abovebar, color=arrowUpColor,   size=size.small)
+plotshape(showArrows and is2D, "2D Arrow", shape.arrowdown, location=location.abovebar, color=arrowDownColor, size=size.small)
 
 //──────────────────────────────────────────────────────────────────────────────
 // COMBO LOGIC (22 / 212 / 312 / 322)
@@ -177,15 +182,6 @@ isTier1Event =
      (show212 and (is212BullRev or is212BearRev)) or
      (show312 and (is312BullRev or is312BearRev)) or
      (show322 and (is322BullRev or is322BearRev))
-
-//──────────────────────────────────────────────────────────────────────────────
-// 2F REV (FAILED DIRECTIONAL REVERSAL) — ALWAYS ON
-//──────────────────────────────────────────────────────────────────────────────
-failed2U(k) => twoUp(k)   and close[k] < open[k]
-failed2D(k) => twoDown(k) and close[k] > open[k]
-
-is2FRevBear = failed2U(1) and twoDown(0)
-is2FRevBull = failed2D(1) and twoUp(0)
 
 //──────────────────────────────────────────────────────────────────────────────
 // FIXED TF CONTEXT (NO LOOKAHEAD)
@@ -535,7 +531,6 @@ forceColor = inForce ? color.lime : color.orange
 //──────────────────────────────────────────────────────────────────────────────
 // BLOCKED / LEASH
 // Tier-1 + Active levels obey: window + gate + in-force
-// 2F ignores all this
 //──────────────────────────────────────────────────────────────────────────────
 blocked = (not inTradeWin) or (not tradeAllowed) or (not inForce)
 
@@ -550,7 +545,7 @@ allowPlotSig = not hideSignals
 //──────────────────────────────────────────────────────────────────────────────
 // MARKET FLOW PANEL (NO VWAP)
 //──────────────────────────────────────────────────────────────────────────────
-var table tbl = table.new(position=position.top_right, columns=1 + panelPadCols, rows=12 + panelPadRows, border_width=1)
+var table tbl = table.new(position=position.top_right, columns=1 + panelPadCols, rows=7 + panelPadRows, border_width=1)
 
 tSize =
      txtSize == "tiny"   ? size.tiny  :
@@ -565,8 +560,15 @@ sessionColor = isRTH ? color.lime : color.orange
 timeText     = inTradeWin ? "TIME: ✅ WINDOW" : "TIME: ⛔ OUTSIDE"
 timeColor    = inTradeWin ? color.lime : color.red
 
+tradeTextCompact = tradeAllowed ? (allowLong ? "T:✅L" : "T:✅S") : "T:⛔"
+htfTextCompact   = (h4Bull and h1Bull) ? "H:🟢" : (h4Bear and h1Bear) ? "H:🔴" : "H:🟡"
+dayTextCompact   = isInsideDay ? "D:🔶" : isDayUp ? "D:🟢" : isDayDown ? "D:🔴" : "D:⚪"
+forceTextCompact = inForce ? "F:✅" : "F:⛔"
+timeTextCompact  = inTradeWin ? "W:✅" : "W:⛔"
+sessTextCompact  = isRTH ? "S:RTH" : "S:ETH"
+
 if barstate.islast and showMarketFlow
-    for r = 0 to (11 + panelPadRows)
+    for r = 0 to (6 + panelPadRows)
         for c = 0 to panelPadCols
             table.cell(tbl, c, r, "", text_color=color.white, text_size=tSize)
 
@@ -576,17 +578,21 @@ if barstate.islast and showMarketFlow
     if showMarketFlowTitle
         table.cell(tbl, col, row, "FLOW", text_color=color.white, text_size=tSize), row += 1
 
-    table.cell(tbl, col, row, tradeText,   text_color=tradeColor,   text_size=tSize), row += 1
-    table.cell(tbl, col, row, htfFlowText, text_color=htfFlowColor, text_size=tSize), row += 1
-    table.cell(tbl, col, row, dayTypeText, text_color=dayTypeColor, text_size=tSize), row += 1
-    table.cell(tbl, col, row, forceText,   text_color=forceColor,   text_size=tSize), row += 1
-
-    if isStudy
-        table.cell(tbl, col, row, sessionText, text_color=sessionColor, text_size=tSize), row += 1
-        table.cell(tbl, col, row, timeText,    text_color=timeColor,    text_size=tSize), row += 1
+    if panelCompactMode
+        table.cell(tbl, col, row, tradeTextCompact + " | " + htfTextCompact + " | " + dayTextCompact + " | " + forceTextCompact, text_color=color.white, text_size=tSize), row += 1
+        if isStudy
+            table.cell(tbl, col, row, sessTextCompact + " | " + timeTextCompact, text_color=color.white, text_size=tSize), row += 1
+    else
+        table.cell(tbl, col, row, tradeText,   text_color=tradeColor,   text_size=tSize), row += 1
+        table.cell(tbl, col, row, htfFlowText, text_color=htfFlowColor, text_size=tSize), row += 1
+        table.cell(tbl, col, row, dayTypeText, text_color=dayTypeColor, text_size=tSize), row += 1
+        table.cell(tbl, col, row, forceText,   text_color=forceColor,   text_size=tSize), row += 1
+        if isStudy
+            table.cell(tbl, col, row, sessionText, text_color=sessionColor, text_size=tSize), row += 1
+            table.cell(tbl, col, row, timeText,    text_color=timeColor,    text_size=tSize), row += 1
 
 //──────────────────────────────────────────────────────────────────────────────
-// FLAGS (Tier-1 obey leash) + 2F ALWAYS (emoji)
+// FLAGS (Tier-1 obey leash)
 //──────────────────────────────────────────────────────────────────────────────
 _stratLoc   = location.top
 _stratStyle = shape.flag
@@ -600,24 +606,21 @@ plotshape(allowPlotSig and show312 and is312BullRev, "312 Bull", _stratStyle, _s
 plotshape(allowPlotSig and show322 and is322BearRev, "322 Bear", _stratStyle, _stratLoc, color=color.new(bearColor, sigAlpha), text="322 Bear\nReversal", textcolor=color.new(bearColor, sigAlpha), offset=comboOffset, show_last=1)
 plotshape(allowPlotSig and show322 and is322BullRev, "322 Bull", _stratStyle, _stratLoc, color=color.new(bullColor, sigAlpha), text="322 Bull\nReversal", textcolor=color.new(bullColor, sigAlpha), offset=comboOffset, show_last=1)
 
-bullIcon = "🐂"
-bearIcon = "🐻"
+touchTol = syminfo.mintick * levelTouchTicks
+touchesLevel(float lvl) =>
+    not na(lvl) and (high >= (lvl - touchTol)) and (low <= (lvl + touchTol))
 
-plotshape(show2FREV and is2FRevBear and isTier1Event, "2F Bear (Shifted)", shape.flag, location.top,
-     color=bearColor, text=bearIcon + " 2F Bear\nReversal", textcolor=color.red,
-     offset=comboOffset + twoFOffset, size=size.tiny, show_last=1)
+touchPDH = touchesLevel(prevHigh)
+touchPDL = touchesLevel(prevLow)
+touchCDH = touchesLevel(currHigh)
+touchCDL = touchesLevel(currLow)
+touchAnyKeyLevel = touchPDH or touchPDL or touchCDH or touchCDL
+touchName = (touchPDH ? "PDH " : "") + (touchPDL ? "PDL " : "") + (touchCDH ? "CDH " : "") + (touchCDL ? "CDL" : "")
 
-plotshape(show2FREV and is2FRevBear and not isTier1Event, "2F Bear", shape.flag, location.top,
-     color=bearColor, text=bearIcon + " 2F Bear\nReversal", textcolor=color.red,
-     offset=comboOffset, size=size.tiny, show_last=1)
-
-plotshape(show2FREV and is2FRevBull and isTier1Event, "2F Bull (Shifted)", shape.flag, location.bottom,
-     color=bullColor, text=bullIcon + " 2F Bull\nReversal", textcolor=color.lime,
-     offset=comboOffset + twoFOffset, size=size.tiny, show_last=1)
-
-plotshape(show2FREV and is2FRevBull and not isTier1Event, "2F Bull", shape.flag, location.bottom,
-     color=bullColor, text=bullIcon + " 2F Bull\nReversal", textcolor=color.lime,
-     offset=comboOffset, size=size.tiny, show_last=1)
+if barstate.isconfirmed and allowPlotSig and show22 and show22LevelHighlight and (is22BullRev or is22BearRev) and touchAnyKeyLevel
+    label.new(bar_index + comboOffset, is22BearRev ? high : low, "22 @" + touchName,
+         style=is22BearRev ? label.style_label_down : label.style_label_up,
+         textcolor=color.white, color=color.new(is22BearRev ? bearColor : bullColor, 0), size=size.tiny)
 
 //──────────────────────────────────────────────────────────────────────────────
 // ACTIVE STRUCTURE LEVELS (ONE ONLY) + SCALE LABELS
@@ -678,7 +681,7 @@ plot(not na(lastStop)   ? lastStop   : na, "Active Stop (Scale)",   color=color.
 
 //──────────────────────────────────────────────────────────────────────────────
 // ALERTS
-// Tier-1 allowed = window + gate + in-force (2F always)
+// Tier-1 allowed = window + gate + in-force
 //──────────────────────────────────────────────────────────────────────────────
 tradeAllowedNow = tradeAllowed and inTradeWin and inForce
 tier1AllowedNow = isTier1Event and tradeAllowedNow
@@ -689,7 +692,3 @@ tradeAllowedFlip    = tradeAllowedNow and not prevTradeAllowedNow
 alertcondition(tradeAllowedFlip, title="Trade Allowed (Gate + In-Force)", message="TRADE ALLOWED ✅ {{ticker}} {{interval}} | Gate aligned + In-Force + within trade window.")
 alertcondition(tier1AllowedNow and anyBullCombo, title="Tier-1 Bull Reversal (Allowed)", message="TIER-1 BULL ✅ {{ticker}} {{interval}} | Combo reversal allowed (Gate + In-Force + Window).")
 alertcondition(tier1AllowedNow and anyBearCombo, title="Tier-1 Bear Reversal (Allowed)", message="TIER-1 BEAR ✅ {{ticker}} {{interval}} | Combo reversal allowed (Gate + In-Force + Window).")
-
-// 2F REV alerts — ALWAYS
-alertcondition(show2FREV and is2FRevBull, title="2F Bull (ALWAYS)", message="2F BULL ⚡ {{ticker}} {{interval}} | Failed 2D → 2U reversal. (Always on)")
-alertcondition(show2FREV and is2FRevBear, title="2F Bear (ALWAYS)", message="2F BEAR ⚡ {{ticker}} {{interval}} | Failed 2U → 2D reversal. (Always on)")

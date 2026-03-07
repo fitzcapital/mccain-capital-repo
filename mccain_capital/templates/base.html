@@ -114,7 +114,11 @@
             <div class="hr"></div>
             <div class="menuTitle">External</div>
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
-            <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+            {% if vanquish_lock and vanquish_lock.active %}
+              <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
+            {% else %}
+              <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+            {% endif %}
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight</button>
             {% if auth_enabled %}
@@ -271,7 +275,11 @@
           <div class="drawerSectionTitle">External</div>
           <div class="drawerStack">
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
-            <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+            {% if vanquish_lock and vanquish_lock.active %}
+              <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
+            {% else %}
+              <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+            {% endif %}
           </div>
         </section>
       </div>
@@ -551,6 +559,7 @@ document.addEventListener('keydown', (e) => {
       if(url.pathname !== "/market-pulse") return;
       showMarketPulseNavLoading();
     });
+
 
     function updateETClock(){
       try{

@@ -77,6 +77,9 @@
       Pace {{ money(milestone.avg_daily_profit) }}/day
       {% if milestone.projected_days_overall is not none %}
         · ~{{ milestone.projected_days_overall }} trading day{% if milestone.projected_days_overall != 1 %}s{% endif %} to complete
+        {% if milestone.projected_completion_label %}
+          · Est. completion {{ milestone.projected_completion_label }}
+        {% endif %}
       {% else %}
         · Add winning pace to project completion days
       {% endif %}

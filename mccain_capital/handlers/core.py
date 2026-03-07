@@ -40,6 +40,10 @@ def stream_market():
     return svc.stream_market()
 
 
+def stream_market_ws():
+    return svc.stream_market_ws()
+
+
 def stream_options_panel():
     return svc.stream_options_panel()
 
@@ -80,6 +84,22 @@ def links_page():
     return svc.links_page()
 
 
+def system_check_page():
+    return svc.system_check_page()
+
+
+def vanquish_blocklist_download():
+    return svc.vanquish_blocklist_download()
+
+
+def vanquish_lock_control():
+    return svc.vanquish_lock_control()
+
+
+def vanquish_lock_state():
+    return svc.vanquish_lock_state()
+
+
 def export_json():
     return svc.export_json()
 
@@ -94,3 +114,7 @@ def restore_data():
 
 def payouts_page():
     return goals_svc.payouts_page()
+
+
+def market_pulse_gamma_artifact(name: str):
+    return svc.market_pulse_gamma_artifact(name)

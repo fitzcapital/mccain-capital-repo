@@ -16,7 +16,13 @@ def register(app):
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)
     app.add_url_rule("/market-pulse", endpoint="market_pulse_page", view_func=h.market_pulse_page)
+    app.add_url_rule(
+        "/market-pulse/gamma-artifact/<path:name>",
+        endpoint="market_pulse_gamma_artifact",
+        view_func=h.market_pulse_gamma_artifact,
+    )
     app.add_url_rule("/stream/market", endpoint="stream_market", view_func=h.stream_market)
+    app.add_url_rule("/ws/market", endpoint="stream_market_ws", view_func=h.stream_market_ws)
     app.add_url_rule(
         "/stream/options_panel",
         endpoint="stream_options_panel",
@@ -49,6 +55,24 @@ def register(app):
         "/goals", endpoint="goals_tracker", view_func=h.goals_tracker, methods=["GET", "POST"]
     )
     app.add_url_rule("/links", endpoint="links_page", view_func=h.links_page)
+    app.add_url_rule("/ops/system-check", endpoint="system_check_page", view_func=h.system_check_page)
+    app.add_url_rule(
+        "/ops/vanquish-blocklist",
+        endpoint="vanquish_blocklist_download",
+        view_func=h.vanquish_blocklist_download,
+    )
+    app.add_url_rule(
+        "/ops/vanquish-lock",
+        endpoint="vanquish_lock_control",
+        view_func=h.vanquish_lock_control,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/ops/vanquish-lock-state",
+        endpoint="vanquish_lock_state",
+        view_func=h.vanquish_lock_state,
+        methods=["GET"],
+    )
     app.add_url_rule("/export.json", endpoint="export_json", view_func=h.export_json)
     app.add_url_rule("/admin/backup", endpoint="backup_data", view_func=h.backup_data)
     app.add_url_rule(

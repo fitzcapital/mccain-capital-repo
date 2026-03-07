@@ -78,7 +78,14 @@ def create_app():
                     return redirect(url_for("safe_mode_page"))
             if not auth.auth_enabled():
                 return None
-            allow = {"login_page", "logout_page", "healthz", "favicon", "static"}
+            allow = {
+                "login_page",
+                "logout_page",
+                "healthz",
+                "favicon",
+                "static",
+                "vanquish_lock_state",
+            }
             if request.endpoint in allow:
                 return None
             if auth.is_authenticated():

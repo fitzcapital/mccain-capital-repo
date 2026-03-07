@@ -111,6 +111,36 @@ def _massive_api_key() -> str:
     )
 
 
+def _tradier_api_key() -> str:
+    return (
+        (os.environ.get("TRADIER_API_KEY") or "").strip()
+        or str(app_runtime.get_setting_value("tradier_api_key", "") or "").strip()
+    )
+
+
+def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
+    key = _tradier_api_key()
+    if not key:
+        return None
+    base = (os.environ.get("TRADIER_BASE_URL") or "https://api.tradier.com").strip().rstrip("/")
+    url = base + path + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+            "User-Agent": "mccain-capital/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            parsed = json.loads(body)
+            return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
 def _massive_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
     key = _massive_api_key()
     if not key:
@@ -147,6 +177,11 @@ def _next_trading_day_iso(anchor_iso: str) -> str:
 
 
 def fetch_spx_chain_for_expiries(expiries: List[str]) -> pd.DataFrame:
+    tradier_first = _fetch_spx_chain_from_tradier({str(x) for x in expiries if str(x)})
+    if not tradier_first.empty:
+        tradier_first.attrs["contracts_seen"] = int(tradier_first.attrs.get("contracts_seen") or 0)
+        return tradier_first
+
     expiry_set = {str(x) for x in expiries if str(x)}
     rows: Dict[Tuple[str, float], Dict[str, Any]] = {}
     seen = 0
@@ -244,6 +279,71 @@ def fetch_spx_chain_for_expiries(expiries: List[str]) -> pd.DataFrame:
     if df.empty:
         return df
     df.attrs["contracts_seen"] = seen
+    return df
+
+
+def _fetch_spx_chain_from_tradier(expiry_set: set[str]) -> pd.DataFrame:
+    if not _tradier_api_key():
+        return pd.DataFrame()
+    rows: Dict[Tuple[str, float], Dict[str, Any]] = {}
+    seen = 0
+    for expiry in sorted(expiry_set):
+        payload = _tradier_json(
+            "/v1/markets/options/chains",
+            {"symbol": "SPX", "expiration": expiry, "greeks": "true"},
+        )
+        options = ((payload or {}).get("options") or {}).get("option")
+        if isinstance(options, dict):
+            opts = [options]
+        elif isinstance(options, list):
+            opts = [o for o in options if isinstance(o, dict)]
+        else:
+            opts = []
+        for item in opts:
+            seen += 1
+            expiration = str(item.get("expiration_date") or expiry)
+            strike = _safe_float(item.get("strike"))
+            if strike is None:
+                continue
+            cp_raw = str(item.get("option_type") or "").lower()
+            cp = "call" if cp_raw.startswith("c") else "put" if cp_raw.startswith("p") else ""
+            if cp not in {"call", "put"}:
+                continue
+            oi = float(_safe_float(item.get("open_interest")) or 0.0)
+            greeks = item.get("greeks") if isinstance(item.get("greeks"), dict) else {}
+            gamma = float(_safe_float(greeks.get("gamma")) or 0.0)
+            vega = float(_safe_float(greeks.get("vega")) or 0.0)
+            delta = float(_safe_float(greeks.get("delta")) or 0.0)
+
+            key = (expiration, float(strike))
+            bucket = rows.setdefault(
+                key,
+                {
+                    "expiration": expiration,
+                    "strike": float(strike),
+                    "call_oi": 0.0,
+                    "put_oi": 0.0,
+                    "call_gamma": 0.0,
+                    "put_gamma": 0.0,
+                    "call_vega": 0.0,
+                    "put_vega": 0.0,
+                    "call_delta": 0.0,
+                    "put_delta": 0.0,
+                },
+            )
+            if cp == "call":
+                bucket["call_oi"] = oi
+                bucket["call_gamma"] = gamma
+                bucket["call_vega"] = vega
+                bucket["call_delta"] = delta
+            else:
+                bucket["put_oi"] = oi
+                bucket["put_gamma"] = gamma
+                bucket["put_vega"] = vega
+                bucket["put_delta"] = abs(delta)
+    df = pd.DataFrame(list(rows.values()))
+    if not df.empty:
+        df.attrs["contracts_seen"] = seen
     return df
 
 

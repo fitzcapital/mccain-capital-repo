@@ -1,0 +1,270 @@
+//@version=6
+indicator("Fitz Wall Levels Pro", overlay=true, max_lines_count=200, max_labels_count=400, max_boxes_count=100)
+
+// ===== INPUTS =====
+showCallWall = input.bool(true, "Show Call Wall")
+callWall = input.float(0.0, "Call Wall", step=0.25)
+
+showPutWall = input.bool(true, "Show Put Wall")
+putWall = input.float(0.0, "Put Wall", step=0.25)
+
+showGammaFlip = input.bool(true, "Show Gamma Flip")
+gammaFlip = input.float(0.0, "Gamma Flip", step=0.25)
+
+showVoidTop = input.bool(true, "Show Void Top")
+voidTop = input.float(0.0, "Void Top", step=0.25)
+
+showVoidBottom = input.bool(true, "Show Void Bottom")
+voidBottom = input.float(0.0, "Void Bottom", step=0.25)
+
+showShortTrigger = input.bool(true, "Show Short Trigger")
+shortTrigger = input.float(0.0, "Short Trigger", step=0.25)
+
+showLongTrigger = input.bool(true, "Show Long Trigger")
+longTrigger = input.float(0.0, "Long Trigger", step=0.25)
+
+showResistance = input.bool(false, "Show Resistance")
+resistanceLevel = input.float(0.0, "Resistance", step=0.25)
+
+showSupport = input.bool(false, "Show Support")
+supportLevel = input.float(0.0, "Support", step=0.25)
+
+// ===== STYLE =====
+lineWidth = input.int(2, "Line Width", minval=1, maxval=5)
+lineStyle = input.string("Solid", "Line Style", options=["Solid", "Dashed", "Dotted"])
+leftTagShift = input.int(10, "Left Tag Shift Right", minval=1, maxval=100)
+rightTagShift = input.int(65, "Right Price Tag Shift Right", minval=10, maxval=300)
+overlapOffsetTicks = input.int(8, "Duplicate Level Label Offset (Ticks)", minval=1, maxval=100)
+
+wallHalfHeightTicks = input.int(6, "Wall Box Half Height (Ticks)", minval=1, maxval=100)
+wallFillTransparency = input.int(80, "Wall Box Fill Transparency", minval=0, maxval=100)
+combinedWallColor = input.color(color.new(color.fuchsia, 0), "Combined Call/Put Wall Color")
+
+callColor = input.color(color.new(color.yellow, 0), "Call Wall Color")
+putColor = input.color(color.new(color.aqua, 0), "Put Wall Color")
+gammaColor = input.color(color.new(color.purple, 0), "Gamma Flip Color")
+voidTopColor = input.color(color.new(color.orange, 0), "Void Top Color")
+voidBotColor = input.color(color.new(color.orange, 15), "Void Bottom Color")
+shortColor = input.color(color.new(color.red, 0), "Short Trigger Color")
+longColor = input.color(color.new(color.lime, 0), "Long Trigger Color")
+resColor = input.color(color.new(color.red, 25), "Resistance Color")
+supColor = input.color(color.new(color.blue, 25), "Support Color")
+
+f_getLineStyle(_style) =>
+    _style == "Dashed" ? line.style_dashed : _style == "Dotted" ? line.style_dotted : line.style_solid
+
+f_label_y(_price, _slot) =>
+    _price + (_slot * overlapOffsetTicks * syminfo.mintick)
+
+styleSelected = f_getLineStyle(lineStyle)
+
+f_draw_line(_show, _price, _color, _line) =>
+    line lineRef = _line
+    if _show and _price != 0
+        if na(lineRef)
+            lineRef := line.new(bar_index, _price, bar_index + 1, _price, xloc=xloc.bar_index, extend=extend.right, color=_color, width=lineWidth, style=styleSelected)
+        else
+            line.set_xy1(lineRef, bar_index, _price)
+            line.set_xy2(lineRef, bar_index + 1, _price)
+            line.set_extend(lineRef, extend.right)
+            line.set_color(lineRef, _color)
+            line.set_width(lineRef, lineWidth)
+            line.set_style(lineRef, styleSelected)
+    else
+        if not na(lineRef)
+            line.delete(lineRef)
+            lineRef := na
+    lineRef
+
+f_draw_wall_box(_show, _price, _color, _box) =>
+    box boxRef = _box
+    topPrice = _price + wallHalfHeightTicks * syminfo.mintick
+    botPrice = _price - wallHalfHeightTicks * syminfo.mintick
+    if _show and _price != 0
+        if na(boxRef)
+            boxRef := box.new(left=bar_index, top=topPrice, right=bar_index + 1, bottom=botPrice, xloc=xloc.bar_index, extend=extend.right, bgcolor=color.new(_color, wallFillTransparency), border_color=_color, border_width=lineWidth)
+        else
+            box.set_left(boxRef, bar_index)
+            box.set_right(boxRef, bar_index + 1)
+            box.set_top(boxRef, topPrice)
+            box.set_bottom(boxRef, botPrice)
+            box.set_extend(boxRef, extend.right)
+            box.set_bgcolor(boxRef, color.new(_color, wallFillTransparency))
+            box.set_border_color(boxRef, _color)
+            box.set_border_width(boxRef, lineWidth)
+    else
+        if not na(boxRef)
+            box.delete(boxRef)
+            boxRef := na
+    boxRef
+
+f_draw_left_label(_show, _price, _slot, _name, _color, _label) =>
+    label labelRef = _label
+    if _show and _price != 0
+        y = f_label_y(_price, _slot)
+        txt = _name + "  |  " + str.tostring(_price, format.mintick)
+        if na(labelRef)
+            labelRef := label.new(bar_index + leftTagShift, y, txt, xloc=xloc.bar_index, style=label.style_label_right, textcolor=color.white, color=_color, size=size.small)
+        else
+            label.set_x(labelRef, bar_index + leftTagShift)
+            label.set_y(labelRef, y)
+            label.set_text(labelRef, txt)
+            label.set_color(labelRef, _color)
+            label.set_textcolor(labelRef, color.white)
+    else
+        if not na(labelRef)
+            label.delete(labelRef)
+            labelRef := na
+    labelRef
+
+f_draw_right_price_tag(_show, _price, _slot, _color, _label) =>
+    label labelRef = _label
+    if _show and _price != 0
+        y = f_label_y(_price, _slot)
+        txt = str.tostring(_price, format.mintick)
+        if na(labelRef)
+            labelRef := label.new(bar_index + rightTagShift, y, txt, xloc=xloc.bar_index, style=label.style_label_left, textcolor=color.white, color=_color, size=size.small)
+        else
+            label.set_x(labelRef, bar_index + rightTagShift)
+            label.set_y(labelRef, y)
+            label.set_text(labelRef, txt)
+            label.set_color(labelRef, _color)
+            label.set_textcolor(labelRef, color.white)
+    else
+        if not na(labelRef)
+            label.delete(labelRef)
+            labelRef := na
+    labelRef
+
+// ===== HANDLES =====
+var box callBox = na
+var box putBox = na
+var box comboBox = na
+
+var line gammaLine = na
+var line voidTopLine = na
+var line voidBotLine = na
+var line shortLine = na
+var line longLine = na
+var line resLine = na
+var line supLine = na
+
+var label callLeft = na
+var label putLeft = na
+var label comboLeft = na
+var label gammaLeft = na
+var label voidTopLeft = na
+var label voidBotLeft = na
+var label shortLeft = na
+var label longLeft = na
+var label resLeft = na
+var label supLeft = na
+
+var label callRight = na
+var label putRight = na
+var label comboRight = na
+var label gammaRight = na
+var label voidTopRight = na
+var label voidBotRight = na
+var label shortRight = na
+var label longRight = na
+var label resRight = na
+var label supRight = na
+
+isCallOn = showCallWall and callWall != 0
+isPutOn = showPutWall and putWall != 0
+sameWall = isCallOn and isPutOn and callWall == putWall
+
+showCombo = sameWall
+showCallOnly = isCallOn and not sameWall
+showPutOnly = isPutOn and not sameWall
+
+showGamma = showGammaFlip and gammaFlip != 0
+showVTop = showVoidTop and voidTop != 0
+showVBot = showVoidBottom and voidBottom != 0
+showShort = showShortTrigger and shortTrigger != 0
+showLong = showLongTrigger and longTrigger != 0
+showRes = showResistance and resistanceLevel != 0
+showSup = showSupport and supportLevel != 0
+
+if barstate.islast
+    // Build a compact level table to compute duplicate-price slots.
+    on1 = showCombo
+    p1 = callWall
+    on2 = showCallOnly
+    p2 = callWall
+    on3 = showPutOnly
+    p3 = putWall
+    on4 = showGamma
+    p4 = gammaFlip
+    on5 = showVTop
+    p5 = voidTop
+    on6 = showVBot
+    p6 = voidBottom
+    on7 = showShort
+    p7 = shortTrigger
+    on8 = showLong
+    p8 = longTrigger
+    on9 = showRes
+    p9 = resistanceLevel
+    on10 = showSup
+    p10 = supportLevel
+
+    arrOn = array.from(on1, on2, on3, on4, on5, on6, on7, on8, on9, on10)
+    arrPrice = array.from(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10)
+    arrSlot = array.new_int(10, 0)
+
+    for i = 0 to 9
+        if array.get(arrOn, i)
+            p = array.get(arrPrice, i)
+            c = 0
+            if i > 0
+                for j = 0 to i - 1
+                    if array.get(arrOn, j) and array.get(arrPrice, j) == p
+                        c += 1
+            array.set(arrSlot, i, c)
+
+    s1 = array.get(arrSlot, 0)
+    s2 = array.get(arrSlot, 1)
+    s3 = array.get(arrSlot, 2)
+    s4 = array.get(arrSlot, 3)
+    s5 = array.get(arrSlot, 4)
+    s6 = array.get(arrSlot, 5)
+    s7 = array.get(arrSlot, 6)
+    s8 = array.get(arrSlot, 7)
+    s9 = array.get(arrSlot, 8)
+    s10 = array.get(arrSlot, 9)
+
+    comboBox := f_draw_wall_box(showCombo, callWall, combinedWallColor, comboBox)
+    callBox := f_draw_wall_box(showCallOnly, callWall, callColor, callBox)
+    putBox := f_draw_wall_box(showPutOnly, putWall, putColor, putBox)
+
+    gammaLine := f_draw_line(showGamma, gammaFlip, gammaColor, gammaLine)
+    voidTopLine := f_draw_line(showVTop, voidTop, voidTopColor, voidTopLine)
+    voidBotLine := f_draw_line(showVBot, voidBottom, voidBotColor, voidBotLine)
+    shortLine := f_draw_line(showShort, shortTrigger, shortColor, shortLine)
+    longLine := f_draw_line(showLong, longTrigger, longColor, longLine)
+    resLine := f_draw_line(showRes, resistanceLevel, resColor, resLine)
+    supLine := f_draw_line(showSup, supportLevel, supColor, supLine)
+
+    comboLeft := f_draw_left_label(showCombo, callWall, s1, "CALL/PUT WALL", combinedWallColor, comboLeft)
+    callLeft := f_draw_left_label(showCallOnly, callWall, s2, "CALL WALL", callColor, callLeft)
+    putLeft := f_draw_left_label(showPutOnly, putWall, s3, "PUT WALL", putColor, putLeft)
+    gammaLeft := f_draw_left_label(showGamma, gammaFlip, s4, "GAMMA FLIP", gammaColor, gammaLeft)
+    voidTopLeft := f_draw_left_label(showVTop, voidTop, s5, "VOID TOP", voidTopColor, voidTopLeft)
+    voidBotLeft := f_draw_left_label(showVBot, voidBottom, s6, "VOID BOTTOM", voidBotColor, voidBotLeft)
+    shortLeft := f_draw_left_label(showShort, shortTrigger, s7, "SHORT TRIGGER", shortColor, shortLeft)
+    longLeft := f_draw_left_label(showLong, longTrigger, s8, "LONG TRIGGER", longColor, longLeft)
+    resLeft := f_draw_left_label(showRes, resistanceLevel, s9, "RESISTANCE", resColor, resLeft)
+    supLeft := f_draw_left_label(showSup, supportLevel, s10, "SUPPORT", supColor, supLeft)
+
+    comboRight := f_draw_right_price_tag(showCombo, callWall, s1, combinedWallColor, comboRight)
+    callRight := f_draw_right_price_tag(showCallOnly, callWall, s2, callColor, callRight)
+    putRight := f_draw_right_price_tag(showPutOnly, putWall, s3, putColor, putRight)
+    gammaRight := f_draw_right_price_tag(showGamma, gammaFlip, s4, gammaColor, gammaRight)
+    voidTopRight := f_draw_right_price_tag(showVTop, voidTop, s5, voidTopColor, voidTopRight)
+    voidBotRight := f_draw_right_price_tag(showVBot, voidBottom, s6, voidBotColor, voidBotRight)
+    shortRight := f_draw_right_price_tag(showShort, shortTrigger, s7, shortColor, shortRight)
+    longRight := f_draw_right_price_tag(showLong, longTrigger, s8, longColor, longRight)
+    resRight := f_draw_right_price_tag(showRes, resistanceLevel, s9, resColor, resRight)
+    supRight := f_draw_right_price_tag(showSup, supportLevel, s10, supColor, supRight)

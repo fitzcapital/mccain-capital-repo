@@ -2,7 +2,7 @@
   <div class="marketPulseLoadingCard">
     <div class="marketPulseSpinner"></div>
     <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
-    <div class="marketPulseLoadingSub">Pulling Massive data and rebuilding tape context…</div>
+    <div class="marketPulseLoadingSub">Pulling live market data and rebuilding tape context…</div>
   </div>
 </div>
 
@@ -30,6 +30,130 @@
     </div>
   </div>
 </div>
+
+{% if source_health and source_health.is_degraded %}
+<div class="card stack12 marketPulseSection"><div class="toolbar">
+  <div class="pill">Degraded Mode</div>
+  <div class="integrityAlert integrityAlert-warn">{{ source_health.banner }}</div>
+</div></div>
+{% endif %}
+
+<div class="card stack12 marketPulseSection"><div class="toolbar">
+  <div class="pill">Source Health</div>
+  <div class="supportLead">Overall: {{ source_health.overall_label if source_health else 'Unknown' }}</div>
+  <div class="integrityGrid">
+    {% for row in (source_health.rows if source_health else []) %}
+      <div class="integrityCell">
+        <div class="tiny muted">{{ row.name }}</div>
+        <div class="supportLead">{{ row.status_label }}</div>
+        <div class="tiny">{{ row.detail }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</div></div>
+
+<div class="card stack12 marketPulseSection"><div class="toolbar">
+  <div class="pill">SPX Priority</div>
+  <div class="spxStaticCard">
+    <div class="pillRow marketCardMeta">
+      <span class="trendChip stateChip state-{{ spx_quote.get('data_state') or 'missing' }}">{{ spx_quote.get('data_status_label') or 'Live' }}</span>
+      <span class="tiny muted">{{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}</span>
+    </div>
+    <div class="k">SPX</div>
+    <div class="marketMiniSparkWrap">{{ spx_quote.get('sparkline_svg')|safe if spx_quote else '<div class="marketMiniSparkEmpty">No trend</div>' }}</div>
+    <div class="v">
+      {% if spx_quote and spx_quote.get('price') is not none %}
+        {{ '%.2f'|format(spx_quote.get('price')) }}
+      {% else %}
+        —
+      {% endif %}
+    </div>
+    <div class="tiny">
+      {{ '%+.2f'|format(spx_quote.get('change')) if spx_quote.get('change') is not none else '—' }}
+      · {{ '%+.2f'|format(spx_quote.get('change_pct')) if spx_quote.get('change_pct') is not none else '—' }}%
+    </div>
+    <div class="tiny">State: {{ spx_quote.get('market_state') or 'Unavailable' }}</div>
+    <div class="tiny">Range: {{ spx_quote.get('day_range') or '—' }}</div>
+    <div class="tiny muted">Primary cash index proxy for SPX options context.</div>
+    <div class="tiny"><a href="{{ spx_quote.get('yahoo_href') or 'https://finance.yahoo.com/quote/%5EGSPC' }}" target="_blank" rel="noopener">View on Yahoo</a></div>
+  </div>
+  <div class="supportLead">
+    {% if spx_quote and spx_quote.get('price') is not none %}
+      {{ '%.2f'|format(spx_quote.get('price')) }}
+      · {{ '%+.2f'|format(spx_quote.get('change')) }}
+      · {{ '%+.2f'|format(spx_quote.get('change_pct')) }}%
+    {% else %}
+      SPX quote unavailable
+    {% endif %}
+    · {{ spx_quote.get('market_state') or 'Unavailable' }}
+  </div>
+  <div class="tiny stack8">
+    {{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}
+    {% if spx_quote.get('data_reason') %}
+      · Reason: {{ spx_quote.get('data_reason') }}
+    {% endif %}
+  </div>
+  <div class="optionsGammaGrid">
+    <div class="optionsGammaCell">
+      <div class="tiny">Gamma Flip</div>
+      <strong>{% if gamma_snapshot.get('gamma_flip') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip')) }}{% else %}—{% endif %}</strong>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Call Wall</div>
+      <strong>{% if gamma_snapshot.get('call_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall')) }}{% else %}—{% endif %}</strong>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Put Wall</div>
+      <strong>{% if gamma_snapshot.get('put_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall')) }}{% else %}—{% endif %}</strong>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Net Gamma</div>
+      <strong>{{ gamma_snapshot.get('net_gamma_label') or gamma_snapshot.get('net_gex') or '—' }}</strong>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Regime</div>
+      <strong>{{ (gamma_snapshot.get('regime') or 'unavailable')|upper }}</strong>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Bias</div>
+      <strong>{{ gamma_snapshot.get('bias') or 'insufficient_data' }}</strong>
+    </div>
+  </div>
+  <div class="tiny stack8">
+    <span class="trendChip {% if gamma_quality and gamma_quality.get('tone') == 'ok' %}positive{% else %}negative{% endif %}">
+      Gamma Quality
+    </span>
+    {{ (gamma_quality or {}).get('summary') or 'Non-live spot · OI age unknown · 0 contracts' }}
+    · Updated {{ gamma_updated_label }}
+  </div>
+  <details class="optionsContractsDropdown">
+    <summary class="optionsContractsSummary">
+      <span>Best Contracts (≤ 7 DTE)</span>
+      <span class="tiny muted">{{ options_contracts|length if options_contracts else 0 }} loaded</span>
+    </summary>
+    <div class="optionsContracts">
+      {% if options_contracts %}
+        {% for c in options_contracts[:5] %}
+          <details class="optionsContractRow">
+            <summary class="optionsContractSummary">
+              <span class="optionsContractLabel">{{ c.get('label') or '—' }}</span>
+              <span class="optionsLiqBadge badge-{{ (c.get('liq') or 'Wide')|lower }}">{{ c.get('liq') or 'Wide' }}</span>
+            </summary>
+            <div class="tiny optionsContractMeta">
+              Mid {{ '%.2f'|format(c.get('mid')) if c.get('mid') is not none else '—' }}
+              · Δ {{ '%.2f'|format(c.get('delta')) if c.get('delta') is not none else '—' }}
+              · Vol {{ c.get('vol') if c.get('vol') is not none else '—' }}
+              · OI {{ c.get('oi') if c.get('oi') is not none else '—' }}
+              · Spr {{ '%.2f'|format(c.get('spread')) if c.get('spread') is not none else '—' }}
+            </div>
+          </details>
+        {% endfor %}
+      {% else %}
+        <div class="marketPulseAlert muted">No contract rows loaded yet.</div>
+      {% endif %}
+    </div>
+  </details>
+</div></div>
 
 <div class="card stack12 marketPulseSection"><div class="toolbar">
   <div class="pill">Data Integrity</div>
@@ -104,6 +228,9 @@
         </div>
         <div class="tiny">{{ '%+.2f'|format(q.change) }} · {{ '%+.2f'|format(q.change_pct) }}%</div>
         <div class="tiny">State: {{ q.market_state }}</div>
+        {% if q.freshness_reason and q.data_state != 'live' %}
+          <div class="tiny muted">Reason: {{ q.freshness_reason }}</div>
+        {% endif %}
         <div class="tiny">Range: {{ q.day_range }}</div>
         <div class="tiny muted">{{ q.focus }}</div>
         <div class="tiny"><a href="{{ q.yahoo_href }}" target="_blank" rel="noopener">View on Yahoo</a></div>
@@ -112,66 +239,11 @@
   </div>
 </div></div>
 
-<div class="dashboardSupportGrid researchOnly marketPulseSection">
+<div class="dashboardSupportGrid marketPulseSection">
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">SPX Focus</div>
     <div class="supportLead">{{ context.headline_note }}</div>
     <div class="supportBody">Use this page as a fast read on what can move the index, not as a replacement for your levels.</div>
-  </div></div>
-  <div class="card supportCard"><div class="toolbar">
-    <div class="pill">SPX Gamma</div>
-    <div class="supportLead">
-      Spot {% if gamma_snapshot.get('spot') is not none %}{{ '%.2f'|format(gamma_snapshot.get('spot')) }}{% else %}—{% endif %}
-      · Net {{ gamma_snapshot.get('net_gamma_label') or gamma_snapshot.get('net_gex') or '—' }}
-    </div>
-    <div class="optionsGammaGrid">
-      <div class="optionsGammaCell">
-        <div class="tiny">Gamma Flip</div>
-        <strong>{% if gamma_snapshot.get('gamma_flip') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip')) }}{% else %}—{% endif %}</strong>
-      </div>
-      <div class="optionsGammaCell">
-        <div class="tiny">Call Wall</div>
-        <strong>{% if gamma_snapshot.get('call_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall')) }}{% else %}—{% endif %}</strong>
-      </div>
-      <div class="optionsGammaCell">
-        <div class="tiny">Put Wall</div>
-        <strong>{% if gamma_snapshot.get('put_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall')) }}{% else %}—{% endif %}</strong>
-      </div>
-      <div class="optionsGammaCell">
-        <div class="tiny">Bias</div>
-        <strong>{{ gamma_snapshot.get('bias') or 'insufficient_data' }}</strong>
-      </div>
-    </div>
-    <div class="tiny stack8">
-      Updated {{ gamma_snapshot.get('asof') or '—' }}
-      {% set vz = gamma_snapshot.get('void_zone') or {} %}
-      {% if vz.get('start') is not none and vz.get('end') is not none %}
-        · Void {{ vz.get('start') }} to {{ vz.get('end') }}
-      {% endif %}
-      {% if gamma_snapshot.get('gamma_walls_top3') %}
-        · Walls {{ gamma_snapshot.get('gamma_walls_top3')|join(', ') }}
-      {% endif %}
-    </div>
-    <div class="tiny stack8">Best Contracts (≤ 7 DTE)</div>
-    <div class="optionsContracts">
-      {% if options_contracts %}
-        {% for c in options_contracts[:5] %}
-          <div class="optionsContractRow">
-            <div class="optionsContractLabel">{{ c.get('label') or '—' }}</div>
-            <div class="tiny optionsContractMeta">
-              Mid {{ '%.2f'|format(c.get('mid')) if c.get('mid') is not none else '—' }}
-              · Δ {{ '%.2f'|format(c.get('delta')) if c.get('delta') is not none else '—' }}
-              · Vol {{ c.get('vol') if c.get('vol') is not none else '—' }}
-              · OI {{ c.get('oi') if c.get('oi') is not none else '—' }}
-              · Spr {{ '%.2f'|format(c.get('spread')) if c.get('spread') is not none else '—' }}
-            </div>
-            <div class="optionsLiqBadge badge-{{ (c.get('liq') or 'Wide')|lower }}">{{ c.get('liq') or 'Wide' }}</div>
-          </div>
-        {% endfor %}
-      {% else %}
-        <div class="marketPulseAlert muted">No contract rows loaded yet.</div>
-      {% endif %}
-    </div>
   </div></div>
   <div class="card supportCard subtleCard"><div class="toolbar">
     <div class="pill">Leadership</div>
