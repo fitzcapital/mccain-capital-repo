@@ -20,7 +20,6 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 from zoneinfo import ZoneInfo
 
 DEFAULT_STATE_URL = "http://127.0.0.1:5001/ops/vanquish-lock-state"
