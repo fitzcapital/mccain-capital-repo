@@ -56,10 +56,9 @@ def _massive_key() -> str:
 
 
 def _tradier_key() -> str:
-    return (
-        (os.environ.get("TRADIER_API_KEY") or "").strip()
-        or str(app_runtime.get_setting_value("tradier_api_key", "") or "").strip()
-    )
+    return (os.environ.get("TRADIER_API_KEY") or "").strip() or str(
+        app_runtime.get_setting_value("tradier_api_key", "") or ""
+    ).strip()
 
 
 def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -369,8 +368,10 @@ def _fetch_spx_contracts_from_tradier() -> List[Dict[str, Any]]:
             bid = _safe_float(row.get("bid"))
             ask = _safe_float(row.get("ask"))
             spread = (ask - bid) if (bid is not None and ask is not None) else None
-            mid = ((bid + ask) / 2.0) if (bid is not None and ask is not None) else _safe_float(
-                row.get("last")
+            mid = (
+                ((bid + ask) / 2.0)
+                if (bid is not None and ask is not None)
+                else _safe_float(row.get("last"))
             )
             greeks = row.get("greeks") if isinstance(row.get("greeks"), dict) else {}
             delta = _safe_float(greeks.get("delta"))
@@ -387,7 +388,9 @@ def _fetch_spx_contracts_from_tradier() -> List[Dict[str, Any]]:
             liq_rank = {"Tight": 0, "OK": 1, "Wide": 2}.get(liq, 3)
             contracts.append(
                 {
-                    "label": format_contract_label("SPXW" if dte <= 7 else "SPX", expiration, float(strike), cp),
+                    "label": format_contract_label(
+                        "SPXW" if dte <= 7 else "SPX", expiration, float(strike), cp
+                    ),
                     "mid": mid,
                     "delta": delta,
                     "vol": vol,

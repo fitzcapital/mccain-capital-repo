@@ -72,9 +72,7 @@ def build_market_source_health(
             "detail": (
                 "Live feed"
                 if news_status == "healthy"
-                else "Fallback/cached feed"
-                if news_status == "degraded"
-                else "No feed"
+                else "Fallback/cached feed" if news_status == "degraded" else "No feed"
             ),
         },
         {
@@ -82,7 +80,9 @@ def build_market_source_health(
             "status": gamma_status,
             "status_label": _status_label(gamma_status),
             "detail": (
-                f"Updated {gamma_asof.strftime('%I:%M %p ET')}" if gamma_asof else "No gamma snapshot"
+                f"Updated {gamma_asof.strftime('%I:%M %p ET')}"
+                if gamma_asof
+                else "No gamma snapshot"
             ),
         },
     ]
@@ -104,4 +104,3 @@ def build_market_source_health(
             else ""
         ),
     }
-

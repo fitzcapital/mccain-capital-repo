@@ -129,8 +129,7 @@ def _worker_loop() -> None:
             pass
         try:
             sleep_s = float(
-                app_runtime.get_setting_value("market_poll_seconds", POLL_SECONDS)
-                or POLL_SECONDS
+                app_runtime.get_setting_value("market_poll_seconds", POLL_SECONDS) or POLL_SECONDS
             )
         except Exception:
             sleep_s = float(POLL_SECONDS)

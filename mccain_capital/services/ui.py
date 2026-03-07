@@ -24,7 +24,9 @@ _forex_factory_cache: dict[str, object] = {"fetched_at": None, "payload": None}
 _forex_factory_next_week_cache: dict[str, object] = {"fetched_at": None, "payload": None}
 _forex_factory_month_cache: dict[str, object] = {"fetched_at": None, "payload": None}
 FOREX_FACTORY_CACHE_FILE = os.path.join(UPLOAD_DIR, ".forex_factory_weekly_cache.json")
-FOREX_FACTORY_NEXT_WEEK_CACHE_FILE = os.path.join(UPLOAD_DIR, ".forex_factory_next_weekly_cache.json")
+FOREX_FACTORY_NEXT_WEEK_CACHE_FILE = os.path.join(
+    UPLOAD_DIR, ".forex_factory_next_weekly_cache.json"
+)
 FOREX_FACTORY_MONTH_CACHE_FILE = os.path.join(UPLOAD_DIR, ".forex_factory_monthly_cache.json")
 VANQUISH_MANUAL_LOCK_PATH = os.path.join(UPLOAD_DIR, ".vanquish_manual_lock.json")
 
@@ -189,10 +191,7 @@ def get_system_status() -> dict:
 
 def get_vanquish_profit_lock_state() -> dict:
     """Return dashboard/web-link lock state once daily goal is hit."""
-    goal = float(
-        (current_app and current_app.config.get("VANQUISH_DAILY_LOCK_GOAL"))
-        or 500.0
-    )
+    goal = float((current_app and current_app.config.get("VANQUISH_DAILY_LOCK_GOAL")) or 500.0)
     try:
         # Optional runtime override; keeps default at 500.
         from mccain_capital import runtime as app_runtime
@@ -226,9 +225,7 @@ def get_vanquish_profit_lock_state() -> dict:
     active = bool(active_goal or manual.get("active"))
     reason_parts = []
     if active_goal:
-        reason_parts.append(
-            f"Daily goal hit ({day_net:,.2f} / {goal:,.2f})."
-        )
+        reason_parts.append(f"Daily goal hit ({day_net:,.2f} / {goal:,.2f}).")
     if manual.get("active"):
         reason_parts.append(
             f"Manual lock timer active ({int(manual.get('duration_minutes') or 0)}m)."
@@ -246,7 +243,8 @@ def get_vanquish_profit_lock_state() -> dict:
         "unlock_epoch": int(effective_unlock.timestamp()),
         "unlock_label": effective_unlock.strftime("%b %d, %Y %I:%M %p ET"),
         "reason": (
-            " ".join(reason_parts).strip() + f" Vanquish access locked until {effective_unlock.strftime('%I:%M %p ET')}."
+            " ".join(reason_parts).strip()
+            + f" Vanquish access locked until {effective_unlock.strftime('%I:%M %p ET')}."
             if active
             else ""
         ),
@@ -407,7 +405,9 @@ def get_forex_factory_month_feed() -> list[dict] | None:
         return payload
 
     return (
-        cached_payload if isinstance(cached_payload, list) else _load_forex_factory_month_disk_cache()
+        cached_payload
+        if isinstance(cached_payload, list)
+        else _load_forex_factory_month_disk_cache()
     )
 
 

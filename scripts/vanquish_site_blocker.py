@@ -208,9 +208,7 @@ def run_once(args: argparse.Namespace) -> int:
             return 2
 
     if state.active:
-        changed = apply_hosts_block(
-            args.hosts_path, domains, args.redirect_ip, args.redirect_ipv6
-        )
+        changed = apply_hosts_block(args.hosts_path, domains, args.redirect_ip, args.redirect_ipv6)
         if changed:
             flush_dns_cache()
             if not args.no_notify:
@@ -271,7 +269,9 @@ def run_daemon(args: argparse.Namespace) -> int:
             except Exception:
                 # fail-safe: keep current hosts state unchanged on fetch errors
                 effective = last_effective if last_effective is not None else False
-                state = LockState(active=effective, unlock_label="", reason="lock_state_unavailable")
+                state = LockState(
+                    active=effective, unlock_label="", reason="lock_state_unavailable"
+                )
 
         if effective:
             changed = apply_hosts_block(

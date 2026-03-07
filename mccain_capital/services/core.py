@@ -787,9 +787,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
     ):
         normalized_cache = _market_pulse_force_symbol_set(cached_payload)
         normalized_cache["source_label"] = "Massive market feed (cached snapshot)"
-        normalized_cache["source_note"] = (
-            "Using recent cached Massive snapshot within refresh TTL."
-        )
+        normalized_cache["source_note"] = "Using recent cached Massive snapshot within refresh TTL."
         return normalized_cache
 
     symbols = [str(spec.get("symbol") or "").strip().upper() for spec in MARKET_PULSE_SYMBOLS]
@@ -885,9 +883,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 "market_state": (
                     "Live"
                     if state == "live"
-                    else "Provider fallback"
-                    if state == "delayed"
-                    else "Unavailable"
+                    else "Provider fallback" if state == "delayed" else "Unavailable"
                 ),
                 "day_range": "—",
                 "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
@@ -895,11 +891,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 "asof_epoch": asof_epoch,
                 "data_state": state,
                 "data_status_label": (
-                    "Live"
-                    if state == "live"
-                    else "Delayed"
-                    if state == "delayed"
-                    else "Missing"
+                    "Live" if state == "live" else "Delayed" if state == "delayed" else "Missing"
                 ),
                 "data_reason": reason,
                 "mini_series": mini_series,
@@ -926,8 +918,16 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         if len(curve) >= 8:
             q["mini_series"] = curve
             q["series"] = points
-            highs = [float(r.get("high")) for r in rows if isinstance(r, dict) and r.get("high") is not None]
-            lows = [float(r.get("low")) for r in rows if isinstance(r, dict) and r.get("low") is not None]
+            highs = [
+                float(r.get("high"))
+                for r in rows
+                if isinstance(r, dict) and r.get("high") is not None
+            ]
+            lows = [
+                float(r.get("low"))
+                for r in rows
+                if isinstance(r, dict) and r.get("low") is not None
+            ]
             if highs and lows:
                 q["day_range"] = f"{min(lows):,.2f} to {max(highs):,.2f}"
     if counts["live"] == 0:
@@ -951,7 +951,14 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
     tradier_live = sum(
         1
         for spec in MARKET_PULSE_SYMBOLS
-        if str((quotes_by_symbol.get(str(spec.get("symbol") or "").strip().upper()) or {}).get("provider") or "").strip().lower()
+        if str(
+            (quotes_by_symbol.get(str(spec.get("symbol") or "").strip().upper()) or {}).get(
+                "provider"
+            )
+            or ""
+        )
+        .strip()
+        .lower()
         == "tradier"
     )
     source_note = "Live quote data is being served by Tradier."
@@ -961,9 +968,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         source_label = "Massive market feed"
     if fallback_count:
         source_label = "Mixed provider feed"
-        source_note = (
-            f"{fallback_count} symbol(s) are on non-Tradier fallback quotes."
-        )
+        source_note = f"{fallback_count} symbol(s) are on non-Tradier fallback quotes."
     result = {
         "available": any(q.get("price") is not None for q in quotes),
         "fetched_at": fetched_label,
@@ -1472,9 +1477,7 @@ def _market_news_snapshot() -> Dict[str, Any]:
             rows = _market_news_rss_rows(symbol, limit=4)
             if rows:
                 all_rows.extend(rows)
-                watchlist_items.append(
-                    _market_news_item(rows[0], symbol=symbol, forced_tag=symbol)
-                )
+                watchlist_items.append(_market_news_item(rows[0], symbol=symbol, forced_tag=symbol))
         all_rows = [row for row in all_rows if isinstance(row, dict)]
         all_rows.sort(
             key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
@@ -2183,7 +2186,11 @@ def system_check_page():
     add_check("DB file", os.path.exists(db_path), db_path)
     add_check("Uploads dir", os.path.isdir(uploads), uploads)
     add_check("Books dir", os.path.isdir(books), books)
-    add_check("Uploads writable", os.access(uploads, os.W_OK), uploads if os.path.isdir(uploads) else "missing")
+    add_check(
+        "Uploads writable",
+        os.access(uploads, os.W_OK),
+        uploads if os.path.isdir(uploads) else "missing",
+    )
 
     trades_count = 0
     journal_count = 0
@@ -2202,7 +2209,11 @@ def system_check_page():
     if os.path.isdir(uploads):
         try:
             backup_files = len(
-                [n for n in os.listdir(uploads) if str(n).lower().endswith((".zip", ".json", ".db"))]
+                [
+                    n
+                    for n in os.listdir(uploads)
+                    if str(n).lower().endswith((".zip", ".json", ".db"))
+                ]
             )
         except OSError:
             backup_files = 0
@@ -2443,7 +2454,9 @@ def vanquish_lock_control():
     if request.method != "POST":
         return redirect(url_for("dashboard"))
     action = str(request.form.get("action") or "start").strip().lower()
-    next_href = str(request.form.get("next") or "").strip() or request.referrer or url_for("dashboard")
+    next_href = (
+        str(request.form.get("next") or "").strip() or request.referrer or url_for("dashboard")
+    )
     if action == "clear":
         clear_manual_vanquish_lock()
         flash("Manual Vanquish lock cleared.", "success")
@@ -2977,8 +2990,7 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
             "impact_class": impact_class,
             "icon": "🔴" if impact_class == "high" else "🟠",
             "jump_href": (
-                f"/candle-opens?y={fallback_day.year}&m={fallback_day.month}"
-                f"#news-day-{iso}"
+                f"/candle-opens?y={fallback_day.year}&m={fallback_day.month}" f"#news-day-{iso}"
             ),
             "tooltip": f"{impact} impact • {time_label} • USD calendar marker (fallback)",
         }
@@ -3042,7 +3054,9 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
     if events:
         summary = f"{len(events)} USD red/orange events in selected month."
         if fallback_count > 0:
-            summary += f" Includes {fallback_count} fallback marker{'s' if fallback_count != 1 else ''}."
+            summary += (
+                f" Includes {fallback_count} fallback marker{'s' if fallback_count != 1 else ''}."
+            )
         result.update(
             {
                 "available": True,

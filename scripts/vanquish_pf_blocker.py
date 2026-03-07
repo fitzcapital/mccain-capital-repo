@@ -174,12 +174,7 @@ def ensure_anchor_registration(pf_conf_path: str, anchor_name: str, anchor_path:
     load_line = f'load anchor "{anchor_name}" from "{anchor_path}"'
     if anchor_line in current and load_line in current:
         return False
-    block = (
-        f"\n{MARKER_BEGIN}\n"
-        f"{anchor_line}\n"
-        f"{load_line}\n"
-        f"{MARKER_END}\n"
-    )
+    block = f"\n{MARKER_BEGIN}\n" f"{anchor_line}\n" f"{load_line}\n" f"{MARKER_END}\n"
     conf_path.write_text(current.rstrip() + block, encoding="utf-8")
     return True
 
@@ -282,7 +277,9 @@ def run_status(args: argparse.Namespace) -> int:
     has_block_rule = "block drop out quick" in anchor_text
     print("pf_anchor_block=on" if has_block_rule else "pf_anchor_block=off")
     try:
-        state = effective_lock_state(state_url=args.state_url, manual_lock_path=args.manual_lock_path)
+        state = effective_lock_state(
+            state_url=args.state_url, manual_lock_path=args.manual_lock_path
+        )
         print(f"app_lock={'on' if state.active else 'off'}")
         print(f"app_lock_source={state.source}")
         if state.unlock_label:

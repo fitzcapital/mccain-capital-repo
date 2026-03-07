@@ -55,7 +55,9 @@ def register(app):
         "/goals", endpoint="goals_tracker", view_func=h.goals_tracker, methods=["GET", "POST"]
     )
     app.add_url_rule("/links", endpoint="links_page", view_func=h.links_page)
-    app.add_url_rule("/ops/system-check", endpoint="system_check_page", view_func=h.system_check_page)
+    app.add_url_rule(
+        "/ops/system-check", endpoint="system_check_page", view_func=h.system_check_page
+    )
     app.add_url_rule(
         "/ops/vanquish-blocklist",
         endpoint="vanquish_blocklist_download",

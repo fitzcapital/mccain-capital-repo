@@ -112,10 +112,9 @@ def _massive_api_key() -> str:
 
 
 def _tradier_api_key() -> str:
-    return (
-        (os.environ.get("TRADIER_API_KEY") or "").strip()
-        or str(app_runtime.get_setting_value("tradier_api_key", "") or "").strip()
-    )
+    return (os.environ.get("TRADIER_API_KEY") or "").strip() or str(
+        app_runtime.get_setting_value("tradier_api_key", "") or ""
+    ).strip()
 
 
 def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:

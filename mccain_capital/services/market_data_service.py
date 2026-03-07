@@ -61,10 +61,9 @@ def _massive_api_key() -> str:
 
 
 def _tradier_api_key() -> str:
-    return (
-        (os.environ.get("TRADIER_API_KEY") or "").strip()
-        or str(app_runtime.get_setting_value("tradier_api_key", "") or "").strip()
-    )
+    return (os.environ.get("TRADIER_API_KEY") or "").strip() or str(
+        app_runtime.get_setting_value("tradier_api_key", "") or ""
+    ).strip()
 
 
 def _tradier_symbol(symbol: str) -> str:
@@ -529,7 +528,9 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
     return []
 
 
-def get_watchlist(symbols: List[str], *, allow_yf_fallback: bool = True) -> Dict[str, Dict[str, Any]]:
+def get_watchlist(
+    symbols: List[str], *, allow_yf_fallback: bool = True
+) -> Dict[str, Dict[str, Any]]:
     snapshot: Dict[str, Dict[str, Any]] = {}
     tradier_map = _tradier_quote_map(symbols)
     use_massive = bool(_massive_api_key())
