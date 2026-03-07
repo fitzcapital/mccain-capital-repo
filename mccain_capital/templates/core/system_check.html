@@ -1,0 +1,40 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">System Check</div>
+  <div class="pageTitle">Storage & Runtime Health</div>
+  <div class="pageSub">
+    Status: <span class="trendChip {{ 'positive' if status == 'healthy' else 'negative' }}">{{ status|upper }}</span>
+    · {{ ok_count }}/{{ total_count }} checks passing
+  </div>
+  <div class="metricStrip" style="margin-top:12px">
+    <div class="metric">
+      <div class="label">Trades</div>
+      <div class="value">{{ trades_count }}</div>
+      <div class="sub">rows detected</div>
+    </div>
+    <div class="metric">
+      <div class="label">Journal</div>
+      <div class="value">{{ journal_count }}</div>
+      <div class="sub">entries detected</div>
+    </div>
+    <div class="metric">
+      <div class="label">Checks OK</div>
+      <div class="value">{{ ok_count }}</div>
+      <div class="sub">of {{ total_count }}</div>
+    </div>
+  </div>
+</div></div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">Diagnostics</div>
+  <div class="newsListCompact">
+    {% for check in checks %}
+      <div class="newsCollapse">
+        <div class="newsCollapseSummary">
+          <span class="trendChip {{ 'positive' if check.ok else 'negative' }}">{{ 'OK' if check.ok else 'ISSUE' }}</span>
+          <span class="newsCollapseTitle">{{ check.name }}</span>
+          <span class="tiny muted">{{ check.detail }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div></div>

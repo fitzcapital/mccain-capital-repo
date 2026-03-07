@@ -20,6 +20,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
     assert "0002_journal_phase2" in first
     assert "0003_import_batches" in first
     assert "0004_strategy_links" in first
+    assert "0005_market_alerts" in first
 
     second = run_migrations(str(db_path))
     assert second == []
@@ -32,6 +33,10 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
 
         links_cols = _table_columns(conn, "entry_trade_links")
         assert {"entry_id", "trade_id", "created_at"}.issubset(links_cols)
+        alerts_cols = _table_columns(conn, "alerts")
+        assert {"symbol", "rule_type", "threshold", "enabled"}.issubset(alerts_cols)
+        fires_cols = _table_columns(conn, "alert_fires")
+        assert {"alert_id", "symbol", "price", "message", "fired_at"}.issubset(fires_cols)
 
         applied = [
             r[0] for r in conn.execute("SELECT id FROM schema_migrations ORDER BY id").fetchall()
@@ -41,6 +46,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0002_journal_phase2",
             "0003_import_batches",
             "0004_strategy_links",
+            "0005_market_alerts",
         ]
     finally:
         conn.close()

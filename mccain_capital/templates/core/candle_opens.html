@@ -92,12 +92,16 @@
             </div>
           </div>
           <div class="candleNewsDayList">
-            {% for event in news_day.events %}
-              <div class="candleNewsEventRow is-{{ event.impact_class }}">
-                <span class="candleNewsEventTime">{{ event.time_label }}</span>
-                <span>{{ event.title }}</span>
-              </div>
-            {% endfor %}
+            {% if news_day.events %}
+              {% for event in news_day.events %}
+                <div class="candleNewsEventRow is-{{ event.impact_class }}">
+                  <span class="candleNewsEventTime">{{ event.time_label }}</span>
+                  <span>{{ event.title }}</span>
+                </div>
+              {% endfor %}
+            {% else %}
+              <div class="tiny">No scheduled USD red/orange events yet for this week.</div>
+            {% endif %}
           </div>
         </section>
       {% endfor %}

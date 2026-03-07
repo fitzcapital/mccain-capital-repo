@@ -78,7 +78,14 @@ def create_app():
                     return redirect(url_for("safe_mode_page"))
             if not auth.auth_enabled():
                 return None
-            allow = {"login_page", "logout_page", "healthz", "favicon", "static"}
+            allow = {
+                "login_page",
+                "logout_page",
+                "healthz",
+                "favicon",
+                "static",
+                "vanquish_lock_state",
+            }
             if request.endpoint in allow:
                 return None
             if auth.is_authenticated():
@@ -94,7 +101,7 @@ def create_app():
             resp.headers.setdefault(
                 "Content-Security-Policy",
                 "default-src 'self'; img-src 'self' data: https:; "
-                "script-src 'self' 'unsafe-inline' https://s3.tradingview.com; "
+                "script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://cdn.plot.ly; "
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
                 "font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'self'",
             )

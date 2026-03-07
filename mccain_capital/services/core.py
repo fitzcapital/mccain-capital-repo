@@ -10,6 +10,7 @@ from calendar import Calendar, monthrange
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
+from email.utils import parsedate_to_datetime
 import json
 import os
 import shutil
@@ -18,18 +19,22 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import (
     abort,
+    current_app,
     flash,
     jsonify,
     make_response,
+    Response,
     redirect,
     render_template,
     request,
     send_file,
+    stream_with_context,
     url_for,
 )
 
@@ -37,6 +42,8 @@ from mccain_capital.auth import auth_enabled, effective_username, is_authenticat
 from mccain_capital import runtime as app_runtime
 from mccain_capital.services.ui import (
     get_forex_factory_feed,
+    get_forex_factory_month_feed,
+    get_forex_factory_next_week_feed,
     get_system_status,
     render_page,
     simple_msg,
@@ -46,6 +53,7 @@ from mccain_capital.services.viewmodels import (
     dashboard_data_trust,
     sync_state_badges,
 )
+from mccain_capital.services.market_pulse_health import build_market_source_health
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -137,20 +145,45 @@ MARKET_PULSE_SYMBOLS: Tuple[Dict[str, str], ...] = (
         "group": "leaders",
         "focus": "EV beta and retail-momentum leadership pulse.",
     },
+    {
+        "symbol": "CSCO",
+        "label": "CSCO",
+        "group": "leaders",
+        "focus": "Enterprise networking and infrastructure signal.",
+    },
+    {
+        "symbol": "INTC",
+        "label": "INTC",
+        "group": "leaders",
+        "focus": "Semiconductor cycle and broad tech demand proxy.",
+    },
 )
-MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS: Tuple[str, ...] = (
-    "SPY",
-    "QQQ",
-    "IWM",
-    "NVDA",
-    "MSFT",
-    "AAPL",
-    "AMZN",
-    "META",
-    "TSLA",
+MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS: Tuple[str, ...] = tuple(
+    dict.fromkeys(
+        ["SPX", "VIX"]
+        + [
+            str(spec.get("label") or "").strip().upper()
+            for spec in MARKET_PULSE_SYMBOLS
+            if str(spec.get("label") or "").strip().upper() not in {"", "SPX", "VIX"}
+        ]
+    )
 )
+YAHOO_RSS_SYMBOL_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
 _market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
+USD_CALENDAR_FALLBACK_MARKERS: Tuple[Tuple[str, str], ...] = (
+    ("2026-03-11", "Medium"),
+    ("2026-03-12", "Medium"),
+    ("2026-03-13", "High"),
+    ("2026-03-16", "Medium"),
+    ("2026-03-17", "Medium"),
+    ("2026-03-18", "High"),
+    ("2026-03-19", "High"),
+    ("2026-03-24", "Medium"),
+    ("2026-03-26", "High"),
+    ("2026-03-27", "High"),
+    ("2026-03-31", "Medium"),
+)
 
 
 def _legacy():
@@ -197,6 +230,19 @@ def _save_market_news_disk_cache(payload: Dict[str, Any]) -> None:
 
 def _market_pulse_yahoo_href(symbol: str) -> str:
     return "https://finance.yahoo.com/quote/" + urllib.parse.quote(symbol, safe="")
+
+
+def _format_iso_et_label(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=app_runtime.TZ)
+        return dt.astimezone(app_runtime.TZ).strftime("%b %d, %Y %I:%M:%S %p ET")
+    except Exception:
+        return text
 
 
 def _market_pulse_json_request_any(url: str, params: Dict[str, Any], timeout: int = 4) -> Any:
@@ -274,6 +320,7 @@ def _market_pulse_normalized_cached_row(
     row["yahoo_href"] = _market_pulse_yahoo_href(spec["symbol"])
     row["data_state"] = str(row.get("data_state") or "cached")
     row["data_status_label"] = str(row.get("data_status_label") or "Cached")
+    row["data_reason"] = str(row.get("data_reason") or "cached_snapshot")
     return row
 
 
@@ -725,10 +772,11 @@ def _market_pulse_finnhub_candles(symbol: str, now_et: datetime) -> List[Dict[st
 
 
 def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
+    from mccain_capital.services import market_data_service
+
     started = time.perf_counter()
     now_et = app_runtime.now_et()
     fetched_label = now_et.strftime("%b %d, %Y %I:%M:%S %p ET")
-    fetched_epoch = int(now_et.timestamp())
     fetched_at = _market_pulse_cache.get("fetched_at")
     cached_payload = _market_pulse_cache.get("payload")
     if (
@@ -737,52 +785,40 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         and isinstance(cached_payload, dict)
         and (now_et - fetched_at).total_seconds() < MARKET_PULSE_CACHE_TTL_SECONDS
     ):
-        return _market_pulse_force_symbol_set(cached_payload)
+        normalized_cache = _market_pulse_force_symbol_set(cached_payload)
+        normalized_cache["source_label"] = "Massive market feed (cached snapshot)"
+        normalized_cache["source_note"] = "Using recent cached Massive snapshot within refresh TTL."
+        return normalized_cache
 
-    disk_payload = _load_market_pulse_disk_cache()
-    cache_seed = cached_payload if isinstance(cached_payload, dict) else disk_payload
-    cached_rows = _market_pulse_cached_row_map(cache_seed)
-
-    quotes: List[Dict[str, Any]] = []
-    live_count = 0
-    for spec in MARKET_PULSE_SYMBOLS:
-        payload = _market_pulse_yahoo_chart_payload(spec["symbol"])
-        row = _market_pulse_yahoo_chart_record(
-            payload,
-            spec,
-            cached_rows.get(spec["label"]),
-            fetched_label=fetched_label,
-            fetched_epoch=fetched_epoch,
-        )
-        if str(row.get("data_state") or "") == "live":
-            live_count += 1
-        quotes.append(row)
-    quotes = _market_pulse_preserve_cached_rows(quotes, cached_rows)
-    counts = {"live": 0, "delayed": 0, "cached": 0, "missing": 0}
-    for row in quotes:
-        state = str(row.get("data_state") or "missing").lower()
-        counts[state if state in counts else "missing"] += 1
-    latency_ms = int((time.perf_counter() - started) * 1000)
-
-    if not live_count:
+    symbols = [str(spec.get("symbol") or "").strip().upper() for spec in MARKET_PULSE_SYMBOLS]
+    quotes_by_symbol = market_data_service.get_watchlist(symbols, allow_yf_fallback=False)
+    if not quotes_by_symbol:
+        disk_payload = _load_market_pulse_disk_cache()
         if isinstance(cached_payload, dict):
-            return _market_pulse_force_symbol_set(cached_payload)
+            fallback = _market_pulse_force_symbol_set(cached_payload)
+            fallback["source_label"] = "Massive market feed (cached fallback)"
+            fallback["source_note"] = (
+                "Massive live quote request returned no data. Showing last cached snapshot."
+            )
+            return fallback
         if isinstance(disk_payload, dict):
             _market_pulse_cache["payload"] = disk_payload
-            return _market_pulse_force_symbol_set(disk_payload)
+            fallback = _market_pulse_force_symbol_set(disk_payload)
+            fallback["source_label"] = "Massive market feed (cached fallback)"
+            fallback["source_note"] = (
+                "Massive live quote request returned no data. Showing last cached snapshot."
+            )
+            return fallback
         return {
             "available": False,
             "fetched_at": "",
-            "source_label": "Yahoo Finance chart feed",
-            "source_note": (
-                "Live market data is unavailable because the app runtime cannot currently reach the Yahoo quote host. "
-                "A cached snapshot will be shown when available."
-            ),
+            "source_label": "Massive market feed",
+            "source_note": "Massive feed unavailable or missing entitlement for requested symbols.",
             "quotes": [],
             "integrity": {
-                "latency_ms": latency_ms,
+                "latency_ms": int((time.perf_counter() - started) * 1000),
                 "forced_refresh": bool(force_refresh),
-                "cached_only": True,
+                "cached_only": False,
                 "live_count": 0,
                 "delayed_count": 0,
                 "cached_count": 0,
@@ -791,15 +827,153 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
             },
         }
 
+    quotes: List[Dict[str, Any]] = []
+    counts = {"live": 0, "delayed": 0, "cached": 0, "missing": 0}
+    fallback_count = 0
+    for spec in MARKET_PULSE_SYMBOLS:
+        symbol = str(spec.get("symbol") or "").strip().upper()
+        quote = dict(quotes_by_symbol.get(symbol) or {})
+        provider = str(quote.get("provider") or "").strip().lower()
+        reason = str(quote.get("reason") or "").strip()
+        price = quote.get("price")
+        pct = quote.get("pct_change")
+        as_of = str(quote.get("as_of") or "")
+        asof_epoch = 0
+        if as_of:
+            try:
+                asof_epoch = int(datetime.fromisoformat(as_of).timestamp())
+            except Exception:
+                asof_epoch = 0
+        price_num = float(price) if isinstance(price, (int, float)) else None
+        pct_num = float(pct) if isinstance(pct, (int, float)) else 0.0
+        prev_close = (
+            price_num / (1.0 + (pct_num / 100.0))
+            if (price_num is not None and abs(100.0 + pct_num) > 1e-9)
+            else None
+        )
+        change = (
+            (price_num - prev_close) if (price_num is not None and prev_close is not None) else 0.0
+        )
+        mini_series: List[float] = []
+        if price_num is not None:
+            if prev_close is not None and isinstance(prev_close, (int, float)):
+                mini_series = [float(prev_close), float(price_num)]
+            else:
+                mini_series = [float(price_num), float(price_num)]
+        if price_num is None:
+            state = "missing"
+        elif provider == "tradier":
+            state = "live"
+        else:
+            state = "delayed"
+            fallback_count += 1
+        counts[state] += 1
+        quotes.append(
+            {
+                "symbol": symbol,
+                "label": spec["label"],
+                "group": spec["group"],
+                "focus": spec["focus"],
+                "name": spec["label"],
+                "price": price_num,
+                "change": change,
+                "change_pct": pct_num,
+                "volume": 0,
+                "avg_volume": 0,
+                "market_state": (
+                    "Live"
+                    if state == "live"
+                    else "Provider fallback" if state == "delayed" else "Unavailable"
+                ),
+                "day_range": "—",
+                "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
+                "asof": as_of or fetched_label,
+                "asof_epoch": asof_epoch,
+                "data_state": state,
+                "data_status_label": (
+                    "Live" if state == "live" else "Delayed" if state == "delayed" else "Missing"
+                ),
+                "data_reason": reason,
+                "mini_series": mini_series,
+                "series": [],
+            }
+        )
+    # Build richer refresh-time curves so cards feel like Yahoo-style micro charts.
+    for q in quotes:
+        symbol = str(q.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        try:
+            rows = market_data_service.get_intraday(symbol)
+        except Exception:
+            rows = []
+        if not rows:
+            continue
+        points = [
+            {"ts": str(r.get("ts") or ""), "v": float(r.get("close"))}
+            for r in rows[-240:]
+            if isinstance(r, dict) and r.get("close") is not None
+        ]
+        curve = [float(p["v"]) for p in points]
+        if len(curve) >= 8:
+            q["mini_series"] = curve
+            q["series"] = points
+            highs = [
+                float(r.get("high"))
+                for r in rows
+                if isinstance(r, dict) and r.get("high") is not None
+            ]
+            lows = [
+                float(r.get("low"))
+                for r in rows
+                if isinstance(r, dict) and r.get("low") is not None
+            ]
+            if highs and lows:
+                q["day_range"] = f"{min(lows):,.2f} to {max(highs):,.2f}"
+    if counts["live"] == 0:
+        disk_payload = _load_market_pulse_disk_cache()
+        if isinstance(cached_payload, dict):
+            fallback = _market_pulse_force_symbol_set(cached_payload)
+            fallback["source_label"] = "Massive market feed (cached fallback)"
+            fallback["source_note"] = (
+                "Massive returned symbols but no usable live prices. Showing last cached snapshot."
+            )
+            return fallback
+        if isinstance(disk_payload, dict):
+            _market_pulse_cache["payload"] = disk_payload
+            fallback = _market_pulse_force_symbol_set(disk_payload)
+            fallback["source_label"] = "Massive market feed (cached fallback)"
+            fallback["source_note"] = (
+                "Massive returned symbols but no usable live prices. Showing last cached snapshot."
+            )
+            return fallback
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    tradier_live = sum(
+        1
+        for spec in MARKET_PULSE_SYMBOLS
+        if str(
+            (quotes_by_symbol.get(str(spec.get("symbol") or "").strip().upper()) or {}).get(
+                "provider"
+            )
+            or ""
+        )
+        .strip()
+        .lower()
+        == "tradier"
+    )
+    source_note = "Live quote data is being served by Tradier."
+    source_label = "Tradier market feed"
+    if tradier_live == 0:
+        source_note = "Live quote data is being served by Massive."
+        source_label = "Massive market feed"
+    if fallback_count:
+        source_label = "Mixed provider feed"
+        source_note = f"{fallback_count} symbol(s) are on non-Tradier fallback quotes."
     result = {
         "available": any(q.get("price") is not None for q in quotes),
         "fetched_at": fetched_label,
-        "source_label": "Yahoo Finance chart feed",
-        "source_note": (
-            "Live quote data is being derived from Yahoo chart metadata."
-            if live_count == len(MARKET_PULSE_SYMBOLS)
-            else "Yahoo chart data is partially available; missing fields may use the last cached snapshot."
-        ),
+        "source_label": source_label,
+        "source_note": source_note,
         "quotes": quotes,
         "integrity": {
             "latency_ms": latency_ms,
@@ -876,6 +1050,43 @@ def _market_pulse_context(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _gamma_data_quality(
+    gamma_snapshot: Dict[str, Any], quotes: List[Dict[str, Any]], now_et: datetime
+) -> Dict[str, str]:
+    by_label = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
+    spx = dict(by_label.get("SPX") or {})
+    spx_state = str(spx.get("data_state") or "").lower()
+    spx_reason = str(spx.get("data_reason") or "").lower()
+    spot_live = spx_state == "live" and spx_reason.startswith("tradier")
+
+    asof_raw = str(gamma_snapshot.get("asof") or "").strip()
+    oi_age = "unknown"
+    if asof_raw:
+        try:
+            asof_dt = datetime.fromisoformat(asof_raw.replace("Z", "+00:00")).astimezone(
+                app_runtime.TZ
+            )
+            age_s = max(0, int((now_et - asof_dt).total_seconds()))
+            if age_s < 60:
+                oi_age = f"{age_s}s"
+            elif age_s < 3600:
+                oi_age = f"{age_s // 60}m"
+            else:
+                oi_age = f"{age_s // 3600}h"
+        except Exception:
+            oi_age = "unknown"
+
+    contracts_used = int(((gamma_snapshot.get("diagnostics") or {}).get("contracts_used")) or 0)
+    tone = "ok" if spot_live and contracts_used >= 50 else "warn"
+    return {
+        "tone": tone,
+        "summary": (
+            f"{'Live spot' if spot_live else 'Non-live spot'} · "
+            f"OI age {oi_age} · {contracts_used} contracts"
+        ),
+    }
+
+
 def _market_pulse_stats(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
     advancers = 0
     decliners = 0
@@ -929,9 +1140,11 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
         x = idx * step
         y = ((max_v - value) / (max_v - min_v)) * (height - 2) + 1
         points.append(f"{x:.2f},{y:.2f}")
+    area_points = "0.00,28.00 " + " ".join(points) + " 120.00,28.00"
     cls = "up" if tone == "up" else "down" if tone == "down" else "flat"
     return (
         '<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">'
+        f'<polygon class="marketMiniSparkArea {cls}" points="{area_points}" />'
         f'<polyline class="marketMiniSparkLine {cls}" points="{" ".join(points)}" />'
         "</svg>"
     )
@@ -952,6 +1165,12 @@ def _market_pulse_enrich_quotes(
         if state == "missing":
             band = "critical"
             fresh_label = "No live data"
+        elif state == "delayed":
+            band = "warn"
+            fresh_label = "Delayed fallback"
+        elif state == "cached":
+            band = "critical"
+            fresh_label = "Cached snapshot"
         elif age_s <= 60:
             band = "live"
             fresh_label = f"Live · {age_s}s old"
@@ -964,6 +1183,7 @@ def _market_pulse_enrich_quotes(
         q["freshness_band"] = band
         q["freshness_age_s"] = age_s
         q["freshness_label"] = fresh_label
+        q["freshness_reason"] = str(q.get("data_reason") or "")
 
         mini = q.get("mini_series")
         if not isinstance(mini, list):
@@ -1131,68 +1351,69 @@ def _market_news_item(
     }
 
 
+def _market_news_rss_rows(symbol: str, *, limit: int = 8) -> List[Dict[str, Any]]:
+    params = {
+        "s": symbol,
+        "region": "US",
+        "lang": "en-US",
+    }
+    url = YAHOO_RSS_SYMBOL_URL + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/rss+xml,application/xml,text/xml,*/*",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            xml_body = resp.read()
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
+        return []
+
+    try:
+        root = ET.fromstring(xml_body)
+    except ET.ParseError:
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    for item in root.findall(".//item")[: max(1, int(limit))]:
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        summary = (item.findtext("description") or "").strip()
+        pub = (item.findtext("pubDate") or "").strip()
+        stamp = 0
+        if pub:
+            try:
+                stamp = int(parsedate_to_datetime(pub).timestamp())
+            except Exception:
+                stamp = 0
+        if not title:
+            continue
+        rows.append(
+            {
+                "headline": title,
+                "summary": summary,
+                "source": "Yahoo Finance RSS",
+                "url": link,
+                "datetime": stamp,
+                "related": symbol,
+            }
+        )
+    return rows
+
+
 def _market_news_snapshot() -> Dict[str, Any]:
     now_et = app_runtime.now_et()
     fetched_at = _market_news_cache.get("fetched_at")
     cached_payload = _market_news_cache.get("payload")
+    disk_payload = _load_market_news_disk_cache()
     if (
         isinstance(fetched_at, datetime)
         and isinstance(cached_payload, dict)
         and (now_et - fetched_at).total_seconds() < MARKET_NEWS_CACHE_TTL_SECONDS
     ):
         return cached_payload
-
-    if not FINNHUB_API_KEY:
-        disk = _load_market_news_disk_cache()
-        if isinstance(disk, dict):
-            _market_news_cache["payload"] = disk
-            return disk
-        return {
-            "available": False,
-            "source_note": "Finnhub news feed is not configured.",
-            "macro_events": [],
-            "market_items": [],
-            "watchlist_items": [],
-        }
-
-    general_payload = _market_pulse_json_request_any(
-        FINNHUB_BASE_URL + "/news",
-        {"category": "general", "token": FINNHUB_API_KEY},
-        timeout=8,
-    )
-    market_rows = general_payload if isinstance(general_payload, list) else []
-    relevant_general = [
-        row for row in market_rows if isinstance(row, dict) and _market_news_score(row) >= 4
-    ]
-    relevant_general.sort(
-        key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
-        reverse=True,
-    )
-    market_items = [_market_news_item(row) for row in relevant_general[:8]]
-
-    watchlist_items: List[Dict[str, Any]] = []
-    from_day = (now_et.date() - timedelta(days=5)).isoformat()
-    to_day = now_et.date().isoformat()
-    for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS:
-        payload = _market_pulse_json_request_any(
-            FINNHUB_BASE_URL + "/company-news",
-            {"symbol": symbol, "from": from_day, "to": to_day, "token": FINNHUB_API_KEY},
-            timeout=8,
-        )
-        if not isinstance(payload, list):
-            continue
-        best = next(
-            (
-                row
-                for row in payload
-                if isinstance(row, dict) and str(row.get("headline") or "").strip()
-            ),
-            None,
-        )
-        if best is None:
-            continue
-        item = _market_news_item(best, symbol=symbol, forced_tag=symbol)
-        watchlist_items.append(item)
 
     macro_overlay = _forex_factory_usd_week_events(now_et.date())
     macro_events = []
@@ -1209,16 +1430,103 @@ def _market_news_snapshot() -> Dict[str, Any]:
             }
         )
 
+    market_items: List[Dict[str, Any]] = []
+    watchlist_items: List[Dict[str, Any]] = []
+    source_note = "Yahoo Finance RSS watchlist headlines plus Forex Factory macro triggers."
+    if FINNHUB_API_KEY:
+        general_payload = _market_pulse_json_request_any(
+            FINNHUB_BASE_URL + "/news",
+            {"category": "general", "token": FINNHUB_API_KEY},
+            timeout=8,
+        )
+        market_rows = general_payload if isinstance(general_payload, list) else []
+        relevant_general = [
+            row for row in market_rows if isinstance(row, dict) and _market_news_score(row) >= 4
+        ]
+        relevant_general.sort(
+            key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
+            reverse=True,
+        )
+        market_items = [_market_news_item(row) for row in relevant_general[:8]]
+
+        from_day = (now_et.date() - timedelta(days=5)).isoformat()
+        to_day = now_et.date().isoformat()
+        for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS:
+            payload = _market_pulse_json_request_any(
+                FINNHUB_BASE_URL + "/company-news",
+                {"symbol": symbol, "from": from_day, "to": to_day, "token": FINNHUB_API_KEY},
+                timeout=8,
+            )
+            if not isinstance(payload, list):
+                continue
+            best = next(
+                (
+                    row
+                    for row in payload
+                    if isinstance(row, dict) and str(row.get("headline") or "").strip()
+                ),
+                None,
+            )
+            if best is None:
+                continue
+            watchlist_items.append(_market_news_item(best, symbol=symbol, forced_tag=symbol))
+        source_note = "Finnhub market news plus Forex Factory macro triggers."
+    else:
+        all_rows: List[Dict[str, Any]] = []
+        for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS:
+            rows = _market_news_rss_rows(symbol, limit=4)
+            if rows:
+                all_rows.extend(rows)
+                watchlist_items.append(_market_news_item(rows[0], symbol=symbol, forced_tag=symbol))
+        all_rows = [row for row in all_rows if isinstance(row, dict)]
+        all_rows.sort(
+            key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
+            reverse=True,
+        )
+        market_items = [_market_news_item(row) for row in all_rows[:8]]
+
     result = {
         "available": bool(market_items or watchlist_items or macro_events),
-        "source_note": "Finnhub market news plus Forex Factory macro triggers.",
+        "source_note": source_note,
         "macro_events": macro_events,
         "market_items": market_items,
         "watchlist_items": watchlist_items,
     }
+    if isinstance(disk_payload, dict):
+        cached_macro = list(disk_payload.get("macro_events") or [])
+        cached_market = list(disk_payload.get("market_items") or [])
+        cached_watch = list(disk_payload.get("watchlist_items") or [])
+        merged = False
+        if not result["macro_events"] and cached_macro:
+            result["macro_events"] = cached_macro[:6]
+            merged = True
+        if not result["market_items"] and cached_market:
+            result["market_items"] = cached_market[:8]
+            merged = True
+        if not result["watchlist_items"] and cached_watch:
+            result["watchlist_items"] = cached_watch
+            merged = True
+        if merged:
+            result["available"] = True
+            result["source_note"] = "Live + cached merge (restored missing news/macro sections)."
+    if (
+        (not result["available"])
+        and isinstance(disk_payload, dict)
+        and bool(
+            (disk_payload.get("market_items") or [])
+            or (disk_payload.get("watchlist_items") or [])
+            or (disk_payload.get("macro_events") or [])
+        )
+    ):
+        fallback = dict(disk_payload)
+        fallback["source_note"] = "Using cached news/macro snapshot (live fetch unavailable)."
+        _market_news_cache["fetched_at"] = now_et
+        _market_news_cache["payload"] = fallback
+        return fallback
     _market_news_cache["fetched_at"] = now_et
     _market_news_cache["payload"] = result
-    _save_market_news_disk_cache(result)
+    if result["available"]:
+        _save_market_news_disk_cache(result)
     return result
 
 
@@ -1355,6 +1663,22 @@ def _dashboard_milestone_viewmodel(
         elif projected_days_balance is not None:
             projected_days_overall = projected_days_balance
 
+    projected_completion_date: Optional[date] = None
+    projected_completion_label: str = ""
+    if projected_days_overall is not None:
+        remaining_sessions = max(0, int(projected_days_overall))
+        cursor = app_runtime.now_et().date()
+        if remaining_sessions <= 0:
+            while not _is_market_session(cursor):
+                cursor += timedelta(days=1)
+        else:
+            while remaining_sessions > 0:
+                cursor += timedelta(days=1)
+                if _is_market_session(cursor):
+                    remaining_sessions -= 1
+        projected_completion_date = cursor
+        projected_completion_label = cursor.strftime("%a, %b %d, %Y")
+
     return {
         "name": str(settings.get("name") or "Profit Milestone"),
         "profit_source": source,
@@ -1375,6 +1699,8 @@ def _dashboard_milestone_viewmodel(
         "projected_days_profit": projected_days_profit,
         "projected_days_balance": projected_days_balance,
         "projected_days_overall": projected_days_overall,
+        "projected_completion_date": projected_completion_date,
+        "projected_completion_label": projected_completion_label,
     }
 
 
@@ -1590,7 +1916,9 @@ def dashboard():
         starting_balance=float(balance_integrity.get("starting_balance") or 50000.0),
         avg_daily_profit=float(proj.get("avg") or 0.0),
     )
+    from mccain_capital.services.ui import get_vanquish_profit_lock_state
 
+    vanquish_lock = get_vanquish_profit_lock_state()
     content = render_template(
         "dashboard.html",
         heat=heat,
@@ -1638,25 +1966,174 @@ def dashboard():
         dashboard_year=year,
         dashboard_month=month,
         milestone=milestone,
+        vanquish_lock=vanquish_lock,
         money=app_runtime.money,
         money_compact=_money_compact,
     )
-    return render_page(content, active="dashboard")
+    return render_page(content, active="dashboard", vanquish_lock=vanquish_lock)
+
+
+def stream_market():
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_worker
+    from mccain_capital.services import options_panel_service
+
+    is_testing = bool(current_app.config.get("TESTING"))
+    gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    if not is_testing:
+        market_worker.start_market_worker_once()
+        options_panel_service.start_options_worker_once()
+        gamma_map_service.start_gamma_worker_once()
+        if not gamma_snapshot.get("asof"):
+            try:
+                gamma_snapshot = gamma_map_service.run_gamma_refresh_once()
+            except Exception:
+                gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+
+    @stream_with_context
+    def generate():
+        while True:
+            payload = market_worker.get_market_snapshot()
+            payload["options"] = options_panel_service.get_options_snapshot()
+            payload["gamma_map"] = (
+                gamma_snapshot if is_testing else gamma_map_service.get_gamma_snapshot()
+            )
+            yield f"data: {json.dumps(payload)}\\n\\n"
+            if is_testing:
+                break
+            time.sleep(1)
+
+    response = Response(generate(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    return response
+
+
+def stream_market_ws():
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_worker
+    from mccain_capital.services import options_panel_service
+
+    try:
+        from simple_websocket import ConnectionClosed
+        from simple_websocket import Server
+    except Exception:
+        return Response("websocket dependency unavailable", status=501)
+
+    is_testing = bool(current_app.config.get("TESTING"))
+    if not is_testing:
+        market_worker.start_market_worker_once()
+        options_panel_service.start_options_worker_once()
+        gamma_map_service.start_gamma_worker_once()
+
+    try:
+        ws = Server.accept(request.environ)
+    except Exception:
+        return Response("websocket upgrade required", status=400)
+
+    try:
+        while True:
+            payload = market_worker.get_market_snapshot()
+            payload["options"] = options_panel_service.get_options_snapshot()
+            payload["gamma_map"] = gamma_map_service.get_gamma_snapshot()
+            ws.send(json.dumps(payload))
+            if is_testing:
+                break
+            time.sleep(1)
+    except ConnectionClosed:
+        pass
+    except Exception:
+        pass
+    return ""
+
+
+def stream_options_panel():
+    from mccain_capital.services import options_panel_service
+
+    is_testing = bool(current_app.config.get("TESTING"))
+    if not is_testing:
+        options_panel_service.start_options_worker_once()
+
+    @stream_with_context
+    def generate():
+        while True:
+            payload = options_panel_service.get_options_snapshot()
+            yield f"data: {json.dumps(payload)}\\n\\n"
+            if is_testing:
+                break
+            time.sleep(2)
+
+    response = Response(generate(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    return response
 
 
 def market_pulse_page():
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_worker
+    from mccain_capital.services import options_panel_service
+
     force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     now_et = app_runtime.now_et()
+    if not current_app.config.get("TESTING"):
+        market_worker.start_market_worker_once()
+        options_panel_service.start_options_worker_once()
+        gamma_map_service.start_gamma_worker_once()
     snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
+    gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    if force_refresh or not gamma_snapshot.get("asof"):
+        try:
+            gamma_snapshot = gamma_map_service.run_gamma_refresh_once()
+        except Exception:
+            gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    options_snapshot = options_panel_service.get_options_snapshot()
+    options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
+    options_contracts = list(options_spx.get("contracts") or [])
+    if not options_contracts:
+        try:
+            options_snapshot = options_panel_service.run_options_refresh_once()
+            options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
+            options_contracts = list(options_spx.get("contracts") or [])
+        except Exception:
+            options_contracts = []
     news_snapshot = _market_news_snapshot()
+    gamma_updated_label = _format_iso_et_label(gamma_snapshot.get("asof")) or "—"
     quotes = _market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
+    if not current_app.config.get("TESTING"):
+        try:
+            live_snapshot = market_worker.get_market_snapshot()
+            live_series = dict(live_snapshot.get("series") or {})
+            for q in quotes:
+                symbol = str(q.get("symbol") or "")
+                series = live_series.get(symbol)
+                if isinstance(series, list) and len(series) >= 8:
+                    q["mini_series"] = [float(v) for v in series if isinstance(v, (int, float))]
+            quotes = _market_pulse_enrich_quotes(quotes, now_et)
+        except Exception:
+            pass
+    spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)
     context = _market_pulse_context(quotes)
+    gamma_quality = _gamma_data_quality(gamma_snapshot, quotes, now_et)
+    source_health = build_market_source_health(snapshot, news_snapshot, gamma_snapshot, now_et)
     integrity = dict(snapshot.get("integrity") or {})
     stats = _market_pulse_stats(quotes)
-    core_quotes = list(quotes)
+    core_quotes = [q for q in quotes if str(q.get("label") or "") != "SPX"]
     leader_quotes = [q for q in quotes if str(q.get("group") or "") == "leaders"]
+    gamma_csv_path = str(((gamma_snapshot.get("paths") or {}).get("csv")) or "")
+    gamma_png_path = str(((gamma_snapshot.get("paths") or {}).get("png")) or "")
+    gamma_csv_href = (
+        url_for("market_pulse_gamma_artifact", name="gamma_data.csv")
+        if gamma_csv_path and os.path.exists(gamma_csv_path)
+        else ""
+    )
+    gamma_png_href = (
+        url_for("market_pulse_gamma_artifact", name="gamma_map.png")
+        if gamma_png_path and os.path.exists(gamma_png_path)
+        else ""
+    )
 
     content = render_template(
         "core/market_pulse.html",
@@ -1664,6 +2141,7 @@ def market_pulse_page():
         fetched_at=str(snapshot.get("fetched_at") or ""),
         source_label=str(snapshot.get("source_label") or "Yahoo Finance chart feed"),
         source_note=str(snapshot.get("source_note") or ""),
+        spx_quote=spx_quote,
         core_quotes=core_quotes,
         leader_quotes=leader_quotes,
         context=context,
@@ -1672,6 +2150,13 @@ def market_pulse_page():
         guardrail=guardrail,
         market_hours=bool(_market_pulse_market_hours(now_et)),
         stats=stats,
+        gamma_snapshot=gamma_snapshot,
+        gamma_quality=gamma_quality,
+        source_health=source_health,
+        gamma_updated_label=gamma_updated_label,
+        gamma_csv_href=gamma_csv_href,
+        gamma_png_href=gamma_png_href,
+        options_contracts=options_contracts,
         news_available=bool(news_snapshot.get("available")),
         news_source_note=str(news_snapshot.get("source_note") or ""),
         macro_events=list(news_snapshot.get("macro_events") or []),
@@ -1686,6 +2171,77 @@ def market_pulse_page():
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+def system_check_page():
+    checks: List[Dict[str, Any]] = []
+
+    def add_check(name: str, ok: bool, detail: str) -> None:
+        checks.append({"name": name, "ok": bool(ok), "detail": detail})
+
+    db_path = app_runtime.DB_PATH
+    uploads = app_runtime.UPLOAD_DIR
+    books = app_runtime.BOOKS_DIR
+
+    add_check("DB file", os.path.exists(db_path), db_path)
+    add_check("Uploads dir", os.path.isdir(uploads), uploads)
+    add_check("Books dir", os.path.isdir(books), books)
+    add_check(
+        "Uploads writable",
+        os.access(uploads, os.W_OK),
+        uploads if os.path.isdir(uploads) else "missing",
+    )
+
+    trades_count = 0
+    journal_count = 0
+    try:
+        with app_runtime.db() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM trades").fetchone()
+            trades_count = int((row[0] if row else 0) or 0)
+            row = conn.execute("SELECT COUNT(*) FROM journal_entries").fetchone()
+            journal_count = int((row[0] if row else 0) or 0)
+        add_check("Trades table", True, f"{trades_count} rows")
+        add_check("Journal table", True, f"{journal_count} rows")
+    except Exception as exc:
+        add_check("DB tables", False, str(exc))
+
+    backup_files = 0
+    if os.path.isdir(uploads):
+        try:
+            backup_files = len(
+                [
+                    n
+                    for n in os.listdir(uploads)
+                    if str(n).lower().endswith((".zip", ".json", ".db"))
+                ]
+            )
+        except OSError:
+            backup_files = 0
+    add_check("Backup artifacts", backup_files > 0, f"{backup_files} files")
+
+    ok_count = len([c for c in checks if c["ok"]])
+    status = "healthy" if ok_count == len(checks) else "degraded"
+    content = render_template(
+        "core/system_check.html",
+        checks=checks,
+        status=status,
+        ok_count=ok_count,
+        total_count=len(checks),
+        trades_count=trades_count,
+        journal_count=journal_count,
+    )
+    return render_page(content, active="links", title="McCain Capital · System Check")
+
+
+def market_pulse_gamma_artifact(name: str):
+    safe = str(name or "").strip()
+    allowed = {"gamma_data.csv": "text/csv", "gamma_map.png": "image/png"}
+    if safe not in allowed:
+        abort(404)
+    path = os.path.join(app_runtime.UPLOAD_DIR, safe)
+    if not os.path.exists(path):
+        abort(404)
+    return send_file(path, mimetype=allowed[safe], as_attachment=False, download_name=safe)
 
 
 def command_calendar_page():
@@ -1876,8 +2432,51 @@ def calculator():
 
 
 def links_page():
-    content = render_template("core/links.html")
-    return render_page(content, active="links")
+    from mccain_capital.services.ui import get_vanquish_profit_lock_state
+
+    vanquish_lock = get_vanquish_profit_lock_state()
+    content = render_template("core/links.html", vanquish_lock=vanquish_lock)
+    return render_page(content, active="links", vanquish_lock=vanquish_lock)
+
+
+def vanquish_blocklist_download():
+    payload = "trade.vanquishtrader.com\nwww.vanquishtrader.com\n"
+    resp = make_response(payload)
+    resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+    resp.headers["Content-Disposition"] = "attachment; filename=vanquish_blocklist.txt"
+    return resp
+
+
+def vanquish_lock_control():
+    from mccain_capital.services.ui import clear_manual_vanquish_lock
+    from mccain_capital.services.ui import set_manual_vanquish_lock
+
+    if request.method != "POST":
+        return redirect(url_for("dashboard"))
+    action = str(request.form.get("action") or "start").strip().lower()
+    next_href = (
+        str(request.form.get("next") or "").strip() or request.referrer or url_for("dashboard")
+    )
+    if action == "clear":
+        clear_manual_vanquish_lock()
+        flash("Manual Vanquish lock cleared.", "success")
+        return redirect(next_href)
+    try:
+        minutes = int(request.form.get("duration_minutes") or "1")
+    except ValueError:
+        minutes = 1
+    state = set_manual_vanquish_lock(minutes, source="dashboard_test")
+    flash(
+        f"Manual Vanquish lock started for {int(state.get('duration_minutes') or minutes)} minute(s).",
+        "success",
+    )
+    return redirect(next_href)
+
+
+def vanquish_lock_state():
+    from mccain_capital.services.ui import get_vanquish_profit_lock_state
+
+    return jsonify(get_vanquish_profit_lock_state())
 
 
 def export_json():
@@ -2163,7 +2762,9 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
     week_index, week_open_dates = _trading_week_index_map(year)
     month_index, month_open_dates = _trading_month_index_map(year)
     now_et = app_runtime.now_et()
-    news_overlay = _forex_factory_usd_week_events(now_et.date())
+    first = date(year, month, 1)
+    month_end = date(year, month, monthrange(year, month)[1])
+    news_overlay = _forex_factory_usd_window_events(first, month_end)
     prev_y, prev_m = (year, month - 1)
     next_y, next_m = (year, month + 1)
     if prev_m == 0:
@@ -2276,23 +2877,45 @@ def _candle_page_top_notice(
     return None
 
 
-def _forex_factory_usd_week_events(anchor: date) -> Dict[str, Any]:
-    week_start = anchor - timedelta(days=(anchor.weekday() + 1) % 7)
-    week_end = week_start + timedelta(days=6)
+def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str, Any]:
+    if end_day < start_day:
+        start_day, end_day = end_day, start_day
     result: Dict[str, Any] = {
         "available": False,
-        "week_range_label": f"{week_start.strftime('%b %-d')} to {week_end.strftime('%b %-d')}",
+        "week_range_label": f"{start_day.strftime('%b %-d')} to {end_day.strftime('%b %-d')}",
         "events": [],
         "events_by_day": {},
         "days": [],
         "total": 0,
         "high_count": 0,
         "medium_count": 0,
-        "summary": "Live USD red/orange events unavailable right now.",
+        "summary": "USD red/orange events unavailable for this month.",
+        "fallback_used": False,
+        "fallback_count": 0,
     }
-    payload = get_forex_factory_feed()
-    if payload is None:
-        return result
+    payload_candidates: List[List[Dict[str, Any]]] = []
+    for source_payload in (
+        get_forex_factory_month_feed(),
+        get_forex_factory_feed(),
+        get_forex_factory_next_week_feed(),
+    ):
+        if isinstance(source_payload, list) and source_payload:
+            payload_candidates.append(source_payload)
+    seen_keys: set[tuple[str, str, str]] = set()
+    payload: List[Dict[str, Any]] = []
+    for rows in payload_candidates:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            key = (
+                str(row.get("date") or "").strip(),
+                str(row.get("title") or "").strip().lower(),
+                str(row.get("impact") or "").strip().lower(),
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            payload.append(row)
 
     events: List[Dict[str, Any]] = []
     events_by_day: Dict[str, List[Dict[str, Any]]] = {}
@@ -2314,7 +2937,7 @@ def _forex_factory_usd_week_events(anchor: date) -> Dict[str, Any]:
         except ValueError:
             continue
         event_day = dt.date()
-        if event_day < week_start or event_day > week_end:
+        if event_day < start_day or event_day > end_day:
             continue
         time_label = dt.strftime("%-I:%M %p ET")
         item = {
@@ -2339,15 +2962,62 @@ def _forex_factory_usd_week_events(anchor: date) -> Dict[str, Any]:
         else:
             medium_count += 1
 
+    # Provider can occasionally publish an incomplete month window.
+    # Keep known marker dates visible so folder cues stay consistent.
+    fallback_dates: List[tuple[date, str]] = []
+    for iso_day, impact in USD_CALENDAR_FALLBACK_MARKERS:
+        try:
+            fallback_dates.append((date.fromisoformat(iso_day), str(impact)))
+        except ValueError:
+            continue
+    existing_days = {item.get("iso") for item in events}
+    fallback_count = 0
+    for fallback_day, impact in fallback_dates:
+        if fallback_day < start_day or fallback_day > end_day:
+            continue
+        iso = fallback_day.isoformat()
+        if iso in existing_days:
+            continue
+        impact_class = "high" if impact == "High" else "medium"
+        time_label = "8:30 AM ET"
+        item = {
+            "title": "USD calendar marker (fallback)",
+            "impact": impact,
+            "iso": iso,
+            "date_label": fallback_day.strftime("%a, %b %-d"),
+            "starts_at": f"{iso}T08:30:00-05:00",
+            "time_label": time_label,
+            "impact_class": impact_class,
+            "icon": "🔴" if impact_class == "high" else "🟠",
+            "jump_href": (
+                f"/candle-opens?y={fallback_day.year}&m={fallback_day.month}" f"#news-day-{iso}"
+            ),
+            "tooltip": f"{impact} impact • {time_label} • USD calendar marker (fallback)",
+        }
+        events.append(item)
+        events_by_day.setdefault(iso, []).append(item)
+        existing_days.add(iso)
+        fallback_count += 1
+        if impact_class == "high":
+            high_count += 1
+        else:
+            medium_count += 1
+
     events.sort(key=lambda item: (item["iso"], item["time_label"], item["title"]))
     for items in events_by_day.values():
         items.sort(key=lambda item: (item["time_label"], item["title"]))
 
     news_days: List[Dict[str, Any]] = []
+    event_week_keys: set[tuple[int, int]] = set()
     for iso in sorted(events_by_day.keys()):
         day_events = list(events_by_day.get(iso, []))
         if not day_events:
             continue
+        try:
+            d = date.fromisoformat(iso)
+            event_week_keys.add((int(d.isocalendar().year), int(d.isocalendar().week)))
+        except ValueError:
+            pass
         news_days.append(
             {
                 "iso": iso,
@@ -2355,10 +3025,38 @@ def _forex_factory_usd_week_events(anchor: date) -> Dict[str, Any]:
                 "high_count": len([e for e in day_events if e.get("impact_class") == "high"]),
                 "medium_count": len([e for e in day_events if e.get("impact_class") == "medium"]),
                 "events": day_events,
+                "placeholder": False,
             }
         )
 
+    # If provider payload is sparse, still show each week with a date anchor.
+    week_anchor: Dict[tuple[int, int], date] = {}
+    cursor = start_day
+    while cursor <= end_day:
+        week_key = (int(cursor.isocalendar().year), int(cursor.isocalendar().week))
+        week_anchor.setdefault(week_key, cursor)
+        cursor += timedelta(days=1)
+    for week_key, anchor_day in sorted(week_anchor.items(), key=lambda item: item[1]):
+        if week_key in event_week_keys:
+            continue
+        news_days.append(
+            {
+                "iso": anchor_day.isoformat(),
+                "date_label": anchor_day.strftime("%a, %b %-d"),
+                "high_count": 0,
+                "medium_count": 0,
+                "events": [],
+                "placeholder": True,
+            }
+        )
+    news_days.sort(key=lambda row: str(row.get("iso") or ""))
+
     if events:
+        summary = f"{len(events)} USD red/orange events in selected month."
+        if fallback_count > 0:
+            summary += (
+                f" Includes {fallback_count} fallback marker{'s' if fallback_count != 1 else ''}."
+            )
         result.update(
             {
                 "available": True,
@@ -2368,10 +3066,18 @@ def _forex_factory_usd_week_events(anchor: date) -> Dict[str, Any]:
                 "total": len(events),
                 "high_count": high_count,
                 "medium_count": medium_count,
-                "summary": f"{len(events)} USD red/orange events this week.",
+                "summary": summary,
+                "fallback_used": bool(fallback_count),
+                "fallback_count": fallback_count,
             }
         )
     return result
+
+
+def _forex_factory_usd_week_events(anchor: date) -> Dict[str, Any]:
+    week_start = anchor - timedelta(days=(anchor.weekday() + 1) % 7)
+    week_end = week_start + timedelta(days=6)
+    return _forex_factory_usd_window_events(week_start, week_end)
 
 
 def _goal_signal_count(goal_row: Dict[str, Any]) -> int:

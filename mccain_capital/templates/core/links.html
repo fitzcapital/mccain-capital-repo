@@ -5,8 +5,13 @@
   </div>
   <div class="hr"></div>
   <div class="rightActions">
-    <a class="btn primary" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Vanquish Trader</a>
+    {% if vanquish_lock and vanquish_lock.active %}
+      <a class="btn primary guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Vanquish Trader (Locked)</a>
+    {% else %}
+      <a class="btn primary" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Vanquish Trader</a>
+    {% endif %}
     <a class="btn" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener">Prop Dashboard</a>
     <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView Charts</a>
+    <a class="btn" href="/ops/system-check">System Check</a>
   </div>
 </div></div>

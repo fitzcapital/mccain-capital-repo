@@ -1,0 +1,5 @@
+trade.vanquishtrader.com
+www.vanquishtrader.com
+vanquishtrader.com
+app.vanquishtrader.com
+api.vanquishtrader.com

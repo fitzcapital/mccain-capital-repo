@@ -31,9 +31,97 @@ def test_core_pages_are_reachable(client):
         "/journal/review/weekly",
         "/calculator",
         "/payouts",
+        "/ops/system-check",
     ]:
         resp = client.get(path, follow_redirects=True)
         assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
+
+
+def test_vanquish_blocklist_download_endpoint(client):
+    resp = client.get("/ops/vanquish-blocklist")
+    assert resp.status_code == 200
+    assert "text/plain" in str(resp.content_type)
+    body = resp.get_data(as_text=True)
+    assert "trade.vanquishtrader.com" in body
+    assert "www.vanquishtrader.com" in body
+
+
+def test_vanquish_manual_lock_control_roundtrip(client):
+    start = client.post(
+        "/ops/vanquish-lock",
+        data={"action": "start", "duration_minutes": "1", "next": "/dashboard"},
+        follow_redirects=True,
+    )
+    assert start.status_code == 200
+    assert b"Milestone" in start.data
+
+    clear = client.post(
+        "/ops/vanquish-lock",
+        data={"action": "clear", "next": "/dashboard"},
+        follow_redirects=True,
+    )
+    assert clear.status_code == 200
+    assert b"Milestone" in clear.data
+
+
+def test_vanquish_lock_state_endpoint(client):
+    resp = client.get("/ops/vanquish-lock-state")
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert isinstance(payload, dict)
+    assert "active" in payload
+    assert "goal" in payload
+    assert "day_net" in payload
+    assert "unlock_label" in payload
+
+
+def test_candle_opens_news_includes_placeholder_weeks(monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "get_forex_factory_month_feed",
+        lambda: [
+            {
+                "country": "USD",
+                "impact": "High",
+                "title": "NFP",
+                "date": "2026-03-06T08:30:00-05:00",
+            }
+        ],
+    )
+    monkeypatch.setattr(core_service, "get_forex_factory_feed", lambda: [])
+    monkeypatch.setattr(core_service, "get_forex_factory_next_week_feed", lambda: [])
+    out = core_service._forex_factory_usd_window_events(
+        core_service.date(2026, 3, 1), core_service.date(2026, 3, 31)
+    )
+    assert bool(out.get("available"))
+    assert "2026-03-11" in set((out.get("events_by_day") or {}).keys())
+
+
+def test_candle_opens_includes_known_march_fallback_markers(monkeypatch):
+    monkeypatch.setattr(core_service, "get_forex_factory_month_feed", lambda: [])
+    monkeypatch.setattr(core_service, "get_forex_factory_feed", lambda: [])
+    monkeypatch.setattr(core_service, "get_forex_factory_next_week_feed", lambda: [])
+    out = core_service._forex_factory_usd_window_events(
+        core_service.date(2026, 3, 1), core_service.date(2026, 3, 31)
+    )
+    assert bool(out.get("fallback_used"))
+    assert int(out.get("fallback_count") or 0) >= 11
+    assert "fallback marker" in str(out.get("summary") or "").lower()
+    event_days = set((out.get("events_by_day") or {}).keys())
+    for expected in (
+        "2026-03-11",
+        "2026-03-12",
+        "2026-03-13",
+        "2026-03-16",
+        "2026-03-17",
+        "2026-03-18",
+        "2026-03-19",
+        "2026-03-24",
+        "2026-03-26",
+        "2026-03-27",
+        "2026-03-31",
+    ):
+        assert expected in event_days
 
 
 def test_market_pulse_includes_tesla_in_quotes_and_watchlist():
@@ -321,6 +409,8 @@ def test_expected_endpoints_registered(app):
         "healthz",
         "dashboard",
         "dashboard_recompute_balances",
+        "stream_market",
+        "stream_options_panel",
         "candle_opens_page",
         "trades_page",
         "journal_home",
@@ -329,6 +419,261 @@ def test_expected_endpoints_registered(app):
         "books_page",
     }
     assert expected.issubset(endpoints)
+
+
+def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_load_dashboard_milestone_settings",
+        lambda: {
+            "name": "Profit Milestone",
+            "profit_goal": 0.0,
+            "target_balance": 0.0,
+            "profit_source": "ytd",
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_dashboard_milestone_viewmodel",
+        lambda *args, **kwargs: {
+            "name": "Profit Milestone",
+            "profit_source": "ytd",
+            "profit_source_label": "YTD",
+            "profit_current": 0.0,
+            "profit_goal": 0.0,
+            "profit_remaining": 0.0,
+            "target_balance": 0.0,
+            "balance_remaining": 0.0,
+            "overall_progress_pct": 0.0,
+            "profit_progress_pct": 0.0,
+            "balance_progress_pct": 0.0,
+            "profit_done": False,
+            "balance_done": False,
+            "has_profit_goal": False,
+            "has_balance_goal": False,
+            "avg_daily_profit": 0.0,
+            "projected_days_profit": None,
+            "projected_days_balance": None,
+            "projected_days_overall": None,
+        },
+    )
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Trading Command Deck" in resp.data
+    assert b"Milestone" in resp.data
+    assert b"Live Market Pulse" not in resp.data
+
+
+def test_stream_market_sse_emits_json_payload(client, monkeypatch):
+    from mccain_capital.services import market_worker
+    from mccain_capital.services import options_panel_service
+    from mccain_capital.services import gamma_map_service
+
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "prices": {
+                "QQQ": {"price": 456.12, "pct_change": 0.42, "as_of": "2026-03-05T12:00:00"}
+            },
+            "alerts": ["QQQ crossed above 456.00 at 456.12"],
+            "updated_at": "2026-03-05T12:00:00",
+        },
+    )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {"asof": "2026-03-05T12:00:00-05:00", "symbols": {"SPX": {}}},
+    )
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {
+            "asof": "2026-03-05T12:00:00-05:00",
+            "spot": 5120.35,
+            "regime": "positive",
+            "net_gex": 2100000000.0,
+            "gamma_flip": 5110.0,
+            "call_wall": 5150.0,
+            "put_wall": 5050.0,
+            "gamma_walls_top3": [5150.0, 5125.0, 5100.0],
+            "void_zone": {"start": 5060.0, "end": 5090.0},
+            "bias": "buy_dips_above_flip",
+            "paths": {
+                "csv": "/app/persistent/uploads/gamma_data.csv",
+                "png": "/app/persistent/uploads/gamma_map.png",
+            },
+        },
+    )
+    monkeypatch.setattr(core_service.time, "sleep", lambda _: None)
+
+    resp = client.get("/stream/market", follow_redirects=True)
+    assert resp.status_code == 200
+    assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
+    assert b"data: " in resp.data
+    assert b"QQQ" in resp.data
+    assert b"options" in resp.data
+    assert b"gamma_map" in resp.data
+
+
+def test_stream_market_ws_requires_upgrade(client):
+    resp = client.get("/ws/market", follow_redirects=True)
+    assert resp.status_code in {400, 501}
+
+
+def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 2, 2026 10:30 AM ET",
+            "source_label": "Massive market feed",
+            "source_note": "",
+            "quotes": [],
+            "integrity": {},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {
+            "available": False,
+            "source_note": "",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
+    )
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {
+            "asof": "2026-03-05T12:00:00-05:00",
+            "spot": 5120.35,
+            "regime": "positive",
+            "net_gex": 2100000000.0,
+            "net_gamma_label": "+2.10B",
+            "gamma_flip": 5110.0,
+            "call_wall": 5150.0,
+            "put_wall": 5050.0,
+            "gamma_walls_top3": [5150.0, 5125.0, 5100.0],
+            "void_zone": {"start": 5060.0, "end": 5090.0},
+            "bias": "buy_dips_above_flip",
+        },
+    )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {
+            "asof": "2026-03-05T12:00:00-05:00",
+            "symbols": {"SPX": {"contracts": [{"label": "SPXW 2026-03-06 5125C", "liq": "Tight"}]}},
+        },
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"SPX Priority" in resp.data
+    assert b"Gamma Flip" in resp.data
+    assert b"Best Contracts" in resp.data
+    assert b"SPXW 2026-03-06 5125C" in resp.data
+
+
+def test_market_pulse_renders_source_health_and_degraded_banner(client, monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 7, 2026 10:30 AM ET",
+            "source_label": "Tradier market feed",
+            "source_note": "cached fallback",
+            "quotes": [],
+            "integrity": {"live_count": 0, "delayed_count": 2, "missing_count": 3},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {
+            "available": True,
+            "source_note": "Live + cached merge",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
+    )
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {"asof": "", "regime": "unavailable", "bias": "insufficient_data"},
+    )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {"asof": "", "symbols": {"SPX": {"contracts": []}}},
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Source Health" in resp.data
+    assert b"Degraded Mode" in resp.data
+
+
+def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {
+            "asof": "2026-03-05T12:00:00-05:00",
+            "symbols": {
+                "SPX": {
+                    "underlying": {"price": 5120.35, "change_pct": 0.42, "source": "massive"},
+                    "contracts": [
+                        {
+                            "label": "SPXW 2026-03-06 5125C",
+                            "mid": 24.10,
+                            "delta": 0.47,
+                            "vol": 9200,
+                            "oi": 18400,
+                            "spread": 0.60,
+                            "liq": "Tight",
+                        }
+                    ],
+                    "gamma": {
+                        "gamma_flip": 5110.0,
+                        "call_wall": 5150.0,
+                        "put_wall": 5050.0,
+                        "net_gamma": "+2.1B",
+                    },
+                }
+            },
+        },
+    )
+    monkeypatch.setattr(core_service.time, "sleep", lambda _: None)
+
+    resp = client.get("/stream/options_panel", follow_redirects=True)
+    assert resp.status_code == 200
+    assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
+    assert b"data: " in resp.data
+    assert b"SPXW 2026-03-06 5125C" in resp.data
+    assert b"gamma_flip" in resp.data
 
 
 def test_candle_opens_page_renders_monthly_market_calendar(client):

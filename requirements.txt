@@ -5,8 +5,14 @@ pdf2image==1.17.0
 pytesseract==0.3.13
 Pillow==10.4.0
 pandas
+numpy
+requests
+plotly
+kaleido
+yfinance
 lxml
 html5lib
 playwright==1.51.0
 keyring==25.6.0
 cryptography==44.0.1
+simple-websocket
