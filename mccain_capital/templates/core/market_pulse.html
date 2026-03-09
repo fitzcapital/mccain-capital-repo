@@ -88,6 +88,12 @@
     · {{ spx_quote.get('market_state') or 'Unavailable' }}
   </div>
   <div class="tiny stack8">
+    Gap vs prior close:
+    <strong class="{% if spx_quote.get('change_pct') is not none and spx_quote.get('change_pct') >= 0 %}metaGreen{% elif spx_quote.get('change_pct') is not none %}metaRed{% endif %}">
+      {{ '%+.2f'|format(spx_quote.get('change_pct')) if spx_quote.get('change_pct') is not none else '—' }}%
+    </strong>
+  </div>
+  <div class="tiny stack8">
     {{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}
     {% if spx_quote.get('data_reason') %}
       · Reason: {{ spx_quote.get('data_reason') }}

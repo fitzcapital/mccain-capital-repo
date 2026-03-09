@@ -28,15 +28,15 @@ def get_strategy_by_title(title: str) -> Optional[object]:
         ).fetchone()
 
 
-def create_strategy(title: str, body: str) -> int:
+def create_strategy(title: str, body: str, checklist: str = "") -> int:
     created = now_iso()
     with db() as conn:
         cur = conn.execute(
             """
-            INSERT INTO strategies (title, body, created_at, updated_at)
-            VALUES (?,?,?,?)
+            INSERT INTO strategies (title, body, checklist, created_at, updated_at)
+            VALUES (?,?,?,?,?)
             """,
-            (title.strip(), body.strip(), created, created),
+            (title.strip(), body.strip(), checklist.strip(), created, created),
         )
         return int(cur.lastrowid)
 
@@ -69,16 +69,16 @@ def ensure_strategy(title: str, body: str = "") -> Optional[dict]:
     }
 
 
-def update_strategy(sid: int, title: str, body: str) -> None:
+def update_strategy(sid: int, title: str, body: str, checklist: str = "") -> None:
     updated = now_iso()
     with db() as conn:
         conn.execute(
             """
             UPDATE strategies
-            SET title = ?, body = ?, updated_at = ?
+            SET title = ?, body = ?, checklist = ?, updated_at = ?
             WHERE id = ?
             """,
-            (title.strip(), body.strip(), updated, sid),
+            (title.strip(), body.strip(), checklist.strip(), updated, sid),
         )
         conn.execute(
             """

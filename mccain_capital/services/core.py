@@ -54,6 +54,7 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
+from mccain_capital.services.spx_snapshot_service import get_spx_live_snapshot
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -1738,9 +1739,15 @@ def dashboard_milestone_update():
 
 
 def dashboard():
+    from mccain_capital.services import market_worker
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
 
+    if not current_app.config.get("TESTING"):
+        try:
+            market_worker.start_market_worker_once()
+        except Exception:
+            pass
     scope = trades_repo.account_scope_snapshot()
     scope_enabled = bool(scope.get("enabled"))
     scope_mode_raw = (request.args.get("scope") or "").strip().lower()
@@ -1919,6 +1926,7 @@ def dashboard():
     from mccain_capital.services.ui import get_vanquish_profit_lock_state
 
     vanquish_lock = get_vanquish_profit_lock_state()
+    spx_live = get_spx_live_snapshot()
     content = render_template(
         "dashboard.html",
         heat=heat,
@@ -1966,6 +1974,7 @@ def dashboard():
         dashboard_year=year,
         dashboard_month=month,
         milestone=milestone,
+        spx_live=spx_live,
         vanquish_lock=vanquish_lock,
         money=app_runtime.money,
         money_compact=_money_compact,

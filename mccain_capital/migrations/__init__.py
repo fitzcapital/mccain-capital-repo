@@ -84,6 +84,7 @@ def _migration_0001_baseline(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             body TEXT NOT NULL,
+            checklist TEXT DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -249,12 +250,19 @@ def _migration_0005_market_alerts(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0006_strategy_checklists(conn: sqlite3.Connection) -> None:
+    strategy_cols = [r["name"] for r in conn.execute("PRAGMA table_info(strategies)").fetchall()]
+    if "checklist" not in strategy_cols:
+        conn.execute("ALTER TABLE strategies ADD COLUMN checklist TEXT DEFAULT ''")
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
     ("0003_import_batches", _migration_0003_import_batches),
     ("0004_strategy_links", _migration_0004_strategy_links),
     ("0005_market_alerts", _migration_0005_market_alerts),
+    ("0006_strategy_checklists", _migration_0006_strategy_checklists),
 ]
 
 

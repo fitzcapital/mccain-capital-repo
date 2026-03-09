@@ -673,7 +673,64 @@ def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):
     assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
     assert b"data: " in resp.data
     assert b"SPXW 2026-03-06 5125C" in resp.data
-    assert b"gamma_flip" in resp.data
+
+
+def test_strategy_active_checklist_flow(client):
+    created = client.post(
+        "/strategies/new",
+        data={
+            "title": "ORB Pullback",
+            "body": "Entry trigger and invalidation rules",
+            "checklist": "Trend aligned\nRisk size set\nTrigger confirmed",
+        },
+        follow_redirects=True,
+    )
+    assert created.status_code == 200
+    assert b"Active Strategy Checklist" in created.data
+
+    activated = client.post(
+        "/strategies/activate",
+        data={"strategy_id": "1", "next": "/strategies"},
+        follow_redirects=True,
+    )
+    assert activated.status_code == 200
+    assert b"ORB Pullback" in activated.data
+
+    updated = client.post(
+        "/strategies/checklist",
+        data={"next": "/strategies", "done_idx": ["0", "2"]},
+        follow_redirects=True,
+    )
+    assert updated.status_code == 200
+    assert b"2 / 3 complete" in updated.data
+
+
+def test_strategy_checklist_live_autosave_returns_json(client):
+    client.post(
+        "/strategies/new",
+        data={
+            "title": "A+ Reversal",
+            "body": "Rules",
+            "checklist": "Context\nTrigger\nRisk",
+        },
+        follow_redirects=True,
+    )
+    client.post(
+        "/strategies/activate",
+        data={"strategy_id": "1", "next": "/strategies"},
+        follow_redirects=True,
+    )
+    resp = client.post(
+        "/strategies/checklist",
+        data={"next": "/strategies", "done_idx": ["0", "1"]},
+        headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert isinstance(payload, dict)
+    assert payload.get("ok") is True
+    assert payload.get("complete") == 2
+    assert payload.get("total") == 3
 
 
 def test_candle_opens_page_renders_monthly_market_calendar(client):

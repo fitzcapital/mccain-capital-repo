@@ -21,6 +21,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
     assert "0003_import_batches" in first
     assert "0004_strategy_links" in first
     assert "0005_market_alerts" in first
+    assert "0006_strategy_checklists" in first
 
     second = run_migrations(str(db_path))
     assert second == []
@@ -47,6 +48,7 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0003_import_batches",
             "0004_strategy_links",
             "0005_market_alerts",
+            "0006_strategy_checklists",
         ]
     finally:
         conn.close()

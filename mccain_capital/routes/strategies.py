@@ -23,4 +23,16 @@ def register(app):
         view_func=h.strategies_delete,
         methods=["POST"],
     )
+    app.add_url_rule(
+        "/strategies/activate",
+        endpoint="strategies_activate",
+        view_func=h.strategies_activate,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/strategies/checklist",
+        endpoint="strategies_checklist_update",
+        view_func=h.strategies_checklist_update,
+        methods=["POST"],
+    )
     app.add_url_rule("/strat", endpoint="strat_page", view_func=h.strat_page, methods=["GET"])

@@ -14,6 +14,7 @@ from datetime import timedelta
 from datetime import timezone
 import json
 import os
+import time
 from typing import Any, Dict, List, Optional
 import urllib.error
 import urllib.parse
@@ -24,6 +25,7 @@ from mccain_capital import runtime as app_runtime
 
 YF_SYMBOL_ALIASES = {
     "SPX": "^GSPC",
+    "VIX": "^VIX",
 }
 
 MASSIVE_SYMBOL_ALIASES = {
@@ -36,6 +38,8 @@ TRADIER_SYMBOL_ALIASES = {
     "^GSPC": "SPX",
     "^VIX": "VIX",
 }
+YF_FAILURE_COOLDOWN_SECONDS = 300
+_YF_FAIL_UNTIL: Dict[str, float] = {}
 
 
 def _now_iso() -> str:
@@ -386,22 +390,44 @@ def _yf_symbol(symbol: str) -> str:
 
 
 def _yf_ticker(symbol: str):
+    mapped = _yf_symbol(symbol).upper()
+    # yfinance index handling for VIX is noisy/unreliable in this runtime.
+    # Prefer Tradier/Massive for VIX and skip yfinance fallback to avoid log spam.
+    if mapped in {"VIX", "^VIX", "$VIX"}:
+        return None
     yf = _load_yfinance()
     if yf is None:
         return None
     try:
-        return yf.Ticker(_yf_symbol(symbol))
+        return yf.Ticker(mapped)
     except Exception:
         return None
 
 
 def _yf_history(symbol: str):
+    mapped = _yf_symbol(symbol)
+    now_ts = time.time()
+    if float(_YF_FAIL_UNTIL.get(mapped) or 0.0) > now_ts:
+        return None
     ticker = _yf_ticker(symbol)
     if ticker is None:
+        _YF_FAIL_UNTIL[mapped] = now_ts + float(YF_FAILURE_COOLDOWN_SECONDS)
         return None
     try:
-        return ticker.history(period="1d", interval="1m", prepost=True)
+        hist = ticker.history(period="1d", interval="1m", prepost=True)
+        if hist is None:
+            _YF_FAIL_UNTIL[mapped] = now_ts + float(YF_FAILURE_COOLDOWN_SECONDS)
+            return None
+        try:
+            if hist.empty:
+                _YF_FAIL_UNTIL[mapped] = now_ts + float(YF_FAILURE_COOLDOWN_SECONDS)
+                return hist
+        except Exception:
+            pass
+        _YF_FAIL_UNTIL.pop(mapped, None)
+        return hist
     except Exception:
+        _YF_FAIL_UNTIL[mapped] = now_ts + float(YF_FAILURE_COOLDOWN_SECONDS)
         return None
 
 

@@ -19,5 +19,13 @@ def strategies_delete(sid: int):
     return svc.strategies_delete(sid)
 
 
+def strategies_activate():
+    return svc.strategies_activate()
+
+
+def strategies_checklist_update():
+    return svc.strategies_checklist_update()
+
+
 def strat_page():
     return svc.strat_page()

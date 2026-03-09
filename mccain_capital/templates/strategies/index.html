@@ -35,7 +35,102 @@
       <div class="supportBody">Create a strategy, then tie trades to it in review.</div>
     {% endif %}
   </div></div>
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Active Strategy Checklist</div>
+    <form method="post" action="/strategies/activate" class="stack10">
+      <input type="hidden" name="next" value="/strategies"/>
+      <div class="row stack10">
+        <div style="flex:1 1 260px">
+          <label>Strategy In Play</label>
+          <select name="strategy_id">
+            <option value="0">Select strategy…</option>
+            {% for s in items %}
+              <option value="{{ s.id }}" {% if active_state.active_id == s.id %}selected{% endif %}>{{ s.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="rightActions">
+          <button class="btn primary" type="submit">Use Strategy</button>
+        </div>
+      </div>
+    </form>
+    <div class="supportLead">{{ active_state.active_title }}</div>
+    {% if active_state.total > 0 %}
+      <form id="activeStrategyChecklistForm" method="post" action="/strategies/checklist" class="stack10">
+        <input type="hidden" name="next" value="/strategies"/>
+        <div id="strategyChecklistProgress" class="tiny stack8">
+          {{ active_state.complete }} / {{ active_state.total }} complete
+        </div>
+        <div id="strategyChecklistBar" class="milestoneProgress" style="--milestone-pct: {{ '%.1f'|format(active_state.progress_pct) }}%">
+          <div class="milestoneProgressFill"></div>
+        </div>
+        <div class="stack8">
+          {% for row in active_state.rows %}
+            <label style="display:flex; align-items:center; gap:8px;">
+              <input class="strategyChecklistBox" type="checkbox" name="done_idx" value="{{ row.idx }}" {% if row.done %}checked{% endif %}/>
+              <span>{{ row.label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="rightActions">
+          <span id="strategyChecklistSaveState" class="tiny muted">Autosave on check</span>
+          <button class="btn" type="submit">Save Checklist</button>
+        </div>
+      </form>
+    {% else %}
+      <div class="supportBody">Add checklist lines in the strategy editor, then select that strategy here.</div>
+    {% endif %}
+  </div></div>
 </div>
+
+<script>
+(() => {
+  const form = document.getElementById("activeStrategyChecklistForm");
+  if (!form) return;
+  const boxes = Array.from(form.querySelectorAll(".strategyChecklistBox"));
+  const progress = document.getElementById("strategyChecklistProgress");
+  const bar = document.getElementById("strategyChecklistBar");
+  const status = document.getElementById("strategyChecklistSaveState");
+  if (!boxes.length || !progress || !bar || !status) return;
+
+  let saveTimer = null;
+  const renderProgress = () => {
+    const total = boxes.length;
+    const complete = boxes.filter((el) => el.checked).length;
+    const pct = total > 0 ? (complete / total) * 100 : 0;
+    progress.textContent = `${complete} / ${total} complete`;
+    bar.style.setProperty("--milestone-pct", `${pct.toFixed(1)}%`);
+  };
+
+  const saveNow = async () => {
+    status.textContent = "Saving...";
+    const payload = new FormData(form);
+    try {
+      const resp = await fetch(form.action, {
+        method: "POST",
+        body: payload,
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Accept": "application/json"
+        },
+        credentials: "same-origin"
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      status.textContent = "Saved";
+    } catch (_) {
+      status.textContent = "Save failed";
+    }
+  };
+
+  boxes.forEach((box) => {
+    box.addEventListener("change", () => {
+      renderProgress();
+      if (saveTimer) window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(saveNow, 120);
+    });
+  });
+})();
+</script>
 
 <div class="strategyScoreGrid">
   {% for s in scorecards %}
