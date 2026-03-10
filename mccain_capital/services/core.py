@@ -16,6 +16,7 @@ import os
 import shutil
 import tempfile
 import time
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -172,6 +173,7 @@ MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS: Tuple[str, ...] = tuple(
 YAHOO_RSS_SYMBOL_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
 _market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
+_market_pulse_bg_refresh_lock = threading.Lock()
 USD_CALENDAR_FALLBACK_MARKERS: Tuple[Tuple[str, str], ...] = (
     ("2026-03-11", "Medium"),
     ("2026-03-12", "Medium"),
@@ -1210,6 +1212,27 @@ def _market_worker_series_svg(series: Any) -> str:
     return _market_pulse_sparkline_svg(vals[-60:], tone)
 
 
+def _trigger_market_pulse_background_refresh(force_refresh: bool = False) -> None:
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
+    if not _market_pulse_bg_refresh_lock.acquire(blocking=False):
+        return
+
+    def _run() -> None:
+        try:
+            _market_pulse_snapshot(force_refresh=bool(force_refresh))
+            gamma_map_service.run_gamma_refresh_once()
+            options_panel_service.run_options_refresh_once()
+        except Exception:
+            # Keep request path non-blocking even if a provider call fails.
+            pass
+        finally:
+            _market_pulse_bg_refresh_lock.release()
+
+    threading.Thread(target=_run, name="market-pulse-bg-refresh", daemon=True).start()
+
+
 def _market_pulse_enrich_quotes(
     quotes: List[Dict[str, Any]], now_et: datetime
 ) -> List[Dict[str, Any]]:
@@ -2167,21 +2190,14 @@ def market_pulse_page():
         gamma_map_service.start_gamma_worker_once()
     snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
     gamma_snapshot = gamma_map_service.get_gamma_snapshot()
-    if force_refresh or not gamma_snapshot.get("asof"):
-        try:
-            gamma_snapshot = gamma_map_service.run_gamma_refresh_once()
-        except Exception:
-            gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     options_snapshot = options_panel_service.get_options_snapshot()
     options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
     options_contracts = list(options_spx.get("contracts") or [])
-    if not options_contracts:
-        try:
-            options_snapshot = options_panel_service.run_options_refresh_once()
-            options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
-            options_contracts = list(options_spx.get("contracts") or [])
-        except Exception:
-            options_contracts = []
+    if (
+        not current_app.config.get("TESTING")
+        and (force_refresh or not gamma_snapshot.get("asof") or not options_contracts)
+    ):
+        _trigger_market_pulse_background_refresh(force_refresh=force_refresh)
     news_snapshot = _market_news_snapshot()
     gamma_updated_label = _format_iso_et_label(gamma_snapshot.get("asof")) or "—"
     quotes = _market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)

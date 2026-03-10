@@ -4534,23 +4534,23 @@ body.marketPulseReady .marketPulseSection{
     linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
 }
 .spxStaticCard .k{
-  font-size:12px;
+  font-size:11px;
   font-weight:800;
   letter-spacing:.08em;
   text-transform:uppercase;
   color:var(--muted);
 }
 .spxStaticCard .v{
-  font-size:54px;
+  font-size:clamp(34px, 4.6vw, 46px);
   line-height:1;
   letter-spacing:-.03em;
-  margin-top:8px;
+  margin-top:6px;
 }
 .spxStaticCard .marketMiniSparkWrap{
-  margin:8px 0 10px;
+  margin:6px 0 8px;
 }
 .spxStaticCard .marketMiniSpark{
-  height:72px;
+  height:64px;
 }
 .spxStaticCard .marketMiniSparkLine{
   stroke-width:2.6;
