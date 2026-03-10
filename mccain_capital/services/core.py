@@ -174,6 +174,7 @@ YAHOO_RSS_SYMBOL_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
 _market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_pulse_bg_refresh_lock = threading.Lock()
+_market_news_bg_refresh_lock = threading.Lock()
 USD_CALENDAR_FALLBACK_MARKERS: Tuple[Tuple[str, str], ...] = (
     ("2026-03-11", "Medium"),
     ("2026-03-12", "Medium"),
@@ -1233,6 +1234,21 @@ def _trigger_market_pulse_background_refresh(force_refresh: bool = False) -> Non
     threading.Thread(target=_run, name="market-pulse-bg-refresh", daemon=True).start()
 
 
+def _trigger_market_news_background_refresh() -> None:
+    if not _market_news_bg_refresh_lock.acquire(blocking=False):
+        return
+
+    def _run() -> None:
+        try:
+            _market_news_snapshot()
+        except Exception:
+            pass
+        finally:
+            _market_news_bg_refresh_lock.release()
+
+    threading.Thread(target=_run, name="market-news-bg-refresh", daemon=True).start()
+
+
 def _market_pulse_enrich_quotes(
     quotes: List[Dict[str, Any]], now_et: datetime
 ) -> List[Dict[str, Any]]:
@@ -1615,6 +1631,30 @@ def _market_news_snapshot() -> Dict[str, Any]:
     if result["available"]:
         _save_market_news_disk_cache(result)
     return result
+
+
+def _market_news_cached_snapshot() -> Dict[str, Any]:
+    now_et = app_runtime.now_et()
+    fetched_at = _market_news_cache.get("fetched_at")
+    cached_payload = _market_news_cache.get("payload")
+    if (
+        isinstance(fetched_at, datetime)
+        and isinstance(cached_payload, dict)
+        and (now_et - fetched_at).total_seconds() < MARKET_NEWS_CACHE_TTL_SECONDS
+    ):
+        return cached_payload
+    disk_payload = _load_market_news_disk_cache()
+    if isinstance(disk_payload, dict):
+        _market_news_cache["fetched_at"] = now_et
+        _market_news_cache["payload"] = disk_payload
+        return disk_payload
+    return {
+        "available": False,
+        "source_note": "News refresh queued in background.",
+        "macro_events": [],
+        "market_items": [],
+        "watchlist_items": [],
+    }
 
 
 def home():
@@ -2198,7 +2238,9 @@ def market_pulse_page():
         and (force_refresh or not gamma_snapshot.get("asof") or not options_contracts)
     ):
         _trigger_market_pulse_background_refresh(force_refresh=force_refresh)
-    news_snapshot = _market_news_snapshot()
+    news_snapshot = _market_news_cached_snapshot()
+    if not current_app.config.get("TESTING") and (force_refresh or not news_snapshot.get("available")):
+        _trigger_market_news_background_refresh()
     gamma_updated_label = _format_iso_et_label(gamma_snapshot.get("asof")) or "—"
     quotes = _market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
     if not current_app.config.get("TESTING"):

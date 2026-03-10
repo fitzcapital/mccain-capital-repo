@@ -1,11 +1,3 @@
-<div id="marketPulseLoading" class="marketPulseLoadingOverlay" aria-hidden="true">
-  <div class="marketPulseLoadingCard">
-    <div class="marketPulseSpinner"></div>
-    <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
-    <div class="marketPulseLoadingSub">Pulling live market data and rebuilding tape context…</div>
-  </div>
-</div>
-
 <div class="card pageHero marketPulseSection">
   <div class="toolbar">
     <div class="pageHeroHead">
@@ -395,7 +387,6 @@
   const label = document.getElementById("autoRefreshLabel");
   const guardMeta = document.getElementById("marketGuardrailMeta");
   const refreshLink = document.getElementById("marketPulseRefreshLink");
-  const loadingOverlay = document.getElementById("marketPulseLoading");
   if (!toggle || !label || !modeToggle || !guardMeta) return;
   const baseSeconds = Number(label.dataset.seconds || "30");
   let enabled = localStorage.getItem(KEY) === "on";
@@ -406,12 +397,6 @@
   const guardrailMessage = guardMeta.dataset.message || "Data Unsafe guardrail active.";
   let remaining = baseSeconds;
   let timer = null;
-  const showLoading = () => {
-    if (!loadingOverlay) return;
-    loadingOverlay.classList.add("show");
-    loadingOverlay.setAttribute("aria-hidden", "false");
-  };
-
   const applyGuardrailLock = () => {
     if (!guardrailActive) return;
     const blockedPrefixes = ["/trades", "/calculator"];
@@ -448,7 +433,6 @@
     if (remaining <= 0) {
       const url = new URL(window.location.href);
       url.searchParams.set("refresh", "1");
-      showLoading();
       window.location.assign(url.toString());
       return;
     }
@@ -467,9 +451,7 @@
     applyMode();
   });
   if (refreshLink) {
-    refreshLink.addEventListener("click", () => {
-      showLoading();
-    });
+    refreshLink.addEventListener("click", () => {});
   }
 
   timer = window.setInterval(tick, 1000);
