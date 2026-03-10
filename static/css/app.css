@@ -1261,6 +1261,22 @@
       color:rgba(160, 191, 224, .86);
       margin-top:2px;
     }
+    .spxVixLiveSpark{
+      margin:-2px 0 2px;
+      padding:4px 8px 2px;
+      border-radius:10px;
+      border:1px solid rgba(98, 172, 240, .24);
+      background:linear-gradient(180deg, rgba(6, 23, 53, .45), rgba(5, 16, 38, .18));
+    }
+    .spxVixLiveSpark .marketMiniSpark{
+      height:40px;
+    }
+    .spxVixLiveSpark .marketMiniSparkArea{
+      display:none;
+    }
+    .spxVixLiveSpark .marketMiniSparkLine{
+      stroke-width:2.4;
+    }
 .controlPanel{
   background:
     radial-gradient(140% 130% at 0% 0%, rgba(var(--accent-rgb),.10), transparent 60%),

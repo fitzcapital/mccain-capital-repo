@@ -322,6 +322,15 @@ def test_market_pulse_live_without_timestamp_is_warn_not_critical():
     assert "timestamp" in str(enriched[0]["freshness_label"]).lower()
 
 
+def test_market_worker_symbol_keys_include_index_aliases():
+    keys = core_service._market_worker_symbol_keys("^GSPC", "SPX")
+    assert "^GSPC" in keys
+    assert "SPX" in keys
+    keys_vix = core_service._market_worker_symbol_keys("^VIX", "VIX")
+    assert "^VIX" in keys_vix
+    assert "VIX" in keys_vix
+
+
 def test_market_pulse_guardrail_activates_on_threshold():
     quotes = [
         {"label": "SPY", "freshness_band": "critical"},

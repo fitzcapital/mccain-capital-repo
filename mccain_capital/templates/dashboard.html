@@ -65,6 +65,7 @@
       </span>
       <span class="spxVixLiveGap">· Gap {{ spx_live.gap_label if spx_live else '—' }}</span>
     </div>
+    <div class="spxVixLiveSpark">{{ spx_live_spark_svg|safe }}</div>
     <div class="spxVixLiveRow">
       <span class="spxVixLiveLabel">VIX:</span>
       <span class="spxVixLiveValue">
@@ -76,6 +77,7 @@
       </span>
       <span class="spxVixLiveGap">· Gap {{ vix_live.gap_label if vix_live else '—' }}</span>
     </div>
+    <div class="spxVixLiveSpark">{{ vix_live_spark_svg|safe }}</div>
     <div class="supportMeta spxVixLiveMeta">
       SPX {{ spx_live.as_of if spx_live else 'Awaiting tick' }} ·
       VIX {{ vix_live.as_of if vix_live else 'Awaiting tick' }}

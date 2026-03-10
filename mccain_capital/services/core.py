@@ -1161,6 +1161,36 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
     )
 
 
+def _market_worker_symbol_keys(symbol: str, label: str = "") -> List[str]:
+    raw = str(symbol or "").strip().upper()
+    keys: List[str] = []
+    if raw:
+        keys.append(raw)
+    alias_map = {
+        "^GSPC": "SPX",
+        "^VIX": "VIX",
+    }
+    alias = alias_map.get(raw, "")
+    if alias and alias not in keys:
+        keys.append(alias)
+    label_key = str(label or "").strip().upper()
+    if label_key and label_key not in keys:
+        keys.append(label_key)
+    return keys
+
+
+def _market_worker_series_svg(series: Any) -> str:
+    vals = [float(v) for v in (series or []) if isinstance(v, (int, float))]
+    if len(vals) < 2:
+        return _market_pulse_sparkline_svg([], "flat")
+    tone = "flat"
+    if vals[-1] > vals[0]:
+        tone = "up"
+    elif vals[-1] < vals[0]:
+        tone = "down"
+    return _market_pulse_sparkline_svg(vals[-60:], tone)
+
+
 def _market_pulse_enrich_quotes(
     quotes: List[Dict[str, Any]], now_et: datetime
 ) -> List[Dict[str, Any]]:
@@ -1942,6 +1972,15 @@ def dashboard():
     vanquish_lock = get_vanquish_profit_lock_state()
     spx_live = get_index_live_snapshot("SPX")
     vix_live = get_index_live_snapshot("VIX")
+    spx_live_spark_svg = _market_pulse_sparkline_svg([], "flat")
+    vix_live_spark_svg = _market_pulse_sparkline_svg([], "flat")
+    try:
+        live_snapshot = market_worker.get_market_snapshot()
+        live_series = dict(live_snapshot.get("series") or {})
+        spx_live_spark_svg = _market_worker_series_svg(live_series.get("SPX"))
+        vix_live_spark_svg = _market_worker_series_svg(live_series.get("VIX"))
+    except Exception:
+        pass
     content = render_template(
         "dashboard.html",
         heat=heat,
@@ -1991,6 +2030,8 @@ def dashboard():
         milestone=milestone,
         spx_live=spx_live,
         vix_live=vix_live,
+        spx_live_spark_svg=spx_live_spark_svg,
+        vix_live_spark_svg=vix_live_spark_svg,
         vanquish_lock=vanquish_lock,
         money=app_runtime.money,
         money_compact=_money_compact,
@@ -2133,7 +2174,13 @@ def market_pulse_page():
             updated_at = str(live_snapshot.get("updated_at") or "")
             for q in quotes:
                 symbol = str(q.get("symbol") or "")
-                live_q = live_prices.get(symbol) if symbol else None
+                label = str(q.get("label") or "")
+                live_q = None
+                for key in _market_worker_symbol_keys(symbol, label):
+                    cand = live_prices.get(key)
+                    if isinstance(cand, dict):
+                        live_q = cand
+                        break
                 if isinstance(live_q, dict):
                     live_price = live_q.get("price")
                     live_pct = live_q.get("pct_change")
@@ -2154,7 +2201,12 @@ def market_pulse_page():
                         live_asof_epoch = _iso_to_epoch(live_asof_raw)
                         if live_asof_epoch > 0:
                             q["asof_epoch"] = live_asof_epoch
-                series = live_series.get(symbol)
+                series = None
+                for key in _market_worker_symbol_keys(symbol, label):
+                    cand_series = live_series.get(key)
+                    if isinstance(cand_series, list):
+                        series = cand_series
+                        break
                 if isinstance(series, list) and len(series) >= 8:
                     q["mini_series"] = [float(v) for v in series if isinstance(v, (int, float))]
             quotes = _market_pulse_enrich_quotes(quotes, now_et)
