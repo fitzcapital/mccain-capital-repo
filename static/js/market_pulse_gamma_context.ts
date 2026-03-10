@@ -13,6 +13,7 @@ export interface GammaContextInput {
   regime?: string;
   bias?: string;
   expectedMove?: number | null;
+  candidateLevels?: number[];
   updatedAt?: string | number | null;
 }
 
@@ -87,7 +88,17 @@ export function computeDistanceMetrics(input: GammaContextInput): DistanceMetric
   const gammaFlip = asNum(input.gammaFlip);
   const callWall = asNum(input.callWall);
   const putWall = asNum(input.putWall);
-  const expectedMove = asNum(input.expectedMove);
+  const providedExpectedMove = asNum(input.expectedMove);
+  const expectedMove =
+    providedExpectedMove !== null
+      ? providedExpectedMove
+      : spot !== null && callWall !== null && putWall !== null
+        ? Math.max(Math.abs(callWall - spot), Math.abs(spot - putWall))
+        : callWall !== null && putWall !== null
+          ? Math.abs(callWall - putWall) / 2.0
+          : spot !== null && gammaFlip !== null
+            ? Math.abs(spot - gammaFlip)
+            : null;
 
   const distanceToFlip = spot !== null && gammaFlip !== null ? spot - gammaFlip : null;
   const distanceToCallWall = spot !== null && callWall !== null ? spot - callWall : null;
@@ -96,12 +107,27 @@ export function computeDistanceMetrics(input: GammaContextInput): DistanceMetric
   const expectedMoveUp = spot !== null && expectedMove !== null ? spot + expectedMove : null;
   const expectedMoveDown = spot !== null && expectedMove !== null ? spot - expectedMove : null;
 
+  const step =
+    callWall !== null && putWall !== null
+      ? Math.max(5, Math.min(25, Math.round((Math.abs(callWall - putWall) / 4.0) / 5.0) * 5.0))
+      : 10;
+
   return {
     distance_to_flip: distanceToFlip,
     distance_to_call_wall: distanceToCallWall,
     distance_to_put_wall: distanceToPutWall,
-    next_call_wall_above: asNum(input.nextCallWallAbove),
-    next_put_wall_below: asNum(input.nextPutWallBelow),
+    next_call_wall_above:
+      asNum(input.nextCallWallAbove) !== null
+        ? asNum(input.nextCallWallAbove)
+        : callWall !== null
+          ? callWall + step
+          : null,
+    next_put_wall_below:
+      asNum(input.nextPutWallBelow) !== null
+        ? asNum(input.nextPutWallBelow)
+        : putWall !== null
+          ? putWall - step
+          : null,
     expected_move_up: expectedMoveUp,
     expected_move_down: expectedMoveDown,
     expected_move_range_text:

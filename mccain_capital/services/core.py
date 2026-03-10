@@ -54,7 +54,6 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
-from mccain_capital.services.spx_snapshot_service import get_index_live_snapshot
 from mccain_capital.services.gamma_context_service import build_spx_priority_context
 
 MULTIPLIER = 100

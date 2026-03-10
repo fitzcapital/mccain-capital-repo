@@ -84,6 +84,26 @@ def test_build_spx_priority_context_uses_chart_levels_for_next_walls():
     assert context["metrics"]["next_put_wall_below"] == 4980
 
 
+def test_compute_distance_metrics_infers_missing_expected_move_and_next_walls():
+    metrics = svc.computeDistanceMetrics(
+        {
+            "spot": 5008,
+            "gammaFlip": 5000,
+            "callWall": 5010,
+            "putWall": 4990,
+            "expectedMove": None,
+            "nextCallWallAbove": None,
+            "nextPutWallBelow": None,
+            "netGamma": 10,
+        },
+        candidate_levels=[4990, 5000, 5010],
+    )
+    assert metrics["expected_move_up"] is not None
+    assert metrics["expected_move_down"] is not None
+    assert metrics["next_call_wall_above"] == 5020
+    assert metrics["next_put_wall_below"] == 4980
+
+
 def test_format_level_distance():
     assert svc.formatLevelDistance(None) == "—"
     assert svc.formatLevelDistance(0) == "0 pts"

@@ -69,19 +69,74 @@
     return "clear";
   }
 
+  function inferLevelStep(callWall, putWall, candidates) {
+    const vals = (Array.isArray(candidates) ? candidates : []).map(asNum).filter((v) => v !== null);
+    const uniq = Array.from(new Set(vals)).sort((a, b) => a - b);
+    const diffs = [];
+    for (let i = 1; i < uniq.length; i += 1) {
+      const d = Math.abs(uniq[i] - uniq[i - 1]);
+      if (d > 0.01) diffs.push(d);
+    }
+    if (diffs.length) {
+      diffs.sort((a, b) => a - b);
+      return Math.max(5, Math.min(25, diffs[Math.floor(diffs.length / 2)]));
+    }
+    if (callWall !== null && putWall !== null) {
+      const spread = Math.abs(callWall - putWall);
+      if (spread > 0) return Math.max(5, Math.min(25, Math.round((spread / 4) / 5) * 5));
+    }
+    return 10;
+  }
+
+  function inferExpectedMove(input, candidates) {
+    const provided = asNum(input.expectedMove);
+    if (provided !== null) return provided;
+    const spot = asNum(input.spot);
+    const flip = asNum(input.gammaFlip);
+    const callWall = asNum(input.callWall);
+    const putWall = asNum(input.putWall);
+
+    if (spot !== null && callWall !== null && putWall !== null) {
+      const derived = Math.max(Math.abs(callWall - spot), Math.abs(spot - putWall));
+      if (derived > 0) return derived;
+    }
+    if (callWall !== null && putWall !== null) {
+      const spread = Math.abs(callWall - putWall) / 2;
+      if (spread > 0) return spread;
+    }
+    if (spot !== null && flip !== null) {
+      const fd = Math.abs(spot - flip);
+      if (fd > 0) return fd;
+    }
+    const vals = (Array.isArray(candidates) ? candidates : []).map(asNum).filter((v) => v !== null).sort((a, b) => a - b);
+    if (spot !== null && vals.length) {
+      const higher = vals.filter((v) => v > spot);
+      const lower = vals.filter((v) => v < spot);
+      if (higher.length && lower.length) return Math.max(Math.abs(Math.min(...higher) - spot), Math.abs(spot - Math.max(...lower)));
+      if (higher.length) return Math.abs(Math.min(...higher) - spot);
+      if (lower.length) return Math.abs(spot - Math.max(...lower));
+    }
+    return null;
+  }
+
   function computeDistanceMetrics(input) {
     const spot = asNum(input.spot);
     const gammaFlip = asNum(input.gammaFlip);
     const callWall = asNum(input.callWall);
     const putWall = asNum(input.putWall);
-    const expectedMove = asNum(input.expectedMove);
+    const expectedMove = inferExpectedMove(input, input.candidateLevels);
 
     const distanceToFlip = spot !== null && gammaFlip !== null ? spot - gammaFlip : null;
     const distanceToCallWall = spot !== null && callWall !== null ? spot - callWall : null;
     const distanceToPutWall = spot !== null && putWall !== null ? spot - putWall : null;
 
-    const nextCallWallAbove = asNum(input.nextCallWallAbove);
-    const nextPutWallBelow = asNum(input.nextPutWallBelow);
+    let nextCallWallAbove = asNum(input.nextCallWallAbove);
+    let nextPutWallBelow = asNum(input.nextPutWallBelow);
+    if ((nextCallWallAbove === null && callWall !== null) || (nextPutWallBelow === null && putWall !== null)) {
+      const step = inferLevelStep(callWall, putWall, input.candidateLevels);
+      if (nextCallWallAbove === null && callWall !== null) nextCallWallAbove = callWall + step;
+      if (nextPutWallBelow === null && putWall !== null) nextPutWallBelow = putWall - step;
+    }
 
     const expectedMoveUp = spot !== null && expectedMove !== null ? spot + expectedMove : null;
     const expectedMoveDown = spot !== null && expectedMove !== null ? spot - expectedMove : null;
@@ -250,6 +305,19 @@
   const adaptInput = (base) => {
     const spxQuote = base.spx_quote || {};
     const gamma = base.gamma_snapshot || {};
+    const candidateLevels = [];
+    const top3 = Array.isArray(gamma.gamma_walls_top3) ? gamma.gamma_walls_top3 : [];
+    for (const value of top3) {
+      const n = asNum(value);
+      if (n !== null) candidateLevels.push(n);
+    }
+    const xs = (((gamma.chart_json || {}).gex || {}).data || [])[0]?.x;
+    if (Array.isArray(xs)) {
+      for (const value of xs) {
+        const n = asNum(value);
+        if (n !== null) candidateLevels.push(n);
+      }
+    }
     return {
       spot: asNum(spxQuote.price),
       gammaFlip: asNum(gamma.gamma_flip),
@@ -261,6 +329,7 @@
       regime: String(gamma.regime || ""),
       bias: String(gamma.bias || ""),
       expectedMove: asNum(gamma.expected_move),
+      candidateLevels,
       updatedAt: gamma.asof || null,
     };
   };
