@@ -9,10 +9,17 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import time
 import urllib.parse
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 SELECTOR_PROFILE_VERSION = "2026-02-25.v2"
+DEFAULT_PLAYWRIGHT_BROWSERS_PATH = "/app/persistent/playwright-browsers"
+PLAYWRIGHT_BROWSERS_PATH = (
+    (os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "").strip() or DEFAULT_PLAYWRIGHT_BROWSERS_PATH
+)
+PLAYWRIGHT_INSTALL_ON_DEMAND = (os.environ.get("PLAYWRIGHT_INSTALL_ON_DEMAND") or "1") == "1"
 SELECTOR_PROFILES: Dict[str, List[str]] = {
     "login_user": [
         "input[name='username']",
@@ -63,6 +70,87 @@ SELECTOR_PROFILES: Dict[str, List[str]] = {
         "input[value*='Generate']",
     ],
 }
+
+
+def _chromium_browser_present() -> bool:
+    root = PLAYWRIGHT_BROWSERS_PATH
+    if not os.path.isdir(root):
+        return False
+    try:
+        for name in os.listdir(root):
+            if str(name).startswith("chromium-"):
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def _acquire_install_lock(lock_path: str, timeout_sec: int = 900) -> int:
+    started = time.time()
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            os.write(fd, str(os.getpid()).encode("utf-8"))
+            return fd
+        except FileExistsError:
+            # Reap stale lock (likely stale container crash) after 30m.
+            try:
+                if (time.time() - os.path.getmtime(lock_path)) > 1800:
+                    os.remove(lock_path)
+                    continue
+            except OSError:
+                pass
+            if (time.time() - started) >= timeout_sec:
+                raise RuntimeError("Timed out waiting for Playwright install lock.")
+            time.sleep(0.25)
+
+
+def _ensure_playwright_chromium() -> None:
+    if _chromium_browser_present():
+        return
+    if not PLAYWRIGHT_INSTALL_ON_DEMAND:
+        raise RuntimeError(
+            "Playwright Chromium browser is missing and PLAYWRIGHT_INSTALL_ON_DEMAND=0."
+        )
+
+    os.makedirs(PLAYWRIGHT_BROWSERS_PATH, exist_ok=True)
+    lock_path = os.path.join(
+        os.path.dirname(PLAYWRIGHT_BROWSERS_PATH.rstrip("/")) or "/tmp",
+        ".playwright-install.lock",
+    )
+    lock_fd = _acquire_install_lock(lock_path)
+    try:
+        # Another process might have installed while we waited.
+        if _chromium_browser_present():
+            return
+        env = os.environ.copy()
+        env["PLAYWRIGHT_BROWSERS_PATH"] = PLAYWRIGHT_BROWSERS_PATH
+        proc = subprocess.run(
+            ["python", "-m", "playwright", "install", "--no-shell", "chromium"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip()
+            raise RuntimeError(
+                "Failed to install Playwright Chromium browser on demand."
+                + (f" Details: {detail[-500:]}" if detail else "")
+            )
+        if not _chromium_browser_present():
+            raise RuntimeError(
+                "Playwright reported Chromium install success but browser was not found."
+            )
+    finally:
+        try:
+            os.close(lock_fd)
+        except OSError:
+            pass
+        try:
+            os.remove(lock_path)
+        except OSError:
+            pass
 
 
 def _contexts(page) -> List[Any]:
@@ -198,6 +286,7 @@ def fetch_statement_html_via_login(
             "Playwright is required for live login sync. Install with "
             "`pip install playwright` then `playwright install chromium`."
         ) from e
+    _ensure_playwright_chromium()
 
     raw = (base_origin or "https://trade.vanquishtrader.com").strip()
     parsed = urllib.parse.urlparse(raw if "://" in raw else f"https://{raw}")

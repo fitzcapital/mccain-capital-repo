@@ -176,6 +176,16 @@
         </span>
       </div>
     </div>
+    {% if vanquish_lock and vanquish_lock.goal_hit %}
+    <div class="profitStopBanner" role="alert" aria-live="assertive">
+      <div class="profitStopBannerKicker">Profit Target Hit</div>
+      <div class="profitStopBannerTitle">STOP TRADING</div>
+      <div class="profitStopBannerText">
+        You made <strong>${{ "{:,.2f}".format(vanquish_lock.day_net or 0.0) }}</strong> today.
+        Protect the win and close the platform.
+      </div>
+    </div>
+    {% endif %}
     <div id="workflowRail" class="workflowRail">
       <div class="workflowHead">
         <div>
@@ -777,8 +787,97 @@ document.addEventListener('keydown', (e) => {
       document.querySelectorAll('.analyticsTopStats').forEach((row) => compactDenseGrid(row, '.analyticsTopStat', 2, 'Stats'));
       document.querySelectorAll('.statusBadgeStrip').forEach((row) => compactDenseGrid(row, '.statusBadge', 4, 'Status'));
     }
+
+    function ensureProfitToastHost(){
+      let host = document.getElementById("profitToastHost");
+      if(host) return host;
+      host = document.createElement("div");
+      host.id = "profitToastHost";
+      host.className = "profitToastHost";
+      host.setAttribute("aria-live", "assertive");
+      host.setAttribute("aria-atomic", "true");
+      document.body.appendChild(host);
+      return host;
+    }
+
+    function showProfitStopToast(message){
+      const host = ensureProfitToastHost();
+      const toast = document.createElement("div");
+      toast.className = "profitToast";
+      toast.innerHTML = `
+        <div class="profitToastTitle">Profit Target Hit</div>
+        <div class="profitToastBody">${message}</div>
+      `;
+      host.appendChild(toast);
+      window.setTimeout(() => {
+        toast.remove();
+      }, 9000);
+    }
+
+    function playProfitStopTone(){
+      try{
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if(!Ctx) return;
+        const ctx = new Ctx();
+        const now = ctx.currentTime;
+        const steps = [760, 620, 760];
+        steps.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(0.035, now + (i * 0.14) + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + (i * 0.14) + 0.13);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + (i * 0.14));
+          osc.stop(now + (i * 0.14) + 0.13);
+        });
+      }catch(e){
+        console.debug("profit tone skipped", e);
+      }
+    }
+
+    async function maybeTriggerProfitStopAlert(){
+      const goalHit = {% if vanquish_lock and vanquish_lock.goal_hit %}true{% else %}false{% endif %};
+      if(!goalHit) return;
+
+      const dayNet = Number({{ (vanquish_lock.day_net if vanquish_lock else 0.0)|float }});
+      const etDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/New_York",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(new Date());
+      const alertKey = `mc_profit_stop_alert:${etDate}`;
+      if(localStorage.getItem(alertKey) === "1") return;
+
+      const amount = dayNet.toLocaleString("en-US", {style:"currency", currency:"USD"});
+      const message = `You made ${amount} today. STOP TRADING and protect the win.`;
+      showProfitStopToast(message);
+      playProfitStopTone();
+
+      if("Notification" in window){
+        try{
+          if(Notification.permission === "granted"){
+            new Notification("Profit Target Hit", { body: message, tag: alertKey });
+          }else if(Notification.permission === "default"){
+            const perm = await Notification.requestPermission();
+            if(perm === "granted"){
+              new Notification("Profit Target Hit", { body: message, tag: alertKey });
+            }
+          }
+        }catch(e){
+          console.debug("notification skipped", e);
+        }
+      }
+      localStorage.setItem(alertKey, "1");
+    }
+
     enforcePrimaryCta();
     setupMobileDensityCompaction();
+    maybeTriggerProfitStopAlert();
 
     const staggerTargets = document.querySelectorAll(".card, .metric, .calcCard, .insightCard");
     staggerTargets.forEach((el, i) => {

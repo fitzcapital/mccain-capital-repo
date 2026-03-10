@@ -4,6 +4,8 @@ import json
 import os
 import time
 
+import pytest
+
 from mccain_capital.runtime import db, now_iso
 
 
@@ -409,6 +411,49 @@ def test_live_sync_skips_balance_reconcile_when_date_fallback_warning(monkeypatc
     assert any(
         "skipped ending-balance reconcile" in str(w).lower() for w in (out.get("warns") or [])
     )
+
+
+def test_vanquish_playwright_lazy_install_on_demand(monkeypatch, tmp_path):
+    from mccain_capital.services import vanquish_live_sync as sync_svc
+
+    browsers = tmp_path / "playwright-browsers"
+    calls = {"count": 0}
+
+    def _fake_run(cmd, capture_output, text, env, check):
+        calls["count"] += 1
+        (browsers / "chromium-1161").mkdir(parents=True, exist_ok=True)
+
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return _Proc()
+
+    monkeypatch.setattr(sync_svc, "PLAYWRIGHT_BROWSERS_PATH", str(browsers))
+    monkeypatch.setattr(sync_svc, "PLAYWRIGHT_INSTALL_ON_DEMAND", True)
+    monkeypatch.setattr(sync_svc.subprocess, "run", _fake_run)
+
+    sync_svc._ensure_playwright_chromium()
+    assert calls["count"] == 1
+    assert (browsers / "chromium-1161").is_dir()
+
+    # Second call should detect existing browser and avoid a new install.
+    sync_svc._ensure_playwright_chromium()
+    assert calls["count"] == 1
+
+
+def test_vanquish_playwright_missing_browser_raises_when_auto_install_disabled(
+    monkeypatch, tmp_path
+):
+    from mccain_capital.services import vanquish_live_sync as sync_svc
+
+    browsers = tmp_path / "playwright-browsers"
+    monkeypatch.setattr(sync_svc, "PLAYWRIGHT_BROWSERS_PATH", str(browsers))
+    monkeypatch.setattr(sync_svc, "PLAYWRIGHT_INSTALL_ON_DEMAND", False)
+
+    with pytest.raises(RuntimeError, match="PLAYWRIGHT_INSTALL_ON_DEMAND=0"):
+        sync_svc._ensure_playwright_chromium()
 
 
 def test_rollback_import_batch_deletes_only_target_batch(client, monkeypatch, tmp_path):

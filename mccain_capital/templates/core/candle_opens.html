@@ -174,11 +174,21 @@
                       </div>
                     {% endif %}
                     {% if cell.news_events %}
+                      {% set visible_events = cell.news_events[:5] %}
+                      {% set hidden_count = (cell.news_events|length) - (visible_events|length) %}
+                      {% set hidden_red = (cell.news_events[5:] | selectattr('impact_class', 'equalto', 'high') | list | length) %}
+                      {% set hidden_orange = (cell.news_events[5:] | selectattr('impact_class', 'equalto', 'medium') | list | length) %}
                       <a class="candleNewsJump" href="#news-day-{{ cell.iso }}" aria-label="Open {{ cell.iso }} news details">
                         <div class="candleNewsIcons">
-                          {% for event in cell.news_events %}
+                          {% for event in visible_events %}
                             <span class="candleNewsIcon is-{{ event.impact_class }}" title="{{ event.tooltip }}">{{ event.icon }}</span>
                           {% endfor %}
+                          {% if hidden_count > 0 %}
+                            <span
+                              class="candleNewsOverflow"
+                              title="{{ hidden_count }} more ({{ hidden_red }} red, {{ hidden_orange }} orange)"
+                            >+{{ hidden_count }}</span>
+                          {% endif %}
                         </div>
                       </a>
                     {% endif %}
@@ -228,11 +238,21 @@
               </div>
             {% endif %}
             {% if cell.news_events %}
+              {% set visible_events = cell.news_events[:5] %}
+              {% set hidden_count = (cell.news_events|length) - (visible_events|length) %}
+              {% set hidden_red = (cell.news_events[5:] | selectattr('impact_class', 'equalto', 'high') | list | length) %}
+              {% set hidden_orange = (cell.news_events[5:] | selectattr('impact_class', 'equalto', 'medium') | list | length) %}
               <a class="candleNewsJump" href="#news-day-{{ cell.iso }}" aria-label="Open {{ cell.iso }} news details">
                 <div class="candleNewsIcons">
-                  {% for event in cell.news_events %}
+                  {% for event in visible_events %}
                     <span class="candleNewsIcon is-{{ event.impact_class }}" title="{{ event.tooltip }}">{{ event.icon }}</span>
                   {% endfor %}
+                  {% if hidden_count > 0 %}
+                    <span
+                      class="candleNewsOverflow"
+                      title="{{ hidden_count }} more ({{ hidden_red }} red, {{ hidden_orange }} orange)"
+                    >+{{ hidden_count }}</span>
+                  {% endif %}
                 </div>
               </a>
             {% endif %}

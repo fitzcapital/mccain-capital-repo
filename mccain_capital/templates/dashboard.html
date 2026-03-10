@@ -53,21 +53,29 @@
   </div></div>
 
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">SPX Live</div>
-    <div class="supportLead">
+    <div class="pill">SPX / VIX Live</div>
+    <div class="supportBody">
+      <strong>SPX</strong>:
       {% if spx_live and spx_live.price is not none %}
         {{ '%.2f'|format(spx_live.price) }}
       {% else %}
         Awaiting live update
       {% endif %}
+      · Gap {{ spx_live.gap_label if spx_live else '—' }}
     </div>
     <div class="supportBody">
-      Gap vs prior close: {{ spx_live.gap_label if spx_live else '—' }}
-      <span class="{% if spx_live and spx_live.gap_pct is not none and spx_live.gap_pct >= 0 %}metaGreen{% elif spx_live and spx_live.gap_pct is not none %}metaRed{% else %}muted{% endif %}">
-        {% if spx_live and spx_live.gap_pct is not none %}({{ 'positive' if spx_live.gap_pct >= 0 else 'negative' }}){% endif %}
-      </span>
+      <strong>VIX</strong>:
+      {% if vix_live and vix_live.price is not none %}
+        {{ '%.2f'|format(vix_live.price) }}
+      {% else %}
+        Awaiting live update
+      {% endif %}
+      · Gap {{ vix_live.gap_label if vix_live else '—' }}
     </div>
-    <div class="supportMeta">{{ spx_live.as_of if spx_live else 'Awaiting tick' }}</div>
+    <div class="supportMeta">
+      SPX {{ spx_live.as_of if spx_live else 'Awaiting tick' }} ·
+      VIX {{ vix_live.as_of if vix_live else 'Awaiting tick' }}
+    </div>
   </div></div>
 
   <div class="card supportCard"><div class="toolbar">

@@ -54,7 +54,7 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
-from mccain_capital.services.spx_snapshot_service import get_spx_live_snapshot
+from mccain_capital.services.spx_snapshot_service import get_index_live_snapshot
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -1926,7 +1926,8 @@ def dashboard():
     from mccain_capital.services.ui import get_vanquish_profit_lock_state
 
     vanquish_lock = get_vanquish_profit_lock_state()
-    spx_live = get_spx_live_snapshot()
+    spx_live = get_index_live_snapshot("SPX")
+    vix_live = get_index_live_snapshot("VIX")
     content = render_template(
         "dashboard.html",
         heat=heat,
@@ -1975,6 +1976,7 @@ def dashboard():
         dashboard_month=month,
         milestone=milestone,
         spx_live=spx_live,
+        vix_live=vix_live,
         vanquish_lock=vanquish_lock,
         money=app_runtime.money,
         money_compact=_money_compact,

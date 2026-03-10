@@ -451,6 +451,100 @@
       overflow:hidden;
       text-overflow:ellipsis;
     }
+    .profitStopBanner{
+      margin-bottom:12px;
+      padding:14px 16px;
+      border-radius:16px;
+      border:1px solid rgba(255, 84, 84, .58);
+      background:
+        radial-gradient(140% 190% at 0% 0%, rgba(255, 58, 58, .35), transparent 56%),
+        linear-gradient(130deg, rgba(150, 0, 0, .66), rgba(87, 0, 0, .8) 45%, rgba(48, 0, 0, .94));
+      box-shadow:
+        0 0 0 1px rgba(255, 84, 84, .16) inset,
+        0 14px 30px rgba(40, 0, 0, .45);
+      animation:profitStopPulse 2.6s ease-in-out infinite;
+    }
+    .profitStopBannerKicker{
+      display:inline-flex;
+      padding:3px 9px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.25);
+      background:rgba(255,255,255,.1);
+      color:rgba(255,245,245,.9);
+      font-size:10px;
+      letter-spacing:.11em;
+      text-transform:uppercase;
+      font-weight:800;
+    }
+    .profitStopBannerTitle{
+      margin-top:8px;
+      font-size:30px;
+      font-weight:900;
+      letter-spacing:.03em;
+      color:#fff;
+      text-shadow:0 2px 16px rgba(0,0,0,.45);
+    }
+    .profitStopBannerText{
+      margin-top:5px;
+      font-size:13px;
+      color:rgba(255, 236, 236, .95);
+      line-height:1.45;
+    }
+    .profitStopBannerText strong{
+      color:#fff;
+      font-weight:900;
+    }
+    .profitToastHost{
+      position:fixed;
+      top:max(12px, env(safe-area-inset-top));
+      right:max(12px, env(safe-area-inset-right));
+      z-index:1200;
+      display:grid;
+      gap:10px;
+      width:min(360px, calc(100vw - 24px));
+      pointer-events:none;
+    }
+    .profitToast{
+      pointer-events:auto;
+      border-radius:14px;
+      border:1px solid rgba(255,84,84,.64);
+      padding:11px 12px;
+      background:
+        radial-gradient(120% 170% at 0% 0%, rgba(255, 58, 58, .25), transparent 58%),
+        linear-gradient(145deg, rgba(120, 0, 0, .88), rgba(48, 0, 0, .95));
+      color:#fff7f7;
+      box-shadow:0 12px 28px rgba(20, 0, 0, .45);
+      animation:profitToastIn .2s ease-out;
+    }
+    .profitToastTitle{
+      font-size:11px;
+      letter-spacing:.09em;
+      text-transform:uppercase;
+      font-weight:900;
+      opacity:.9;
+    }
+    .profitToastBody{
+      margin-top:4px;
+      font-size:13px;
+      line-height:1.4;
+      font-weight:700;
+    }
+    @keyframes profitToastIn{
+      from{opacity:0; transform:translateY(-8px)}
+      to{opacity:1; transform:translateY(0)}
+    }
+    @keyframes profitStopPulse{
+      0%, 100%{
+        box-shadow:
+          0 0 0 1px rgba(255, 84, 84, .16) inset,
+          0 14px 30px rgba(40, 0, 0, .45);
+      }
+      50%{
+        box-shadow:
+          0 0 0 1px rgba(255, 84, 84, .35) inset,
+          0 18px 36px rgba(63, 0, 0, .58);
+      }
+    }
     .desktopOnly{display:block}
     .mobileOnly{display:none}
     .pageHero{
@@ -2130,6 +2224,17 @@
       }
       .systemStatusStrip{
         grid-template-columns:1fr;
+      }
+      .profitStopBanner{
+        padding:12px 13px;
+      }
+      .profitStopBannerTitle{
+        font-size:24px;
+      }
+      .profitToastHost{
+        left:max(10px, env(safe-area-inset-left));
+        right:max(10px, env(safe-area-inset-right));
+        width:auto;
       }
       .showcaseGrid{
         grid-template-columns:1fr;
@@ -4475,6 +4580,12 @@ body.marketPulseExecutionMode .researchOnly{
   padding:8px 10px;
   background:rgba(255,255,255,.02);
 }
+.optionsGammaCell strong{
+  display:block;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  line-height:1.18;
+}
 .optionsContracts{
   display:grid;
   gap:8px;
@@ -4489,6 +4600,8 @@ body.marketPulseExecutionMode .researchOnly{
   display:flex;
   align-items:center;
   justify-content:space-between;
+  gap:8px;
+  flex-wrap:wrap;
   cursor:pointer;
   font-weight:800;
   list-style:none;
@@ -4548,6 +4661,15 @@ body.marketPulseExecutionMode .researchOnly{
 }
 @media (max-width: 620px){
   .workflowGrid{ grid-template-columns: 1fr 1fr; }
+  .optionsGammaGrid{
+    grid-template-columns:1fr;
+  }
+  .optionsContractsSummary{
+    align-items:flex-start;
+  }
+  .optionsContractsSummary .tiny{
+    margin-left:auto;
+  }
   .pageHero .actionRow{
     display:grid;
     grid-template-columns:1fr 1fr;
@@ -4922,6 +5044,7 @@ body.marketPulseExecutionMode .researchOnly{
   flex-wrap:wrap;
   gap:4px;
   align-items:center;
+  max-width:100%;
 }
 .candleNewsIcon{
   display:inline-flex;
@@ -4944,8 +5067,26 @@ body.marketPulseExecutionMode .researchOnly{
   border-color:rgba(249,115,22,.24);
   background:rgba(249,115,22,.12);
 }
-.candleNewsJump{
+.candleNewsOverflow{
   display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:24px;
+  height:20px;
+  padding:0 7px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.2);
+  background:rgba(255,255,255,.08);
+  color:rgba(237,244,255,.92);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.02em;
+  line-height:1;
+  cursor:help;
+  white-space:nowrap;
+}
+.candleNewsJump{
+  display:flex;
   align-items:center;
   margin-top:8px;
   font-size:10px;
@@ -4954,7 +5095,10 @@ body.marketPulseExecutionMode .researchOnly{
   text-transform:uppercase;
   color:rgba(237,244,255,.68);
   text-decoration:none;
-  width:max-content;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow:hidden;
 }
 .mobileCandleWeeks{
   display:none;
@@ -5008,6 +5152,7 @@ body.marketPulseExecutionMode .researchOnly{
 }
 .candleCell{
   min-height:124px;
+  min-width:0;
   padding:12px;
   background:rgba(255,255,255,.018);
   display:flex;

@@ -191,9 +191,9 @@ def get_system_status() -> dict:
 
 def get_vanquish_profit_lock_state() -> dict:
     """Return dashboard/web-link lock state once daily goal is hit."""
-    goal = float((current_app and current_app.config.get("VANQUISH_DAILY_LOCK_GOAL")) or 500.0)
+    goal = float((current_app and current_app.config.get("VANQUISH_DAILY_LOCK_GOAL")) or 700.0)
     try:
-        # Optional runtime override; keeps default at 500.
+        # Optional runtime override; keeps default at 700.
         from mccain_capital import runtime as app_runtime
 
         goal = float(app_runtime.get_setting_float("vanquish_daily_lock_goal", goal) or goal)
@@ -215,7 +215,8 @@ def get_vanquish_profit_lock_state() -> dict:
     except Exception:
         day_net = 0.0
 
-    active_goal = bool(goal > 0 and day_net >= goal and in_market_hours)
+    goal_hit = bool(goal > 0 and day_net >= goal)
+    active_goal = bool(goal_hit and in_market_hours)
     unlock_dt = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
     manual = _load_manual_vanquish_lock(now_et)
     goal_unlock_dt = unlock_dt if active_goal else None
@@ -233,6 +234,7 @@ def get_vanquish_profit_lock_state() -> dict:
     return {
         "active": active,
         "active_goal": active_goal,
+        "goal_hit": goal_hit,
         "active_manual": bool(manual.get("active")),
         "goal": goal,
         "day_net": day_net,

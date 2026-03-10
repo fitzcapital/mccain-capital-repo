@@ -1,4 +1,4 @@
-"""SPX live snapshot adapter shared by dashboard and market pulse."""
+"""Index live snapshot adapter shared by dashboard and market pulse."""
 
 from __future__ import annotations
 
@@ -33,21 +33,30 @@ def _format_iso_et_label(value: Any) -> str:
         return text
 
 
-def get_spx_live_snapshot() -> Dict[str, Any]:
+def get_index_live_snapshot(symbol: str) -> Dict[str, Any]:
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
+
+    key = str(symbol or "").strip().upper()
+    if not key:
+        return {
+            "price": None,
+            "gap_pct": None,
+            "gap_label": "—",
+            "as_of": "Awaiting tick",
+            "live": False,
+        }
 
     quote: Dict[str, Any] = {}
     try:
         cached = market_worker.get_market_snapshot()
-        quote = dict((cached.get("prices") or {}).get("SPX") or {})
+        quote = dict((cached.get("prices") or {}).get(key) or {})
     except Exception:
         quote = {}
     if quote.get("price") is None:
         try:
             quote = dict(
-                (market_data_service.get_watchlist(["SPX"], allow_yf_fallback=True)).get("SPX")
-                or {}
+                (market_data_service.get_watchlist([key], allow_yf_fallback=True)).get(key) or {}
             )
         except Exception:
             quote = {}
@@ -62,3 +71,7 @@ def get_spx_live_snapshot() -> Dict[str, Any]:
         "as_of": _format_iso_et_label(as_of_raw) or as_of_raw or "Awaiting tick",
         "live": bool(price is not None),
     }
+
+
+def get_spx_live_snapshot() -> Dict[str, Any]:
+    return get_index_live_snapshot("SPX")

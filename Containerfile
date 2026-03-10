@@ -34,13 +34,14 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN python -m playwright install chromium
 
 COPY . .
 
 # App listens on 5001 by default (matches app.py)
 ENV PORT=5001
 ENV AUTO_SYNC_PASSWORD_FALLBACK=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/persistent/playwright-browsers
+ENV PLAYWRIGHT_INSTALL_ON_DEMAND=1
 EXPOSE 5001
 
 # Gunicorn for production.

@@ -108,6 +108,8 @@ podman run -d --name mccain-capital-app -p 5001:5001 \
   -e DB_PATH=/data/journal.db \
   -e UPLOAD_DIR=/data/uploads \
   -e BOOKS_DIR=/data/books \
+  -e PLAYWRIGHT_BROWSERS_PATH=/data/playwright-browsers \
+  -e PLAYWRIGHT_INSTALL_ON_DEMAND=1 \
   -v mccain-capital-data:/data \
   mccain-capital-app:latest
 podman logs -f mccain-capital-app
@@ -122,6 +124,35 @@ With the `mccain-capital-data` volume, all app data persists across rebuilds/res
 - journal/trades database: `/data/journal.db`
 - uploads/debug artifacts: `/data/uploads`
 - books/library files: `/data/books`
+- Playwright browser cache: `/data/playwright-browsers`
+
+### Storage Hygiene + Playwright Browser Cache
+
+- The image no longer bakes Chromium at build time.
+- On first live sync run, the app installs Chromium on-demand into:
+  - `PLAYWRIGHT_BROWSERS_PATH` (default `/app/persistent/playwright-browsers`)
+- This keeps rebuilt images smaller and avoids duplicate browser layers.
+
+Weekly Podman storage cleanup:
+
+```bash
+./scripts/podman_storage_hygiene.sh
+```
+
+Explicit app + bind path form:
+
+```bash
+./scripts/podman_storage_hygiene.sh mccain-capital-app "$(pwd)/persistent-data"
+```
+
+One-time reclaim for oversized Podman machine disks:
+
+```bash
+podman machine stop podman-machine-default
+podman machine rm -f podman-machine-default
+podman machine init --disk-size 45
+podman machine start
+```
 
 ---
 
