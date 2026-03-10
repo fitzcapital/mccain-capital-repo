@@ -4479,6 +4479,39 @@ body.marketPulseExecutionMode .researchOnly{
   display:grid;
   gap:8px;
 }
+.spxPriorityNarrative{
+  margin:0;
+  padding-left:18px;
+  display:grid;
+  gap:6px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+}
+.spxPriorityWarningBadges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.spxPriorityWarningChip{
+  border-color:rgba(255,255,255,.16);
+  background:rgba(255,255,255,.04);
+}
+.spxPriorityWarningChip.tone-neutral{
+  border-color:rgba(126, 180, 255, .42);
+  color:#cde7ff;
+  background:rgba(126, 180, 255, .16);
+}
+.spxPriorityWarningChip.tone-warn{
+  border-color:rgba(255, 197, 92, .42);
+  color:#ffe4a9;
+  background:rgba(255, 197, 92, .18);
+}
+.spxPriorityWarningChip.tone-critical{
+  border-color:rgba(255, 124, 124, .45);
+  color:#ffc0c0;
+  background:rgba(255, 124, 124, .18);
+}
 .optionsContractsDropdown{
   border:1px solid rgba(255,255,255,.1);
   border-radius:12px;

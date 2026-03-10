@@ -54,6 +54,8 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
+from mccain_capital.services.spx_snapshot_service import get_index_live_snapshot
+from mccain_capital.services.gamma_context_service import build_spx_priority_context
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -2113,6 +2115,7 @@ def market_pulse_page():
         except Exception:
             pass
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
+    spx_priority_context = build_spx_priority_context(spx_quote=spx_quote, gamma_snapshot=gamma_snapshot)
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)
     context = _market_pulse_context(quotes)
@@ -2151,6 +2154,7 @@ def market_pulse_page():
         market_hours=bool(_market_pulse_market_hours(now_et)),
         stats=stats,
         gamma_snapshot=gamma_snapshot,
+        spx_priority_context=spx_priority_context,
         gamma_quality=gamma_quality,
         source_health=source_health,
         gamma_updated_label=gamma_updated_label,
