@@ -873,7 +873,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 mini_series = [float(price_num), float(price_num)]
         if price_num is None:
             state = "missing"
-        elif provider == "tradier":
+        elif provider in {"tradier", "finnhub"}:
             state = "live"
         else:
             state = "delayed"
@@ -972,14 +972,33 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         .lower()
         == "tradier"
     )
+    finnhub_live = sum(
+        1
+        for spec in MARKET_PULSE_SYMBOLS
+        if str(
+            (quotes_by_symbol.get(str(spec.get("symbol") or "").strip().upper()) or {}).get(
+                "provider"
+            )
+            or ""
+        )
+        .strip()
+        .lower()
+        == "finnhub"
+    )
     source_note = "Live quote data is being served by Tradier."
     source_label = "Tradier market feed"
-    if tradier_live == 0:
-        source_note = "Live quote data is being served by Massive."
-        source_label = "Massive market feed"
+    if tradier_live == 0 and finnhub_live > 0:
+        source_note = "Live quote data is being served by Finnhub."
+        source_label = "Finnhub market feed"
+    elif tradier_live > 0 and finnhub_live > 0:
+        source_note = "Live quote data is being served by Tradier + Finnhub."
+        source_label = "Tradier + Finnhub feed"
+    elif tradier_live == 0 and finnhub_live == 0:
+        source_note = "Live quote data is on non-live fallback providers."
+        source_label = "Fallback market feed"
     if fallback_count:
         source_label = "Mixed provider feed"
-        source_note = f"{fallback_count} symbol(s) are on non-Tradier fallback quotes."
+        source_note = f"{fallback_count} symbol(s) are on non-live fallback quotes."
     result = {
         "available": any(q.get("price") is not None for q in quotes),
         "fetched_at": fetched_label,

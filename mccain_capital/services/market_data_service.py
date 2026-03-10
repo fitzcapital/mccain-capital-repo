@@ -2,8 +2,9 @@
 
 Provider priority:
 1) Tradier
-2) Massive/Polygon
-3) yfinance (optional fallback)
+2) Finnhub
+3) Massive/Polygon (optional)
+4) yfinance (optional fallback)
 """
 
 from __future__ import annotations
@@ -62,6 +63,12 @@ def _massive_api_key() -> str:
         or str(app_runtime.get_setting_value("massive_api_key", "") or "").strip()
         or str(app_runtime.get_setting_value("polygon_api_key", "") or "").strip()
     )
+
+
+def _finnhub_api_key() -> str:
+    return (os.environ.get("FINNHUB_API_KEY") or "").strip() or str(
+        app_runtime.get_setting_value("finnhub_api_key", "") or ""
+    ).strip()
 
 
 def _tradier_api_key() -> str:
@@ -202,6 +209,95 @@ def _tradier_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
             }
         )
     return out
+
+
+def _finnhub_symbol(symbol: str) -> str:
+    sym = str(symbol or "").strip().upper()
+    aliases = {"SPX": "^GSPC", "VIX": "^VIX"}
+    return aliases.get(sym, sym)
+
+
+def _finnhub_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
+    key = _finnhub_api_key()
+    if not key:
+        return None
+    q = dict(params)
+    q["token"] = key
+    url = "https://finnhub.io/api/v1" + path + "?" + urllib.parse.urlencode(q)
+    req = urllib.request.Request(url, headers={"User-Agent": "mccain-capital/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            parsed = json.loads(body)
+            return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
+def _finnhub_watch_quote(symbol: str) -> Dict[str, Any]:
+    now_iso = _now_iso()
+    payload = _finnhub_json("/quote", {"symbol": _finnhub_symbol(symbol)}) or {}
+    price = _safe_float(payload.get("c"))
+    pct = _safe_float(payload.get("dp"))
+    ts = _safe_float(payload.get("t"))
+    as_of = now_iso
+    if ts is not None and ts > 0:
+        try:
+            as_of = datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat(timespec="seconds")
+        except Exception:
+            as_of = now_iso
+    return {
+        "price": price,
+        "pct_change": pct,
+        "as_of": as_of,
+        "provider": "finnhub",
+        "reason": "finnhub_live" if price is not None else "finnhub_no_data",
+    }
+
+
+def _finnhub_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
+    now_et = app_runtime.now_et()
+    end_at = int(now_et.timestamp())
+    start_at = end_at - (7 * 60 * 60)
+    payload = _finnhub_json(
+        "/stock/candle",
+        {
+            "symbol": _finnhub_symbol(symbol),
+            "resolution": "1",
+            "from": start_at,
+            "to": end_at,
+        },
+    )
+    if not isinstance(payload, dict) or str(payload.get("s") or "").lower() != "ok":
+        return []
+    opens = payload.get("o") or []
+    highs = payload.get("h") or []
+    lows = payload.get("l") or []
+    closes = payload.get("c") or []
+    volumes = payload.get("v") or []
+    stamps = payload.get("t") or []
+    if not all(isinstance(item, list) for item in (opens, highs, lows, closes, volumes, stamps)):
+        return []
+    rows: List[Dict[str, Any]] = []
+    for open_v, high_v, low_v, close_v, volume_v, stamp in zip(
+        opens, highs, lows, closes, volumes, stamps
+    ):
+        if not all(
+            isinstance(item, (int, float)) for item in (open_v, high_v, low_v, close_v, stamp)
+        ):
+            continue
+        ts_iso = datetime.fromtimestamp(float(stamp), tz=timezone.utc).isoformat(timespec="seconds")
+        rows.append(
+            {
+                "ts": ts_iso,
+                "open": float(open_v),
+                "high": float(high_v),
+                "low": float(low_v),
+                "close": float(close_v),
+                "volume": float(volume_v) if isinstance(volume_v, (int, float)) else 0.0,
+            }
+        )
+    return rows
 
 
 def _massive_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -506,6 +602,10 @@ def get_price(symbol: str) -> Optional[float]:
     tq = _tradier_quote_map([symbol]).get(str(symbol or "").strip().upper(), {})
     if tq.get("price") is not None:
         return _safe_float(tq.get("price"))
+    if _finnhub_api_key():
+        fq = _finnhub_watch_quote(symbol)
+        if fq.get("price") is not None:
+            return _safe_float(fq.get("price"))
     if _massive_api_key():
         q = _massive_watch_quote(symbol)
         if q.get("price") is not None:
@@ -518,6 +618,9 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
     tradier_rows = _tradier_intraday_rows(symbol)
     if len(tradier_rows) >= 20:
         return tradier_rows
+    finnhub_rows = _finnhub_intraday_rows(symbol) if _finnhub_api_key() else []
+    if len(finnhub_rows) >= 20:
+        return finnhub_rows
 
     if _massive_api_key():
         rows = _massive_intraday_rows(symbol)
@@ -551,6 +654,8 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
         return out
     if tradier_rows:
         return tradier_rows
+    if finnhub_rows:
+        return finnhub_rows
     return []
 
 
@@ -559,28 +664,29 @@ def get_watchlist(
 ) -> Dict[str, Dict[str, Any]]:
     snapshot: Dict[str, Dict[str, Any]] = {}
     tradier_map = _tradier_quote_map(symbols)
+    use_finnhub = bool(_finnhub_api_key())
     use_massive = bool(_massive_api_key())
-    if use_massive and not allow_yf_fallback:
-        return get_watchlist_massive(symbols)
     for raw in symbols:
         symbol = str(raw or "").strip().upper()
         if not symbol:
             continue
         quote = dict(tradier_map.get(symbol) or {})
         if not quote:
-            quote = (
-                _massive_watch_quote(symbol)
-                if use_massive
-                else {
+            if use_finnhub:
+                quote = _finnhub_watch_quote(symbol)
+            elif use_massive:
+                quote = _massive_watch_quote(symbol)
+            else:
+                quote = {
                     "price": None,
                     "pct_change": None,
                     "as_of": _now_iso(),
-                    "provider": "massive",
-                    "reason": "massive_key_missing",
+                    "provider": "none",
+                    "reason": "no_provider_configured",
                 }
-            )
-        # If primary provider fails for this symbol, fallback per-symbol.
-        if quote.get("price") is None and use_massive and allow_yf_fallback:
+        if quote.get("price") is None and use_finnhub and use_massive:
+            quote = _massive_watch_quote(symbol)
+        if quote.get("price") is None and allow_yf_fallback:
             quote = _yf_watch_quote(symbol)
             quote["provider"] = "yfinance"
         snapshot[symbol] = quote
