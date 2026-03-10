@@ -44,7 +44,7 @@
   </div>
 </div></div>
 
-<div class="card stack12 marketPulseSection"><div class="toolbar">
+<div class="card stack12 marketPulseSection"><div class="toolbar" id="spxPriorityCard">
   <div class="pill">SPX Priority</div>
   <div class="spxStaticCard">
     <div class="pillRow marketCardMeta">
@@ -53,7 +53,7 @@
     </div>
     <div class="k">SPX</div>
     <div class="marketMiniSparkWrap">{{ spx_quote.get('sparkline_svg')|safe if spx_quote else '<div class="marketMiniSparkEmpty">No trend</div>' }}</div>
-    <div class="v">
+    <div class="v" id="spxPrioritySpotValue">
       {% if spx_quote and spx_quote.get('price') is not none %}
         {{ '%.2f'|format(spx_quote.get('price')) }}
       {% else %}
@@ -69,7 +69,7 @@
     <div class="tiny muted">Primary cash index proxy for SPX options context.</div>
     <div class="tiny"><a href="{{ spx_quote.get('yahoo_href') or 'https://finance.yahoo.com/quote/%5EGSPC' }}" target="_blank" rel="noopener">View on Yahoo</a></div>
   </div>
-  <div class="supportLead">
+  <div class="supportLead" id="spxPrioritySpotLead">
     {% if spx_quote and spx_quote.get('price') is not none %}
       {{ '%.2f'|format(spx_quote.get('price')) }}
       · {{ '%+.2f'|format(spx_quote.get('change')) }}
@@ -94,29 +94,98 @@
   <div class="optionsGammaGrid">
     <div class="optionsGammaCell">
       <div class="tiny">Gamma Flip</div>
-      <strong>{% if gamma_snapshot.get('gamma_flip') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip')) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityGammaFlipValue">{% if gamma_snapshot.get('gamma_flip') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip')) }}{% else %}—{% endif %}</strong>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Call Wall</div>
-      <strong>{% if gamma_snapshot.get('call_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall')) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityCallWallValue">{% if gamma_snapshot.get('call_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall')) }}{% else %}—{% endif %}</strong>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Put Wall</div>
-      <strong>{% if gamma_snapshot.get('put_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall')) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityPutWallValue">{% if gamma_snapshot.get('put_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall')) }}{% else %}—{% endif %}</strong>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Net Gamma</div>
-      <strong>{{ gamma_snapshot.get('net_gamma_label') or gamma_snapshot.get('net_gex') or '—' }}</strong>
+      <strong id="spxPriorityNetGammaValue">{{ gamma_snapshot.get('net_gamma_label') or gamma_snapshot.get('net_gex') or '—' }}</strong>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Regime</div>
-      <strong>{{ (gamma_snapshot.get('regime') or 'unavailable')|upper }}</strong>
+      <strong id="spxPriorityRegimeValue">{{ (gamma_snapshot.get('regime') or 'unavailable')|upper }}</strong>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Bias</div>
-      <strong>{{ gamma_snapshot.get('bias') or 'insufficient_data' }}</strong>
+      <strong id="spxPriorityBiasValue">{{ gamma_snapshot.get('bias') or 'insufficient_data' }}</strong>
     </div>
   </div>
+  <div class="tiny muted">Derived Context</div>
+  <div class="optionsGammaGrid">
+    <div class="optionsGammaCell">
+      <div class="tiny">Distance to Flip</div>
+      <strong id="spxPriorityDistanceFlip">{{ spx_priority_context.get('distance_to_flip_text') or '—' }}</strong>
+      <div class="tiny muted" id="spxPriorityFlipState">{{ spx_priority_context.get('flip_strength_label') or 'Unavailable' }}</div>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Distance to Call Wall</div>
+      <strong id="spxPriorityDistanceCall">{{ spx_priority_context.get('distance_to_call_wall_text') or '—' }}</strong>
+      <div class="tiny muted" id="spxPriorityWallState">{{ spx_priority_context.get('wall_strength_label') or 'Unavailable' }}</div>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Distance to Put Wall</div>
+      <strong id="spxPriorityDistancePut">{{ spx_priority_context.get('distance_to_put_wall_text') or '—' }}</strong>
+      <div class="tiny muted">Trap: <span id="spxPriorityTrapZone">{{ spx_priority_context.get('trap_zone_label') or 'unavailable' }}</span></div>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Expected Move</div>
+      <strong id="spxPriorityExpectedMoveRange">{{ spx_priority_context.get('metrics', {}).get('expected_move_range_text') or '—' }}</strong>
+      <div class="tiny muted">
+        <span id="spxPriorityExpectedMoveDown">
+          {% if spx_priority_context.get('metrics', {}).get('expected_move_down') is not none %}Down {{ '%.1f'|format(spx_priority_context.get('metrics', {}).get('expected_move_down')) }}{% else %}Down —{% endif %}
+        </span>
+        ·
+        <span id="spxPriorityExpectedMoveUp">
+          {% if spx_priority_context.get('metrics', {}).get('expected_move_up') is not none %}Up {{ '%.1f'|format(spx_priority_context.get('metrics', {}).get('expected_move_up')) }}{% else %}Up —{% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="tiny muted">Next Levels</div>
+  <div class="optionsGammaGrid">
+    <div class="optionsGammaCell">
+      <div class="tiny">Next Call Wall</div>
+      <strong id="spxPriorityNextCallWall">{% if spx_priority_context.get('metrics', {}).get('next_call_wall_above') is not none %}{{ '%.0f'|format(spx_priority_context.get('metrics', {}).get('next_call_wall_above')) }}{% else %}—{% endif %}</strong>
+      <div class="tiny muted">Above current call wall</div>
+    </div>
+    <div class="optionsGammaCell">
+      <div class="tiny">Next Put Wall</div>
+      <strong id="spxPriorityNextPutWall">{% if spx_priority_context.get('metrics', {}).get('next_put_wall_below') is not none %}{{ '%.0f'|format(spx_priority_context.get('metrics', {}).get('next_put_wall_below')) }}{% else %}—{% endif %}</strong>
+      <div class="tiny muted">Below current put wall</div>
+    </div>
+  </div>
+  {% if spx_priority_context.get('missing_next_levels') %}
+    <div class="tiny muted">TODO: backend payload can provide `next_call_wall_above` and `next_put_wall_below` for direct level wiring.</div>
+  {% endif %}
+  {% if spx_priority_context.get('missing_expected_move') %}
+    <div class="tiny muted">TODO: backend payload can provide `expected_move` to power session move targets.</div>
+  {% endif %}
+  <div class="tiny muted">Auto Read</div>
+  <ul class="spxPriorityNarrative" id="spxPriorityNarrative">
+    {% for line in spx_priority_context.get('narrative', []) %}
+      <li>{{ line }}</li>
+    {% endfor %}
+  </ul>
+  <div class="tiny muted">Warning Badge</div>
+  <div class="spxPriorityWarningBadges" id="spxPriorityWarningBadges">
+    {% for badge in spx_priority_context.get('warning_badges', []) %}
+      <span class="trendChip spxPriorityWarningChip tone-{{ badge.tone }}">{{ badge.label }}</span>
+    {% endfor %}
+  </div>
+  <script id="spxPriorityContextPayload" type="application/json">{{ spx_priority_context|tojson }}</script>
+  <script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'gamma_snapshot': gamma_snapshot}|tojson }}</script>
+  <div class="tiny stack8" id="spxPriorityContextSummary">
+    Flip {{ spx_priority_context.get('metrics', {}).get('flip_proximity_state') or 'unavailable' }}
+    · Wall {{ spx_priority_context.get('metrics', {}).get('wall_proximity_state') or 'unavailable' }}
+    · Trap {{ spx_priority_context.get('metrics', {}).get('trap_zone_state') or 'unavailable' }}
+    </div>
   <div class="tiny stack8">
     <span class="trendChip {% if gamma_quality and gamma_quality.get('tone') == 'ok' %}positive{% else %}negative{% endif %}">
       Gamma Quality
@@ -378,6 +447,7 @@
      data-market-hours="{{ '1' if market_hours else '0' }}"
      hidden></div>
 
+<script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>
 <script>
 (() => {
   const KEY = "marketPulseAutoRefresh";
