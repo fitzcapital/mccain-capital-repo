@@ -658,9 +658,23 @@ def export_outputs(
     os.makedirs(out_dir, exist_ok=True)
     csv_path = os.path.join(out_dir, CSV_FILENAME)
     png_path = os.path.join(out_dir, PNG_FILENAME)
-    expo_df.to_csv(csv_path, index=False)
+    try:
+        expo_df.to_csv(csv_path, index=False)
+    except PermissionError:
+        # Recover from stale bind-mounted files created with incompatible ownership.
+        try:
+            os.remove(csv_path)
+        except OSError:
+            pass
+        expo_df.to_csv(csv_path, index=False)
 
     try:
+        gex_fig.write_image(png_path, width=1400, height=900, scale=2)
+    except PermissionError:
+        try:
+            os.remove(png_path)
+        except OSError:
+            pass
         gex_fig.write_image(png_path, width=1400, height=900, scale=2)
     except Exception:
         # If kaleido is missing/unavailable, keep the path stable but no crash.

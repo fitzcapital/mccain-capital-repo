@@ -1228,7 +1228,7 @@
       border:1px solid rgba(0, 143, 255, .45);
       background:linear-gradient(90deg, rgba(7, 40, 90, .75), rgba(2, 17, 48, .35));
       color:rgba(208, 232, 255, .96);
-      font-size:clamp(18px, 2.7vw, 40px);
+      font-size:clamp(16px, 1.8vw, 24px);
       letter-spacing:.08em;
       text-transform:uppercase;
       font-weight:900;
@@ -1239,7 +1239,7 @@
       align-items:baseline;
       gap:8px;
       color:rgba(229, 239, 255, .94);
-      font-size:clamp(18px, 2.2vw, 32px);
+      font-size:clamp(13px, 1.35vw, 18px);
       line-height:1.18;
       font-weight:700;
     }
@@ -1257,7 +1257,7 @@
       letter-spacing:.01em;
     }
     .spxVixLiveMeta{
-      font-size:clamp(12px, 1.8vw, 28px);
+      font-size:clamp(11px, 1.1vw, 15px);
       color:rgba(160, 191, 224, .86);
       margin-top:2px;
     }
@@ -1269,7 +1269,7 @@
       background:linear-gradient(180deg, rgba(6, 23, 53, .45), rgba(5, 16, 38, .18));
     }
     .spxVixLiveSpark .marketMiniSpark{
-      height:40px;
+      height:28px;
     }
     .spxVixLiveSpark .marketMiniSparkArea{
       display:none;
