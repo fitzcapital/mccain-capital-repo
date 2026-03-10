@@ -52,27 +52,31 @@
     </div>
   </div></div>
 
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">SPX / VIX Live</div>
-    <div class="supportBody">
-      <strong>SPX</strong>:
-      {% if spx_live and spx_live.price is not none %}
-        {{ '%.2f'|format(spx_live.price) }}
-      {% else %}
-        Awaiting live update
-      {% endif %}
-      · Gap {{ spx_live.gap_label if spx_live else '—' }}
+  <div class="card supportCard subtleCard spxVixLiveCard"><div class="toolbar spxVixLiveToolbar">
+    <div class="spxVixLiveHead">SPX / VIX LIVE</div>
+    <div class="spxVixLiveRow">
+      <span class="spxVixLiveLabel">SPX:</span>
+      <span class="spxVixLiveValue">
+        {% if spx_live and spx_live.price is not none %}
+          {{ '%.2f'|format(spx_live.price) }}
+        {% else %}
+          Awaiting live update
+        {% endif %}
+      </span>
+      <span class="spxVixLiveGap">· Gap {{ spx_live.gap_label if spx_live else '—' }}</span>
     </div>
-    <div class="supportBody">
-      <strong>VIX</strong>:
-      {% if vix_live and vix_live.price is not none %}
-        {{ '%.2f'|format(vix_live.price) }}
-      {% else %}
-        Awaiting live update
-      {% endif %}
-      · Gap {{ vix_live.gap_label if vix_live else '—' }}
+    <div class="spxVixLiveRow">
+      <span class="spxVixLiveLabel">VIX:</span>
+      <span class="spxVixLiveValue">
+        {% if vix_live and vix_live.price is not none %}
+          {{ '%.2f'|format(vix_live.price) }}
+        {% else %}
+          Awaiting live update
+        {% endif %}
+      </span>
+      <span class="spxVixLiveGap">· Gap {{ vix_live.gap_label if vix_live else '—' }}</span>
     </div>
-    <div class="supportMeta">
+    <div class="supportMeta spxVixLiveMeta">
       SPX {{ spx_live.as_of if spx_live else 'Awaiting tick' }} ·
       VIX {{ vix_live.as_of if vix_live else 'Awaiting tick' }}
     </div>

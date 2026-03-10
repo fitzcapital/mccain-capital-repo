@@ -246,6 +246,19 @@ def _format_iso_et_label(value: Any) -> str:
         return text
 
 
+def _iso_to_epoch(value: Any) -> int:
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=app_runtime.TZ)
+        return int(dt.timestamp())
+    except Exception:
+        return 0
+
+
 def _market_pulse_json_request_any(url: str, params: Dict[str, Any], timeout: int = 4) -> Any:
     try:
         req = urllib.request.Request(
@@ -841,10 +854,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         as_of = str(quote.get("as_of") or "")
         asof_epoch = 0
         if as_of:
-            try:
-                asof_epoch = int(datetime.fromisoformat(as_of).timestamp())
-            except Exception:
-                asof_epoch = 0
+            asof_epoch = _iso_to_epoch(as_of)
         price_num = float(price) if isinstance(price, (int, float)) else None
         pct_num = float(pct) if isinstance(pct, (int, float)) else 0.0
         prev_close = (
@@ -1172,6 +1182,10 @@ def _market_pulse_enrich_quotes(
         elif state == "cached":
             band = "critical"
             fresh_label = "Cached snapshot"
+        elif state == "live" and asof_epoch <= 0:
+            # Treat live ticks without a timestamp as caution, not critical-stale.
+            band = "warn"
+            fresh_label = "Live tick · timestamp pending"
         elif age_s <= 60:
             band = "live"
             fresh_label = f"Live · {age_s}s old"
@@ -2114,9 +2128,32 @@ def market_pulse_page():
     if not current_app.config.get("TESTING"):
         try:
             live_snapshot = market_worker.get_market_snapshot()
+            live_prices = dict(live_snapshot.get("prices") or {})
             live_series = dict(live_snapshot.get("series") or {})
+            updated_at = str(live_snapshot.get("updated_at") or "")
             for q in quotes:
                 symbol = str(q.get("symbol") or "")
+                live_q = live_prices.get(symbol) if symbol else None
+                if isinstance(live_q, dict):
+                    live_price = live_q.get("price")
+                    live_pct = live_q.get("pct_change")
+                    live_asof_raw = str(live_q.get("as_of") or updated_at or "").strip()
+                    if isinstance(live_price, (int, float)):
+                        q["price"] = float(live_price)
+                        if isinstance(live_pct, (int, float)):
+                            q["change_pct"] = float(live_pct)
+                            if abs(100.0 + float(live_pct)) > 1e-9:
+                                prev_close = float(live_price) / (1.0 + (float(live_pct) / 100.0))
+                                q["change"] = float(live_price) - prev_close
+                        q["data_state"] = "live"
+                        q["data_status_label"] = "Live"
+                        q["market_state"] = "Live"
+                        q["data_reason"] = "market_worker_tick"
+                    if live_asof_raw:
+                        q["asof"] = _format_iso_et_label(live_asof_raw)
+                        live_asof_epoch = _iso_to_epoch(live_asof_raw)
+                        if live_asof_epoch > 0:
+                            q["asof_epoch"] = live_asof_epoch
                 series = live_series.get(symbol)
                 if isinstance(series, list) and len(series) >= 8:
                     q["mini_series"] = [float(v) for v in series if isinstance(v, (int, float))]

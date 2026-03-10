@@ -307,6 +307,21 @@ def test_market_pulse_stale_transition_and_alert_escalation():
     assert alert["tone"] == "critical"
 
 
+def test_market_pulse_live_without_timestamp_is_warn_not_critical():
+    now_et = core_service.app_runtime.now_et()
+    base = [
+        {
+            "label": "VIX",
+            "data_state": "live",
+            "asof_epoch": 0,
+            "mini_series": [25.2, 25.5, 25.3],
+        }
+    ]
+    enriched = core_service._market_pulse_enrich_quotes(base, now_et)
+    assert enriched[0]["freshness_band"] == "warn"
+    assert "timestamp" in str(enriched[0]["freshness_label"]).lower()
+
+
 def test_market_pulse_guardrail_activates_on_threshold():
     quotes = [
         {"label": "SPY", "freshness_band": "critical"},
