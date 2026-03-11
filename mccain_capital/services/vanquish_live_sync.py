@@ -90,20 +90,26 @@ def _first_visible(page, selectors: List[str]):
 def _debug_write(debug_dir: Optional[str], name: str, content: str) -> Optional[str]:
     if not debug_dir:
         return None
-    os.makedirs(debug_dir, exist_ok=True)
-    path = os.path.join(debug_dir, name)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
-    return path
+    try:
+        os.makedirs(debug_dir, exist_ok=True)
+        path = os.path.join(debug_dir, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return path
+    except OSError:
+        return None
 
 
 def _debug_shot(page, debug_dir: Optional[str], name: str) -> Optional[str]:
     if not debug_dir:
         return None
-    os.makedirs(debug_dir, exist_ok=True)
-    path = os.path.join(debug_dir, name)
-    page.screenshot(path=path, full_page=True)
-    return path
+    try:
+        os.makedirs(debug_dir, exist_ok=True)
+        path = os.path.join(debug_dir, name)
+        page.screenshot(path=path, full_page=True)
+        return path
+    except OSError:
+        return None
 
 
 def _wait_until_enabled(locator, timeout_ms: int = 6000) -> bool:
@@ -244,8 +250,15 @@ def fetch_statement_html_via_login(
             viewport={"width": 1920, "height": 1080},
             screen={"width": 1920, "height": 1080},
         )
+        tracing_enabled = False
         if debug_dir:
-            context.tracing.start(screenshots=True, snapshots=True, sources=True)
+            try:
+                os.makedirs(debug_dir, exist_ok=True)
+                context.tracing.start(screenshots=True, snapshots=True, sources=True)
+                tracing_enabled = True
+            except OSError:
+                warnings.append("Debug capture disabled: cannot write to debug directory.")
+                debug_dir = None
         page = context.new_page()
         page.set_default_timeout(timeout_ms)
         mark("open_login", "Opening broker login page.")
@@ -460,10 +473,13 @@ def fetch_statement_html_via_login(
         meta_path = _debug_write(debug_dir, "debug_meta.json", json.dumps(debug_meta, indent=2))
         if meta_path:
             artifacts.append(meta_path)
-        if debug_dir:
+        if debug_dir and tracing_enabled:
             trace_path = os.path.join(debug_dir, "trace.zip")
-            context.tracing.stop(path=trace_path)
-            artifacts.append(trace_path)
+            try:
+                context.tracing.stop(path=trace_path)
+                artifacts.append(trace_path)
+            except OSError:
+                warnings.append("Trace artifact skipped: debug directory is not writable.")
         context.close()
         browser.close()
 
