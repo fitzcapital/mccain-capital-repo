@@ -746,8 +746,9 @@ document.addEventListener('keydown', (e) => {
     function compactDenseGrid(grid, itemSelector, keepCount, label){
       const cards = Array.from(grid.querySelectorAll(`:scope > ${itemSelector}`));
       if (cards.length <= keepCount || grid.dataset.compacted === '1') return;
+      const isAlwaysVisible = (card) => card.classList.contains('mobileKeep');
       cards.forEach((card, i) => {
-        if (i >= keepCount) card.classList.add('mobileDenseExtra');
+        if (i >= keepCount && !isAlwaysVisible(card)) card.classList.add('mobileDenseExtra');
       });
       const moreLabel = 'More';
       const lessLabel = 'Less';
