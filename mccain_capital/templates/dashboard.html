@@ -55,16 +55,16 @@
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">Milestone</div>
     <div class="supportLead">{{ milestone.name }}</div>
-    <div class="supportBody">
+    <div class="supportBody" style="display:block;">
       {{ milestone.profit_source_label }} Profit {{ money(milestone.profit_current) }}
       {% if milestone.has_profit_goal %} / {{ money(milestone.profit_goal) }}{% endif %}
       · Balance {{ money(overall_balance) }}
       {% if milestone.has_balance_goal %} / {{ money(milestone.target_balance) }}{% endif %}
     </div>
-    <div class="milestoneProgress" style="--milestone-pct: {{ '%.1f'|format(milestone.overall_progress_pct) }}%">
+    <div class="milestoneProgress" style="display:block; --milestone-pct: {{ '%.1f'|format(milestone.overall_progress_pct) }}%">
       <div class="milestoneProgressFill"></div>
     </div>
-    <div class="tiny stack8">
+    <div class="tiny stack8" style="display:block;">
       Progress {{ '%.1f'|format(milestone.overall_progress_pct) }}%
       {% if milestone.has_profit_goal %}
         · Profit left {{ money(milestone.profit_remaining) }}
@@ -73,7 +73,7 @@
         · Balance left {{ money(milestone.balance_remaining) }}
       {% endif %}
     </div>
-    <div class="tiny stack8">
+    <div class="tiny stack8" style="display:block;">
       Pace {{ money(milestone.avg_daily_profit) }}/day
       {% if milestone.projected_days_overall is not none %}
         · ~{{ milestone.projected_days_overall }} trading day{% if milestone.projected_days_overall != 1 %}s{% endif %} to complete
