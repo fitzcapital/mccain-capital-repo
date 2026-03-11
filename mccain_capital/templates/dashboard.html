@@ -20,6 +20,49 @@
   </div>
 </div>
 
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">Live Tape</div>
+  <div class="metricStrip metricStripCompact" id="dashboardLiveTape">
+    <div class="metric">
+      <div class="label">SPX</div>
+      <div class="value" id="dashboardSpxValue">
+        {% if dashboard_spx and dashboard_spx.get('price') is not none %}
+          {{ '%.2f'|format(dashboard_spx.get('price')) }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="sub" id="dashboardSpxSub">
+        {% if dashboard_spx and dashboard_spx.get('pct_change') is not none %}
+          {{ '%+.2f'|format(dashboard_spx.get('pct_change')) }}% · {{ dashboard_spx.get('provider') or dashboard_spx.get('reason') or 'feed' }}
+        {% else %}
+          awaiting live tick
+        {% endif %}
+      </div>
+    </div>
+    <div class="metric">
+      <div class="label">VIX</div>
+      <div class="value" id="dashboardVixValue">
+        {% if dashboard_vix and dashboard_vix.get('price') is not none %}
+          {{ '%.2f'|format(dashboard_vix.get('price')) }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="sub" id="dashboardVixSub">
+        {% if dashboard_vix and dashboard_vix.get('pct_change') is not none %}
+          {{ '%+.2f'|format(dashboard_vix.get('pct_change')) }}% · {{ dashboard_vix.get('provider') or dashboard_vix.get('reason') or 'feed' }}
+        {% else %}
+          awaiting live tick
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="tiny muted" id="dashboardLiveTapeAsOf">
+    Updated {{ dashboard_tape_updated or (dashboard_spx.get('as_of') if dashboard_spx else '') or (dashboard_vix.get('as_of') if dashboard_vix else '') or '—' }}
+  </div>
+</div></div>
+
 <div class="dashboardSupportGrid">
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">Today Focus</div>
@@ -145,6 +188,49 @@
     {% endif %}
   </div></div>
 </div>
+
+<script>
+(() => {
+  const spxValue = document.getElementById("dashboardSpxValue");
+  const spxSub = document.getElementById("dashboardSpxSub");
+  const vixValue = document.getElementById("dashboardVixValue");
+  const vixSub = document.getElementById("dashboardVixSub");
+  const asOf = document.getElementById("dashboardLiveTapeAsOf");
+  if (!spxValue || !spxSub || !vixValue || !vixSub || !asOf || typeof EventSource === "undefined") return;
+
+  const fmt = (n, d = 2) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toFixed(d) : "—";
+  };
+  const pct = (n) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? `${v >= 0 ? "+" : ""}${v.toFixed(2)}%` : "—";
+  };
+
+  const stream = new EventSource("/stream/market");
+  stream.onmessage = (event) => {
+    if (!event || !event.data) return;
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch (_err) {
+      return;
+    }
+    const prices = (payload && payload.prices) || {};
+    const spx = prices.SPX || prices["^GSPC"] || null;
+    const vix = prices.VIX || prices["^VIX"] || null;
+    if (spx && typeof spx === "object") {
+      if (spx.price !== null && spx.price !== undefined) spxValue.textContent = fmt(spx.price, 2);
+      spxSub.textContent = `${pct(spx.pct_change)} · ${spx.provider || spx.reason || "feed"}`;
+    }
+    if (vix && typeof vix === "object") {
+      if (vix.price !== null && vix.price !== undefined) vixValue.textContent = fmt(vix.price, 2);
+      vixSub.textContent = `${pct(vix.pct_change)} · ${vix.provider || vix.reason || "feed"}`;
+    }
+    asOf.textContent = `Updated ${payload.updated_at || payload.server_ts || new Date().toISOString()}`;
+  };
+})();
+</script>
 
 <div class="statusBadgeStrip">
   {% for badge in balance_badges %}

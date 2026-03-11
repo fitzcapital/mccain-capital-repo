@@ -1779,6 +1779,8 @@ def dashboard_milestone_update():
 
 
 def dashboard():
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
 
@@ -1960,6 +1962,24 @@ def dashboard():
     from mccain_capital.services.ui import get_vanquish_profit_lock_state
 
     vanquish_lock = get_vanquish_profit_lock_state()
+    if not current_app.config.get("TESTING"):
+        try:
+            market_worker.start_market_worker_once()
+        except Exception:
+            pass
+    tape_snapshot = market_worker.get_market_snapshot()
+    tape_prices = dict(tape_snapshot.get("prices") or {})
+    dashboard_spx = dict(tape_prices.get("SPX") or {})
+    dashboard_vix = dict(tape_prices.get("VIX") or {})
+    if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
+        try:
+            fallback = market_data_service.get_watchlist(["SPX", "VIX"], allow_yf_fallback=True)
+        except Exception:
+            fallback = {}
+        if dashboard_spx.get("price") is None:
+            dashboard_spx = dict(fallback.get("SPX") or dashboard_spx)
+        if dashboard_vix.get("price") is None:
+            dashboard_vix = dict(fallback.get("VIX") or dashboard_vix)
     content = render_template(
         "dashboard.html",
         heat=heat,
@@ -1999,6 +2019,9 @@ def dashboard():
         risk_posture_detail=risk_posture_detail,
         pattern_watch=pattern_watch,
         setup_focus=setup_focus,
+        dashboard_spx=dashboard_spx,
+        dashboard_vix=dashboard_vix,
+        dashboard_tape_updated=str(tape_snapshot.get("updated_at") or ""),
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),
