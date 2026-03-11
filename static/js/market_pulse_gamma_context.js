@@ -609,7 +609,20 @@
     setText("spxPriorityNetGammaValue", formatNetGamma(input.netGamma));
     setText("spxPriorityCallGammaPerPoint", asNum(input.callWallGammaPerPoint) === null ? "—" : formatNetGamma(input.callWallGammaPerPoint));
     setText("spxPriorityPutGammaPerPoint", asNum(input.putWallGammaPerPoint) === null ? "—" : formatNetGamma(input.putWallGammaPerPoint));
-    setText("spxPriorityTickPing", buildTickPingLabel((base.spx_quote || {}).as_of, (base.spx_quote || {}).provider || (base.spx_quote || {}).data_reason));
+    const tickTimeRaw =
+      (base.spx_quote || {}).as_of
+      || (base.spx_quote || {}).asof
+      || base.updated_at
+      || base.server_ts
+      || base.market_now_iso
+      || null;
+    setText(
+      "spxPriorityTickPing",
+      buildTickPingLabel(
+        tickTimeRaw,
+        (base.spx_quote || {}).provider || (base.spx_quote || {}).data_reason
+      )
+    );
 
     setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
@@ -656,6 +669,7 @@
         const tickPct = asNum(spxTick.pct_change);
         if (tickPct !== null) nextSpx.change_pct = tickPct;
         if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
+        if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
         if (typeof spxTick.provider === "string") nextSpx.data_reason = spxTick.provider;
       }
 
@@ -672,6 +686,8 @@
         spx_quote: nextSpx,
         vix_quote: nextVix,
         market_now_iso: new Date().toISOString(),
+        updated_at: payload.updated_at || (current || {}).updated_at || null,
+        server_ts: payload.server_ts || null,
         gamma_snapshot: {
           ...(current.gamma_snapshot || {}),
           ...(gamma || {}),
