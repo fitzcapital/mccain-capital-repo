@@ -530,10 +530,32 @@ def _load_broker_sync_config() -> Dict[str, str]:
     return defaults
 
 
+def _safe_write_json(path: str, payload: Any) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp_path = f"{path}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        os.replace(tmp_path, path)
+        return
+    except PermissionError:
+        # Recover from stale bind-mounted files with incompatible ownership.
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+
+
 def _save_broker_sync_config(data: Dict[str, str]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(BROKER_SYNC_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _safe_write_json(BROKER_SYNC_CONFIG_PATH, data)
 
 
 def _humanize_et_timestamp(raw: str) -> str:
@@ -560,9 +582,7 @@ def _load_last_sync_status() -> Dict[str, Any]:
 
 
 def _save_last_sync_status(payload: Dict[str, Any]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(BROKER_SYNC_STATUS_PATH, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    _safe_write_json(BROKER_SYNC_STATUS_PATH, payload)
     status = str(payload.get("status") or "").strip().lower()
     if status not in {"success", "failed", "debug_only"}:
         return
@@ -587,9 +607,7 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
     )
     if len(history) > SYNC_HISTORY_MAX:
         history = history[-SYNC_HISTORY_MAX:]
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(BROKER_SYNC_HISTORY_PATH, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2)
+    _safe_write_json(BROKER_SYNC_HISTORY_PATH, history)
     if status == "failed":
         streak = 0
         for e in reversed(history):
@@ -1356,12 +1374,10 @@ def _load_auto_sync_config() -> Dict[str, Any]:
 
 
 def _save_auto_sync_config(cfg: Dict[str, Any]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
     to_save = dict(cfg)
     to_save.pop("keyring_available", None)
     to_save.pop("password_stored", None)
-    with open(BROKER_AUTO_SYNC_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(to_save, f, indent=2)
+    _safe_write_json(BROKER_AUTO_SYNC_CONFIG_PATH, to_save)
 
 
 def _parse_sync_stage(message: str) -> str:
