@@ -2184,6 +2184,12 @@
       .controlPanel .summaryLead{
         display:none;
       }
+      /* Keep Milestone context visible on mobile even in compact mode. */
+      .dashboardSupportGrid:not(.showAllStats) .milestoneCard .supportBody,
+      .dashboardSupportGrid:not(.showAllStats) .milestoneCard .tiny,
+      .dashboardSupportGrid:not(.showAllStats) .milestoneCard .milestoneProgress{
+        display:block;
+      }
       .dashboardSupportGrid .supportLead{
         font-size:12px;
         line-height:1.4;
