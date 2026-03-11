@@ -200,6 +200,11 @@
   const asOf = document.getElementById("dashboardLiveTapeAsOf");
   const spxSpark = document.getElementById("dashboardSpxSpark");
   const vixSpark = document.getElementById("dashboardVixSpark");
+  const tickHistory = {
+    SPX: [],
+    VIX: [],
+  };
+  const HISTORY_LIMIT = 48;
   if (!spxValue || !spxSub || !vixValue || !vixSub || !asOf || typeof EventSource === "undefined") return;
 
   const fmt = (n, d = 2) => {
@@ -229,6 +234,12 @@
     if (vals.length < 2) return "flat";
     return vals[vals.length - 1] > vals[0] ? "up" : vals[vals.length - 1] < vals[0] ? "down" : "flat";
   };
+  const pushHistory = (key, value) => {
+    if (!Number.isFinite(value) || !tickHistory[key]) return;
+    const arr = tickHistory[key];
+    arr.push(value);
+    if (arr.length > HISTORY_LIMIT) arr.splice(0, arr.length - HISTORY_LIMIT);
+  };
 
   const stream = new EventSource("/stream/market");
   stream.onmessage = (event) => {
@@ -243,16 +254,22 @@
     const spx = prices.SPX || prices["^GSPC"] || null;
     const vix = prices.VIX || prices["^VIX"] || null;
     if (spx && typeof spx === "object") {
-      if (spx.price !== null && spx.price !== undefined) spxValue.textContent = fmt(spx.price, 2);
+      if (spx.price !== null && spx.price !== undefined) {
+        spxValue.textContent = fmt(spx.price, 2);
+        pushHistory("SPX", Number(spx.price));
+      }
       spxSub.textContent = `${pct(spx.pct_change)} · ${spx.provider || spx.reason || "feed"}`;
     }
     if (vix && typeof vix === "object") {
-      if (vix.price !== null && vix.price !== undefined) vixValue.textContent = fmt(vix.price, 2);
+      if (vix.price !== null && vix.price !== undefined) {
+        vixValue.textContent = fmt(vix.price, 2);
+        pushHistory("VIX", Number(vix.price));
+      }
       vixSub.textContent = `${pct(vix.pct_change)} · ${vix.provider || vix.reason || "feed"}`;
     }
     const series = (payload && payload.series) || {};
-    const spxSeries = series.SPX || series["^GSPC"] || [];
-    const vixSeries = series.VIX || series["^VIX"] || [];
+    const spxSeries = (series.SPX || series["^GSPC"] || tickHistory.SPX || []).slice(-HISTORY_LIMIT);
+    const vixSeries = (series.VIX || series["^VIX"] || tickHistory.VIX || []).slice(-HISTORY_LIMIT);
     if (spxSpark) spxSpark.innerHTML = spark(spxSeries, toneOf(spxSeries));
     if (vixSpark) vixSpark.innerHTML = spark(vixSeries, toneOf(vixSeries));
     const stamp = payload.updated_at || payload.server_ts;

@@ -5606,16 +5606,17 @@ body.marketPulseExecutionMode .researchOnly{
 }
 
 .liveTapeCard{
-  padding-top:2px;
+  padding-top:0;
 }
 
 .liveTapeStrip{
-  gap:8px;
+  gap:6px;
 }
 
 .liveTapeMetric{
-  min-height:96px;
-  padding:10px 12px;
+  min-height:78px;
+  padding:8px 10px;
+  border-radius:12px;
 }
 
 .liveTapeLabel{
@@ -5624,17 +5625,19 @@ body.marketPulseExecutionMode .researchOnly{
 }
 
 .liveTapeMetric .value{
-  font-size:44px;
+  font-size:36px;
   line-height:1;
+  margin-top:6px;
 }
 
 .liveTapeMetric .sub{
-  margin-top:4px;
+  margin-top:3px;
+  font-size:12px;
 }
 
 .liveTapeSpark{
-  height:26px;
-  margin:4px 0 2px;
+  height:20px;
+  margin:3px 0 1px;
 }
 
 .liveTapeSpark svg{
@@ -5645,7 +5648,7 @@ body.marketPulseExecutionMode .researchOnly{
 
 .liveTapeSpark polyline{
   fill:none;
-  stroke-width:3.5;
+  stroke-width:3;
   stroke-linecap:round;
   stroke-linejoin:round;
 }
@@ -5660,6 +5663,19 @@ body.marketPulseExecutionMode .researchOnly{
 
 .liveTapeSpark .flat{
   stroke:rgba(176, 208, 247, .92);
+}
+
+@media (max-width: 720px){
+  .liveTapeMetric{
+    min-height:72px;
+    padding:8px 9px;
+  }
+  .liveTapeMetric .value{
+    font-size:30px;
+  }
+  .liveTapeSpark{
+    height:16px;
+  }
 }
 
 .commandCalendarSignals{
