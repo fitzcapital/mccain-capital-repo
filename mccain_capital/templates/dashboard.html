@@ -20,11 +20,12 @@
   </div>
 </div>
 
-<div class="card stack12"><div class="toolbar">
+<div class="card stack12 liveTapeCard"><div class="toolbar">
   <div class="pill">Live Tape</div>
-  <div class="metricStrip metricStripCompact" id="dashboardLiveTape">
-    <div class="metric">
-      <div class="label">SPX</div>
+  <div class="metricStrip metricStripCompact liveTapeStrip" id="dashboardLiveTape">
+    <div class="metric liveTapeMetric">
+      <div class="label liveTapeLabel">SPX</div>
+      <div class="liveTapeSpark" id="dashboardSpxSpark" aria-hidden="true"></div>
       <div class="value" id="dashboardSpxValue">
         {% if dashboard_spx and dashboard_spx.get('price') is not none %}
           {{ '%.2f'|format(dashboard_spx.get('price')) }}
@@ -40,8 +41,9 @@
         {% endif %}
       </div>
     </div>
-    <div class="metric">
-      <div class="label">VIX</div>
+    <div class="metric liveTapeMetric">
+      <div class="label liveTapeLabel">VIX</div>
+      <div class="liveTapeSpark" id="dashboardVixSpark" aria-hidden="true"></div>
       <div class="value" id="dashboardVixValue">
         {% if dashboard_vix and dashboard_vix.get('price') is not none %}
           {{ '%.2f'|format(dashboard_vix.get('price')) }}
@@ -196,6 +198,8 @@
   const vixValue = document.getElementById("dashboardVixValue");
   const vixSub = document.getElementById("dashboardVixSub");
   const asOf = document.getElementById("dashboardLiveTapeAsOf");
+  const spxSpark = document.getElementById("dashboardSpxSpark");
+  const vixSpark = document.getElementById("dashboardVixSpark");
   if (!spxValue || !spxSub || !vixValue || !vixSub || !asOf || typeof EventSource === "undefined") return;
 
   const fmt = (n, d = 2) => {
@@ -205,6 +209,25 @@
   const pct = (n) => {
     const v = Number(n);
     return Number.isFinite(v) ? `${v >= 0 ? "+" : ""}${v.toFixed(2)}%` : "—";
+  };
+  const spark = (series, tone) => {
+    const values = (Array.isArray(series) ? series : []).map(Number).filter(Number.isFinite).slice(-24);
+    if (values.length < 2) return "";
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const points = values.map((v, i) => {
+      const x = (i / (values.length - 1)) * 100;
+      const y = 100 - (((v - min) / span) * 100);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ");
+    const cls = tone === "up" ? "up" : tone === "down" ? "down" : "flat";
+    return `<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline class="${cls}" points="${points}" /></svg>`;
+  };
+  const toneOf = (series) => {
+    const vals = (Array.isArray(series) ? series : []).map(Number).filter(Number.isFinite);
+    if (vals.length < 2) return "flat";
+    return vals[vals.length - 1] > vals[0] ? "up" : vals[vals.length - 1] < vals[0] ? "down" : "flat";
   };
 
   const stream = new EventSource("/stream/market");
@@ -227,7 +250,13 @@
       if (vix.price !== null && vix.price !== undefined) vixValue.textContent = fmt(vix.price, 2);
       vixSub.textContent = `${pct(vix.pct_change)} · ${vix.provider || vix.reason || "feed"}`;
     }
-    asOf.textContent = `Updated ${payload.updated_at || payload.server_ts || new Date().toISOString()}`;
+    const series = (payload && payload.series) || {};
+    const spxSeries = series.SPX || series["^GSPC"] || [];
+    const vixSeries = series.VIX || series["^VIX"] || [];
+    if (spxSpark) spxSpark.innerHTML = spark(spxSeries, toneOf(spxSeries));
+    if (vixSpark) vixSpark.innerHTML = spark(vixSeries, toneOf(vixSeries));
+    const stamp = payload.updated_at || payload.server_ts;
+    asOf.textContent = `Updated ${stamp ? new Date(stamp).toLocaleTimeString() : new Date().toLocaleTimeString()}`;
   };
 })();
 </script>
