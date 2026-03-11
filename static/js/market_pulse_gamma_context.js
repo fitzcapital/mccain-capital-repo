@@ -454,6 +454,16 @@
     if (node.textContent !== next) node.textContent = next;
   };
 
+  const buildTickPingLabel = (asOfIso, provider) => {
+    const ts = typeof asOfIso === "string" ? Date.parse(asOfIso) : NaN;
+    if (!Number.isFinite(ts)) return "No tick timestamp";
+    const ageMs = Math.max(0, Date.now() - ts);
+    const ageS = ageMs / 1000;
+    const state = ageS <= 1.5 ? "Live" : ageS <= 4 ? "Lagging" : "Stale";
+    const p = String(provider || "").trim();
+    return `${state} · ${ageS.toFixed(1)}s old${p ? ` · ${p}` : ""}`;
+  };
+
   const setBullets = (id, items) => {
     const root = document.getElementById(id);
     if (!root) return;
@@ -599,6 +609,7 @@
     setText("spxPriorityNetGammaValue", formatNetGamma(input.netGamma));
     setText("spxPriorityCallGammaPerPoint", asNum(input.callWallGammaPerPoint) === null ? "—" : formatNetGamma(input.callWallGammaPerPoint));
     setText("spxPriorityPutGammaPerPoint", asNum(input.putWallGammaPerPoint) === null ? "—" : formatNetGamma(input.putWallGammaPerPoint));
+    setText("spxPriorityTickPing", buildTickPingLabel((base.spx_quote || {}).as_of, (base.spx_quote || {}).provider || (base.spx_quote || {}).data_reason));
 
     setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);

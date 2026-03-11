@@ -2039,10 +2039,19 @@ def stream_market():
             payload["gamma_map"] = (
                 gamma_snapshot if is_testing else gamma_map_service.get_gamma_snapshot()
             )
+            payload["server_ts"] = app_runtime.now_iso()
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
                 break
-            time.sleep(1)
+            try:
+                interval = float(
+                    app_runtime.get_setting_value("market_stream_seconds", 0.25) or 0.25
+                )
+            except Exception:
+                interval = 0.25
+            if interval < 0.20:
+                interval = 0.20
+            time.sleep(interval)
 
     response = Response(generate(), mimetype="text/event-stream")
     response.headers["Cache-Control"] = "no-cache"
