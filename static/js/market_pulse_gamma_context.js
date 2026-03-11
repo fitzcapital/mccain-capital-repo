@@ -1,30 +1,16 @@
 (() => {
   "use strict";
 
-  /** @typedef {'at_flip'|'very_close'|'near'|'far'|'unavailable'} FlipProximityState */
-  /** @typedef {'at_wall'|'very_close'|'near'|'far'|'unavailable'} WallProximityState */
-  /** @typedef {'clear'|'compressed_trap_zone'|'knife_edge_structure'|'unavailable'} TrapZoneState */
-
-  const card = document.getElementById("spxPriorityCard");
-  if (!card) return;
-
-  const getJson = (id) => {
-    const node = document.getElementById(id);
-    if (!node) return null;
-    try {
-      return JSON.parse(node.textContent || "null");
-    } catch (_err) {
-      return null;
-    }
-  };
-
-  const initialBasePayload = getJson("spxPriorityBasePayload") || {};
-  let currentBasePayload = JSON.parse(JSON.stringify(initialBasePayload || {}));
-
   const asNum = (value) => {
     if (value === null || value === undefined) return null;
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
+  };
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const abs = (value) => {
+    const n = asNum(value);
+    return n === null ? null : Math.abs(n);
   };
 
   const formatNumber = (value, digits = 1) => {
@@ -100,35 +86,212 @@
     return 10;
   }
 
-  function inferExpectedMove(input, candidates) {
-    const provided = asNum(input.expectedMove);
-    if (provided !== null) return provided;
-    const spot = asNum(input.spot);
-    const flip = asNum(input.gammaFlip);
-    const callWall = asNum(input.callWall);
-    const putWall = asNum(input.putWall);
+  function classifyDealerRegime(netGamma) {
+    const ng = asNum(netGamma);
+    if (ng === null) return "Unavailable";
+    return ng >= 0 ? "Positive Gamma / Mean Reverting" : "Negative Gamma / Momentum Amplifying";
+  }
 
-    if (spot !== null && callWall !== null && putWall !== null) {
-      const derived = Math.max(Math.abs(callWall - spot), Math.abs(spot - putWall));
-      if (derived > 0) return derived;
+  function classifyVolatilityState(input) {
+    const vix = asNum(input.vix);
+    const dir = String(input.vixDirection || "unavailable").toLowerCase();
+    if (vix !== null && (vix >= 26 || (dir === "rising" && vix >= 22))) return "Expansion Risk";
+    if (vix !== null && vix >= 22) return "Elevated";
+    if (dir === "rising") return "Rising";
+    if (dir === "flat") return "Flat";
+    if (vix !== null && vix < 16) return "Calm";
+    return "Flat";
+  }
+
+  function classifyWallStrength(gammaPerPoint) {
+    const value = asNum(gammaPerPoint);
+    if (value === null) return "Unknown";
+    const millionPerPoint = Math.abs(value) / 1_000_000;
+    if (millionPerPoint > 2.0) return "Strong";
+    if (millionPerPoint >= 1.0) return "Medium";
+    return "Weak";
+  }
+
+  function classifyStructureType(derived) {
+    if (derived.trapZoneState === "knife_edge_structure") return "Knife Edge";
+    if (derived.trapZoneState === "compressed_trap_zone") return "Compression Zone";
+    if ((abs(derived.distanceToFlip) || 999) <= 10) return "Regime Transition";
+    if ((derived.wallSpread || 0) >= 25 && (abs(derived.distanceToFlip) || 0) > 15) return "Clear Structure";
+    if (derived.wallSpread !== null) return "Stable Range";
+    return "Unavailable";
+  }
+
+  function classifySupportResistanceQuality(input, derived) {
+    const callStrength = classifyWallStrength(input.callWallGammaPerPoint);
+    const putStrength = classifyWallStrength(input.putWallGammaPerPoint);
+    const ng = asNum(input.netGamma);
+    const vixDir = String(input.vixDirection || "unavailable").toLowerCase();
+
+    const supportStrong = putStrength === "Strong"
+      && (ng || 0) >= 0
+      && vixDir !== "rising"
+      && (asNum(derived.distanceToExpectedMoveLow) || 999) > 5;
+    const resistanceStrong = callStrength === "Strong"
+      && (ng || 0) >= 0
+      && vixDir !== "rising"
+      && (asNum(derived.distanceToExpectedMoveHigh) || 999) > 5;
+
+    return {
+      supportQuality: supportStrong ? "Robust Support" : "Fragile Floor",
+      resistanceQuality: resistanceStrong ? "Strong Ceiling" : "Fragile Ceiling",
+    };
+  }
+
+  function detectNoTradeZone(derived) {
+    const dFlip = abs(derived.distanceToFlip);
+    const spread = asNum(derived.wallSpread);
+    return Boolean(
+      dFlip !== null
+      && dFlip <= 5
+      && spread !== null
+      && spread <= 20
+      && (derived.structureType === "Knife Edge" || derived.structureType === "Regime Transition")
+    );
+  }
+
+  function getSessionWindowState(nowIso) {
+    const now = nowIso ? new Date(nowIso) : new Date();
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(now);
+
+    const hh = Number((parts.find((p) => p.type === "hour") || {}).value || "0");
+    const mm = Number((parts.find((p) => p.type === "minute") || {}).value || "0");
+    const mins = hh * 60 + mm;
+
+    if (mins >= 570 && mins < 585) return "Early Noise";
+    if (mins >= 585 && mins < 660) return "Prime Window";
+    if (mins >= 660 && mins < 690) return "Secondary Window";
+    if (mins >= 690 && mins < 810) return "Midday Chop";
+    if (mins >= 870 && mins < 930) return "Late Rebalance";
+    return "Off Hours";
+  }
+
+  function computeTradeabilityScore(input, derived) {
+    let score = 5;
+    const dFlip = abs(derived.distanceToFlip) || 999;
+    const wallSpread = asNum(derived.wallSpread) || 0;
+    const netGamma = asNum(input.netGamma);
+
+    if (dFlip > 15 && derived.structureType === "Clear Structure") score += 2;
+    if (wallSpread > 25) score += 1;
+    if ((derived.distanceToExpectedMoveHigh || 0) > 8 || (derived.distanceToExpectedMoveLow || 0) > 8) score += 1;
+    if ((derived.volatilityState === "Calm" || derived.volatilityState === "Flat") && netGamma !== null && netGamma >= 0) score += 1;
+    if (derived.nearMajorWall || derived.nearPDH || derived.nearPDL) score += 1;
+
+    if (dFlip <= 5) score -= 2;
+    if (derived.structureType === "Knife Edge") score -= 2;
+    if (derived.insideExpectedMove && (derived.distanceToExpectedMoveHigh || 999) <= 5 && (derived.distanceToExpectedMoveLow || 999) <= 5) score -= 1;
+    if ((netGamma || 0) < 0 && dFlip <= 10) score -= 1;
+    if (["Knife Edge", "Regime Transition"].includes(derived.structureType)) score -= 1;
+    if (derived.noTradeCenter) score -= 1;
+
+    score = clamp(Math.round(score), 0, 10);
+    const label = score <= 3 ? "No Trade" : score <= 6 ? "Selective" : "Tradeable";
+    const explanation = label === "No Trade"
+      ? "No-trade center risk. Wait for edge interaction."
+      : label === "Selective"
+        ? "Structure is mixed. Only take edge-confirmed setups."
+        : "Structure supports disciplined edge trades.";
+
+    return { score, label, explanation };
+  }
+
+  function classifyReversalSetupFit(input, derived, tradeability) {
+    const dFlip = abs(derived.distanceToFlip) || 999;
+    const nearFlip = dFlip <= 8;
+    const expectedNearlyConsumed = (derived.distanceToExpectedMoveHigh || 999) <= 5 || (derived.distanceToExpectedMoveLow || 999) <= 5;
+
+    const poor = (
+      derived.structureType === "Knife Edge"
+      || (derived.structureType === "Regime Transition" && nearFlip)
+      || (derived.dealerRegime === "Negative Gamma / Momentum Amplifying" && derived.volatilityState === "Expansion Risk")
+      || derived.noTradeCenter
+      || derived.sessionWindowState === "Midday Chop"
+    );
+
+    if (poor || tradeability.label === "No Trade") {
+      return { label: "Poor", explanation: "Environment is unstable for reversal traps. Wait for clearer edge." };
     }
-    if (callWall !== null && putWall !== null) {
-      const spread = Math.abs(callWall - putWall) / 2;
-      if (spread > 0) return spread;
+
+    const good = (
+      (derived.dealerRegime === "Positive Gamma / Mean Reverting" || ["Stable Range", "Clear Structure"].includes(derived.structureType))
+      && derived.nearMajorWall
+      && !nearFlip
+      && ["Calm", "Flat", "Rising"].includes(derived.volatilityState)
+      && derived.sessionWindowState === "Prime Window"
+      && !expectedNearlyConsumed
+    );
+
+    if (good && tradeability.score >= 7) {
+      return { label: "Good", explanation: "Reversal setup has structure, edge, and timing support." };
     }
-    if (spot !== null && flip !== null) {
-      const fd = Math.abs(spot - flip);
-      if (fd > 0) return fd;
+    return { label: "Caution", explanation: "Setup can work, but needs clean confirmation at edge." };
+  }
+
+  function buildAutoRead(input, derived) {
+    const bullets = [];
+    if (derived.distanceToFlip !== null && Math.abs(derived.distanceToFlip) <= 10) {
+      bullets.push("Price is near gamma flip. Expect fakeouts until structure resolves.");
     }
-    const vals = (Array.isArray(candidates) ? candidates : []).map(asNum).filter((v) => v !== null).sort((a, b) => a - b);
-    if (spot !== null && vals.length) {
-      const higher = vals.filter((v) => v > spot);
-      const lower = vals.filter((v) => v < spot);
-      if (higher.length && lower.length) return Math.max(Math.abs(Math.min(...higher) - spot), Math.abs(spot - Math.max(...lower)));
-      if (higher.length) return Math.abs(Math.min(...higher) - spot);
-      if (lower.length) return Math.abs(spot - Math.max(...lower));
+    if (derived.distanceToCallWall !== null && Math.abs(derived.distanceToCallWall) <= 12) {
+      bullets.push("Call wall is close overhead. Rejection is likely unless price accepts above.");
+    } else if (derived.distanceToPutWall !== null && Math.abs(derived.distanceToPutWall) <= 12) {
+      bullets.push("Put wall is close below. Look for hold/reclaim before fading downside.");
     }
-    return null;
+    if (derived.dealerRegime === "Negative Gamma / Momentum Amplifying") {
+      bullets.push("Negative gamma is active. Accepted breaks can extend faster than normal.");
+    }
+    if (derived.noTradeCenter) {
+      bullets.push("No-trade center detected. Trade the edges only.");
+    }
+    if (!bullets.length) {
+      bullets.push("Structure is balanced. Wait for clean tests at call/put wall edges.");
+    }
+    return bullets.slice(0, 3);
+  }
+
+  function buildWarningBadges(_input, derived) {
+    const out = [];
+    if (derived.structureType === "Knife Edge") out.push("Knife Edge");
+    if (derived.structureType === "Regime Transition") out.push("Regime Transition");
+    if (derived.volatilityState === "Expansion Risk") out.push("Expansion Risk");
+    if (derived.sessionWindowState === "Midday Chop") out.push("Chop Risk");
+    if (derived.distanceToCallWall !== null && Math.abs(derived.distanceToCallWall) <= 10) out.push("Call Wall Test");
+    if (derived.distanceToPutWall !== null && Math.abs(derived.distanceToPutWall) <= 10) out.push("Put Wall Test");
+    if (derived.distanceToFlip !== null && Math.abs(derived.distanceToFlip) <= 10) out.push("Near Flip");
+    if ((derived.distanceToExpectedMoveHigh || 999) <= 2 || (derived.distanceToExpectedMoveLow || 999) <= 2) out.push("Expected Move Exhausted");
+    if (derived.noTradeCenter) out.push("No-Trade Center");
+    if (derived.supportQuality === "Fragile Floor") out.push("Fragile Floor");
+    if (derived.supportQuality === "Robust Support") out.push("Robust Support");
+    return Array.from(new Set(out));
+  }
+
+  function inferVixDirection(vixQuote, priorVixDirection) {
+    const pct = asNum((vixQuote || {}).change_pct);
+    if (pct !== null) {
+      if (pct > 0.15) return "rising";
+      if (pct < -0.15) return "falling";
+      return "flat";
+    }
+    return priorVixDirection || "unavailable";
+  }
+
+  function mapDataQualityLabel(input) {
+    const state = String(input.dataState || "").toLowerCase();
+    const fresh = String(input.freshnessLabel || "").toLowerCase();
+    if (state === "cached" || fresh.includes("cached")) return "Cached Fallback";
+    if (state === "delayed" || fresh.includes("delayed")) return "Slightly Delayed";
+    if (fresh.includes("stale") || fresh.includes("critical")) return "Stale";
+    return "Live";
   }
 
   function computeDistanceMetrics(input) {
@@ -136,260 +299,328 @@
     const gammaFlip = asNum(input.gammaFlip);
     const callWall = asNum(input.callWall);
     const putWall = asNum(input.putWall);
-    const expectedMove = inferExpectedMove(input, input.candidateLevels);
+
+    let nextCallWall = asNum(input.nextCallWall);
+    let nextPutWall = asNum(input.nextPutWall);
+    if ((nextCallWall === null && callWall !== null) || (nextPutWall === null && putWall !== null)) {
+      const step = inferLevelStep(callWall, putWall, input.candidateLevels);
+      if (nextCallWall === null && callWall !== null) nextCallWall = callWall + step;
+      if (nextPutWall === null && putWall !== null) nextPutWall = putWall - step;
+    }
+
+    const expectedMove = asNum(input.expectedMove);
+    let emUp = asNum(input.expectedMoveUp);
+    let emDown = asNum(input.expectedMoveDown);
+    if (spot !== null && expectedMove !== null) {
+      if (emUp === null) emUp = spot + expectedMove;
+      if (emDown === null) emDown = spot - expectedMove;
+    }
 
     const distanceToFlip = spot !== null && gammaFlip !== null ? spot - gammaFlip : null;
     const distanceToCallWall = spot !== null && callWall !== null ? spot - callWall : null;
     const distanceToPutWall = spot !== null && putWall !== null ? spot - putWall : null;
+    const wallSpread = callWall !== null && putWall !== null ? callWall - putWall : null;
 
-    let nextCallWallAbove = asNum(input.nextCallWallAbove);
-    let nextPutWallBelow = asNum(input.nextPutWallBelow);
-    if ((nextCallWallAbove === null && callWall !== null) || (nextPutWallBelow === null && putWall !== null)) {
-      const step = inferLevelStep(callWall, putWall, input.candidateLevels);
-      if (nextCallWallAbove === null && callWall !== null) nextCallWallAbove = callWall + step;
-      if (nextPutWallBelow === null && putWall !== null) nextPutWallBelow = putWall - step;
-    }
-
-    const expectedMoveUp = spot !== null && expectedMove !== null ? spot + expectedMove : null;
-    const expectedMoveDown = spot !== null && expectedMove !== null ? spot - expectedMove : null;
-    const expectedMoveRangeText =
-      expectedMoveUp !== null && expectedMoveDown !== null
-        ? `${expectedMoveDown.toFixed(1)} - ${expectedMoveUp.toFixed(1)}`
-        : expectedMove !== null
-          ? `±${expectedMove.toFixed(1)}`
-          : "—";
+    const distanceToExpectedMoveHigh = spot !== null && emUp !== null ? emUp - spot : null;
+    const distanceToExpectedMoveLow = spot !== null && emDown !== null ? spot - emDown : null;
+    const insideExpectedMove = spot !== null && emUp !== null && emDown !== null ? spot <= emUp && spot >= emDown : null;
 
     const flipProximityState = classifyProximity(distanceToFlip, "flip");
     const nearestWallDistance =
       distanceToCallWall !== null && distanceToPutWall !== null
-        ? Math.abs(distanceToCallWall) <= Math.abs(distanceToPutWall)
-          ? distanceToCallWall
-          : distanceToPutWall
-        : distanceToCallWall !== null
-          ? distanceToCallWall
-          : distanceToPutWall;
-
+        ? (Math.abs(distanceToCallWall) <= Math.abs(distanceToPutWall) ? distanceToCallWall : distanceToPutWall)
+        : (distanceToCallWall !== null ? distanceToCallWall : distanceToPutWall);
     const wallProximityState = classifyProximity(nearestWallDistance, "wall");
     const trapZoneState = classifyTrapZone(spot, gammaFlip, callWall, putWall);
 
-    return {
-      distance_to_flip: distanceToFlip,
-      distance_to_call_wall: distanceToCallWall,
-      distance_to_put_wall: distanceToPutWall,
-      next_call_wall_above: nextCallWallAbove,
-      next_put_wall_below: nextPutWallBelow,
-      expected_move_up: expectedMoveUp,
-      expected_move_down: expectedMoveDown,
-      expected_move_range_text: expectedMoveRangeText,
-      flip_proximity_state: flipProximityState,
-      wall_proximity_state: wallProximityState,
-      trap_zone_state: trapZoneState,
+    const nearMajorWall = (abs(distanceToCallWall) || 999) <= 10 || (abs(distanceToPutWall) || 999) <= 10;
+    const nearVWAP = spot !== null && asNum(input.vwap) !== null && Math.abs(spot - asNum(input.vwap)) <= 6;
+    const nearPDH = spot !== null && asNum(input.priorDayHigh) !== null && Math.abs(spot - asNum(input.priorDayHigh)) <= 8;
+    const nearPDL = spot !== null && asNum(input.priorDayLow) !== null && Math.abs(spot - asNum(input.priorDayLow)) <= 8;
+
+    const sessionWindowState = getSessionWindowState(input.marketTimeIso || null);
+    const dealerRegime = classifyDealerRegime(input.netGamma);
+    const volatilityState = classifyVolatilityState(input);
+
+    const structureType = classifyStructureType({ distanceToFlip, wallSpread, trapZoneState });
+    const noTradeCenter = detectNoTradeZone({ distanceToFlip, wallSpread, structureType });
+
+    const callWallStrength = classifyWallStrength(input.callWallGammaPerPoint);
+    const putWallStrength = classifyWallStrength(input.putWallGammaPerPoint);
+    const sr = classifySupportResistanceQuality(input, { distanceToExpectedMoveLow, distanceToExpectedMoveHigh });
+
+    const derived = {
+      distanceToFlip,
+      distanceToCallWall,
+      distanceToPutWall,
+      wallSpread,
+      distanceToExpectedMoveHigh,
+      distanceToExpectedMoveLow,
+      aboveOrBelowFlip: distanceToFlip === null ? "unavailable" : (distanceToFlip > 0 ? "above" : distanceToFlip < 0 ? "below" : "at"),
+      insideExpectedMove,
+      nearMajorWall,
+      nearVWAP,
+      nearPDH,
+      nearPDL,
+      sessionWindowState,
+      flipProximityState,
+      wallProximityState,
+      trapZoneState,
+      dealerRegime,
+      volatilityState,
+      structureType,
+      callWallStrength,
+      putWallStrength,
+      supportQuality: sr.supportQuality,
+      resistanceQuality: sr.resistanceQuality,
+      noTradeCenter,
+      dataQualityLabel: mapDataQualityLabel(input),
+      nextCallWall,
+      nextPutWall,
+      expectedMoveRangeText: emUp !== null && emDown !== null ? `${emDown.toFixed(1)} - ${emUp.toFixed(1)}` : "—",
     };
+
+    derived.tradeability = computeTradeabilityScore(input, {
+      distanceToFlip: derived.distanceToFlip,
+      wallSpread: derived.wallSpread,
+      distanceToExpectedMoveHigh: derived.distanceToExpectedMoveHigh,
+      distanceToExpectedMoveLow: derived.distanceToExpectedMoveLow,
+      structureType: derived.structureType,
+      volatilityState: derived.volatilityState,
+      nearMajorWall: derived.nearMajorWall,
+      nearPDH: derived.nearPDH,
+      nearPDL: derived.nearPDL,
+      insideExpectedMove: derived.insideExpectedMove,
+      noTradeCenter: derived.noTradeCenter,
+    });
+
+    derived.reversalSetupFit = classifyReversalSetupFit(input, {
+      dealerRegime: derived.dealerRegime,
+      structureType: derived.structureType,
+      distanceToFlip: derived.distanceToFlip,
+      nearMajorWall: derived.nearMajorWall,
+      volatilityState: derived.volatilityState,
+      sessionWindowState: derived.sessionWindowState,
+      distanceToExpectedMoveHigh: derived.distanceToExpectedMoveHigh,
+      distanceToExpectedMoveLow: derived.distanceToExpectedMoveLow,
+      noTradeCenter: derived.noTradeCenter,
+    }, derived.tradeability);
+
+    return derived;
   }
 
-  function buildGammaNarrative(input, metrics) {
-    const out = [];
-    const distanceToFlip = asNum(metrics.distance_to_flip);
-    const distanceToCall = asNum(metrics.distance_to_call_wall);
-    const distanceToPut = asNum(metrics.distance_to_put_wall);
-    const spot = asNum(input.spot);
-    const gammaFlip = asNum(input.gammaFlip);
-    const callWall = asNum(input.callWall);
-    const putWall = asNum(input.putWall);
-    const netGamma = asNum(input.netGamma);
-
-    if (distanceToFlip !== null) {
-      const side = distanceToFlip > 0 ? "above" : "below";
-      out.push(`SPX is ${Math.abs(distanceToFlip).toFixed(1)} points ${side} gamma flip.`);
-    }
-
-    if (spot !== null && gammaFlip !== null && callWall !== null && spot >= Math.min(gammaFlip, callWall) && spot <= Math.max(gammaFlip, callWall)) {
-      out.push("Spot is inside the neutral chop zone between gamma flip and call wall.");
-    } else if (spot !== null && putWall !== null && gammaFlip !== null && spot >= Math.min(putWall, gammaFlip) && spot <= Math.max(putWall, gammaFlip)) {
-      out.push("Spot is inside the lower transition pocket between put wall and gamma flip.");
-    }
-
-    if (distanceToCall !== null && Math.abs(distanceToCall) <= 20) {
-      out.push("Price is approaching the call wall. Expect resistance or a sweep/reject unless acceptance holds above.");
-    } else if (distanceToPut !== null && Math.abs(distanceToPut) <= 20) {
-      out.push("Price is approaching the put wall. Expect support response or a flush-and-reclaim test.");
-    }
-
-    if (netGamma !== null && distanceToFlip !== null) {
-      if (netGamma > 0 && distanceToFlip > 0) {
-        out.push("Positive gamma, stabilizing tape. Mean reversion is favored.");
-      } else if (netGamma > 0 && distanceToFlip <= 0) {
-        out.push("Positive gamma but below flip. Contained downside unless support fails.");
-      } else if (netGamma < 0 && distanceToFlip <= 0) {
-        out.push("Negative gamma, downside expansion risk.");
-      } else if (netGamma < 0 && distanceToFlip > 0) {
-        out.push("Negative gamma with upside squeeze risk.");
-      }
-      if (Math.abs(distanceToFlip) <= 10) {
-        out.push("Market is near a regime transition. Expect fakeouts and unstable direction.");
-      }
-    }
-
-    if (metrics.trap_zone_state === "knife_edge_structure") {
-      out.push("Flip and walls are tightly clustered. Knife-edge structure can whip both directions.");
-    }
-
-    if (!out.length) {
-      out.push("Awaiting complete live gamma context for SPX.");
-    }
-    if (out.length === 1) {
-      out.push("Waiting for full level alignment before issuing directional context.");
-    }
-    return out.slice(0, 4);
-  }
-
-  const levelStrength = (distance, state) => {
-    if (asNum(distance) === null || state === "unavailable") return "Unavailable";
-    if (state === "at_flip" || state === "at_wall") return "Immediate test";
-    if (state === "very_close") return "High reaction odds";
-    if (state === "near") return "In play";
-    return "Background level";
+  const exported = {
+    formatNetGamma,
+    formatLevelDistance,
+    classifyProximity,
+    classifyTrapZone,
+    classifyDealerRegime,
+    classifyVolatilityState,
+    classifyStructureType,
+    classifyWallStrength,
+    classifySupportResistanceQuality,
+    detectNoTradeZone,
+    computeTradeabilityScore,
+    classifyReversalSetupFit,
+    buildAutoRead,
+    buildWarningBadges,
+    getSessionWindowState,
+    computeDistanceMetrics,
   };
 
-  const warningBadges = (input, metrics) => {
-    const out = [];
-    const dFlip = asNum(metrics.distance_to_flip);
-    const dCall = asNum(metrics.distance_to_call_wall);
-    const dPut = asNum(metrics.distance_to_put_wall);
-    const netGamma = asNum(input.netGamma);
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = exported;
+  }
+  if (typeof window !== "undefined") {
+    window.marketPulseGammaContext = exported;
+  }
 
-    if (metrics.trap_zone_state === "knife_edge_structure") out.push({ label: "Knife Edge", tone: "critical" });
-    if (dFlip !== null && Math.abs(dFlip) <= 10) out.push({ label: "Regime Transition", tone: "warn" });
-    if (metrics.trap_zone_state === "compressed_trap_zone") out.push({ label: "Neutral Chop", tone: "neutral" });
-    if (dCall !== null && Math.abs(dCall) <= 10) out.push({ label: "Call Wall Test", tone: "warn" });
-    if (dPut !== null && Math.abs(dPut) <= 10) out.push({ label: "Put Wall Test", tone: "warn" });
-    if (netGamma !== null && netGamma < 0) out.push({ label: "Expansion Risk", tone: "critical" });
-    if (!out.length) out.push({ label: "Neutral Chop", tone: "neutral" });
-    return out;
+  if (typeof document === "undefined") return;
+
+  const card = document.getElementById("spxPriorityCard");
+  if (!card) return;
+
+  const toneForBadge = (label) => {
+    const l = String(label || "").toLowerCase();
+    if (l.includes("knife") || l.includes("expansion") || l.includes("no-trade")) return "critical";
+    if (l.includes("transition") || l.includes("test") || l.includes("near flip") || l.includes("chop")) return "warn";
+    return "neutral";
   };
 
   const setText = (id, value) => {
     const node = document.getElementById(id);
     if (!node) return;
     const next = String(value ?? "—");
-    if (node.textContent !== next) {
-      node.textContent = next;
-    }
+    if (node.textContent !== next) node.textContent = next;
   };
 
-  const setNarrative = (items) => {
-    const root = document.getElementById("spxPriorityNarrative");
+  const setBullets = (id, items) => {
+    const root = document.getElementById(id);
     if (!root) return;
-    const normalized = items.map((s) => String(s || "")).filter(Boolean).slice(0, 4);
+    const normalized = (Array.isArray(items) ? items : []).map((s) => String(s || "").trim()).filter(Boolean).slice(0, 3);
     const current = Array.from(root.querySelectorAll("li")).map((li) => (li.textContent || "").trim());
     if (JSON.stringify(current) === JSON.stringify(normalized)) return;
     root.innerHTML = "";
-    for (const line of normalized) {
+    normalized.forEach((line) => {
       const li = document.createElement("li");
       li.textContent = line;
       root.appendChild(li);
-    }
+    });
   };
 
-  const setBadges = (badges) => {
-    const root = document.getElementById("spxPriorityWarningBadges");
+  const setBadges = (id, labels) => {
+    const root = document.getElementById(id);
     if (!root) return;
-    const normalized = badges.map((b) => `${b.label}|${b.tone}`);
-    const current = Array.from(root.querySelectorAll(".spxPriorityWarningChip")).map((node) => {
-      const tone = node.className.includes("tone-critical")
-        ? "critical"
-        : node.className.includes("tone-warn")
-          ? "warn"
-          : "neutral";
-      return `${(node.textContent || "").trim()}|${tone}`;
-    });
+    const normalized = (Array.isArray(labels) ? labels : []).map((label) => String(label || "")).filter(Boolean);
+    const current = Array.from(root.querySelectorAll(".spxPriorityWarningChip")).map((node) => (node.textContent || "").trim());
     if (JSON.stringify(current) === JSON.stringify(normalized)) return;
 
     root.innerHTML = "";
-    for (const badge of badges) {
+    normalized.forEach((label) => {
       const chip = document.createElement("span");
-      chip.className = `trendChip spxPriorityWarningChip tone-${badge.tone}`;
-      chip.textContent = badge.label;
+      chip.className = `trendChip spxPriorityWarningChip tone-${toneForBadge(label)}`;
+      chip.textContent = label;
       root.appendChild(chip);
-    }
+    });
   };
 
   const adaptInput = (base) => {
-    const spxQuote = base.spx_quote || {};
-    const gamma = base.gamma_snapshot || {};
+    const spx = (base && base.spx_quote) || {};
+    const gamma = (base && base.gamma_snapshot) || {};
+    const vixQuote = (base && base.vix_quote) || {};
+
     const candidateLevels = [];
     const top3 = Array.isArray(gamma.gamma_walls_top3) ? gamma.gamma_walls_top3 : [];
-    for (const value of top3) {
-      const n = asNum(value);
+    top3.forEach((v) => {
+      const n = asNum(v);
       if (n !== null) candidateLevels.push(n);
-    }
-    const xs = (((gamma.chart_json || {}).gex || {}).data || [])[0]?.x;
+    });
+    const xs = ((((gamma.chart_json || {}).gex || {}).data || [])[0] || {}).x;
     if (Array.isArray(xs)) {
-      for (const value of xs) {
-        const n = asNum(value);
+      xs.forEach((v) => {
+        const n = asNum(v);
         if (n !== null) candidateLevels.push(n);
-      }
+      });
     }
+
+    const nowIso = base.market_now_iso || null;
+    const vixDirection = inferVixDirection(vixQuote, base.vix_direction || "unavailable");
+
+    const dayOpen = asNum(spx.day_open);
+    const sessionHigh = asNum(spx.day_high);
+    const sessionLow = asNum(spx.day_low);
+
     return {
-      spot: asNum(spxQuote.price),
+      spot: asNum(spx.price),
+      dayOpen,
+      sessionHigh,
+      sessionLow,
+      priorDayHigh: asNum(spx.prior_day_high), // TODO(api): wire prior_day_high in quote payload when available.
+      priorDayLow: asNum(spx.prior_day_low), // TODO(api): wire prior_day_low in quote payload when available.
+      vwap: asNum(spx.vwap), // TODO(api): wire session VWAP from provider stream when available.
+      overnightHigh: asNum(spx.overnight_high), // TODO(api): wire overnight levels when available.
+      overnightLow: asNum(spx.overnight_low), // TODO(api): wire overnight levels when available.
+      vix: asNum(vixQuote.price),
+      vixDirection,
+
       gammaFlip: asNum(gamma.gamma_flip),
       callWall: asNum(gamma.call_wall),
       putWall: asNum(gamma.put_wall),
-      nextCallWallAbove: asNum(gamma.next_call_wall_above),
-      nextPutWallBelow: asNum(gamma.next_put_wall_below),
+      nextCallWall: asNum(gamma.next_call_wall_above), // TODO(api): preferred backend field for next call wall.
+      nextPutWall: asNum(gamma.next_put_wall_below), // TODO(api): preferred backend field for next put wall.
       netGamma: asNum(gamma.net_gex),
+      callWallGammaPerPoint: asNum(gamma.call_wall_gamma_per_point), // TODO(api): wire gamma/point from backend.
+      putWallGammaPerPoint: asNum(gamma.put_wall_gamma_per_point), // TODO(api): wire gamma/point from backend.
+      expectedMove: asNum(gamma.expected_move), // TODO(api): backend should provide explicit expected_move_up/down when available.
+      expectedMoveUp: asNum(gamma.expected_move_up),
+      expectedMoveDown: asNum(gamma.expected_move_down),
+
       regime: String(gamma.regime || ""),
       bias: String(gamma.bias || ""),
-      expectedMove: asNum(gamma.expected_move),
       candidateLevels,
       updatedAt: gamma.asof || null,
+      marketTimeIso: nowIso,
+      dataState: String(spx.data_state || ""),
+      freshnessLabel: String(spx.freshness_label || ""),
+      freshnessReason: String(spx.data_reason || ""),
     };
   };
 
-  const applyContext = (input) => {
-    const metrics = computeDistanceMetrics(input);
-    const narrative = buildGammaNarrative(input, metrics);
-    const badges = warningBadges(input, metrics);
-
-    setText("spxPriorityDistanceFlip", formatLevelDistance(metrics.distance_to_flip));
-    setText("spxPriorityDistanceCall", formatLevelDistance(metrics.distance_to_call_wall));
-    setText("spxPriorityDistancePut", formatLevelDistance(metrics.distance_to_put_wall));
-    setText("spxPriorityExpectedMoveRange", metrics.expected_move_range_text || "—");
-    setText("spxPriorityExpectedMoveDown", metrics.expected_move_down === null ? "Down —" : `Down ${formatNumber(metrics.expected_move_down, 1)}`);
-    setText("spxPriorityExpectedMoveUp", metrics.expected_move_up === null ? "Up —" : `Up ${formatNumber(metrics.expected_move_up, 1)}`);
-    setText("spxPriorityFlipState", levelStrength(metrics.distance_to_flip, metrics.flip_proximity_state));
-    setText("spxPriorityWallState", levelStrength(metrics.distance_to_call_wall ?? metrics.distance_to_put_wall, metrics.wall_proximity_state));
-    setText("spxPriorityTrapZone", String(metrics.trap_zone_state || "unavailable").replace(/_/g, " "));
-    setText("spxPriorityNextCallWall", metrics.next_call_wall_above === null ? "—" : formatNumber(metrics.next_call_wall_above, 0));
-    setText("spxPriorityNextPutWall", metrics.next_put_wall_below === null ? "—" : formatNumber(metrics.next_put_wall_below, 0));
-
-    setText("spxPriorityContextSummary", `Flip ${metrics.flip_proximity_state || "unavailable"} · Wall ${metrics.wall_proximity_state || "unavailable"} · Trap ${metrics.trap_zone_state || "unavailable"}`);
-    setNarrative(narrative);
-    setBadges(badges);
-  };
-
-  let lastRenderKey = "";
-  const renderFromBasePayload = (base) => {
+  const render = (base) => {
     const input = adaptInput(base);
-    const key = JSON.stringify(input);
-    if (key === lastRenderKey) return;
-    lastRenderKey = key;
+    const derived = computeDistanceMetrics(input);
+    const bullets = buildAutoRead(input, derived);
+    const badges = buildWarningBadges(input, derived);
 
-    if (input.spot !== null) {
-      const spotText = input.spot.toFixed(2);
-      setText("spxPrioritySpotValue", spotText);
-      setText("spxPrioritySpotLead", `${spotText} · ${base.spx_quote?.market_state || "Unavailable"}`);
-    }
-    if (input.gammaFlip !== null) setText("spxPriorityGammaFlipValue", formatNumber(input.gammaFlip, 0));
-    if (input.callWall !== null) setText("spxPriorityCallWallValue", formatNumber(input.callWall, 0));
-    if (input.putWall !== null) setText("spxPriorityPutWallValue", formatNumber(input.putWall, 0));
+    setText("spxPrioritySpotValue", formatNumber(input.spot, 2));
+    setText("spxPriorityGammaFlipValue", formatNumber(input.gammaFlip, 0));
+    setText("spxPriorityCallWallValue", formatNumber(input.callWall, 0));
+    setText("spxPriorityPutWallValue", formatNumber(input.putWall, 0));
+    setText("spxPriorityNextCallWall", formatNumber(derived.nextCallWall, 0));
+    setText("spxPriorityNextPutWall", formatNumber(derived.nextPutWall, 0));
+    setText("spxPriorityExpectedMoveRange", derived.expectedMoveRangeText || "—");
+
+    setText("spxPriorityDealerRegime", derived.dealerRegime);
+    setText("spxPriorityVolatilityState", derived.volatilityState);
+    setText("spxPriorityStructureType", derived.structureType);
+    setText("spxPriorityTradeabilityScore", `${derived.tradeability.score}/10 · ${derived.tradeability.label}`);
+    setText("spxPriorityTradeabilityLine", derived.tradeability.explanation);
+    setText("spxPriorityReversalFit", `${derived.reversalSetupFit.label} · ${derived.reversalSetupFit.explanation}`);
+
+    setText("spxPriorityCallWallStrength", derived.callWallStrength);
+    setText("spxPriorityPutWallStrength", derived.putWallStrength);
+    setText("spxPrioritySupportQuality", derived.supportQuality);
+    setText("spxPriorityResistanceQuality", derived.resistanceQuality);
+
+    setText("spxPriorityDistanceFlip", formatLevelDistance(derived.distanceToFlip));
+    setText("spxPriorityDistanceCall", formatLevelDistance(derived.distanceToCallWall));
+    setText("spxPriorityDistancePut", formatLevelDistance(derived.distanceToPutWall));
+    setText("spxPriorityWallSpread", asNum(derived.wallSpread) === null ? "—" : `${formatNumber(derived.wallSpread, 1)} pts`);
+    setText("spxPrioritySessionWindow", derived.sessionWindowState);
+    setText("spxPriorityNoTradeState", derived.noTradeCenter ? "No-Trade Center · Trade the edges only" : "Center is tradeable with confirmation");
+
+    setText("spxPriorityDataQuality", derived.dataQualityLabel);
+    setText("spxPriorityVixRaw", asNum(input.vix) === null ? "—" : formatNumber(input.vix, 2));
+    setText("spxPriorityVixDirection", input.vixDirection || "unavailable");
+    setText("spxPriorityDayOpen", asNum(input.dayOpen) === null ? "—" : formatNumber(input.dayOpen, 2));
+    setText(
+      "spxPrioritySessionRange",
+      asNum(input.sessionHigh) !== null && asNum(input.sessionLow) !== null
+        ? `${formatNumber(input.sessionLow, 2)} - ${formatNumber(input.sessionHigh, 2)}`
+        : "—"
+    );
+    setText("spxPriorityVWAP", asNum(input.vwap) === null ? "—" : formatNumber(input.vwap, 2));
+    setText(
+      "spxPriorityPriorRange",
+      asNum(input.priorDayHigh) !== null && asNum(input.priorDayLow) !== null
+        ? `${formatNumber(input.priorDayLow, 2)} - ${formatNumber(input.priorDayHigh, 2)}`
+        : "—"
+    );
     setText("spxPriorityNetGammaValue", formatNetGamma(input.netGamma));
-    if (input.regime) setText("spxPriorityRegimeValue", input.regime.toUpperCase());
-    if (input.bias) setText("spxPriorityBiasValue", input.bias);
-    applyContext(input);
+    setText("spxPriorityCallGammaPerPoint", asNum(input.callWallGammaPerPoint) === null ? "—" : formatNetGamma(input.callWallGammaPerPoint));
+    setText("spxPriorityPutGammaPerPoint", asNum(input.putWallGammaPerPoint) === null ? "—" : formatNetGamma(input.putWallGammaPerPoint));
+
+    setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
+    setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
+    setText("spxPriorityTrap", String(derived.trapZoneState || "unavailable").replace(/_/g, " "));
+
+    setBullets("spxPriorityNarrative", bullets);
+    setBadges("spxPriorityWarningBadges", badges);
   };
 
-  renderFromBasePayload(currentBasePayload);
+  const getJson = (id) => {
+    const node = document.getElementById(id);
+    if (!node) return null;
+    try {
+      return JSON.parse(node.textContent || "null");
+    } catch (_err) {
+      return null;
+    }
+  };
+
+  const base = getJson("spxPriorityBasePayload") || {};
+  let current = JSON.parse(JSON.stringify(base));
+  render(current);
 
   const connectStream = () => {
     const stream = new EventSource("/stream/market");
@@ -401,39 +632,44 @@
       } catch (_err) {
         return;
       }
-      const prices = payload && typeof payload === "object" ? payload.prices || {} : {};
-      const spxTick = prices.SPX || prices["^GSPC"] || null;
-      const gamma = payload && typeof payload === "object" ? payload.gamma_map || {} : {};
 
-      const nextSpx = { ...(currentBasePayload.spx_quote || {}) };
+      const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
+      const gamma = payload && typeof payload === "object" ? (payload.gamma_map || {}) : {};
+      const spxTick = prices.SPX || prices["^GSPC"] || null;
+      const vixTick = prices.VIX || prices["^VIX"] || null;
+
+      const nextSpx = { ...(current.spx_quote || {}) };
       if (spxTick && typeof spxTick === "object") {
         const tickPrice = asNum(spxTick.price);
-        if (tickPrice !== null) {
-          nextSpx.price = tickPrice;
-        }
+        if (tickPrice !== null) nextSpx.price = tickPrice;
         const tickPct = asNum(spxTick.pct_change);
-        if (tickPct !== null) {
-          nextSpx.change_pct = tickPct;
-        }
-        if (typeof spxTick.as_of === "string" && spxTick.as_of) {
-          nextSpx.as_of = spxTick.as_of;
-        }
-        if (typeof spxTick.source === "string" && spxTick.source) {
-          nextSpx.data_reason = spxTick.source;
-        }
+        if (tickPct !== null) nextSpx.change_pct = tickPct;
+        if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
+        if (typeof spxTick.provider === "string") nextSpx.data_reason = spxTick.provider;
       }
 
-      currentBasePayload = {
+      const nextVix = { ...(current.vix_quote || {}) };
+      if (vixTick && typeof vixTick === "object") {
+        const vixPrice = asNum(vixTick.price);
+        if (vixPrice !== null) nextVix.price = vixPrice;
+        const vixPct = asNum(vixTick.pct_change);
+        if (vixPct !== null) nextVix.change_pct = vixPct;
+      }
+
+      current = {
+        ...(current || {}),
         spx_quote: nextSpx,
+        vix_quote: nextVix,
+        market_now_iso: new Date().toISOString(),
         gamma_snapshot: {
-          ...(currentBasePayload.gamma_snapshot || {}),
+          ...(current.gamma_snapshot || {}),
           ...(gamma || {}),
         },
       };
-      renderFromBasePayload(currentBasePayload);
+      render(current);
     };
+
     stream.onerror = () => {
-      // Retry connection on transient stream/auth/network failures.
       try {
         stream.close();
       } catch (_err) {

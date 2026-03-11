@@ -887,6 +887,14 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                     else "Provider fallback" if state == "delayed" else "Unavailable"
                 ),
                 "day_range": "—",
+                "day_open": None,
+                "day_high": None,
+                "day_low": None,
+                "vwap": None,
+                "prior_day_high": None,  # TODO(api): wire prior-day high from upstream provider payload.
+                "prior_day_low": None,  # TODO(api): wire prior-day low from upstream provider payload.
+                "overnight_high": None,  # TODO(api): wire overnight high from upstream provider payload.
+                "overnight_low": None,  # TODO(api): wire overnight low from upstream provider payload.
                 "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
                 "asof": as_of or fetched_label,
                 "asof_epoch": asof_epoch,
@@ -919,6 +927,13 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         if len(curve) >= 8:
             q["mini_series"] = curve
             q["series"] = points
+            first_open = None
+            for r in rows:
+                if isinstance(r, dict) and isinstance(r.get("open"), (int, float)):
+                    first_open = float(r.get("open"))
+                    break
+            if first_open is not None:
+                q["day_open"] = first_open
             highs = [
                 float(r.get("high"))
                 for r in rows
@@ -930,7 +945,23 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 if isinstance(r, dict) and r.get("low") is not None
             ]
             if highs and lows:
-                q["day_range"] = f"{min(lows):,.2f} to {max(highs):,.2f}"
+                day_low = min(lows)
+                day_high = max(highs)
+                q["day_low"] = day_low
+                q["day_high"] = day_high
+                q["day_range"] = f"{day_low:,.2f} to {day_high:,.2f}"
+            vwap_num = 0.0
+            vwap_den = 0.0
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                close_v = r.get("close")
+                vol_v = r.get("volume")
+                if isinstance(close_v, (int, float)) and isinstance(vol_v, (int, float)) and float(vol_v) > 0:
+                    vwap_num += float(close_v) * float(vol_v)
+                    vwap_den += float(vol_v)
+            if vwap_den > 0:
+                q["vwap"] = vwap_num / vwap_den
     if counts["live"] == 0:
         disk_payload = _load_market_pulse_disk_cache()
         if isinstance(cached_payload, dict):
@@ -995,11 +1026,19 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
 
 def _market_pulse_context(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
     by_label = {str(q.get("label") or ""): q for q in quotes}
-    vix_val = float((by_label.get("VIX") or {}).get("price") or 0.0)
+    vix_row = dict(by_label.get("VIX") or {})
+    vix_val = float(vix_row.get("price") or 0.0)
+    vix_pct = float(vix_row.get("change_pct") or 0.0)
     spy_pct = float((by_label.get("SPY") or {}).get("change_pct") or 0.0)
     qqq_pct = float((by_label.get("QQQ") or {}).get("change_pct") or 0.0)
     iwm_pct = float((by_label.get("IWM") or {}).get("change_pct") or 0.0)
     spx_pct = float((by_label.get("SPX") or {}).get("change_pct") or 0.0)
+    if vix_pct > 0.15:
+        vix_direction = "rising"
+    elif vix_pct < -0.15:
+        vix_direction = "falling"
+    else:
+        vix_direction = "flat"
 
     if vix_val and vix_val < 16:
         gamma_label = "Likely pin / lower-vol"
@@ -1039,6 +1078,7 @@ def _market_pulse_context(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
         "gamma_tone": gamma_tone,
         "gamma_note": gamma_note,
         "vix_value": vix_val,
+        "vix_direction": vix_direction,
         "leadership": leadership,
         "breadth_label": breadth_label,
         "breadth_delta": breadth_delta,
@@ -2114,6 +2154,8 @@ def market_pulse_page():
         except Exception:
             pass
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
+    vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
+    quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
     spx_priority_context = build_spx_priority_context(spx_quote=spx_quote, gamma_snapshot=gamma_snapshot)
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)
@@ -2144,6 +2186,8 @@ def market_pulse_page():
         source_label=str(snapshot.get("source_label") or "Yahoo Finance chart feed"),
         source_note=str(snapshot.get("source_note") or ""),
         spx_quote=spx_quote,
+        vix_quote=vix_quote,
+        quotes_map=quotes_map,
         core_quotes=core_quotes,
         leader_quotes=leader_quotes,
         context=context,
@@ -2157,6 +2201,7 @@ def market_pulse_page():
         gamma_quality=gamma_quality,
         source_health=source_health,
         gamma_updated_label=gamma_updated_label,
+        market_now_iso=now_et.isoformat(),
         gamma_csv_href=gamma_csv_href,
         gamma_png_href=gamma_png_href,
         options_contracts=options_contracts,
