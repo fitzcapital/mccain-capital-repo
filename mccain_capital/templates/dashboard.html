@@ -20,50 +20,129 @@
   </div>
 </div>
 
-<div class="card stack12 liveTapeCard"><div class="toolbar">
-  <div class="pill">Live Tape</div>
-  <div class="metricStrip metricStripCompact liveTapeStrip" id="dashboardLiveTape">
-    <div class="metric liveTapeMetric">
-      <div class="label liveTapeLabel">SPX</div>
-      <div class="liveTapeSpark" id="dashboardSpxSpark" aria-hidden="true"></div>
-      <div class="value" id="dashboardSpxValue">
-        {% if dashboard_spx and dashboard_spx.get('price') is not none %}
+<div class="card stack12 dashboardCoreTapeCard"><div class="toolbar">
+  <div class="pillRow marketCardMeta">
+    <div class="pill">Live Tape</div>
+    <span class="tiny muted">Updated {{ dashboard_tape_updated_label or '—' }}</span>
+  </div>
+  <div class="statRow dashboardCoreTapeRow">
+    {% set spx_state = (dashboard_spx.get('market_state') or 'Unavailable') %}
+    {% set spx_tone = 'live' if spx_state == 'Live' else 'delayed' if spx_state == 'Delayed' else 'missing' %}
+    {% set spx_fresh_full = dashboard_spx.get('freshness_label') or 'Unavailable' %}
+    {% set spx_fresh_compact = dashboard_spx.get('freshness_label_compact') or spx_fresh_full %}
+    {% set spx_gap_full = dashboard_spx.get('overnight_gap_label') or '—' %}
+    {% set spx_gap_compact = dashboard_spx.get('overnight_gap_compact') or spx_gap_full %}
+    {% set spx_range_full = dashboard_spx.get('day_range') or '—' %}
+    {% set spx_range_compact = dashboard_spx.get('day_range_compact') or spx_range_full %}
+    {% set spx_change_points = dashboard_spx.get('change_points') %}
+    {% if spx_change_points is none %}
+      {% set spx_change_points = dashboard_spx.get('change') %}
+    {% endif %}
+    {% set spx_tone_value = spx_change_points if spx_change_points is not none else dashboard_spx.get('pct_change') %}
+    {% set spx_gap_points = dashboard_spx.get('overnight_gap_points') %}
+    {% if spx_gap_points is none %}
+      {% set spx_gap_points = dashboard_spx.get('overnight_gap_pct') %}
+    {% endif %}
+    <article class="stat dashboardCoreTapeStat {% if spx_tone_value is not none and spx_tone_value > 0 %}glow-green{% elif spx_tone_value is not none and spx_tone_value < 0 %}glow-red{% endif %}">
+      <div class="pillRow marketCardMeta">
+        <span class="trendChip stateChip state-{{ spx_tone }}">{{ spx_state }}</span>
+        <span class="tiny muted dashboardCoreTapeFreshness" title="{{ spx_fresh_full }}">{{ spx_fresh_compact }}</span>
+      </div>
+      <div class="k">SPX</div>
+      <div class="marketMiniSparkWrap">{{ dashboard_spx.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
+      <div class="v">
+        {% if dashboard_spx.get('price') is not none %}
           {{ '%.2f'|format(dashboard_spx.get('price')) }}
         {% else %}
           —
         {% endif %}
       </div>
-      <div class="sub" id="dashboardSpxSub">
-        {% if dashboard_spx and dashboard_spx.get('pct_change') is not none %}
-          {{ '%+.2f'|format(dashboard_spx.get('pct_change')) }}% · {{ dashboard_spx.get('provider') or dashboard_spx.get('reason') or 'feed' }}
-        {% else %}
-          awaiting live tick
-        {% endif %}
+      <div class="tiny">
+        {{ '%+.2f'|format(dashboard_spx.get('change_points')) if dashboard_spx.get('change_points') is not none else '—' }}
+        · {{ '%+.2f'|format(dashboard_spx.get('pct_change')) if dashboard_spx.get('pct_change') is not none else '—' }}%
       </div>
-    </div>
-    <div class="metric liveTapeMetric">
-      <div class="label liveTapeLabel">VIX</div>
-      <div class="liveTapeSpark" id="dashboardVixSpark" aria-hidden="true"></div>
-      <div class="value" id="dashboardVixValue">
-        {% if dashboard_vix and dashboard_vix.get('price') is not none %}
+      <div class="tiny dashboardGapLine {% if spx_gap_points is not none and spx_gap_points > 0 %}is-positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ spx_gap_full }}">
+        Gap O/N:
+        <span class="trendChip {% if spx_gap_points is not none and spx_gap_points > 0 %}positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}negative{% endif %}">
+          {{ spx_gap_compact }}
+        </span>
+      </div>
+      <div class="tiny">Range: {{ spx_range_compact }}</div>
+      <div class="tiny muted dashboardCoreTapeFocus">S&P cash index context for SPX options.</div>
+    </article>
+
+    {% set vix_state = (dashboard_vix.get('market_state') or 'Unavailable') %}
+    {% set vix_tone = 'live' if vix_state == 'Live' else 'delayed' if vix_state == 'Delayed' else 'missing' %}
+    {% set vix_fresh_full = dashboard_vix.get('freshness_label') or 'Unavailable' %}
+    {% set vix_fresh_compact = dashboard_vix.get('freshness_label_compact') or vix_fresh_full %}
+    {% set vix_gap_full = dashboard_vix.get('overnight_gap_label') or '—' %}
+    {% set vix_gap_compact = dashboard_vix.get('overnight_gap_compact') or vix_gap_full %}
+    {% set vix_range_full = dashboard_vix.get('day_range') or '—' %}
+    {% set vix_range_compact = dashboard_vix.get('day_range_compact') or vix_range_full %}
+    {% set vix_change_points = dashboard_vix.get('change_points') %}
+    {% if vix_change_points is none %}
+      {% set vix_change_points = dashboard_vix.get('change') %}
+    {% endif %}
+    {% set vix_tone_value = vix_change_points if vix_change_points is not none else dashboard_vix.get('pct_change') %}
+    {% set vix_gap_points = dashboard_vix.get('overnight_gap_points') %}
+    {% if vix_gap_points is none %}
+      {% set vix_gap_points = dashboard_vix.get('overnight_gap_pct') %}
+    {% endif %}
+    <article class="stat dashboardCoreTapeStat {% if vix_tone_value is not none and vix_tone_value > 0 %}glow-green{% elif vix_tone_value is not none and vix_tone_value < 0 %}glow-red{% endif %}">
+      <div class="pillRow marketCardMeta">
+        <span class="trendChip stateChip state-{{ vix_tone }}">{{ vix_state }}</span>
+        <span class="tiny muted dashboardCoreTapeFreshness" title="{{ vix_fresh_full }}">{{ vix_fresh_compact }}</span>
+      </div>
+      <div class="k">VIX</div>
+      <div class="marketMiniSparkWrap">{{ dashboard_vix.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
+      <div class="v">
+        {% if dashboard_vix.get('price') is not none %}
           {{ '%.2f'|format(dashboard_vix.get('price')) }}
         {% else %}
           —
         {% endif %}
       </div>
-      <div class="sub" id="dashboardVixSub">
-        {% if dashboard_vix and dashboard_vix.get('pct_change') is not none %}
-          {{ '%+.2f'|format(dashboard_vix.get('pct_change')) }}% · {{ dashboard_vix.get('provider') or dashboard_vix.get('reason') or 'feed' }}
-        {% else %}
-          awaiting live tick
-        {% endif %}
+      <div class="tiny">
+        {{ '%+.2f'|format(dashboard_vix.get('change_points')) if dashboard_vix.get('change_points') is not none else '—' }}
+        · {{ '%+.2f'|format(dashboard_vix.get('pct_change')) if dashboard_vix.get('pct_change') is not none else '—' }}%
       </div>
-    </div>
-  </div>
-  <div class="tiny muted" id="dashboardLiveTapeAsOf">
-    Updated {{ dashboard_tape_updated or (dashboard_spx.get('as_of') if dashboard_spx else '') or (dashboard_vix.get('as_of') if dashboard_vix else '') or '—' }}
+      <div class="tiny dashboardGapLine {% if vix_gap_points is not none and vix_gap_points > 0 %}is-positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ vix_gap_full }}">
+        Gap O/N:
+        <span class="trendChip {% if vix_gap_points is not none and vix_gap_points > 0 %}positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}negative{% endif %}">
+          {{ vix_gap_compact }}
+        </span>
+      </div>
+      <div class="tiny">Range: {{ vix_range_compact }}</div>
+      <div class="tiny muted dashboardCoreTapeFocus">Volatility regime and gamma proxy anchor.</div>
+    </article>
   </div>
 </div></div>
+
+<div class="metricStrip dashboardMetricStrip">
+  <div class="metric">
+    <div class="label">Today Net</div>
+    <div class="value">{{ money(today_net) }}</div>
+    <div class="sub">Live from today’s closed trades</div>
+  </div>
+  <div class="metric">
+    <div class="label">Session Record</div>
+    <div class="value">{{ today_wins }}W / {{ today_losses }}L</div>
+    <div class="sub">Wins, losses, and control</div>
+  </div>
+  <div class="metric">
+    <div class="label">Trades Today</div>
+    <div class="value">{{ today_count }}</div>
+    <div class="sub">Focused > frequent</div>
+  </div>
+  <div class="metric">
+    <div class="label">Current Balance</div>
+    <div class="value">{{ money(overall_balance) }}</div>
+    <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
+    {% if account_scope and account_scope.enabled %}
+      <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
+    {% endif %}
+  </div>
+</div>
 
 <div class="dashboardSupportGrid">
   <div class="card supportCard"><div class="toolbar">
@@ -191,133 +270,49 @@
   </div></div>
 </div>
 
-<script>
-(() => {
-  const spxValue = document.getElementById("dashboardSpxValue");
-  const spxSub = document.getElementById("dashboardSpxSub");
-  const vixValue = document.getElementById("dashboardVixValue");
-  const vixSub = document.getElementById("dashboardVixSub");
-  const asOf = document.getElementById("dashboardLiveTapeAsOf");
-  const spxSpark = document.getElementById("dashboardSpxSpark");
-  const vixSpark = document.getElementById("dashboardVixSpark");
-  const tickHistory = {
-    SPX: [],
-    VIX: [],
-  };
-  const HISTORY_LIMIT = 48;
-  if (!spxValue || !spxSub || !vixValue || !vixSub || !asOf || typeof EventSource === "undefined") return;
+{% set badge_meta = namespace(source='—', sync='—', updated='—', critical=false) %}
+{% for badge in balance_badges %}
+  {% if (badge.tone or '') == 'critical' %}
+    {% set badge_meta.critical = true %}
+  {% endif %}
+  {% if (badge.label or '')|lower == 'source' %}
+    {% set badge_meta.source = badge.value %}
+  {% endif %}
+{% endfor %}
+{% for badge in sync_badges %}
+  {% if (badge.tone or '') == 'critical' %}
+    {% set badge_meta.critical = true %}
+  {% endif %}
+  {% if (badge.label or '')|lower == 'sync' %}
+    {% set badge_meta.sync = badge.value %}
+  {% endif %}
+  {% if (badge.label or '')|lower == 'updated' %}
+    {% set badge_meta.updated = badge.value %}
+  {% endif %}
+{% endfor %}
 
-  const fmt = (n, d = 2) => {
-    const v = Number(n);
-    return Number.isFinite(v) ? v.toFixed(d) : "—";
-  };
-  const pct = (n) => {
-    const v = Number(n);
-    return Number.isFinite(v) ? `${v >= 0 ? "+" : ""}${v.toFixed(2)}%` : "—";
-  };
-  const spark = (series, tone) => {
-    const values = (Array.isArray(series) ? series : []).map(Number).filter(Number.isFinite).slice(-24);
-    if (values.length < 2) return "";
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const span = max - min || 1;
-    const points = values.map((v, i) => {
-      const x = (i / (values.length - 1)) * 100;
-      const y = 100 - (((v - min) / span) * 100);
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    }).join(" ");
-    const cls = tone === "up" ? "up" : tone === "down" ? "down" : "flat";
-    return `<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline class="${cls}" points="${points}" /></svg>`;
-  };
-  const toneOf = (series) => {
-    const vals = (Array.isArray(series) ? series : []).map(Number).filter(Number.isFinite);
-    if (vals.length < 2) return "flat";
-    return vals[vals.length - 1] > vals[0] ? "up" : vals[vals.length - 1] < vals[0] ? "down" : "flat";
-  };
-  const pushHistory = (key, value) => {
-    if (!Number.isFinite(value) || !tickHistory[key]) return;
-    const arr = tickHistory[key];
-    arr.push(value);
-    if (arr.length > HISTORY_LIMIT) arr.splice(0, arr.length - HISTORY_LIMIT);
-  };
-
-  const stream = new EventSource("/stream/market");
-  stream.onmessage = (event) => {
-    if (!event || !event.data) return;
-    let payload;
-    try {
-      payload = JSON.parse(event.data);
-    } catch (_err) {
-      return;
-    }
-    const prices = (payload && payload.prices) || {};
-    const spx = prices.SPX || prices["^GSPC"] || null;
-    const vix = prices.VIX || prices["^VIX"] || null;
-    if (spx && typeof spx === "object") {
-      if (spx.price !== null && spx.price !== undefined) {
-        spxValue.textContent = fmt(spx.price, 2);
-        pushHistory("SPX", Number(spx.price));
-      }
-      spxSub.textContent = `${pct(spx.pct_change)} · ${spx.provider || spx.reason || "feed"}`;
-    }
-    if (vix && typeof vix === "object") {
-      if (vix.price !== null && vix.price !== undefined) {
-        vixValue.textContent = fmt(vix.price, 2);
-        pushHistory("VIX", Number(vix.price));
-      }
-      vixSub.textContent = `${pct(vix.pct_change)} · ${vix.provider || vix.reason || "feed"}`;
-    }
-    const series = (payload && payload.series) || {};
-    const spxSeries = (series.SPX || series["^GSPC"] || tickHistory.SPX || []).slice(-HISTORY_LIMIT);
-    const vixSeries = (series.VIX || series["^VIX"] || tickHistory.VIX || []).slice(-HISTORY_LIMIT);
-    if (spxSpark) spxSpark.innerHTML = spark(spxSeries, toneOf(spxSeries));
-    if (vixSpark) vixSpark.innerHTML = spark(vixSeries, toneOf(vixSeries));
-    const stamp = payload.updated_at || payload.server_ts;
-    asOf.textContent = `Updated ${stamp ? new Date(stamp).toLocaleTimeString() : new Date().toLocaleTimeString()}`;
-  };
-})();
-</script>
-
-<div class="statusBadgeStrip">
-  {% for badge in balance_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-  {% for badge in sync_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-</div>
-
-<div class="metricStrip">
-  <div class="metric">
-    <div class="label">Today Net</div>
-    <div class="value">{{ money(today_net) }}</div>
-    <div class="sub">Live from today’s closed trades</div>
+<details class="syncDetails dataTrustDetails"{% if badge_meta.critical %} open{% endif %}>
+  <summary>
+    <span class="dataTrustTitle">Data Trust &amp; Sync</span>
+    <span class="dataTrustSummary">
+      Source {{ badge_meta.source }} · Sync {{ badge_meta.sync }} · Updated {{ badge_meta.updated }}
+    </span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in balance_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+    {% for badge in sync_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
   </div>
-  <div class="metric">
-    <div class="label">Session Record</div>
-    <div class="value">{{ today_wins }}W / {{ today_losses }}L</div>
-    <div class="sub">Wins, losses, and control</div>
-  </div>
-  <div class="metric">
-    <div class="label">Trades Today</div>
-    <div class="value">{{ today_count }}</div>
-    <div class="sub">Focused > frequent</div>
-  </div>
-  <div class="metric">
-    <div class="label">Current Balance</div>
-    <div class="value">{{ money(overall_balance) }}</div>
-    <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
-    {% if account_scope and account_scope.enabled %}
-      <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
-    {% endif %}
-  </div>
-</div>
+</details>
 
 <div class="showcaseGrid">
   <div class="showcaseCard">

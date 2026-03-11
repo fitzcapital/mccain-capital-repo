@@ -187,6 +187,48 @@ function inferLevelStep(callWall: number | null, putWall: number | null, candida
   return 10;
 }
 
+function inferExpectedMove(
+  expectedMove: number | null | undefined,
+  spot: number | null,
+  gammaFlip: number | null,
+  callWall: number | null,
+  putWall: number | null,
+  candidates?: number[],
+): number | null {
+  const direct = asNum(expectedMove);
+  if (direct !== null) return direct;
+
+  const s = asNum(spot);
+  const g = asNum(gammaFlip);
+  const c = asNum(callWall);
+  const p = asNum(putWall);
+  const ladder = (Array.isArray(candidates) ? candidates : [])
+    .map((v) => asNum(v))
+    .filter((v): v is number => v !== null)
+    .sort((a, b) => a - b);
+
+  if (s !== null && c !== null && p !== null) {
+    const derived = Math.max(Math.abs(c - s), Math.abs(s - p));
+    if (derived > 0) return derived;
+  }
+  if (c !== null && p !== null) {
+    const spread = Math.abs(c - p) / 2;
+    if (spread > 0) return spread;
+  }
+  if (s !== null && g !== null) {
+    const flipDist = Math.abs(s - g);
+    if (flipDist > 0) return flipDist;
+  }
+  if (s !== null && ladder.length) {
+    const higher = ladder.filter((v) => v > s);
+    const lower = ladder.filter((v) => v < s);
+    if (higher.length && lower.length) return Math.max(Math.abs(Math.min(...higher) - s), Math.abs(s - Math.max(...lower)));
+    if (higher.length) return Math.abs(Math.min(...higher) - s);
+    if (lower.length) return Math.abs(s - Math.max(...lower));
+  }
+  return null;
+}
+
 export function classifyDealerRegime(netGamma: number | null | undefined): DealerRegime {
   const ng = asNum(netGamma);
   if (ng === null) return "Unavailable";
@@ -417,7 +459,14 @@ export function computeDistanceMetrics(input: GammaContext): DerivedGammaContext
     if (nextPut === null && putWall !== null) nextPut = putWall - step;
   }
 
-  const expectedMove = asNum(input.expectedMove);
+  const expectedMove = inferExpectedMove(
+    input.expectedMove,
+    spot,
+    gammaFlip,
+    callWall,
+    putWall,
+    input.candidateLevels,
+  );
   let emUp = asNum(input.expectedMoveUp);
   let emDown = asNum(input.expectedMoveDown);
   if (spot !== null && expectedMove !== null) {

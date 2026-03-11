@@ -561,6 +561,32 @@ def get_watchlist(
     return snapshot
 
 
+def get_watchlist_tradier(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Return Tradier-only quotes for a symbol list.
+
+    This intentionally avoids Massive/Yahoo fallback so callers can present
+    strictly broker-grade quote provenance when required by the UI.
+    """
+
+    snapshot: Dict[str, Dict[str, Any]] = {}
+    tradier_map = _tradier_quote_map(symbols)
+    for raw in symbols:
+        symbol = str(raw or "").strip().upper()
+        if not symbol:
+            continue
+        quote = dict(tradier_map.get(symbol) or {})
+        if not quote:
+            quote = {
+                "price": None,
+                "pct_change": None,
+                "as_of": _now_iso(),
+                "provider": "tradier",
+                "reason": "tradier_no_data",
+            }
+        snapshot[symbol] = quote
+    return snapshot
+
+
 def get_watchlist_massive(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     snapshot: Dict[str, Dict[str, Any]] = {}
     tradier_map = _tradier_quote_map(symbols)

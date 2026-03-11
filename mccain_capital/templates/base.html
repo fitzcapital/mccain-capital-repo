@@ -5,10 +5,10 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <title>{{ title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-tape-20260311m">
 </head>
 
-<body>
+<body class="{% if active %}page-{{ active|replace('_', '-')|replace(' ', '-') }}{% endif %}">
   <svg width="0" height="0" class="svgSpriteHidden" aria-hidden="true" focusable="false">
     <defs>
       <symbol id="mc-crest" viewBox="0 0 24 24">

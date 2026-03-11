@@ -86,6 +86,41 @@
     return 10;
   }
 
+  function inferExpectedMove(expectedMove, spot, gammaFlip, callWall, putWall, candidates) {
+    const direct = asNum(expectedMove);
+    if (direct !== null) return direct;
+
+    const s = asNum(spot);
+    const g = asNum(gammaFlip);
+    const c = asNum(callWall);
+    const p = asNum(putWall);
+    const ladder = (Array.isArray(candidates) ? candidates : [])
+      .map(asNum)
+      .filter((v) => v !== null)
+      .sort((a, b) => a - b);
+
+    if (s !== null && c !== null && p !== null) {
+      const derived = Math.max(Math.abs(c - s), Math.abs(s - p));
+      if (derived > 0) return derived;
+    }
+    if (c !== null && p !== null) {
+      const spread = Math.abs(c - p) / 2;
+      if (spread > 0) return spread;
+    }
+    if (s !== null && g !== null) {
+      const flipDist = Math.abs(s - g);
+      if (flipDist > 0) return flipDist;
+    }
+    if (s !== null && ladder.length) {
+      const higher = ladder.filter((v) => v > s);
+      const lower = ladder.filter((v) => v < s);
+      if (higher.length && lower.length) return Math.max(Math.abs(Math.min(...higher) - s), Math.abs(s - Math.max(...lower)));
+      if (higher.length) return Math.abs(Math.min(...higher) - s);
+      if (lower.length) return Math.abs(s - Math.max(...lower));
+    }
+    return null;
+  }
+
   function classifyDealerRegime(netGamma) {
     const ng = asNum(netGamma);
     if (ng === null) return "Unavailable";
@@ -308,7 +343,14 @@
       if (nextPutWall === null && putWall !== null) nextPutWall = putWall - step;
     }
 
-    const expectedMove = asNum(input.expectedMove);
+    const expectedMove = inferExpectedMove(
+      input.expectedMove,
+      spot,
+      gammaFlip,
+      callWall,
+      putWall,
+      input.candidateLevels
+    );
     let emUp = asNum(input.expectedMoveUp);
     let emDown = asNum(input.expectedMoveDown);
     if (spot !== null && expectedMove !== null) {
@@ -542,8 +584,8 @@
       callWallGammaPerPoint: asNum(gamma.call_wall_gamma_per_point), // TODO(api): wire gamma/point from backend.
       putWallGammaPerPoint: asNum(gamma.put_wall_gamma_per_point), // TODO(api): wire gamma/point from backend.
       expectedMove: asNum(gamma.expected_move), // TODO(api): backend should provide explicit expected_move_up/down when available.
-      expectedMoveUp: asNum(gamma.expected_move_up),
-      expectedMoveDown: asNum(gamma.expected_move_down),
+      expectedMoveUp: asNum(gamma.expected_move_up ?? gamma.expected_move_high),
+      expectedMoveDown: asNum(gamma.expected_move_down ?? gamma.expected_move_low),
 
       regime: String(gamma.regime || ""),
       bias: String(gamma.bias || ""),

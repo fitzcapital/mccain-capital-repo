@@ -175,7 +175,9 @@ def _fast_tick_loop() -> None:
     while True:
         try:
             # Keep fast loop strict to primary providers; avoid yfinance for intrasecond cadence.
-            fast_prices = market_data_service.get_watchlist(FAST_TICK_SYMBOLS, allow_yf_fallback=False)
+            fast_prices = market_data_service.get_watchlist(
+                FAST_TICK_SYMBOLS, allow_yf_fallback=False
+            )
             _merge_fast_prices(fast_prices)
         except Exception:
             pass

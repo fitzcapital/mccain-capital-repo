@@ -205,7 +205,9 @@ def _infer_expected_move(
     return None
 
 
-def computeDistanceMetrics(data: GammaContextInput, candidate_levels: Optional[List[float]] = None) -> DistanceMetrics:
+def computeDistanceMetrics(
+    data: GammaContextInput, candidate_levels: Optional[List[float]] = None
+) -> DistanceMetrics:
     spot = _safe_float(data.get("spot"))
     gamma_flip = _safe_float(data.get("gammaFlip"))
     call_wall = _safe_float(data.get("callWall"))
@@ -223,9 +225,15 @@ def computeDistanceMetrics(data: GammaContextInput, candidate_levels: Optional[L
     provided_next_call = _safe_float(data.get("nextCallWallAbove"))
     provided_next_put = _safe_float(data.get("nextPutWallBelow"))
 
-    distance_to_flip = (spot - gamma_flip) if (spot is not None and gamma_flip is not None) else None
-    distance_to_call_wall = (spot - call_wall) if (spot is not None and call_wall is not None) else None
-    distance_to_put_wall = (spot - put_wall) if (spot is not None and put_wall is not None) else None
+    distance_to_flip = (
+        (spot - gamma_flip) if (spot is not None and gamma_flip is not None) else None
+    )
+    distance_to_call_wall = (
+        (spot - call_wall) if (spot is not None and call_wall is not None) else None
+    )
+    distance_to_put_wall = (
+        (spot - put_wall) if (spot is not None and put_wall is not None) else None
+    )
 
     next_call_wall_above, next_put_wall_below = _derive_next_levels(
         call_wall=call_wall,
@@ -243,8 +251,12 @@ def computeDistanceMetrics(data: GammaContextInput, candidate_levels: Optional[L
         if next_put_wall_below is None and put_wall is not None:
             next_put_wall_below = float(put_wall) - float(step)
 
-    expected_move_up = (spot + expected_move) if (spot is not None and expected_move is not None) else None
-    expected_move_down = (spot - expected_move) if (spot is not None and expected_move is not None) else None
+    expected_move_up = (
+        (spot + expected_move) if (spot is not None and expected_move is not None) else None
+    )
+    expected_move_down = (
+        (spot - expected_move) if (spot is not None and expected_move is not None) else None
+    )
     if expected_move_up is not None and expected_move_down is not None:
         expected_move_range_text = f"{expected_move_down:.1f} - {expected_move_up:.1f}"
     elif expected_move is not None:
@@ -324,9 +336,7 @@ def buildGammaNarrative(data: GammaContextInput, metrics: DistanceMetrics) -> Li
 
     if distance_to_flip is not None:
         side = "above" if distance_to_flip > 0 else "below"
-        notes.append(
-            f"SPX is {abs(distance_to_flip):.1f} points {side} gamma flip."
-        )
+        notes.append(f"SPX is {abs(distance_to_flip):.1f} points {side} gamma flip.")
 
     if (
         spot is not None
@@ -357,9 +367,13 @@ def buildGammaNarrative(data: GammaContextInput, metrics: DistanceMetrics) -> Li
         notes.append(regime_note)
 
     if metrics.get("trap_zone_state") == "knife_edge_structure":
-        notes.append("Flip and walls are tightly clustered. Knife-edge structure can whip both directions.")
+        notes.append(
+            "Flip and walls are tightly clustered. Knife-edge structure can whip both directions."
+        )
     elif metrics.get("trap_zone_state") == "compressed_trap_zone":
-        notes.append("Local levels are compressed. Breakouts can fail quickly before directional acceptance.")
+        notes.append(
+            "Local levels are compressed. Breakouts can fail quickly before directional acceptance."
+        )
 
     if not notes:
         notes.append("Awaiting complete live gamma context for SPX.")
@@ -438,7 +452,9 @@ def format_net_gamma_human(value: Optional[float]) -> str:
     return f"{parsed:.0f}"
 
 
-def build_spx_priority_context(spx_quote: Dict[str, Any], gamma_snapshot: Dict[str, Any]) -> Dict[str, Any]:
+def build_spx_priority_context(
+    spx_quote: Dict[str, Any], gamma_snapshot: Dict[str, Any]
+) -> Dict[str, Any]:
     spot = _safe_float(spx_quote.get("price"))
     gamma_flip = _safe_float(gamma_snapshot.get("gamma_flip"))
     call_wall = _safe_float(gamma_snapshot.get("call_wall"))
@@ -470,10 +486,7 @@ def build_spx_priority_context(spx_quote: Dict[str, Any], gamma_snapshot: Dict[s
     narrative = buildGammaNarrative(data, metrics)
     warning_labels = build_warning_badges(data, metrics)
 
-    warning_badges = [
-        {"label": label, "tone": _warning_tone(label)}
-        for label in warning_labels
-    ]
+    warning_badges = [{"label": label, "tone": _warning_tone(label)} for label in warning_labels]
 
     return {
         "input": data,
@@ -489,9 +502,11 @@ def build_spx_priority_context(spx_quote: Dict[str, Any], gamma_snapshot: Dict[s
             str(metrics.get("flip_proximity_state") or "unavailable"),
         ),
         "wall_strength_label": _level_strength_label(
-            metrics.get("distance_to_call_wall")
-            if metrics.get("distance_to_call_wall") is not None
-            else metrics.get("distance_to_put_wall"),
+            (
+                metrics.get("distance_to_call_wall")
+                if metrics.get("distance_to_call_wall") is not None
+                else metrics.get("distance_to_put_wall")
+            ),
             str(metrics.get("wall_proximity_state") or "unavailable"),
         ),
         "trap_zone_label": str(metrics.get("trap_zone_state") or "unavailable").replace("_", " "),

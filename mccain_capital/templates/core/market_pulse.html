@@ -24,7 +24,7 @@
         <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
         <button class="btn" id="autoRefreshToggle" type="button" aria-pressed="false">Auto Refresh Off</button>
         <button class="btn" id="viewModeToggle" type="button" aria-pressed="false">Execution Mode</button>
-        <span class="tiny muted" id="autoRefreshLabel" data-seconds="30">Next refresh in 30s</span>
+        <span class="tiny muted" id="autoRefreshLabel" data-seconds="60">Next refresh in 60s</span>
         <a class="btn" href="/candle-opens">Candle Opens</a>
       </div>
     </div>
@@ -169,6 +169,8 @@
       <span class="tiny muted">Raw + diagnostics</span>
     </summary>
     <div class="optionsContracts">
+      {% set spx_input = spx_priority_context.get('input') or {} %}
+      {% set spx_metrics = spx_priority_context.get('metrics') or {} %}
       <div class="optionsGammaGrid">
         <div class="optionsGammaCell">
           <div class="tiny">Net Gamma (raw)</div>
@@ -177,12 +179,10 @@
         <div class="optionsGammaCell">
           <div class="tiny">Call Wall Gamma/pt</div>
           <strong id="spxPriorityCallGammaPerPoint">—</strong>
-          <div class="tiny muted">TODO: backend `call_wall_gamma_per_point`</div>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Put Wall Gamma/pt</div>
           <strong id="spxPriorityPutGammaPerPoint">—</strong>
-          <div class="tiny muted">TODO: backend `put_wall_gamma_per_point`</div>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Wall Spread</div>
@@ -190,11 +190,23 @@
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Expected Move High Dist</div>
-          <strong id="spxPriorityExpectedMoveHighDist">—</strong>
+          <strong id="spxPriorityExpectedMoveHighDist">
+            {% if spx_metrics.get('expected_move_up') is not none and spx_input.get('spot') is not none %}
+              {{ '%.1f pts'|format(spx_metrics.get('expected_move_up') - spx_input.get('spot')) }}
+            {% else %}
+              —
+            {% endif %}
+          </strong>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Expected Move Low Dist</div>
-          <strong id="spxPriorityExpectedMoveLowDist">—</strong>
+          <strong id="spxPriorityExpectedMoveLowDist">
+            {% if spx_metrics.get('expected_move_down') is not none and spx_input.get('spot') is not none %}
+              {{ '%.1f pts'|format(spx_input.get('spot') - spx_metrics.get('expected_move_down')) }}
+            {% else %}
+              —
+            {% endif %}
+          </strong>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Trap Classification</div>
@@ -215,7 +227,6 @@
         <div class="optionsGammaCell">
           <div class="tiny">VIX Direction</div>
           <strong id="spxPriorityVixDirection">—</strong>
-          <div class="tiny muted">TODO: backend dedicated vix_direction payload (optional)</div>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Day Open</div>
@@ -232,7 +243,6 @@
         <div class="optionsGammaCell">
           <div class="tiny">Prior Day High / Low</div>
           <strong id="spxPriorityPriorRange">—</strong>
-          <div class="tiny muted">TODO: backend prior-day levels wiring</div>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Data Freshness</div>
@@ -517,7 +527,7 @@
   const refreshLink = document.getElementById("marketPulseRefreshLink");
   const loadingOverlay = document.getElementById("marketPulseLoading");
   if (!toggle || !label || !modeToggle || !guardMeta) return;
-  const baseSeconds = Number(label.dataset.seconds || "30");
+  const baseSeconds = Math.max(15, Number(label.dataset.seconds || "60"));
   let enabled = localStorage.getItem(KEY) === "on";
   const marketHours = guardMeta.dataset.marketHours === "1";
   const storedMode = localStorage.getItem(MODE_KEY);
@@ -526,11 +536,30 @@
   const guardrailMessage = guardMeta.dataset.message || "Data Unsafe guardrail active.";
   let remaining = baseSeconds;
   let timer = null;
+  let reloading = false;
   const showLoading = () => {
     if (!loadingOverlay) return;
     loadingOverlay.classList.add("show");
     loadingOverlay.setAttribute("aria-hidden", "false");
   };
+
+  const autoRefreshUrl = () => {
+    const url = new URL(window.location.href);
+    // Auto refresh should be lightweight; reserve force refresh for manual button only.
+    url.searchParams.delete("refresh");
+    return url.toString();
+  };
+
+  // If this page was opened with ?refresh=1, clean it up so auto-refresh doesn't keep force-refreshing.
+  try {
+    const clean = new URL(window.location.href);
+    if (clean.searchParams.get("refresh") === "1") {
+      clean.searchParams.delete("refresh");
+      window.history.replaceState({}, "", clean.toString());
+    }
+  } catch (_err) {
+    // no-op
+  }
 
   const applyGuardrailLock = () => {
     if (!guardrailActive) return;
@@ -563,13 +592,13 @@
   };
 
   const tick = () => {
-    if (!enabled) return;
+    if (!enabled || reloading) return;
+    if (document.visibilityState === "hidden") return;
     remaining -= 1;
     if (remaining <= 0) {
-      const url = new URL(window.location.href);
-      url.searchParams.set("refresh", "1");
+      reloading = true;
       showLoading();
-      window.location.assign(url.toString());
+      window.location.assign(autoRefreshUrl());
       return;
     }
     updateUi();
@@ -588,6 +617,7 @@
   });
   if (refreshLink) {
     refreshLink.addEventListener("click", () => {
+      reloading = true;
       showLoading();
     });
   }
@@ -600,6 +630,12 @@
   // Entry motion once DOM is ready.
   window.requestAnimationFrame(() => {
     document.body.classList.add("marketPulseReady");
+  });
+  window.addEventListener("beforeunload", () => {
+    if (timer) {
+      window.clearInterval(timer);
+      timer = null;
+    }
   });
 })();
 </script>
