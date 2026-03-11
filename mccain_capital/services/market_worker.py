@@ -110,7 +110,8 @@ def _update_cache(prices: Dict[str, Dict[str, Any]], alerts: List[str]) -> None:
 
 def _poll_once() -> None:
     alerts_service.ensure_alert_tables()
-    prices = market_data_service.get_watchlist(WATCHLIST, allow_yf_fallback=False)
+    # Keep the live cache moving even when primary providers are rate-limited/forbidden.
+    prices = market_data_service.get_watchlist(WATCHLIST, allow_yf_fallback=True)
     fired: List[str] = []
     for symbol, quote in prices.items():
         price = quote.get("price") if isinstance(quote, dict) else None
