@@ -1157,9 +1157,7 @@ def _append_import_history(entry: Dict[str, Any]) -> None:
     history.append(entry)
     if len(history) > IMPORT_HISTORY_MAX:
         history = history[-IMPORT_HISTORY_MAX:]
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(BROKER_IMPORT_HISTORY_PATH, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2)
+    _safe_write_json(BROKER_IMPORT_HISTORY_PATH, history)
 
 
 def _record_import_batch(
@@ -1274,9 +1272,7 @@ def _mark_import_batch_rolled_back(batch_id: str) -> None:
             e["rolled_back_at"] = now_iso()
             changed = True
     if changed:
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        with open(BROKER_IMPORT_HISTORY_PATH, "w", encoding="utf-8") as f:
-            json.dump(history, f, indent=2)
+        _safe_write_json(BROKER_IMPORT_HISTORY_PATH, history)
 
 
 def rollback_import_batch() -> Any:
