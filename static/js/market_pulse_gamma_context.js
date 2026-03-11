@@ -19,6 +19,7 @@
   };
 
   const initialBasePayload = getJson("spxPriorityBasePayload") || {};
+  let currentBasePayload = JSON.parse(JSON.stringify(initialBasePayload || {}));
 
   const asNum = (value) => {
     if (value === null || value === undefined) return null;
@@ -388,32 +389,59 @@
     applyContext(input);
   };
 
-  renderFromBasePayload(initialBasePayload);
+  renderFromBasePayload(currentBasePayload);
 
-  const stream = new EventSource("/stream/market");
-  stream.onmessage = (event) => {
-    if (!event || !event.data) return;
-    let payload = null;
-    try {
-      payload = JSON.parse(event.data);
-    } catch (_err) {
-      return;
-    }
-    const prices = payload && typeof payload === "object" ? payload.prices || {} : {};
-    const spxTick = prices.SPX || prices["^GSPC"] || null;
-    const gamma = payload && typeof payload === "object" ? payload.gamma_map || {} : {};
+  const connectStream = () => {
+    const stream = new EventSource("/stream/market");
+    stream.onmessage = (event) => {
+      if (!event || !event.data) return;
+      let payload = null;
+      try {
+        payload = JSON.parse(event.data);
+      } catch (_err) {
+        return;
+      }
+      const prices = payload && typeof payload === "object" ? payload.prices || {} : {};
+      const spxTick = prices.SPX || prices["^GSPC"] || null;
+      const gamma = payload && typeof payload === "object" ? payload.gamma_map || {} : {};
 
-    const nextPayload = {
-      spx_quote: {
-        ...(initialBasePayload.spx_quote || {}),
-        ...(spxTick || {}),
-        price: asNum(spxTick && spxTick.price),
-      },
-      gamma_snapshot: {
-        ...(initialBasePayload.gamma_snapshot || {}),
-        ...(gamma || {}),
-      },
+      const nextSpx = { ...(currentBasePayload.spx_quote || {}) };
+      if (spxTick && typeof spxTick === "object") {
+        const tickPrice = asNum(spxTick.price);
+        if (tickPrice !== null) {
+          nextSpx.price = tickPrice;
+        }
+        const tickPct = asNum(spxTick.pct_change);
+        if (tickPct !== null) {
+          nextSpx.change_pct = tickPct;
+        }
+        if (typeof spxTick.as_of === "string" && spxTick.as_of) {
+          nextSpx.as_of = spxTick.as_of;
+        }
+        if (typeof spxTick.source === "string" && spxTick.source) {
+          nextSpx.data_reason = spxTick.source;
+        }
+      }
+
+      currentBasePayload = {
+        spx_quote: nextSpx,
+        gamma_snapshot: {
+          ...(currentBasePayload.gamma_snapshot || {}),
+          ...(gamma || {}),
+        },
+      };
+      renderFromBasePayload(currentBasePayload);
     };
-    renderFromBasePayload(nextPayload);
+    stream.onerror = () => {
+      // Retry connection on transient stream/auth/network failures.
+      try {
+        stream.close();
+      } catch (_err) {
+        // no-op
+      }
+      window.setTimeout(connectStream, 3000);
+    };
   };
+
+  connectStream();
 })();

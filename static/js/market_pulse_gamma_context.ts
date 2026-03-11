@@ -190,3 +190,7 @@ export function buildGammaNarrative(input: GammaContextInput, metrics: DistanceM
   }
   return notes.slice(0, 4);
 }
+
+// Note: runtime live stream state management is implemented in
+// static/js/market_pulse_gamma_context.js (production-loaded asset).
+// Keep this TS module in feature parity for helpers/typing only.
