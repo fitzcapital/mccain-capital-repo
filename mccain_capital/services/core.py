@@ -2033,6 +2033,7 @@ def stream_market():
 
     @stream_with_context
     def generate():
+        started_at = time.time()
         while True:
             payload = market_worker.get_market_snapshot()
             payload["options"] = options_panel_service.get_options_snapshot()
@@ -2051,6 +2052,17 @@ def stream_market():
                 interval = 0.25
             if interval < 0.20:
                 interval = 0.20
+            # Keep sync workers healthy by rotating SSE connections before worker timeout.
+            try:
+                max_stream_s = float(
+                    app_runtime.get_setting_value("market_stream_max_seconds", 110) or 110
+                )
+            except Exception:
+                max_stream_s = 110.0
+            if max_stream_s < 30:
+                max_stream_s = 30.0
+            if (time.time() - started_at) >= max_stream_s:
+                break
             time.sleep(interval)
 
     response = Response(generate(), mimetype="text/event-stream")
@@ -2106,10 +2118,14 @@ def stream_options_panel():
 
     @stream_with_context
     def generate():
+        started_at = time.time()
         while True:
             payload = options_panel_service.get_options_snapshot()
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
+                break
+            # Rotate stream to avoid sync-worker timeout churn.
+            if (time.time() - started_at) >= 110:
                 break
             time.sleep(2)
 
