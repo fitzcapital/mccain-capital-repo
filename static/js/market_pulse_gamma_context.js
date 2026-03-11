@@ -31,6 +31,17 @@
     return n === null ? "—" : n.toFixed(digits);
   };
 
+  const formatNetGamma = (value) => {
+    const n = asNum(value);
+    if (n === null) return "—";
+    const absN = Math.abs(n);
+    const sign = n < 0 ? "-" : n > 0 ? "+" : "";
+    if (absN >= 1_000_000_000) return `${sign}${(absN / 1_000_000_000).toFixed(1)} billion`;
+    if (absN >= 1_000_000) return `${sign}${(absN / 1_000_000).toFixed(1)} million`;
+    if (absN >= 1_000) return `${sign}${(absN / 1_000).toFixed(1)} thousand`;
+    return String(Math.round(n));
+  };
+
   function formatLevelDistance(distance) {
     const value = asNum(distance);
     if (value === null) return "—";
@@ -371,7 +382,7 @@
     if (input.gammaFlip !== null) setText("spxPriorityGammaFlipValue", formatNumber(input.gammaFlip, 0));
     if (input.callWall !== null) setText("spxPriorityCallWallValue", formatNumber(input.callWall, 0));
     if (input.putWall !== null) setText("spxPriorityPutWallValue", formatNumber(input.putWall, 0));
-    if (input.netGamma !== null) setText("spxPriorityNetGammaValue", input.netGamma.toFixed(0));
+    setText("spxPriorityNetGammaValue", formatNetGamma(input.netGamma));
     if (input.regime) setText("spxPriorityRegimeValue", input.regime.toUpperCase());
     if (input.bias) setText("spxPriorityBiasValue", input.bias);
     applyContext(input);

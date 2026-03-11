@@ -108,3 +108,8 @@ def test_format_level_distance():
     assert svc.formatLevelDistance(None) == "—"
     assert svc.formatLevelDistance(0) == "0 pts"
     assert svc.formatLevelDistance(-4.5) == "4.5 pts below"
+
+
+def test_format_net_gamma_human():
+    assert svc.format_net_gamma_human(-45_506_172) == "-45.5 million"
+    assert svc.format_net_gamma_human(2_140_000_000) == "+2.1 billion"

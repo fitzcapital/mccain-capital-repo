@@ -423,6 +423,21 @@ def _level_strength_label(distance: Optional[float], state: str) -> str:
     return "Background level"
 
 
+def format_net_gamma_human(value: Optional[float]) -> str:
+    parsed = _safe_float(value)
+    if parsed is None:
+        return "—"
+    abs_v = abs(float(parsed))
+    sign = "-" if float(parsed) < 0 else "+" if float(parsed) > 0 else ""
+    if abs_v >= 1_000_000_000:
+        return f"{sign}{abs_v / 1_000_000_000:.1f} billion"
+    if abs_v >= 1_000_000:
+        return f"{sign}{abs_v / 1_000_000:.1f} million"
+    if abs_v >= 1_000:
+        return f"{sign}{abs_v / 1_000:.1f} thousand"
+    return f"{parsed:.0f}"
+
+
 def build_spx_priority_context(spx_quote: Dict[str, Any], gamma_snapshot: Dict[str, Any]) -> Dict[str, Any]:
     spot = _safe_float(spx_quote.get("price"))
     gamma_flip = _safe_float(gamma_snapshot.get("gamma_flip"))
@@ -465,6 +480,7 @@ def build_spx_priority_context(spx_quote: Dict[str, Any], gamma_snapshot: Dict[s
         "metrics": metrics,
         "narrative": narrative,
         "warning_badges": warning_badges,
+        "net_gamma_text": format_net_gamma_human(net_gamma),
         "distance_to_flip_text": formatLevelDistance(metrics.get("distance_to_flip")),
         "distance_to_call_wall_text": formatLevelDistance(metrics.get("distance_to_call_wall")),
         "distance_to_put_wall_text": formatLevelDistance(metrics.get("distance_to_put_wall")),

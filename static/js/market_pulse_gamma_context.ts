@@ -37,6 +37,17 @@ const asNum = (value: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+export function formatNetGamma(value: number | null | undefined): string {
+  const n = asNum(value);
+  if (n === null) return "—";
+  const absN = Math.abs(n);
+  const sign = n < 0 ? "-" : n > 0 ? "+" : "";
+  if (absN >= 1_000_000_000) return `${sign}${(absN / 1_000_000_000).toFixed(1)} billion`;
+  if (absN >= 1_000_000) return `${sign}${(absN / 1_000_000).toFixed(1)} million`;
+  if (absN >= 1_000) return `${sign}${(absN / 1_000).toFixed(1)} thousand`;
+  return String(Math.round(n));
+}
+
 export function formatLevelDistance(distance: number | null | undefined): string {
   const value = asNum(distance);
   if (value === null) return "—";
