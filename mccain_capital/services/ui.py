@@ -34,8 +34,17 @@ VANQUISH_MANUAL_LOCK_PATH = os.path.join(UPLOAD_DIR, ".vanquish_manual_lock.json
 def _static_version(static_root: str) -> str:
     logo_path = os.path.join(static_root, "logo.png")
     favicon_path = os.path.join(static_root, "favicon.ico")
+    app_css_path = os.path.join(static_root, "css", "app.css")
     try:
-        return str(int(max(os.path.getmtime(logo_path), os.path.getmtime(favicon_path))))
+        return str(
+            int(
+                max(
+                    os.path.getmtime(logo_path),
+                    os.path.getmtime(favicon_path),
+                    os.path.getmtime(app_css_path),
+                )
+            )
+        )
     except Exception:
         return now_iso().replace(":", "").replace("-", "")
 

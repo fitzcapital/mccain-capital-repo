@@ -20,6 +20,130 @@
   </div>
 </div>
 
+<div class="card stack12 dashboardCoreTapeCard"><div class="toolbar">
+  <div class="pillRow marketCardMeta">
+    <div class="pill">Live Tape</div>
+    <span class="tiny muted">Updated {{ dashboard_tape_updated_label or '—' }}</span>
+  </div>
+  <div class="statRow dashboardCoreTapeRow">
+    {% set spx_state = (dashboard_spx.get('market_state') or 'Unavailable') %}
+    {% set spx_tone = 'live' if spx_state == 'Live' else 'delayed' if spx_state == 'Delayed' else 'missing' %}
+    {% set spx_fresh_full = dashboard_spx.get('freshness_label') or 'Unavailable' %}
+    {% set spx_fresh_compact = dashboard_spx.get('freshness_label_compact') or spx_fresh_full %}
+    {% set spx_gap_full = dashboard_spx.get('overnight_gap_label') or '—' %}
+    {% set spx_gap_compact = dashboard_spx.get('overnight_gap_compact') or spx_gap_full %}
+    {% set spx_range_full = dashboard_spx.get('day_range') or '—' %}
+    {% set spx_range_compact = dashboard_spx.get('day_range_compact') or spx_range_full %}
+    {% set spx_change_points = dashboard_spx.get('change_points') %}
+    {% if spx_change_points is none %}
+      {% set spx_change_points = dashboard_spx.get('change') %}
+    {% endif %}
+    {% set spx_tone_value = spx_change_points if spx_change_points is not none else dashboard_spx.get('pct_change') %}
+    {% set spx_gap_points = dashboard_spx.get('overnight_gap_points') %}
+    {% if spx_gap_points is none %}
+      {% set spx_gap_points = dashboard_spx.get('overnight_gap_pct') %}
+    {% endif %}
+    <article class="stat dashboardCoreTapeStat {% if spx_tone_value is not none and spx_tone_value > 0 %}glow-green{% elif spx_tone_value is not none and spx_tone_value < 0 %}glow-red{% endif %}">
+      <div class="pillRow marketCardMeta">
+        <span class="trendChip stateChip state-{{ spx_tone }}">{{ spx_state }}</span>
+        <span class="tiny muted dashboardCoreTapeFreshness" title="{{ spx_fresh_full }}">{{ spx_fresh_compact }}</span>
+      </div>
+      <div class="k">SPX</div>
+      <div class="marketMiniSparkWrap">{{ dashboard_spx.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
+      <div class="v">
+        {% if dashboard_spx.get('price') is not none %}
+          {{ '%.2f'|format(dashboard_spx.get('price')) }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="tiny">
+        {{ '%+.2f'|format(dashboard_spx.get('change_points')) if dashboard_spx.get('change_points') is not none else '—' }}
+        · {{ '%+.2f'|format(dashboard_spx.get('pct_change')) if dashboard_spx.get('pct_change') is not none else '—' }}%
+      </div>
+      <div class="tiny dashboardGapLine {% if spx_gap_points is not none and spx_gap_points > 0 %}is-positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ spx_gap_full }}">
+        Gap O/N:
+        <span class="trendChip {% if spx_gap_points is not none and spx_gap_points > 0 %}positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}negative{% endif %}">
+          {{ spx_gap_compact }}
+        </span>
+      </div>
+      <div class="tiny">Range: {{ spx_range_compact }}</div>
+      <div class="tiny muted dashboardCoreTapeFocus">S&P cash index context for SPX options.</div>
+    </article>
+
+    {% set vix_state = (dashboard_vix.get('market_state') or 'Unavailable') %}
+    {% set vix_tone = 'live' if vix_state == 'Live' else 'delayed' if vix_state == 'Delayed' else 'missing' %}
+    {% set vix_fresh_full = dashboard_vix.get('freshness_label') or 'Unavailable' %}
+    {% set vix_fresh_compact = dashboard_vix.get('freshness_label_compact') or vix_fresh_full %}
+    {% set vix_gap_full = dashboard_vix.get('overnight_gap_label') or '—' %}
+    {% set vix_gap_compact = dashboard_vix.get('overnight_gap_compact') or vix_gap_full %}
+    {% set vix_range_full = dashboard_vix.get('day_range') or '—' %}
+    {% set vix_range_compact = dashboard_vix.get('day_range_compact') or vix_range_full %}
+    {% set vix_change_points = dashboard_vix.get('change_points') %}
+    {% if vix_change_points is none %}
+      {% set vix_change_points = dashboard_vix.get('change') %}
+    {% endif %}
+    {% set vix_tone_value = vix_change_points if vix_change_points is not none else dashboard_vix.get('pct_change') %}
+    {% set vix_gap_points = dashboard_vix.get('overnight_gap_points') %}
+    {% if vix_gap_points is none %}
+      {% set vix_gap_points = dashboard_vix.get('overnight_gap_pct') %}
+    {% endif %}
+    <article class="stat dashboardCoreTapeStat {% if vix_tone_value is not none and vix_tone_value > 0 %}glow-green{% elif vix_tone_value is not none and vix_tone_value < 0 %}glow-red{% endif %}">
+      <div class="pillRow marketCardMeta">
+        <span class="trendChip stateChip state-{{ vix_tone }}">{{ vix_state }}</span>
+        <span class="tiny muted dashboardCoreTapeFreshness" title="{{ vix_fresh_full }}">{{ vix_fresh_compact }}</span>
+      </div>
+      <div class="k">VIX</div>
+      <div class="marketMiniSparkWrap">{{ dashboard_vix.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
+      <div class="v">
+        {% if dashboard_vix.get('price') is not none %}
+          {{ '%.2f'|format(dashboard_vix.get('price')) }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="tiny">
+        {{ '%+.2f'|format(dashboard_vix.get('change_points')) if dashboard_vix.get('change_points') is not none else '—' }}
+        · {{ '%+.2f'|format(dashboard_vix.get('pct_change')) if dashboard_vix.get('pct_change') is not none else '—' }}%
+      </div>
+      <div class="tiny dashboardGapLine {% if vix_gap_points is not none and vix_gap_points > 0 %}is-positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ vix_gap_full }}">
+        Gap O/N:
+        <span class="trendChip {% if vix_gap_points is not none and vix_gap_points > 0 %}positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}negative{% endif %}">
+          {{ vix_gap_compact }}
+        </span>
+      </div>
+      <div class="tiny">Range: {{ vix_range_compact }}</div>
+      <div class="tiny muted dashboardCoreTapeFocus">Volatility regime and gamma proxy anchor.</div>
+    </article>
+  </div>
+</div></div>
+
+<div class="metricStrip dashboardMetricStrip">
+  <div class="metric">
+    <div class="label">Today Net</div>
+    <div class="value">{{ money(today_net) }}</div>
+    <div class="sub">Live from today’s closed trades</div>
+  </div>
+  <div class="metric">
+    <div class="label">Session Record</div>
+    <div class="value">{{ today_wins }}W / {{ today_losses }}L</div>
+    <div class="sub">Wins, losses, and control</div>
+  </div>
+  <div class="metric">
+    <div class="label">Trades Today</div>
+    <div class="value">{{ today_count }}</div>
+    <div class="sub">Focused > frequent</div>
+  </div>
+  <div class="metric">
+    <div class="label">Current Balance</div>
+    <div class="value">{{ money(overall_balance) }}</div>
+    <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
+    {% if account_scope and account_scope.enabled %}
+      <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
+    {% endif %}
+  </div>
+</div>
+
 <div class="dashboardSupportGrid">
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">Today Focus</div>
@@ -52,19 +176,19 @@
     </div>
   </div></div>
 
-  <div class="card supportCard"><div class="toolbar">
+  <div class="card supportCard milestoneCard mobileKeep"><div class="toolbar">
     <div class="pill">Milestone</div>
     <div class="supportLead">{{ milestone.name }}</div>
-    <div class="supportBody">
+    <div class="supportBody" style="display:block;">
       {{ milestone.profit_source_label }} Profit {{ money(milestone.profit_current) }}
       {% if milestone.has_profit_goal %} / {{ money(milestone.profit_goal) }}{% endif %}
       · Balance {{ money(overall_balance) }}
       {% if milestone.has_balance_goal %} / {{ money(milestone.target_balance) }}{% endif %}
     </div>
-    <div class="milestoneProgress" style="--milestone-pct: {{ '%.1f'|format(milestone.overall_progress_pct) }}%">
+    <div class="milestoneProgress" style="display:block; --milestone-pct: {{ '%.1f'|format(milestone.overall_progress_pct) }}%">
       <div class="milestoneProgressFill"></div>
     </div>
-    <div class="tiny stack8">
+    <div class="tiny stack8" style="display:block;">
       Progress {{ '%.1f'|format(milestone.overall_progress_pct) }}%
       {% if milestone.has_profit_goal %}
         · Profit left {{ money(milestone.profit_remaining) }}
@@ -73,7 +197,7 @@
         · Balance left {{ money(milestone.balance_remaining) }}
       {% endif %}
     </div>
-    <div class="tiny stack8">
+    <div class="tiny stack8" style="display:block;">
       Pace {{ money(milestone.avg_daily_profit) }}/day
       {% if milestone.projected_days_overall is not none %}
         · ~{{ milestone.projected_days_overall }} trading day{% if milestone.projected_days_overall != 1 %}s{% endif %} to complete
@@ -146,46 +270,49 @@
   </div></div>
 </div>
 
-<div class="statusBadgeStrip">
-  {% for badge in balance_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-  {% for badge in sync_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-</div>
+{% set badge_meta = namespace(source='—', sync='—', updated='—', critical=false) %}
+{% for badge in balance_badges %}
+  {% if (badge.tone or '') == 'critical' %}
+    {% set badge_meta.critical = true %}
+  {% endif %}
+  {% if (badge.label or '')|lower == 'source' %}
+    {% set badge_meta.source = badge.value %}
+  {% endif %}
+{% endfor %}
+{% for badge in sync_badges %}
+  {% if (badge.tone or '') == 'critical' %}
+    {% set badge_meta.critical = true %}
+  {% endif %}
+  {% if (badge.label or '')|lower == 'sync' %}
+    {% set badge_meta.sync = badge.value %}
+  {% endif %}
+  {% if (badge.label or '')|lower == 'updated' %}
+    {% set badge_meta.updated = badge.value %}
+  {% endif %}
+{% endfor %}
 
-<div class="metricStrip">
-  <div class="metric">
-    <div class="label">Today Net</div>
-    <div class="value">{{ money(today_net) }}</div>
-    <div class="sub">Live from today’s closed trades</div>
+<details class="syncDetails dataTrustDetails"{% if badge_meta.critical %} open{% endif %}>
+  <summary>
+    <span class="dataTrustTitle">Data Trust &amp; Sync</span>
+    <span class="dataTrustSummary">
+      Source {{ badge_meta.source }} · Sync {{ badge_meta.sync }} · Updated {{ badge_meta.updated }}
+    </span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in balance_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+    {% for badge in sync_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
   </div>
-  <div class="metric">
-    <div class="label">Session Record</div>
-    <div class="value">{{ today_wins }}W / {{ today_losses }}L</div>
-    <div class="sub">Wins, losses, and control</div>
-  </div>
-  <div class="metric">
-    <div class="label">Trades Today</div>
-    <div class="value">{{ today_count }}</div>
-    <div class="sub">Focused > frequent</div>
-  </div>
-  <div class="metric">
-    <div class="label">Current Balance</div>
-    <div class="value">{{ money(overall_balance) }}</div>
-    <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
-    {% if account_scope and account_scope.enabled %}
-      <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
-    {% endif %}
-  </div>
-</div>
+</details>
 
 <div class="showcaseGrid">
   <div class="showcaseCard">

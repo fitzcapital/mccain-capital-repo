@@ -54,6 +54,7 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
+from mccain_capital.services.gamma_context_service import build_spx_priority_context
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -67,6 +68,8 @@ MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD = 2
 MARKET_PULSE_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_pulse_cache.json")
 MARKET_NEWS_CACHE_TTL_SECONDS = 900
 MARKET_NEWS_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_news_cache.json")
+MARKET_NEWS_RSS_TIMEOUT_SECONDS = 1.25
+MARKET_NEWS_RSS_SYMBOL_LIMIT = 5
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 FINNHUB_API_KEY = (os.environ.get("FINNHUB_API_KEY") or "").strip()
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
@@ -886,6 +889,14 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                     else "Provider fallback" if state == "delayed" else "Unavailable"
                 ),
                 "day_range": "—",
+                "day_open": None,
+                "day_high": None,
+                "day_low": None,
+                "vwap": None,
+                "prior_day_high": None,  # TODO(api): wire prior-day high from upstream provider payload.
+                "prior_day_low": None,  # TODO(api): wire prior-day low from upstream provider payload.
+                "overnight_high": None,  # TODO(api): wire overnight high from upstream provider payload.
+                "overnight_low": None,  # TODO(api): wire overnight low from upstream provider payload.
                 "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
                 "asof": as_of or fetched_label,
                 "asof_epoch": asof_epoch,
@@ -918,6 +929,13 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         if len(curve) >= 8:
             q["mini_series"] = curve
             q["series"] = points
+            first_open = None
+            for r in rows:
+                if isinstance(r, dict) and isinstance(r.get("open"), (int, float)):
+                    first_open = float(r.get("open"))
+                    break
+            if first_open is not None:
+                q["day_open"] = first_open
             highs = [
                 float(r.get("high"))
                 for r in rows
@@ -929,7 +947,27 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 if isinstance(r, dict) and r.get("low") is not None
             ]
             if highs and lows:
-                q["day_range"] = f"{min(lows):,.2f} to {max(highs):,.2f}"
+                day_low = min(lows)
+                day_high = max(highs)
+                q["day_low"] = day_low
+                q["day_high"] = day_high
+                q["day_range"] = f"{day_low:,.2f} to {day_high:,.2f}"
+            vwap_num = 0.0
+            vwap_den = 0.0
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                close_v = r.get("close")
+                vol_v = r.get("volume")
+                if (
+                    isinstance(close_v, (int, float))
+                    and isinstance(vol_v, (int, float))
+                    and float(vol_v) > 0
+                ):
+                    vwap_num += float(close_v) * float(vol_v)
+                    vwap_den += float(vol_v)
+            if vwap_den > 0:
+                q["vwap"] = vwap_num / vwap_den
     if counts["live"] == 0:
         disk_payload = _load_market_pulse_disk_cache()
         if isinstance(cached_payload, dict):
@@ -994,11 +1032,19 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
 
 def _market_pulse_context(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
     by_label = {str(q.get("label") or ""): q for q in quotes}
-    vix_val = float((by_label.get("VIX") or {}).get("price") or 0.0)
+    vix_row = dict(by_label.get("VIX") or {})
+    vix_val = float(vix_row.get("price") or 0.0)
+    vix_pct = float(vix_row.get("change_pct") or 0.0)
     spy_pct = float((by_label.get("SPY") or {}).get("change_pct") or 0.0)
     qqq_pct = float((by_label.get("QQQ") or {}).get("change_pct") or 0.0)
     iwm_pct = float((by_label.get("IWM") or {}).get("change_pct") or 0.0)
     spx_pct = float((by_label.get("SPX") or {}).get("change_pct") or 0.0)
+    if vix_pct > 0.15:
+        vix_direction = "rising"
+    elif vix_pct < -0.15:
+        vix_direction = "falling"
+    else:
+        vix_direction = "flat"
 
     if vix_val and vix_val < 16:
         gamma_label = "Likely pin / lower-vol"
@@ -1038,6 +1084,7 @@ def _market_pulse_context(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
         "gamma_tone": gamma_tone,
         "gamma_note": gamma_note,
         "vix_value": vix_val,
+        "vix_direction": vix_direction,
         "leadership": leadership,
         "breadth_label": breadth_label,
         "breadth_delta": breadth_delta,
@@ -1366,7 +1413,7 @@ def _market_news_rss_rows(symbol: str, *, limit: int = 8) -> List[Dict[str, Any]
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=MARKET_NEWS_RSS_TIMEOUT_SECONDS) as resp:
             xml_body = resp.read()
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
         return []
@@ -1414,6 +1461,25 @@ def _market_news_snapshot() -> Dict[str, Any]:
         and (now_et - fetched_at).total_seconds() < MARKET_NEWS_CACHE_TTL_SECONDS
     ):
         return cached_payload
+
+    # In environments without Finnhub, prefer cached market news over blocking on
+    # multiple RSS network calls every page load.
+    if (
+        not FINNHUB_API_KEY
+        and isinstance(disk_payload, dict)
+        and bool(
+            (disk_payload.get("market_items") or [])
+            or (disk_payload.get("watchlist_items") or [])
+            or (disk_payload.get("macro_events") or [])
+        )
+    ):
+        cached = dict(disk_payload)
+        cached["source_note"] = str(
+            cached.get("source_note") or "Using cached news/macro snapshot (fast path)."
+        )
+        _market_news_cache["fetched_at"] = now_et
+        _market_news_cache["payload"] = cached
+        return cached
 
     macro_overlay = _forex_factory_usd_week_events(now_et.date())
     macro_events = []
@@ -1473,7 +1539,7 @@ def _market_news_snapshot() -> Dict[str, Any]:
         source_note = "Finnhub market news plus Forex Factory macro triggers."
     else:
         all_rows: List[Dict[str, Any]] = []
-        for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS:
+        for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS[:MARKET_NEWS_RSS_SYMBOL_LIMIT]:
             rows = _market_news_rss_rows(symbol, limit=4)
             if rows:
                 all_rows.extend(rows)
@@ -1738,6 +1804,8 @@ def dashboard_milestone_update():
 
 
 def dashboard():
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
 
@@ -1919,6 +1987,254 @@ def dashboard():
     from mccain_capital.services.ui import get_vanquish_profit_lock_state
 
     vanquish_lock = get_vanquish_profit_lock_state()
+    if not current_app.config.get("TESTING"):
+        try:
+            market_worker.start_market_worker_once()
+        except Exception:
+            pass
+    tape_snapshot = market_worker.get_market_snapshot()
+    tape_prices = dict(tape_snapshot.get("prices") or {})
+    dashboard_spx = dict(tape_prices.get("SPX") or {})
+    dashboard_vix = dict(tape_prices.get("VIX") or {})
+    # Dashboard tape should prefer broker-native Tradier quotes over generic fallbacks.
+    try:
+        tradier_quotes = market_data_service.get_watchlist_tradier(["SPX", "VIX"])
+    except Exception:
+        tradier_quotes = {}
+    tradier_spx = dict(tradier_quotes.get("SPX") or {})
+    tradier_vix = dict(tradier_quotes.get("VIX") or {})
+    if tradier_spx.get("price") is not None:
+        dashboard_spx = tradier_spx
+    if tradier_vix.get("price") is not None:
+        dashboard_vix = tradier_vix
+    if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
+        try:
+            fallback = market_data_service.get_watchlist(["SPX", "VIX"], allow_yf_fallback=False)
+        except Exception:
+            fallback = {}
+        if dashboard_spx.get("price") is None:
+            dashboard_spx = dict(fallback.get("SPX") or dashboard_spx)
+        if dashboard_vix.get("price") is None:
+            dashboard_vix = dict(fallback.get("VIX") or dashboard_vix)
+
+    now_et = app_runtime.now_et()
+    now_epoch = int(now_et.timestamp())
+
+    def _dashboard_sparkline_svg(
+        series: List[float], tone: str, prev_close: Optional[float] = None
+    ) -> str:
+        values = [float(v) for v in series if isinstance(v, (int, float))]
+        if len(values) < 2:
+            return '<div class="marketMiniSparkEmpty">No trend</div>'
+        # Smooth tiny outlier jumps so the mini line stays readable.
+        if len(values) >= 5:
+            smoothed: List[float] = []
+            for idx in range(len(values)):
+                left = max(0, idx - 1)
+                right = min(len(values), idx + 2)
+                window = values[left:right]
+                smoothed.append(sum(window) / float(len(window)))
+            values = smoothed
+        width = 120.0
+        height = 28.0
+        domain = list(values)
+        if isinstance(prev_close, (int, float)):
+            domain.append(float(prev_close))
+        min_v = min(domain)
+        max_v = max(domain)
+        if abs(max_v - min_v) < 1e-9:
+            max_v = min_v + 1.0
+        step = width / max(len(values) - 1, 1)
+        points: List[str] = []
+        for idx, value in enumerate(values):
+            x = idx * step
+            y = ((max_v - value) / (max_v - min_v)) * (height - 2) + 1
+            points.append(f"{x:.2f},{y:.2f}")
+        cls = "up" if tone == "up" else "down" if tone == "down" else "flat"
+        ref_line = ""
+        if isinstance(prev_close, (int, float)):
+            ref_y = ((max_v - float(prev_close)) / (max_v - min_v)) * (height - 2) + 1
+            ref_line = f'<line class="marketMiniSparkRef" x1="0" y1="{ref_y:.2f}" x2="120" y2="{ref_y:.2f}" />'
+        return (
+            '<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">'
+            f"{ref_line}"
+            f'<polyline class="marketMiniSparkLine {cls}" points="{" ".join(points)}" />'
+            "</svg>"
+        )
+
+    def _dashboard_mini_series(symbol: str) -> List[float]:
+        points_src = (tape_snapshot.get("series_points") or {}).get(symbol) or []
+        points: List[float] = []
+        if isinstance(points_src, list):
+            for row in points_src:
+                if isinstance(row, dict) and isinstance(row.get("v"), (int, float)):
+                    points.append(float(row.get("v")))
+        if points:
+            deduped: List[float] = []
+            for value in points[-120:]:
+                if not deduped or abs(deduped[-1] - value) > 0.01:
+                    deduped.append(value)
+            if len(deduped) >= 10:
+                return deduped[-40:]
+        raw_src = (tape_snapshot.get("series") or {}).get(symbol) or []
+        if isinstance(raw_src, list):
+            raw = [float(v) for v in raw_src if isinstance(v, (int, float))]
+            deduped_raw: List[float] = []
+            for value in raw[-120:]:
+                if not deduped_raw or abs(deduped_raw[-1] - value) > 0.01:
+                    deduped_raw.append(value)
+            if len(deduped_raw) >= 10:
+                return deduped_raw[-40:]
+
+        # If cached tape points are too sparse/flat, pull a clean intraday curve directly.
+        try:
+            rows = market_data_service.get_intraday(symbol)
+        except Exception:
+            rows = []
+        intraday = [
+            float(r.get("close"))
+            for r in rows[-120:]
+            if isinstance(r, dict) and isinstance(r.get("close"), (int, float))
+        ]
+        deduped_intraday: List[float] = []
+        for value in intraday:
+            if not deduped_intraday or abs(deduped_intraday[-1] - value) > 0.01:
+                deduped_intraday.append(value)
+        if deduped_intraday:
+            return deduped_intraday[-40:]
+        return []
+
+    def _float_or_none(value: Any) -> Optional[float]:
+        if isinstance(value, (int, float)):
+            return float(value)
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+    def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
+        enriched = dict(quote or {})
+        intraday_series = _dashboard_mini_series(symbol)
+        if intraday_series:
+            day_low = min(intraday_series)
+            day_high = max(intraday_series)
+            enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
+            if abs(day_high - day_low) < 0.01:
+                enriched["day_range_compact"] = f"{day_high:.2f}"
+            else:
+                enriched["day_range_compact"] = f"{day_low:.2f}-{day_high:.2f}"
+            enriched["day_open"] = float(intraday_series[0])
+        else:
+            enriched["day_range"] = "—"
+            enriched["day_range_compact"] = "—"
+            enriched["day_open"] = None
+        reason = str(enriched.get("reason") or "").lower()
+        provider = str(enriched.get("provider") or "").lower()
+        if enriched.get("price") is None:
+            state = "Unavailable"
+        elif provider == "tradier" and reason.startswith("tradier_live"):
+            state = "Live"
+        elif "fallback" in reason or "close" in reason or provider not in ("", "tradier"):
+            state = "Delayed"
+        else:
+            state = "Live"
+        enriched["market_state"] = state
+        enriched["data_status_label"] = state
+        price = _float_or_none(enriched.get("price"))
+        pct = _float_or_none(enriched.get("pct_change"))
+        prev_close = None
+        if price is not None and pct is not None and abs(100.0 + pct) > 1e-9:
+            prev_close = price / (1.0 + (pct / 100.0))
+        enriched["prior_close"] = prev_close
+
+        # Keep the tape line smooth from intraday points and overlay prior-close reference.
+        chart_series = list(intraday_series)
+        if not chart_series and price is not None:
+            chart_series = [float(price), float(price)]
+
+        tone = "flat"
+        if len(chart_series) >= 2:
+            delta = float(chart_series[-1]) - float(chart_series[0])
+            if delta > 0:
+                tone = "up"
+            elif delta < 0:
+                tone = "down"
+        enriched["sparkline_svg"] = _dashboard_sparkline_svg(
+            chart_series,
+            tone,
+            prev_close=prev_close,
+        )
+
+        change_points = None
+        if price is not None and prev_close is not None:
+            change_points = price - prev_close
+        day_open = _float_or_none(enriched.get("day_open"))
+        gap_points = None
+        gap_pct = None
+        if day_open is not None and prev_close is not None and prev_close > 0:
+            gap_points = day_open - prev_close
+            gap_pct = (gap_points / prev_close) * 100.0
+        enriched["change_points"] = change_points
+        enriched["overnight_gap_points"] = gap_points
+        enriched["overnight_gap_pct"] = gap_pct
+        if gap_points is not None and gap_pct is not None:
+            enriched["overnight_gap_label"] = f"{gap_points:+.2f} pts · {gap_pct:+.2f}%"
+            enriched["overnight_gap_compact"] = f"{gap_points:+.2f} ({gap_pct:+.2f}%)"
+        else:
+            enriched["overnight_gap_label"] = "—"
+            enriched["overnight_gap_compact"] = "—"
+        if not str(enriched.get("day_range_compact") or "").strip():
+            day_range_full = str(enriched.get("day_range") or "—")
+            enriched["day_range_compact"] = (
+                day_range_full.replace(" to ", "-") if day_range_full != "—" else "—"
+            )
+        if not str(enriched.get("overnight_gap_compact") or "").strip():
+            gap_full = str(enriched.get("overnight_gap_label") or "—")
+            if " pts · " in gap_full:
+                gap_pts, gap_pct_label = gap_full.split(" pts · ", 1)
+                enriched["overnight_gap_compact"] = f"{gap_pts} ({gap_pct_label})"
+            else:
+                enriched["overnight_gap_compact"] = gap_full
+        if state == "Live":
+            enriched["source_label"] = "Tradier live feed"
+            enriched["source_short"] = "Tradier"
+        elif provider:
+            enriched["source_label"] = f"{provider.title()} fallback"
+            enriched["source_short"] = provider.title()
+        else:
+            enriched["source_label"] = "Feed unavailable"
+            enriched["source_short"] = "Unavailable"
+        as_of_raw = str(enriched.get("as_of") or "").strip()
+        age_s = 0
+        if as_of_raw:
+            try:
+                as_of_dt = datetime.fromisoformat(as_of_raw.replace("Z", "+00:00"))
+                age_s = max(0, now_epoch - int(as_of_dt.timestamp()))
+                enriched["freshness_label"] = f"{state} · {age_s}s old"
+            except Exception:
+                enriched["freshness_label"] = f"{state} · 0s old"
+        else:
+            enriched["freshness_label"] = f"{state} · 0s old"
+        if age_s >= 3600:
+            age_compact = f"{age_s // 3600}h"
+        elif age_s >= 60:
+            age_compact = f"{age_s // 60}m"
+        else:
+            age_compact = f"{age_s}s"
+        enriched["freshness_label_compact"] = f"{state} · {age_compact}"
+        return enriched
+
+    dashboard_spx = _enrich_dashboard_quote("SPX", dashboard_spx)
+    dashboard_vix = _enrich_dashboard_quote("VIX", dashboard_vix)
+
+    dashboard_tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
+    dashboard_tape_updated_label = _format_iso_et_label(dashboard_tape_updated_raw)
+    if dashboard_tape_updated_label:
+        # Keep dashboard tape timestamp compact for quick scanning.
+        parts = dashboard_tape_updated_label.split(" ", 3)
+        if len(parts) >= 4:
+            dashboard_tape_updated_label = parts[3]
+
     content = render_template(
         "dashboard.html",
         heat=heat,
@@ -1958,6 +2274,10 @@ def dashboard():
         risk_posture_detail=risk_posture_detail,
         pattern_watch=pattern_watch,
         setup_focus=setup_focus,
+        dashboard_spx=dashboard_spx,
+        dashboard_vix=dashboard_vix,
+        dashboard_tape_updated=dashboard_tape_updated_raw,
+        dashboard_tape_updated_label=dashboard_tape_updated_label,
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),
@@ -1992,16 +2312,37 @@ def stream_market():
 
     @stream_with_context
     def generate():
+        started_at = time.time()
         while True:
             payload = market_worker.get_market_snapshot()
             payload["options"] = options_panel_service.get_options_snapshot()
             payload["gamma_map"] = (
                 gamma_snapshot if is_testing else gamma_map_service.get_gamma_snapshot()
             )
+            payload["server_ts"] = app_runtime.now_iso()
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
                 break
-            time.sleep(1)
+            try:
+                interval = float(
+                    app_runtime.get_setting_value("market_stream_seconds", 0.25) or 0.25
+                )
+            except Exception:
+                interval = 0.25
+            if interval < 0.20:
+                interval = 0.20
+            # Keep sync workers healthy by rotating SSE connections before worker timeout.
+            try:
+                max_stream_s = float(
+                    app_runtime.get_setting_value("market_stream_max_seconds", 110) or 110
+                )
+            except Exception:
+                max_stream_s = 110.0
+            if max_stream_s < 30:
+                max_stream_s = 30.0
+            if (time.time() - started_at) >= max_stream_s:
+                break
+            time.sleep(interval)
 
     response = Response(generate(), mimetype="text/event-stream")
     response.headers["Cache-Control"] = "no-cache"
@@ -2056,10 +2397,14 @@ def stream_options_panel():
 
     @stream_with_context
     def generate():
+        started_at = time.time()
         while True:
             payload = options_panel_service.get_options_snapshot()
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
+                break
+            # Rotate stream to avoid sync-worker timeout churn.
+            if (time.time() - started_at) >= 110:
                 break
             time.sleep(2)
 
@@ -2074,6 +2419,8 @@ def market_pulse_page():
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
 
+    if auth_enabled() and not is_authenticated():
+        return redirect(url_for("login_page", next="/market-pulse"))
     force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     now_et = app_runtime.now_et()
     if not current_app.config.get("TESTING"):
@@ -2113,6 +2460,11 @@ def market_pulse_page():
         except Exception:
             pass
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
+    vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
+    quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
+    spx_priority_context = build_spx_priority_context(
+        spx_quote=spx_quote, gamma_snapshot=gamma_snapshot
+    )
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)
     context = _market_pulse_context(quotes)
@@ -2142,6 +2494,8 @@ def market_pulse_page():
         source_label=str(snapshot.get("source_label") or "Yahoo Finance chart feed"),
         source_note=str(snapshot.get("source_note") or ""),
         spx_quote=spx_quote,
+        vix_quote=vix_quote,
+        quotes_map=quotes_map,
         core_quotes=core_quotes,
         leader_quotes=leader_quotes,
         context=context,
@@ -2151,9 +2505,11 @@ def market_pulse_page():
         market_hours=bool(_market_pulse_market_hours(now_et)),
         stats=stats,
         gamma_snapshot=gamma_snapshot,
+        spx_priority_context=spx_priority_context,
         gamma_quality=gamma_quality,
         source_health=source_health,
         gamma_updated_label=gamma_updated_label,
+        market_now_iso=now_et.isoformat(),
         gamma_csv_href=gamma_csv_href,
         gamma_png_href=gamma_png_href,
         options_contracts=options_contracts,

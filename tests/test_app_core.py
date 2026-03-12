@@ -210,7 +210,7 @@ def test_market_pulse_refresh_query_forces_snapshot_refresh(client, monkeypatch)
     assert resp.status_code == 200
     assert force_flags == [True]
     assert b"/market-pulse?refresh=1" in resp.data
-    assert b'url.searchParams.set("refresh", "1")' in resp.data
+    assert b'url.searchParams.delete("refresh")' in resp.data
 
 
 def test_market_pulse_source_is_normalized_to_yahoo():
@@ -462,6 +462,79 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
     assert b"Trading Command Deck" in resp.data
     assert b"Milestone" in resp.data
     assert b"Live Market Pulse" not in resp.data
+
+
+def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
+    from mccain_capital.services import market_worker
+    from mccain_capital.services import market_data_service
+
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "prices": {
+                "SPX": {
+                    "price": 6775.80,
+                    "pct_change": -0.09,
+                    "provider": "tradier",
+                    "reason": "tradier_live_quote",
+                    "as_of": "2026-03-05T12:00:30-05:00",
+                },
+                "VIX": {
+                    "price": 24.23,
+                    "pct_change": -2.81,
+                    "provider": "tradier",
+                    "reason": "tradier_live_quote",
+                    "as_of": "2026-03-05T12:00:30-05:00",
+                },
+            },
+            "series_points": {},
+            "series": {},
+            "updated_at": "2026-03-05T12:00:30-05:00",
+        },
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist_tradier",
+        lambda symbols: {
+            "SPX": {
+                "price": 6775.80,
+                "pct_change": -0.09,
+                "provider": "tradier",
+                "reason": "tradier_live_quote",
+                "as_of": "2026-03-05T12:00:30-05:00",
+            },
+            "VIX": {
+                "price": 24.23,
+                "pct_change": -2.81,
+                "provider": "tradier",
+                "reason": "tradier_live_quote",
+                "as_of": "2026-03-05T12:00:30-05:00",
+            },
+        },
+    )
+    monkeypatch.setattr(market_data_service, "get_watchlist", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        market_data_service,
+        "get_intraday",
+        lambda symbol: (
+            [{"close": 6773.42}, {"close": 6775.80}]
+            if symbol == "SPX"
+            else [{"close": 24.21}, {"close": 24.58}]
+        ),
+    )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"dashboardCoreTapeCard" in resp.data
+    assert b"dashboardCoreTapeRow" in resp.data
+    assert b"dashboardCoreTapeStat" in resp.data
+    assert b"dashboardGapLine" in resp.data
+    assert b"Gap O/N:" in resp.data
+    assert b"-8.48 (-0.13%)" in resp.data
+    assert b"Range: 6773.42-6775.80" in resp.data
+    assert b"Volatility regime and gamma proxy anchor." in resp.data
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):
