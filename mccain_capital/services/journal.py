@@ -18,6 +18,7 @@ from flask import (
 
 from mccain_capital.repositories import journal as repo
 from mccain_capital.repositories import trades as trades_repo
+from mccain_capital import runtime as app_runtime
 from mccain_capital.runtime import money, parse_float, today_iso
 from mccain_capital.services.ui import render_page
 
@@ -130,6 +131,7 @@ def new_entry():
     initial_values = {
         "entry_date": entry_date,
         "entry_type": (request.args.get("entry_type") or "post_market").strip() or "post_market",
+        "auto_draft": "1" if (request.args.get("auto_draft") or "0").strip() == "1" else "0",
         "link_all_day": "1" if (request.args.get("link_all_day") or "1").strip() == "1" else "0",
         "market": (request.args.get("market") or "").strip(),
         "setup": (request.args.get("setup") or "").strip(),
@@ -144,6 +146,7 @@ def new_entry():
         entry_date,
         initial_values["entry_type"],
         selected_ids,
+        auto_draft=initial_values["auto_draft"] == "1",
     )
     if not initial_values["template_notes"]:
         initial_values["template_notes"] = scaffold["template_notes"]
@@ -151,6 +154,12 @@ def new_entry():
         initial_values["notes"] = scaffold["notes"]
     if not initial_values["pnl"] and scaffold["pnl"] is not None:
         initial_values["pnl"] = f"{float(scaffold['pnl']):.2f}"
+    if not initial_values["market"] and scaffold.get("market"):
+        initial_values["market"] = str(scaffold["market"])
+    if not initial_values["setup"] and scaffold.get("setup"):
+        initial_values["setup"] = str(scaffold["setup"])
+    if not initial_values["mood"] and scaffold.get("mood"):
+        initial_values["mood"] = str(scaffold["mood"])
     return render_page(
         _entry_form(
             "new",
@@ -490,7 +499,7 @@ def _linked_trade_ids_from_form(entry_date: str, form: Any) -> List[int]:
 
 
 def _build_debrief_scaffold(
-    entry_date: str, entry_type: str, linked_trade_ids: List[int]
+    entry_date: str, entry_type: str, linked_trade_ids: List[int], *, auto_draft: bool = False
 ) -> Dict[str, str]:
     entry_kind = (entry_type or "").strip() or "post_market"
     if entry_kind == "pre_market":
@@ -523,6 +532,32 @@ def _build_debrief_scaffold(
         }
         - {""}
     )
+    dominant_setup = strategy_labels[0] if strategy_labels else ""
+    session_tags = sorted(
+        {
+            str((review_map.get(int(t["id"]), {}) or {}).get("session_tag") or "").strip()
+            for t in trades
+            if t.get("id") is not None
+        }
+        - {""}
+    )
+    rule_breaks = sorted(
+        {
+            tag.strip()
+            for t in trades
+            if t.get("id") is not None
+            for tag in str((review_map.get(int(t["id"]), {}) or {}).get("rule_break_tags") or "").split(",")
+            if tag.strip()
+        }
+    )
+    sorted_trades = sorted(
+        [dict(t) for t in trades],
+        key=lambda row: float(row.get("net_pl") or 0.0),
+        reverse=True,
+    )
+    best_trade = sorted_trades[0] if sorted_trades else None
+    worst_trade = sorted_trades[-1] if sorted_trades else None
+    market_context = _debrief_market_context(entry_date)
     template_lines = [
         f"Session date: {entry_date}",
         f"Trades linked: {len(trades)}",
@@ -531,24 +566,156 @@ def _build_debrief_scaffold(
         "Tickers: " + (", ".join(tickers) if tickers else "None linked yet"),
         "Strategies: " + (", ".join(strategy_labels) if strategy_labels else "Unlabeled"),
     ]
-    notes_lines = [
-        "What I saw:",
-        "- Day context / market behavior:",
-        "- Best setup or read:",
-        "",
-        "What I did:",
-        f"- Risk and execution summary ({int(stats.get('wins', 0) or 0)}W/{int(stats.get('losses', 0) or 0)}L, {money(float(stats.get('total', 0.0) or 0.0))} net):",
-        "- Rule adherence / mistakes:",
-        "",
-        "What I learned:",
-        "- Keep doing:",
-        "- Stop doing:",
-        "- Next session adjustment:",
-    ]
+    if market_context.get("headline"):
+        template_lines.extend(
+            [
+                f"Market pulse: {market_context['headline']}",
+                f"Key levels: {market_context['levels']}",
+                f"Macro watch: {market_context['macro']}",
+            ]
+        )
+    if dominant_setup:
+        template_lines.append(f"Dominant setup: {dominant_setup}")
+    if session_tags:
+        template_lines.append("Session tags: " + ", ".join(session_tags))
+    if rule_breaks:
+        template_lines.append("Rule breaks: " + ", ".join(rule_breaks))
+
+    if auto_draft:
+        notes_lines = [
+            "Auto Debrief Draft",
+            "",
+            "Session scorecard:",
+            f"- Result: {int(stats.get('wins', 0) or 0)}W / {int(stats.get('losses', 0) or 0)}L · {money(float(stats.get('total', 0.0) or 0.0))} net",
+            f"- Tickers traded: {', '.join(tickers) if tickers else 'None linked yet'}",
+            f"- Dominant setup: {dominant_setup or 'Unlabeled'}",
+            f"- Session focus: {', '.join(session_tags) if session_tags else 'Not tagged yet'}",
+            "",
+            "Market context:",
+            f"- {market_context.get('headline') or 'Market context unavailable'}",
+            f"- Key levels: {market_context.get('levels') or 'Not available'}",
+            f"- Macro watch: {market_context.get('macro') or 'No macro catalyst loaded'}",
+            "",
+            "Execution read:",
+            f"- Best trade: {_trade_line(best_trade) if best_trade else 'None'}",
+            f"- Worst trade: {_trade_line(worst_trade) if worst_trade else 'None'}",
+            f"- Rule breaks logged: {', '.join(rule_breaks) if rule_breaks else 'none logged'}",
+            "",
+            "Prompt yourself:",
+            "- What did the market offer that actually matched the plan?",
+            "- Where did execution slip versus what the setup required?",
+            "- What one adjustment matters most next session?",
+        ]
+    else:
+        notes_lines = [
+            "What I saw:",
+            "- Day context / market behavior:",
+            "- Best setup or read:",
+            "",
+            "What I did:",
+            f"- Risk and execution summary ({int(stats.get('wins', 0) or 0)}W/{int(stats.get('losses', 0) or 0)}L, {money(float(stats.get('total', 0.0) or 0.0))} net):",
+            "- Rule adherence / mistakes:",
+            "",
+            "What I learned:",
+            "- Keep doing:",
+            "- Stop doing:",
+            "- Next session adjustment:",
+        ]
     return {
         "template_notes": "\n".join(template_lines),
         "notes": "\n".join(notes_lines),
         "pnl": float(stats.get("total", 0.0) or 0.0),
+        "market": market_context.get("market") or "",
+        "setup": dominant_setup,
+        "mood": _draft_mood_label(float(stats.get("total", 0.0) or 0.0), int(stats.get("wins", 0) or 0), int(stats.get("losses", 0) or 0)),
+    }
+
+
+def _trade_line(row: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(row, dict):
+        return ""
+    return (
+        f"#{int(row.get('id') or 0)} "
+        f"{str(row.get('ticker') or '').strip()} {str(row.get('opt_type') or '').strip()} "
+        f"{str(row.get('entry_time') or '—')}->{str(row.get('exit_time') or '—')} "
+        f"{money(float(row.get('net_pl') or 0.0))}"
+    ).strip()
+
+
+def _draft_mood_label(day_net: float, wins: int, losses: int) -> str:
+    if wins and day_net > 0:
+        return "Confident but controlled"
+    if losses and day_net < 0:
+        return "Frustrated - review discipline"
+    return "Neutral / process review"
+
+
+def _debrief_market_context(entry_date: str) -> Dict[str, str]:
+    try:
+        from mccain_capital.services import core as core_svc
+        from mccain_capital.services import gamma_map_service
+    except Exception:
+        return {"headline": "", "levels": "", "macro": "", "market": ""}
+
+    now_et = app_runtime.now_et()
+    try:
+        snapshot = core_svc._market_pulse_snapshot()
+        quotes = core_svc._market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
+        context = core_svc._market_pulse_context(quotes)
+    except Exception:
+        quotes = []
+        context = {}
+    try:
+        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    except Exception:
+        gamma_snapshot = {}
+    try:
+        news_snapshot = core_svc._market_news_snapshot()
+    except Exception:
+        news_snapshot = {"macro_events": []}
+
+    spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
+    vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
+    spot = float(spx_quote.get("price") or 0.0) if spx_quote.get("price") is not None else None
+    vix = float(vix_quote.get("price") or 0.0) if vix_quote.get("price") is not None else None
+    gamma_flip = gamma_snapshot.get("gamma_flip")
+    call_wall = gamma_snapshot.get("call_wall")
+    put_wall = gamma_snapshot.get("put_wall")
+
+    structure = str(context.get("structure") or context.get("market_posture") or "").strip()
+    if spot is not None:
+        headline = f"SPX {spot:.2f}"
+        if structure:
+            headline += f" · {structure}"
+        if vix is not None:
+            headline += f" · VIX {vix:.2f}"
+    else:
+        headline = structure or "Market context unavailable"
+
+    level_parts = []
+    if put_wall is not None:
+        level_parts.append(f"Put wall {float(put_wall):.0f}")
+    if gamma_flip is not None:
+        level_parts.append(f"Gamma flip {float(gamma_flip):.0f}")
+    if call_wall is not None:
+        level_parts.append(f"Call wall {float(call_wall):.0f}")
+    levels = " · ".join(level_parts)
+
+    macro_rows = list(news_snapshot.get("macro_events") or [])[:2]
+    macro = " / ".join(
+        f"{str(row.get('headline') or 'Macro event')} ({str(row.get('published_label') or 'time TBD')})"
+        for row in macro_rows
+        if isinstance(row, dict)
+    )
+
+    market = "SPX"
+    if vix is not None:
+        market = f"SPX / VIX {vix:.2f}"
+    return {
+        "headline": headline,
+        "levels": levels,
+        "macro": macro,
+        "market": market,
     }
 
 

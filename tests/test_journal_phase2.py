@@ -2,6 +2,7 @@
 
 from mccain_capital.repositories import journal as repo
 from mccain_capital.runtime import db, now_iso
+from mccain_capital.services import journal as journal_service
 
 
 def test_journal_entry_type_and_linking(app):
@@ -251,3 +252,134 @@ def test_new_entry_prefill_query_params_render(client):
     assert "Session Replay Debrief" in body
     assert "Replay note" in body
     assert "trade_debrief" in body
+
+
+def test_new_entry_auto_debrief_draft_prefills_richer_context(client, monkeypatch):
+    repo.ensure_journal_schema()
+    monkeypatch.setattr(
+        journal_service,
+        "_debrief_market_context",
+        lambda _day: {
+            "headline": "SPX 6123.45 · Responsive · VIX 19.40",
+            "levels": "Put wall 6100 · Gamma flip 6125 · Call wall 6150",
+            "macro": "CPI (8:30 AM ET) / FOMC Minutes (2:00 PM ET)",
+            "market": "SPX / VIX 19.40",
+        },
+    )
+
+    with db() as conn:
+        created = now_iso()
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "9:35 AM",
+                "9:48 AM",
+                "SPX",
+                "CALL",
+                5000.0,
+                1.0,
+                1.4,
+                1,
+                100.0,
+                1.0,
+                39.0,
+                38.0,
+                38.0,
+                50038.0,
+                "seed",
+                created,
+            ),
+        )
+        trade_one = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "10:22 AM",
+                "10:38 AM",
+                "SPX",
+                "PUT",
+                5000.0,
+                1.1,
+                0.8,
+                1,
+                110.0,
+                1.0,
+                -31.0,
+                -32.0,
+                -29.09,
+                50006.0,
+                "seed",
+                created,
+            ),
+        )
+        trade_two = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+        conn.execute(
+            """
+            INSERT INTO trade_reviews (
+                trade_id, setup_tag, strategy_label, session_tag, checklist_score,
+                rule_break_tags, review_note, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade_one,
+                "Continuation",
+                "Trend Continuation",
+                "Open Drive",
+                88,
+                "",
+                "Good confirmation.",
+                created,
+                created,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trade_reviews (
+                trade_id, setup_tag, strategy_label, session_tag, checklist_score,
+                rule_break_tags, review_note, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade_two,
+                "Fade",
+                "Fade Reversal",
+                "Midday",
+                42,
+                "early entry",
+                "Forced the reversal.",
+                created,
+                created,
+            ),
+        )
+
+    resp = client.get(
+        "/journal/new?d=2026-02-24&entry_type=trade_debrief&link_all_day=1&auto_draft=1",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Auto Debrief Draft" in body
+    assert "Session scorecard:" in body
+    assert "Market context:" in body
+    assert "Execution read:" in body
+    assert "Prompt yourself:" in body
+    assert "SPX 6123.45" in body
+    assert "Put wall 6100" in body
+    assert "CPI (8:30 AM ET)" in body
+    assert "Trend Continuation" in body
+    assert "SPX / VIX 19.40" in body
+    assert "Confident but controlled" in body

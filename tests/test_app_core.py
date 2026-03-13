@@ -1,6 +1,6 @@
 """Core app behavior tests."""
 
-from mccain_capital.runtime import db, get_setting_value, now_iso
+from mccain_capital.runtime import db, get_setting_value, now_iso, today_iso
 from mccain_capital.services import core as core_service
 from werkzeug.security import generate_password_hash
 
@@ -35,6 +35,76 @@ def test_core_pages_are_reachable(client):
     ]:
         resp = client.get(path, follow_redirects=True)
         assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
+
+
+def test_base_shell_includes_market_pulse_transition_overlay(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"marketPulseLoadingOverlay" in resp.data
+    assert b"showMarketPulseLoading" in resp.data
+
+
+def test_dashboard_renders_daily_brief_card(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Daily Brief" in resp.data
+    assert b"Plan A" in resp.data
+    assert b"No-trade condition" in resp.data
+
+
+def test_dashboard_brief_update_saves_daily_plan(client):
+    resp = client.post(
+        "/dashboard/brief",
+        data={
+            "brief_day": "2026-03-13",
+            "brief_focus": "Protect A setups only.",
+            "brief_plan_a": "Take continuation longs above flip.",
+            "brief_plan_b": "Fade extremes only after rejection.",
+            "brief_no_trade": "Stand down into CPI.",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert get_setting_value("dashboard_daily_brief::2026-03-13", "")
+
+
+def test_dashboard_links_to_auto_debrief_draft_when_trades_exist(client):
+    with db() as conn:
+        created = now_iso()
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                today_iso(),
+                "9:35 AM",
+                "9:48 AM",
+                "SPX",
+                "CALL",
+                5000.0,
+                1.0,
+                1.3,
+                1,
+                100.0,
+                1.0,
+                30.0,
+                29.0,
+                29.0,
+                50029.0,
+                "seed",
+                created,
+            ),
+        )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Auto Debrief Draft" in body
+    assert "auto_draft=1" in body
 
 
 def test_vanquish_blocklist_download_endpoint(client):
@@ -224,6 +294,10 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"Core Tape" in resp.data
     assert b"SPX" in resp.data
     assert b"TSLA" in resp.data
+    assert b"marketPulseStreamStatus" in resp.data
+    assert b"marketPulseLoadingOverlay" in resp.data
+    assert b"Loading Market Pulse" in resp.data
+    assert b"autoRefreshToggle" not in resp.data
 
 
 def test_market_pulse_refresh_query_forces_snapshot_refresh(client, monkeypatch):
@@ -576,6 +650,7 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"dashboardCoreTapeCard" in resp.data
     assert b"dashboardCoreTapeRow" in resp.data
     assert b"dashboardCoreTapeStat" in resp.data
+    assert b"dashboardTapeStreamStatus" in resp.data
     assert b"dashboardGapLine" in resp.data
     assert b"Gap O/N:" in resp.data
     assert b"-8.48 (-0.13%)" in resp.data
@@ -641,6 +716,18 @@ def test_stream_market_sse_emits_json_payload(client, monkeypatch):
 def test_stream_market_ws_requires_upgrade(client):
     resp = client.get("/ws/market", follow_redirects=True)
     assert resp.status_code in {400, 501}
+
+
+def test_trades_sync_live_get_redirects_to_upload_workspace(client):
+    resp = client.get("/trades/sync/live", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/trades/upload/statement")
+
+
+def test_trades_sync_auto_config_get_redirects_to_upload_workspace(client):
+    resp = client.get("/trades/sync/auto/config", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/trades/upload/statement")
 
 
 def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):

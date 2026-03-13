@@ -27,9 +27,9 @@ FOREX_FACTORY_CACHE_TTL_SECONDS = 900
 _forex_factory_cache: dict[str, object] = {"fetched_at": None, "payload": None}
 _forex_factory_next_week_cache: dict[str, object] = {"fetched_at": None, "payload": None}
 _forex_factory_month_cache: dict[str, object] = {"fetched_at": None, "payload": None}
-_POST_FORM_RE = re.compile(
-    r"(<form\b[^>]*\bmethod\s*=\s*(?:\"post\"|'post'|post)\b[^>]*>)",
-    flags=re.IGNORECASE,
+_POST_FORM_BLOCK_RE = re.compile(
+    r"(<form\b[^>]*\bmethod\s*=\s*([\"']?)post\2[^>]*>)(.*?)(</form>)",
+    flags=re.IGNORECASE | re.DOTALL,
 )
 TRADING_WINDOW_DEFAULTS = {
     "enabled": "1",
@@ -76,9 +76,16 @@ def csrf_input_html() -> str:
 
 def _inject_csrf_inputs(content_html: str, csrf_input: str) -> str:
     html = str(content_html or "")
-    if not html or 'name="csrf_token"' in html or "name='csrf_token'" in html:
+    if not html:
         return html
-    return _POST_FORM_RE.sub(r"\1" + csrf_input, html)
+
+    def _inject(match: re.Match[str]) -> str:
+        open_tag, _, body, close_tag = match.groups()
+        if 'name="csrf_token"' in body or "name='csrf_token'" in body:
+            return match.group(0)
+        return f"{open_tag}{csrf_input}{body}{close_tag}"
+
+    return _POST_FORM_BLOCK_RE.sub(_inject, html)
 
 
 def _static_version(static_root: str) -> str:

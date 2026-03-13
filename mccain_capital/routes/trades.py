@@ -81,13 +81,13 @@ def register(app):
         "/trades/sync/live",
         endpoint="trades_sync_live",
         view_func=h.trades_sync_live,
-        methods=["POST"],
+        methods=["GET", "POST"],
     )
     app.add_url_rule(
         "/trades/sync/auto/config",
         endpoint="trades_sync_auto_config",
         view_func=h.trades_sync_auto_config,
-        methods=["POST"],
+        methods=["GET", "POST"],
     )
     app.add_url_rule(
         "/trades/sync/auto/run",

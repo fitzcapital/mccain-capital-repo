@@ -481,6 +481,8 @@
 
   const card = document.getElementById("spxPriorityCard");
   if (!card) return;
+  const shell = card.closest(".spxPriorityShell");
+  const spotPanel = document.getElementById("spxPrioritySpotPanel");
 
   const toneForBadge = (label) => {
     const l = String(label || "").toLowerCase();
@@ -534,6 +536,211 @@
       chip.textContent = label;
       root.appendChild(chip);
     });
+  };
+
+  const tapeCards = Array.from(document.querySelectorAll(".marketPulseTapeCard[data-symbol]"));
+
+  const dispatchStreamStatus = (status, detail) => {
+    window.dispatchEvent(new CustomEvent("market-pulse-stream-status", { detail: { status, detail } }));
+  };
+
+  const formatSigned = (value, digits = 2) => {
+    const n = asNum(value);
+    if (n === null) return "—";
+    return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}`;
+  };
+
+  const inferAbsoluteChange = (price, pctChange) => {
+    const p = asNum(price);
+    const pct = asNum(pctChange);
+    if (p === null || pct === null) return null;
+    const prior = p / (1 + (pct / 100));
+    if (!Number.isFinite(prior)) return null;
+    return p - prior;
+  };
+
+  const formatEtLabel = (iso) => {
+    const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(ts)) return "Awaiting live refresh";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+      timeZoneName: "short",
+    }).format(new Date(ts));
+  };
+
+  const formatRange = (points) => {
+    const values = (Array.isArray(points) ? points : [])
+      .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
+      .filter((value) => value !== null);
+    if (!values.length) return "—";
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    return Math.abs(high - low) < 0.01 ? high.toFixed(2) : `${low.toFixed(2)} to ${high.toFixed(2)}`;
+  };
+
+  const sparkTone = (pctChange) => {
+    const pct = asNum(pctChange);
+    if (pct === null) return "flat";
+    if (pct > 0) return "up";
+    if (pct < 0) return "down";
+    return "flat";
+  };
+
+  const buildSparklineSvg = (points, tone) => {
+    const values = (Array.isArray(points) ? points : [])
+      .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
+      .filter((value) => value !== null);
+    if (values.length < 2) {
+      return '<div class="marketMiniSparkEmpty">No trend</div>';
+    }
+    const width = 120;
+    const height = 28;
+    let minV = Math.min(...values);
+    let maxV = Math.max(...values);
+    if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
+    const step = width / Math.max(values.length - 1, 1);
+    const pts = values.map((value, index) => {
+      const x = index * step;
+      const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    });
+    return (
+      `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">`
+      + `<polyline class="marketMiniSparkLine ${tone}" points="${pts.join(" ")}" />`
+      + `</svg>`
+    );
+  };
+
+  const deriveDataState = (quote) => {
+    const price = asNum((quote || {}).price);
+    if (price === null) return "missing";
+    const provider = String((quote || {}).provider || "").toLowerCase();
+    const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
+    if (reason.includes("cached")) return "cached";
+    if (provider === "tradier" && reason.startsWith("tradier_")) return "live";
+    if (
+      reason.includes("fallback")
+      || reason.includes("close")
+      || reason.includes("snapshot")
+      || reason.includes("intraday")
+      || reason.includes("prev_close")
+    ) {
+      return "delayed";
+    }
+    if (provider && provider !== "tradier") return "delayed";
+    return "live";
+  };
+
+  const dataStateLabel = (state) => {
+    if (state === "live") return "Live";
+    if (state === "delayed") return "Delayed";
+    if (state === "cached") return "Cached";
+    return "Missing";
+  };
+
+  const updateStateChip = (node, state) => {
+    if (!node) return;
+    const nextState = String(state || "missing");
+    node.textContent = dataStateLabel(nextState);
+    node.classList.remove("state-live", "state-delayed", "state-cached", "state-missing");
+    node.classList.add(`state-${nextState}`);
+  };
+
+  const updateTextNode = (node, value) => {
+    if (!node) return;
+    const next = String(value ?? "—");
+    if (node.textContent !== next) node.textContent = next;
+  };
+
+  const updateSparkNode = (node, points, tone) => {
+    if (!node) return;
+    node.innerHTML = buildSparklineSvg(points, tone);
+  };
+
+  const applyGlowState = (nodes, pctChange) => {
+    const pct = asNum(pctChange);
+    const positive = pct !== null && pct > 0;
+    const negative = pct !== null && pct < 0;
+    (Array.isArray(nodes) ? nodes : []).forEach((node) => {
+      if (!node) return;
+      node.classList.toggle("glow-green", positive);
+      node.classList.toggle("glow-red", negative);
+    });
+  };
+
+  const updateTapeSummary = (prices) => {
+    const tracked = tapeCards
+      .map((card) => String(card.dataset.symbol || "").toUpperCase())
+      .filter(Boolean);
+    let advancers = 0;
+    let decliners = 0;
+    let missing = 0;
+    let biggestLabel = "—";
+    let biggestMove = null;
+
+    tracked.forEach((symbol) => {
+      const quote = ((prices || {})[symbol] || {});
+      const pct = asNum(quote.pct_change);
+      const price = asNum(quote.price);
+      if (price === null || pct === null) {
+        missing += 1;
+        return;
+      }
+      if (pct > 0) advancers += 1;
+      else if (pct < 0) decliners += 1;
+      if (biggestMove === null || Math.abs(pct) > Math.abs(biggestMove)) {
+        biggestMove = pct;
+        biggestLabel = symbol;
+      }
+    });
+
+    setText("marketPulseAdvancers", String(advancers));
+    setText("marketPulseDecliners", String(decliners));
+    setText("marketPulseMissing", String(missing));
+    setText(
+      "marketPulseBiggestMove",
+      biggestMove === null ? "—" : `${biggestLabel} ${formatSigned(biggestMove, 2)}%`
+    );
+  };
+
+  const applyTapeCardUpdate = (card, quote, points) => {
+    if (!card || !quote || typeof quote !== "object") return;
+    const price = asNum(quote.price);
+    const pct = asNum(quote.pct_change);
+    const state = deriveDataState(quote);
+    const tone = sparkTone(pct);
+    const reason = String(quote.reason || "").trim();
+    const asOf = String(quote.as_of || quote.asof || "").trim();
+
+    updateStateChip(card.querySelector('[data-role="state-chip"]'), state);
+    updateTextNode(card.querySelector('[data-role="freshness"]'), formatEtLabel(asOf));
+    updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2));
+    updateTextNode(
+      card.querySelector('[data-role="change-line"]'),
+      `${formatSigned(inferAbsoluteChange(price, pct), 2)} · ${formatSigned(pct, 2)}%`
+    );
+    updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
+    updateTextNode(card.querySelector('[data-role="range-line"]'), `Range: ${formatRange(points)}`);
+
+    const reasonNode = card.querySelector('[data-role="reason-line"]');
+    if (reasonNode) {
+      if (state !== "live" && reason) {
+        reasonNode.hidden = false;
+        updateTextNode(reasonNode, `Reason: ${reason}`);
+      } else {
+        reasonNode.hidden = true;
+        updateTextNode(reasonNode, "");
+      }
+    }
+
+    card.classList.toggle("glow-green", (pct || 0) > 0);
+    card.classList.toggle("glow-red", (pct || 0) < 0);
   };
 
   const adaptInput = (base) => {
@@ -603,8 +810,23 @@
     const derived = computeDistanceMetrics(input);
     const bullets = buildAutoRead(input, derived);
     const badges = buildWarningBadges(input, derived);
+    const spxQuote = (base && base.spx_quote) || {};
+    const spxPoints = (
+      (((base || {}).series_points || {}).SPX)
+      || (((base || {}).series_points || {})["^GSPC"])
+      || (Array.isArray(spxQuote.series) ? spxQuote.series : [])
+      || (Array.isArray(spxQuote.mini_series) ? spxQuote.mini_series : [])
+    );
+    const spxState = deriveDataState(spxQuote);
+    const spxAbsChange = inferAbsoluteChange(spxQuote.price, spxQuote.change_pct);
 
     setText("spxPrioritySpotValue", formatNumber(input.spot, 2));
+    setText(
+      "spxPrioritySpotLead",
+      input.spot === null
+        ? "SPX quote unavailable"
+        : `${formatNumber(input.spot, 2)} · ${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`
+    );
     setText("spxPriorityGammaFlipValue", formatNumber(input.gammaFlip, 0));
     setText("spxPriorityCallWallValue", formatNumber(input.callWall, 0));
     setText("spxPriorityPutWallValue", formatNumber(input.putWall, 0));
@@ -665,6 +887,17 @@
         (base.spx_quote || {}).provider || (base.spx_quote || {}).data_reason
       )
     );
+    updateStateChip(document.getElementById("spxPriorityStateChip"), spxState);
+    setText("spxPriorityFreshness", formatEtLabel(tickTimeRaw));
+    setText(
+      "spxPriorityFreshnessLine",
+      `${formatEtLabel(tickTimeRaw)}${spxQuote.provider ? ` · ${spxQuote.provider}` : ""}`
+    );
+    setText("spxPriorityChangeLine", `${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`);
+    setText("spxPriorityRangeLine", `Range: ${formatRange(spxPoints)}`);
+    updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), spxPoints, sparkTone(spxQuote.change_pct));
+    applyGlowState([shell, spotPanel], spxQuote.change_pct);
+    setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
 
     setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
@@ -687,9 +920,13 @@
   const base = getJson("spxPriorityBasePayload") || {};
   let current = JSON.parse(JSON.stringify(base));
   render(current);
+  dispatchStreamStatus("Live stream connecting", "Waiting for first tick…");
 
   const connectStream = () => {
     const stream = new EventSource("/stream/market");
+    stream.onopen = () => {
+      dispatchStreamStatus("Live stream connected", "Listening for fresh ticks…");
+    };
     stream.onmessage = (event) => {
       if (!event || !event.data) return;
       let payload = null;
@@ -700,6 +937,7 @@
       }
 
       const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
+      const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
       const gamma = payload && typeof payload === "object" ? (payload.gamma_map || {}) : {};
       const spxTick = prices.SPX || prices["^GSPC"] || null;
       const vixTick = prices.VIX || prices["^VIX"] || null;
@@ -712,7 +950,8 @@
         if (tickPct !== null) nextSpx.change_pct = tickPct;
         if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
         if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
-        if (typeof spxTick.provider === "string") nextSpx.data_reason = spxTick.provider;
+        if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
+        if (typeof spxTick.reason === "string") nextSpx.data_reason = spxTick.reason;
       }
 
       const nextVix = { ...(current.vix_quote || {}) };
@@ -721,6 +960,8 @@
         if (vixPrice !== null) nextVix.price = vixPrice;
         const vixPct = asNum(vixTick.pct_change);
         if (vixPct !== null) nextVix.change_pct = vixPct;
+        if (typeof vixTick.provider === "string") nextVix.provider = vixTick.provider;
+        if (typeof vixTick.reason === "string") nextVix.data_reason = vixTick.reason;
       }
 
       current = {
@@ -730,15 +971,33 @@
         market_now_iso: new Date().toISOString(),
         updated_at: payload.updated_at || (current || {}).updated_at || null,
         server_ts: payload.server_ts || null,
+        series_points: {
+          ...((current || {}).series_points || {}),
+          ...(seriesPoints || {}),
+        },
         gamma_snapshot: {
           ...(current.gamma_snapshot || {}),
           ...(gamma || {}),
         },
       };
       render(current);
+      tapeCards.forEach((card) => {
+        const symbol = String(card.dataset.symbol || "").toUpperCase();
+        if (!symbol) return;
+        applyTapeCardUpdate(card, prices[symbol] || {}, seriesPoints[symbol] || []);
+      });
+      updateTapeSummary(prices);
+      dispatchStreamStatus(
+        "Live stream on",
+        buildTickPingLabel(
+          (spxTick || {}).as_of || payload.updated_at || payload.server_ts || new Date().toISOString(),
+          (spxTick || {}).provider || ""
+        )
+      );
     };
 
     stream.onerror = () => {
+      dispatchStreamStatus("Live stream retrying", "Connection dropped. Reconnecting to market feed…");
       try {
         stream.close();
       } catch (_err) {

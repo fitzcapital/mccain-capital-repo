@@ -27,6 +27,96 @@
       </symbol>
     </defs>
   </svg>
+  <div
+    class="marketPulseLoadingOverlay"
+    id="marketPulseLoadingOverlay"
+    aria-hidden="true"
+    data-active="0"
+  >
+    <div class="marketPulseLoadingCard">
+      <div class="marketPulseLoadingOrb">
+        <div class="marketPulseLoadingHalo"></div>
+        <div class="marketPulseLoadingHalo marketPulseLoadingHalo-secondary"></div>
+        <div class="marketPulseSpinner"></div>
+        <div class="marketPulseLoadingCore"></div>
+      </div>
+      <div class="pill marketPulseLoadingPill">Live reload</div>
+      <div class="marketPulseLoadingTitle" id="marketPulseLoadingTitle">Loading Market Pulse</div>
+      <div class="marketPulseLoadingSub" id="marketPulseLoadingSub">Refreshing SPX priority, tape leadership, and macro catalysts…</div>
+      <div class="marketPulseLoadingTrack">
+        <span class="marketPulseLoadingTrackBar"></span>
+      </div>
+    </div>
+  </div>
+  <script>
+    (() => {
+      const overlay = document.getElementById("marketPulseLoadingOverlay");
+      if (!overlay) return;
+      const titleNode = document.getElementById("marketPulseLoadingTitle");
+      const subNode = document.getElementById("marketPulseLoadingSub");
+      const flagKey = "mc_market_pulse_transition";
+      const isMarketPulse = window.location.pathname === "/market-pulse";
+      const navEntries = (typeof performance !== "undefined" && performance.getEntriesByType)
+        ? performance.getEntriesByType("navigation")
+        : [];
+      const navType = navEntries && navEntries[0] ? navEntries[0].type : "";
+
+      const readPayload = () => {
+        try {
+          return JSON.parse(sessionStorage.getItem(flagKey) || "null");
+        } catch (_err) {
+          return null;
+        }
+      };
+
+      const show = (title, detail, persist = true) => {
+        if (titleNode && title) titleNode.textContent = title;
+        if (subNode && detail) subNode.textContent = detail;
+        overlay.classList.add("show");
+        overlay.setAttribute("aria-hidden", "false");
+        overlay.dataset.active = "1";
+        document.documentElement.classList.add("marketPulseBooting");
+        document.body.classList.add("marketPulseBooting");
+        if (persist) {
+          sessionStorage.setItem(
+            flagKey,
+            JSON.stringify({
+              title: title || "Loading Market Pulse",
+              detail: detail || "Refreshing SPX priority, tape leadership, and macro catalysts…",
+              ts: Date.now(),
+            })
+          );
+        }
+      };
+
+      const hide = (clearFlag = true) => {
+        overlay.classList.remove("show");
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.dataset.active = "0";
+        document.documentElement.classList.remove("marketPulseBooting");
+        document.body.classList.remove("marketPulseBooting");
+        if (clearFlag) {
+          sessionStorage.removeItem(flagKey);
+        }
+      };
+
+      window.showMarketPulseLoading = (title, detail) => show(title, detail, true);
+      window.hideMarketPulseLoading = () => hide(true);
+
+      const payload = readPayload();
+      const payloadFresh = !!(payload && payload.ts && (Date.now() - payload.ts) < 15000);
+      const shouldBoot = isMarketPulse && (navType === "reload" || payloadFresh);
+      if (shouldBoot) {
+        show(
+          (payload && payload.title) || "Loading Market Pulse",
+          (payload && payload.detail) || "Refreshing SPX priority, tape leadership, and macro catalysts…",
+          false
+        );
+      } else if (!isMarketPulse) {
+        hide(false);
+      }
+    })();
+  </script>
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
@@ -346,14 +436,6 @@
       </div>
     </aside>
 
-    <div id="marketPulseNavLoading" class="marketPulseLoadingOverlay" aria-hidden="true">
-      <div class="marketPulseLoadingCard">
-        <div class="marketPulseSpinner"></div>
-        <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
-        <div class="marketPulseLoadingSub">Pulling Yahoo chart data and rebuilding tape context…</div>
-      </div>
-    </div>
-
     {{ content|safe }}
 
     <div id="quickLauncher" class="quickLauncher" aria-label="Quick actions">
@@ -383,6 +465,51 @@
   </div>
 <script>
   (function(){
+    const FLAG_KEY = "mc_market_pulse_transition";
+    const isPlainLeftClick = (event) => (
+      event
+      && event.button === 0
+      && !event.metaKey
+      && !event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+      && !event.defaultPrevented
+    );
+    const marketPulsePayload = (targetUrl) => {
+      const isRefresh = window.location.pathname === "/market-pulse" || targetUrl.searchParams.get("refresh") === "1";
+      return {
+        title: "Loading Market Pulse",
+        detail: isRefresh
+          ? "Refreshing SPX priority, tape leadership, and macro catalysts…"
+          : "Building live SPX context, tape leadership, and macro catalysts…",
+      };
+    };
+    document.addEventListener("click", (event) => {
+      if (!isPlainLeftClick(event)) return;
+      const link = event.target.closest && event.target.closest("a[href]");
+      if (!link) return;
+      if ((link.getAttribute("target") || "").toLowerCase() === "_blank") return;
+      const href = String(link.getAttribute("href") || "").trim();
+      if (!href || href.startsWith("#")) return;
+      let targetUrl = null;
+      try {
+        targetUrl = new URL(href, window.location.href);
+      } catch (_err) {
+        return;
+      }
+      if (targetUrl.origin !== window.location.origin) return;
+      if (targetUrl.pathname !== "/market-pulse") return;
+      const payload = marketPulsePayload(targetUrl);
+      if (typeof window.showMarketPulseLoading === "function") {
+        window.showMarketPulseLoading(payload.title, payload.detail);
+      } else {
+        sessionStorage.setItem(
+          FLAG_KEY,
+          JSON.stringify({ ...payload, ts: Date.now() })
+        );
+      }
+    }, true);
+
     const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     if(!token || typeof window.fetch !== "function") return;
     const unsafe = new Set(["POST","PUT","PATCH","DELETE"]);
@@ -630,36 +757,10 @@ document.addEventListener('keydown', (e) => {
     window.openDrawer = openDrawer;
     window.closeDrawer = closeDrawer;
 
-    function showMarketPulseNavLoading(){
-      const overlay = document.getElementById("marketPulseNavLoading");
-      if(!overlay) return;
-      overlay.classList.add("show");
-      overlay.setAttribute("aria-hidden", "false");
-    }
-    window.showMarketPulseNavLoading = showMarketPulseNavLoading;
-
     document.addEventListener('click', (e)=>{
       const link = e.target.closest && e.target.closest('#drawer a');
       if(link) closeDrawer();
     });
-    document.addEventListener("click", (e)=>{
-      if(e.defaultPrevented || e.button !== 0) return;
-      if(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      const link = e.target.closest && e.target.closest("a[href]");
-      if(!link || link.target === "_blank") return;
-      const rawHref = link.getAttribute("href") || "";
-      if(!rawHref || rawHref.startsWith("#")) return;
-      let url = null;
-      try{
-        url = new URL(link.href, window.location.origin);
-      }catch(_err){
-        return;
-      }
-      if(url.origin !== window.location.origin) return;
-      if(url.pathname !== "/market-pulse") return;
-      showMarketPulseNavLoading();
-    });
-
 
     function updateETClock(){
       try{

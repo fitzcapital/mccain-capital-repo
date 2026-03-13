@@ -1,6 +1,8 @@
 {% from "partials/async_job_macros.html" import runway %}
 {% set ws = workspace or 'live' %}
 {% set last = sync_status or {} %}
+{% set workspace_title = 'Live Sync Lane' if ws == 'live' else 'Upload Lane' if ws == 'upload' else 'Reconcile Lane' %}
+{% set workspace_lead = 'Run broker login sync first, then use diagnostics and reliability trends to keep the import system healthy.' if ws == 'live' else 'Manual statement upload is the fastest recovery lane when you already have the file in hand.' if ws == 'upload' else 'Audit import batches before they distort balances, analytics, or review coverage.' %}
 {% if sync_badges %}
 <div class="statusBadgeStrip">
   {% for badge in sync_badges %}
@@ -11,529 +13,595 @@
   {% endfor %}
 </div>
 {% endif %}
-<div class="card stack12">
+
+<div class="card pageHero workspaceHero">
   <div class="toolbar">
-    <div class="pillRow">
-      <div class="pill">🧭 Import Workspace</div>
-      <details class="inlineHelp">
-        <summary aria-label="Import workspace help">?</summary>
-        <div class="helpPopover">Focused tabs keep live sync, manual upload, and reconcile tools together without stacking all of the copy on mobile.</div>
-      </details>
-    </div>
-    <div class="hr"></div>
-    <div class="leftActions">
-      <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">Live Sync</a>
-      <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">Upload</a>
-      <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">Reconcile</a>
-      <a class="btn" href="/ops/alerts">Ops Alerts</a>
+    <div class="pageHeroHead workspaceHeroHead">
+      <div>
+        <div class="pill">🧭 Import Workspace</div>
+        <div class="pageTitleRow">
+          <h2 class="pageTitle">{{ workspace_title }}</h2>
+          <details class="inlineHelp">
+            <summary aria-label="Import workspace help">?</summary>
+            <div class="helpPopover">Focused lanes keep live sync, manual upload, and reconcile tools together without forcing every workflow onto the same screen.</div>
+          </details>
+        </div>
+        <div class="dashboardLead stack8">{{ workspace_lead }}</div>
+        <div class="workspaceHeroMetaRow">
+          <span class="trendChip">{{ ws|replace('_', ' ')|title }}</span>
+          {% if ws == 'live' %}
+            <span class="trendChip {% if (last.get('status') or '')|lower == 'failed' %}negative{% elif (last.get('status') or '')|lower == 'success' %}positive{% endif %}">
+              Last {{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}
+            </span>
+            <span class="trendChip">{{ last.get('updated_at_human') or last.get('updated_at') or 'No recent run' }}</span>
+          {% elif ws == 'upload' %}
+            <span class="trendChip">Manual file import</span>
+            <span class="trendChip">HTML preferred</span>
+          {% else %}
+            <span class="trendChip">Batch audit</span>
+            <span class="trendChip">Rollback ready</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="actionRow workspaceHeroActions">
+        <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">Live Sync</a>
+        <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">Upload</a>
+        <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">Reconcile</a>
+        <a class="btn" href="/ops/alerts">Ops Alerts</a>
+      </div>
     </div>
   </div>
 </div>
 
 {% if ws == 'upload' %}
-<div class="card">
-  <div class="toolbar">
-    <div class="pill">Upload Statement</div>
-    <div class="hr"></div>
-    <form method="post" enctype="multipart/form-data" id="statement-upload-form">
-      <div class="row">
-        <div>
-          <label>Mode</label>
-          <select name="mode">
-            <option value="broker">🏦 Broker fills → trades</option>
-            <option value="balance">🏁 Statement → ending balance snapshot</option>
-          </select>
-        </div>
-      </div>
+<div class="workspaceShell">
+  <div class="workspacePrimary">
+    <div class="card">
+      <div class="toolbar">
+        <div class="pill">Upload Statement</div>
+        <div class="workspaceSectionLead">Drop in a statement when you want the shortest path from file to imported trades.</div>
+        <div class="hr"></div>
+        <form method="post" enctype="multipart/form-data" id="statement-upload-form">
+          <div class="row">
+            <div>
+              <label>Mode</label>
+              <select name="mode">
+                <option value="broker">🏦 Broker fills → trades</option>
+                <option value="balance">🏁 Statement → ending balance snapshot</option>
+              </select>
+            </div>
+          </div>
 
-      <div class="stack12">
-        <div class="pillRow">
-          <label>File</label>
-          <details class="inlineHelp">
-            <summary aria-label="Upload file help">?</summary>
-            <div class="helpPopover">HTML statements are cleaner than OCR and should be preferred when available.</div>
-          </details>
-        </div>
-        <input type="file" name="pdf" accept="application/pdf,text/html" />
-      </div>
+          <div class="stack12">
+            <div class="pillRow">
+              <label>File</label>
+              <details class="inlineHelp">
+                <summary aria-label="Upload file help">?</summary>
+                <div class="helpPopover">HTML statements are cleaner than OCR and should be preferred when available.</div>
+              </details>
+            </div>
+            <input type="file" name="pdf" accept="application/pdf,text/html" />
+          </div>
 
-      <div class="hr"></div>
-      <div class="rightActions">
-        <button class="btn primary" type="submit" id="statement-upload-submit">🚀 Process</button>
-        <a class="btn" href="/trades">← Back</a>
+          <div class="hr"></div>
+          <div class="rightActions">
+            <button class="btn primary" type="submit" id="statement-upload-submit">🚀 Process</button>
+            <a class="btn" href="/trades">← Back</a>
+          </div>
+          <div class="tiny stack10" id="statement-upload-loading" style="display:none;" aria-live="polite">
+            ⏳ Processing upload. Parsing statement and importing trades...
+          </div>
+        </form>
       </div>
-      <div class="tiny stack10" id="statement-upload-loading" style="display:none;" aria-live="polite">
-        ⏳ Processing upload. Parsing statement and importing trades...
-      </div>
-    </form>
+    </div>
   </div>
+  <aside class="workspaceSecondary">
+    <div class="card supportCard">
+      <div class="toolbar">
+        <div class="pill">Best Input</div>
+        <div class="supportLead">Use exported HTML when the broker gives it to you.</div>
+        <div class="supportBody">Manual upload is your clean recovery lane after a failed live sync, a browser issue, or an out-of-band statement export.</div>
+      </div>
+    </div>
+    <div class="card supportCard subtleCard">
+      <div class="toolbar">
+        <div class="pill">Next Move</div>
+        <div class="supportLead">After import, validate the batch before trusting the numbers.</div>
+        <div class="rightActions stack8">
+          <a class="btn primary" href="/trades/upload/statement?ws=reconcile">Open Reconcile</a>
+          <a class="btn ctaLink" href="/analytics?tab=diagnostics">Open Diagnostics</a>
+        </div>
+      </div>
+    </div>
+  </aside>
 </div>
 {% endif %}
 
 {% if ws == 'live' %}
 {% set job = sync_job or {} %}
-{% if job %}
-<div class="card stack12" id="sync-job-card" data-job-id="{{ job.get('id') }}">
-  <div class="toolbar">
-    <div class="pill">Sync Job Status</div>
-    <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
-    {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
-    <div class="statRow">
-      <div class="stat">
-        <div class="k">Status</div>
-        <div class="v" id="sync-job-status">{{ (job.get('status') or 'queued')|replace('_', ' ')|title }}</div>
-      </div>
-      <div class="stat">
-        <div class="k">Stage</div>
-        <div class="v" id="sync-job-stage">{{ (job.get('stage') or 'start')|replace('_', ' ')|title }}</div>
-      </div>
-      <div class="stat">
-        <div class="k">Duration</div>
-        <div class="v" id="sync-job-duration">{% if job.get('duration_sec') is not none %}{{ '%.1f'|format(job.get('duration_sec')) }}s{% else %}—{% endif %}</div>
-      </div>
-      <div class="stat">
-        <div class="k">Inserted</div>
-        <div class="v" id="sync-job-inserted">{{ ((job.get('summary') or {}).get('inserted')) or 0 }}</div>
+{% set rel = sync_reliability or {} %}
+{% set auto = auto_sync_cfg or {} %}
+<div class="workspaceShell">
+  <div class="workspacePrimary">
+    {% if job %}
+    <div class="card stack12" id="sync-job-card" data-job-id="{{ job.get('id') }}">
+      <div class="toolbar">
+        <div class="pill">Sync Job Status</div>
+        <div class="workspaceSectionLead">Current run progress and artifacts stay here so the primary lane always answers “what is happening now?”</div>
+        <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
+        {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
+        <div class="statRow">
+          <div class="stat">
+            <div class="k">Status</div>
+            <div class="v" id="sync-job-status">{{ (job.get('status') or 'queued')|replace('_', ' ')|title }}</div>
+          </div>
+          <div class="stat">
+            <div class="k">Stage</div>
+            <div class="v" id="sync-job-stage">{{ (job.get('stage') or 'start')|replace('_', ' ')|title }}</div>
+          </div>
+          <div class="stat">
+            <div class="k">Duration</div>
+            <div class="v" id="sync-job-duration">{% if job.get('duration_sec') is not none %}{{ '%.1f'|format(job.get('duration_sec')) }}s{% else %}—{% endif %}</div>
+          </div>
+          <div class="stat">
+            <div class="k">Inserted</div>
+            <div class="v" id="sync-job-inserted">{{ ((job.get('summary') or {}).get('inserted')) or 0 }}</div>
+          </div>
+        </div>
+        <div class="tiny stack8 line16" id="sync-job-summary">
+          {% set summary = job.get('summary') or {} %}
+          {% if summary %}
+          Result: {{ summary.get('message') or job.get('message') or 'In progress.' }}
+          {% if summary.get('warn_count') %} · Warnings: {{ summary.get('warn_count') }}{% endif %}
+          {% if summary.get('error_count') %} · Errors: {{ summary.get('error_count') }}{% endif %}
+          {% endif %}
+        </div>
+        <div class="stack10" id="sync-job-artifacts">
+          {% for rel_path in (summary.get('artifacts_rel') or [])[:6] %}
+          <div><a class="btn" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">{{ rel_path }}</a></div>
+          {% endfor %}
+        </div>
+        <div id="sync-job-result-html">
+          {{ job.get('result_html', '')|safe }}
+        </div>
       </div>
     </div>
-    <div class="tiny stack8 line16" id="sync-job-summary">
-      {% set summary = job.get('summary') or {} %}
-      {% if summary %}
-      Result: {{ summary.get('message') or job.get('message') or 'In progress.' }}
-      {% if summary.get('warn_count') %} · Warnings: {{ summary.get('warn_count') }}{% endif %}
-      {% if summary.get('error_count') %} · Errors: {{ summary.get('error_count') }}{% endif %}
-      {% endif %}
-    </div>
-    <div class="stack10" id="sync-job-artifacts">
-      {% for rel in (summary.get('artifacts_rel') or [])[:6] %}
-      <div><a class="btn" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">{{ rel }}</a></div>
-      {% endfor %}
-    </div>
-    <div id="sync-job-result-html">
-      {{ job.get('result_html', '')|safe }}
+    {% endif %}
+
+    <div class="card stack12">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Live Login Sync</div>
+          <details class="inlineHelp">
+            <summary aria-label="Live login sync help">?</summary>
+            <div class="helpPopover">Logs into Vanquish, opens the statement flow, generates the statement, and imports the HTML output.</div>
+          </details>
+        </div>
+        <div class="workspaceSectionLead">Primary lane: log in, generate the statement, and import without leaving this screen.</div>
+        <div class="hr"></div>
+        <form method="post" action="/trades/sync/live" id="live-sync-form">
+          <div class="row">
+            <div>
+              <label>Mode</label>
+              <select name="mode">
+                <option value="broker">🏦 Broker fills → trades</option>
+                <option value="balance">🏁 Statement → ending balance snapshot</option>
+              </select>
+            </div>
+            <div>
+              <label>From</label>
+              <input class="appDateInput" type="date" name="from_date" value="{{ default_day }}" />
+            </div>
+            <div>
+              <label>To</label>
+              <input class="appDateInput" type="date" name="to_date" value="{{ default_day }}" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="fieldGrow2">
+              <label>Username</label>
+              <input name="username" placeholder="Vanquish username/email" />
+            </div>
+            <div class="fieldGrow2">
+              <label>Password</label>
+              <input type="password" name="password" placeholder="Vanquish password" />
+            </div>
+          </div>
+          <details class="syncDetails stack10">
+            <summary>⚙️ Advanced Sync Options</summary>
+            <div class="stack10">
+              <div class="row">
+                <div class="fieldGrow2">
+                  <label>Base Origin</label>
+                  <input name="base_url" value="{{ broker_cfg.base_url }}" />
+                </div>
+                <div class="fieldGrow2">
+                  <label>Account</label>
+                  <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <label>Whitelist</label>
+                  <input name="wl" value="{{ broker_cfg.wl }}" />
+                </div>
+                <div>
+                  <label>Timezone</label>
+                  <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
+                </div>
+                <div>
+                  <label>Date Locale</label>
+                  <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
+                </div>
+                <div>
+                  <label>Report Locale</label>
+                  <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="stack12">
+                  <label>Browser Mode</label>
+                  <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
+                </div>
+                <div class="stack12">
+                  <label>Diagnostics</label>
+                  <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
+                  <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
+                </div>
+                <div class="stack12">
+                  <label>Config</label>
+                  <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="hr"></div>
+          <div class="rightActions">
+            <button class="btn primary" type="submit" id="live-sync-submit">Run Live Sync</button>
+            <a class="btn" href="/trades/upload/statement">Reset</a>
+          </div>
+          <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">
+            ⏳ Live sync in progress. Logging in, generating statement, and importing. This can take 20-60 seconds.
+          </div>
+          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge='Live', label='Opening broker session...', label_id='live-sync-stage-label') }}
+        </form>
+      </div>
     </div>
   </div>
-</div>
-{% endif %}
-{% if last %}
-<div class="card stack12">
-  <div class="toolbar">
-    <div class="pillRow">
-      <div class="pill">Live Sync Diagnostics</div>
-      <details class="inlineHelp">
-        <summary aria-label="Live sync diagnostics help">?</summary>
-        <div class="helpPopover">Shows the last run status, failure stage, and quick retry controls.</div>
-      </details>
-    </div>
-    <div class="hr"></div>
-    <div class="statRow">
-      <div class="stat">
-        <div class="k">Status</div>
-        <div class="v">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}</div>
-        <div class="tiny">Updated: {{ last.get('updated_at_human') or last.get('updated_at') or '—' }}</div>
+
+  <aside class="workspaceSecondary">
+    {% if last %}
+    <div class="card stack12">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Live Sync Diagnostics</div>
+          <details class="inlineHelp">
+            <summary aria-label="Live sync diagnostics help">?</summary>
+            <div class="helpPopover">Shows the last run status, failure stage, and quick retry controls.</div>
+          </details>
+        </div>
+        <div class="workspaceSectionLead">Support lane: confirm the last run state before retrying or changing automation.</div>
+        <div class="hr"></div>
+        <div class="statRow">
+          <div class="stat">
+            <div class="k">Status</div>
+            <div class="v">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}</div>
+            <div class="tiny">Updated: {{ last.get('updated_at_human') or last.get('updated_at') or '—' }}</div>
+          </div>
+          <div class="stat">
+            <div class="k">{% if (last.get('status') or '')|lower == 'failed' %}Failure Stage{% else %}Stage{% endif %}</div>
+            <div class="v syncStageCode">{{ (last.get('stage') or '—')|replace('_', ' ')|title }}</div>
+            {% if last.get('stage_help') %}
+              <div class="tiny">{{ last.get('stage_help') }}</div>
+            {% endif %}
+          </div>
+          <div class="stat">
+            <div class="k">Message</div>
+            <div class="tiny line16 syncMessageClamp" title="{{ last.get('message') or 'No message' }}">{{ last.get('message') or 'No message' }}</div>
+          </div>
+        </div>
+        {% if last.get('artifacts_rel') %}
+          <div class="hr"></div>
+          <details class="syncDetails">
+            <summary>Debug Artifacts ({{ last.get('artifacts_rel')|length }})</summary>
+            <div class="syncArtifactList stack10">
+              {% for rel_path in last.get('artifacts_rel')[:8] %}
+                {% set label = rel_path.rsplit('/', 1)[-1] if '/' in rel_path else rel_path %}
+                <div class="syncArtifactRow">
+                  <span class="syncArtifactName" title="{{ rel_path }}">{{ label }}</span>
+                  <a class="btn btnCompact" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">Open</a>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+        <div class="hr"></div>
+        <div class="rightActions">
+          <button class="btn" type="button" id="quick-retry-btn">Quick Retry</button>
+          <a class="btn" href="/trades/upload/statement">Reset</a>
+          <details class="inlineHelp">
+            <summary aria-label="Quick retry help">?</summary>
+            <div class="helpPopover">Quick retry reuses the last sync settings and moves focus to the password field.</div>
+          </details>
+        </div>
+        <div class="tiny stack8" id="quick-retry-note" aria-live="polite"></div>
       </div>
-      <div class="stat">
-        <div class="k">{% if (last.get('status') or '')|lower == 'failed' %}Failure Stage{% else %}Stage{% endif %}</div>
-        <div class="v syncStageCode">{{ (last.get('stage') or '—')|replace('_', ' ')|title }}</div>
-        {% if last.get('stage_help') %}
-          <div class="tiny">{{ last.get('stage_help') }}</div>
+    </div>
+    {% endif %}
+
+    <div class="card stack12">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Sync Reliability (30D)</div>
+          <details class="inlineHelp">
+            <summary aria-label="Sync reliability help">?</summary>
+            <div class="helpPopover">Tracks success rate, runtime, and failure-stage trends for live and auto sync runs.</div>
+          </details>
+        </div>
+        <div class="workspaceSectionLead">Reliability should tell you whether the system is healthy without opening logs.</div>
+        <div class="hr"></div>
+        <div class="statRow">
+          <div class="stat">
+            <div class="k">Attempts</div>
+            <div class="v">{{ rel.get('attempts', 0) }}</div>
+          </div>
+          <div class="stat">
+            <div class="k">Success Rate</div>
+            <div class="v">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}%</div>
+          </div>
+          <div class="stat">
+            <div class="k">Success / Failed</div>
+            <div class="v">{{ rel.get('success', 0) }} / {{ rel.get('failed', 0) }}</div>
+          </div>
+          <div class="stat">
+            <div class="k">Avg Runtime</div>
+            <div class="v">
+              {% if rel.get('avg_duration_sec') is not none %}
+                {{ '%.1f'|format(rel.get('avg_duration_sec')) }}s
+              {% else %}
+                —
+              {% endif %}
+            </div>
+          </div>
+          <div class="stat">
+            <div class="k">Top Failure Stage</div>
+            <div class="v syncStageCode">
+              {% if rel.get('top_failure_stage') %}
+                {{ rel.get('top_failure_stage')|replace('_', ' ')|title }}{% if rel.get('top_failure_count') %} ({{ rel.get('top_failure_count') }}){% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% if rel.get('by_source') %}
+          <div class="hr"></div>
+          <details class="syncDetails">
+            <summary>Source Mix</summary>
+            <div class="tiny stack8 line16">
+              {% for src, bucket in rel.get('by_source', {}).items() %}
+                • {{ src }}: {{ bucket.get('success', 0) }}/{{ bucket.get('attempts', 0) }} success<br>
+              {% endfor %}
+            </div>
+          </details>
+        {% endif %}
+        {% if rel.get('recent') %}
+          <div class="hr"></div>
+          <details class="syncDetails">
+            <summary>🕓 Recent Runs ({{ rel.get('recent')|length }})</summary>
+            <table>
+              <thead><tr><th>Time</th><th>Source</th><th>Status</th><th>Stage</th><th>Runtime</th></tr></thead>
+              <tbody>
+              {% for r in rel.get('recent', []) %}
+                <tr>
+                  <td>{{ r.get('updated_at', '—') }}</td>
+                  <td>{{ r.get('source', '—') }}</td>
+                  <td>{{ (r.get('status') or '—')|upper }}</td>
+                  <td>{{ r.get('stage', '—') }}</td>
+                  <td>{% if r.get('duration_sec') is not none %}{{ '%.1f'|format(r.get('duration_sec')) }}s{% else %}—{% endif %}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </details>
         {% endif %}
       </div>
-      <div class="stat">
-        <div class="k">Message</div>
-        <div class="tiny line16 syncMessageClamp" title="{{ last.get('message') or 'No message' }}">{{ last.get('message') or 'No message' }}</div>
-      </div>
     </div>
-    {% if last.get('artifacts_rel') %}
-      <div class="hr"></div>
-      <details class="syncDetails">
-        <summary>Debug Artifacts ({{ last.get('artifacts_rel')|length }})</summary>
-        <div class="syncArtifactList stack10">
-          {% for rel in last.get('artifacts_rel')[:8] %}
-            {% set label = rel.rsplit('/', 1)[-1] if '/' in rel else rel %}
-            <div class="syncArtifactRow">
-              <span class="syncArtifactName" title="{{ rel }}">{{ label }}</span>
-              <a class="btn btnCompact" href="/trades/sync/debug/{{ rel }}" target="_blank" rel="noopener">Open</a>
-            </div>
-          {% endfor %}
-        </div>
-      </details>
-    {% endif %}
-    <div class="hr"></div>
-    <div class="rightActions">
-      <button class="btn" type="button" id="quick-retry-btn">Quick Retry</button>
-      <a class="btn" href="/trades/upload/statement">Reset</a>
-      <details class="inlineHelp">
-        <summary aria-label="Quick retry help">?</summary>
-        <div class="helpPopover">Quick retry reuses the last sync settings and moves focus to the password field.</div>
-      </details>
-    </div>
-  </div>
-</div>
-{% endif %}
-{% endif %}
 
-{% if ws == 'live' %}
-{% set rel = sync_reliability or {} %}
-<div class="card stack12">
-  <div class="toolbar">
-    <div class="pillRow">
-      <div class="pill">Sync Reliability (30D)</div>
-      <details class="inlineHelp">
-        <summary aria-label="Sync reliability help">?</summary>
-        <div class="helpPopover">Tracks success rate, runtime, and failure-stage trends for live and auto sync runs.</div>
-      </details>
+    <div class="card stack12">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">After-Market Auto Sync</div>
+          <details class="inlineHelp">
+            <summary aria-label="Auto sync help">?</summary>
+            <div class="helpPopover">Set a daily sync time so the statement import can run automatically after the market closes.</div>
+          </details>
+        </div>
+        <div class="workspaceSectionLead">Automation belongs in the support lane so manual sync stays the primary action and scheduled sync stays easy to verify.</div>
+        <div class="hr"></div>
+        <form method="post" action="/trades/sync/auto/config" id="auto-sync-config-form">
+          <div class="row">
+            <div class="stack10">
+              <label><input type="checkbox" name="auto_enabled" value="1" {% if auto.get('enabled') %}checked{% endif %} /> Enable daily auto sync</label>
+            </div>
+            <div>
+              <label>Run Time (ET)</label>
+              <input type="time" name="auto_run_time_et" value="{{ auto.get('run_time_et', '16:15') }}" />
+            </div>
+            <div class="stack10">
+              <label><input type="checkbox" name="auto_run_weekends" value="1" {% if auto.get('run_weekends') %}checked{% endif %} /> Run on weekends</label>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Mode</label>
+              <select name="auto_mode">
+                <option value="broker" {% if auto.get('mode') == 'broker' %}selected{% endif %}>🏦 Broker fills → trades</option>
+                <option value="balance" {% if auto.get('mode') == 'balance' %}selected{% endif %}>🏁 Statement → ending balance snapshot</option>
+              </select>
+            </div>
+            <div class="fieldGrow2">
+              <label>Username</label>
+              <input name="auto_username" value="{{ auto.get('username', '') }}" placeholder="Vanquish username/email" />
+            </div>
+            <div class="fieldGrow2">
+              <label>Password ({% if auto_sync_password_fallback %}Keychain or container fallback{% else %}OS keychain{% endif %})</label>
+              <input type="password" name="auto_password" placeholder="Set/replace password (leave blank to keep current)" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="stack10">
+              <label><input type="checkbox" name="auto_clear_password" value="1" /> Clear stored keychain password</label>
+            </div>
+            <div class="tiny stack10 line16" id="auto-sync-credential-status">
+              {% if auto.get('password_stored') %}
+              Credential status: <b>ready</b> for scheduled runs.
+              {% else %}
+              Credential status: <b>setup needed</b>. Run Now uses saved credentials only. Click Save Auto Sync first.
+              {% endif %}
+            </div>
+          </div>
+          <details class="syncDetails stack10">
+            <summary>⚙️ Connection Settings</summary>
+            <div class="stack10">
+              <div class="tiny stack8 line15">
+                Keychain: {% if auto.get('keyring_available') %}<b>available</b>{% else %}<b>not available</b>{% endif %}
+                · Password: {% if auto.get('password_stored') %}<b>stored</b>{% else %}<b>not stored</b>{% endif %}
+                {% if auto_sync_password_fallback %}
+                · Storage: <b>keychain with container fallback enabled</b>
+                {% else %}
+                · Storage: <b>keychain only</b>
+                {% endif %}
+              </div>
+              <div class="row">
+                <div class="fieldGrow2">
+                  <label>Base Origin</label>
+                  <input name="auto_base_url" value="{{ auto.get('base_url', broker_cfg.base_url) }}" />
+                </div>
+                <div class="fieldGrow2">
+                  <label>Account</label>
+                  <input name="auto_account" value="{{ auto.get('account', broker_cfg.account) }}" placeholder="default:OEXXXXXXXX" />
+                </div>
+              </div>
+              <div class="row">
+                <div><label>Whitelist</label><input name="auto_wl" value="{{ auto.get('wl', broker_cfg.wl) }}" /></div>
+                <div><label>Timezone</label><input name="auto_time_zone" value="{{ auto.get('time_zone', broker_cfg.time_zone) }}" /></div>
+                <div><label>Date Locale</label><input name="auto_date_locale" value="{{ auto.get('date_locale', broker_cfg.date_locale) }}" /></div>
+                <div><label>Report Locale</label><input name="auto_report_locale" value="{{ auto.get('report_locale', broker_cfg.report_locale) }}" /></div>
+              </div>
+              <div class="row">
+                <div class="stack10">
+                  <label><input type="checkbox" name="auto_headless" value="1" {% if auto.get('headless', true) %}checked{% endif %} /> Headless browser</label>
+                </div>
+                <div class="stack10">
+                  <label><input type="checkbox" name="auto_debug_capture" value="1" {% if auto.get('debug_capture', true) %}checked{% endif %} /> Save debug artifacts</label>
+                </div>
+              </div>
+            </div>
+          </details>
+          <div class="hr"></div>
+          <div class="rightActions">
+            <button class="btn primary" type="submit" id="auto-sync-config-submit">Save Auto Sync</button>
+            <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if not auto.get('password_stored') %}disabled title="Save Auto Sync first so credentials are stored"{% endif %}>Run Now</button>
+            <details class="inlineHelp">
+              <summary aria-label="Auto sync security help">?</summary>
+              <div class="helpPopover">
+                {% if auto_sync_password_fallback %}
+                Auto sync prefers OS keychain; if unavailable, the password is stored encrypted in container config.
+                {% else %}
+                Auto sync stores the password in the OS keychain, not in app config files.
+                {% endif %}
+              </div>
+            </details>
+          </div>
+          <div class="tiny stack8" id="auto-sync-config-loading" style="display:none;" aria-live="polite">
+            ⏳ Saving auto sync settings...
+          </div>
+          <div class="tiny stack8" id="auto-sync-run-loading" style="display:none;" aria-live="polite">
+            ⏳ Running auto sync now (login + generate + import)...
+          </div>
+          {{ runway('auto-sync-runway', ['Load credentials', 'Login', 'Generate', 'Import'], badge='Running', label='Preparing sync run...', label_id='auto-sync-stage-label') }}
+        </form>
+        <form method="post" action="/trades/sync/auto/run" id="auto-sync-run-form"></form>
+      </div>
     </div>
-    <div class="hr"></div>
-    <div class="statRow">
-      <div class="stat">
-        <div class="k">Attempts</div>
-        <div class="v">{{ rel.get('attempts', 0) }}</div>
-      </div>
-      <div class="stat">
-        <div class="k">Success Rate</div>
-        <div class="v">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}%</div>
-      </div>
-      <div class="stat">
-        <div class="k">Success / Failed</div>
-        <div class="v">{{ rel.get('success', 0) }} / {{ rel.get('failed', 0) }}</div>
-      </div>
-      <div class="stat">
-        <div class="k">Avg Runtime</div>
-        <div class="v">
-          {% if rel.get('avg_duration_sec') is not none %}
-            {{ '%.1f'|format(rel.get('avg_duration_sec')) }}s
-          {% else %}
-            —
-          {% endif %}
-        </div>
-      </div>
-      <div class="stat">
-        <div class="k">Top Failure Stage</div>
-        <div class="v syncStageCode">
-          {% if rel.get('top_failure_stage') %}
-            {{ rel.get('top_failure_stage')|replace('_', ' ')|title }}{% if rel.get('top_failure_count') %} ({{ rel.get('top_failure_count') }}){% endif %}
-          {% else %}
-            —
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    {% if rel.get('by_source') %}
-      <div class="hr"></div>
-      <details class="syncDetails">
-        <summary>Source Mix</summary>
-        <div class="tiny stack8 line16">
-          {% for src, bucket in rel.get('by_source', {}).items() %}
-            • {{ src }}: {{ bucket.get('success', 0) }}/{{ bucket.get('attempts', 0) }} success<br>
-          {% endfor %}
-        </div>
-      </details>
-    {% endif %}
-    {% if rel.get('recent') %}
-      <div class="hr"></div>
-      <details class="syncDetails">
-        <summary>🕓 Recent Runs ({{ rel.get('recent')|length }})</summary>
-        <table>
-          <thead><tr><th>Time</th><th>Source</th><th>Status</th><th>Stage</th><th>Runtime</th></tr></thead>
-          <tbody>
-          {% for r in rel.get('recent', []) %}
-            <tr>
-              <td>{{ r.get('updated_at', '—') }}</td>
-              <td>{{ r.get('source', '—') }}</td>
-              <td>{{ (r.get('status') or '—')|upper }}</td>
-              <td>{{ r.get('stage', '—') }}</td>
-              <td>{% if r.get('duration_sec') is not none %}{{ '%.1f'|format(r.get('duration_sec')) }}s{% else %}—{% endif %}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </details>
-    {% endif %}
-  </div>
+  </aside>
 </div>
 {% endif %}
 
 {% if ws == 'reconcile' %}
 {% set rec = reconcile_summary or {} %}
-<div class="card stack12">
-  <div class="toolbar">
-    <div class="pillRow">
-      <div class="pill">Reconcile Import Batches (30D)</div>
-      <details class="inlineHelp">
-        <summary aria-label="Reconcile batches help">?</summary>
-        <div class="helpPopover">Use this view to catch dirty imports before they distort analytics, balances, or review coverage.</div>
-      </details>
-    </div>
-    <div class="hr"></div>
-    <div class="statRow">
-      <div class="stat"><div class="k">Batches</div><div class="v">{{ rec.get('batches', 0) }}</div></div>
-      <div class="stat"><div class="k">Trades Inserted</div><div class="v">{{ rec.get('inserted', 0) }}</div></div>
-      <div class="stat"><div class="k">Unresolved Batches</div><div class="v">{{ rec.get('unresolved', 0) }}</div></div>
-      <div class="stat"><div class="k">Clean Rate</div><div class="v">{{ '%.1f'|format(rec.get('clean_rate', 0.0)) }}%</div></div>
-    </div>
-    <div class="hr"></div>
-    <table>
-      <thead>
-        <tr><th>Time</th><th>Batch</th><th>Source</th><th>Status</th><th>Inserted</th><th>Open</th><th>Err/Warn</th><th>Delta</th><th>Action</th></tr>
-      </thead>
-      <tbody>
-      {% for b in import_history or [] %}
-        <tr>
-          <td>{{ b.get('updated_at', '—') }}</td>
-          <td><code>{{ b.get('batch_id') or '—' }}</code></td>
-          <td>{{ b.get('source', '—') }}</td>
-          <td>{{ (b.get('status') or '—')|upper }}</td>
-          <td>{{ b.get('inserted_trades', 0) }}</td>
-          <td>{{ b.get('open_contracts', 0) }}</td>
-          <td>{{ b.get('errors_count', 0) }}/{{ b.get('warnings_count', 0) }}</td>
-          <td>{% if b.get('balance_delta') is not none %}{{ money(b.get('balance_delta')) }}{% else %}—{% endif %}</td>
-          <td>
-            {% if b.get('rolled_back') %}
-              <span class="tiny">Rolled back</span>
-            {% elif auth_enabled and authenticated and b.get('batch_id') and b.get('inserted_trades', 0) > 0 %}
-              <form method="post" action="/trades/import/rollback" onsubmit="return confirm('Rollback batch {{ b.get('batch_id') }}? This deletes imported trades and recomputes balances.');" style="display:inline">
-                <input type="hidden" name="batch_id" value="{{ b.get('batch_id') }}" />
-                <button class="btn" type="submit" title="Rollback batch">↩</button>
-              </form>
-            {% else %}
-              <span class="tiny">—</span>
-            {% endif %}
-          </td>
-        </tr>
-      {% else %}
-        <tr><td colspan="9">
-          <div class="emptyState">
-            <div class="emptyStateTitle">No import history yet.</div>
-            <div class="emptyStateBody">Next best action: run one statement import, then review batch quality here before relying on analytics.</div>
-          </div>
-        </td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
-
-{% if ws == 'live' %}
-{% set auto = auto_sync_cfg or {} %}
-<div class="card stack12">
-  <div class="toolbar">
-    <div class="pillRow">
-      <div class="pill">After-Market Auto Sync</div>
-      <details class="inlineHelp">
-        <summary aria-label="Auto sync help">?</summary>
-        <div class="helpPopover">Set a daily sync time so the statement import can run automatically after the market closes.</div>
-      </details>
-    </div>
-    <div class="hr"></div>
-    <form method="post" action="/trades/sync/auto/config" id="auto-sync-config-form">
-      <div class="row">
-        <div class="stack10">
-          <label><input type="checkbox" name="auto_enabled" value="1" {% if auto.get('enabled') %}checked{% endif %} /> Enable daily auto sync</label>
+<div class="workspaceShell workspaceShellSingle">
+  <div class="workspacePrimary">
+    <div class="card stack12">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Reconcile Import Batches (30D)</div>
+          <details class="inlineHelp">
+            <summary aria-label="Reconcile batches help">?</summary>
+            <div class="helpPopover">Use this view to catch dirty imports before they distort analytics, balances, or review coverage.</div>
+          </details>
         </div>
-        <div>
-          <label>Run Time (ET)</label>
-          <input type="time" name="auto_run_time_et" value="{{ auto.get('run_time_et', '16:15') }}" />
+        <div class="workspaceSectionLead">Audit the last 30 days of imports, then roll back anything that should not survive into analytics.</div>
+        <div class="hr"></div>
+        <div class="statRow">
+          <div class="stat"><div class="k">Batches</div><div class="v">{{ rec.get('batches', 0) }}</div></div>
+          <div class="stat"><div class="k">Trades Inserted</div><div class="v">{{ rec.get('inserted', 0) }}</div></div>
+          <div class="stat"><div class="k">Unresolved Batches</div><div class="v">{{ rec.get('unresolved', 0) }}</div></div>
+          <div class="stat"><div class="k">Clean Rate</div><div class="v">{{ '%.1f'|format(rec.get('clean_rate', 0.0)) }}%</div></div>
         </div>
-        <div class="stack10">
-          <label><input type="checkbox" name="auto_run_weekends" value="1" {% if auto.get('run_weekends') %}checked{% endif %} /> Run on weekends</label>
-        </div>
-      </div>
-      <div class="row">
-        <div>
-          <label>Mode</label>
-          <select name="auto_mode">
-            <option value="broker" {% if auto.get('mode') == 'broker' %}selected{% endif %}>🏦 Broker fills → trades</option>
-            <option value="balance" {% if auto.get('mode') == 'balance' %}selected{% endif %}>🏁 Statement → ending balance snapshot</option>
-          </select>
-        </div>
-        <div class="fieldGrow2">
-          <label>Username</label>
-          <input name="auto_username" value="{{ auto.get('username', '') }}" placeholder="Vanquish username/email" />
-        </div>
-        <div class="fieldGrow2">
-          <label>Password ({% if auto_sync_password_fallback %}Keychain or container fallback{% else %}OS keychain{% endif %})</label>
-          <input type="password" name="auto_password" placeholder="Set/replace password (leave blank to keep current)" />
-        </div>
-      </div>
-      <div class="row">
-        <div class="stack10">
-          <label><input type="checkbox" name="auto_clear_password" value="1" /> Clear stored keychain password</label>
-        </div>
-        <div class="tiny stack10 line16" id="auto-sync-credential-status">
-          {% if auto.get('password_stored') %}
-          Credential status: <b>ready</b> for scheduled runs.
+        <div class="hr"></div>
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Batch</th><th>Source</th><th>Status</th><th>Inserted</th><th>Open</th><th>Err/Warn</th><th>Delta</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+          {% for b in import_history or [] %}
+            <tr>
+              <td>{{ b.get('updated_at', '—') }}</td>
+              <td><code>{{ b.get('batch_id') or '—' }}</code></td>
+              <td>{{ b.get('source', '—') }}</td>
+              <td>{{ (b.get('status') or '—')|upper }}</td>
+              <td>{{ b.get('inserted_trades', 0) }}</td>
+              <td>{{ b.get('open_contracts', 0) }}</td>
+              <td>{{ b.get('errors_count', 0) }}/{{ b.get('warnings_count', 0) }}</td>
+              <td>{% if b.get('balance_delta') is not none %}{{ money(b.get('balance_delta')) }}{% else %}—{% endif %}</td>
+              <td>
+                {% if b.get('rolled_back') %}
+                  <span class="tiny">Rolled back</span>
+                {% elif auth_enabled and authenticated and b.get('batch_id') and b.get('inserted_trades', 0) > 0 %}
+                  <form method="post" action="/trades/import/rollback" onsubmit="return confirm('Rollback batch {{ b.get('batch_id') }}? This deletes imported trades and recomputes balances.');" style="display:inline">
+                    <input type="hidden" name="batch_id" value="{{ b.get('batch_id') }}" />
+                    <button class="btn" type="submit" title="Rollback batch">↩</button>
+                  </form>
+                {% else %}
+                  <span class="tiny">—</span>
+                {% endif %}
+              </td>
+            </tr>
           {% else %}
-          Credential status: <b>setup needed</b>. Run Now uses saved credentials only. Click Save Auto Sync first.
-          {% endif %}
-        </div>
+            <tr><td colspan="9">
+              <div class="emptyState">
+                <div class="emptyStateTitle">No import history yet.</div>
+                <div class="emptyStateBody">Next best action: run one statement import, then review batch quality here before relying on analytics.</div>
+              </div>
+            </td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
       </div>
-      <details class="syncDetails stack10">
-        <summary>⚙️ Connection Settings</summary>
-        <div class="stack10">
-          <div class="tiny stack8 line15">
-            Keychain: {% if auto.get('keyring_available') %}<b>available</b>{% else %}<b>not available</b>{% endif %}
-            · Password: {% if auto.get('password_stored') %}<b>stored</b>{% else %}<b>not stored</b>{% endif %}
-            {% if auto_sync_password_fallback %}
-            · Storage: <b>keychain with container fallback enabled</b>
-            {% else %}
-            · Storage: <b>keychain only</b>
-            {% endif %}
-          </div>
-          <div class="row">
-            <div class="fieldGrow2">
-              <label>Base Origin</label>
-              <input name="auto_base_url" value="{{ auto.get('base_url', broker_cfg.base_url) }}" />
-            </div>
-            <div class="fieldGrow2">
-              <label>Account</label>
-              <input name="auto_account" value="{{ auto.get('account', broker_cfg.account) }}" placeholder="default:OEXXXXXXXX" />
-            </div>
-          </div>
-          <div class="row">
-            <div><label>Whitelist</label><input name="auto_wl" value="{{ auto.get('wl', broker_cfg.wl) }}" /></div>
-            <div><label>Timezone</label><input name="auto_time_zone" value="{{ auto.get('time_zone', broker_cfg.time_zone) }}" /></div>
-            <div><label>Date Locale</label><input name="auto_date_locale" value="{{ auto.get('date_locale', broker_cfg.date_locale) }}" /></div>
-            <div><label>Report Locale</label><input name="auto_report_locale" value="{{ auto.get('report_locale', broker_cfg.report_locale) }}" /></div>
-          </div>
-          <div class="row">
-            <div class="stack10">
-              <label><input type="checkbox" name="auto_headless" value="1" {% if auto.get('headless', true) %}checked{% endif %} /> Headless browser</label>
-            </div>
-            <div class="stack10">
-              <label><input type="checkbox" name="auto_debug_capture" value="1" {% if auto.get('debug_capture', true) %}checked{% endif %} /> Save debug artifacts</label>
-            </div>
-          </div>
-        </div>
-      </details>
-      <div class="hr"></div>
-      <div class="rightActions">
-        <button class="btn primary" type="submit" id="auto-sync-config-submit">Save Auto Sync</button>
-        <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if not auto.get('password_stored') %}disabled title="Save Auto Sync first so credentials are stored"{% endif %}>Run Now</button>
-        <details class="inlineHelp">
-          <summary aria-label="Auto sync security help">?</summary>
-          <div class="helpPopover">
-            {% if auto_sync_password_fallback %}
-            Auto sync prefers OS keychain; if unavailable, the password is stored encrypted in container config.
-            {% else %}
-            Auto sync stores the password in the OS keychain, not in app config files.
-            {% endif %}
-          </div>
-        </details>
-      </div>
-      <div class="tiny stack8" id="auto-sync-config-loading" style="display:none;" aria-live="polite">
-        ⏳ Saving auto sync settings...
-      </div>
-      <div class="tiny stack8" id="auto-sync-run-loading" style="display:none;" aria-live="polite">
-        ⏳ Running auto sync now (login + generate + import)...
-      </div>
-      {{ runway('auto-sync-runway', ['Load credentials', 'Login', 'Generate', 'Import'], badge='Running', label='Preparing sync run...', label_id='auto-sync-stage-label') }}
-    </form>
-    <form method="post" action="/trades/sync/auto/run" id="auto-sync-run-form"></form>
-  </div>
-</div>
-{% endif %}
-
-{% if ws == 'live' %}
-<div class="card stack12">
-  <div class="toolbar">
-    <div class="pillRow">
-      <div class="pill">Live Login Sync</div>
-      <details class="inlineHelp">
-        <summary aria-label="Live login sync help">?</summary>
-        <div class="helpPopover">Logs into Vanquish, opens the statement flow, generates the statement, and imports the HTML output.</div>
-      </details>
     </div>
-    <div class="hr"></div>
-    <form method="post" action="/trades/sync/live" id="live-sync-form">
-      <div class="row">
-        <div>
-          <label>Mode</label>
-          <select name="mode">
-            <option value="broker">🏦 Broker fills → trades</option>
-            <option value="balance">🏁 Statement → ending balance snapshot</option>
-          </select>
-        </div>
-        <div>
-          <label>From</label>
-          <input class="appDateInput" type="date" name="from_date" value="{{ default_day }}" />
-        </div>
-        <div>
-          <label>To</label>
-          <input class="appDateInput" type="date" name="to_date" value="{{ default_day }}" />
-        </div>
-      </div>
-      <div class="row">
-        <div class="fieldGrow2">
-          <label>Username</label>
-          <input name="username" placeholder="Vanquish username/email" />
-        </div>
-        <div class="fieldGrow2">
-          <label>Password</label>
-          <input type="password" name="password" placeholder="Vanquish password" />
-        </div>
-      </div>
-      <details class="syncDetails stack10">
-        <summary>⚙️ Advanced Sync Options</summary>
-        <div class="stack10">
-          <div class="row">
-            <div class="fieldGrow2">
-              <label>Base Origin</label>
-              <input name="base_url" value="{{ broker_cfg.base_url }}" />
-            </div>
-            <div class="fieldGrow2">
-              <label>Account</label>
-              <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label>Whitelist</label>
-              <input name="wl" value="{{ broker_cfg.wl }}" />
-            </div>
-            <div>
-              <label>Timezone</label>
-              <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
-            </div>
-            <div>
-              <label>Date Locale</label>
-              <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
-            </div>
-            <div>
-              <label>Report Locale</label>
-              <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
-            </div>
-          </div>
-          <div class="row">
-            <div class="stack12">
-              <label>Browser Mode</label>
-              <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
-            </div>
-            <div class="stack12">
-              <label>Diagnostics</label>
-              <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
-              <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
-            </div>
-            <div class="stack12">
-              <label>Config</label>
-              <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
-            </div>
-          </div>
-        </div>
-      </details>
-
-      <div class="hr"></div>
-      <div class="rightActions">
-        <button class="btn primary" type="submit" id="live-sync-submit">Run Live Sync</button>
-        <a class="btn" href="/trades/upload/statement">Reset</a>
-      </div>
-      <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">
-        ⏳ Live sync in progress. Logging in, generating statement, and importing. This can take 20-60 seconds.
-      </div>
-      {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge='Live', label='Opening broker session...', label_id='live-sync-stage-label') }}
-    </form>
   </div>
+  <aside class="workspaceSecondary">
+    <div class="card supportCard subtleCard">
+      <div class="toolbar">
+        <div class="pill">Reconcile Rule</div>
+        <div class="supportLead">If the batch looks wrong, stop it here.</div>
+        <div class="supportBody">Rollback is cheaper than repairing contaminated analytics after the fact. This lane should stay boring, strict, and reversible.</div>
+      </div>
+    </div>
+  </aside>
 </div>
 {% endif %}
 

@@ -1,11 +1,3 @@
-<div id="marketPulseLoading" class="marketPulseLoadingOverlay" aria-hidden="true">
-  <div class="marketPulseLoadingCard">
-    <div class="marketPulseSpinner"></div>
-    <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
-    <div class="marketPulseLoadingSub">Pulling live market data and rebuilding tape context…</div>
-  </div>
-</div>
-
 <div class="card pageHero marketPulseSection">
   <div class="toolbar">
     <div class="pageHeroHead">
@@ -18,13 +10,17 @@
             <div class="candleInlineNoteBody">Live market context for SPX-first trading: macro triggers, broad tape drivers, and watchlist headlines that can shift the session.</div>
           </details>
         </div>
-        <div class="pageSub">{{ source_label }} · {{ fetched_at or 'Awaiting live refresh' }}</div>
+        <div class="pageSub">
+          <span id="marketPulseSourceLabel">{{ source_label }}</span>
+          ·
+          <span id="marketPulseFetchedAt">{{ fetched_at or 'Awaiting live refresh' }}</span>
+        </div>
       </div>
       <div class="actionRow">
         <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
-        <button class="btn" id="autoRefreshToggle" type="button" aria-pressed="false">Auto Refresh Off</button>
         <button class="btn" id="viewModeToggle" type="button" aria-pressed="false">Execution Mode</button>
-        <span class="tiny muted" id="autoRefreshLabel" data-seconds="60">Next refresh in 60s</span>
+        <span class="trendChip" id="marketPulseStreamStatus">Live stream connecting</span>
+        <span class="tiny muted" id="marketPulseStreamFreshness">Waiting for first tick…</span>
         <a class="btn" href="/candle-opens">Candle Opens</a>
       </div>
     </div>
@@ -52,12 +48,14 @@
   </div>
 </div></div>
 
-<div class="card stack12 marketPulseSection"><div class="toolbar" id="spxPriorityCard">
+{% set spx_priority_change = spx_quote.get('change_pct') if spx_quote else none %}
+{% set spx_priority_tone = 'glow-green' if spx_priority_change is not none and spx_priority_change > 0 else 'glow-red' if spx_priority_change is not none and spx_priority_change < 0 else '' %}
+<div class="card stack12 marketPulseSection spxPriorityShell {{ spx_priority_tone }}"><div class="toolbar" id="spxPriorityCard">
   <div class="pill">SPX Priority</div>
-  <div class="spxStaticCard">
+  <div class="spxStaticCard {{ spx_priority_tone }}" id="spxPrioritySpotPanel">
     <div class="pillRow marketCardMeta">
-      <span class="trendChip stateChip state-{{ spx_quote.get('data_state') or 'missing' }}">{{ spx_quote.get('data_status_label') or 'Live' }}</span>
-      <span class="tiny muted">{{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}</span>
+      <span class="trendChip stateChip state-{{ spx_quote.get('data_state') or 'missing' }}" id="spxPriorityStateChip">{{ spx_quote.get('data_status_label') or 'Live' }}</span>
+      <span class="tiny muted" id="spxPriorityFreshness">{{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}</span>
     </div>
     <div class="k">SPX</div>
     <div class="marketMiniSparkWrap">{{ spx_quote.get('sparkline_svg')|safe if spx_quote else '<div class="marketMiniSparkEmpty">No trend</div>' }}</div>
@@ -68,12 +66,12 @@
         —
       {% endif %}
     </div>
-    <div class="tiny">
+    <div class="tiny" id="spxPriorityChangeLine">
       {{ '%+.2f'|format(spx_quote.get('change')) if spx_quote.get('change') is not none else '—' }}
       · {{ '%+.2f'|format(spx_quote.get('change_pct')) if spx_quote.get('change_pct') is not none else '—' }}%
     </div>
-    <div class="tiny">State: {{ spx_quote.get('market_state') or 'Unavailable' }}</div>
-    <div class="tiny">Range: {{ spx_quote.get('day_range') or '—' }}</div>
+    <div class="tiny" id="spxPriorityStateLine">State: {{ spx_quote.get('market_state') or 'Unavailable' }}</div>
+    <div class="tiny" id="spxPriorityRangeLine">Range: {{ spx_quote.get('day_range') or '—' }}</div>
     <div class="tiny muted">Primary cash index proxy for SPX options context.</div>
     <div class="tiny"><a href="{{ spx_quote.get('yahoo_href') or 'https://finance.yahoo.com/quote/%5EGSPC' }}" target="_blank" rel="noopener">View on Yahoo</a></div>
   </div>
@@ -87,7 +85,7 @@
     {% endif %}
     · {{ spx_quote.get('market_state') or 'Unavailable' }}
   </div>
-  <div class="tiny stack8">
+  <div class="tiny stack8" id="spxPriorityFreshnessLine">
     {{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}
     {% if spx_quote.get('data_reason') %}
       · Reason: {{ spx_quote.get('data_reason') }}
@@ -324,49 +322,51 @@
   <div class="metricStrip marketPulseSummaryStrip">
     <div class="metric">
       <div class="label">Advancers</div>
-      <div class="value">{{ stats.advancers }}</div>
+      <div class="value" id="marketPulseAdvancers">{{ stats.advancers }}</div>
       <div class="sub">Positive change</div>
     </div>
     <div class="metric">
       <div class="label">Decliners</div>
-      <div class="value">{{ stats.decliners }}</div>
+      <div class="value" id="marketPulseDecliners">{{ stats.decliners }}</div>
       <div class="sub">Negative change</div>
     </div>
     <div class="metric">
       <div class="label">Missing</div>
-      <div class="value">{{ stats.missing }}</div>
+      <div class="value" id="marketPulseMissing">{{ stats.missing }}</div>
       <div class="sub">Needs refresh/fallback</div>
     </div>
     <div class="metric">
       <div class="label">Biggest Move</div>
-      <div class="value">{{ stats.biggest_label }} {{ '%+.2f'|format(stats.biggest_move) }}%</div>
+      <div class="value" id="marketPulseBiggestMove">{{ stats.biggest_label }} {{ '%+.2f'|format(stats.biggest_move) }}%</div>
       <div class="sub">Top absolute mover</div>
     </div>
   </div>
   <div class="statRow">
     {% for q in core_quotes %}
-      <div class="stat {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}">
+      <div class="stat marketPulseTapeCard {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}" data-symbol="{{ q.symbol }}">
         {% set q_state = (q.data_state or 'missing') %}
         {% set q_label = (q.data_status_label or q_state|title) %}
         <div class="pillRow marketCardMeta">
-          <span class="trendChip stateChip state-{{ q_state }}">{{ q_label }}</span>
-          <span class="tiny muted">{{ q.freshness_label or (q.asof or fetched_at) }}</span>
+          <span class="trendChip stateChip state-{{ q_state }}" data-role="state-chip">{{ q_label }}</span>
+          <span class="tiny muted" data-role="freshness">{{ q.freshness_label or (q.asof or fetched_at) }}</span>
         </div>
         <div class="k">{{ q.label }}</div>
-        <div class="marketMiniSparkWrap">{{ q.sparkline_svg|safe }}</div>
-        <div class="v">
+        <div class="marketMiniSparkWrap" data-role="sparkline">{{ q.sparkline_svg|safe }}</div>
+        <div class="v" data-role="price">
           {% if q.price is not none %}
             {{ '%.2f'|format(q.price) }}
           {% else %}
             —
           {% endif %}
         </div>
-        <div class="tiny">{{ '%+.2f'|format(q.change) }} · {{ '%+.2f'|format(q.change_pct) }}%</div>
-        <div class="tiny">State: {{ q.market_state }}</div>
+        <div class="tiny" data-role="change-line">{{ '%+.2f'|format(q.change) }} · {{ '%+.2f'|format(q.change_pct) }}%</div>
+        <div class="tiny" data-role="market-state">State: {{ q.market_state }}</div>
         {% if q.freshness_reason and q.data_state != 'live' %}
-          <div class="tiny muted">Reason: {{ q.freshness_reason }}</div>
+          <div class="tiny muted" data-role="reason-line">Reason: {{ q.freshness_reason }}</div>
+        {% else %}
+          <div class="tiny muted" data-role="reason-line" hidden></div>
         {% endif %}
-        <div class="tiny">Range: {{ q.day_range }}</div>
+        <div class="tiny" data-role="range-line">Range: {{ q.day_range }}</div>
         <div class="tiny muted">{{ q.focus }}</div>
         <div class="tiny"><a href="{{ q.yahoo_href }}" target="_blank" rel="noopener">View on Yahoo</a></div>
       </div>
@@ -518,44 +518,56 @@
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>
 <script>
 (() => {
-  const KEY = "marketPulseAutoRefresh";
   const MODE_KEY = "marketPulseViewMode";
-  const toggle = document.getElementById("autoRefreshToggle");
   const modeToggle = document.getElementById("viewModeToggle");
-  const label = document.getElementById("autoRefreshLabel");
+  const streamStatus = document.getElementById("marketPulseStreamStatus");
+  const streamFreshness = document.getElementById("marketPulseStreamFreshness");
   const guardMeta = document.getElementById("marketGuardrailMeta");
   const refreshLink = document.getElementById("marketPulseRefreshLink");
-  const loadingOverlay = document.getElementById("marketPulseLoading");
-  if (!toggle || !label || !modeToggle || !guardMeta) return;
-  const baseSeconds = Math.max(15, Number(label.dataset.seconds || "60"));
-  let enabled = localStorage.getItem(KEY) === "on";
+  const loadingOverlay = document.getElementById("marketPulseLoadingOverlay");
+  const loadingTitle = document.getElementById("marketPulseLoadingTitle");
+  const loadingSub = document.getElementById("marketPulseLoadingSub");
+  if (!modeToggle || !guardMeta) return;
   const marketHours = guardMeta.dataset.marketHours === "1";
   const storedMode = localStorage.getItem(MODE_KEY);
   let mode = storedMode || (marketHours ? "execution" : "research");
   const guardrailActive = guardMeta.dataset.active === "1";
   const guardrailMessage = guardMeta.dataset.message || "Data Unsafe guardrail active.";
-  let remaining = baseSeconds;
-  let timer = null;
-  let reloading = false;
-  const showLoading = () => {
+
+  const showReloadOverlay = (title, detail) => {
+    if (typeof window.showMarketPulseLoading === "function") {
+      window.showMarketPulseLoading(title, detail);
+      return;
+    }
     if (!loadingOverlay) return;
+    if (loadingTitle && title) loadingTitle.textContent = title;
+    if (loadingSub && detail) loadingSub.textContent = detail;
     loadingOverlay.classList.add("show");
     loadingOverlay.setAttribute("aria-hidden", "false");
+    loadingOverlay.dataset.active = "1";
+    document.documentElement.classList.add("marketPulseBooting");
+    document.body.classList.add("marketPulseBooting");
   };
 
-  const autoRefreshUrl = () => {
-    const url = new URL(window.location.href);
-    // Auto refresh should be lightweight; reserve force refresh for manual button only.
-    url.searchParams.delete("refresh");
-    return url.toString();
+  const hideReloadOverlay = () => {
+    if (typeof window.hideMarketPulseLoading === "function") {
+      window.hideMarketPulseLoading();
+      return;
+    }
+    if (!loadingOverlay) return;
+    loadingOverlay.classList.remove("show");
+    loadingOverlay.setAttribute("aria-hidden", "true");
+    loadingOverlay.dataset.active = "0";
+    document.documentElement.classList.remove("marketPulseBooting");
+    document.body.classList.remove("marketPulseBooting");
   };
 
   // If this page was opened with ?refresh=1, clean it up so auto-refresh doesn't keep force-refreshing.
   try {
-    const clean = new URL(window.location.href);
-    if (clean.searchParams.get("refresh") === "1") {
-      clean.searchParams.delete("refresh");
-      window.history.replaceState({}, "", clean.toString());
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("refresh") === "1") {
+      url.searchParams.delete("refresh");
+      window.history.replaceState({}, "", url.toString());
     }
   } catch (_err) {
     // no-op
@@ -584,58 +596,42 @@
     modeToggle.setAttribute("aria-pressed", execution ? "true" : "false");
     modeToggle.textContent = execution ? "Research Mode" : "Execution Mode";
   };
-
-  const updateUi = () => {
-    toggle.setAttribute("aria-pressed", enabled ? "true" : "false");
-    toggle.textContent = enabled ? "Auto Refresh On" : "Auto Refresh Off";
-    label.textContent = enabled ? `Next refresh in ${remaining}s` : "Auto refresh disabled";
-  };
-
-  const tick = () => {
-    if (!enabled || reloading) return;
-    if (document.visibilityState === "hidden") return;
-    remaining -= 1;
-    if (remaining <= 0) {
-      reloading = true;
-      showLoading();
-      window.location.assign(autoRefreshUrl());
-      return;
-    }
-    updateUi();
-  };
-
-  toggle.addEventListener("click", () => {
-    enabled = !enabled;
-    localStorage.setItem(KEY, enabled ? "on" : "off");
-    remaining = baseSeconds;
-    updateUi();
-  });
   modeToggle.addEventListener("click", () => {
     mode = (mode === "execution") ? "research" : "execution";
     localStorage.setItem(MODE_KEY, mode);
     applyMode();
   });
+  const setStreamState = (status, detail) => {
+    if (streamStatus) {
+      streamStatus.textContent = status || "Live stream";
+    }
+    if (streamFreshness) {
+      streamFreshness.textContent = detail || "Waiting for first tick…";
+    }
+  };
+
+  setStreamState("Live stream connecting", "Waiting for first tick…");
+  window.addEventListener("market-pulse-stream-status", (event) => {
+    const detail = (event && event.detail) || {};
+    setStreamState(detail.status, detail.detail);
+  });
   if (refreshLink) {
     refreshLink.addEventListener("click", () => {
-      reloading = true;
-      showLoading();
+      showReloadOverlay(
+        "Loading Market Pulse",
+        "Refreshing SPX priority, tape leadership, and macro catalysts…"
+      );
+      setStreamState("Refreshing", "Rebuilding full market context…");
     });
   }
 
-  timer = window.setInterval(tick, 1000);
-  updateUi();
   applyMode();
   applyGuardrailLock();
 
   // Entry motion once DOM is ready.
   window.requestAnimationFrame(() => {
     document.body.classList.add("marketPulseReady");
-  });
-  window.addEventListener("beforeunload", () => {
-    if (timer) {
-      window.clearInterval(timer);
-      timer = null;
-    }
+    window.setTimeout(hideReloadOverlay, 340);
   });
 })();
 </script>

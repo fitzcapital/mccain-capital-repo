@@ -1656,6 +1656,164 @@ def _load_dashboard_milestone_settings() -> Dict[str, Any]:
     }
 
 
+def _dashboard_brief_setting_key(day: str) -> str:
+    return f"dashboard_daily_brief::{str(day or '').strip()}"
+
+
+def _load_dashboard_brief_settings(day: str) -> Dict[str, str]:
+    raw = str(app_runtime.get_setting_value(_dashboard_brief_setting_key(day), "") or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _save_dashboard_brief_settings(day: str, payload: Dict[str, Any]) -> None:
+    clean = {
+        "focus": str(payload.get("focus") or "").strip()[:280],
+        "plan_a": str(payload.get("plan_a") or "").strip()[:280],
+        "plan_b": str(payload.get("plan_b") or "").strip()[:280],
+        "no_trade": str(payload.get("no_trade") or "").strip()[:280],
+    }
+    app_runtime.set_setting_value(_dashboard_brief_setting_key(day), json.dumps(clean))
+
+
+def _dashboard_daily_brief_viewmodel(
+    *,
+    now_et: datetime,
+    dashboard_spx: Dict[str, Any],
+    dashboard_vix: Dict[str, Any],
+    gamma_snapshot: Dict[str, Any],
+    news_snapshot: Dict[str, Any],
+    today_count: int,
+    today_net: float,
+) -> Dict[str, Any]:
+    day_key = now_et.date().isoformat()
+    saved = _load_dashboard_brief_settings(day_key)
+
+    def _num(value: Any) -> Optional[float]:
+        try:
+            if value is None or str(value).strip() == "":
+                return None
+            return float(value)
+        except Exception:
+            return None
+
+    spot = _num(dashboard_spx.get("price"))
+    change_pct = _num(dashboard_spx.get("pct_change"))
+    vix = _num(dashboard_vix.get("price"))
+    gamma_flip = _num(gamma_snapshot.get("gamma_flip"))
+    call_wall = _num(gamma_snapshot.get("call_wall"))
+    put_wall = _num(gamma_snapshot.get("put_wall"))
+    day_open = _num(dashboard_spx.get("day_open"))
+
+    if spot is not None and gamma_flip is not None and spot > gamma_flip and (change_pct or 0.0) >= 0:
+        bias_label = "Bullish above flip"
+        bias_tone = "positive"
+        bias_summary = f"SPX is trading above gamma flip {gamma_flip:.0f}, so continuation longs have cleaner structure than reactive fades."
+    elif spot is not None and gamma_flip is not None and spot < gamma_flip and (change_pct or 0.0) <= 0:
+        bias_label = "Defensive below flip"
+        bias_tone = "negative"
+        bias_summary = f"SPX is below gamma flip {gamma_flip:.0f}, so failed bounces and risk-off structure deserve more respect than impulsive longs."
+    else:
+        bias_label = "Two-way / responsive"
+        bias_tone = ""
+        bias_summary = "Price is inside a mixed zone. Stay selective, shorten hold times, and avoid forcing trend conviction before levels confirm."
+
+    if vix is not None and vix >= 22:
+        volatility_label = "Elevated vol"
+    elif vix is not None and vix >= 18:
+        volatility_label = "Active vol"
+    elif vix is not None:
+        volatility_label = "Contained vol"
+    else:
+        volatility_label = "Vol unknown"
+
+    macro_events = [
+        {
+            "headline": str(row.get("headline") or "Macro event"),
+            "published_label": str(row.get("published_label") or ""),
+            "summary": str(row.get("summary") or ""),
+        }
+        for row in list(news_snapshot.get("macro_events") or [])[:3]
+        if isinstance(row, dict)
+    ]
+    if not macro_events:
+        macro_events = [
+            {
+                "headline": "No major USD macro trigger loaded",
+                "published_label": "Calendar fallback",
+                "summary": "Stand down if a surprise catalyst lands while the tape is thin.",
+            }
+        ]
+
+    key_levels = []
+    for label, value, tone in (
+        ("Put Wall", put_wall, "positive"),
+        ("Gamma Flip", gamma_flip, ""),
+        ("Call Wall", call_wall, "negative"),
+        ("Day Open", day_open, ""),
+    ):
+        if value is None:
+            continue
+        key_levels.append({"label": label, "value": f"{value:.0f}", "tone": tone})
+    if not key_levels and spot is not None:
+        key_levels.append({"label": "Spot", "value": f"{spot:.2f}", "tone": ""})
+
+    default_focus = (
+        f"{bias_label}. Respect {volatility_label.lower()} and trade only when SPX confirms around your levels."
+    )
+    if gamma_flip is not None:
+        plan_a = (
+            f"Primary setup: continuation only if price accepts {'above' if bias_tone == 'positive' else 'below' if bias_tone == 'negative' else 'through'} {gamma_flip:.0f} with risk defined before entry."
+        )
+    else:
+        plan_a = "Primary setup: only take the cleanest continuation entry with risk defined before entry."
+    if call_wall is not None and put_wall is not None:
+        plan_b = f"Secondary setup: responsive fade only at edges near {put_wall:.0f} support or {call_wall:.0f} resistance after rejection is obvious."
+    else:
+        plan_b = "Secondary setup: responsive fade only at obvious extremes after rejection is obvious."
+    if macro_events:
+        no_trade = f"No trade during or immediately into {macro_events[0]['headline']} unless structure is already resolved and risk is smaller than usual."
+    else:
+        no_trade = "No trade if the tape goes stale, structure is mixed, or your invalidation is not obvious before entry."
+
+    focus = str(saved.get("focus") or default_focus).strip() or default_focus
+    plan_a_value = str(saved.get("plan_a") or plan_a).strip() or plan_a
+    plan_b_value = str(saved.get("plan_b") or plan_b).strip() or plan_b
+    no_trade_value = str(saved.get("no_trade") or no_trade).strip() or no_trade
+
+    status_label = "Pre-market prep"
+    if _market_pulse_market_hours(now_et):
+        status_label = "In-session discipline"
+    if today_count > 0:
+        status_label = f"{today_count} trade{'s' if today_count != 1 else ''} logged"
+
+    return {
+        "day_key": day_key,
+        "bias_label": bias_label,
+        "bias_tone": bias_tone,
+        "bias_summary": bias_summary,
+        "volatility_label": volatility_label,
+        "status_label": status_label,
+        "focus": focus,
+        "plan_a": plan_a_value,
+        "plan_b": plan_b_value,
+        "no_trade": no_trade_value,
+        "key_levels": key_levels,
+        "macro_events": macro_events,
+        "headline": (
+            f"{bias_label} · {volatility_label}"
+            + (f" · Today {app_runtime.money(today_net)}" if today_count else "")
+        ),
+        "summary": bias_summary,
+        "cta_label": "Open Trade Gate" if today_count == 0 else "Add Another Trade",
+    }
+
+
 def _milestone_profit_value(
     source: str, *, today_net: float, this_week_total: float, mtd_net: float, ytd_net: float
 ) -> float:
@@ -1810,9 +1968,36 @@ def dashboard_milestone_update():
     return redirect(url_for("dashboard", **params))
 
 
+def dashboard_brief_update():
+    day = str(request.form.get("brief_day") or app_runtime.today_iso()).strip() or app_runtime.today_iso()
+    _save_dashboard_brief_settings(
+        day,
+        {
+            "focus": request.form.get("brief_focus") or "",
+            "plan_a": request.form.get("brief_plan_a") or "",
+            "plan_b": request.form.get("brief_plan_b") or "",
+            "no_trade": request.form.get("brief_no_trade") or "",
+        },
+    )
+    flash("Daily brief saved.", "success")
+
+    y = str(request.form.get("y") or "").strip()
+    m = str(request.form.get("m") or "").strip()
+    scope = str(request.form.get("scope") or "").strip().lower()
+    params: Dict[str, str] = {}
+    if y:
+        params["y"] = y
+    if m:
+        params["m"] = m
+    if scope in {"active", "all"}:
+        params["scope"] = scope
+    return redirect(url_for("dashboard", **params))
+
+
 def dashboard():
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
+    from mccain_capital.services import gamma_map_service
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import trades as trades_repo
 
@@ -2139,7 +2324,7 @@ def dashboard():
         provider = str(enriched.get("provider") or "").lower()
         if enriched.get("price") is None:
             state = "Unavailable"
-        elif provider == "tradier" and reason.startswith("tradier_live"):
+        elif provider == "tradier" and reason.startswith("tradier_"):
             state = "Live"
         elif "fallback" in reason or "close" in reason or provider not in ("", "tradier"):
             state = "Delayed"
@@ -2233,6 +2418,23 @@ def dashboard():
 
     dashboard_spx = _enrich_dashboard_quote("SPX", dashboard_spx)
     dashboard_vix = _enrich_dashboard_quote("VIX", dashboard_vix)
+    try:
+        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    except Exception:
+        gamma_snapshot = {}
+    try:
+        news_snapshot = _market_news_snapshot()
+    except Exception:
+        news_snapshot = {"macro_events": []}
+    daily_brief = _dashboard_daily_brief_viewmodel(
+        now_et=now_et,
+        dashboard_spx=dashboard_spx,
+        dashboard_vix=dashboard_vix,
+        gamma_snapshot=gamma_snapshot,
+        news_snapshot=news_snapshot,
+        today_count=today_count,
+        today_net=today_net,
+    )
 
     dashboard_tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
     dashboard_tape_updated_label = _format_iso_et_label(dashboard_tape_updated_raw)
@@ -2285,6 +2487,7 @@ def dashboard():
         dashboard_vix=dashboard_vix,
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
+        daily_brief=daily_brief,
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),

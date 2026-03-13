@@ -60,6 +60,10 @@ def dashboard_milestone_update():
     return svc.dashboard_milestone_update()
 
 
+def dashboard_brief_update():
+    return svc.dashboard_brief_update()
+
+
 def candle_opens_page():
     return svc.candle_opens_page()
 

@@ -14,7 +14,7 @@ from datetime import timedelta
 from datetime import timezone
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -71,6 +71,10 @@ def _tradier_symbol(symbol: str) -> str:
     return TRADIER_SYMBOL_ALIASES.get(sym, sym)
 
 
+def tradier_stream_available() -> bool:
+    return bool(_tradier_api_key())
+
+
 def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
     key = _tradier_api_key()
     if not key:
@@ -92,6 +96,94 @@ def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
             return parsed if isinstance(parsed, dict) else None
     except Exception:
         return None
+
+
+def _tradier_post_json(path: str, data: Dict[str, Any]) -> Dict[str, Any] | None:
+    key = _tradier_api_key()
+    if not key:
+        return None
+    base = (os.environ.get("TRADIER_BASE_URL") or "https://api.tradier.com").strip().rstrip("/")
+    body = urllib.parse.urlencode(data).encode("utf-8")
+    req = urllib.request.Request(
+        base + path,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "mccain-capital/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def _tradier_stream_base_url() -> str:
+    return (os.environ.get("TRADIER_STREAM_URL") or "https://stream.tradier.com").strip().rstrip("/")
+
+
+def _tradier_market_session_id() -> str:
+    payload = _tradier_post_json("/v1/markets/events/session", {}) or {}
+    stream = payload.get("stream") if isinstance(payload.get("stream"), dict) else {}
+    return str(stream.get("sessionid") or payload.get("sessionid") or "").strip()
+
+
+def iter_tradier_market_events(
+    symbols: List[str], *, filters: Optional[List[str]] = None
+) -> Iterator[Dict[str, Any]]:
+    if not tradier_stream_available():
+        return
+    clean = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
+    if not clean:
+        return
+    session_id = _tradier_market_session_id()
+    if not session_id:
+        return
+
+    body = urllib.parse.urlencode(
+        {
+            "sessionid": session_id,
+            "symbols": ",".join(_tradier_symbol(s) for s in clean),
+            "filter": ",".join(filters or ["summary", "trade", "quote"]),
+            "linebreak": "true",
+            "heartbeat": "true",
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        _tradier_stream_base_url() + "/v1/markets/events",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {_tradier_api_key()}",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "mccain-capital/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            while True:
+                raw = resp.readline()
+                if not raw:
+                    break
+                line = raw.decode("utf-8", errors="ignore").strip()
+                if not line:
+                    continue
+                if line.startswith("data:"):
+                    line = line[5:].strip()
+                try:
+                    payload = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(payload, dict):
+                    yield payload
+    except Exception:
+        return
 
 
 def _massive_symbol(symbol: str) -> str:

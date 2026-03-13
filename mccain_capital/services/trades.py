@@ -480,6 +480,218 @@ def _playbook_violations(
     return violations
 
 
+def _trade_gate_setting_key(day: str) -> str:
+    return f"trade_gate::{str(day or '').strip()}"
+
+
+def _load_trade_gate(day: str) -> Dict[str, Any]:
+    raw = str(app_runtime.get_setting_value(_trade_gate_setting_key(day), "") or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _save_trade_gate(day: str, payload: Dict[str, Any]) -> None:
+    app_runtime.set_setting_value(_trade_gate_setting_key(day), json.dumps(payload))
+
+
+def _trade_gate_required(day: str) -> bool:
+    return len(fetch_trades(d=day, q="")) == 0 and not bool(_load_trade_gate(day).get("passed"))
+
+
+def _trade_gate_values(source: Dict[str, Any], saved: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "setup_type": str(source.get("gate_setup_type") or saved.get("setup_type") or "").strip(),
+        "invalidation": str(source.get("gate_invalidation") or saved.get("invalidation") or "").strip(),
+        "max_risk": str(source.get("gate_max_risk") or saved.get("max_risk") or "").strip(),
+        "focus": str(source.get("gate_focus") or saved.get("focus") or "").strip(),
+    }
+
+
+def _trade_gate_checks(source: Dict[str, Any], saved: Dict[str, Any]) -> Dict[str, bool]:
+    return {
+        "market_ready": str(source.get("gate_market_ready") or ("1" if saved.get("market_ready") else "")).strip() == "1",
+        "macro_clear": str(source.get("gate_macro_clear") or ("1" if saved.get("macro_clear") else "")).strip() == "1",
+        "risk_confirmed": str(source.get("gate_risk_confirmed") or ("1" if saved.get("risk_confirmed") else "")).strip() == "1",
+    }
+
+
+def _trade_gate_errors(values: Dict[str, str], checks: Dict[str, bool]) -> List[str]:
+    errors: List[str] = []
+    if not values.get("setup_type"):
+        errors.append("Choose the setup you are actually trading.")
+    if not values.get("invalidation"):
+        errors.append("Write the invalidation before entry.")
+    if not values.get("max_risk"):
+        errors.append("Set the max risk for the trade.")
+    if not checks.get("market_ready"):
+        errors.append("Confirm market structure is aligned.")
+    if not checks.get("macro_clear"):
+        errors.append("Confirm you are clear of the macro window.")
+    if not checks.get("risk_confirmed"):
+        errors.append("Confirm size and max loss are defined before entry.")
+    return errors
+
+
+def _trade_gate_viewmodel(day: str, source: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    source = source or {}
+    saved = _load_trade_gate(day)
+    required = _trade_gate_required(day)
+    passed = bool(saved.get("passed")) and not required
+    values = _trade_gate_values(source, saved)
+    checks = _trade_gate_checks(source, saved)
+    return {
+        "day": day,
+        "required": required,
+        "passed": passed,
+        "values": values,
+        "checks": checks,
+        "passed_label": str(saved.get("passed_label") or ""),
+        "summary": (
+            f"{saved.get('setup_type', 'Setup')} · risk {saved.get('max_risk', '—')} · {saved.get('passed_label', '')}"
+            if passed
+            else "Complete this once before the first manual trade of the day."
+        ),
+    }
+
+
+def _render_manual_trade_entry_form(
+    *,
+    pb_cfg: Dict[str, Any],
+    values: Optional[Dict[str, Any]] = None,
+    gate_error: str = "",
+) -> str:
+    values = values or {}
+    trade_date = str(values.get("trade_date") or today_iso()).strip() or today_iso()
+    strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
+    gate = _trade_gate_viewmodel(trade_date, values)
+    content = render_template_string(
+        """
+        <div class="card"><div class="toolbar">
+          <div class="pill">➕ Manual Trade Entry</div>
+          <div class="tiny stack8">First trade of the day now requires a short gate so execution starts from an actual plan.</div>
+          {% if gate_error %}
+            <div class="integrityAlert integrityAlert-warn">{{ gate_error }}</div>
+          {% endif %}
+          <div class="hr"></div>
+          <form method="post">
+            <div class="card supportCard subtleCard">
+              <div class="toolbar">
+                <div class="pillRow">
+                  <div class="pill">Trade Gate</div>
+                  {% if gate.passed %}
+                    <span class="trendChip positive">Passed</span>
+                  {% elif gate.required %}
+                    <span class="trendChip negative">Required</span>
+                  {% else %}
+                    <span class="trendChip">Optional</span>
+                  {% endif %}
+                </div>
+                <div class="supportLead">{{ gate.summary }}</div>
+                <div class="row stack10">
+                  <div>
+                    <label>Setup Type</label>
+                    <input name="gate_setup_type" list="strategy-options" value="{{ gate.values.setup_type }}" placeholder="ORB, continuation, fade, reclaim"/>
+                  </div>
+                  <div class="fieldGrow2">
+                    <label>Invalidation</label>
+                    <input name="gate_invalidation" value="{{ gate.values.invalidation }}" placeholder="What level or condition proves this trade wrong?"/>
+                  </div>
+                  <div>
+                    <label>Max Risk</label>
+                    <input name="gate_max_risk" value="{{ gate.values.max_risk }}" placeholder="$150 or 10 pts"/>
+                  </div>
+                </div>
+                <div class="stack10">
+                  <label>Focus Note</label>
+                  <textarea name="gate_focus" placeholder="Why is this trade allowed today?">{{ gate.values.focus }}</textarea>
+                </div>
+                <div class="row stack10">
+                  <div class="stack10"><label><input type="checkbox" name="gate_market_ready" value="1" {% if gate.checks.market_ready %}checked{% endif %}/> Structure is aligned with my setup</label></div>
+                  <div class="stack10"><label><input type="checkbox" name="gate_macro_clear" value="1" {% if gate.checks.macro_clear %}checked{% endif %}/> I am clear of the macro risk window</label></div>
+                  <div class="stack10"><label><input type="checkbox" name="gate_risk_confirmed" value="1" {% if gate.checks.risk_confirmed %}checked{% endif %}/> Size, stop, and max loss are defined</label></div>
+                </div>
+              </div>
+            </div>
+            <div class="hr"></div>
+            <div class="row">
+              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ values.get('trade_date', today) }}"/></div>
+              <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM" value="{{ values.get('entry_time', '') }}"/></div>
+              <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM" value="{{ values.get('exit_time', '') }}"/></div>
+            </div>
+            <div class="row stack10">
+              <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX" value="{{ values.get('ticker', '') }}"/></div>
+              <div>
+                <label>📌 Type</label>
+                <select name="opt_type">
+                  <option value="CALL" {% if values.get('opt_type', 'CALL') == 'CALL' %}selected{% endif %}>CALL</option>
+                  <option value="PUT" {% if values.get('opt_type') == 'PUT' %}selected{% endif %}>PUT</option>
+                </select>
+              </div>
+              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940" value="{{ values.get('strike', '') }}"/></div>
+            </div>
+            <div class="row stack10">
+              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ values.get('contracts', '1') }}"/></div>
+              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20" value="{{ values.get('entry_price', '') }}"/></div>
+              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30" value="{{ values.get('exit_price', '') }}"/></div>
+            </div>
+            <div class="row stack10">
+              <div><label>🏷️ Strategy</label><input name="strategy_label" list="strategy-options" placeholder="Fitz 2-2 REV" value="{{ values.get('strategy_label', values.get('setup_tag', '')) }}"/></div>
+              <div><label>🕒 Session Tag</label><input name="session_tag" placeholder="AM / Midday / PM" value="{{ values.get('session_tag', '') }}"/></div>
+              <div><label>✅ Checklist Score</label><input name="checklist_score" inputmode="numeric" placeholder="0-100" value="{{ values.get('checklist_score', '') }}"/></div>
+            </div>
+            <datalist id="strategy-options">
+              {% for strategy in strategy_options %}
+                <option value="{{ strategy['title'] }}"></option>
+              {% endfor %}
+            </datalist>
+            <div class="row stack10">
+              <div class="fieldGrow2">
+                <label>🧱 Critical Checklist Gate</label>
+                <div class="tiny stack8 line16">
+                  {% for item in critical_items %}
+                    <label style="display:inline-flex; gap:8px; margin-right:14px; align-items:center;">
+                      <input type="checkbox" name="critical_item" value="{{ item }}" {% if item in selected_critical_items %}checked{% endif %}> {{ item }}
+                    </label>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            <div class="row stack10">
+              <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="{{ values.get('comm', '0.70') }}"/></div>
+            </div>
+            <div class="hr"></div>
+            <div class="rightActions">
+              <button class="btn primary" type="submit">💾 Save Trade</button>
+              <a class="btn" href="/trades">← Back</a>
+            </div>
+          </form>
+        </div></div>
+        """,
+        today=today_iso(),
+        values=values,
+        gate=gate,
+        gate_error=gate_error,
+        strategy_options=strategy_options,
+        critical_items=pb_cfg.get("critical_items")
+        or ["Bias Confirmed", "Risk Defined", "Stop Planned"],
+        selected_critical_items=[
+            str(x).strip()
+            for x in values.getlist("critical_item")
+            if hasattr(values, "getlist")
+        ] if hasattr(values, "getlist") else [
+            str(x).strip()
+            for x in (values.get("critical_item") or [])
+            if str(x).strip()
+        ],
+    )
+    return render_page(content, active="trades")
+
+
 def _keyring_client():
     try:
         import keyring  # type: ignore
@@ -2199,6 +2411,17 @@ def trades_new_manual():
         critical_items_checked = [
             str(x).strip() for x in f.getlist("critical_item") if str(x).strip()
         ]
+        gate_values = _trade_gate_values(f, _load_trade_gate(trade_date))
+        gate_checks = _trade_gate_checks(f, _load_trade_gate(trade_date))
+
+        if _trade_gate_required(trade_date):
+            gate_errors = _trade_gate_errors(gate_values, gate_checks)
+            if gate_errors:
+                return _render_manual_trade_entry_form(
+                    pb_cfg=pb_cfg,
+                    values=f,
+                    gate_error="Trade gate blocked first trade: " + " ".join(gate_errors),
+                )
 
         if (
             not ticker
@@ -2207,9 +2430,10 @@ def trades_new_manual():
             or entry_price is None
             or exit_price is None
         ):
-            return render_page(
-                simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                active="trades",
+            return _render_manual_trade_entry_form(
+                pb_cfg=pb_cfg,
+                values=f,
+                gate_error="Missing required fields (ticker/type/contracts/entry/exit).",
             )
 
         gross_pl = (exit_price - entry_price) * 100.0 * contracts
@@ -2230,6 +2454,17 @@ def trades_new_manual():
             return render_page(
                 simple_msg("Playbook blocked trade: " + " ".join(violations)),
                 active="trades",
+            )
+        if _trade_gate_required(trade_date):
+            _save_trade_gate(
+                trade_date,
+                {
+                    **gate_values,
+                    **gate_checks,
+                    "passed": True,
+                    "passed_at": now_iso(),
+                    "passed_label": app_runtime.now_et().strftime("%b %d, %I:%M %p ET"),
+                },
             )
 
         with db() as conn:
@@ -2279,71 +2514,7 @@ def trades_new_manual():
                 review_note="",
             )
         return redirect(url_for("trades_page", d=trade_date))
-
-    strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">➕ Manual Trade Entry</div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ today }}"/></div>
-              <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM"/></div>
-              <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX"/></div>
-              <div>
-                <label>📌 Type</label>
-                <select name="opt_type"><option>CALL</option><option>PUT</option></select>
-              </div>
-              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="1"/></div>
-              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20"/></div>
-              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🏷️ Strategy</label><input name="strategy_label" list="strategy-options" placeholder="Fitz 2-2 REV"/></div>
-              <div><label>🕒 Session Tag</label><input name="session_tag" placeholder="AM / Midday / PM"/></div>
-              <div><label>✅ Checklist Score</label><input name="checklist_score" inputmode="numeric" placeholder="0-100"/></div>
-            </div>
-            <datalist id="strategy-options">
-              {% for strategy in strategy_options %}
-                <option value="{{ strategy['title'] }}"></option>
-              {% endfor %}
-            </datalist>
-            <div class="row stack10">
-              <div class="fieldGrow2">
-                <label>🧱 Critical Checklist Gate</label>
-                <div class="tiny stack8 line16">
-                  {% for item in critical_items %}
-                    <label style="display:inline-flex; gap:8px; margin-right:14px; align-items:center;">
-                      <input type="checkbox" name="critical_item" value="{{ item }}"> {{ item }}
-                    </label>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-            <div class="row stack10">
-              <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="0.70"/></div>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save Trade</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        today=today_iso(),
-        strategy_options=strategy_options,
-        critical_items=pb_cfg.get("critical_items")
-        or ["Bias Confirmed", "Risk Defined", "Stop Planned"],
-    )
-    return render_page(content, active="trades")
+    return _render_manual_trade_entry_form(pb_cfg=pb_cfg, values={"trade_date": today_iso()})
 
 
 def trades_paste_broker():

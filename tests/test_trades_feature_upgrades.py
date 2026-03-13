@@ -218,6 +218,22 @@ def test_upload_statement_workspaces_render(client):
     assert b"Unresolved Batches" in resp_rec.data
 
 
+def test_upload_statement_live_workspace_injects_csrf_into_all_sync_forms(client):
+    resp = client.get("/trades/upload/statement?ws=live", follow_redirects=True)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    for form_id in (
+        'id="live-sync-form"',
+        'id="auto-sync-config-form"',
+        'id="auto-sync-run-form"',
+    ):
+        form_start = html.index(form_id)
+        form_end = html.index("</form>", form_start)
+        form_html = html[form_start:form_end]
+        assert 'name="csrf_token"' in form_html
+
+
 def test_trades_balance_bases_section_renders(client):
     resp = client.get("/trades", follow_redirects=True)
     assert resp.status_code == 200
@@ -1081,6 +1097,12 @@ def test_playbook_blocks_manual_trade_when_score_below_min(client, monkeypatch, 
         "/trades/new",
         data={
             "trade_date": "2026-02-26",
+            "gate_setup_type": "Test Setup",
+            "gate_invalidation": "Below morning low",
+            "gate_max_risk": "$100",
+            "gate_market_ready": "1",
+            "gate_macro_clear": "1",
+            "gate_risk_confirmed": "1",
             "entry_time": "10:00 AM",
             "exit_time": "10:10 AM",
             "ticker": "SPX",
@@ -1124,6 +1146,12 @@ def test_playbook_blocks_manual_trade_when_critical_items_missing(client, monkey
         "/trades/new",
         data={
             "trade_date": "2026-02-26",
+            "gate_setup_type": "Test Setup",
+            "gate_invalidation": "Below morning low",
+            "gate_max_risk": "$100",
+            "gate_market_ready": "1",
+            "gate_macro_clear": "1",
+            "gate_risk_confirmed": "1",
             "entry_time": "10:00 AM",
             "exit_time": "10:10 AM",
             "ticker": "SPX",
@@ -1178,6 +1206,12 @@ def test_manual_trade_auto_adds_no_cut_20_loss_review_tag(client):
         "/trades/new",
         data={
             "trade_date": "2026-02-26",
+            "gate_setup_type": "Test Setup",
+            "gate_invalidation": "Below morning low",
+            "gate_max_risk": "$100",
+            "gate_market_ready": "1",
+            "gate_macro_clear": "1",
+            "gate_risk_confirmed": "1",
             "entry_time": "10:00 AM",
             "exit_time": "10:10 AM",
             "ticker": "SPX",
@@ -1207,3 +1241,69 @@ def test_manual_trade_auto_adds_no_cut_20_loss_review_tag(client):
         ).fetchone()
     assert row is not None
     assert "no-cut-20-loss" in str(row["rule_break_tags"] or "")
+
+
+def test_manual_trade_first_trade_gate_blocks_missing_gate_fields(client):
+    resp = client.post(
+        "/trades/new",
+        data={
+            "trade_date": "2026-03-13",
+            "entry_time": "10:00 AM",
+            "exit_time": "10:10 AM",
+            "ticker": "SPX",
+            "opt_type": "CALL",
+            "strike": "6900",
+            "contracts": "1",
+            "entry_price": "1.0",
+            "exit_price": "1.2",
+            "comm": "1.0",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"Trade gate blocked first trade" in resp.data
+    assert b"Trade Gate" in resp.data
+
+
+def test_manual_trade_first_trade_gate_saves_pass_and_allows_followup_without_gate_fields(client):
+    first = client.post(
+        "/trades/new",
+        data={
+            "trade_date": "2026-03-14",
+            "gate_setup_type": "ORB",
+            "gate_invalidation": "Below opening drive low",
+            "gate_max_risk": "$125",
+            "gate_market_ready": "1",
+            "gate_macro_clear": "1",
+            "gate_risk_confirmed": "1",
+            "entry_time": "10:00 AM",
+            "exit_time": "10:10 AM",
+            "ticker": "SPX",
+            "opt_type": "CALL",
+            "strike": "6900",
+            "contracts": "1",
+            "entry_price": "1.0",
+            "exit_price": "1.2",
+            "comm": "1.0",
+        },
+        follow_redirects=False,
+    )
+    assert first.status_code == 302
+
+    second = client.post(
+        "/trades/new",
+        data={
+            "trade_date": "2026-03-14",
+            "entry_time": "11:00 AM",
+            "exit_time": "11:05 AM",
+            "ticker": "SPX",
+            "opt_type": "PUT",
+            "strike": "6880",
+            "contracts": "1",
+            "entry_price": "1.4",
+            "exit_price": "1.1",
+            "comm": "1.0",
+        },
+        follow_redirects=False,
+    )
+    assert second.status_code == 302

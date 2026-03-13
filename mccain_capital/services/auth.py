@@ -9,7 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from mccain_capital import auth
 from mccain_capital.runtime import set_setting_value
-from mccain_capital.services.ui import render_page
+from mccain_capital.services.ui import csrf_input_html, render_page
 
 
 def _bootstrap_request_allowed() -> bool:
@@ -54,7 +54,13 @@ def setup_page():
             return redirect(url_for("dashboard"))
 
     return render_page(
-        render_template("setup_login.html", err=err, msg=msg, default_user=default_user),
+        render_template(
+            "setup_login.html",
+            err=err,
+            msg=msg,
+            default_user=default_user,
+            csrf_input=csrf_input_html(),
+        ),
         active="auth",
         title="McCain Capital · Setup Login",
     )
@@ -82,7 +88,12 @@ def login_page():
         err = "Invalid username or password."
 
     return render_page(
-        render_template("login.html", err=err, next_url=request.args.get("next", "")),
+        render_template(
+            "login.html",
+            err=err,
+            next_url=request.args.get("next", ""),
+            csrf_input=csrf_input_html(),
+        ),
         active="auth",
         title="McCain Capital · Login",
     )
