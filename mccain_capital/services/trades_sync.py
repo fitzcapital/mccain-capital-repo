@@ -336,7 +336,7 @@ def _auto_sync_worker(app) -> None:
                 continue
             try:
                 fd = os.open(
-                    legacy.BROKER_AUTO_SYNC_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                    legacy._broker_auto_sync_lock_path(), os.O_CREAT | os.O_EXCL | os.O_WRONLY
                 )
                 os.close(fd)
             except FileExistsError:
@@ -400,7 +400,7 @@ def _auto_sync_worker(app) -> None:
                     )
             finally:
                 try:
-                    os.unlink(legacy.BROKER_AUTO_SYNC_LOCK_PATH)
+                    os.unlink(legacy._broker_auto_sync_lock_path())
                 except OSError:
                     pass
             time.sleep(45)

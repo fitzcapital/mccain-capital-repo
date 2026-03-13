@@ -40,7 +40,14 @@ COPY . .
 
 # App listens on 5001 by default (matches app.py)
 ENV PORT=5001
+ENV PERSISTENT_DATA_DIR=/data
+ENV DB_PATH=/data/journal.db
+ENV UPLOAD_DIR=/data/uploads
+ENV BOOKS_DIR=/data/books
+ENV SECRET_KEY_FILE=/data/.secret_key
 ENV AUTO_SYNC_PASSWORD_FALLBACK=1
+RUN mkdir -p /data/uploads /data/books
+VOLUME ["/data"]
 EXPOSE 5001
 
 # Gunicorn for production.

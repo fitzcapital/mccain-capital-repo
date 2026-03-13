@@ -7,7 +7,7 @@ from mccain_capital import create_app
 
 def main():
     app = create_app()
-    host = os.environ.get("HOST", "0.0.0.0")
+    host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "5001"))
     debug = os.environ.get("DEBUG", "0") == "1"
     app.run(host=host, port=port, debug=debug)

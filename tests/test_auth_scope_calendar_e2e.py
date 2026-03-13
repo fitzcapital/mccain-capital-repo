@@ -54,7 +54,7 @@ def test_calendar_requires_auth_when_enabled(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(core, "APP_PASSWORD", "secret-pass")
 
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, CSRF_ENABLED=False)
     client = app.test_client()
 
     resp = client.get("/calendar", follow_redirects=False)
@@ -77,7 +77,7 @@ def test_calendar_allows_authenticated_session_when_auth_enabled(tmp_path: Path,
     monkeypatch.setattr(core, "APP_PASSWORD", "secret-pass")
 
     app = create_app()
-    app.config.update(TESTING=True)
+    app.config.update(TESTING=True, CSRF_ENABLED=False)
     client = app.test_client()
 
     login_resp = client.post(

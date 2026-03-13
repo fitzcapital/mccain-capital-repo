@@ -46,6 +46,7 @@ from mccain_capital.services.ui import (
     get_forex_factory_next_week_feed,
     get_system_status,
     render_page,
+    save_trading_window_settings,
     simple_msg,
 )
 from mccain_capital.services.viewmodels import (
@@ -65,9 +66,7 @@ WEEK_OPEN_INTERVALS = (2, 3, 4, 5, 6)
 MONTH_OPEN_INTERVALS = (2,)
 MARKET_PULSE_CACHE_TTL_SECONDS = 300
 MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD = 2
-MARKET_PULSE_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_pulse_cache.json")
 MARKET_NEWS_CACHE_TTL_SECONDS = 900
-MARKET_NEWS_CACHE_FILE = os.path.join(app_runtime.UPLOAD_DIR, ".market_news_cache.json")
 MARKET_NEWS_RSS_TIMEOUT_SECONDS = 1.25
 MARKET_NEWS_RSS_SYMBOL_LIMIT = 5
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
@@ -195,9 +194,17 @@ def _legacy():
     return app_core
 
 
+def _market_pulse_cache_file() -> str:
+    return app_runtime.upload_path(".market_pulse_cache.json")
+
+
+def _market_news_cache_file() -> str:
+    return app_runtime.upload_path(".market_news_cache.json")
+
+
 def _load_market_pulse_disk_cache() -> Dict[str, Any] | None:
     try:
-        with open(MARKET_PULSE_CACHE_FILE, "r", encoding="utf-8") as f:
+        with open(_market_pulse_cache_file(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
@@ -206,8 +213,8 @@ def _load_market_pulse_disk_cache() -> Dict[str, Any] | None:
 
 def _save_market_pulse_disk_cache(payload: Dict[str, Any]) -> None:
     try:
-        os.makedirs(app_runtime.UPLOAD_DIR, exist_ok=True)
-        with open(MARKET_PULSE_CACHE_FILE, "w", encoding="utf-8") as f:
+        os.makedirs(app_runtime.upload_root(), exist_ok=True)
+        with open(_market_pulse_cache_file(), "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
     except OSError:
         return
@@ -215,7 +222,7 @@ def _save_market_pulse_disk_cache(payload: Dict[str, Any]) -> None:
 
 def _load_market_news_disk_cache() -> Dict[str, Any] | None:
     try:
-        with open(MARKET_NEWS_CACHE_FILE, "r", encoding="utf-8") as f:
+        with open(_market_news_cache_file(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
@@ -224,8 +231,8 @@ def _load_market_news_disk_cache() -> Dict[str, Any] | None:
 
 def _save_market_news_disk_cache(payload: Dict[str, Any]) -> None:
     try:
-        os.makedirs(app_runtime.UPLOAD_DIR, exist_ok=True)
-        with open(MARKET_NEWS_CACHE_FILE, "w", encoding="utf-8") as f:
+        os.makedirs(app_runtime.upload_root(), exist_ok=True)
+        with open(_market_news_cache_file(), "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
     except OSError:
         return
@@ -2824,6 +2831,22 @@ def vanquish_lock_control():
     state = set_manual_vanquish_lock(minutes, source="dashboard_test")
     flash(
         f"Manual Vanquish lock started for {int(state.get('duration_minutes') or minutes)} minute(s).",
+        "success",
+    )
+    return redirect(next_href)
+
+
+def trading_window_config():
+    if request.method != "POST":
+        return redirect(url_for("dashboard"))
+    raw_next = str(request.form.get("next") or "").strip()
+    if raw_next.startswith("/") and not raw_next.startswith("//"):
+        next_href = raw_next
+    else:
+        next_href = str(request.referrer or url_for("dashboard"))
+    state = save_trading_window_settings(request.form)
+    flash(
+        f"Trading window saved: {state.get('start_et')} → {state.get('done_by_et')} → {state.get('hard_stop_et')} ET.",
         "success",
     )
     return redirect(next_href)

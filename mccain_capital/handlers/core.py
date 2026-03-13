@@ -100,6 +100,10 @@ def vanquish_lock_state():
     return svc.vanquish_lock_state()
 
 
+def trading_window_config():
+    return svc.trading_window_config()
+
+
 def export_json():
     return svc.export_json()
 

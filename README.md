@@ -91,6 +91,13 @@ python -m mccain_capital.cli
 
 Open: `http://localhost:5001`
 
+Default local persistence now lives under `./persistent-data/`:
+
+- DB: `persistent-data/journal.db`
+- uploads/debug/artifacts: `persistent-data/uploads/`
+- books: `persistent-data/books/`
+- generated secret key: `persistent-data/.secret_key`
+
 Optional explicit migration run:
 
 ```bash
@@ -105,9 +112,6 @@ podman build -t mccain-capital-app:latest -f Containerfile .
 podman rm -f mccain-capital-app 2>/dev/null || true
 podman volume create mccain-capital-data
 podman run -d --name mccain-capital-app -p 5001:5001 \
-  -e DB_PATH=/data/journal.db \
-  -e UPLOAD_DIR=/data/uploads \
-  -e BOOKS_DIR=/data/books \
   -v mccain-capital-data:/data \
   mccain-capital-app:latest
 podman logs -f mccain-capital-app
@@ -122,6 +126,7 @@ With the `mccain-capital-data` volume, all app data persists across rebuilds/res
 - journal/trades database: `/data/journal.db`
 - uploads/debug artifacts: `/data/uploads`
 - books/library files: `/data/books`
+- generated secret key: `/data/.secret_key`
 
 ---
 

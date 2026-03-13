@@ -1,6 +1,6 @@
 """Core app behavior tests."""
 
-from mccain_capital.runtime import db, now_iso
+from mccain_capital.runtime import db, get_setting_value, now_iso
 from mccain_capital.services import core as core_service
 from werkzeug.security import generate_password_hash
 
@@ -73,6 +73,52 @@ def test_vanquish_lock_state_endpoint(client):
     assert "goal" in payload
     assert "day_net" in payload
     assert "unlock_label" in payload
+
+
+def test_dashboard_trading_window_banner_uses_test_mode_stop_state(client):
+    from mccain_capital.runtime import set_setting_value
+
+    set_setting_value("trading_window_enabled", "1")
+    set_setting_value("trading_window_start_et", "09:30")
+    set_setting_value("trading_window_done_by_et", "11:30")
+    set_setting_value("trading_window_hard_stop_et", "12:00")
+    set_setting_value("trading_window_test_mode", "1")
+    set_setting_value("trading_window_test_date", "2026-03-12")
+    set_setting_value("trading_window_test_time_et", "12:45")
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Trading Window" in resp.data
+    assert b"Test Mode" in resp.data
+    assert b"STOP TRADING" in resp.data
+    assert b"Done By 11:30 ET" in resp.data
+
+
+def test_trading_window_config_endpoint_saves_times(client):
+    resp = client.post(
+        "/ops/trading-window",
+        data={
+            "tw_enabled": "1",
+            "tw_start_et": "09:35",
+            "tw_done_by_et": "11:20",
+            "tw_hard_stop_et": "11:45",
+            "tw_test_mode": "1",
+            "tw_test_date": "2026-03-12",
+            "tw_test_time_et": "10:15",
+            "next": "/dashboard",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert resp.headers.get("Location", "").endswith("/dashboard")
+
+    assert str(get_setting_value("trading_window_enabled", "")) == "1"
+    assert str(get_setting_value("trading_window_start_et", "")) == "09:35"
+    assert str(get_setting_value("trading_window_done_by_et", "")) == "11:20"
+    assert str(get_setting_value("trading_window_hard_stop_et", "")) == "11:45"
+    assert str(get_setting_value("trading_window_test_mode", "")) == "1"
+    assert str(get_setting_value("trading_window_test_date", "")) == "2026-03-12"
+    assert str(get_setting_value("trading_window_test_time_et", "")) == "10:15"
 
 
 def test_candle_opens_news_includes_placeholder_weeks(monkeypatch):

@@ -464,6 +464,144 @@
       overflow:hidden;
       text-overflow:ellipsis;
     }
+    .tradingWindowStrip{
+      border:1px solid rgba(var(--accent-rgb),.28);
+      border-radius:16px;
+      padding:10px 12px;
+      margin-bottom:10px;
+      background:
+        linear-gradient(120deg, rgba(255,255,255,.03), rgba(var(--accent-rgb),.02) 50%, rgba(255,255,255,.01)),
+        var(--panel);
+      box-shadow: var(--shadow-soft);
+    }
+    .tradingWindowStrip.is-active{
+      border-color: rgba(46,204,113,.48);
+      box-shadow: 0 0 0 1px rgba(46,204,113,.22), 0 10px 24px rgba(0,0,0,.22);
+    }
+    .tradingWindowStrip.is-warning{
+      border-color: rgba(217,181,109,.56);
+      box-shadow: 0 0 0 1px rgba(217,181,109,.24), 0 10px 24px rgba(0,0,0,.22);
+    }
+    .tradingWindowStrip.is-stop{
+      border-color: rgba(255,102,140,.74);
+      box-shadow:
+        0 0 0 1px rgba(255,120,148,.34),
+        0 0 24px rgba(255,102,153,.30),
+        inset 0 0 18px rgba(255,102,153,.10);
+    }
+    .tradingWindowStrip.is-off{
+      border-color: rgba(255,255,255,.20);
+    }
+    .tradingWindowHead{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .tradingWindowState{
+      font-size:11px;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-weight:900;
+      color:var(--text);
+    }
+    .tradingWindowTag{
+      display:inline-flex;
+      align-items:center;
+      border:1px solid rgba(217,181,109,.42);
+      border-radius:999px;
+      padding:2px 8px;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:#f4e4be;
+      background:rgba(217,181,109,.12);
+    }
+    .tradingWindowNow{
+      margin-left:auto;
+      font-size:11px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .tradingWindowMessage{
+      margin-top:6px;
+      font-size:13px;
+      line-height:1.35;
+      font-weight:700;
+      color:var(--text);
+    }
+    .tradingWindowTimeline{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:6px;
+      font-size:11px;
+      color:var(--muted);
+    }
+    .tradingWindowEditor{
+      margin-top:8px;
+      border-top:1px dashed rgba(var(--accent-rgb),.26);
+      padding-top:8px;
+    }
+    .tradingWindowEditor summary{
+      cursor:pointer;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:800;
+      list-style:none;
+    }
+    .tradingWindowEditor summary::-webkit-details-marker{display:none}
+    .tradingWindowForm{
+      display:grid;
+      grid-template-columns: repeat(6, minmax(110px, 1fr));
+      gap:8px;
+      margin-top:8px;
+      align-items:end;
+    }
+    .tradingWindowForm label{
+      display:grid;
+      gap:4px;
+      min-width:0;
+    }
+    .tradingWindowToggle{
+      grid-column: span 2;
+      display:flex !important;
+      align-items:center;
+      gap:8px;
+      font-size:12px;
+      color:var(--text);
+      font-weight:700;
+      min-height:42px;
+    }
+    .tradingWindowToggle input[type="checkbox"]{
+      margin:0;
+    }
+    .tradingWindowActions{
+      display:flex;
+      justify-content:flex-end;
+      grid-column: span 2;
+    }
+    @media (max-width: 1080px){
+      .tradingWindowForm{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .tradingWindowToggle,
+      .tradingWindowActions{
+        grid-column: span 2;
+      }
+      .tradingWindowNow{
+        margin-left:0;
+      }
+    }
+    @media (max-width: 640px){
+      .tradingWindowForm{
+        grid-template-columns: 1fr;
+      }
+      .tradingWindowToggle,
+      .tradingWindowActions{
+        grid-column: span 1;
+      }
+    }
     .desktopOnly{display:block}
     .mobileOnly{display:none}
     .pageHero{
@@ -6628,6 +6766,52 @@ body.marketPulseExecutionMode .researchOnly{
   font-size:40px;
 }
 
+/* Final polish pass: numeric readability + interaction consistency */
+.value,
+.v,
+.summaryBalance,
+.summaryStat .v,
+.metric .value,
+.statusBadge strong,
+.showcaseValue,
+.analyticsTopStat strong,
+.commandCalendarBalance strong{
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1, "lnum" 1;
+}
+
+button:focus-visible,
+.btn:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible{
+  outline:none;
+  box-shadow:var(--ring);
+  border-color:rgba(var(--accent-rgb),.38);
+}
+
+.syncDetails{
+  border-radius:var(--radius-md);
+}
+
+.syncDetails summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.topbar .sub{
+  opacity:.86;
+}
+
+.moreMenu .btn{
+  min-height:36px;
+  font-size:12px;
+}
+
 @media (max-width: 900px){
   .wrap{
     padding:16px 12px 76px;
@@ -6659,6 +6843,13 @@ body.marketPulseExecutionMode .researchOnly{
   .btn{
     min-height:38px;
     font-size:12px;
+  }
+  .topbar{
+    gap:10px;
+  }
+  .clockPill{
+    min-height:34px;
+    padding:6px 10px;
   }
 }
 

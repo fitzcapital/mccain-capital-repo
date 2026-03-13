@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from mccain_capital import create_app
 from mccain_capital import app_core as core
 
@@ -31,7 +29,7 @@ def test_auth_gate_redirects_to_login_when_enabled(tmp_path: Path, monkeypatch):
     assert "/login" in resp.headers["Location"]
 
 
-def test_create_app_requires_secret_key_in_production(tmp_path: Path, monkeypatch):
+def test_create_app_persists_secret_key_in_production(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "prod.db"
     uploads_dir = tmp_path / "uploads"
     books_dir = tmp_path / "books"
@@ -43,9 +41,18 @@ def test_create_app_requires_secret_key_in_production(tmp_path: Path, monkeypatc
     monkeypatch.setattr(core, "BOOKS_DIR", str(books_dir))
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.delenv("SECRET_KEY_FILE", raising=False)
 
-    with pytest.raises(RuntimeError, match="SECRET_KEY must be set"):
-        create_app()
+    app = create_app()
+    secret_path = tmp_path / ".secret_key"
+
+    assert app.secret_key
+    assert secret_path.exists()
+    persisted = secret_path.read_text(encoding="utf-8").strip()
+    assert persisted == app.secret_key
+
+    app_again = create_app()
+    assert app_again.secret_key == persisted
 
 
 def test_create_app_skips_workers_when_safe_mode(tmp_path: Path, monkeypatch):
@@ -65,7 +72,7 @@ def test_create_app_skips_workers_when_safe_mode(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(core, "init_db", boom)
 
-    from mccain_capital.services import trades as trades_service
+    from mccain_capital.services import trades_sync as trades_service
 
     calls = {"count": 0}
 

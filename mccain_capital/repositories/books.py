@@ -6,7 +6,7 @@ import os
 import re
 from typing import Dict, List
 
-from mccain_capital.runtime import BOOKS_DIR
+from mccain_capital import runtime as app_runtime
 
 
 def safe_filename(name: str) -> str:
@@ -17,9 +17,10 @@ def safe_filename(name: str) -> str:
 
 
 def list_books() -> List[Dict[str, str]]:
-    os.makedirs(BOOKS_DIR, exist_ok=True)
+    books_dir = app_runtime.books_root()
+    os.makedirs(books_dir, exist_ok=True)
     files = []
-    for fn in sorted(os.listdir(BOOKS_DIR)):
+    for fn in sorted(os.listdir(books_dir)):
         if fn.lower().endswith(".pdf"):
-            files.append({"name": fn, "path": os.path.join(BOOKS_DIR, fn)})
+            files.append({"name": fn, "path": os.path.join(books_dir, fn)})
     return files

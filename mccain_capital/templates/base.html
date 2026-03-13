@@ -4,8 +4,9 @@
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}">
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="csrf-token" content="{{ csrf_token }}"/>
   <title>{{ title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-tape-20260311m">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-tape-20260311n">
 </head>
 
 <body class="{% if active %}page-{{ active|replace('_', '-')|replace(' ', '-') }}{% endif %}">
@@ -134,83 +135,143 @@
       </div>
     </div>
 
-    {% set ss = system_status if system_status is defined else {} %}
-    <div class="systemStatusStrip" role="status" aria-live="polite">
-      <div class="statusChip">
-        <span class="statusKey">Last Sync</span>
-        <span class="statusVal">
-          {% set sync_status = (ss.last_sync_status or '')|lower %}
-          {% if sync_status in ['success', 'succeeded', 'ok', 'healthy'] %}
-            Succeeded
-          {% elif sync_status in ['failed', 'error', 'blocked'] %}
-            Failed
-          {% elif sync_status %}
-            {{ sync_status|replace('_', ' ')|title }}
-          {% else %}
-            Not yet recorded
+    {% set tw = trading_window if trading_window is defined else {} %}
+    {% if active != 'auth' and tw %}
+      <div class="tradingWindowStrip is-{{ tw.state }}">
+        <div class="tradingWindowHead">
+          <span class="pill">Trading Window</span>
+          <span class="tradingWindowState">{{ tw.state_label }}</span>
+          {% if tw.using_test_clock %}
+            <span class="tradingWindowTag">Test Mode</span>
           {% endif %}
-        </span>
+          <span class="tradingWindowNow">{{ tw.now_label }}</span>
+        </div>
+        <div class="tradingWindowMessage">{{ tw.message }}</div>
+        <div class="tradingWindowTimeline">
+          <span>Start {{ tw.start_et }} ET</span>
+          <span>Done By {{ tw.done_by_et }} ET</span>
+          <span>Hard Stop {{ tw.hard_stop_et }} ET</span>
+        </div>
+        <details class="tradingWindowEditor"{% if tw.using_test_clock %} open{% endif %}>
+          <summary>Adjust Trading Window</summary>
+          <form method="post" action="/ops/trading-window" class="tradingWindowForm">
+            {{ csrf_input|safe }}
+            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+            <label class="tradingWindowToggle">
+              <input type="checkbox" name="tw_enabled" value="1" {% if tw.enabled %}checked{% endif %}>
+              Enable enforcement banner
+            </label>
+            <label>
+              Start (ET)
+              <input type="time" name="tw_start_et" value="{{ tw.start_et }}" required>
+            </label>
+            <label>
+              Done By (ET)
+              <input type="time" name="tw_done_by_et" value="{{ tw.done_by_et }}" required>
+            </label>
+            <label>
+              Hard Stop (ET)
+              <input type="time" name="tw_hard_stop_et" value="{{ tw.hard_stop_et }}" required>
+            </label>
+            <label class="tradingWindowToggle">
+              <input type="checkbox" name="tw_test_mode" value="1" {% if tw.test_mode %}checked{% endif %} data-tw-test-mode>
+              Test mode (simulate clock)
+            </label>
+            <label>
+              Test Date
+              <input type="date" name="tw_test_date" value="{{ tw.test_date }}" data-tw-test-field>
+            </label>
+            <label>
+              Test Time (ET)
+              <input type="time" name="tw_test_time_et" value="{{ tw.test_time_et }}" data-tw-test-field>
+            </label>
+            <div class="tradingWindowActions">
+              <button class="btn primary" type="submit">Save Window</button>
+            </div>
+          </form>
+        </details>
       </div>
-      <div class="statusChip">
-        <span class="statusKey">Next Auto Sync</span>
-        <span class="statusVal">
-          {% if ss.auto_sync_enabled and ss.auto_sync_time %}
-            {{ ss.auto_sync_time }} ET
-          {% else %}
-            Auto sync is off
-          {% endif %}
-        </span>
-      </div>
-      <div class="statusChip">
-        <span class="statusKey">Last Sync Update</span>
-        <span class="statusVal">
-          {% if ss.last_sync_updated_human %}
-            {{ ss.last_sync_updated_human }}
-          {% elif ss.last_sync_updated_at %}
-            {{ ss.last_sync_updated_at }}
-          {% elif ss.last_sync_stage %}
-            {{ ss.last_sync_stage|replace('_', ' ')|title }}
-          {% else %}
-            Not yet recorded
-          {% endif %}
-        </span>
-      </div>
-    </div>
-    <div id="workflowRail" class="workflowRail">
-      <div class="workflowHead">
-        <div>
-          <div class="pill">🧭 Command Rail</div>
-          <div class="workflowSub">One loop, kept visible: plan, execute, review, debrief, calendar.</div>
+    {% endif %}
+
+    {% if active == 'dashboard' %}
+      {% set ss = system_status if system_status is defined else {} %}
+      <div class="systemStatusStrip" role="status" aria-live="polite">
+        <div class="statusChip">
+          <span class="statusKey">Last Sync</span>
+          <span class="statusVal">
+            {% set sync_status = (ss.last_sync_status or '')|lower %}
+            {% if sync_status in ['success', 'succeeded', 'ok', 'healthy'] %}
+              Succeeded
+            {% elif sync_status in ['failed', 'error', 'blocked'] %}
+              Failed
+            {% elif sync_status %}
+              {{ sync_status|replace('_', ' ')|title }}
+            {% else %}
+              Not yet recorded
+            {% endif %}
+          </span>
+        </div>
+        <div class="statusChip">
+          <span class="statusKey">Next Auto Sync</span>
+          <span class="statusVal">
+            {% if ss.auto_sync_enabled and ss.auto_sync_time %}
+              {{ ss.auto_sync_time }} ET
+            {% else %}
+              Auto sync is off
+            {% endif %}
+          </span>
+        </div>
+        <div class="statusChip">
+          <span class="statusKey">Last Sync Update</span>
+          <span class="statusVal">
+            {% if ss.last_sync_updated_human %}
+              {{ ss.last_sync_updated_human }}
+            {% elif ss.last_sync_updated_at %}
+              {{ ss.last_sync_updated_at }}
+            {% elif ss.last_sync_stage %}
+              {{ ss.last_sync_stage|replace('_', ' ')|title }}
+            {% else %}
+              Not yet recorded
+            {% endif %}
+          </span>
         </div>
       </div>
-      <div class="workflowGrid">
-        <a class="workflowStep guideStep {% if active=='calc' %}flowActive{% endif %}" data-guide-item="plan-risk" href="/calculator">
-          <div class="workflowKicker">Plan</div>
-          <div class="workflowTitle">Plan Risk</div>
-          <div class="workflowText">Set size and risk first.</div>
-        </a>
-        <a class="workflowStep guideStep {% if active=='trades' %}flowActive{% endif %}" data-guide-item="upload-statement" href="/trades">
-          <div class="workflowKicker">Execute</div>
-          <div class="workflowTitle">Execution Log</div>
-          <div class="workflowText">Log and import the day cleanly.</div>
-        </a>
-        <a class="workflowStep guideStep {% if active=='analytics' %}flowActive{% endif %}" data-guide-item="review-trades" href="/analytics?tab=performance">
-          <div class="workflowKicker">Review</div>
-          <div class="workflowTitle">Analyze Day</div>
-          <div class="workflowText">Check edge, drawdown, and discipline.</div>
-        </a>
-        <a class="workflowStep guideStep {% if active=='journal' %}flowActive{% endif %}" data-guide-item="weekly-debrief" href="/journal">
-          <div class="workflowKicker">Debrief</div>
-          <div class="workflowTitle">Journal</div>
-          <div class="workflowText">Lock in the lesson while it is fresh.</div>
-        </a>
-        <a class="workflowStep guideStep {% if active=='calendar' %}flowActive{% endif %}" href="/calendar">
-          <div class="workflowKicker">Map</div>
-          <div class="workflowTitle">Calendar</div>
-          <div class="workflowText">See the month as one signal map.</div>
-        </a>
+      <div id="workflowRail" class="workflowRail">
+        <div class="workflowHead">
+          <div>
+            <div class="pill">🧭 Command Rail</div>
+            <div class="workflowSub">One loop, kept visible: plan, execute, review, debrief, calendar.</div>
+          </div>
+        </div>
+        <div class="workflowGrid">
+          <a class="workflowStep guideStep {% if active=='calc' %}flowActive{% endif %}" data-guide-item="plan-risk" href="/calculator">
+            <div class="workflowKicker">Plan</div>
+            <div class="workflowTitle">Plan Risk</div>
+            <div class="workflowText">Set size and risk first.</div>
+          </a>
+          <a class="workflowStep guideStep {% if active=='trades' %}flowActive{% endif %}" data-guide-item="upload-statement" href="/trades">
+            <div class="workflowKicker">Execute</div>
+            <div class="workflowTitle">Execution Log</div>
+            <div class="workflowText">Log and import the day cleanly.</div>
+          </a>
+          <a class="workflowStep guideStep {% if active=='analytics' %}flowActive{% endif %}" data-guide-item="review-trades" href="/analytics?tab=performance">
+            <div class="workflowKicker">Review</div>
+            <div class="workflowTitle">Analyze Day</div>
+            <div class="workflowText">Check edge, drawdown, and discipline.</div>
+          </a>
+          <a class="workflowStep guideStep {% if active=='journal' %}flowActive{% endif %}" data-guide-item="weekly-debrief" href="/journal">
+            <div class="workflowKicker">Debrief</div>
+            <div class="workflowTitle">Journal</div>
+            <div class="workflowText">Lock in the lesson while it is fresh.</div>
+          </a>
+          <a class="workflowStep guideStep {% if active=='calendar' %}flowActive{% endif %}" href="/calendar">
+            <div class="workflowKicker">Map</div>
+            <div class="workflowTitle">Calendar</div>
+            <div class="workflowText">See the month as one signal map.</div>
+          </a>
+        </div>
       </div>
-    </div>
+    {% endif %}
     <div id="drawerOverlay" class="drawerOverlay" onclick="closeDrawer()"></div>
     <aside id="drawer" class="drawer" aria-label="Menu">
       <div class="drawerInner">
@@ -320,7 +381,46 @@
       <span class="kbd">Ctrl</span> + <span class="kbd">K</span> focuses Search.
     </div>
   </div>
-    <script>
+<script>
+  (function(){
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if(!token || typeof window.fetch !== "function") return;
+    const unsafe = new Set(["POST","PUT","PATCH","DELETE"]);
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      const request = new Request(input, init);
+      const method = String(request.method || init.method || "GET").toUpperCase();
+      const target = new URL(request.url, window.location.href);
+      if(target.origin === window.location.origin && unsafe.has(method)){
+        const headers = new Headers(init.headers || request.headers || {});
+        if(!headers.has("X-CSRF-Token")){
+          headers.set("X-CSRF-Token", token);
+        }
+        init = { ...init, headers };
+      }
+      return originalFetch(input, init);
+    };
+  })();
+</script>
+<script>
+  (function(){
+    const forms = document.querySelectorAll(".tradingWindowForm");
+    forms.forEach((form)=>{
+      const testMode = form.querySelector("[data-tw-test-mode]");
+      const testFields = form.querySelectorAll("[data-tw-test-field]");
+      if(!testMode || !testFields.length) return;
+      const applyState = ()=>{
+        const enabled = !!testMode.checked;
+        testFields.forEach((field)=>{
+          field.disabled = !enabled;
+        });
+      };
+      testMode.addEventListener("change", applyState);
+      applyState();
+    });
+  })();
+</script>
+<script>
   function toggleMoreMenu(){
     const m = document.getElementById("moreMenu");
     const btn = document.querySelector(".moreBtn");

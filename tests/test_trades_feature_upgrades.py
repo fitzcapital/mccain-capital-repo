@@ -793,6 +793,152 @@ def test_ops_backups_config_and_run_now(client, monkeypatch, tmp_path):
     assert "backup_restored_from_center" in actions
 
 
+def test_ops_backups_config_accepts_localized_scope_date(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+    from mccain_capital.repositories import trades as trades_repo
+
+    backup_cfg = tmp_path / ".auto_backup_config.json"
+    backup_dir = tmp_path / "backups"
+    audit_path = tmp_path / ".admin_audit_log.json"
+    monkeypatch.setattr(trades_svc, "AUTO_BACKUP_CONFIG_PATH", str(backup_cfg))
+    monkeypatch.setattr(trades_svc, "AUTO_BACKUP_DIR", str(backup_dir))
+    monkeypatch.setattr(trades_svc, "ADMIN_AUDIT_LOG_PATH", str(audit_path))
+
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_username", "owner"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_password_hash", "pbkdf2:sha256:1$stub$stub"),
+        )
+
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    save_resp = client.post(
+        "/ops/backups/config",
+        data={
+            "enabled": "1",
+            "run_times_et": "16:30",
+            "frequency_hours": "24",
+            "keep_count": "21",
+            "account_scope_enabled": "1",
+            "account_scope_start": "03 / 12 / 2026",
+            "account_scope_start_balance": "$50,000.00",
+            "account_scope_label": "Follow your PLaN",
+        },
+        follow_redirects=True,
+    )
+    assert save_resp.status_code == 200
+
+    scope = trades_repo.account_scope_snapshot()
+    assert scope.get("enabled") is True
+    assert scope.get("start_date") == "2026-03-12"
+    assert float(scope.get("starting_balance") or 0.0) == 50000.0
+
+
+def test_save_auto_backup_config_falls_back_when_primary_unwritable(monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    primary = tmp_path / "blocked" / ".auto_backup_config.json"
+    fallback = tmp_path / "fallback" / ".auto_backup_config.json"
+    monkeypatch.setattr(
+        trades_svc,
+        "_auto_backup_config_paths",
+        lambda for_read=True: [str(primary), str(fallback)],
+    )
+
+    real_open = open
+
+    def _fake_open(path, mode="r", *args, **kwargs):
+        if os.path.abspath(str(path)) == os.path.abspath(str(primary)) and "w" in mode:
+            raise PermissionError("permission denied (test)")
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", _fake_open)
+
+    ok = trades_svc._save_auto_backup_config({"enabled": True, "run_times_et": ["16:30"]})
+    assert ok is True
+    assert fallback.exists()
+    saved = json.loads(fallback.read_text(encoding="utf-8"))
+    assert saved.get("enabled") is True
+
+
+def test_ops_backups_config_warns_when_no_persist_path(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    bad_path = tmp_path / "blocked" / ".auto_backup_config.json"
+    monkeypatch.setattr(
+        trades_svc, "_auto_backup_config_paths", lambda for_read=True: [str(bad_path)]
+    )
+
+    real_open = open
+
+    def _fake_open(path, mode="r", *args, **kwargs):
+        if os.path.abspath(str(path)) == os.path.abspath(str(bad_path)) and "w" in mode:
+            raise PermissionError("permission denied (test)")
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", _fake_open)
+
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_username", "owner"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_password_hash", "pbkdf2:sha256:1$stub$stub"),
+        )
+
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.post(
+        "/ops/backups/config",
+        data={
+            "enabled": "1",
+            "run_times_et": "16:30",
+            "frequency_hours": "24",
+            "keep_count": "21",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert not bad_path.exists()
+
+
+def test_record_admin_audit_falls_back_when_primary_unwritable(monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    primary = tmp_path / "blocked" / ".admin_audit_log.json"
+    fallback = tmp_path / "fallback" / ".admin_audit_log.json"
+    monkeypatch.setattr(
+        trades_svc,
+        "_admin_audit_paths",
+        lambda for_read=True: [str(primary), str(fallback)],
+    )
+
+    real_open = open
+
+    def _fake_open(path, mode="r", *args, **kwargs):
+        if os.path.abspath(str(path)) == os.path.abspath(str(primary)) and "w" in mode:
+            raise PermissionError("permission denied (test)")
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", _fake_open)
+
+    trades_svc.record_admin_audit("auto_backup_config_saved", {"enabled": True}, actor="owner")
+
+    assert fallback.exists()
+    rows = json.loads(fallback.read_text(encoding="utf-8"))
+    assert rows and rows[-1].get("action") == "auto_backup_config_saved"
+
+
 def test_ops_async_backup_job_status_returns_result_html(client, monkeypatch, tmp_path):
     from mccain_capital.services import trades as trades_svc
 

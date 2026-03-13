@@ -75,6 +75,12 @@ def register(app):
         view_func=h.vanquish_lock_state,
         methods=["GET"],
     )
+    app.add_url_rule(
+        "/ops/trading-window",
+        endpoint="trading_window_config",
+        view_func=h.trading_window_config,
+        methods=["POST"],
+    )
     app.add_url_rule("/export.json", endpoint="export_json", view_func=h.export_json)
     app.add_url_rule("/admin/backup", endpoint="backup_data", view_func=h.backup_data)
     app.add_url_rule(

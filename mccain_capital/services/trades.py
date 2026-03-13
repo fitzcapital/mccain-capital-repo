@@ -42,8 +42,6 @@ from mccain_capital import auth
 from mccain_capital import runtime as app_runtime
 from mccain_capital.migrations import run_migrations
 from mccain_capital.runtime import (
-    BOOKS_DIR,
-    UPLOAD_DIR,
     db,
     detect_paste_format,
     get_setting_float,
@@ -51,6 +49,7 @@ from mccain_capital.runtime import (
     money,
     now_iso,
     normalize_opt_type,
+    parse_date_any,
     parse_float,
     parse_int,
     today_iso,
@@ -71,20 +70,6 @@ trade_day_stats = repo.trade_day_stats
 calc_consistency = repo.calc_consistency
 week_total_net = repo.week_total_net
 
-BROKER_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync.json")
-BROKER_DEBUG_DIR = os.path.join(UPLOAD_DIR, "vanquish_debug")
-BROKER_SYNC_STATUS_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync_last_run.json")
-BROKER_SYNC_HISTORY_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync_history.json")
-BROKER_IMPORT_HISTORY_PATH = os.path.join(UPLOAD_DIR, ".vanquish_import_history.json")
-BROKER_NOTIFY_HISTORY_PATH = os.path.join(UPLOAD_DIR, ".vanquish_notify_history.json")
-PLAYBOOK_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".playbook_rules.json")
-ADMIN_AUDIT_LOG_PATH = os.path.join(UPLOAD_DIR, ".admin_audit_log.json")
-BROKER_AUTO_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.json")
-BROKER_AUTO_SYNC_LOCK_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.lock")
-AUTO_BACKUP_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".auto_backup_config.json")
-AUTO_BACKUP_DIR = os.path.join(UPLOAD_DIR, "backups")
-AUTO_BACKUP_LOCK_PATH = os.path.join(UPLOAD_DIR, ".auto_backup.lock")
-BG_JOB_DIR = os.path.join(UPLOAD_DIR, ".bg_jobs")
 BROKER_KEYCHAIN_SERVICE = "mccain-capital.vanquish.auto-sync"
 AUTO_SYNC_PASSWORD_FALLBACK = os.environ.get("AUTO_SYNC_PASSWORD_FALLBACK", "0") == "1"
 SYNC_HISTORY_MAX = 300
@@ -120,7 +105,97 @@ NOTIFY_DEDUPE_BY_EVENT = {
     ),
 }
 
-_BG_JOB_STORE = BackgroundJobStore(BG_JOB_DIR, now_iso)
+_BG_JOB_STORES: Dict[str, BackgroundJobStore] = {}
+
+
+def _upload_dir() -> str:
+    return app_runtime.upload_root()
+
+
+def _books_dir() -> str:
+    return app_runtime.books_root()
+
+
+def _upload_file(name: str) -> str:
+    return app_runtime.upload_path(name)
+
+
+def _broker_sync_config_path() -> str:
+    return str(BROKER_SYNC_CONFIG_PATH or _upload_file(".vanquish_sync.json"))
+
+
+def _broker_debug_dir() -> str:
+    return str(BROKER_DEBUG_DIR or _upload_file("vanquish_debug"))
+
+
+def _broker_sync_status_path() -> str:
+    return str(BROKER_SYNC_STATUS_PATH or _upload_file(".vanquish_sync_last_run.json"))
+
+
+def _broker_sync_history_path() -> str:
+    return str(BROKER_SYNC_HISTORY_PATH or _upload_file(".vanquish_sync_history.json"))
+
+
+def _broker_import_history_path() -> str:
+    return str(BROKER_IMPORT_HISTORY_PATH or _upload_file(".vanquish_import_history.json"))
+
+
+def _broker_notify_history_path() -> str:
+    return str(BROKER_NOTIFY_HISTORY_PATH or _upload_file(".vanquish_notify_history.json"))
+
+
+def _playbook_config_path() -> str:
+    return str(PLAYBOOK_CONFIG_PATH or _upload_file(".playbook_rules.json"))
+
+
+def _admin_audit_log_path() -> str:
+    return str(ADMIN_AUDIT_LOG_PATH or _upload_file(".admin_audit_log.json"))
+
+
+def _broker_auto_sync_config_path() -> str:
+    return str(BROKER_AUTO_SYNC_CONFIG_PATH or _upload_file(".vanquish_auto_sync.json"))
+
+
+def _broker_auto_sync_lock_path() -> str:
+    return str(BROKER_AUTO_SYNC_LOCK_PATH or _upload_file(".vanquish_auto_sync.lock"))
+
+
+def _auto_backup_config_path() -> str:
+    return str(AUTO_BACKUP_CONFIG_PATH or _upload_file(".auto_backup_config.json"))
+
+
+def _auto_backup_dir() -> str:
+    return str(AUTO_BACKUP_DIR or _upload_file("backups"))
+
+
+def _auto_backup_lock_path() -> str:
+    return str(AUTO_BACKUP_LOCK_PATH or _upload_file(".auto_backup.lock"))
+
+
+def _bg_job_store() -> BackgroundJobStore:
+    job_dir = str(BG_JOB_DIR or _upload_file(".bg_jobs"))
+    store = _BG_JOB_STORES.get(job_dir)
+    if store is None:
+        store = BackgroundJobStore(job_dir, now_iso)
+        _BG_JOB_STORES[job_dir] = store
+    return store
+
+
+# Optional path overrides used by targeted tests and local debugging.
+BROKER_SYNC_CONFIG_PATH: Optional[str] = None
+BROKER_DEBUG_DIR: Optional[str] = None
+BROKER_SYNC_STATUS_PATH: Optional[str] = None
+BROKER_SYNC_HISTORY_PATH: Optional[str] = None
+BROKER_IMPORT_HISTORY_PATH: Optional[str] = None
+BROKER_NOTIFY_HISTORY_PATH: Optional[str] = None
+PLAYBOOK_CONFIG_PATH: Optional[str] = None
+ADMIN_AUDIT_LOG_PATH: Optional[str] = None
+BROKER_AUTO_SYNC_CONFIG_PATH: Optional[str] = None
+BROKER_AUTO_SYNC_LOCK_PATH: Optional[str] = None
+AUTO_BACKUP_CONFIG_PATH: Optional[str] = None
+AUTO_BACKUP_DIR: Optional[str] = None
+AUTO_BACKUP_LOCK_PATH: Optional[str] = None
+BG_JOB_DIR: Optional[str] = None
 
 _AUDIT_ACTION_META = {
     "backup_created": {"label": "Backup Created", "group": "backup"},
@@ -181,15 +256,15 @@ def _sync_stage_label(stage: str) -> str:
 
 
 def _create_bg_job(kind: str, title: str, requested: Dict[str, Any]) -> Dict[str, Any]:
-    return _BG_JOB_STORE.create(kind, title, requested)
+    return _bg_job_store().create(kind, title, requested)
 
 
 def _update_bg_job(job_id: str, **updates: Any) -> Dict[str, Any]:
-    return _BG_JOB_STORE.update(job_id, **updates)
+    return _bg_job_store().update(job_id, **updates)
 
 
 def _get_bg_job(job_id: str) -> Dict[str, Any]:
-    return _BG_JOB_STORE.get(job_id)
+    return _bg_job_store().get(job_id)
 
 
 def _build_action_result_summary(
@@ -261,7 +336,7 @@ def _load_playbook_config() -> Dict[str, Any]:
         "critical_items": ["Bias Confirmed", "Risk Defined", "Stop Planned"],
     }
     try:
-        with open(PLAYBOOK_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(_playbook_config_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             if isinstance(parsed, dict):
                 cfg.update(parsed)
@@ -287,8 +362,8 @@ def _load_playbook_config() -> Dict[str, Any]:
 
 
 def _save_playbook_config(cfg: Dict[str, Any]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(PLAYBOOK_CONFIG_PATH, "w", encoding="utf-8") as f:
+    os.makedirs(_upload_dir(), exist_ok=True)
+    with open(_playbook_config_path(), "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 
 
@@ -437,7 +512,7 @@ def _fallback_fernet():
             return Fernet(raw_key.encode("utf-8"))
         except Exception:
             return None
-    secret = (os.environ.get("SECRET_KEY") or "dev-secret-key").strip()
+    secret = app_runtime.load_or_create_secret_key().strip()
     if not secret:
         return None
     digest = hashlib.sha256(f"mccain-auto-sync::{secret}".encode("utf-8")).digest()
@@ -520,7 +595,7 @@ def _load_broker_sync_config() -> Dict[str, str]:
         "report_locale": os.environ.get("VANQUISH_REPORT_LOCALE", "en"),
     }
     try:
-        with open(BROKER_SYNC_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_sync_config_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return defaults
@@ -555,7 +630,7 @@ def _safe_write_json(path: str, payload: Any) -> None:
 
 
 def _save_broker_sync_config(data: Dict[str, str]) -> None:
-    _safe_write_json(BROKER_SYNC_CONFIG_PATH, data)
+    _safe_write_json(_broker_sync_config_path(), data)
 
 
 def _humanize_et_timestamp(raw: str) -> str:
@@ -571,7 +646,7 @@ def _humanize_et_timestamp(raw: str) -> str:
 
 def _load_last_sync_status() -> Dict[str, Any]:
     try:
-        with open(BROKER_SYNC_STATUS_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_sync_status_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             if not isinstance(parsed, dict):
                 return {}
@@ -582,7 +657,7 @@ def _load_last_sync_status() -> Dict[str, Any]:
 
 
 def _save_last_sync_status(payload: Dict[str, Any]) -> None:
-    _safe_write_json(BROKER_SYNC_STATUS_PATH, payload)
+    _safe_write_json(_broker_sync_status_path(), payload)
     status = str(payload.get("status") or "").strip().lower()
     if status not in {"success", "failed", "debug_only"}:
         return
@@ -607,7 +682,7 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
     )
     if len(history) > SYNC_HISTORY_MAX:
         history = history[-SYNC_HISTORY_MAX:]
-    _safe_write_json(BROKER_SYNC_HISTORY_PATH, history)
+    _safe_write_json(_broker_sync_history_path(), history)
     if status == "failed":
         streak = 0
         for e in reversed(history):
@@ -642,7 +717,7 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
 
 def _load_sync_history() -> List[Dict[str, Any]]:
     try:
-        with open(BROKER_SYNC_HISTORY_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_sync_history_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             return [x for x in parsed if isinstance(x, dict)] if isinstance(parsed, list) else []
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -651,7 +726,7 @@ def _load_sync_history() -> List[Dict[str, Any]]:
 
 def _load_notify_history() -> Dict[str, Any]:
     try:
-        with open(BROKER_NOTIFY_HISTORY_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_notify_history_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             return parsed if isinstance(parsed, dict) else {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -659,18 +734,22 @@ def _load_notify_history() -> Dict[str, Any]:
 
 
 def _save_notify_history(state: Dict[str, Any]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(BROKER_NOTIFY_HISTORY_PATH, "w", encoding="utf-8") as f:
+    os.makedirs(_upload_dir(), exist_ok=True)
+    with open(_broker_notify_history_path(), "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
 
 def _load_admin_audit() -> List[Dict[str, Any]]:
-    try:
-        with open(ADMIN_AUDIT_LOG_PATH, "r", encoding="utf-8") as f:
-            parsed = json.load(f)
-            return [x for x in parsed if isinstance(x, dict)] if isinstance(parsed, list) else []
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return []
+    for path in _admin_audit_paths(for_read=True):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                parsed = json.load(f)
+                return (
+                    [x for x in parsed if isinstance(x, dict)] if isinstance(parsed, list) else []
+                )
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+    return []
 
 
 def record_admin_audit(
@@ -687,9 +766,36 @@ def record_admin_audit(
     )
     if len(rows) > 500:
         rows = rows[-500:]
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(ADMIN_AUDIT_LOG_PATH, "w", encoding="utf-8") as f:
-        json.dump(rows, f, indent=2)
+    if not _save_admin_audit(rows):
+        current_app.logger.error("Admin audit write failed; event kept in-memory only: %s", action)
+
+
+def _save_admin_audit(rows: List[Dict[str, Any]]) -> bool:
+    errors: List[str] = []
+    for path in _admin_audit_paths(for_read=False):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(rows, f, indent=2)
+            return True
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+    if errors:
+        current_app.logger.error("Admin audit write failed: %s", " | ".join(errors))
+    return False
+
+
+def _admin_audit_paths(for_read: bool = True) -> List[str]:
+    fallback = os.path.join(tempfile.gettempdir(), "mccain-capital", ".admin_audit_log.json")
+    ordered = (_admin_audit_log_path(), fallback)
+    if for_read and os.path.isfile(fallback):
+        ordered = (fallback, _admin_audit_log_path())
+    paths: List[str] = []
+    for path in ordered:
+        p = os.path.abspath(str(path))
+        if p and p not in paths:
+            paths.append(p)
+    return paths
 
 
 def _audit_action_meta(action: str) -> Dict[str, str]:
@@ -772,10 +878,15 @@ def _load_auto_backup_config() -> Dict[str, Any]:
         "last_status": "",
         "last_message": "",
     }
-    try:
-        with open(AUTO_BACKUP_CONFIG_PATH, "r", encoding="utf-8") as f:
-            parsed = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    parsed: Any = None
+    for path in _auto_backup_config_paths(for_read=True):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                parsed = json.load(f)
+            break
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+    if parsed is None:
         return cfg
     if isinstance(parsed, dict):
         cfg["enabled"] = bool(parsed.get("enabled"))
@@ -796,17 +907,39 @@ def _load_auto_backup_config() -> Dict[str, Any]:
     return cfg
 
 
-def _save_auto_backup_config(cfg: Dict[str, Any]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(AUTO_BACKUP_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+def _save_auto_backup_config(cfg: Dict[str, Any]) -> bool:
+    errors: List[str] = []
+    for path in _auto_backup_config_paths(for_read=False):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2)
+            return True
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+    if errors:
+        current_app.logger.error("Auto backup config write failed: %s", " | ".join(errors))
+    return False
+
+
+def _auto_backup_config_paths(for_read: bool = True) -> List[str]:
+    fallback = os.path.join(tempfile.gettempdir(), "mccain-capital", ".auto_backup_config.json")
+    ordered = (_auto_backup_config_path(), fallback)
+    if for_read and os.path.isfile(fallback):
+        ordered = (fallback, _auto_backup_config_path())
+    paths: List[str] = []
+    for path in ordered:
+        p = os.path.abspath(str(path))
+        if p and p not in paths:
+            paths.append(p)
+    return paths
 
 
 def _create_backup_archive(reason: str, actor: str) -> Dict[str, Any]:
     stamp = datetime.now(ZoneInfo("America/New_York")).strftime("%Y%m%d_%H%M%S")
-    os.makedirs(AUTO_BACKUP_DIR, exist_ok=True)
+    os.makedirs(_auto_backup_dir(), exist_ok=True)
     name = f"mccain_backup_{stamp}_{secure_filename(reason or 'manual')}.zip"
-    out_path = os.path.join(AUTO_BACKUP_DIR, name)
+    out_path = os.path.join(_auto_backup_dir(), name)
     db_path = str(app_runtime.DB_PATH)
     upload_root = str(app_runtime.UPLOAD_DIR)
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -816,7 +949,7 @@ def _create_backup_archive(reason: str, actor: str) -> Dict[str, Any]:
             for root, _, files in os.walk(upload_root):
                 for fn in files:
                     full = os.path.join(root, fn)
-                    if os.path.abspath(full).startswith(os.path.abspath(AUTO_BACKUP_DIR) + os.sep):
+                    if os.path.abspath(full).startswith(os.path.abspath(_auto_backup_dir()) + os.sep):
                         continue
                     rel = os.path.relpath(full, upload_root)
                     zf.write(full, arcname=f"data/uploads/{rel}")
@@ -838,12 +971,12 @@ def _create_backup_archive(reason: str, actor: str) -> Dict[str, Any]:
 
 
 def _prune_auto_backups(keep_count: int) -> None:
-    if not os.path.isdir(AUTO_BACKUP_DIR):
+    if not os.path.isdir(_auto_backup_dir()):
         return
     files = [
-        os.path.join(AUTO_BACKUP_DIR, n)
-        for n in os.listdir(AUTO_BACKUP_DIR)
-        if n.endswith(".zip") and os.path.isfile(os.path.join(AUTO_BACKUP_DIR, n))
+        os.path.join(_auto_backup_dir(), n)
+        for n in os.listdir(_auto_backup_dir())
+        if n.endswith(".zip") and os.path.isfile(os.path.join(_auto_backup_dir(), n))
     ]
     files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
     for p in files[max(3, keep_count) :]:
@@ -1145,7 +1278,7 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
 
 def _load_import_history() -> List[Dict[str, Any]]:
     try:
-        with open(BROKER_IMPORT_HISTORY_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_import_history_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             return [x for x in parsed if isinstance(x, dict)] if isinstance(parsed, list) else []
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -1157,7 +1290,7 @@ def _append_import_history(entry: Dict[str, Any]) -> None:
     history.append(entry)
     if len(history) > IMPORT_HISTORY_MAX:
         history = history[-IMPORT_HISTORY_MAX:]
-    _safe_write_json(BROKER_IMPORT_HISTORY_PATH, history)
+    _safe_write_json(_broker_import_history_path(), history)
 
 
 def _record_import_batch(
@@ -1272,7 +1405,7 @@ def _mark_import_batch_rolled_back(batch_id: str) -> None:
             e["rolled_back_at"] = now_iso()
             changed = True
     if changed:
-        _safe_write_json(BROKER_IMPORT_HISTORY_PATH, history)
+        _safe_write_json(_broker_import_history_path(), history)
 
 
 def rollback_import_batch() -> Any:
@@ -1349,7 +1482,7 @@ def _load_auto_sync_config() -> Dict[str, Any]:
         "last_run_date": "",
     }
     try:
-        with open(BROKER_AUTO_SYNC_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_auto_sync_config_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             if not isinstance(parsed, dict):
                 return defaults
@@ -1373,7 +1506,7 @@ def _save_auto_sync_config(cfg: Dict[str, Any]) -> None:
     to_save = dict(cfg)
     to_save.pop("keyring_available", None)
     to_save.pop("password_stored", None)
-    _safe_write_json(BROKER_AUTO_SYNC_CONFIG_PATH, to_save)
+    _safe_write_json(_broker_auto_sync_config_path(), to_save)
 
 
 def _parse_sync_stage(message: str) -> str:
@@ -1396,14 +1529,14 @@ def _strip_stage_prefix(message: str) -> str:
 
 
 def _debug_relative(path: str) -> str:
-    rel = os.path.relpath(path, UPLOAD_DIR)
+    rel = os.path.relpath(path, _upload_dir())
     return rel.replace("\\", "/")
 
 
 def _debug_safe_path(rel: str) -> str:
     clean = (rel or "").replace("\\", "/").lstrip("/")
-    abs_path = os.path.abspath(os.path.join(UPLOAD_DIR, clean))
-    root = os.path.abspath(UPLOAD_DIR)
+    abs_path = os.path.abspath(os.path.join(_upload_dir(), clean))
+    root = os.path.abspath(_upload_dir())
     if not abs_path.startswith(root + os.sep) and abs_path != root:
         raise ValueError("unsafe path")
     return abs_path
@@ -1724,7 +1857,7 @@ def trades_update_balance_bases():
 
     if mode == "scope":
         scope_enabled = request.form.get("scope_enabled") == "1"
-        scope_start = (request.form.get("scope_start_date") or "").strip()
+        scope_start = _normalize_scope_start_date(request.form.get("scope_start_date") or "")
         scope_label = (request.form.get("scope_label") or "").strip()
         scope_balance_raw = (request.form.get("scope_starting_balance") or "").strip()
 
@@ -1743,7 +1876,8 @@ def trades_update_balance_bases():
 
         bal = parse_float(scope_balance_raw)
         try:
-            datetime.strptime(scope_start, "%Y-%m-%d")
+            if not scope_start:
+                raise ValueError("invalid scope start date")
             if bal is None:
                 raise ValueError("invalid scope balance")
             scope_balance = float(bal)
@@ -2316,7 +2450,7 @@ def trades_upload_pdf():
         if ext not in {".pdf", ".html", ".htm"}:
             return render_page(simple_msg("Please upload a .pdf or .html file."), active="trades")
 
-        path = os.path.join(UPLOAD_DIR, filename)
+        path = os.path.join(_upload_dir(), filename)
         f.save(path)
 
         # ✅ HTML path (no OCR)
@@ -2492,7 +2626,7 @@ def _run_live_sync_once(
 ) -> Dict[str, Any]:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = (
-        os.path.join(BROKER_DEBUG_DIR, f"live_{from_date}_{to_date}_{stamp}")
+        os.path.join(_broker_debug_dir(), f"live_{from_date}_{to_date}_{stamp}")
         if debug_capture
         else None
     )
@@ -2539,9 +2673,9 @@ def _run_live_sync_once(
         )
         return result
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(_upload_dir(), exist_ok=True)
     filename = f"vanquish_statement_live_{from_date}_{to_date}_{stamp}.html"
-    path = os.path.join(UPLOAD_DIR, filename)
+    path = os.path.join(_upload_dir(), filename)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html_text)
     artifacts_rel = artifacts_rel + [_debug_relative(path)]
@@ -3279,7 +3413,7 @@ def _auto_sync_worker(app) -> None:
                 time.sleep(60)
                 continue
             try:
-                fd = os.open(BROKER_AUTO_SYNC_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                fd = os.open(_broker_auto_sync_lock_path(), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.close(fd)
             except FileExistsError:
                 time.sleep(20)
@@ -3340,7 +3474,7 @@ def _auto_sync_worker(app) -> None:
                     )
             finally:
                 try:
-                    os.unlink(BROKER_AUTO_SYNC_LOCK_PATH)
+                    os.unlink(_broker_auto_sync_lock_path())
                 except OSError:
                     pass
             time.sleep(45)
@@ -3379,7 +3513,7 @@ def _auto_backup_worker(app) -> None:
                 time.sleep(35)
                 continue
             try:
-                fd = os.open(AUTO_BACKUP_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                fd = os.open(_auto_backup_lock_path(), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.close(fd)
             except FileExistsError:
                 time.sleep(20)
@@ -3392,7 +3526,7 @@ def _auto_backup_worker(app) -> None:
                     _save_auto_backup_config(cfg)
             finally:
                 try:
-                    os.unlink(AUTO_BACKUP_LOCK_PATH)
+                    os.unlink(_auto_backup_lock_path())
                 except OSError:
                     pass
             time.sleep(20)
@@ -3518,6 +3652,19 @@ def _alerts_actor() -> str:
 def _require_ops_mutation_auth() -> None:
     if auth.auth_enabled() and not auth.is_authenticated():
         abort(403)
+
+
+def _normalize_scope_start_date(raw: str) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    parsed = parse_date_any(text)
+    if parsed:
+        return parsed
+    # Browsers/locales can render date input as "MM / DD / YYYY".
+    compact = text.replace(" ", "")
+    parsed = parse_date_any(compact)
+    return parsed or ""
 
 
 def _sorted_alerts(
@@ -3892,14 +4039,15 @@ def ops_backups_config():
         1, min(168, parse_int(request.form.get("frequency_hours") or "24") or 24)
     )
     cfg["keep_count"] = max(3, min(120, parse_int(request.form.get("keep_count") or "21") or 21))
-    _save_auto_backup_config(cfg)
+    saved_cfg = _save_auto_backup_config(cfg)
     scope_enabled = request.form.get("account_scope_enabled") == "1"
-    scope_start = (request.form.get("account_scope_start") or "").strip()
+    scope_start = _normalize_scope_start_date(request.form.get("account_scope_start") or "")
     scope_label = (request.form.get("account_scope_label") or "").strip()
     scope_balance_raw = request.form.get("account_scope_start_balance") or ""
     if scope_enabled:
         try:
-            datetime.strptime(scope_start, "%Y-%m-%d")
+            if not scope_start:
+                raise ValueError("invalid account scope start date")
             scope_balance = parse_float(scope_balance_raw)
             if scope_balance is None:
                 raise ValueError("invalid account scope balance")
@@ -3922,7 +4070,10 @@ def ops_backups_config():
             "account_scope_label": scope_label if scope_enabled else "",
         },
     )
-    flash("Backup settings and account scope saved.", "success")
+    if saved_cfg:
+        flash("Backup settings and account scope saved.", "success")
+    else:
+        flash("Settings applied in this session, but backup config could not be persisted.", "warn")
     return redirect(url_for("ops_backups_page"))
 
 
@@ -4022,8 +4173,8 @@ def _safe_backup_file_path(name: str) -> str:
     clean = (name or "").strip().replace("\\", "/").split("/")[-1]
     if not clean.endswith(".zip"):
         raise ValueError("invalid backup file")
-    full = os.path.abspath(os.path.join(AUTO_BACKUP_DIR, clean))
-    root = os.path.abspath(AUTO_BACKUP_DIR)
+    full = os.path.abspath(os.path.join(_auto_backup_dir(), clean))
+    root = os.path.abspath(_auto_backup_dir())
     if not full.startswith(root + os.sep):
         raise ValueError("unsafe backup path")
     return full
@@ -4164,13 +4315,13 @@ def _restore_dry_run(path: str) -> Dict[str, Any]:
 
 
 def _list_saved_backups() -> List[Dict[str, Any]]:
-    if not os.path.isdir(AUTO_BACKUP_DIR):
+    if not os.path.isdir(_auto_backup_dir()):
         return []
     out: List[Dict[str, Any]] = []
-    for n in os.listdir(AUTO_BACKUP_DIR):
+    for n in os.listdir(_auto_backup_dir()):
         if not n.endswith(".zip"):
             continue
-        p = os.path.join(AUTO_BACKUP_DIR, n)
+        p = os.path.join(_auto_backup_dir(), n)
         if not os.path.isfile(p):
             continue
         verify = _backup_verification(p)
@@ -4195,6 +4346,7 @@ def ops_backups_page():
     cfg = _load_auto_backup_config()
     backups = _list_saved_backups()
     account_scope = repo.account_scope_snapshot()
+    persistence = app_runtime.persistence_snapshot()
     dry_run_name = (request.args.get("dry_run") or "").strip()
     dry_run_report: Dict[str, Any] | None = None
     if dry_run_name:
@@ -4212,7 +4364,7 @@ def ops_backups_page():
         "ops/backups.html",
         cfg=cfg,
         backups=backups,
-        backup_dir=AUTO_BACKUP_DIR,
+        backup_dir=_auto_backup_dir(),
         dry_run_name=dry_run_name,
         dry_run_report=dry_run_report,
         audit_rows=audit_rows,
@@ -4220,6 +4372,7 @@ def ops_backups_page():
         audit_action=audit_action,
         audit_limit=audit_limit,
         account_scope=account_scope,
+        persistence=persistence,
     )
     return render_page(content, active="ops")
 
@@ -4289,14 +4442,14 @@ def _restore_from_backup_path(path: str) -> None:
 def _clear_live_app_data(*, preserve_backups: bool = True) -> Dict[str, Any]:
     db_path = str(app_runtime.DB_PATH)
     upload_root = str(app_runtime.UPLOAD_DIR)
-    books_root = str(getattr(app_runtime, "BOOKS_DIR", BOOKS_DIR))
+    books_root = _books_dir()
     preserved: set[str] = set()
     if preserve_backups:
         preserved.update(
             {
-                os.path.abspath(AUTO_BACKUP_DIR),
-                os.path.abspath(AUTO_BACKUP_CONFIG_PATH),
-                os.path.abspath(ADMIN_AUDIT_LOG_PATH),
+                os.path.abspath(_auto_backup_dir()),
+                os.path.abspath(_auto_backup_config_path()),
+                os.path.abspath(_admin_audit_log_path()),
             }
         )
 

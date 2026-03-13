@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import sqlite3
 import tempfile
 import calendar
@@ -37,14 +38,15 @@ BUILD_MARKER = "BUILD_2026-02-21_GOALS"
 # App config
 # ============================================================
 APP_TITLE = "McCain Capital 🏛️"
-DB_PATH = os.environ.get("DB_PATH", "journal.db")
+PERSISTENT_DATA_DIR = os.environ.get("PERSISTENT_DATA_DIR", "persistent-data")
+DB_PATH = os.environ.get("DB_PATH", os.path.join(PERSISTENT_DATA_DIR, "journal.db"))
 os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
 
 # ✅ Trading timezone (ET)
 TZ = ZoneInfo("America/New_York")
 
 # ✅ Books folder (no web-upload; you drop PDFs into this folder)
-BOOKS_DIR = os.environ.get("BOOKS_DIR", "books")
+BOOKS_DIR = os.environ.get("BOOKS_DIR", os.path.join(PERSISTENT_DATA_DIR, "books"))
 
 # ✅ Calculator defaults (simple, not overkill)
 MULTIPLIER = 100
@@ -52,7 +54,7 @@ DEFAULT_STOP_PCT = 20.0
 DEFAULT_TARGET_PCT = 30.0
 DEFAULT_FEE_PER_CONTRACT = 0.70  # per contract round-trip
 
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(PERSISTENT_DATA_DIR, "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_UPLOAD_EXTS = {".pdf", ".html", ".htm"}
@@ -68,7 +70,7 @@ _TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 app = Flask(
     __name__, static_folder=_STATIC_DIR, static_url_path="/static", template_folder=_TEMPLATE_DIR
 )
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 

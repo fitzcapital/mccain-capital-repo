@@ -58,6 +58,36 @@
   </div></div>
 </div>
 
+{% set rt = persistence or {} %}
+<div class="card"><div class="toolbar">
+  <div class="pillRow">
+    <div class="pill">Persistence Runtime</div>
+    <details class="inlineHelp">
+      <summary aria-label="Persistence runtime help">?</summary>
+      <div class="helpPopover">Shows the active mounted paths, SQLite durability mode, and persisted secret-key location the app is actually using right now.</div>
+    </details>
+  </div>
+  <div class="metricStrip metricStripCompact">
+    <div class="metric"><div class="label">SQLite Mode</div><div class="value">{{ rt.get('sqlite_journal_mode') or 'unknown' }}</div></div>
+    <div class="metric"><div class="label">Sync</div><div class="value">{{ rt.get('sqlite_synchronous') or 'unknown' }}</div></div>
+    <div class="metric"><div class="label">DB</div><div class="value">{% if rt.get('db_exists') %}Present{% else %}Missing{% endif %}</div></div>
+    <div class="metric"><div class="label">Secret Key</div><div class="value">{% if rt.get('secret_key_exists') %}Persisted{% else %}Missing{% endif %}</div></div>
+  </div>
+  <div class="tableWrap"><table class="tableDense">
+    <thead><tr><th>Item</th><th>Path</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Persistent Root</td><td><code>{{ rt.get('persistent_data_dir', '—') }}</code></td><td>Configured</td></tr>
+      <tr><td>Database</td><td><code>{{ rt.get('db_path', '—') }}</code></td><td>{% if rt.get('db_exists') %}Ready{% else %}Will create on write{% endif %}</td></tr>
+      <tr><td>Uploads</td><td><code>{{ rt.get('upload_dir', '—') }}</code></td><td>{% if rt.get('upload_dir_exists') %}Ready{% else %}Missing{% endif %}</td></tr>
+      <tr><td>Books</td><td><code>{{ rt.get('books_dir', '—') }}</code></td><td>{% if rt.get('books_dir_exists') %}Ready{% else %}Missing{% endif %}</td></tr>
+      <tr><td>Secret Key File</td><td><code>{{ rt.get('secret_key_file', '—') }}</code></td><td>{% if rt.get('secret_key_exists') %}Ready{% else %}Will generate{% endif %}</td></tr>
+    </tbody>
+  </table></div>
+  {% if rt.get('disk_free_bytes') is not none %}
+    <div class="tiny stack8 line15">Free disk: {{ '{:,}'.format(rt.get('disk_free_bytes')) }} bytes · Total: {{ '{:,}'.format(rt.get('disk_total_bytes')) }} bytes · Busy timeout: {{ rt.get('sqlite_busy_timeout_ms') }} ms</div>
+  {% endif %}
+</div></div>
+
 <div class="card"><div class="toolbar">
   <div class="pill">Live Data Reset</div>
   <div class="supportLead stack8">Clear live app data without deleting saved backup archives.</div>
