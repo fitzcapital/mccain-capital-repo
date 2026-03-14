@@ -15,6 +15,10 @@ def journal_trades_for_date():
     return svc.journal_trades_for_date()
 
 
+def journal_capture_asset(name: str):
+    return svc.journal_capture_asset(name)
+
+
 def new_entry():
     return svc.new_entry()
 

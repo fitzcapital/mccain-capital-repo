@@ -264,6 +264,7 @@
             {{ '%+.2f'|format(dashboard_spx.get('change_points')) if dashboard_spx.get('change_points') is not none else '—' }}
             · {{ '%+.2f'|format(dashboard_spx.get('pct_change')) if dashboard_spx.get('pct_change') is not none else '—' }}%
           </div>
+          <div class="tiny muted" data-role="source-badge">{{ dashboard_spx.get('source_badge_label') or dashboard_spx.get('source_label') or 'Feed unavailable' }}</div>
           <div class="tiny dashboardGapLine {% if spx_gap_points is not none and spx_gap_points > 0 %}is-positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ spx_gap_full }}" data-role="gap-line">
             Gap O/N:
             <span class="trendChip {% if spx_gap_points is not none and spx_gap_points > 0 %}positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}negative{% endif %}" data-role="gap-chip">
@@ -309,6 +310,7 @@
             {{ '%+.2f'|format(dashboard_vix.get('change_points')) if dashboard_vix.get('change_points') is not none else '—' }}
             · {{ '%+.2f'|format(dashboard_vix.get('pct_change')) if dashboard_vix.get('pct_change') is not none else '—' }}%
           </div>
+          <div class="tiny muted" data-role="source-badge">{{ dashboard_vix.get('source_badge_label') or dashboard_vix.get('source_label') or 'Feed unavailable' }}</div>
           <div class="tiny dashboardGapLine {% if vix_gap_points is not none and vix_gap_points > 0 %}is-positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ vix_gap_full }}" data-role="gap-line">
             Gap O/N:
             <span class="trendChip {% if vix_gap_points is not none and vix_gap_points > 0 %}positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}negative{% endif %}" data-role="gap-chip">
@@ -861,6 +863,18 @@
       return "missing";
     };
 
+    const sourceBadgeLabel = (quote) => {
+      const provider = String((quote || {}).provider || "").toLowerCase();
+      const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
+      if (provider === "tradier" && reason.startsWith("tradier_stream_")) return "Tradier Stream";
+      if (provider === "tradier" && reason.startsWith("tradier_live")) return "Tradier Live Quote";
+      if (provider === "tradier" && reason.startsWith("tradier_close")) return "Tradier Close";
+      if (provider === "massive") return "Massive Fallback";
+      if (provider === "yfinance") return "Yahoo Fallback";
+      if (provider) return `${provider[0].toUpperCase()}${provider.slice(1)} Fallback`;
+      return "Feed unavailable";
+    };
+
     const updateCard = (card, quote, points) => {
       const price = asNum((quote || {}).price);
       const pct = asNum((quote || {}).pct_change);
@@ -871,6 +885,7 @@
       const priceNode = card.querySelector('[data-role="price"]');
       const changeNode = card.querySelector('[data-role="change-line"]');
       const sparkNode = card.querySelector('[data-role="sparkline"]');
+      const sourceNode = card.querySelector('[data-role="source-badge"]');
       const gapLine = card.querySelector('[data-role="gap-line"]');
       const gapChip = card.querySelector('[data-role="gap-chip"]');
       const rangeNode = card.querySelector('[data-role="range-line"]');
@@ -891,6 +906,9 @@
       }
       if (changeNode) {
         changeNode.textContent = `${formatSigned(inferAbsoluteChange(price, pct), 2)} · ${formatSigned(pct, 2)}%`;
+      }
+      if (sourceNode) {
+        sourceNode.textContent = sourceBadgeLabel(quote);
       }
       if (sparkNode) {
         sparkNode.innerHTML = buildSparkline(points, tone);

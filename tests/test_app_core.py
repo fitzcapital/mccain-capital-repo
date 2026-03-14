@@ -258,21 +258,33 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
             "quotes": [
                 {
                     "label": "SPX",
+                    "symbol": "SPX",
                     "group": "core",
                     "price": 5100.0,
                     "change": 10.0,
                     "change_pct": 0.2,
                     "market_state": "Regular",
                     "day_range": "5000.00 to 5150.00",
+                    "provider": "tradier",
+                    "data_reason": "tradier_live_quote",
+                    "data_state": "live",
+                    "data_status_label": "Live",
+                    "source_badge_label": "Tradier Live Quote",
                 },
                 {
                     "label": "TSLA",
+                    "symbol": "TSLA",
                     "group": "leaders",
                     "price": 210.0,
                     "change": 2.0,
                     "change_pct": 0.96,
                     "market_state": "Regular",
                     "day_range": "205.00 to 212.00",
+                    "provider": "yfinance",
+                    "data_reason": "yfinance_fallback",
+                    "data_state": "delayed",
+                    "data_status_label": "Delayed",
+                    "source_badge_label": "Yahoo Fallback",
                 },
             ],
         },
@@ -295,6 +307,8 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"SPX" in resp.data
     assert b"TSLA" in resp.data
     assert b"marketPulseStreamStatus" in resp.data
+    assert b"Tradier Live Quote" in resp.data
+    assert b"Yahoo Fallback" in resp.data
     assert b"marketPulseLoadingOverlay" in resp.data
     assert b"Loading Market Pulse" in resp.data
     assert b"autoRefreshToggle" not in resp.data
@@ -653,6 +667,7 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"dashboardTapeStreamStatus" in resp.data
     assert b"dashboardGapLine" in resp.data
     assert b"Gap O/N:" in resp.data
+    assert b"Tradier Live Quote" in resp.data
     assert b"-8.48 (-0.13%)" in resp.data
     assert b"Range: 6773.42-6775.80" in resp.data
     assert b"Volatility regime and gamma proxy anchor." in resp.data

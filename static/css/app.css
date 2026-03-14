@@ -5960,6 +5960,68 @@ body.marketPulseExecutionMode .researchOnly{
   margin-bottom:10px;
 }
 
+.replayRail{
+  gap:12px;
+}
+
+.replayRailItem{
+  border:1px solid rgba(113, 160, 255, .18);
+  border-radius:18px;
+  padding:14px 16px;
+  background:linear-gradient(180deg, rgba(11, 24, 42, .92), rgba(5, 14, 26, .96));
+  box-shadow:inset 0 1px 0 rgba(180, 220, 255, .05);
+}
+
+.replayRailItem-macro{
+  border-color:rgba(255, 182, 95, .24);
+  background:linear-gradient(180deg, rgba(28, 24, 18, .92), rgba(16, 13, 9, .96));
+}
+
+.replayRailItem .supportLead{
+  margin-top:8px;
+}
+
+.coachGrid{
+  margin-top:12px;
+}
+
+.journalCaptureCard{
+  margin:12px 0 16px;
+  border-color:rgba(105, 184, 255, .24);
+  box-shadow:0 0 18px rgba(72, 141, 255, .14), inset 0 1px 0 rgba(193, 229, 255, .05);
+}
+
+.journalQuickCaptureGrid{
+  display:grid;
+  grid-template-columns:1.2fr 1fr;
+  gap:14px;
+  margin-top:12px;
+}
+
+.journalQuickMoodRow{
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.journalQuickMoodBtn{
+  cursor:pointer;
+}
+
+.journalCapturePreview{
+  margin-top:12px;
+  border:1px solid rgba(140, 187, 255, .18);
+  border-radius:16px;
+  overflow:hidden;
+  background:rgba(4, 11, 22, .78);
+}
+
+.journalCapturePreview img{
+  display:block;
+  width:100%;
+  max-height:260px;
+  object-fit:cover;
+}
+
 .strategyScoreGrid{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
@@ -7311,5 +7373,8 @@ textarea:focus-visible{
   .dashboardHeroMetaRow,
   .workspaceHeroMetaRow{
     width:100%;
+  }
+  .journalQuickCaptureGrid{
+    grid-template-columns:1fr;
   }
 }

@@ -13,6 +13,7 @@
       </div>
       <div class="actionRow">
         <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
+        <a class="btn" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
         <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
       </div>
     </div>
@@ -33,6 +34,7 @@
       <button class="btn" type="submit">Filter</button>
       <a class="btn" href="/journal">Reset</a>
       <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
+      <a class="btn" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
       <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
     </div>
   </form>

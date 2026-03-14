@@ -1,0 +1,132 @@
+<div class="metricStrip">
+  <div class="metric"><div class="label">Week</div><div class="value">{{ week_start }} → {{ week_end }}</div></div>
+  <div class="metric"><div class="label">Week Net</div><div class="value">{{ money(week_net) }}</div><div class="sub">{{ green_days }}/{{ active_days }} green days</div></div>
+  <div class="metric"><div class="label">Journal Entries</div><div class="value">{{ entries|length }}</div><div class="sub">Review quality compounds</div></div>
+  <div class="metric"><div class="label">Rule-Break Tags</div><div class="value">{{ rule_breaks|length }}</div><div class="sub">Leaks tracked this week</div></div>
+</div>
+
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">📘 Weekly Review</div>
+        <h2 class="pageTitle">Weekly Coach</h2>
+        <div class="pageSub">{{ coach.headline }}</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn" href="/journal">Back Journal</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card"><div class="toolbar">
+  <form method="get" class="row">
+    <div><label>Week Start</label><input type="date" name="week_start" value="{{ week_start }}"></div>
+    <div class="actionRow">
+      <button class="btn" type="submit">Apply</button>
+      <a class="btn" href="/journal/review/weekly">Current Week</a>
+    </div>
+  </form>
+</div></div>
+
+<div class="dashboardSupportGrid coachGrid">
+  <div class="card supportCard dashboardPriorityCard"><div class="toolbar">
+    <div class="pill">Strongest Setup</div>
+    <div class="supportLead">{{ coach.strongest_setup }}</div>
+    <div class="supportBody">This is the pattern worth earning the right to press again next week.</div>
+  </div></div>
+  <div class="card supportCard dashboardPriorityCard"><div class="toolbar">
+    <div class="pill">Biggest Leak</div>
+    <div class="supportLead">{{ coach.biggest_leak }}</div>
+    <div class="supportBody">Your recurring drag deserves more attention than any one red trade.</div>
+  </div></div>
+  <div class="card supportCard dashboardPriorityCard"><div class="toolbar">
+    <div class="pill">One Rule</div>
+    <div class="supportLead">{{ coach.one_rule }}</div>
+    <div class="supportBody">Keep it singular. If you can’t enforce one rule, five rules won’t help.</div>
+  </div></div>
+</div>
+
+<div class="dashboardSupportGrid coachGrid">
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Consistency</div>
+    <div class="supportLead">{{ coach.consistency }}</div>
+    <div class="supportBody">Best day: {{ coach.best_day }}</div>
+    <div class="supportBody">Worst day: {{ coach.worst_day }}</div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Mood Signal</div>
+    <div class="supportLead">{{ top_mood }}</div>
+    <div class="supportBody">Average {{ money(top_mood_avg) }} when this mood was logged.</div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Repeated Rule Breaks</div>
+    <div class="supportLead">{{ top_break }}</div>
+    <div class="supportBody">{% if top_break_count %}{{ top_break_count }} times this week.{% else %}No repeated break tagged yet.{% endif %}</div>
+  </div></div>
+</div>
+
+<div class="card"><div class="toolbar">
+  <div class="pill">Week Pulse</div>
+  <div class="grid replayRail">
+    {% for row in day_rollups %}
+      <div class="replayRailItem replayRailItem-trade">
+        <div class="pillRow">
+          <span class="trendChip">{{ row.entry_date }}</span>
+          <span class="trendChip {% if row.pnl_total > 0 %}positive{% elif row.pnl_total < 0 %}negative{% endif %}">{{ money(row.pnl_total) }}</span>
+        </div>
+        <div class="supportLead">{{ row.entry_count }} journal entr{{ 'y' if row.entry_count == 1 else 'ies' }}</div>
+        <div class="supportBody">
+          {% if row.setups %}Setups: {{ row.setups|join(', ') }}{% else %}No setup names logged{% endif %}
+        </div>
+        <div class="tiny muted">
+          {% if row.moods %}Moods: {{ row.moods|join(', ') }}{% else %}No mood labels{% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="tiny muted">No journal activity recorded inside this week window.</div>
+    {% endfor %}
+  </div>
+</div></div>
+
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">📌 Best Setups</div>
+    <div class="tableWrap desktopOnly"><table class="tableDense">
+      <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th></tr></thead>
+      <tbody>
+      {% for r in setup_stats %}
+        <tr><td>{{ r.setup }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td></tr>
+      {% endfor %}
+      {% if setup_stats|length == 0 %}<tr><td colspan="4">No linked-trade setup data this week.</td></tr>{% endif %}
+      </tbody>
+    </table></div>
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">😶‍🌫️ Mood vs PnL</div>
+    <div class="tableWrap desktopOnly"><table class="tableDense">
+      <thead><tr><th>Mood</th><th>Entries</th><th>Win Rate</th><th>Avg PnL</th></tr></thead>
+      <tbody>
+      {% for r in mood_stats %}
+        <tr><td>{{ r.mood }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.avg_pnl) }}</td></tr>
+      {% endfor %}
+      {% if mood_stats|length == 0 %}<tr><td colspan="4">No mood data this week.</td></tr>{% endif %}
+      </tbody>
+    </table></div>
+  </div></div>
+</div>
+
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">⚠️ Repeated Rule Breaks</div>
+  <div class="tableWrap desktopOnly"><table class="tableDense">
+    <thead><tr><th>Tag</th><th>Count</th></tr></thead>
+    <tbody>
+    {% for r in rule_breaks %}
+      <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
+    {% endfor %}
+    {% if rule_breaks|length == 0 %}<tr><td colspan="2">No rule-break tags for linked trades this week.</td></tr>{% endif %}
+    </tbody>
+  </table></div>
+</div></div>

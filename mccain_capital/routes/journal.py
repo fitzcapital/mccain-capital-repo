@@ -11,6 +11,11 @@ def register(app):
         view_func=h.journal_trades_for_date,
     )
     app.add_url_rule(
+        "/journal/captures/<path:name>",
+        endpoint="journal_capture_asset",
+        view_func=h.journal_capture_asset,
+    )
+    app.add_url_rule(
         "/journal/review/weekly",
         endpoint="journal_weekly_review",
         view_func=h.journal_weekly_review,

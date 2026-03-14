@@ -42,6 +42,16 @@
   </div>
 </div>
 
+<div class="metricStrip">
+  {% for arc in market_arc %}
+    <div class="metric">
+      <div class="label">{{ arc.label }} Arc</div>
+      <div class="value">{% if arc.available %}Tracked{% else %}Unavailable{% endif %}</div>
+      <div class="sub">{{ arc.summary }}</div>
+    </div>
+  {% endfor %}
+</div>
+
 <div class="dashboardSupportGrid replaySupportGrid">
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">Session Read</div>
@@ -80,7 +90,35 @@
 
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">🧭 Timeline</div>
+    <div class="pill">🧭 Replay Rail</div>
+    <div class="tiny stack8">Trades, macro catalysts, and nearest SPX/VIX snapshots in one chronological rail.</div>
+    <div class="grid stack10 replayRail">
+      {% for item in replay_rail %}
+        <div class="replayRailItem replayRailItem-{{ item.kind }}">
+          <div class="pillRow">
+            <span class="trendChip {% if item.tone %}{{ item.tone }}{% endif %}">{{ item.time_label }}</span>
+            <span class="trendChip">{{ item.impact_label }}</span>
+          </div>
+          <div class="supportLead">{{ item.headline }}</div>
+          <div class="supportBody">{{ item.summary }}</div>
+          {% if item.market_context %}
+            <div class="tiny muted">{{ item.market_context }}</div>
+          {% endif %}
+          {% if item.detail %}
+            <div class="tiny muted">{{ item.detail }}</div>
+          {% endif %}
+          {% if item.rule_breaks %}
+            <div class="tiny metaRed">Rule breaks: {{ item.rule_breaks }}</div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="tiny muted">No replay rail items found for this date.</div>
+      {% endfor %}
+    </div>
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">Timeline Table</div>
     <div class="tableWrap"><table class="tableDense">
       <thead><tr><th>#</th><th>Trade</th><th>Strategy</th><th>Score</th><th>Rule Breaks</th><th>Net</th><th>Equity Step</th></tr></thead>
       <tbody>

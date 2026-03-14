@@ -644,6 +644,18 @@
     return "Missing";
   };
 
+  const sourceBadgeLabel = (quote) => {
+    const provider = String((quote || {}).provider || "").toLowerCase();
+    const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
+    if (provider === "tradier" && reason.startsWith("tradier_stream_")) return "Tradier Stream";
+    if (provider === "tradier" && reason.startsWith("tradier_live")) return "Tradier Live Quote";
+    if (provider === "tradier" && reason.startsWith("tradier_close")) return "Tradier Close";
+    if (provider === "massive") return "Massive Fallback";
+    if (provider === "yfinance") return "Yahoo Fallback";
+    if (provider) return `${provider[0].toUpperCase()}${provider.slice(1)} Fallback`;
+    return "Feed unavailable";
+  };
+
   const updateStateChip = (node, state) => {
     if (!node) return;
     const nextState = String(state || "missing");
@@ -725,6 +737,7 @@
       card.querySelector('[data-role="change-line"]'),
       `${formatSigned(inferAbsoluteChange(price, pct), 2)} · ${formatSigned(pct, 2)}%`
     );
+    updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
     updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
     updateTextNode(card.querySelector('[data-role="range-line"]'), `Range: ${formatRange(points)}`);
 
@@ -893,6 +906,8 @@
       "spxPriorityFreshnessLine",
       `${formatEtLabel(tickTimeRaw)}${spxQuote.provider ? ` · ${spxQuote.provider}` : ""}`
     );
+    setText("spxPrioritySourceBadge", sourceBadgeLabel(spxQuote));
+    setText("marketPulseSourceMode", sourceBadgeLabel(spxQuote));
     setText("spxPriorityChangeLine", `${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`);
     setText("spxPriorityRangeLine", `Range: ${formatRange(spxPoints)}`);
     updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), spxPoints, sparkTone(spxQuote.change_pct));

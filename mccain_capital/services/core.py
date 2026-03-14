@@ -1238,6 +1238,9 @@ def _market_pulse_enrich_quotes(
         q["freshness_age_s"] = age_s
         q["freshness_label"] = fresh_label
         q["freshness_reason"] = str(q.get("data_reason") or "")
+        source_badge = _quote_source_badge(q)
+        q["source_badge_label"] = source_badge["label"]
+        q["source_badge_tone"] = source_badge["tone"]
 
         mini = q.get("mini_series")
         if not isinstance(mini, list):
@@ -1258,6 +1261,26 @@ def _market_pulse_enrich_quotes(
         q["sparkline_svg"] = _market_pulse_sparkline_svg(mini[-40:], tone)
         enriched.append(q)
     return enriched
+
+
+def _quote_source_badge(quote: Dict[str, Any]) -> Dict[str, str]:
+    provider = str((quote or {}).get("provider") or "").strip().lower()
+    reason = str((quote or {}).get("reason") or (quote or {}).get("data_reason") or "").strip().lower()
+    if provider == "tradier" and reason.startswith("tradier_stream_"):
+        return {"label": "Tradier Stream", "tone": "positive"}
+    if provider == "tradier" and reason.startswith("tradier_live"):
+        return {"label": "Tradier Live Quote", "tone": "positive"}
+    if provider == "tradier" and reason.startswith("tradier_close"):
+        return {"label": "Tradier Close", "tone": "warm"}
+    if provider == "tradier" and reason.startswith("tradier_"):
+        return {"label": "Tradier Feed", "tone": "positive"}
+    if provider == "yfinance":
+        return {"label": "Yahoo Fallback", "tone": "warm"}
+    if provider == "massive":
+        return {"label": "Massive Fallback", "tone": "warm"}
+    if provider:
+        return {"label": f"{provider.title()} Fallback", "tone": "warm"}
+    return {"label": "Feed unavailable", "tone": "neutral"}
 
 
 def _market_pulse_alert(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -2387,15 +2410,11 @@ def dashboard():
                 enriched["overnight_gap_compact"] = f"{gap_pts} ({gap_pct_label})"
             else:
                 enriched["overnight_gap_compact"] = gap_full
-        if state == "Live":
-            enriched["source_label"] = "Tradier live feed"
-            enriched["source_short"] = "Tradier"
-        elif provider:
-            enriched["source_label"] = f"{provider.title()} fallback"
-            enriched["source_short"] = provider.title()
-        else:
-            enriched["source_label"] = "Feed unavailable"
-            enriched["source_short"] = "Unavailable"
+        source_badge = _quote_source_badge(enriched)
+        enriched["source_label"] = source_badge["label"]
+        enriched["source_short"] = source_badge["label"]
+        enriched["source_badge_label"] = source_badge["label"]
+        enriched["source_badge_tone"] = source_badge["tone"]
         as_of_raw = str(enriched.get("as_of") or "").strip()
         age_s = 0
         if as_of_raw:

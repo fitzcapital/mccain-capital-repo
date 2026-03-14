@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -11,16 +13,19 @@ from flask import (
     jsonify,
     redirect,
     render_template,
-    render_template_string,
     request,
+    send_file,
     url_for,
 )
+from werkzeug.utils import secure_filename
 
 from mccain_capital.repositories import journal as repo
 from mccain_capital.repositories import trades as trades_repo
 from mccain_capital import runtime as app_runtime
 from mccain_capital.runtime import money, parse_float, today_iso
 from mccain_capital.services.ui import render_page
+
+_CAPTURE_ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def _entry_form(
@@ -96,9 +101,14 @@ def new_entry():
         linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
+        screenshot_path = _save_capture_upload(request.files.get("capture_screenshot"), entry_date)
+        if not screenshot_path:
+            screenshot_path = (f.get("existing_capture_screenshot_path") or "").strip()
         if not notes:
             values = dict(f)
             values["entry_date"] = entry_date
+            values["capture_screenshot_path"] = screenshot_path
+            values["capture_screenshot_href"] = _capture_href(screenshot_path)
             return render_page(
                 _entry_form(
                     "new",
@@ -120,7 +130,7 @@ def new_entry():
                 "mood": f.get("mood"),
                 "notes": notes,
                 "entry_type": entry_type,
-                "template_payload": {"template_notes": template_notes},
+                "template_payload": _entry_template_payload(template_notes, screenshot_path),
             }
         )
         repo.set_entry_trade_links(entry_id, linked_ids)
@@ -132,6 +142,7 @@ def new_entry():
         "entry_date": entry_date,
         "entry_type": (request.args.get("entry_type") or "post_market").strip() or "post_market",
         "auto_draft": "1" if (request.args.get("auto_draft") or "0").strip() == "1" else "0",
+        "quick_capture": "1" if (request.args.get("quick_capture") or "0").strip() == "1" else "0",
         "link_all_day": "1" if (request.args.get("link_all_day") or "1").strip() == "1" else "0",
         "market": (request.args.get("market") or "").strip(),
         "setup": (request.args.get("setup") or "").strip(),
@@ -140,6 +151,7 @@ def new_entry():
         "pnl": (request.args.get("pnl") or "").strip(),
         "notes": (request.args.get("notes") or "").strip(),
         "template_notes": (request.args.get("template_notes") or "").strip(),
+        "capture_screenshot_path": (request.args.get("capture_screenshot_path") or "").strip(),
     }
     selected_ids = _trade_ids_for_date(entry_date) if initial_values["link_all_day"] == "1" else []
     scaffold = _build_debrief_scaffold(
@@ -160,6 +172,7 @@ def new_entry():
         initial_values["setup"] = str(scaffold["setup"])
     if not initial_values["mood"] and scaffold.get("mood"):
         initial_values["mood"] = str(scaffold["mood"])
+    initial_values["capture_screenshot_href"] = _capture_href(initial_values["capture_screenshot_path"])
     return render_page(
         _entry_form(
             "new",
@@ -185,9 +198,14 @@ def edit_entry(entry_id: int):
         linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
+        screenshot_path = _save_capture_upload(request.files.get("capture_screenshot"), entry_date)
+        if not screenshot_path:
+            screenshot_path = (f.get("existing_capture_screenshot_path") or "").strip()
         if not notes:
             values = dict(f)
             values["entry_date"] = entry_date
+            values["capture_screenshot_path"] = screenshot_path
+            values["capture_screenshot_href"] = _capture_href(screenshot_path)
             return render_page(
                 _entry_form(
                     "edit",
@@ -211,7 +229,7 @@ def edit_entry(entry_id: int):
                 "mood": f.get("mood"),
                 "notes": notes,
                 "entry_type": entry_type,
-                "template_payload": {"template_notes": template_notes},
+                "template_payload": _entry_template_payload(template_notes, screenshot_path),
             },
         )
         repo.set_entry_trade_links(entry_id, linked_ids)
@@ -222,9 +240,12 @@ def edit_entry(entry_id: int):
         values["pnl"] = ""
     payload = _safe_template_payload(values.get("template_payload"))
     values["template_notes"] = payload.get("template_notes", "")
+    values["capture_screenshot_path"] = str(payload.get("capture_screenshot_path") or "").strip()
+    values["capture_screenshot_href"] = _capture_href(values["capture_screenshot_path"])
     linked_ids = repo.fetch_entry_trade_ids(entry_id)
     values["linked_trade_ids"] = ",".join(str(i) for i in linked_ids)
     values["link_all_day"] = "0"
+    values["quick_capture"] = "0"
     entry_date = (values.get("entry_date") or today_iso()).strip()
     return render_page(
         _entry_form(
@@ -244,6 +265,125 @@ def delete_entry_route(entry_id: int):
     return redirect(url_for("journal_home"))
 
 
+def journal_capture_asset(name: str):
+    rel = str(name or "").strip().lstrip("/")
+    if not rel:
+        abort(404)
+    ext = os.path.splitext(rel)[1].lower()
+    if ext not in _CAPTURE_ALLOWED_EXTS:
+        abort(404)
+    root = os.path.abspath(app_runtime.upload_path("journal-captures"))
+    path = os.path.abspath(app_runtime.upload_path(rel))
+    if not path.startswith(root + os.sep):
+        abort(404)
+    if not os.path.exists(path):
+        abort(404)
+    return send_file(path, as_attachment=False)
+
+
+def _entry_template_payload(template_notes: str, screenshot_path: str) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"template_notes": template_notes}
+    if screenshot_path:
+        payload["capture_screenshot_path"] = screenshot_path
+    return payload
+
+
+def _capture_href(relpath: str) -> str:
+    rel = str(relpath or "").strip()
+    if not rel:
+        return ""
+    return url_for("journal_capture_asset", name=rel)
+
+
+def _save_capture_upload(upload: Any, entry_date: str) -> str:
+    if not upload or not getattr(upload, "filename", ""):
+        return ""
+    filename = secure_filename(str(upload.filename or ""))
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in _CAPTURE_ALLOWED_EXTS:
+        return ""
+    day = str(entry_date or today_iso()).strip() or today_iso()
+    rel_dir = os.path.join("journal-captures", day)
+    abs_dir = app_runtime.upload_path(rel_dir)
+    os.makedirs(abs_dir, exist_ok=True)
+    stored = f"{day.replace('-', '')}-{secrets.token_hex(6)}{ext}"
+    abs_path = app_runtime.upload_path(rel_dir, stored)
+    upload.save(abs_path)
+    return os.path.join(rel_dir, stored).replace("\\", "/")
+
+
+def _weekly_coach_rule(top_break: str, strongest_setup: str, strongest_session: str) -> str:
+    tag = str(top_break or "").strip().lower()
+    if tag in {"revenge", "revenge-trading"}:
+        return "After a red trade, pause and re-state the setup before any next entry."
+    if tag in {"oversized", "size creep"}:
+        return "Cut size before you cut standards. Keep size fixed until the A setup is obvious."
+    if tag in {"late-entry", "early entry"}:
+        return "Let confirmation print first. Missed is cheaper than forcing the first touch."
+    if strongest_setup and strongest_setup != "No setup data":
+        if strongest_session:
+            return f"Press {strongest_setup} only when the tape matches your {strongest_session} conditions."
+        return f"Repeat {strongest_setup} only when structure is clean enough to name before entry."
+    return "If the setup is not named and the invalidation is not obvious, do not take it."
+
+
+def _weekly_coach_summary(
+    setup_stats: List[Dict[str, Any]],
+    mood_stats: List[Dict[str, Any]],
+    rule_breaks: List[Dict[str, Any]],
+    day_rollups: List[Dict[str, Any]],
+) -> Dict[str, str]:
+    strongest = next((row for row in setup_stats if float(row.get("net") or 0.0) > 0), None)
+    leak = rule_breaks[0] if rule_breaks else None
+    weakest_mood = None
+    mood_candidates = [row for row in mood_stats if int(row.get("count") or 0) > 0]
+    if mood_candidates:
+        weakest_mood = min(mood_candidates, key=lambda row: float(row.get("avg_pnl") or 0.0))
+    best_day = max(day_rollups, key=lambda row: float(row.get("pnl_total") or 0.0), default=None)
+    worst_day = min(day_rollups, key=lambda row: float(row.get("pnl_total") or 0.0), default=None)
+    week_net = sum(float(row.get("pnl_total") or 0.0) for row in day_rollups)
+    active_days = len(day_rollups)
+    green_days = len([row for row in day_rollups if float(row.get("pnl_total") or 0.0) > 0])
+    strongest_setup = str((strongest or {}).get("setup") or "")
+    return {
+        "headline": "Press the edge, cut the leak, and keep the week small enough to control.",
+        "strongest_setup": (
+            f"{strongest_setup} · {money(float((strongest or {}).get('net') or 0.0))}"
+            if strongest
+            else "No setup edge identified yet."
+        ),
+        "biggest_leak": (
+            f"{str(leak.get('tag') or '').replace('-', ' ')} · {int(leak.get('count') or 0)}x"
+            if leak
+            else (
+                f"Mood drift: {weakest_mood.get('mood')} averaged {money(float(weakest_mood.get('avg_pnl') or 0.0))}"
+                if weakest_mood and float(weakest_mood.get("avg_pnl") or 0.0) < 0
+                else "No repeated leak tagged yet."
+            )
+        ),
+        "one_rule": _weekly_coach_rule(
+            str((leak or {}).get("tag") or ""),
+            strongest_setup,
+            str((strongest or {}).get("session") or ""),
+        ),
+        "consistency": (
+            f"{green_days}/{active_days} green day{'s' if active_days != 1 else ''} · {money(week_net)} net"
+            if active_days
+            else "No active journal days this week."
+        ),
+        "best_day": (
+            f"{best_day.get('entry_date')} · {money(float(best_day.get('pnl_total') or 0.0))}"
+            if best_day
+            else "No best day yet."
+        ),
+        "worst_day": (
+            f"{worst_day.get('entry_date')} · {money(float(worst_day.get('pnl_total') or 0.0))}"
+            if worst_day
+            else "No worst day yet."
+        ),
+    }
+
+
 def journal_weekly_review():
     week_start = (request.args.get("week_start") or "").strip()
     if not week_start:
@@ -260,6 +400,7 @@ def journal_weekly_review():
     week_end = end.isoformat()
 
     entries = repo.fetch_entries_range(week_start, week_end)
+    day_rollups = repo.fetch_entry_day_rollups(week_start, week_end)
     setup_stats = repo.weekly_setup_stats(week_start, week_end)
     mood_stats = repo.weekly_mood_stats(week_start, week_end)
     rule_breaks = repo.weekly_rule_break_tags(week_start, week_end)
@@ -269,148 +410,16 @@ def journal_weekly_review():
     top_mood_avg = float(mood_stats[0]["avg_pnl"] or 0.0) if mood_stats else 0.0
     top_break = rule_breaks[0]["tag"] if rule_breaks else "No repeated tags"
     top_break_count = int(rule_breaks[0]["count"] or 0) if rule_breaks else 0
-
-    content = render_template_string(
-        """
-        <div class="metricStrip">
-          <div class="metric"><div class="label">Week</div><div class="value">{{ week_start }} → {{ week_end }}</div></div>
-          <div class="metric"><div class="label">Journal Entries</div><div class="value">{{ entries|length }}</div></div>
-          <div class="metric"><div class="label">Setups Tracked</div><div class="value">{{ setup_stats|length }}</div></div>
-          <div class="metric"><div class="label">Rule-Break Tags</div><div class="value">{{ rule_breaks|length }}</div></div>
-        </div>
-
-        <div class="card pageHero">
-          <div class="toolbar">
-            <div class="pageHeroHead">
-              <div>
-                <div class="pill">📘 Weekly Review</div>
-                <h2 class="pageTitle">Behavior Snapshot</h2>
-                <div class="pageSub">Review setup quality, mood outcomes, and repeated rule breaks for the selected week window.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card"><div class="toolbar">
-          <form method="get" class="row">
-            <div><label>Week Start</label><input type="date" name="week_start" value="{{ week_start }}"></div>
-            <div class="actionRow">
-              <button class="btn" type="submit">Apply</button>
-              <a class="btn" href="/journal/review/weekly">Current Week</a>
-              <a class="btn" href="/journal">Back Journal</a>
-            </div>
-          </form>
-        </div></div>
-
-        <div class="insightGrid stack12">
-          <div class="insightCard">
-            <div class="insightTitle">🏁 Best Setup (Week)</div>
-            <div class="insightBody">{{ top_setup }} · Net {{ money(top_setup_net) }}</div>
-          </div>
-          <div class="insightCard">
-            <div class="insightTitle">😶‍🌫️ Mood Signal</div>
-            <div class="insightBody">{{ top_mood }} · Avg {{ money(top_mood_avg) }}</div>
-          </div>
-          <div class="insightCard">
-            <div class="insightTitle">⚠️ Most Repeated Break</div>
-            <div class="insightBody">{{ top_break }}{% if top_break_count %} · {{ top_break_count }}x{% endif %}</div>
-          </div>
-        </div>
-
-        <div class="twoCol stack12">
-          <div class="card"><div class="toolbar">
-            <div class="pill">📌 Best Setups (linked trades)</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th></tr></thead>
-              <tbody>
-              {% for r in setup_stats %}
-                <tr><td>{{ r.setup }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td></tr>
-              {% endfor %}
-              {% if setup_stats|length == 0 %}<tr><td colspan="4">No linked-trade setup data this week.</td></tr>{% endif %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
-                {% for r in setup_stats %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.setup }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                    </div>
-                  </div></div>
-                {% endfor %}
-                {% if setup_stats|length == 0 %}
-                  <div class="card"><div class="toolbar"><div class="tiny">No linked-trade setup data this week.</div></div></div>
-                {% endif %}
-              </div>
-            </div>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">😶‍🌫️ Mood vs PnL Pattern</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Mood</th><th>Entries</th><th>Win Rate</th><th>Avg PnL</th></tr></thead>
-              <tbody>
-              {% for r in mood_stats %}
-                <tr><td>{{ r.mood }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.avg_pnl) }}</td></tr>
-              {% endfor %}
-              {% if mood_stats|length == 0 %}<tr><td colspan="4">No mood data this week.</td></tr>{% endif %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
-                {% for r in mood_stats %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.mood }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Entries: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Avg: <b>{{ money(r.avg_pnl) }}</b></span>
-                    </div>
-                  </div></div>
-                {% endfor %}
-                {% if mood_stats|length == 0 %}
-                  <div class="card"><div class="toolbar"><div class="tiny">No mood data this week.</div></div></div>
-                {% endif %}
-              </div>
-            </div>
-          </div></div>
-        </div>
-
-        <div class="card stack12"><div class="toolbar">
-          <div class="pill">⚠️ Repeated Rule Breaks</div>
-          <div class="hr"></div>
-          <div class="tableWrap desktopOnly"><table class="tableDense">
-            <thead><tr><th>Tag</th><th>Count</th></tr></thead>
-            <tbody>
-            {% for r in rule_breaks %}
-              <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
-            {% endfor %}
-            {% if rule_breaks|length == 0 %}<tr><td colspan="2">No rule-break tags for linked trades this week.</td></tr>{% endif %}
-            </tbody>
-          </table></div>
-          <div class="mobileOnly">
-            <div class="grid">
-              {% for r in rule_breaks %}
-                <div class="card"><div class="toolbar">
-                  <div class="pill">{{ r.tag }}</div>
-                  <div class="meta">Count: <b>{{ r.count }}</b></div>
-                </div></div>
-              {% endfor %}
-              {% if rule_breaks|length == 0 %}
-                <div class="card"><div class="toolbar"><div class="tiny">No rule-break tags for linked trades this week.</div></div></div>
-              {% endif %}
-            </div>
-          </div>
-        </div></div>
-        """,
+    coach = _weekly_coach_summary(setup_stats, mood_stats, rule_breaks, day_rollups)
+    week_net = sum(float(row.get("pnl_total") or 0.0) for row in day_rollups)
+    active_days = len(day_rollups)
+    green_days = len([row for row in day_rollups if float(row.get("pnl_total") or 0.0) > 0])
+    content = render_template(
+        "journal/weekly_review.html",
         week_start=week_start,
         week_end=week_end,
         entries=entries,
+        day_rollups=day_rollups,
         setup_stats=setup_stats,
         mood_stats=mood_stats,
         rule_breaks=rule_breaks,
@@ -420,6 +429,10 @@ def journal_weekly_review():
         top_mood_avg=top_mood_avg,
         top_break=top_break,
         top_break_count=top_break_count,
+        coach=coach,
+        week_net=week_net,
+        active_days=active_days,
+        green_days=green_days,
         money=money,
     )
     return render_page(content, active="journal")

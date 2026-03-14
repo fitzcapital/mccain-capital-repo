@@ -1,5 +1,7 @@
 """Phase 2 journal workflow tests."""
 
+from io import BytesIO
+
 from mccain_capital.repositories import journal as repo
 from mccain_capital.runtime import db, now_iso
 from mccain_capital.services import journal as journal_service
@@ -136,6 +138,8 @@ def test_weekly_review_route_and_rule_break_aggregation(client):
     body = resp.get_data(as_text=True)
     assert "Repeated Rule Breaks" in body
     assert "revenge" in body
+    assert "Weekly Coach" in body
+    assert "One Rule" in body
 
 
 def test_new_entry_can_auto_link_all_trades_for_day(client):
@@ -383,3 +387,35 @@ def test_new_entry_auto_debrief_draft_prefills_richer_context(client, monkeypatc
     assert "Trend Continuation" in body
     assert "SPX / VIX 19.40" in body
     assert "Confident but controlled" in body
+
+
+def test_quick_capture_upload_saves_screenshot_and_serves_asset(client):
+    resp = client.post(
+        "/journal/new",
+        data={
+            "entry_date": "2026-02-25",
+            "market": "SPX",
+            "setup": "Quick Capture",
+            "grade": "B",
+            "mood": "Focused",
+            "pnl": "",
+            "entry_type": "trade_debrief",
+            "quick_capture": "1",
+            "template_notes": "",
+            "notes": "Phone note after entry.",
+            "capture_screenshot": (BytesIO(b"\x89PNG\r\n\x1a\nfake"), "capture.png"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+
+    entries = repo.fetch_entries(d="2026-02-25")
+    assert len(entries) == 1
+    row = repo.get_entry(int(entries[0]["id"]))
+    payload = journal_service._safe_template_payload(row["template_payload"])
+    screenshot_path = str(payload.get("capture_screenshot_path") or "")
+    assert screenshot_path.startswith("journal-captures/2026-02-25/")
+
+    asset = client.get(f"/journal/captures/{screenshot_path}", follow_redirects=True)
+    assert asset.status_code == 200

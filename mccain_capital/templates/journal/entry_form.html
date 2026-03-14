@@ -10,7 +10,9 @@
   {% endif %}
 
   <div class="hr"></div>
-  <form method="post" action="{{ action }}">
+  <form method="post" action="{{ action }}" enctype="multipart/form-data">
+    <input type="hidden" name="existing_capture_screenshot_path" value="{{ values.get('capture_screenshot_path','') }}">
+    <input type="hidden" name="quick_capture" value="{{ values.get('quick_capture','0') }}">
     <div class="row journalMetaRow">
       <div class="journalDateField">
         <label>Date</label>
@@ -23,6 +25,41 @@
       <div class="journalSetupField">
         <label>Setup</label>
         <input name="setup" value="{{ values.get('setup','') }}" placeholder="Midday CE Strike...">
+      </div>
+    </div>
+
+    <div class="card journalCaptureCard">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Mobile Quick Capture</div>
+          {% if values.get('quick_capture') == '1' %}
+            <span class="trendChip positive">Phone-first</span>
+          {% endif %}
+        </div>
+        <div class="tiny stack8 line16">Fast note, emotion tag, and screenshot capture for in-session use.</div>
+        <div class="journalQuickCaptureGrid">
+          <div class="stack10">
+            <label>Emotion shortcuts</label>
+            <div class="pillRow journalQuickMoodRow">
+              {% for mood_label in ['Calm','Focused','Hesitant','Frustrated','Overconfident'] %}
+                <button class="trendChip journalQuickMoodBtn" type="button" data-mood="{{ mood_label }}">{{ mood_label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="stack10">
+            <label>Screenshot</label>
+            <input type="file" name="capture_screenshot" accept="image/png,image/jpeg,image/webp" capture="environment">
+            <div class="tiny stack8">Phone camera or screenshot picker. Images stay in your persistent journal capture storage.</div>
+            {% if values.get('capture_screenshot_href') %}
+              <a class="btn btnCompact" href="{{ values.get('capture_screenshot_href') }}" target="_blank" rel="noopener">Open Current Screenshot</a>
+            {% endif %}
+          </div>
+        </div>
+        {% if values.get('capture_screenshot_href') %}
+          <div class="journalCapturePreview">
+            <img src="{{ values.get('capture_screenshot_href') }}" alt="Journal capture preview">
+          </div>
+        {% endif %}
       </div>
     </div>
 
@@ -47,7 +84,7 @@
       </div>
       <div>
         <label>Mood</label>
-        <input name="mood" value="{{ values.get('mood','') }}" placeholder="Calm / anxious / revenge...">
+        <input id="journal-entry-mood" name="mood" value="{{ values.get('mood','') }}" placeholder="Calm / anxious / revenge...">
       </div>
       <div>
         <label>PnL</label>
@@ -149,6 +186,7 @@
     const clearBtn = document.getElementById("journal-clear-trades");
     const pnlInput = document.getElementById("journal-entry-pnl");
     const pnlNote = document.getElementById("journal-entry-pnl-note");
+    const moodInput = document.getElementById("journal-entry-mood");
     if(!dateInput || !tradeList){ return; }
 
     function fmtMoney(v){
@@ -255,6 +293,14 @@
         setAllTrades(false);
       });
     }
+    document.querySelectorAll(".journalQuickMoodBtn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if(moodInput){
+          moodInput.value = btn.dataset.mood || "";
+          moodInput.focus();
+        }
+      });
+    });
     syncSummary();
   })();
 </script>

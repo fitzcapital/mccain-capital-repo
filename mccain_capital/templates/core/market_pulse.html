@@ -20,6 +20,7 @@
         <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
         <button class="btn" id="viewModeToggle" type="button" aria-pressed="false">Execution Mode</button>
         <span class="trendChip" id="marketPulseStreamStatus">Live stream connecting</span>
+        <span class="trendChip {% if spx_quote.get('source_badge_tone') %}{{ spx_quote.get('source_badge_tone') }}{% endif %}" id="marketPulseSourceMode">{{ spx_quote.get('source_badge_label') or 'Feed unavailable' }}</span>
         <span class="tiny muted" id="marketPulseStreamFreshness">Waiting for first tick…</span>
         <a class="btn" href="/candle-opens">Candle Opens</a>
       </div>
@@ -70,6 +71,7 @@
       {{ '%+.2f'|format(spx_quote.get('change')) if spx_quote.get('change') is not none else '—' }}
       · {{ '%+.2f'|format(spx_quote.get('change_pct')) if spx_quote.get('change_pct') is not none else '—' }}%
     </div>
+    <div class="tiny muted" id="spxPrioritySourceBadge">{{ spx_quote.get('source_badge_label') or source_label }}</div>
     <div class="tiny" id="spxPriorityStateLine">State: {{ spx_quote.get('market_state') or 'Unavailable' }}</div>
     <div class="tiny" id="spxPriorityRangeLine">Range: {{ spx_quote.get('day_range') or '—' }}</div>
     <div class="tiny muted">Primary cash index proxy for SPX options context.</div>
@@ -359,6 +361,7 @@
             —
           {% endif %}
         </div>
+        <div class="tiny muted" data-role="source-badge">{{ q.source_badge_label or q.source_label or source_label }}</div>
         <div class="tiny" data-role="change-line">{{ '%+.2f'|format(q.change) }} · {{ '%+.2f'|format(q.change_pct) }}%</div>
         <div class="tiny" data-role="market-state">State: {{ q.market_state }}</div>
         {% if q.freshness_reason and q.data_state != 'live' %}
