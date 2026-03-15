@@ -1,5 +1,7 @@
 """Core app behavior tests."""
 
+import json
+
 from mccain_capital.runtime import db, get_setting_value, now_iso, today_iso
 from mccain_capital.services import core as core_service
 from werkzeug.security import generate_password_hash
@@ -37,6 +39,174 @@ def test_core_pages_are_reachable(client):
         assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
 
 
+def test_trades_page_uses_action_specific_hero_and_trust_badges(client):
+    resp = client.get("/trades", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Start the Session Clean" in body
+    assert "Confidence" in body
+    assert "Execution + sync" in body
+    assert "Execution live" in body
+
+
+def test_journal_page_uses_review_focus_workflow_surface(client):
+    resp = client.get("/journal", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Capture Today While It Is Fresh" in body
+    assert "Review Focus" in body
+    assert "Capture Pace" in body
+    assert "Last Update" in body
+
+
+def test_strategies_page_uses_playbook_workflow_surface(client):
+    resp = client.get("/strategies", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Build the Playbook From Real Edge" in body
+    assert "Trade Seats" in body
+    assert "Playbook Rule" in body
+
+
+def test_payouts_page_uses_unlock_workflow_surface(client):
+    resp = client.get("/payouts", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Build the Buffer Before You Pull Cash" in body
+    assert "Payout Planner" in body
+    assert "Confidence" in body
+    assert "Planner Inputs" in body
+
+
+def test_payout_readiness_planner_uses_short_lived_cache(monkeypatch):
+    from mccain_capital.services import goals as goals_service
+
+    calls = []
+
+    def _fake_gauss(mu, sigma):
+        calls.append((mu, sigma))
+        return mu
+
+    monkeypatch.setattr(goals_service.random, "gauss", _fake_gauss)
+    monkeypatch.setattr(goals_service, "_PAYOUT_SIM_CACHE", {})
+
+    first = goals_service._payout_readiness_planner(
+        daily_vals=[100.0, 120.0, 80.0],
+        balance=52000.0,
+        safe_floor=50500.0,
+        biweekly_goal=2000.0,
+    )
+    second = goals_service._payout_readiness_planner(
+        daily_vals=[100.0, 120.0, 80.0],
+        balance=52000.0,
+        safe_floor=50500.0,
+        biweekly_goal=2000.0,
+    )
+
+    assert first == second
+    assert calls
+    first_call_count = len(calls)
+    assert first_call_count > 0
+    third = goals_service._payout_readiness_planner(
+        daily_vals=[100.0, 120.0, 80.0],
+        balance=52000.0,
+        safe_floor=50500.0,
+        biweekly_goal=2500.0,
+    )
+    assert third
+    assert len(calls) > first_call_count
+
+
+def test_system_check_page_uses_ops_workflow_surface(client):
+    resp = client.get("/ops/system-check", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Runtime Looks Healthy" in body or "Resolve Runtime Gaps Before They Compound" in body
+    assert "Runtime Read" in body
+    assert "Backup Center" in body
+
+
+def test_login_page_includes_passkey_cta_when_passkeys_exist(client):
+    from mccain_capital.runtime import set_setting_value
+
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("secret-pass-123"))
+    set_setting_value(
+        "auth_passkeys",
+        json.dumps(
+            [
+                {
+                    "credential_id": "cred_demo",
+                    "public_key": "pub_demo",
+                    "sign_count": 1,
+                    "label": "MacBook Pro",
+                    "added_at": "2026-03-14T10:00:00-04:00",
+                }
+            ]
+        ),
+    )
+
+    resp = client.get("/login", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Use Passkey" in body
+    assert "Passkey sign-in is ready" in body
+
+
+def test_passkeys_page_renders_registered_devices_for_authenticated_user(client):
+    from mccain_capital.runtime import set_setting_value
+
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("secret-pass-123"))
+    set_setting_value(
+        "auth_passkeys",
+        json.dumps(
+            [
+                {
+                    "credential_id": "cred_demo_12345678",
+                    "public_key": "pub_demo",
+                    "sign_count": 2,
+                    "label": "MacBook Pro Face ID",
+                    "added_at": "2026-03-14T10:00:00-04:00",
+                    "last_used_at": "2026-03-14T11:00:00-04:00",
+                }
+            ]
+        ),
+    )
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.get("/auth/passkeys", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Passkey Control" in body
+    assert "MacBook Pro Face ID" in body
+    assert "Register Passkey" in body
+
+
+def test_ops_alerts_page_uses_extracted_workflow_template(client):
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.get("/ops/alerts", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Clear Reliability Risk Before It Pollutes Review" in body
+    assert "Review Ops" in body
+    assert "Admin Timeline" in body
+
+
+def test_calculator_page_uses_plan_first_workflow_surface(client):
+    resp = client.get("/calculator", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Plan the Trade Before It Plans You" in body
+    assert "Decision Rule" in body
+    assert "Next Move" in body
+
+
 def test_base_shell_includes_market_pulse_transition_overlay(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
@@ -48,6 +218,8 @@ def test_dashboard_renders_daily_brief_card(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Daily Brief" in resp.data
+    assert b"Auto-generated" in resp.data
+    assert b"More Info" in resp.data
     assert b"Plan A" in resp.data
     assert b"No-trade condition" in resp.data
 
@@ -66,6 +238,35 @@ def test_dashboard_brief_update_saves_daily_plan(client):
     )
     assert resp.status_code == 302
     assert get_setting_value("dashboard_daily_brief::2026-03-13", "")
+
+
+def test_dashboard_brief_shows_manual_state_and_can_reset(client):
+    client.post(
+        "/dashboard/brief",
+        data={
+            "brief_day": today_iso(),
+            "brief_focus": "Trade only at A levels.",
+            "brief_plan_a": "Continuation only.",
+            "brief_plan_b": "Fade only after rejection.",
+            "brief_no_trade": "Stand down into macro.",
+        },
+        follow_redirects=False,
+    )
+
+    tuned = client.get("/dashboard", follow_redirects=True)
+    assert tuned.status_code == 200
+    assert b"Manually tuned" in tuned.data
+
+    reset = client.post(
+        "/dashboard/brief",
+        data={"brief_day": today_iso(), "brief_reset": "1"},
+        follow_redirects=False,
+    )
+    assert reset.status_code == 302
+
+    refreshed = client.get("/dashboard", follow_redirects=True)
+    assert refreshed.status_code == 200
+    assert b"Auto-generated" in refreshed.data
 
 
 def test_dashboard_links_to_auto_debrief_draft_when_trades_exist(client):
@@ -164,6 +365,35 @@ def test_dashboard_trading_window_banner_uses_test_mode_stop_state(client):
     assert b"Done By 11:30 ET" in resp.data
 
 
+def test_dashboard_trading_window_banner_hidden_on_weekend_without_test_mode(client):
+    from mccain_capital.runtime import set_setting_value
+
+    set_setting_value("trading_window_enabled", "1")
+    set_setting_value("trading_window_start_et", "09:30")
+    set_setting_value("trading_window_done_by_et", "11:30")
+    set_setting_value("trading_window_hard_stop_et", "12:00")
+    set_setting_value("trading_window_test_mode", "0")
+
+    from mccain_capital.services import ui as ui_service
+
+    class WeekendDatetime(ui_service.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 3, 14, 10, 0, tzinfo=tz or ui_service.TZ)
+
+    original_datetime = ui_service.datetime
+    ui_service.datetime = WeekendDatetime
+    try:
+        state = ui_service.get_trading_window_state()
+        assert state["show_banner"] is False
+
+        resp = client.get("/dashboard", follow_redirects=True)
+        assert resp.status_code == 200
+        assert b"Trading Window" not in resp.data
+    finally:
+        ui_service.datetime = original_datetime
+
+
 def test_trading_window_config_endpoint_saves_times(client):
     resp = client.post(
         "/ops/trading-window",
@@ -213,7 +443,7 @@ def test_candle_opens_news_includes_placeholder_weeks(monkeypatch):
     assert "2026-03-11" in set((out.get("events_by_day") or {}).keys())
 
 
-def test_candle_opens_includes_known_march_fallback_markers(monkeypatch):
+def test_candle_opens_uses_titled_march_backup_events(monkeypatch):
     monkeypatch.setattr(core_service, "get_forex_factory_month_feed", lambda: [])
     monkeypatch.setattr(core_service, "get_forex_factory_feed", lambda: [])
     monkeypatch.setattr(core_service, "get_forex_factory_next_week_feed", lambda: [])
@@ -221,23 +451,110 @@ def test_candle_opens_includes_known_march_fallback_markers(monkeypatch):
         core_service.date(2026, 3, 1), core_service.date(2026, 3, 31)
     )
     assert bool(out.get("fallback_used"))
-    assert int(out.get("fallback_count") or 0) >= 11
-    assert "fallback marker" in str(out.get("summary") or "").lower()
+    assert int(out.get("fallback_count") or 0) >= 10
+    assert "curated backup" in str(out.get("source_note") or "").lower()
     event_days = set((out.get("events_by_day") or {}).keys())
     for expected in (
         "2026-03-11",
         "2026-03-12",
         "2026-03-13",
         "2026-03-16",
-        "2026-03-17",
         "2026-03-18",
         "2026-03-19",
         "2026-03-24",
+        "2026-03-25",
         "2026-03-26",
-        "2026-03-27",
         "2026-03-31",
     ):
         assert expected in event_days
+    march_18_titles = [row["title"] for row in (out.get("events_by_day") or {}).get("2026-03-18", [])]
+    assert "FOMC Rate Decision" in march_18_titles
+    assert "FOMC Press Conference" in march_18_titles
+
+
+def test_candle_opens_sorts_events_by_actual_timestamp(monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "get_forex_factory_month_feed",
+        lambda: [
+            {
+                "country": "USD",
+                "impact": "High",
+                "title": "JOLTS Job Openings",
+                "date": "2026-03-13T10:00:00-04:00",
+            },
+            {
+                "country": "USD",
+                "impact": "High",
+                "title": "Core PCE Price Index m/m",
+                "date": "2026-03-13T08:30:00-04:00",
+            },
+            {
+                "country": "USD",
+                "impact": "High",
+                "title": "GDP (Second Estimate) q/q",
+                "date": "2026-03-13T08:30:00-04:00",
+            },
+        ],
+    )
+    monkeypatch.setattr(core_service, "get_forex_factory_feed", lambda: [])
+    monkeypatch.setattr(core_service, "get_forex_factory_next_week_feed", lambda: [])
+    out = core_service._forex_factory_usd_window_events(
+        core_service.date(2026, 3, 13), core_service.date(2026, 3, 13)
+    )
+    day_events = (out.get("events_by_day") or {}).get("2026-03-13", [])
+    titles = [row["title"] for row in day_events]
+    assert titles[:2] == ["Core PCE Price Index m/m", "GDP (Second Estimate) q/q"]
+    assert [row["time_label"] for row in day_events[:2]] == ["8:30 AM ET", "8:30 AM ET"]
+    assert "JOLTS Job Openings" in titles[2:]
+
+
+def test_candle_open_calendar_surfaces_key_macro_days(monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "get_forex_factory_month_feed",
+        lambda: [
+            {
+                "country": "USD",
+                "impact": "High",
+                "title": "FOMC Rate Decision",
+                "date": "2026-03-18T14:00:00-04:00",
+            },
+            {
+                "country": "USD",
+                "impact": "High",
+                "title": "FOMC Press Conference",
+                "date": "2026-03-18T14:30:00-04:00",
+            },
+            {
+                "country": "USD",
+                "impact": "High",
+                "title": "CPI m/m",
+                "date": "2026-03-11T08:30:00-04:00",
+            },
+            {
+                "country": "USD",
+                "impact": "High",
+                "title": "Unemployment Claims",
+                "date": "2026-03-12T08:30:00-04:00",
+            },
+        ],
+    )
+    monkeypatch.setattr(core_service, "get_forex_factory_feed", lambda: [])
+    monkeypatch.setattr(core_service, "get_forex_factory_next_week_feed", lambda: [])
+    calendar = core_service._build_candle_open_calendar(2026, 3)
+    top_days = list(calendar.get("news_top_days") or [])
+    assert top_days
+    assert top_days[0]["iso"] == "2026-03-18"
+    assert top_days[0]["focus_key"] == "federal"
+    march_18 = next(
+        cell
+        for week in calendar["weeks"]
+        for cell in week
+        if cell.get("iso") == "2026-03-18"
+    )
+    assert bool(march_18["is_key_news_day"])
+    assert march_18["news_focus_label"] == "Fed Day"
 
 
 def test_market_pulse_includes_tesla_in_quotes_and_watchlist():
@@ -309,6 +626,8 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"marketPulseStreamStatus" in resp.data
     assert b"Tradier Live Quote" in resp.data
     assert b"Yahoo Fallback" in resp.data
+    assert b"Trade Setup Now" in resp.data
+    assert b"marketPulseSetupHeadline" in resp.data
     assert b"marketPulseLoadingOverlay" in resp.data
     assert b"Loading Market Pulse" in resp.data
     assert b"autoRefreshToggle" not in resp.data
@@ -593,7 +912,7 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
     )
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Trading Command Deck" in resp.data
+    assert b"Prepare the Session" in resp.data
     assert b"Milestone" in resp.data
     assert b"Live Market Pulse" not in resp.data
 
@@ -669,8 +988,8 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"Gap O/N:" in resp.data
     assert b"Tradier Live Quote" in resp.data
     assert b"-8.48 (-0.13%)" in resp.data
-    assert b"Range: 6773.42-6775.80" in resp.data
-    assert b"Volatility regime and gamma proxy anchor." in resp.data
+    assert b"Range 6773.42-6775.80" in resp.data
+    assert b"VIX pulse" in resp.data
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):
@@ -754,9 +1073,28 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
             "fetched_at": "Mar 2, 2026 10:30 AM ET",
             "source_label": "Massive market feed",
             "source_note": "",
-            "quotes": [],
-            "integrity": {},
-        },
+            "quotes": [
+                {
+                    "label": "SPX",
+                    "symbol": "SPX",
+                    "group": "core",
+                    "focus": "index",
+                    "price": 5120.35,
+                    "change": 24.35,
+                    "change_pct": 0.48,
+                    "asof": "2026-03-05T12:00:00-05:00",
+                    "asof_epoch": 1741194000,
+                    "data_state": "live",
+                    "data_reason": "tradier_live",
+                        "provider": "tradier",
+                        "mini_series": [5096.0, 5108.0, 5120.35],
+                        "series": [],
+                        "prior_day_low": 5064.25,
+                        "prior_day_high": 5098.75,
+                    }
+                ],
+                "integrity": {},
+            },
     )
     monkeypatch.setattr(
         core_service,
@@ -770,10 +1108,55 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
         },
     )
     from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_data_service
     from mccain_capital.services import options_panel_service
 
     monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
     monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_data_service,
+        "get_intraday",
+        lambda _symbol: [
+            {
+                "ts": "2026-03-05T14:30:00+00:00",
+                "open": 5102.0,
+                "high": 5124.5,
+                "low": 5098.25,
+                "close": 5111.0,
+                "volume": 100.0,
+            },
+            {
+                "ts": "2026-03-05T20:59:00+00:00",
+                "open": 5111.0,
+                "high": 5128.75,
+                "low": 5097.5,
+                "close": 5120.35,
+                "volume": 100.0,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_prior_session_intraday",
+        lambda _symbol, anchor_session_day=None: [
+            {
+                "ts": "2026-03-04T14:30:00+00:00",
+                "open": 5078.0,
+                "high": 5094.25,
+                "low": 5066.5,
+                "close": 5088.0,
+                "volume": 100.0,
+            },
+            {
+                "ts": "2026-03-04T20:59:00+00:00",
+                "open": 5088.0,
+                "high": 5098.75,
+                "low": 5064.25,
+                "close": 5092.0,
+                "volume": 100.0,
+            },
+        ],
+    )
     monkeypatch.setattr(
         gamma_map_service,
         "get_gamma_snapshot",
@@ -786,6 +1169,8 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
             "gamma_flip": 5110.0,
             "call_wall": 5150.0,
             "put_wall": 5050.0,
+            "call_wall_gamma_per_point": 245000000.0,
+            "put_wall_gamma_per_point": 198000000.0,
             "gamma_walls_top3": [5150.0, 5125.0, 5100.0],
             "void_zone": {"start": 5060.0, "end": 5090.0},
             "bias": "buy_dips_above_flip",
@@ -804,6 +1189,9 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
     assert resp.status_code == 200
     assert b"SPX Priority" in resp.data
     assert b"Gamma Flip" in resp.data
+    assert b"245.0 million" in resp.data
+    assert b"198.0 million" in resp.data
+    assert b"5064.25 - 5098.75" in resp.data
     assert b"Best Contracts" in resp.data
     assert b"SPXW 2026-03-06 5125C" in resp.data
 

@@ -9,6 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from mccain_capital import auth
 from mccain_capital.runtime import set_setting_value
+from mccain_capital.services.auth_passkeys import passkeys_available
 from mccain_capital.services.ui import csrf_input_html, render_page
 
 
@@ -93,6 +94,7 @@ def login_page():
             err=err,
             next_url=request.args.get("next", ""),
             csrf_input=csrf_input_html(),
+            passkeys_available=passkeys_available(),
         ),
         active="auth",
         title="McCain Capital · Login",

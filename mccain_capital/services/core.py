@@ -173,18 +173,27 @@ MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS: Tuple[str, ...] = tuple(
 YAHOO_RSS_SYMBOL_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
 _market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
-USD_CALENDAR_FALLBACK_MARKERS: Tuple[Tuple[str, str], ...] = (
-    ("2026-03-11", "Medium"),
-    ("2026-03-12", "Medium"),
-    ("2026-03-13", "High"),
-    ("2026-03-16", "Medium"),
-    ("2026-03-17", "Medium"),
-    ("2026-03-18", "High"),
-    ("2026-03-19", "High"),
-    ("2026-03-24", "Medium"),
-    ("2026-03-26", "High"),
-    ("2026-03-27", "High"),
-    ("2026-03-31", "Medium"),
+USD_CALENDAR_FALLBACK_EVENTS: Tuple[Tuple[str, str, str], ...] = (
+    ("2026-03-11T08:30:00-04:00", "High", "Core CPI m/m"),
+    ("2026-03-11T08:30:00-04:00", "High", "CPI m/m"),
+    ("2026-03-11T08:30:00-04:00", "High", "CPI y/y"),
+    ("2026-03-12T08:30:00-04:00", "High", "Unemployment Claims"),
+    ("2026-03-13T08:30:00-04:00", "High", "Core PCE Price Index m/m"),
+    ("2026-03-13T08:30:00-04:00", "High", "GDP (Second Estimate) q/q"),
+    ("2026-03-13T10:00:00-04:00", "High", "JOLTS Job Openings"),
+    ("2026-03-13T10:00:00-04:00", "Medium", "Prelim UoM Consumer Sentiment"),
+    ("2026-03-13T10:00:00-04:00", "Medium", "Prelim UoM Inflation Expectations"),
+    ("2026-03-16T09:15:00-04:00", "Medium", "Industrial Production m/m"),
+    ("2026-03-18T08:30:00-04:00", "High", "PPI m/m"),
+    ("2026-03-18T08:30:00-04:00", "High", "Core PPI m/m"),
+    ("2026-03-18T14:00:00-04:00", "High", "FOMC Rate Decision"),
+    ("2026-03-18T14:30:00-04:00", "High", "FOMC Press Conference"),
+    ("2026-03-19T08:30:00-04:00", "High", "Unemployment Claims"),
+    ("2026-03-24T08:30:00-04:00", "Medium", "Productivity and Costs q/q"),
+    ("2026-03-25T08:30:00-04:00", "Medium", "Import Price Index m/m"),
+    ("2026-03-25T08:30:00-04:00", "Medium", "Export Price Index m/m"),
+    ("2026-03-26T08:30:00-04:00", "High", "Unemployment Claims"),
+    ("2026-03-31T10:00:00-04:00", "High", "JOLTS Job Openings"),
 )
 
 
@@ -916,6 +925,22 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 "series": [],
             }
         )
+    def _rows_session_day(rows: List[Dict[str, Any]]) -> Optional[date]:
+        for row in reversed(rows):
+            if not isinstance(row, dict):
+                continue
+            ts_raw = str(row.get("ts") or "").strip()
+            if not ts_raw:
+                continue
+            try:
+                parsed = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=app_runtime.TZ)
+                return parsed.astimezone(app_runtime.TZ).date()
+            except Exception:
+                continue
+        return None
+
     # Build richer refresh-time curves so cards feel like Yahoo-style micro charts.
     for q in quotes:
         symbol = str(q.get("symbol") or "").strip().upper()
@@ -925,6 +950,27 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
             rows = market_data_service.get_intraday(symbol)
         except Exception:
             rows = []
+        try:
+            prior_rows = market_data_service.get_prior_session_intraday(
+                symbol,
+                anchor_session_day=_rows_session_day(rows),
+            )
+        except Exception:
+            prior_rows = []
+        if prior_rows:
+            prior_highs = [
+                float(r.get("high"))
+                for r in prior_rows
+                if isinstance(r, dict) and r.get("high") is not None
+            ]
+            prior_lows = [
+                float(r.get("low"))
+                for r in prior_rows
+                if isinstance(r, dict) and r.get("low") is not None
+            ]
+            if prior_highs and prior_lows:
+                q["prior_day_high"] = max(prior_highs)
+                q["prior_day_low"] = min(prior_lows)
         if not rows:
             continue
         points = [
@@ -1716,6 +1762,7 @@ def _dashboard_daily_brief_viewmodel(
 ) -> Dict[str, Any]:
     day_key = now_et.date().isoformat()
     saved = _load_dashboard_brief_settings(day_key)
+    is_tuned = any(str(saved.get(key) or "").strip() for key in ("focus", "plan_a", "plan_b", "no_trade"))
 
     def _num(value: Any) -> Optional[float]:
         try:
@@ -1834,6 +1881,13 @@ def _dashboard_daily_brief_viewmodel(
         ),
         "summary": bias_summary,
         "cta_label": "Open Trade Gate" if today_count == 0 else "Add Another Trade",
+        "source_label": "Manually tuned" if is_tuned else "Auto-generated",
+        "source_detail": (
+            "Using your saved brief edits for this day."
+            if is_tuned
+            else "Generated from live SPX, VIX, gamma structure, and macro context."
+        ),
+        "is_tuned": is_tuned,
     }
 
 
@@ -1993,13 +2047,14 @@ def dashboard_milestone_update():
 
 def dashboard_brief_update():
     day = str(request.form.get("brief_day") or app_runtime.today_iso()).strip() or app_runtime.today_iso()
+    reset = str(request.form.get("brief_reset") or "").strip() == "1"
     _save_dashboard_brief_settings(
         day,
         {
-            "focus": request.form.get("brief_focus") or "",
-            "plan_a": request.form.get("brief_plan_a") or "",
-            "plan_b": request.form.get("brief_plan_b") or "",
-            "no_trade": request.form.get("brief_no_trade") or "",
+            "focus": "" if reset else request.form.get("brief_focus") or "",
+            "plan_a": "" if reset else request.form.get("brief_plan_a") or "",
+            "plan_b": "" if reset else request.form.get("brief_plan_b") or "",
+            "no_trade": "" if reset else request.form.get("brief_no_trade") or "",
         },
     )
     flash("Daily brief saved.", "success")
@@ -2759,6 +2814,8 @@ def market_pulse_page():
 
 
 def system_check_page():
+    from mccain_capital.services.viewmodels import StateBadgeViewModel
+
     checks: List[Dict[str, Any]] = []
 
     def add_check(name: str, ok: bool, detail: str) -> None:
@@ -2806,6 +2863,46 @@ def system_check_page():
 
     ok_count = len([c for c in checks if c["ok"]])
     status = "healthy" if ok_count == len(checks) else "degraded"
+    hero_title = (
+        "Runtime Looks Healthy" if status == "healthy" else "Resolve Runtime Gaps Before They Compound"
+    )
+    hero_blurb = (
+        "Confirm storage, runtime paths, and backup posture before trusting the rest of the stack."
+    )
+    support_lead = (
+        "All core storage paths are present and writable."
+        if status == "healthy"
+        else "One or more core runtime checks are degraded."
+    )
+    support_body = (
+        "This page is the fast answer to whether the app can safely store, read, and recover its working state."
+    )
+    status_badges = [
+        StateBadgeViewModel(
+            label="Confidence",
+            value=("High" if status == "healthy" else "Mixed"),
+            tone=("healthy" if status == "healthy" else "caution"),
+            title="Overall confidence in current storage and runtime health.",
+        ),
+        StateBadgeViewModel(
+            label="Checks",
+            value=f"{ok_count}/{len(checks)} ok",
+            tone=("healthy" if status == "healthy" else "caution"),
+            title="Passing checks out of the total runtime checklist.",
+        ),
+        StateBadgeViewModel(
+            label="Trades",
+            value=str(trades_count),
+            tone="healthy",
+            title="Trade rows detected in the live database.",
+        ),
+        StateBadgeViewModel(
+            label="Journal",
+            value=str(journal_count),
+            tone="healthy",
+            title="Journal entries detected in the live database.",
+        ),
+    ]
     content = render_template(
         "core/system_check.html",
         checks=checks,
@@ -2814,8 +2911,13 @@ def system_check_page():
         total_count=len(checks),
         trades_count=trades_count,
         journal_count=journal_count,
+        hero_title=hero_title,
+        hero_blurb=hero_blurb,
+        support_lead=support_lead,
+        support_body=support_body,
+        status_badges=status_badges,
     )
-    return render_page(content, active="links", title="McCain Capital · System Check")
+    return render_page(content, active="ops", title="McCain Capital · System Check")
 
 
 def market_pulse_gamma_artifact(name: str):
@@ -3378,6 +3480,11 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
     weeks = []
     total_signals = 0
     trading_days = 0
+    news_day_meta = {
+        str(day.get("iso") or ""): day
+        for day in list(news_overlay.get("days") or [])
+        if isinstance(day, dict)
+    }
     for week in cal.monthdatescalendar(year, month):
         cells = []
         for day in week:
@@ -3386,6 +3493,9 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
             is_weekend = day.weekday() >= 5
             is_holiday = bool(holiday_name)
             is_trading = in_month and not is_weekend and not is_holiday
+            iso = day.isoformat()
+            day_news = list(news_overlay["events_by_day"].get(iso, []))
+            news_meta = dict(news_day_meta.get(iso) or {})
             day_labels = []
             week_labels = []
             month_labels = []
@@ -3410,7 +3520,7 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
             cells.append(
                 {
                     "day": day.day,
-                    "iso": day.isoformat(),
+                    "iso": iso,
                     "weekday_label": day.strftime("%a"),
                     "in_month": in_month,
                     "is_weekend": is_weekend,
@@ -3420,7 +3530,16 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
                     "day_labels": day_labels,
                     "week_labels": week_labels,
                     "month_labels": month_labels,
-                    "news_events": news_overlay["events_by_day"].get(day.isoformat(), []),
+                    "news_events": day_news,
+                    "news_focus_key": str(news_meta.get("focus_key") or ""),
+                    "news_focus_label": str(news_meta.get("focus_label") or ""),
+                    "news_headline": str(news_meta.get("headline") or ""),
+                    "news_priority_score": int(news_meta.get("priority_score") or 0),
+                    "is_key_news_day": bool(news_meta.get("is_key_day")),
+                    "has_curated_news": bool(news_meta.get("curated_count")),
+                    "is_quiet_day": bool(
+                        in_month and is_trading and not day_labels and not week_labels and not month_labels and not day_news
+                    ),
                     "labels": day_labels + week_labels + month_labels,
                 }
             )
@@ -3449,6 +3568,12 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         "news_events": news_overlay["events"],
         "news_days": news_overlay["days"],
         "news_available": news_overlay["available"],
+        "news_provider_count": news_overlay["provider_count"],
+        "news_fallback_count": news_overlay["fallback_count"],
+        "news_source_mode": news_overlay["source_mode"],
+        "news_source_note": news_overlay["source_note"],
+        "news_confidence_label": news_overlay["confidence_label"],
+        "news_top_days": news_overlay["top_days"],
         "top_notice": _candle_page_top_notice(now_et, news_overlay["events"]),
     }
 
@@ -3478,6 +3603,32 @@ def _candle_page_top_notice(
     return None
 
 
+def _calendar_event_title_key(title: str) -> str:
+    return " ".join(str(title or "").strip().lower().split())
+
+
+def _calendar_event_sort_key(item: Dict[str, Any]) -> tuple[str, str, str]:
+    raw = str(item.get("starts_at") or "").strip()
+    try:
+        starts_key = datetime.fromisoformat(raw).isoformat()
+    except ValueError:
+        starts_key = raw
+    return (str(item.get("iso") or ""), starts_key, str(item.get("title") or ""))
+
+
+def _calendar_event_focus(title: str) -> tuple[str, str, int]:
+    text = _calendar_event_title_key(title)
+    if "fomc" in text or "fed chair" in text or "rate decision" in text:
+        return ("federal", "Fed Day", 8)
+    if any(token in text for token in ("cpi", "ppi", "pce", "inflation")):
+        return ("inflation", "Inflation", 6)
+    if any(token in text for token in ("nfp", "job openings", "unemployment", "payroll")):
+        return ("labor", "Labor", 5)
+    if any(token in text for token in ("gdp", "retail", "industrial production")):
+        return ("growth", "Growth", 4)
+    return ("macro", "Macro", 2)
+
+
 def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str, Any]:
     if end_day < start_day:
         start_day, end_day = end_day, start_day
@@ -3493,6 +3644,11 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
         "summary": "USD red/orange events unavailable for this month.",
         "fallback_used": False,
         "fallback_count": 0,
+        "provider_count": 0,
+        "source_mode": "unavailable",
+        "source_note": "Forex Factory month coverage is unavailable right now.",
+        "confidence_label": "Unavailable",
+        "top_days": [],
     }
     payload_candidates: List[List[Dict[str, Any]]] = []
     for source_payload in (
@@ -3522,6 +3678,8 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
     events_by_day: Dict[str, List[Dict[str, Any]]] = {}
     high_count = 0
     medium_count = 0
+    provider_count = 0
+    existing_event_keys: set[tuple[str, str]] = set()
     for row in payload:
         if not isinstance(row, dict):
             continue
@@ -3541,8 +3699,9 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
         if event_day < start_day or event_day > end_day:
             continue
         time_label = dt.strftime("%-I:%M %p ET")
+        title = str(row.get("title") or "USD event").strip() or "USD event"
         item = {
-            "title": str(row.get("title") or "USD event").strip() or "USD event",
+            "title": title,
             "impact": impact,
             "iso": event_day.isoformat(),
             "date_label": event_day.strftime("%a, %b %-d"),
@@ -3550,63 +3709,76 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
             "time_label": time_label,
             "impact_class": "high" if impact == "High" else "medium",
             "icon": "🔴" if impact == "High" else "🟠",
+            "source": "feed",
+            "source_label": "Live calendar",
             "jump_href": (
                 f"/candle-opens?y={event_day.year}&m={event_day.month}"
                 f"#news-day-{event_day.isoformat()}"
             ),
-            "tooltip": f"{impact} impact • {time_label} • {str(row.get('title') or 'USD event').strip() or 'USD event'}",
+            "tooltip": f"{impact} impact • {time_label} • {title}",
         }
         events.append(item)
         events_by_day.setdefault(item["iso"], []).append(item)
+        existing_event_keys.add((item["iso"], _calendar_event_title_key(title)))
+        provider_count += 1
         if impact == "High":
             high_count += 1
         else:
             medium_count += 1
 
     # Provider can occasionally publish an incomplete month window.
-    # Keep known marker dates visible so folder cues stay consistent.
-    fallback_dates: List[tuple[date, str]] = []
-    for iso_day, impact in USD_CALENDAR_FALLBACK_MARKERS:
+    # Fill known high-value days with titled backup events instead of anonymous markers.
+    fallback_events: List[tuple[datetime, str, str]] = []
+    for starts_at, impact, title in USD_CALENDAR_FALLBACK_EVENTS:
         try:
-            fallback_dates.append((date.fromisoformat(iso_day), str(impact)))
+            fallback_events.append(
+                (
+                    datetime.fromisoformat(str(starts_at)),
+                    str(impact).title(),
+                    str(title).strip() or "USD backup event",
+                )
+            )
         except ValueError:
             continue
-    existing_days = {item.get("iso") for item in events}
     fallback_count = 0
-    for fallback_day, impact in fallback_dates:
+    for fallback_at, impact, title in fallback_events:
+        fallback_day = fallback_at.date()
         if fallback_day < start_day or fallback_day > end_day:
             continue
         iso = fallback_day.isoformat()
-        if iso in existing_days:
+        title_key = _calendar_event_title_key(title)
+        if (iso, title_key) in existing_event_keys:
             continue
         impact_class = "high" if impact == "High" else "medium"
-        time_label = "8:30 AM ET"
+        time_label = fallback_at.strftime("%-I:%M %p ET")
         item = {
-            "title": "USD calendar marker (fallback)",
+            "title": title,
             "impact": impact,
             "iso": iso,
             "date_label": fallback_day.strftime("%a, %b %-d"),
-            "starts_at": f"{iso}T08:30:00-05:00",
+            "starts_at": fallback_at.isoformat(),
             "time_label": time_label,
             "impact_class": impact_class,
             "icon": "🔴" if impact_class == "high" else "🟠",
+            "source": "curated",
+            "source_label": "Curated backup",
             "jump_href": (
                 f"/candle-opens?y={fallback_day.year}&m={fallback_day.month}" f"#news-day-{iso}"
             ),
-            "tooltip": f"{impact} impact • {time_label} • USD calendar marker (fallback)",
+            "tooltip": f"{impact} impact • {time_label} • {title} • Curated backup",
         }
         events.append(item)
         events_by_day.setdefault(iso, []).append(item)
-        existing_days.add(iso)
+        existing_event_keys.add((iso, title_key))
         fallback_count += 1
         if impact_class == "high":
             high_count += 1
         else:
             medium_count += 1
 
-    events.sort(key=lambda item: (item["iso"], item["time_label"], item["title"]))
+    events.sort(key=_calendar_event_sort_key)
     for items in events_by_day.values():
-        items.sort(key=lambda item: (item["time_label"], item["title"]))
+        items.sort(key=_calendar_event_sort_key)
 
     news_days: List[Dict[str, Any]] = []
     event_week_keys: set[tuple[int, int]] = set()
@@ -3619,6 +3791,16 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
             event_week_keys.add((int(d.isocalendar().year), int(d.isocalendar().week)))
         except ValueError:
             pass
+        top_focus = ("macro", "Macro", 0)
+        for event in day_events:
+            focus = _calendar_event_focus(str(event.get("title") or ""))
+            if focus[2] > top_focus[2]:
+                top_focus = focus
+        priority_score = (
+            sum(4 for e in day_events if e.get("impact_class") == "high")
+            + sum(2 for e in day_events if e.get("impact_class") == "medium")
+            + sum(_calendar_event_focus(str(e.get("title") or ""))[2] for e in day_events)
+        )
         news_days.append(
             {
                 "iso": iso,
@@ -3627,6 +3809,12 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
                 "medium_count": len([e for e in day_events if e.get("impact_class") == "medium"]),
                 "events": day_events,
                 "placeholder": False,
+                "curated_count": len([e for e in day_events if e.get("source") == "curated"]),
+                "priority_score": priority_score,
+                "focus_key": top_focus[0],
+                "focus_label": top_focus[1],
+                "headline": str(day_events[0].get("title") or "USD event"),
+                "is_key_day": priority_score >= 10,
             }
         )
 
@@ -3648,16 +3836,45 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
                 "medium_count": 0,
                 "events": [],
                 "placeholder": True,
+                "curated_count": 0,
+                "priority_score": 0,
+                "focus_key": "macro",
+                "focus_label": "Macro",
+                "headline": "",
+                "is_key_day": False,
             }
         )
     news_days.sort(key=lambda row: str(row.get("iso") or ""))
+    top_days = sorted(
+        [row for row in news_days if not row.get("placeholder") and row.get("events")],
+        key=lambda row: (
+            -int(row.get("priority_score") or 0),
+            -int(row.get("high_count") or 0),
+            -int(row.get("medium_count") or 0),
+            str(row.get("iso") or ""),
+        ),
+    )[:3]
 
     if events:
         summary = f"{len(events)} USD red/orange events in selected month."
-        if fallback_count > 0:
-            summary += (
-                f" Includes {fallback_count} fallback marker{'s' if fallback_count != 1 else ''}."
+        source_mode = "live"
+        source_note = "Live calendar coverage is carrying the full month."
+        confidence_label = "High confidence"
+        if fallback_count > 0 and provider_count > 0:
+            source_mode = "mixed"
+            source_note = (
+                f"Mixed coverage: {provider_count} live calendar event"
+                f"{'s' if provider_count != 1 else ''} + {fallback_count} curated backup"
+                f" event{'s' if fallback_count != 1 else ''}."
             )
+            confidence_label = "Mixed confidence"
+        elif fallback_count > 0:
+            source_mode = "curated"
+            source_note = (
+                f"Using {fallback_count} curated backup event"
+                f"{'s' if fallback_count != 1 else ''} because month coverage is sparse."
+            )
+            confidence_label = "Backup coverage"
         result.update(
             {
                 "available": True,
@@ -3670,6 +3887,11 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
                 "summary": summary,
                 "fallback_used": bool(fallback_count),
                 "fallback_count": fallback_count,
+                "provider_count": provider_count,
+                "source_mode": source_mode,
+                "source_note": source_note,
+                "confidence_label": confidence_label,
+                "top_days": top_days,
             }
         )
     return result

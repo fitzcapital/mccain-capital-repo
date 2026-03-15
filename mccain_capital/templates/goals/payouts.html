@@ -1,17 +1,84 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">💸 Payout Planner</div>
+        <div class="pageTitleRow">
+          <h2 class="pageTitle">{{ hero_title }}</h2>
+        </div>
+        <div class="summaryLead stack8">{{ hero_blurb }}</div>
+      </div>
+      <div class="actionRow">
+        {% if account_scope and account_scope.enabled %}
+          <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
+          <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
+          <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
+        {% else %}
+          <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusBadgeStrip">
+  {% for badge in payout_status_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+  {% for badge in balance_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="dashboardSupportGrid">
+  <div class="card supportCard workflowPromptCard"><div class="toolbar">
+    <div class="pill">Next Move</div>
+    <div class="supportLead">
+      {% if can_take_biweekly_now %}
+        The safe request clears your current payout goal.
+      {% elif ps.buffer_reached %}
+        The account is eligible, but the target is not unlocked yet.
+      {% else %}
+        The buffer is still the only job.
+      {% endif %}
+    </div>
+    <div class="supportBody">
+      {% if can_take_biweekly_now %}
+        Keep the withdrawal disciplined, then protect the floor so the next request does not create pressure.
+      {% elif ps.buffer_reached %}
+        Use the forecast to estimate the unlock path instead of forcing risk to reach the goal faster.
+      {% else %}
+        Do not treat payouts as available capital. Build the buffer first, then revisit the request size.
+      {% endif %}
+    </div>
+    <div class="supportMeta">Safe floor {{ money(ps.safe_floor) }} · Buffer line {{ money(ps.profit_buffer_level) }}</div>
+  </div></div>
+
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Rule Snapshot (50K)</div>
+    <div class="supportLead">Fixed loss limit {{ money(ps.fixed_loss_limit) }}</div>
+    <div class="supportBody">Safe payout preserves a cushion above the fixed loss limit and keeps the account in a defendable state.</div>
+    <div class="supportMeta">
+      {% if ps.buffer_reached %}
+        Buffer reached. Payout math is active.
+      {% else %}
+        Buffer not reached. Eligibility stays at {{ money(0) }} until {{ money(ps.profit_buffer_level) }} is cleared.
+      {% endif %}
+    </div>
+  </div></div>
+</div>
+
 <div class="twoCol">
-  <div class="card"><div class="toolbar">
-    <div class="pill">Payouts</div>
+  <div class="card controlPanel"><div class="toolbar">
+    <div class="pill">Planner Inputs</div>
     {% if account_scope and account_scope.enabled %}
-      <div class="rightActions stack8">
-        <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
-        <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
-        <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
-      </div>
       <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
-    {% else %}
-      <div class="rightActions stack8">
-        <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
-      </div>
     {% endif %}
     <div class="tiny stack10 line15">
       Safe payout preserves a cushion above the fixed loss limit.
@@ -34,17 +101,21 @@
     </form>
   </div></div>
 
-  <div class="card"><div class="toolbar">
-    <div class="pill">Rule Snapshot (50K)</div>
-    <div class="tiny stack10 line16">
-      • Buffer reached at: <b>{{ money(ps.profit_buffer_level) }}</b><br>
-      • Fixed loss limit after buffer: <b>{{ money(ps.fixed_loss_limit) }}</b><br>
-      • Safe floor (loss limit + cushion): <b>{{ money(ps.safe_floor) }}</b><br>
-      <div class="hr"></div>
-      {% if ps.buffer_reached %}
-        ✅ Buffer reached — payouts can be calculated.
+  <div class="card supportCard"><div class="toolbar">
+    <div class="pill">Payout Read</div>
+    <div class="supportLead">
+      {% if can_take_biweekly_now %}Request is available now.{% elif ps.buffer_reached %}Target is within reach.{% else %}Protection comes first.{% endif %}
+    </div>
+    <div class="supportBody">
+      Buffer at {{ money(ps.profit_buffer_level) }} · Safe request {{ money(ps.safe_request) }} · Max request {{ money(ps.max_request) }}.
+    </div>
+    <div class="supportMeta">
+      {% if can_take_biweekly_now %}
+        The account can support the current bi-weekly ask without violating the safe floor.
+      {% elif ps.buffer_reached %}
+        The account is eligible for withdrawals, but not yet for the full bi-weekly target.
       {% else %}
-        ⛔ Buffer NOT reached — eligibility = $0.00 until you pass <b>{{ money(ps.profit_buffer_level) }}</b>.
+        No request should be modeled as available until the buffer threshold is reached.
       {% endif %}
     </div>
   </div></div>
@@ -52,15 +123,6 @@
 
 <div class="card stack12"><div class="toolbar">
   <div class="pill">Current Totals</div>
-  <div class="statusBadgeStrip">
-    {% for badge in balance_badges %}
-      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-        <span class="statusBadgeLabel">{{ badge.label }}</span>
-        <strong>{{ badge.value }}</strong>
-      </div>
-    {% endfor %}
-  </div>
-  <div class="hr"></div>
 
   <div class="statRow">
     <div class="stat"><div class="k">Balance</div><div class="v">{{ money(ps.balance) }}</div></div>

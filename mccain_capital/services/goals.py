@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 import math
 import random
 import statistics
+from time import time
 from flask import flash, redirect, render_template, request, url_for
 
 from mccain_capital.repositories import goals as repo
@@ -24,13 +25,38 @@ from mccain_capital.runtime import (
     db,
 )
 from mccain_capital.services.ui import render_page
-from mccain_capital.services.viewmodels import balance_state_badges
+from mccain_capital.services.viewmodels import StateBadgeViewModel, balance_state_badges
 
 # Compatibility aliases used by extracted route bodies.
 upsert_daily_goal = repo.upsert_daily_goal
 fetch_daily_goals = repo.fetch_daily_goals
 fetch_daily_goal = repo.fetch_daily_goal
 _month_bounds = month_bounds
+
+PAYOUT_SIM_CACHE_TTL_SECONDS = 300
+_PAYOUT_SIM_CACHE: dict[str, dict[str, object]] = {}
+
+
+def _payout_cache_key(*parts: object) -> str:
+    return "|".join(str(part) for part in parts)
+
+
+def _payout_cache_get(key: str) -> dict[str, object] | None:
+    cached = _PAYOUT_SIM_CACHE.get(key) or {}
+    stored_at = cached.get("stored_at")
+    payload = cached.get("payload")
+    if not isinstance(stored_at, (int, float)) or not isinstance(payload, dict):
+        return None
+    if (time() - float(stored_at)) >= PAYOUT_SIM_CACHE_TTL_SECONDS:
+        _PAYOUT_SIM_CACHE.pop(key, None)
+        return None
+    return dict(payload)
+
+
+def _payout_cache_set(key: str, payload: dict[str, object]) -> dict[str, object]:
+    copied = dict(payload)
+    _PAYOUT_SIM_CACHE[key] = {"stored_at": time(), "payload": copied}
+    return dict(copied)
 
 
 def _goal_execution_bridge(anchor_day):
@@ -122,6 +148,16 @@ def _payout_readiness_planner(
     safe_floor: float,
     biweekly_goal: float,
 ):
+    cache_key = _payout_cache_key(
+        "readiness",
+        round(float(balance), 2),
+        round(float(safe_floor), 2),
+        round(float(biweekly_goal), 2),
+        tuple(round(float(v), 2) for v in daily_vals if isinstance(v, (int, float))),
+    )
+    cached = _payout_cache_get(cache_key)
+    if cached is not None:
+        return cached
     sample = [float(v) for v in daily_vals if isinstance(v, (int, float))]
     if not sample:
         sample = [0.0]
@@ -163,14 +199,17 @@ def _payout_readiness_planner(
             "p50_balance": balance + p50,
         }
 
-    return {
+    return _payout_cache_set(
+        cache_key,
+        {
         "mu": mu,
         "sigma": sigma,
         "h5": simulate(5),
         "h10": simulate(10),
         "h20": simulate(20),
         "target_balance": target_balance,
-    }
+        },
+    )
 
 
 def _required_profit_to_target(current_withdrawable: float, payout_goal: float) -> float:
@@ -196,6 +235,20 @@ def _trading_day_quantiles_to_goal(
     safe_floor: float | None = None,
     seed: int = 11,
 ) -> dict[str, float | int | None]:
+    cache_key = _payout_cache_key(
+        "goal-days",
+        round(float(required_profit), 2),
+        round(float(mu), 4),
+        round(float(sigma), 4),
+        int(runs),
+        int(horizon),
+        round(float(balance), 2),
+        round(float(safe_floor), 2) if safe_floor is not None else "none",
+        int(seed),
+    )
+    cached = _payout_cache_get(cache_key)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
     req = float(required_profit)
     if req <= 0:
         return {
@@ -241,7 +294,9 @@ def _trading_day_quantiles_to_goal(
     floor_hits = sum(1 for d in breach_days if d is not None and d <= int(target_horizon))
     floor_prob = round((floor_hits / max(1, runs)) * 100.0, 1)
 
-    return {
+    return _payout_cache_set(
+        cache_key,
+        {
         "days_p50": p50,
         "days_p70": p70,
         "days_p90": p90,
@@ -249,7 +304,8 @@ def _trading_day_quantiles_to_goal(
         "hit_prob_10d": _hit_prob(10),
         "hit_prob_20d": _hit_prob(20),
         "floor_breach_prob_at_target_horizon": floor_prob,
-    }
+        },
+    )  # type: ignore[return-value]
 
 
 def _build_unlock_forecast(
@@ -581,6 +637,43 @@ def payouts_page():
 
     can_take_biweekly_now = ps["safe_request"] >= biweekly_goal
 
+    if not ps["buffer_reached"]:
+        hero_title = "Build the Buffer Before You Pull Cash"
+        hero_blurb = "The payout plan is in protection mode. Reach the buffer cleanly before thinking about requests."
+    elif can_take_biweekly_now:
+        hero_title = "Payout Window Is Open"
+        hero_blurb = "The safe request clears your bi-weekly target. Protect the cushion and keep the ask disciplined."
+    else:
+        hero_title = "Track the Unlock Path"
+        hero_blurb = "You are between the buffer and the target. Use the forecast to avoid forcing profits just to withdraw."
+
+    payout_status_badges = [
+        StateBadgeViewModel(
+            label="Confidence",
+            value=("High" if len(daily60) >= 20 else "Mixed"),
+            tone=("healthy" if len(daily60) >= 20 else "caution"),
+            title="Confidence in the payout projections based on recent sample depth.",
+        ),
+        StateBadgeViewModel(
+            label="Source",
+            value=str(balance_integrity.get("source_label") or "Derived ledger"),
+            tone="healthy",
+            title=str(balance_integrity.get("source_detail") or "Balance source for payout math."),
+        ),
+        StateBadgeViewModel(
+            label="Mode",
+            value=("Withdrawable" if can_take_biweekly_now else "Accumulate"),
+            tone=("healthy" if can_take_biweekly_now else "caution"),
+            title="Current recommended payout operating mode.",
+        ),
+        StateBadgeViewModel(
+            label="Sample",
+            value=f"{len(daily60)} days",
+            tone=("healthy" if len(daily60) >= 20 else "neutral"),
+            title="Trading-day sample used by the payout model.",
+        ),
+    ]
+
     content = render_template(
         "goals/payouts.html",
         ps=ps,
@@ -597,6 +690,9 @@ def payouts_page():
         scope_mode=("active" if scope_active else "all"),
         scope_active_href=f"/payouts?scope=active&protect={protect}&goal={biweekly_goal}",
         scope_all_href=f"/payouts?scope=all&protect={protect}&goal={biweekly_goal}",
+        hero_title=hero_title,
+        hero_blurb=hero_blurb,
+        payout_status_badges=payout_status_badges,
         money=money,
     )
     return render_page(content, active="payouts")

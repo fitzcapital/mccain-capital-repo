@@ -1,15 +1,30 @@
+{% if tab == 'performance' %}
+  {% set analytics_mode_label = 'Performance Review' %}
+  {% set analytics_mode_blurb = 'Read the outcome, confirm the risk posture, then review the curves that explain it.' %}
+{% elif tab == 'behavior' %}
+  {% set analytics_mode_label = 'Behavior Review' %}
+  {% set analytics_mode_blurb = 'Find the habits shaping results, then narrow the one behavior to reinforce or cut.' %}
+{% elif tab == 'edge' %}
+  {% set analytics_mode_label = 'Edge Review' %}
+  {% set analytics_mode_blurb = 'Check where the edge actually lives before broadening size or frequency.' %}
+{% else %}
+  {% set analytics_mode_label = 'Integrity Review' %}
+  {% set analytics_mode_blurb = 'Fix broken inputs first so every downstream read is worth trusting.' %}
+{% endif %}
+
 <div class="card pageHero">
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
         <div class="pill">Analytics Workspace</div>
         <div class="pageTitleRow">
-          <h2 class="pageTitle">Performance Intelligence</h2>
+          <h2 class="pageTitle">{{ analytics_mode_label }}</h2>
           <details class="inlineHelp">
             <summary aria-label="Analytics page help">?</summary>
             <div class="helpPopover">Track expectancy, drawdown, behavior, and setup or session quality without keeping that guidance on-screen full time.</div>
           </details>
         </div>
+        <div class="summaryLead stack8">{{ analytics_mode_blurb }}</div>
       </div>
       <div class="actionRow">
         {% if account_scope and account_scope.enabled %}
@@ -60,31 +75,44 @@
   </div>
 </div>
 
-<div class="statusBadgeStrip">
-  {% for badge in balance_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
+<div class="analyticsWorkflowGrid">
+  <div class="card insightCard analyticsWorkflowCard analyticsWorkflowCardOutcome"><div class="toolbar">
+    <div class="pill">1. Outcome</div>
+    <div class="insightTitle">What changed</div>
+    <div class="insightBody">{{ insights.changed }}</div>
+    <div class="analyticsWorkflowMeta">
+      <span class="trendChip {% if perf.total_net > 0 %}positive{% elif perf.total_net < 0 %}negative{% endif %}">Net {{ money(perf.total_net) }}</span>
+      <span class="trendChip">WR {{ '%.1f'|format(perf.win_rate) }}%</span>
+      <span class="trendChip">Exp {{ money(perf.expectancy) }}</span>
     </div>
-  {% endfor %}
-  {% for badge in sync_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
+  </div></div>
+  <div class="card insightCard analyticsWorkflowCard analyticsWorkflowCardRisk"><div class="toolbar">
+    <div class="pill">2. Risk</div>
+    <div class="insightTitle">What needs protection</div>
+    <div class="insightBody">{{ insights.risk_now }}</div>
+    <div class="analyticsWorkflowMeta">
+      <span class="trendChip">Max DD {{ money(dd.max_drawdown) }}</span>
+      <span class="trendChip">DD streak {{ dd.current_drawdown_streak }}</span>
+      <span class="trendChip">Fitz 22 {{ 'On' if fitz_22 else 'Off' }}</span>
     </div>
-  {% endfor %}
+  </div></div>
+  <div class="card insightCard analyticsWorkflowCard analyticsWorkflowCardAction"><div class="toolbar">
+    <div class="pill">3. Next Move</div>
+    <div class="insightTitle">What to do next</div>
+    <div class="insightBody">{{ insights.next_action }}</div>
+    <div class="analyticsWorkflowMeta">
+      <span class="trendChip">Explain day {{ day_story.day }}</span>
+      <span class="trendChip">Regime {{ sizing.regime }}</span>
+      <span class="trendChip">{{ sizing.action }}</span>
+    </div>
+  </div></div>
 </div>
 
-<div class="dashboardSupportGrid">
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Data Trust</div>
-    <div class="supportLead">
-      {{ data_trust.status_label }}
-      {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
-      {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
-    </div>
-    <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
-      {{ data_trust.message }}
+<div class="card analyticsOpsBand"><div class="toolbar">
+  <div class="analyticsOpsHead">
+    <div>
+      <div class="pill">Review Ops</div>
+      <div class="analyticsOpsLead">Trust the data first, then review with confidence.</div>
     </div>
     {% if data_trust.primary_href and data_trust.primary_label %}
       <div class="rightActions stack8">
@@ -94,15 +122,35 @@
         {% endif %}
       </div>
     {% endif %}
-  </div></div>
-
-  <div class="card supportCard"><div class="toolbar">
-    <div class="pill">Current Read</div>
-    <div class="supportLead">{{ insights.changed }}</div>
-    <div class="supportBody">{{ insights.next_action }}</div>
-    <div class="supportMeta">{{ insights.risk_now }}</div>
-  </div></div>
-</div>
+  </div>
+  <div class="statusBadgeStrip analyticsStatusStrip">
+    {% for badge in balance_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+    {% for badge in sync_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+  <div class="analyticsOpsNarrative">
+    <div class="supportLead">Data Trust</div>
+    {% if data_trust.badges %}
+      <div class="trustBadgeRow">
+        {% for badge in data_trust.badges %}
+          <span class="trustBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+            {{ badge.label }} <b>{{ badge.value }}</b>
+          </span>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">{{ data_trust.message }}</div>
+  </div>
+</div></div>
 
 <div class="showcaseGrid">
   <div class="showcaseCard">
@@ -142,16 +190,22 @@
   </div>
 </div>
 
-<div class="metricStrip">
-  <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div><div class="sub">Reviewed sample in selected range</div></div>
-  <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div><div class="sub">Execution hit-rate across reviewed trades</div></div>
-  <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div><div class="sub">Average outcome per trade</div></div>
-  <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div><div class="sub">Gross wins divided by gross losses</div></div>
-  <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div><div class="sub">Largest peak-to-trough decline</div></div>
-  <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div><div class="sub">Longest drawdown trade streak</div></div>
-  <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div><div class="sub">Active drawdown streak right now</div></div>
-  <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div><div class="sub">Checklist score alignment with outcome</div></div>
-</div>
+<details class="syncDetails analyticsFoldSection">
+  <summary>
+    <span>Core Metrics</span>
+    <span class="tiny muted">Open the full metric strip when you need the numeric spread.</span>
+  </summary>
+  <div class="metricStrip analyticsMetricStrip stack10">
+    <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div><div class="sub">Reviewed sample in range</div></div>
+    <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div><div class="sub">Reviewed trades</div></div>
+    <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div><div class="sub">Average per trade</div></div>
+    <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div><div class="sub">Wins vs losses</div></div>
+    <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div><div class="sub">Peak to trough</div></div>
+    <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div><div class="sub">Longest streak</div></div>
+    <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div><div class="sub">Active now</div></div>
+    <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div><div class="sub">Score alignment</div></div>
+  </div>
+</details>
 
 <div class="card controlPanel"><div class="toolbar">
   <div class="controlHead">
@@ -188,6 +242,10 @@
     </div>
   </form>
 </div></div>
+
+<div class="analyticsSectionDivider" aria-hidden="true">
+  <span>Review Surface</span>
+</div>
 
 {% if tab == 'performance' %}
 <div class="twoCol stack12">
@@ -256,101 +314,109 @@
     <div class="tiny stack8 line16">{{ sizing.note }}</div>
   </div></div>
 </div>
-<div class="card"><div class="toolbar">
-  <div class="pillRow">
-    <div class="pill">What-If Day Simulator</div>
-    <details class="inlineHelp">
-      <summary aria-label="What-if simulator help">?</summary>
-      <div class="helpPopover">Project ending balance from the current ledger using your actual consistency profile, then compare it against your real average day.</div>
-    </details>
-  </div>
-  <div class="hr"></div>
-  <form method="get" class="row">
-    <input type="hidden" name="tab" value="{{ tab }}">
-    <input type="hidden" name="start" value="{{ start_date }}">
-    <input type="hidden" name="end" value="{{ end_date }}">
-    <input type="hidden" name="explain_day" value="{{ explain_day }}">
-    <div><label>Max Trades</label><input type="number" min="1" max="30" name="sim_max_trades" value="{{ sim.max_trades }}"></div>
-    <div><label>Stop After Loss Streak</label><input type="number" min="1" max="8" name="sim_stop_loss_streak" value="{{ sim.stop_loss_streak }}"></div>
-    <div class="actionRow"><button class="btn" type="submit">Simulate</button></div>
-  </form>
-  <div class="hr"></div>
-  <div class="statRow stack10">
-    <div class="stat"><div class="k">Current Balance</div><div class="v">{{ money(sim.current_balance) }}</div></div>
-    <div class="stat"><div class="k">Projected Expectancy</div><div class="v">{{ money(sim.expectancy) }}</div></div>
-    <div class="stat"><div class="k">Projected Net (plan)</div><div class="v">{{ money(sim.projected_full) }}</div></div>
-    <div class="stat"><div class="k">Projected End Balance</div><div class="v">{{ money(sim.projected_end_balance) }}</div></div>
-    <div class="stat"><div class="k">Guardrail-Adjusted End</div><div class="v">{{ money(sim.projected_guardrail_end_balance) }}</div></div>
-    <div class="stat"><div class="k">Loss-Streak Trigger Prob</div><div class="v">{{ '%.1f'|format(sim.streak_prob * 100.0) }}%</div></div>
-  </div>
-  <div class="tiny stack8 line16">
-    Consistency profile in selected range: WR {{ '%.1f'|format(sim.consistency_win_rate) }}% · Avg Win {{ money(sim.consistency_avg_win) }} · Avg Loss {{ money(sim.consistency_avg_loss) }}.<br>
-    Real avg day: {{ money(sim.real_avg_day_net) }} · Real avg WR: {{ '%.1f'|format(sim.real_avg_win_rate) }}% · Real avg trades/day: {{ '%.1f'|format(sim.real_avg_trades) }}.<br>
-    Delta vs real avg day: {{ money(sim.delta_vs_real) }}.
-  </div>
-</div></div>
-<div class="card stack12"><div class="toolbar">
-  <div class="pill">Expectancy Trend ({{ expectancy_granularity|upper }})</div>
-  {% if expectancy_auto_switched %}
-    <div class="tiny stack8 line15">Auto-switched to weekly because monthly has too few points.</div>
-  {% endif %}
-  <div class="hr"></div>
-  <div class="trendChips">
-    <span class="trendChip {{ expectancy_story.tone }}">Latest {{ money(expectancy_story.latest) }}</span>
-    <span class="trendChip {{ expectancy_story.tone }}">
-      Δ {{ money(expectancy_story.delta) }}
-      {% if expectancy_story.pct is not none %}({{ '%.1f'|format(expectancy_story.pct) }}%){% endif %}
-    </span>
-    <span class="trendChip">{{ expectancy_story.label }}</span>
-  </div>
-  {{ expectancy_chart|safe }}
-</div></div>
-<div class="twoCol stack12">
-  <div class="card"><div class="toolbar">
-    <div class="pill">Performance Summary</div>
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Total Net</div><div class="v">{{ money(perf.total_net) }}</div></div>
-      <div class="stat"><div class="k">Gross Profit</div><div class="v">{{ money(perf.gross_profit) }}</div></div>
-      <div class="stat"><div class="k">Gross Loss</div><div class="v">{{ money(perf.gross_loss_abs) }}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open detailed performance table</summary>
+<details class="syncDetails analyticsFoldSection analyticsDeepDive">
+  <summary>
+    <span>Scenario Lab and Deep Stats</span>
+    <span class="tiny muted">Open the simulator, expectancy trend, and raw tables when you want deeper review.</span>
+  </summary>
+  <div class="stack12">
+    <div class="card"><div class="toolbar">
+      <div class="pillRow">
+        <div class="pill">What-If Day Simulator</div>
+        <details class="inlineHelp">
+          <summary aria-label="What-if simulator help">?</summary>
+          <div class="helpPopover">Project ending balance from the current ledger using your actual consistency profile, then compare it against your real average day.</div>
+        </details>
+      </div>
       <div class="hr"></div>
-      <div class="tableWrap"><table class="tableDense kvTable">
-        <tbody>
-          <tr><td>Total Net</td><td>{{ money(perf.total_net) }}</td></tr>
-          <tr><td>Gross Profit</td><td>{{ money(perf.gross_profit) }}</td></tr>
-          <tr><td>Gross Loss</td><td>{{ money(perf.gross_loss_abs) }}</td></tr>
-          <tr><td>Avg Win</td><td>{{ money(perf.avg_win) }}</td></tr>
-          <tr><td>Avg Loss</td><td>{{ money(perf.avg_loss_abs) }}</td></tr>
-          <tr><td>Largest Win</td><td>{{ money(perf.max_win) }}</td></tr>
-          <tr><td>Largest Loss</td><td>{{ money(perf.max_loss) }}</td></tr>
-        </tbody>
-      </table></div>
-    </details>
-  </div></div>
-  <div class="card"><div class="toolbar">
-    <div class="pill">Streaks</div>
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Longest Win Streak</div><div class="v">{{ perf.max_win_streak }}</div></div>
-      <div class="stat"><div class="k">Longest Loss Streak</div><div class="v">{{ perf.max_loss_streak }}</div></div>
-      <div class="stat"><div class="k">Wins / Losses</div><div class="v">{{ perf.wins }} / {{ perf.losses }}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open detailed streak table</summary>
+      <form method="get" class="row">
+        <input type="hidden" name="tab" value="{{ tab }}">
+        <input type="hidden" name="start" value="{{ start_date }}">
+        <input type="hidden" name="end" value="{{ end_date }}">
+        <input type="hidden" name="explain_day" value="{{ explain_day }}">
+        <div><label>Max Trades</label><input type="number" min="1" max="30" name="sim_max_trades" value="{{ sim.max_trades }}"></div>
+        <div><label>Stop After Loss Streak</label><input type="number" min="1" max="8" name="sim_stop_loss_streak" value="{{ sim.stop_loss_streak }}"></div>
+        <div class="actionRow"><button class="btn" type="submit">Simulate</button></div>
+      </form>
       <div class="hr"></div>
-      <div class="tableWrap"><table class="tableDense kvTable">
-        <tbody>
-          <tr><td>Longest Win Streak</td><td>{{ perf.max_win_streak }}</td></tr>
-          <tr><td>Longest Loss Streak</td><td>{{ perf.max_loss_streak }}</td></tr>
-          <tr><td>Wins</td><td>{{ perf.wins }}</td></tr>
-          <tr><td>Losses</td><td>{{ perf.losses }}</td></tr>
-          <tr><td>Breakeven</td><td>{{ perf.breakeven }}</td></tr>
-        </tbody>
-      </table></div>
-    </details>
-  </div></div>
-</div>
+      <div class="statRow stack10">
+        <div class="stat"><div class="k">Current Balance</div><div class="v">{{ money(sim.current_balance) }}</div></div>
+        <div class="stat"><div class="k">Projected Expectancy</div><div class="v">{{ money(sim.expectancy) }}</div></div>
+        <div class="stat"><div class="k">Projected Net (plan)</div><div class="v">{{ money(sim.projected_full) }}</div></div>
+        <div class="stat"><div class="k">Projected End Balance</div><div class="v">{{ money(sim.projected_end_balance) }}</div></div>
+        <div class="stat"><div class="k">Guardrail-Adjusted End</div><div class="v">{{ money(sim.projected_guardrail_end_balance) }}</div></div>
+        <div class="stat"><div class="k">Loss-Streak Trigger Prob</div><div class="v">{{ '%.1f'|format(sim.streak_prob * 100.0) }}%</div></div>
+      </div>
+      <div class="tiny stack8 line16">
+        Consistency profile in selected range: WR {{ '%.1f'|format(sim.consistency_win_rate) }}% · Avg Win {{ money(sim.consistency_avg_win) }} · Avg Loss {{ money(sim.consistency_avg_loss) }}.<br>
+        Real avg day: {{ money(sim.real_avg_day_net) }} · Real avg WR: {{ '%.1f'|format(sim.real_avg_win_rate) }}% · Real avg trades/day: {{ '%.1f'|format(sim.real_avg_trades) }}.<br>
+        Delta vs real avg day: {{ money(sim.delta_vs_real) }}.
+      </div>
+    </div></div>
+    <div class="card stack12"><div class="toolbar">
+      <div class="pill">Expectancy Trend ({{ expectancy_granularity|upper }})</div>
+      {% if expectancy_auto_switched %}
+        <div class="tiny stack8 line15">Auto-switched to weekly because monthly has too few points.</div>
+      {% endif %}
+      <div class="hr"></div>
+      <div class="trendChips">
+        <span class="trendChip {{ expectancy_story.tone }}">Latest {{ money(expectancy_story.latest) }}</span>
+        <span class="trendChip {{ expectancy_story.tone }}">
+          Δ {{ money(expectancy_story.delta) }}
+          {% if expectancy_story.pct is not none %}({{ '%.1f'|format(expectancy_story.pct) }}%){% endif %}
+        </span>
+        <span class="trendChip">{{ expectancy_story.label }}</span>
+      </div>
+      {{ expectancy_chart|safe }}
+    </div></div>
+    <div class="twoCol stack12">
+      <div class="card"><div class="toolbar">
+        <div class="pill">Performance Summary</div>
+        <div class="statRow stack10">
+          <div class="stat"><div class="k">Total Net</div><div class="v">{{ money(perf.total_net) }}</div></div>
+          <div class="stat"><div class="k">Gross Profit</div><div class="v">{{ money(perf.gross_profit) }}</div></div>
+          <div class="stat"><div class="k">Gross Loss</div><div class="v">{{ money(perf.gross_loss_abs) }}</div></div>
+        </div>
+        <details class="syncDetails stack10">
+          <summary>Open detailed performance table</summary>
+          <div class="hr"></div>
+          <div class="tableWrap"><table class="tableDense kvTable">
+            <tbody>
+              <tr><td>Total Net</td><td>{{ money(perf.total_net) }}</td></tr>
+              <tr><td>Gross Profit</td><td>{{ money(perf.gross_profit) }}</td></tr>
+              <tr><td>Gross Loss</td><td>{{ money(perf.gross_loss_abs) }}</td></tr>
+              <tr><td>Avg Win</td><td>{{ money(perf.avg_win) }}</td></tr>
+              <tr><td>Avg Loss</td><td>{{ money(perf.avg_loss_abs) }}</td></tr>
+              <tr><td>Largest Win</td><td>{{ money(perf.max_win) }}</td></tr>
+              <tr><td>Largest Loss</td><td>{{ money(perf.max_loss) }}</td></tr>
+            </tbody>
+          </table></div>
+        </details>
+      </div></div>
+      <div class="card"><div class="toolbar">
+        <div class="pill">Streaks</div>
+        <div class="statRow stack10">
+          <div class="stat"><div class="k">Longest Win Streak</div><div class="v">{{ perf.max_win_streak }}</div></div>
+          <div class="stat"><div class="k">Longest Loss Streak</div><div class="v">{{ perf.max_loss_streak }}</div></div>
+          <div class="stat"><div class="k">Wins / Losses</div><div class="v">{{ perf.wins }} / {{ perf.losses }}</div></div>
+        </div>
+        <details class="syncDetails stack10">
+          <summary>Open detailed streak table</summary>
+          <div class="hr"></div>
+          <div class="tableWrap"><table class="tableDense kvTable">
+            <tbody>
+              <tr><td>Longest Win Streak</td><td>{{ perf.max_win_streak }}</td></tr>
+              <tr><td>Longest Loss Streak</td><td>{{ perf.max_loss_streak }}</td></tr>
+              <tr><td>Wins</td><td>{{ perf.wins }}</td></tr>
+              <tr><td>Losses</td><td>{{ perf.losses }}</td></tr>
+              <tr><td>Breakeven</td><td>{{ perf.breakeven }}</td></tr>
+            </tbody>
+          </table></div>
+        </details>
+      </div></div>
+    </div>
+  </div>
+</details>
 {% elif tab == 'behavior' %}
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">

@@ -451,6 +451,261 @@
     return derived;
   }
 
+  function bestInvalidationLevel(levels) {
+    const usable = (Array.isArray(levels) ? levels : [])
+      .filter((row) => row && asNum(row.value) !== null);
+    if (!usable.length) return null;
+    usable.sort((a, b) => Math.abs(asNum(a.distance) || 999) - Math.abs(asNum(b.distance) || 999));
+    return usable[0];
+  }
+
+  function buildLiquidityPath(spot, levels) {
+    const s = asNum(spot);
+    const usable = (Array.isArray(levels) ? levels : [])
+      .map((row) => ({ ...row, value: asNum(row.value) }))
+      .filter((row) => row.value !== null);
+    if (s === null || !usable.length) return "Await the next clean interaction.";
+    const higher = usable.filter((row) => row.value >= s).sort((a, b) => a.value - b.value);
+    const lower = usable.filter((row) => row.value <= s).sort((a, b) => b.value - a.value);
+    const upPath = higher.slice(0, 2).map((row) => `${row.label} ${formatNumber(row.value, 0)}`).join(" -> ");
+    const downPath = lower.slice(0, 2).map((row) => `${row.label} ${formatNumber(row.value, 0)}`).join(" -> ");
+    if (upPath && downPath) return `${downPath} | ${upPath}`;
+    return upPath || downPath || "Await the next clean interaction.";
+  }
+
+  function buildTriggerState(trigger, tone) {
+    const triggerText = String(trigger || "").toLowerCase();
+    if (tone === "warn") {
+      return {
+        label: "Blocked until edge",
+        line: "No valid 5m trigger matters until price reaches a real boundary.",
+      };
+    }
+    if (triggerText.includes("bearish")) {
+      return {
+        label: "Armed for bearish confirmation",
+        line: "Only actionable if the 5m reversal or continuation confirms at the level.",
+      };
+    }
+    if (triggerText.includes("bullish")) {
+      return {
+        label: "Armed for bullish confirmation",
+        line: "Only actionable if the 5m reversal or continuation confirms at the level.",
+      };
+    }
+    if (triggerText.includes("wait")) {
+      return {
+        label: "Waiting for clean confirmation",
+        line: "The structure is mapped, but the entry has not earned itself yet.",
+      };
+    }
+    if (triggerText.includes("stand down")) {
+      return {
+        label: "Stand down",
+        line: "No trigger quality right now.",
+      };
+    }
+    return {
+      label: "Context only",
+      line: "Use the level interaction first, then let the 5m chart confirm.",
+    };
+  }
+
+  function buildExecutionPlan(input, derived) {
+    const spot = asNum(input.spot);
+    const gammaFlip = asNum(input.gammaFlip);
+    const callWall = asNum(input.callWall);
+    const putWall = asNum(input.putWall);
+    const nextCallWall = asNum(derived.nextCallWall);
+    const nextPutWall = asNum(derived.nextPutWall);
+    const nearCall = (abs(derived.distanceToCallWall) || 999) <= 8;
+    const nearPut = (abs(derived.distanceToPutWall) || 999) <= 8;
+    const nearFlip = (abs(derived.distanceToFlip) || 999) <= 6;
+    const aboveFlip = derived.aboveOrBelowFlip === "above";
+    const belowFlip = derived.aboveOrBelowFlip === "below";
+    const bearishExpansion = derived.dealerRegime === "Negative Gamma / Momentum Amplifying";
+    const levelStack = [
+      { label: "Put Wall", value: putWall, distance: derived.distanceToPutWall },
+      { label: "Gamma Flip", value: gammaFlip, distance: derived.distanceToFlip },
+      { label: "Call Wall", value: callWall, distance: derived.distanceToCallWall },
+      { label: "Next Call", value: nextCallWall, distance: spot !== null && nextCallWall !== null ? spot - nextCallWall : null },
+      { label: "Next Put", value: nextPutWall, distance: spot !== null && nextPutWall !== null ? spot - nextPutWall : null },
+      { label: "Day Open", value: asNum(input.dayOpen), distance: spot !== null && asNum(input.dayOpen) !== null ? spot - asNum(input.dayOpen) : null },
+      { label: "VWAP", value: asNum(input.vwap), distance: spot !== null && asNum(input.vwap) !== null ? spot - asNum(input.vwap) : null },
+    ];
+
+    if (derived.noTradeCenter) {
+      return {
+        tone: "warn",
+        headline: "No trade in the center. Wait for the edge.",
+        subline: `Structure is compressed between ${formatNumber(putWall, 0)} and ${formatNumber(callWall, 0)} with gamma flip nearby.`,
+        location: "Inside the no-trade center",
+        locationLine: "Price is too close to the flip/wall cluster to force an intraday read.",
+        bias: "Neutral / responsive",
+        biasLine: "Do not pick a side until price reaches a real liquidity boundary.",
+        trigger: "Stand down",
+        triggerLine: "Wait for a 5m Strat trigger only after price tags put wall, call wall, or cleanly accepts away from the flip.",
+        target: "Nearest edge first",
+        targetLine: `Watch for movement toward ${formatNumber(putWall, 0)} or ${formatNumber(callWall, 0)} before building a path.`,
+        invalidation: "No thesis yet",
+        invalidationLine: "If you cannot define the edge first, there is no valid entry.",
+        plan: "Let price interact with a real level first. No mid-range entries.",
+        doThis: "Wait for an edge touch, then re-evaluate the side.",
+        doThisLine: "Only build a trade after price tags put wall, call wall, or cleanly accepts away from the flip.",
+        avoidThis: "Avoid all center-board entries.",
+        avoidThisLine: "No 5m trigger in the middle counts as an edge.",
+      };
+    }
+
+    if (nearCall && derived.reversalSetupFit.label !== "Poor") {
+      return {
+        tone: "negative",
+        headline: "Call wall test. Fade only if the 5m trigger confirms.",
+        subline: bearishExpansion
+          ? "Negative gamma can still squeeze overhead. Require rejection before acting."
+          : "This is only a reversal setup if price cannot accept above the wall.",
+        location: `At Call Wall ${formatNumber(callWall, 0)}`,
+        locationLine: `Spot is ${formatLevelDistance(derived.distanceToCallWall)} from the ceiling.`,
+        bias: "Responsive short bias",
+        biasLine: "Only trade the fade if price rejects the wall and loses micro structure.",
+        trigger: "5m bearish Strat",
+        triggerLine: "Wait for a 2-1-2 down or 3-1-2 reversal back under the wall.",
+        target: gammaFlip !== null ? `Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Back to the flip",
+        targetLine: buildLiquidityPath(spot, [
+          { label: "Call Wall", value: callWall },
+          { label: "Gamma Flip", value: gammaFlip },
+          { label: "Put Wall", value: putWall },
+        ]),
+        invalidation: nextCallWall !== null ? `Acceptance above ${formatNumber(nextCallWall, 0)}` : `Acceptance above ${formatNumber(callWall, 0)}`,
+        invalidationLine: "If price holds above the wall, the fade thesis is wrong.",
+        plan: "Reversal only. No blind shorting into a wall without rejection.",
+        doThis: "Let the wall reject first, then short the confirmed 5m reversal.",
+        doThisLine: "You want the failure under resistance, not a front-run into strength.",
+        avoidThis: "Avoid fading a clean acceptance above the wall.",
+        avoidThisLine: "If price is holding above the wall, the short idea is dead.",
+      };
+    }
+
+    if (nearPut && derived.reversalSetupFit.label !== "Poor") {
+      return {
+        tone: "positive",
+        headline: "Put wall support. Buy only if the 5m trigger confirms.",
+        subline: bearishExpansion
+          ? "Negative gamma can still flush support. Require hold/reclaim before acting."
+          : "This is only a reversal setup if price respects the wall and reclaims structure.",
+        location: `At Put Wall ${formatNumber(putWall, 0)}`,
+        locationLine: `Spot is ${formatLevelDistance(derived.distanceToPutWall)} from the floor.`,
+        bias: "Responsive long bias",
+        biasLine: "Only trade the bounce if support holds and price reclaims the level cleanly.",
+        trigger: "5m bullish Strat",
+        triggerLine: "Wait for a 2-1-2 up or 3-1-2 reversal off the wall.",
+        target: gammaFlip !== null ? `Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Back to the flip",
+        targetLine: buildLiquidityPath(spot, [
+          { label: "Put Wall", value: putWall },
+          { label: "Gamma Flip", value: gammaFlip },
+          { label: "Call Wall", value: callWall },
+        ]),
+        invalidation: nextPutWall !== null ? `Acceptance below ${formatNumber(nextPutWall, 0)}` : `Acceptance below ${formatNumber(putWall, 0)}`,
+        invalidationLine: "If price loses the wall and cannot reclaim it, the bounce thesis is wrong.",
+        plan: "Support reclaim only. No catching a falling knife under support.",
+        doThis: "Wait for the hold or reclaim, then buy the confirmed 5m reversal.",
+        doThisLine: "You want proof that support is working before the long exists.",
+        avoidThis: "Avoid catching breakdowns under support.",
+        avoidThisLine: "If price accepts below the wall, the bounce setup is gone.",
+      };
+    }
+
+    if (aboveFlip && !nearFlip) {
+      return {
+        tone: "positive",
+        headline: "Above the flip. Momentum long is the cleaner plan.",
+        subline: "Structure favors continuation if price holds above gamma flip and starts accepting through nearby resistance.",
+        location: gammaFlip !== null ? `Above Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Above core support",
+        locationLine: `Spot is ${formatLevelDistance(derived.distanceToFlip)} from the flip with ${derived.structureType.toLowerCase()} structure.`,
+        bias: "Continuation long",
+        biasLine: bearishExpansion
+          ? "Breaks can run harder in negative gamma. Respect speed and avoid late entries."
+          : "Positive gamma supports cleaner level-to-level continuation.",
+        trigger: "5m bullish Strat",
+        triggerLine: "Wait for a 2-1-2 up / 3-1-2 continuation after hold or reclaim above the flip.",
+        target: callWall !== null && (spot === null || spot < callWall) ? `Call Wall ${formatNumber(callWall, 0)}` : `Next Call ${formatNumber(nextCallWall, 0)}`,
+        targetLine: buildLiquidityPath(spot, [
+          { label: "Gamma Flip", value: gammaFlip },
+          { label: "Call Wall", value: callWall },
+          { label: "Next Call", value: nextCallWall },
+        ]),
+        invalidation: gammaFlip !== null ? `Lose ${formatNumber(gammaFlip, 0)}` : "Lose the reclaim",
+        invalidationLine: "If price slips back through the flip and cannot reclaim it, reset the long thesis.",
+        plan: "Longs only after the 5m trigger confirms acceptance above the working level.",
+        doThis: "Buy continuation only after the 5m bullish confirmation above structure.",
+        doThisLine: "Hold/reclaim above the flip first, then trade the move toward the next liquidity shelf.",
+        avoidThis: "Avoid chasing extended upside away from the level.",
+        avoidThisLine: "If the entry is late and the invalidation is wide, skip it.",
+      };
+    }
+
+    if (belowFlip && !nearFlip) {
+      return {
+        tone: "negative",
+        headline: "Below the flip. Momentum short is the cleaner plan.",
+        subline: "Structure favors continuation lower if failed bounces stay below gamma flip and price accepts lower liquidity.",
+        location: gammaFlip !== null ? `Below Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Below core resistance",
+        locationLine: `Spot is ${formatLevelDistance(derived.distanceToFlip)} from the flip with ${derived.structureType.toLowerCase()} structure.`,
+        bias: "Continuation short",
+        biasLine: bearishExpansion
+          ? "Negative gamma supports faster downside extension after accepted breaks."
+          : "Below the flip, failed bounces deserve more respect than impulsive longs.",
+        trigger: "5m bearish Strat",
+        triggerLine: "Wait for a 2-1-2 down / 3-1-2 continuation after failure under the flip.",
+        target: putWall !== null && (spot === null || spot > putWall) ? `Put Wall ${formatNumber(putWall, 0)}` : `Next Put ${formatNumber(nextPutWall, 0)}`,
+        targetLine: buildLiquidityPath(spot, [
+          { label: "Gamma Flip", value: gammaFlip },
+          { label: "Put Wall", value: putWall },
+          { label: "Next Put", value: nextPutWall },
+        ]),
+        invalidation: gammaFlip !== null ? `Reclaim ${formatNumber(gammaFlip, 0)}` : "Reclaim the failed level",
+        invalidationLine: "If price reclaims the flip and holds, the short thesis is wrong.",
+        plan: "Shorts only after the 5m trigger confirms rejection under the working level.",
+        doThis: "Short continuation only after the 5m bearish confirmation under structure.",
+        doThisLine: "Let the failed bounce prove itself, then trade toward the next lower liquidity pocket.",
+        avoidThis: "Avoid pressing shorts into support without confirmation.",
+        avoidThisLine: "If price reclaims the flip, the downside thesis is wrong.",
+      };
+    }
+
+    const invalidation = bestInvalidationLevel(levelStack);
+    return {
+      tone: "neutral",
+      headline: "Responsive only. Let the level decide the trade.",
+      subline: "The page has context, but structure is still mixed. Wait for a cleaner interaction before committing.",
+      location: nearFlip ? "At the flip" : "Between major levels",
+      locationLine: nearFlip
+        ? "Price is sitting too close to gamma flip for blind momentum."
+        : buildLiquidityPath(spot, [
+            { label: "Put Wall", value: putWall },
+            { label: "Gamma Flip", value: gammaFlip },
+            { label: "Call Wall", value: callWall },
+          ]),
+      bias: "Two-way",
+      biasLine: "Trade the reaction, not a prediction. Let the next level interaction choose the side.",
+      trigger: "Wait for 5m confirmation",
+      triggerLine: "Bullish only on acceptance above structure. Bearish only on rejection below it.",
+      target: "Nearest liquidity",
+      targetLine: buildLiquidityPath(spot, [
+        { label: "Put Wall", value: putWall },
+        { label: "Gamma Flip", value: gammaFlip },
+        { label: "Call Wall", value: callWall },
+      ]),
+      invalidation: invalidation ? `${invalidation.label} ${formatNumber(invalidation.value, 0)}` : "Reset if thesis breaks",
+      invalidationLine: "If the level you are trading off stops mattering, the trade is over.",
+      plan: "No forcing. Wait for price to interact with a wall or cleanly accept away from the flip first.",
+      doThis: "Stay responsive and let the next touched level pick the side.",
+      doThisLine: "The next good trade comes from interaction, not prediction.",
+      avoidThis: "Avoid pre-committing in mixed structure.",
+      avoidThisLine: "No entry deserves size until the board simplifies.",
+    };
+  }
+
   const exported = {
     formatNetGamma,
     formatLevelDistance,
@@ -466,6 +721,7 @@
     classifyReversalSetupFit,
     buildAutoRead,
     buildWarningBadges,
+    buildExecutionPlan,
     getSessionWindowState,
     computeDistanceMetrics,
   };
@@ -686,6 +942,14 @@
     });
   };
 
+  const setChipTone = (id, label, tone) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.textContent = String(label || "—");
+    node.classList.remove("positive", "negative", "warn", "critical", "neutral");
+    if (tone) node.classList.add(tone);
+  };
+
   const updateTapeSummary = (prices) => {
     const tracked = tapeCards
       .map((card) => String(card.dataset.symbol || "").toUpperCase())
@@ -821,6 +1085,8 @@
   const render = (base) => {
     const input = adaptInput(base);
     const derived = computeDistanceMetrics(input);
+    const executionPlan = buildExecutionPlan(input, derived);
+    const triggerState = buildTriggerState(executionPlan.trigger, executionPlan.tone);
     const bullets = buildAutoRead(input, derived);
     const badges = buildWarningBadges(input, derived);
     const spxQuote = (base && base.spx_quote) || {};
@@ -917,6 +1183,27 @@
     setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
     setText("spxPriorityTrap", String(derived.trapZoneState || "unavailable").replace(/_/g, " "));
+
+    setText("marketPulseSetupHeadline", executionPlan.headline);
+    setText("marketPulseSetupSubline", executionPlan.subline);
+    setText("marketPulseSetupLocation", executionPlan.location);
+    setText("marketPulseSetupLocationLine", executionPlan.locationLine);
+    setText("marketPulseSetupBias", executionPlan.bias);
+    setText("marketPulseSetupBiasLine", executionPlan.biasLine);
+    setText("marketPulseSetupTrigger", executionPlan.trigger);
+    setText("marketPulseSetupTriggerLine", executionPlan.triggerLine);
+    setText("marketPulseSetupTriggerState", triggerState.label);
+    setText("marketPulseSetupTriggerStateLine", triggerState.line);
+    setText("marketPulseSetupTarget", executionPlan.target);
+    setText("marketPulseSetupTargetLine", executionPlan.targetLine);
+    setText("marketPulseSetupInvalidation", executionPlan.invalidation);
+    setText("marketPulseSetupInvalidationLine", executionPlan.invalidationLine);
+    setText("marketPulseSetupPlan", executionPlan.plan);
+    setText("marketPulseDoThis", executionPlan.doThis);
+    setText("marketPulseDoThisLine", executionPlan.doThisLine);
+    setText("marketPulseAvoidThis", executionPlan.avoidThis);
+    setText("marketPulseAvoidThisLine", executionPlan.avoidThisLine);
+    setChipTone("marketPulseExecutionTone", executionPlan.tone === "positive" ? "Long-biased plan" : executionPlan.tone === "negative" ? "Short-biased plan" : executionPlan.tone === "warn" ? "Stand down" : "Responsive plan", executionPlan.tone);
 
     setBullets("spxPriorityNarrative", bullets);
     setBadges("spxPriorityWarningBadges", badges);

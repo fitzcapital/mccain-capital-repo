@@ -35,17 +35,57 @@
 </div></div>
 {% endif %}
 
-<div class="card stack12 marketPulseSection"><div class="toolbar">
-  <div class="pill">Source Health</div>
-  <div class="supportLead">Overall: {{ source_health.overall_label if source_health else 'Unknown' }}</div>
-  <div class="integrityGrid">
-    {% for row in (source_health.rows if source_health else []) %}
-      <div class="integrityCell">
-        <div class="tiny muted">{{ row.name }}</div>
-        <div class="supportLead">{{ row.status_label }}</div>
-        <div class="tiny">{{ row.detail }}</div>
-      </div>
-    {% endfor %}
+<div class="card stack12 marketPulseSection marketPulseSetupCard"><div class="toolbar">
+  <div class="pill">Trade Setup Now</div>
+  <div class="supportLead" id="marketPulseSetupHeadline">Waiting for SPX structure to resolve.</div>
+  <div class="tiny muted" id="marketPulseSetupSubline">Build the plan from level interaction first, then wait for the 5-minute Strat trigger.</div>
+  <div class="marketPulseSetupGrid">
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">Location</div>
+      <strong id="marketPulseSetupLocation">—</strong>
+      <div class="tiny" id="marketPulseSetupLocationLine">Waiting for live structure.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">Bias</div>
+      <strong id="marketPulseSetupBias">—</strong>
+      <div class="tiny" id="marketPulseSetupBiasLine">No directional edge yet.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">5m Strat Trigger</div>
+      <strong id="marketPulseSetupTrigger">—</strong>
+      <div class="tiny" id="marketPulseSetupTriggerLine">Need a clean trigger at a level.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">5m Trigger State</div>
+      <strong id="marketPulseSetupTriggerState">—</strong>
+      <div class="tiny" id="marketPulseSetupTriggerStateLine">No active trigger quality yet.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">Next Liquidity</div>
+      <strong id="marketPulseSetupTarget">—</strong>
+      <div class="tiny" id="marketPulseSetupTargetLine">Path updates with live ticks.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">Invalidation</div>
+      <strong id="marketPulseSetupInvalidation">—</strong>
+      <div class="tiny" id="marketPulseSetupInvalidationLine">Respect the level that breaks the thesis.</div>
+    </div>
+  </div>
+  <div class="marketPulseSetupFooter">
+    <span class="trendChip" id="marketPulseExecutionTone">Execution plan loading</span>
+    <span class="tiny muted" id="marketPulseSetupPlan">Synthesizing gamma structure, volatility state, and nearest liquidity path…</span>
+  </div>
+  <div class="marketPulseDecisionRail">
+    <div class="marketPulseDecisionBlock marketPulseDecisionBlock-do">
+      <div class="tiny muted">Do This</div>
+      <strong id="marketPulseDoThis">Wait for price to interact with a real level, then take the clean trigger.</strong>
+      <div class="tiny" id="marketPulseDoThisLine">Build the trade from structure first.</div>
+    </div>
+    <div class="marketPulseDecisionBlock marketPulseDecisionBlock-avoid">
+      <div class="tiny muted">Avoid This</div>
+      <strong id="marketPulseAvoidThis">Do not force entries in the middle of the board.</strong>
+      <div class="tiny" id="marketPulseAvoidThisLine">No blind anticipation away from liquidity.</div>
+    </div>
   </div>
 </div></div>
 
@@ -178,11 +218,11 @@
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Call Wall Gamma/pt</div>
-          <strong id="spxPriorityCallGammaPerPoint">—</strong>
+          <strong id="spxPriorityCallGammaPerPoint">{{ spx_priority_context.get('call_wall_gamma_per_point_text') or '—' }}</strong>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Put Wall Gamma/pt</div>
-          <strong id="spxPriorityPutGammaPerPoint">—</strong>
+          <strong id="spxPriorityPutGammaPerPoint">{{ spx_priority_context.get('put_wall_gamma_per_point_text') or '—' }}</strong>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Wall Spread</div>
@@ -233,7 +273,7 @@
           <strong id="spxPriorityDayOpen">—</strong>
         </div>
         <div class="optionsGammaCell">
-          <div class="tiny">Session High / Low</div>
+          <div class="tiny">Session Low / High</div>
           <strong id="spxPrioritySessionRange">—</strong>
         </div>
         <div class="optionsGammaCell">
@@ -241,8 +281,14 @@
           <strong id="spxPriorityVWAP">—</strong>
         </div>
         <div class="optionsGammaCell">
-          <div class="tiny">Prior Day High / Low</div>
-          <strong id="spxPriorityPriorRange">—</strong>
+          <div class="tiny">Prior Day Low / High</div>
+          <strong id="spxPriorityPriorRange">
+            {% if spx_quote.get('prior_day_low') is not none and spx_quote.get('prior_day_high') is not none %}
+              {{ '%.2f - %.2f'|format(spx_quote.get('prior_day_low'), spx_quote.get('prior_day_high')) }}
+            {% else %}
+              —
+            {% endif %}
+          </strong>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Data Freshness</div>
@@ -290,33 +336,50 @@
   </details>
 </div></div>
 
-<div class="card stack12 marketPulseSection"><div class="toolbar">
-  <div class="pill">Data Integrity</div>
-  {% if guardrail.active %}
-    <div class="integrityAlert integrityAlert-critical">{{ guardrail.message }}</div>
-  {% endif %}
-  {% if alert.show %}
-    <div class="integrityAlert integrityAlert-{{ alert.tone }}">{{ alert.message }}</div>
-  {% endif %}
-  <div class="integrityGrid">
-    <div class="integrityCell">
-      <div class="tiny muted">Source</div>
-      <div class="supportLead">{{ source_label }}</div>
+<details class="card stack12 marketPulseSection marketPulseOpsFold">
+  <summary class="marketPulseOpsSummary">
+    <span class="pill">Feed Diagnostics</span>
+    <span class="supportLead">Source Health</span>
+    <span class="tiny muted">Overall: {{ source_health.overall_label if source_health else 'Unknown' }} · {{ integrity.live_count or 0 }} live · {{ integrity.delayed_count or 0 }} delayed · {{ integrity.cached_count or 0 }} cached · {{ integrity.missing_count or 0 }} missing</span>
+  </summary>
+  <div class="toolbar">
+    <div class="integrityGrid">
+      {% for row in (source_health.rows if source_health else []) %}
+        <div class="integrityCell">
+          <div class="tiny muted">{{ row.name }}</div>
+          <div class="supportLead">{{ row.status_label }}</div>
+          <div class="tiny">{{ row.detail }}</div>
+        </div>
+      {% endfor %}
     </div>
-    <div class="integrityCell">
-      <div class="tiny muted">Latency</div>
-      <div class="supportLead">{{ integrity.latency_ms or 0 }} ms</div>
-    </div>
-    <div class="integrityCell">
-      <div class="tiny muted">Coverage</div>
-      <div class="supportLead">{{ integrity.live_count or 0 }} live · {{ integrity.delayed_count or 0 }} delayed · {{ integrity.cached_count or 0 }} cached · {{ integrity.missing_count or 0 }} missing</div>
-    </div>
-    <div class="integrityCell">
-      <div class="tiny muted">Mode</div>
-      <div class="supportLead">{% if integrity.forced_refresh %}Forced refresh{% else %}Standard refresh{% endif %}</div>
+    <div class="hr"></div>
+    <div class="pill">Data Integrity</div>
+    {% if guardrail.active %}
+      <div class="integrityAlert integrityAlert-critical">{{ guardrail.message }}</div>
+    {% endif %}
+    {% if alert.show %}
+      <div class="integrityAlert integrityAlert-{{ alert.tone }}">{{ alert.message }}</div>
+    {% endif %}
+    <div class="integrityGrid">
+      <div class="integrityCell">
+        <div class="tiny muted">Source</div>
+        <div class="supportLead">{{ source_label }}</div>
+      </div>
+      <div class="integrityCell">
+        <div class="tiny muted">Latency</div>
+        <div class="supportLead">{{ integrity.latency_ms or 0 }} ms</div>
+      </div>
+      <div class="integrityCell">
+        <div class="tiny muted">Coverage</div>
+        <div class="supportLead">{{ integrity.live_count or 0 }} live · {{ integrity.delayed_count or 0 }} delayed · {{ integrity.cached_count or 0 }} cached · {{ integrity.missing_count or 0 }} missing</div>
+      </div>
+      <div class="integrityCell">
+        <div class="tiny muted">Mode</div>
+        <div class="supportLead">{% if integrity.forced_refresh %}Forced refresh{% else %}Standard refresh{% endif %}</div>
+      </div>
     </div>
   </div>
-</div></div>
+</details>
 
 <div class="card stack12 marketPulseSection"><div class="toolbar">
   <div class="pill">Core Tape</div>

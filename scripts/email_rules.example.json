@@ -1,22 +1,24 @@
 {
+  "inbox": "INBOX",
+  "important_folder": "Review/Important",
+  "mark_remaining_as_read": true,
   "rules": [
     {
-      "name": "Bank Alerts",
-      "folder": "Review/Bank",
+      "name": "Money",
+      "folder": "Review/Important/Money",
       "from_contains": ["@chase.com", "@americanexpress.com", "@bankofamerica.com"],
       "subject_contains": ["alert", "transaction", "statement", "payment due"]
     },
     {
-      "name": "Work",
-      "folder": "Review/Work",
-      "from_contains": ["@yourcompany.com", "manager@"],
-      "subject_contains": ["urgent", "asap", "meeting", "deadline"]
+      "name": "Security",
+      "folder": "Review/Important/Security",
+      "from_contains": ["security@", "support@", "noreply@"],
+      "subject_contains": ["password", "2fa", "verification", "sign-in"]
     },
     {
-      "name": "Security",
-      "folder": "Review/Security",
-      "from_contains": ["noreply@", "security@", "support@"],
-      "subject_contains": ["password", "2fa", "verification code", "sign-in"]
+      "name": "People",
+      "from_contains": ["boss@", "family@", "@important-client.com"],
+      "subject_contains": ["urgent", "meeting", "deadline", "call me"]
     }
   ]
 }

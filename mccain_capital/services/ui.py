@@ -42,6 +42,73 @@ TRADING_WINDOW_DEFAULTS = {
 }
 
 
+def _is_market_session(day: date) -> bool:
+    return day.weekday() < 5 and not _market_holiday_name(day)
+
+
+def _market_holiday_name(day: date) -> str:
+    return _market_holidays(day.year).get(day, "")
+
+
+def _market_holidays(year: int) -> dict[date, str]:
+    easter = _easter_sunday(year)
+    return {
+        _observed_fixed_holiday(year, 1, 1): "New Years Day",
+        _nth_weekday_of_month(year, 1, 0, 3): "Martin Luther King Jr. Day",
+        _nth_weekday_of_month(year, 2, 0, 3): "Presidents Day",
+        easter - timedelta(days=2): "Good Friday",
+        _last_weekday_of_month(year, 5, 0): "Memorial Day",
+        _observed_fixed_holiday(year, 6, 19): "Juneteenth",
+        _observed_fixed_holiday(year, 7, 4): "Independence Day",
+        _nth_weekday_of_month(year, 9, 0, 1): "Labor Day",
+        _nth_weekday_of_month(year, 11, 3, 4): "Thanksgiving",
+        _observed_fixed_holiday(year, 12, 25): "Christmas Day",
+    }
+
+
+def _observed_fixed_holiday(year: int, month: int, day_num: int) -> date:
+    holiday = date(year, month, day_num)
+    if holiday.weekday() == 5:
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:
+        return holiday + timedelta(days=1)
+    return holiday
+
+
+def _nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> date:
+    first = date(year, month, 1)
+    delta = (weekday - first.weekday()) % 7
+    return first + timedelta(days=delta + ((n - 1) * 7))
+
+
+def _last_weekday_of_month(year: int, month: int, weekday: int) -> date:
+    if month == 12:
+        cursor = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        cursor = date(year, month + 1, 1) - timedelta(days=1)
+    while cursor.weekday() != weekday:
+        cursor -= timedelta(days=1)
+    return cursor
+
+
+def _easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    weekday_offset = (32 + (2 * e) + (2 * i) - h - k) % 7
+    m = (a + (11 * h) + (22 * weekday_offset)) // 451
+    month = (h + weekday_offset - (7 * m) + 114) // 31
+    day_num = ((h + weekday_offset - (7 * m) + 114) % 31) + 1
+    return date(year, month, day_num)
+
+
 def _upload_file(name: str) -> str:
     return app_runtime.upload_path(name)
 
@@ -294,6 +361,9 @@ def get_trading_window_state() -> dict[str, Any]:
         except ValueError:
             using_test_clock = False
 
+    session_day = now_et.date()
+    holiday_name = _market_holiday_name(session_day)
+    is_trading_day = _is_market_session(session_day)
     now_min = now_et.hour * 60 + now_et.minute
     start_min = _parse_hhmm_minutes(start_et) or 0
     done_min = _parse_hhmm_minutes(done_by_et) or (start_min + 120)
@@ -303,6 +373,13 @@ def get_trading_window_state() -> dict[str, Any]:
         state = "off"
         state_label = "Window Off"
         message = "Trading window controls are disabled."
+    elif not is_trading_day and not using_test_clock:
+        state = "closed"
+        state_label = holiday_name or "Market Closed"
+        if session_day.weekday() >= 5:
+            message = "Trading window is hidden because today is not a trading day."
+        else:
+            message = f"Trading window is hidden for {holiday_name}."
     elif now_min < start_min:
         state = "pending"
         state_label = "Stand By"
@@ -327,6 +404,9 @@ def get_trading_window_state() -> dict[str, Any]:
         "hard_stop_et": hard_stop_et,
         "test_mode": test_mode,
         "using_test_clock": using_test_clock,
+        "is_trading_day": is_trading_day,
+        "show_banner": bool(enabled and (is_trading_day or using_test_clock)),
+        "holiday_name": holiday_name,
         "test_date": (test_date_text or now_et.date().isoformat()),
         "test_time_et": test_time_et,
         "state": state,

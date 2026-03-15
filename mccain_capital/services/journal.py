@@ -24,6 +24,7 @@ from mccain_capital.repositories import trades as trades_repo
 from mccain_capital import runtime as app_runtime
 from mccain_capital.runtime import money, parse_float, today_iso
 from mccain_capital.services.ui import render_page
+from mccain_capital.services.viewmodels import StateBadgeViewModel
 
 _CAPTURE_ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -62,12 +63,94 @@ def journal_home():
         entry["entry_date_display"] = _format_entry_date(entry.get("entry_date"))
         entry["updated_at_display"] = _format_updated_timestamp(entry.get("updated_at"))
 
+    latest_entry = entries[0] if entries else {}
+    linked_trades_total = sum(int(entry.get("linked_trades") or 0) for entry in entries)
+    grade_count = sum(1 for entry in entries if str(entry.get("grade") or "").strip())
+    latest_day = str(latest_entry.get("entry_date_display") or latest_entry.get("entry_date") or "").strip()
+    latest_mood = str(latest_entry.get("mood") or "").strip()
+    latest_setup = str(latest_entry.get("setup") or "").strip()
+    latest_grade = str(latest_entry.get("grade") or "").strip()
+
+    if not entries:
+        hero_title = "Capture Today While It Is Fresh"
+        hero_blurb = "A fast note beats a perfect memory. Log what you saw, what you did, and what it taught you."
+        review_focus_lead = "No journal entries are in scope yet."
+        review_focus_body = "Use Quick Capture right after the next setup or create a full debrief before the close."
+        review_focus_meta = "One clean entry unlocks weekly review and pattern tracking."
+        capture_lead = "The review loop is empty."
+        capture_body = "Start with one short note, one mood tag, and one linked trade so the debrief system has something real to learn from."
+        capture_meta = "Next move: open Quick Capture from phone or desktop."
+    elif d:
+        hero_title = "Close the Loop on This Session"
+        hero_blurb = "Review the selected day cleanly before the next session adds more noise."
+        review_focus_lead = f"{latest_day or 'Selected day'} is the active review window."
+        review_focus_body = (
+            f"Latest note: {latest_setup or 'Context only'}"
+            + (f" · Mood {latest_mood}" if latest_mood else "")
+            + (f" · Grade {latest_grade}" if latest_grade else "")
+        )
+        review_focus_meta = "Refine the lesson, link the missing trades, then lock the weekly narrative."
+        capture_lead = f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} in this day filter."
+        capture_body = "Keep the selected session tight: finish the main debrief, add any screenshot evidence, then stop adding duplicate notes."
+        capture_meta = "Next move: edit the strongest entry or add one missing post-trade note."
+    else:
+        hero_title = "Close the Learning Loop"
+        hero_blurb = "Use the journal as a review system, not a note dump. Keep the lesson sharp and the next rule obvious."
+        review_focus_lead = (
+            f"Latest review: {latest_day or 'Recent session'}"
+            + (f" · {latest_setup}" if latest_setup else "")
+        )
+        review_focus_body = (
+            f"Most recent note carries {latest_mood or 'neutral'} tone"
+            + (f" with grade {latest_grade}." if latest_grade else ".")
+        )
+        review_focus_meta = "Promote the cleanest lesson into weekly review instead of stacking similar entries."
+        capture_lead = f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} in scope · {linked_trades_total} linked trades."
+        capture_body = "Keep capture fast: one clear lesson, one emotion tag, one linked trade cluster. Save the long reflection for the weekly review."
+        capture_meta = "Next move: use Quick Capture for the next live observation, then write one fuller debrief."
+
+    journal_status_badges = [
+        StateBadgeViewModel(
+            label="Entries",
+            value=f"{len(entries)} in scope",
+            tone=("healthy" if entries else "caution"),
+            title="Journal entries visible in the current filter.",
+        ),
+        StateBadgeViewModel(
+            label="Linked Trades",
+            value=(str(linked_trades_total) if linked_trades_total else "0"),
+            tone=("healthy" if linked_trades_total else "neutral"),
+            title="Trade rows linked into these journal entries.",
+        ),
+        StateBadgeViewModel(
+            label="Graded",
+            value=(f"{grade_count} tagged" if grade_count else "Not graded"),
+            tone=("healthy" if grade_count else "caution"),
+            title="Entries with an explicit grade in the current scope.",
+        ),
+        StateBadgeViewModel(
+            label="Last Update",
+            value=(str(latest_entry.get("updated_at_display") or "No entries")),
+            tone=("healthy" if latest_entry else "neutral"),
+            title="Most recent update timestamp in the current filter.",
+        ),
+    ]
+
     content = render_template(
         "journal/home.html",
         q=q,
         d=d,
         entries=entries,
         money=money,
+        hero_title=hero_title,
+        hero_blurb=hero_blurb,
+        review_focus_lead=review_focus_lead,
+        review_focus_body=review_focus_body,
+        review_focus_meta=review_focus_meta,
+        capture_lead=capture_lead,
+        capture_body=capture_body,
+        capture_meta=capture_meta,
+        journal_status_badges=journal_status_badges,
     )
     return render_page(content, active="journal")
 

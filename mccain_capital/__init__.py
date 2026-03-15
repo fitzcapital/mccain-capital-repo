@@ -104,6 +104,8 @@ def create_app():
             allow = {
                 "login_page",
                 "logout_page",
+                "passkeys_auth_options",
+                "passkeys_auth_verify",
                 "healthz",
                 "favicon",
                 "static",

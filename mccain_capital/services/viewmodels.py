@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Mapping, Optional
 
 from mccain_capital.runtime import money
@@ -15,6 +15,7 @@ class DataTrustViewModel:
     updated_label: str
     tone: str
     message: str
+    badges: List["StateBadgeViewModel"] = field(default_factory=list)
     primary_href: Optional[str] = None
     primary_label: Optional[str] = None
     secondary_href: Optional[str] = None
@@ -47,6 +48,37 @@ def _tone_for_status(raw_status: str) -> str:
     if state in {"running", "queued", "pending", "started", "in_progress"}:
         return "caution"
     return "neutral"
+
+
+def _trust_badges(
+    *,
+    confidence: str,
+    confidence_tone: str,
+    source: str,
+    source_tone: str,
+    mode: str,
+    mode_tone: str,
+) -> List[StateBadgeViewModel]:
+    return [
+        StateBadgeViewModel(
+            label="Confidence",
+            value=confidence,
+            tone=confidence_tone,
+            title="How safe this surface is to trust right now.",
+        ),
+        StateBadgeViewModel(
+            label="Source",
+            value=source,
+            tone=source_tone,
+            title="Primary data or control system behind this read.",
+        ),
+        StateBadgeViewModel(
+            label="Mode",
+            value=mode,
+            tone=mode_tone,
+            title="The current recommended operating mode.",
+        ),
+    ]
 
 
 def balance_state_badges(balance_integrity: Mapping[str, Any]) -> List[StateBadgeViewModel]:
@@ -187,6 +219,14 @@ def dashboard_data_trust(
             updated_label=updated_label,
             tone="critical",
             message=f"Ledger drift detected {money(drift_delta)} vs stored row balance.",
+            badges=_trust_badges(
+                confidence="Compromised",
+                confidence_tone="critical",
+                source="Derived ledger",
+                source_tone="neutral",
+                mode="Reconcile now",
+                mode_tone="critical",
+            ),
             primary_href="/trades/upload/statement?ws=reconcile",
             primary_label="🧮 Open Reconcile Workspace",
             secondary_href="/ops/alerts",
@@ -199,6 +239,14 @@ def dashboard_data_trust(
             updated_label=updated_label,
             tone="critical",
             message="Sync reported a failure or block. Review diagnostics before next import.",
+            badges=_trust_badges(
+                confidence="Degraded",
+                confidence_tone="critical",
+                source="Sync feed",
+                source_tone="caution",
+                mode="Review source",
+                mode_tone="critical",
+            ),
             primary_href="/trades/upload/statement?ws=live",
             primary_label="🤖 Open Live Sync",
             secondary_href="/ops/alerts",
@@ -210,6 +258,14 @@ def dashboard_data_trust(
         updated_label=updated_label,
         tone="healthy",
         message="Ledger and sync look healthy. Continue normal workflow.",
+        badges=_trust_badges(
+            confidence="High",
+            confidence_tone="healthy",
+            source="Ledger + sync",
+            source_tone="healthy",
+            mode="Normal workflow",
+            mode_tone="healthy",
+        ),
     )
 
 
@@ -229,6 +285,14 @@ def trades_data_trust(
             updated_label=updated_label,
             tone="critical",
             message=f"Guardrail is locked for {active_day}. New risk should pause until controls are reviewed.",
+            badges=_trust_badges(
+                confidence="Protected",
+                confidence_tone="caution",
+                source="Guardrail lock",
+                source_tone="critical",
+                mode="Review only",
+                mode_tone="critical",
+            ),
             primary_href="/trades/risk-controls",
             primary_label="⚙️ Review Risk Controls",
             secondary_href="/analytics?tab=performance",
@@ -241,6 +305,14 @@ def trades_data_trust(
             updated_label=updated_label,
             tone="critical",
             message="Latest sync/import reported a failure or block. Fix source before adding more trades.",
+            badges=_trust_badges(
+                confidence="Degraded",
+                confidence_tone="critical",
+                source="Import / sync",
+                source_tone="caution",
+                mode="Fix source",
+                mode_tone="critical",
+            ),
             primary_href="/trades/upload/statement?ws=live",
             primary_label="🤖 Open Live Sync",
             secondary_href="/trades/upload/statement?ws=reconcile",
@@ -252,6 +324,14 @@ def trades_data_trust(
         updated_label=updated_label,
         tone="healthy",
         message="Sync and guardrails look stable. Continue logging and review tags for clean analytics.",
+        badges=_trust_badges(
+            confidence="Stable",
+            confidence_tone="healthy",
+            source="Execution + sync",
+            source_tone="healthy",
+            mode="Log and review",
+            mode_tone="healthy",
+        ),
     )
 
 
@@ -271,6 +351,14 @@ def analytics_data_trust(
             updated_label=updated_label,
             tone="critical",
             message=f"{int(integrity_issue_count)} integrity flags in current analytics range.",
+            badges=_trust_badges(
+                confidence="Compromised",
+                confidence_tone="critical",
+                source="Imported ledger",
+                source_tone="neutral",
+                mode="Repair first",
+                mode_tone="critical",
+            ),
             primary_href="/analytics?tab=diagnostics",
             primary_label="🧪 Open Diagnostics",
             secondary_href="/trades/upload/statement?ws=reconcile",
@@ -283,6 +371,14 @@ def analytics_data_trust(
             updated_label=updated_label,
             tone="critical",
             message="Sync reliability is degraded. Validate source import before drawing performance conclusions.",
+            badges=_trust_badges(
+                confidence="Mixed",
+                confidence_tone="caution",
+                source="Sync reliability",
+                source_tone="caution",
+                mode="Validate feed",
+                mode_tone="critical",
+            ),
             primary_href="/trades/upload/statement?ws=live",
             primary_label="🤖 Open Live Sync",
             secondary_href="/ops/alerts",
@@ -294,4 +390,12 @@ def analytics_data_trust(
         updated_label=updated_label,
         tone="healthy",
         message="Data quality checks are clean for this range. Safe to use analytics for decisioning.",
+        badges=_trust_badges(
+            confidence="High",
+            confidence_tone="healthy",
+            source="Reviewed ledger",
+            source_tone="healthy",
+            mode="Read safely",
+            mode_tone="healthy",
+        ),
     )

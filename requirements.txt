@@ -14,5 +14,6 @@ lxml
 html5lib
 playwright==1.51.0
 keyring==25.6.0
-cryptography==44.0.1
+cryptography==44.0.2
 simple-websocket
+webauthn==2.7.0

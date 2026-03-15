@@ -1,4 +1,5 @@
 from collections import deque
+from datetime import date
 
 from mccain_capital.services import market_data_service
 from mccain_capital.services import market_worker
@@ -137,3 +138,69 @@ def test_start_market_worker_runs_stream_and_fast_loop_when_stream_available(mon
     assert "market-worker" in started
     assert "market-fast-tick-worker" in started
     assert "market-tradier-stream-worker" in started
+
+
+def test_get_intraday_uses_short_lived_curve_cache(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(market_data_service, "_INTRADAY_CURVE_CACHE", {})
+    monkeypatch.setattr(market_data_service, "_massive_api_key", lambda: "")
+    monkeypatch.setattr(
+        market_data_service,
+        "_tradier_intraday_rows",
+        lambda symbol: calls.append(symbol)
+        or [
+            {
+                "ts": "2026-03-14T14:30:00+00:00",
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "volume": 10.0,
+            }
+        ]
+        * 25,
+    )
+
+    first = market_data_service.get_intraday("SPX")
+    second = market_data_service.get_intraday("SPX")
+
+    assert len(calls) == 1
+    assert len(first) == 25
+    assert first == second
+    assert first is not second
+
+
+def test_get_prior_session_intraday_uses_short_lived_curve_cache(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(market_data_service, "_PRIOR_SESSION_CURVE_CACHE", {})
+    monkeypatch.setattr(market_data_service, "_massive_api_key", lambda: "")
+    monkeypatch.setattr(
+        market_data_service,
+        "_tradier_intraday_rows_for_date",
+        lambda symbol, session_day: calls.append((symbol, session_day.isoformat()))
+        or [
+            {
+                "ts": "2026-03-13T14:30:00+00:00",
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "volume": 10.0,
+            }
+        ]
+        * 25,
+    )
+
+    first = market_data_service.get_prior_session_intraday(
+        "SPX", anchor_session_day=date(2026, 3, 16)
+    )
+    second = market_data_service.get_prior_session_intraday(
+        "SPX", anchor_session_day=date(2026, 3, 16)
+    )
+
+    assert calls == [("SPX", "2026-03-13")]
+    assert len(first) == 25
+    assert first == second
+    assert first is not second

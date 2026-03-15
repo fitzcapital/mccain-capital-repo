@@ -1,6 +1,6 @@
 <div class="card"><div class="toolbar authCard">
   <div class="pill">🔐 Secure Sign In</div>
-  <div class="tiny stack10">Private journal access is enabled.</div>
+  <div class="tiny stack10">Private journal access is enabled. Use your password or a registered passkey on this device.</div>
   {% if err %}<div class="hr"></div><div class="tiny metaRed">{{ err }}</div>{% endif %}
   <div class="hr"></div>
   <form method="post" action="{{ url_for('login_page', next=next_url) }}">
@@ -17,4 +17,23 @@
       <button class="btn primary" type="submit">Sign In</button>
     </div>
   </form>
+  <div class="hr"></div>
+  <div class="stack10">
+    <div class="tiny line16">Faster path: {% if passkeys_available %}unlock with Face ID, Touch ID, or the platform passkey you already registered.{% else %}sign in once with your password, then add a passkey from the admin menu for Face ID or Touch ID sign-in later.{% endif %}</div>
+    <input type="hidden" id="passkeyNextUrl" value="{{ next_url }}">
+    <div class="rightActions">
+      <button class="btn{% if passkeys_available %} primary{% endif %}" type="button" data-passkey-login {% if not passkeys_available %}disabled{% endif %}>Use Passkey</button>
+    </div>
+    <div class="tiny metaBlue line16" id="passkeyStatus" aria-live="polite">{% if passkeys_available %}Passkey sign-in is ready on supported browsers and Apple devices.{% else %}No passkeys registered yet.{% endif %}</div>
+  </div>
 </div></div>
+<script>
+  window.mcPasskeys = {
+    mode: "login",
+    authOptionsUrl: "{{ url_for('passkeys_auth_options') }}",
+    authVerifyUrl: "{{ url_for('passkeys_auth_verify') }}",
+    nextInputId: "passkeyNextUrl",
+    statusId: "passkeyStatus"
+  };
+</script>
+<script src="{{ url_for('static', filename='js/passkeys.js') }}"></script>
