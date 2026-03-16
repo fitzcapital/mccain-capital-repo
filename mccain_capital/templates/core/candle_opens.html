@@ -12,9 +12,9 @@
         </div>
       </div>
       <div class="actionRow">
-        <a class="btn" href="/candle-opens?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
-        <a class="btn primary" href="/candle-opens">🎯 This Month</a>
-        <a class="btn" href="/candle-opens?y={{ next_y }}&m={{ next_m }}">Next ➡️</a>
+        <a class="btn" href="/candle-opens?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
+        <a class="btn primary" href="/candle-opens">This Month</a>
+        <a class="btn" href="/candle-opens?y={{ next_y }}&m={{ next_m }}">Next</a>
       </div>
     </div>
   </div>
@@ -31,20 +31,40 @@
     <div class="value">{{ signal_count }}</div>
     <div class="sub">Combined daily + weekly resets</div>
   </div>
-  <div class="metric">
+  <div class="metric candleMetricLegend">
     <div class="label">Day Cycles</div>
     <div class="value">{{ day_legend }}</div>
     <div class="sub">Session-count opens</div>
   </div>
-  <div class="metric">
+  <div class="metric candleMetricLegend">
     <div class="label">Week Cycles</div>
     <div class="value">{{ week_legend }}</div>
     <div class="sub">First tradable day only</div>
   </div>
-  <div class="metric">
+  <div class="metric candleMetricLegend">
     <div class="label">Month Cycles</div>
     <div class="value">{{ month_legend }}</div>
     <div class="sub">From January month opens</div>
+  </div>
+</div>
+
+<div class="card candleCyclePanel">
+  <div class="toolbar">
+    <div class="pill">Cycles</div>
+    <div class="candleCycleGrid">
+      <div class="candleCycleCell">
+        <div class="label">Day</div>
+        <div class="value">{{ day_legend }}</div>
+      </div>
+      <div class="candleCycleCell">
+        <div class="label">Week</div>
+        <div class="value">{{ week_legend }}</div>
+      </div>
+      <div class="candleCycleCell">
+        <div class="label">Month</div>
+        <div class="value">{{ month_legend }}</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -102,7 +122,13 @@
 </div>
 {% endif %}
 
-<div class="card candleNewsPanel">
+<details class="card candleNewsPanel candleMobileFold" data-mobile-default="closed" open>
+  <summary class="candleMobileSummary">
+    <span class="pill">USD Events</span>
+    <span class="candleMobileSummaryTitle">{{ news_week_range }}</span>
+    <span class="tiny muted">{{ news_summary }}</span>
+  </summary>
+  <div class="candleMobileFoldBody">
   <div class="candleNewsHead compact">
     <div class="pillRow candlePillHelpRow">
       <div class="pill">🔎 Markers</div>
@@ -115,7 +141,24 @@
   {% if news_available and news_days %}
     <div class="candleNewsDayGrid">
       {% for news_day in news_days %}
-        <section class="candleNewsDayCard{% if news_day.is_key_day %} is-key is-{{ news_day.focus_key }}{% endif %}" id="news-day-{{ news_day.iso }}">
+        <details class="candleNewsDayCard candleNewsDayFold{% if news_day.is_key_day %} is-key is-{{ news_day.focus_key }}{% endif %}" id="news-day-{{ news_day.iso }}" data-mobile-default="closed" open>
+          <summary class="candleNewsDaySummary">
+            <div>
+              <div class="candleNewsDayTitle">{{ news_day.date_label }}</div>
+              {% if news_day.is_key_day %}
+                <div class="candleDayFocus">{{ news_day.focus_label }} priority</div>
+              {% endif %}
+            </div>
+            <div class="candleNewsCounts">
+              {% if news_day.high_count %}
+                <span class="newsCountChip is-high">{{ news_day.high_count }} red</span>
+              {% endif %}
+              {% if news_day.medium_count %}
+                <span class="newsCountChip is-medium">{{ news_day.medium_count }} orange</span>
+              {% endif %}
+            </div>
+          </summary>
+          <div class="candleNewsDayBody">
           <div class="candleNewsDayHead">
             <div>
               <div class="candleNewsDayTitle">{{ news_day.date_label }}</div>
@@ -149,11 +192,13 @@
               <div class="tiny">No scheduled USD red/orange events yet for this week.</div>
             {% endif %}
           </div>
-        </section>
+          </div>
+        </details>
       {% endfor %}
     </div>
   {% endif %}
-</div>
+  </div>
+</details>
 
 <div class="card candleShell">
   <div class="toolbar">
@@ -182,7 +227,7 @@
           {% endif %}
         {% endfor %}
         {% if ns.visible > 0 %}
-          <details class="mobileCandleWeek" {% if loop.first %}open{% endif %}>
+          <details class="mobileCandleWeek" data-mobile-default="closed">
             <summary>
               <span class="mobileCandleWeekTitle">Week {{ loop.index }}</span>
               <span class="mobileCandleWeekMeta">{{ ns.first[5:] }} to {{ ns.last[5:] }}</span>
@@ -349,3 +394,25 @@
     </div>
   </div>
 </div>
+
+<script>
+(() => {
+  const mobileQuery = window.matchMedia("(max-width: 720px)");
+  const folds = Array.from(document.querySelectorAll("[data-mobile-default='closed']"));
+  const applyMobileFolds = () => {
+    if (!mobileQuery.matches) return;
+    folds.forEach((fold) => fold.removeAttribute("open"));
+  };
+  const openHashTarget = () => {
+    const hash = window.location.hash;
+    if (!hash || hash.length < 2) return;
+    const target = document.getElementById(hash.slice(1));
+    if (!target) return;
+    const details = target.closest("details");
+    if (details) details.open = true;
+  };
+  applyMobileFolds();
+  openHashTarget();
+  window.addEventListener("hashchange", openHashTarget);
+})();
+</script>

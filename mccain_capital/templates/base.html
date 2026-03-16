@@ -392,35 +392,40 @@
         <div class="drawerHead">
           <div>
             <div class="drawerTitle">Menu</div>
+            <div class="drawerSub">Fast access to the trading cockpit.</div>
           </div>
           <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
         </div>
 
         <section class="drawerSection">
-          <div class="drawerSectionTitle">Today</div>
+          <div class="drawerSectionTitle">Quick Actions</div>
+          <div class="drawerQuickGrid">
+            <a class="btn" href="/trades/new">Add Trade</a>
+            <a class="btn" href="{{ url_for('new_entry') }}">Add Journal</a>
+            <a class="btn" href="/trades/upload/statement">Upload Statement</a>
+            <a class="btn" href="/trades/open-positions">Open Positions</a>
+          </div>
+        </section>
+
+        <section class="drawerSection">
+          <div class="drawerSectionTitle">Navigate</div>
           <div class="drawerPrimaryGrid">
-            <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Run Day</a>
-            <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Execute</a>
+            <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Day</a>
+            <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
             <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
-            <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Debrief</a>
+            <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Notes</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
           </div>
         </section>
 
         <section class="drawerSection">
-          <div class="drawerSectionTitle">Plan</div>
+          <div class="drawerSectionTitle">Tools</div>
           <div class="drawerStack">
             <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Plan Risk</a>
             <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payout Plan</a>
             <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">Strategies</a>
-          </div>
-        </section>
-
-        <section class="drawerSection">
-          <div class="drawerSectionTitle">Learn</div>
-          <div class="drawerStack">
             <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>
             <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">Books</a>
             <a class="btn {% if active=='goals' %}primary{% endif %}" href="/goals">Income Tracker</a>
@@ -428,13 +433,19 @@
         </section>
 
         <section class="drawerSection">
-          <div class="drawerSectionTitle">Admin</div>
+          <div class="drawerSectionTitle">System</div>
           <div class="drawerStack">
             <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">Backups</a>
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
             <a class="btn" href="/setup">Setup Login</a>
+            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
+            {% if vanquish_lock and vanquish_lock.active %}
+              <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
+            {% else %}
+              <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+            {% endif %}
             <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}
@@ -443,18 +454,6 @@
               {% else %}
                 <a class="btn primary" href="/login">Sign In</a>
               {% endif %}
-            {% endif %}
-          </div>
-        </section>
-
-        <section class="drawerSection">
-          <div class="drawerSectionTitle">External</div>
-          <div class="drawerStack">
-            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
-            {% if vanquish_lock and vanquish_lock.active %}
-              <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
-            {% else %}
-              <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             {% endif %}
           </div>
         </section>
@@ -481,6 +480,7 @@
       <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
       <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
       <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Notes</a>
+      <button id="mobileDockMenuBtn" class="btn mobileDockMenu" type="button" aria-expanded="false" onclick="openDrawer()">Menu</button>
     </nav>
 
     <div class="tiny footerTip">
@@ -555,495 +555,10 @@
   })();
 </script>
 <script>
-  (function(){
-    const forms = document.querySelectorAll(".tradingWindowForm");
-    forms.forEach((form)=>{
-      const testMode = form.querySelector("[data-tw-test-mode]");
-      const testFields = form.querySelectorAll("[data-tw-test-field]");
-      if(!testMode || !testFields.length) return;
-      const applyState = ()=>{
-        const enabled = !!testMode.checked;
-        testFields.forEach((field)=>{
-          field.disabled = !enabled;
-        });
-      };
-      testMode.addEventListener("change", applyState);
-      applyState();
-    });
-  })();
+  window.APP_SHELL_CONFIG = {
+    newEntryUrl: "{{ url_for('new_entry') }}",
+  };
 </script>
-<script>
-  function toggleMoreMenu(){
-    const m = document.getElementById("moreMenu");
-    const btn = document.querySelector(".moreBtn");
-    if(!m) return;
-    m.classList.toggle("open");
-    if(btn) btn.setAttribute("aria-expanded", m.classList.contains("open") ? "true" : "false");
-  }
-  window.toggleMoreMenu = toggleMoreMenu;
-
-  window.addEventListener("click", (e)=>{
-    const menu = document.getElementById("moreMenu");
-    if(!menu) return;
-
-    const isButton = e.target.closest && e.target.closest(".moreBtn");
-    const isInside = e.target.closest && e.target.closest("#moreMenu");
-    if(!isButton && !isInside){
-      menu.classList.remove("open");
-      const btn = document.querySelector(".moreBtn");
-      if(btn) btn.setAttribute("aria-expanded", "false");
-    }
-  });
-
-  window.addEventListener("keydown", (e)=>{
-    if(e.key === "Escape"){
-      const menu = document.getElementById("moreMenu");
-      if(menu) menu.classList.remove("open");
-      const btn = document.querySelector(".moreBtn");
-      if(btn) btn.setAttribute("aria-expanded", "false");
-    }
-  });
-</script>
-<script>
-  function toggleQuickPanel(){
-    const panel = document.getElementById("quickPanel");
-    const btn = document.getElementById("quickToggleBtn");
-    if(!panel || !btn) return;
-    panel.classList.toggle("open");
-    const isOpen = panel.classList.contains("open");
-    btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
-  }
-  window.toggleQuickPanel = toggleQuickPanel;
-
-  window.addEventListener("click", (e)=>{
-    const panel = document.getElementById("quickPanel");
-    const btn = document.getElementById("quickToggleBtn");
-    if(!panel || !btn) return;
-    const insidePanel = e.target.closest && e.target.closest("#quickPanel");
-    const toggle = e.target.closest && e.target.closest("#quickToggleBtn");
-    if(!insidePanel && !toggle){
-      panel.classList.remove("open");
-      btn.setAttribute("aria-expanded", "false");
-    }
-  });
-</script>
-<script>
-if (!window.toggleRowMenu) {
-function toggleRowMenu(tradeId, ev) {
-  ev.preventDefault();
-  ev.stopPropagation();
-
-  const menu = document.getElementById(`rowMenu-${tradeId}`);
-  const btn  = ev.currentTarget;
-
-  // Close any other open menus
-  document.querySelectorAll('.rowMoreMenu.open').forEach(m => {
-    if (m !== menu) m.classList.remove('open');
-  });
-
-  // Toggle this menu
-  menu.classList.toggle('open');
-
-  if (menu.classList.contains('open')) {
-    // Make it immune to overflow clipping
-    menu.style.position = 'fixed';
-    menu.style.zIndex = '999999';
-
-    // Need it visible to measure height
-    menu.style.visibility = 'hidden';
-    menu.style.display = 'block';
-
-    const btnRect = btn.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-
-    // Default: open downward
-    let top = btnRect.bottom + 6;
-
-    // If it would go off-screen, open upward
-    if (top + menuRect.height > window.innerHeight - 8) {
-      top = btnRect.top - menuRect.height - 6;
-    }
-
-    // Keep inside viewport horizontally
-    let left = btnRect.right - menuRect.width;
-    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
-
-    menu.style.top = `${top}px`;
-    menu.style.left = `${left}px`;
-
-    menu.style.visibility = 'visible';
-  }
-}
-
-// Close menus when clicking elsewhere
-document.addEventListener('click', () => {
-  document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
-});
-
-// Close on ESC
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    document.querySelectorAll('.rowMoreMenu.open').forEach(m => m.classList.remove('open'));
-  }
-});
-}
-</script>
-
-
-
-
-  <script>
-    const _navShortcutMap = {
-      "gd": "/dashboard",
-      "gt": "/trades",
-      "gj": "/journal",
-      "ga": "/analytics",
-      "gc": "/calculator",
-      "ng": "/goals",
-      "nt": "/trades/new",
-      "nj": "{{ url_for('new_entry') }}"
-    };
-    let _comboBuffer = "";
-    let _comboTs = 0;
-    function _isTypingContext(el){
-      if(!el) return false;
-      const tag = (el.tagName || "").toLowerCase();
-      return tag === "input" || tag === "textarea" || tag === "select" || !!el.isContentEditable;
-    }
-    function _handlePowerShortcut(e){
-      const now = Date.now();
-      if(now - _comboTs > 900) _comboBuffer = "";
-      _comboTs = now;
-      const k = (e.key || "").toLowerCase();
-      if(!/^[a-z\/\?]$/.test(k)) return false;
-      if(k === "/"){
-        const s = document.getElementById('search');
-        if(s){ e.preventDefault(); s.focus(); return true; }
-      }
-      if(k === "?"){
-        const panel = document.getElementById("shortcutHelp");
-        if(panel){
-          panel.classList.toggle("open");
-          e.preventDefault();
-          return true;
-        }
-      }
-      _comboBuffer = (_comboBuffer + k).slice(-2);
-      const href = _navShortcutMap[_comboBuffer];
-      if(href){
-        e.preventDefault();
-        window.location.href = href;
-        return true;
-      }
-      return false;
-    }
-
-    window.addEventListener('keydown', (e)=>{
-      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='k'){
-        const s = document.getElementById('search');
-        if(s){ e.preventDefault(); s.focus(); }
-      }
-      if(!_isTypingContext(document.activeElement) && !e.ctrlKey && !e.metaKey && !e.altKey){
-        _handlePowerShortcut(e);
-      }
-      if(e.key === "Escape"){ closeDrawer(); }
-    });
-
-    function confirmDelete(formId){
-      if(confirm("Delete this? This can't be undone.")){
-        document.getElementById(formId).submit();
-      }
-    }
-    window.confirmDelete = confirmDelete;
-
-    function confirmClear(formId){
-      if(confirm("Clear ALL trade data? This wipes the trades table.")){
-        document.getElementById(formId).submit();
-      }
-    }
-    window.confirmClear = confirmClear;
-
-    function openDrawer(){
-      document.getElementById('drawer').classList.add('open');
-      document.getElementById('drawerOverlay').classList.add('open');
-      document.body.classList.add('drawer-open');
-      const t = document.getElementById('menuToggleBtn');
-      if(t) t.setAttribute('aria-expanded', 'true');
-      document.body.style.overflow = "hidden";
-    }
-    function closeDrawer(){
-      document.getElementById('drawer').classList.remove('open');
-      document.getElementById('drawerOverlay').classList.remove('open');
-      document.body.classList.remove('drawer-open');
-      const t = document.getElementById('menuToggleBtn');
-      if(t) t.setAttribute('aria-expanded', 'false');
-      document.body.style.overflow = "";
-    }
-    window.openDrawer = openDrawer;
-    window.closeDrawer = closeDrawer;
-
-    document.addEventListener('click', (e)=>{
-      const link = e.target.closest && e.target.closest('#drawer a');
-      if(link) closeDrawer();
-    });
-
-    function updateETClock(){
-      try{
-        const now = new Date();
-        const timeStr = new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          hour: "2-digit", minute:"2-digit", second:"2-digit",
-          hour12:true
-        }).format(now);
-
-        const weekday = new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          weekday: "short"
-        }).format(now);
-
-        const hour24 = Number(new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          hour: "2-digit",
-          hour12: false
-        }).format(now));
-
-        const clock = document.getElementById("etClock");
-        const mode = document.getElementById("modePill");
-        const market = document.getElementById("marketState");
-        if(clock) clock.textContent = `${timeStr} ET`;
-
-        if(mode){
-          const isWeekend = (weekday === "Sat" || weekday === "Sun");
-          mode.classList.remove("modeStateWeekend", "modeStateStudy", "modeStateTrading", "modeStateLoading");
-          if(isWeekend){
-            mode.textContent = "🧠 Weekend Mode";
-            mode.classList.add("modeStateWeekend");
-          } else if(hour24 >= 16){
-            mode.textContent = "📚 Study Mode";
-            mode.classList.add("modeStateStudy");
-          } else {
-            mode.textContent = "📈 Trading Day";
-            mode.classList.add("modeStateTrading");
-          }
-        }
-        if(market){
-          const hm = new Intl.DateTimeFormat("en-US", {
-            timeZone: "America/New_York",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false
-          }).format(now).split(":");
-          const nyMinutes = (Number(hm[0] || 0) * 60) + Number(hm[1] || 0);
-          const isWeekend = (weekday === "Sat" || weekday === "Sun");
-          const isOpen = !isWeekend && nyMinutes >= 570 && nyMinutes < 960;
-          market.textContent = isOpen ? "Open" : "Closed";
-          market.classList.toggle("marketOpen", isOpen);
-          market.classList.toggle("marketClosed", !isOpen);
-          market.title = isOpen ? "US market is open (9:30 AM - 4:00 PM ET)" : "US market is closed";
-        }
-      }catch(e){
-        console.error(e);
-      }
-    }
-
-    setInterval(updateETClock, 1000);
-    updateETClock();
-
-    const THEME_ORDER = ["black", "default", "galaxy", "red", "green", "steel"];
-    const THEME_LABELS = {
-      black: "Theme: Midnight",
-      default: "Theme: Classic",
-      galaxy: "Theme: Midnight Galaxy",
-      red: "Theme: Red",
-      green: "Theme: Green",
-      steel: "Theme: Steel"
-    };
-    function syncThemeButtons(theme){
-      document.querySelectorAll("[data-theme-toggle-label]").forEach((btn) => {
-        btn.textContent = THEME_LABELS[theme] || THEME_LABELS.default;
-      });
-    }
-    function applyTheme(theme){
-      const t = THEME_ORDER.includes(theme) ? theme : "black";
-      document.body.setAttribute("data-theme", t);
-      syncThemeButtons(t);
-    }
-    function toggleTheme(){
-      const current = document.body.getAttribute("data-theme") || "black";
-      const idx = THEME_ORDER.indexOf(current);
-      const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
-      localStorage.setItem("mc_theme", next);
-      applyTheme(next);
-    }
-    window.toggleTheme = toggleTheme;
-    applyTheme(localStorage.getItem("mc_theme") || "galaxy");
-
-    function setGuidedMode(on){
-      const enabled = !!on;
-      document.body.classList.toggle("guidedMode", enabled);
-      const btn = document.getElementById("guidedModeBtn");
-      if(btn) btn.textContent = `Guided Mode: ${enabled ? "On" : "Off"}`;
-      applyGuidedHighlights(enabled);
-      localStorage.setItem("mc_guided_mode", enabled ? "1" : "0");
-      localStorage.setItem("mc_guided_seen", "1");
-    }
-    function applyGuidedHighlights(enabled){
-      const anchors = Array.from(document.querySelectorAll("a.btn[href]"));
-      anchors.forEach((a)=>a.classList.remove("guideHot"));
-      if(!enabled) return;
-      const paths = [
-        "/calculator",
-        "/trades/upload/statement",
-        "/trades",
-        "/analytics?tab=performance",
-        "/journal/review/weekly"
-      ];
-      anchors.forEach((a)=>{
-        const href = (a.getAttribute("href") || "").trim();
-        if(!href) return;
-        if(paths.some((p)=> href === p || href.startsWith(p + "&") || href.startsWith(p + "?"))){
-          a.classList.add("guideHot");
-        }
-      });
-    }
-    function toggleGuidedMode(){
-      const on = !(document.body.classList.contains("guidedMode"));
-      setGuidedMode(on);
-    }
-    window.toggleGuidedMode = toggleGuidedMode;
-    const savedGuide = localStorage.getItem("mc_guided_mode");
-    const firstRunSeen = localStorage.getItem("mc_guided_seen");
-    if(savedGuide === "1"){
-      setGuidedMode(true);
-    }else if(savedGuide === "0"){
-      setGuidedMode(false);
-    }else{
-      setGuidedMode(!firstRunSeen);
-    }
-
-    function enforcePrimaryCta(){
-      const actionScopes = document.querySelectorAll('.actionRow, .rightActions, .leftActions, .mobileActionGrid');
-      const isExcluded = (btn) => {
-        return !!(
-          btn.closest('.nav') ||
-          btn.closest('.drawer') ||
-          btn.closest('.mobileDock') ||
-          btn.closest('.quickPanel') ||
-          btn.closest('.workflowRail') ||
-          btn.classList.contains('danger')
-        );
-      };
-      const candidates = [];
-      actionScopes.forEach((scope)=>{
-        Array.from(scope.querySelectorAll('.btn, button.btn')).forEach((btn)=>{
-          if (btn.disabled || btn.offsetParent === null || isExcluded(btn)) return;
-          candidates.push(btn);
-        });
-      });
-      if(!candidates.length) return;
-
-      const scoreButton = (btn) => {
-        const txt = (btn.textContent || '').trim().toLowerCase();
-        const href = (btn.getAttribute('href') || '').toLowerCase();
-        const inHero = !!btn.closest('.pageHero, .dashboardHero');
-        let score = 0;
-        if (inHero) score += 7;
-        if (btn.classList.contains('primary')) score += 4;
-        if (/(calculate|upload|save|add|new|import|analyze|review|run|start|open)/.test(txt)) score += 5;
-        if (/(calculator|upload|import|analytics|journal\/new|journal\/review|trades\/new)/.test(href)) score += 3;
-        if (/(back|cancel|reset|delete|clear|prev|next|more)/.test(txt)) score -= 6;
-        return score;
-      };
-
-      let winner = candidates[0];
-      let best = -999;
-      candidates.forEach((btn)=>{
-        const s = scoreButton(btn);
-        if (s > best){
-          best = s;
-          winner = btn;
-        }
-      });
-
-      candidates.forEach((btn)=>{
-        btn.classList.remove('primary', 'ctaSecondary', 'ctaLink');
-        if (btn === winner){
-          btn.classList.add('primary');
-        } else {
-          const inHero = !!btn.closest('.pageHero, .dashboardHero');
-          if (inHero) btn.classList.add('ctaSecondary');
-          else btn.classList.add('ctaLink');
-        }
-      });
-    }
-
-    function compactDenseGrid(grid, itemSelector, keepCount, label){
-      const cards = Array.from(grid.querySelectorAll(`:scope > ${itemSelector}`));
-      if (cards.length <= keepCount || grid.dataset.compacted === '1') return;
-      const isAlwaysVisible = (card) => card.classList.contains('mobileKeep');
-      cards.forEach((card, i) => {
-        if (i >= keepCount && !isAlwaysVisible(card)) card.classList.add('mobileDenseExtra');
-      });
-      const moreLabel = 'More';
-      const lessLabel = 'Less';
-      const toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'btn statToggleBtn';
-      toggle.textContent = moreLabel;
-      toggle.title = `Show more ${label.toLowerCase()}`;
-      toggle.setAttribute('aria-label', `Show more ${label.toLowerCase()}`);
-      toggle.addEventListener('click', () => {
-        const expanded = grid.classList.toggle('showAllStats');
-        toggle.textContent = expanded ? lessLabel : moreLabel;
-        const nextTitle = expanded ? `Show fewer ${label.toLowerCase()}` : `Show more ${label.toLowerCase()}`;
-        toggle.title = nextTitle;
-        toggle.setAttribute('aria-label', nextTitle);
-      });
-      grid.insertAdjacentElement('afterend', toggle);
-      grid.dataset.compacted = '1';
-    }
-
-    function setupMobileDensityCompaction(){
-      if (window.innerWidth > 760) return;
-      document.querySelectorAll('.statRow').forEach((row) => compactDenseGrid(row, '.stat', 3, 'Stats'));
-      document.querySelectorAll('.metricStrip:not([data-no-mobile-compact="1"])').forEach((row) => compactDenseGrid(row, '.metric', 2, 'Metrics'));
-      document.querySelectorAll('.insightGrid').forEach((row) => compactDenseGrid(row, '.insightCard', 2, 'Insights'));
-      document.querySelectorAll('.dashboardSupportGrid').forEach((row) => compactDenseGrid(row, '.supportCard', 2, 'Panels'));
-      document.querySelectorAll('.analyticsTopStats').forEach((row) => compactDenseGrid(row, '.analyticsTopStat', 2, 'Stats'));
-      document.querySelectorAll('.statusBadgeStrip').forEach((row) => compactDenseGrid(row, '.statusBadge', 4, 'Status'));
-    }
-    enforcePrimaryCta();
-    setupMobileDensityCompaction();
-
-    const staggerTargets = document.querySelectorAll(".card, .metric, .calcCard, .insightCard");
-    staggerTargets.forEach((el, i) => {
-      el.style.setProperty("--stagger", String(i % 8));
-    });
-  </script>
-  <script>
-    (function(){
-      const host = document.createElement("div");
-      host.id = "shortcutHelp";
-      host.className = "quickPanel";
-      host.style.left = "14px";
-      host.style.right = "auto";
-      host.style.bottom = "18px";
-      host.style.width = "320px";
-      host.innerHTML = `
-        <div class="menuTitle">Power Shortcuts</div>
-        <div class="tiny line16">
-          <b>/</b> focus search · <b>g d</b> dashboard · <b>g t</b> trades · <b>g j</b> journal ·
-          <b>g a</b> analytics · <b>g c</b> plan risk · <b>n t</b> new trade · <b>n j</b> new journal
-        </div>
-      `;
-      document.body.appendChild(host);
-      window.toggleShortcutHelp = function(){
-        host.classList.toggle("open");
-      };
-      document.addEventListener("keydown", (e)=>{
-        if(e.key === "Escape") host.classList.remove("open");
-      });
-    })();
-  </script>
+<script src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}"></script>
 </body>
 </html>

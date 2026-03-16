@@ -35,7 +35,13 @@
 </div></div>
 {% endif %}
 
-<div class="card stack12 marketPulseSection marketPulseSetupCard"><div class="toolbar">
+<details class="card stack12 marketPulseSection marketPulseSetupCard marketPulseMobileFold" data-mobile-default="closed" open>
+  <summary class="marketPulseMobileSummary">
+    <span class="pill">Trade Setup Now</span>
+    <span class="marketPulseMobileSummaryTitle">Execution Map</span>
+    <span class="tiny muted">Bias, trigger, target, invalidation</span>
+  </summary>
+  <div class="toolbar">
   <div class="pill">Trade Setup Now</div>
   <div class="supportLead" id="marketPulseSetupHeadline">Waiting for SPX structure to resolve.</div>
   <div class="tiny muted" id="marketPulseSetupSubline">Build the plan from level interaction first, then wait for the 5-minute Strat trigger.</div>
@@ -87,11 +93,18 @@
       <div class="tiny" id="marketPulseAvoidThisLine">No blind anticipation away from liquidity.</div>
     </div>
   </div>
-</div></div>
+  </div>
+</details>
 
 {% set spx_priority_change = spx_quote.get('change_pct') if spx_quote else none %}
 {% set spx_priority_tone = 'glow-green' if spx_priority_change is not none and spx_priority_change > 0 else 'glow-red' if spx_priority_change is not none and spx_priority_change < 0 else '' %}
-<div class="card stack12 marketPulseSection spxPriorityShell {{ spx_priority_tone }}"><div class="toolbar" id="spxPriorityCard">
+<details class="card stack12 marketPulseSection spxPriorityShell marketPulseMobileFold {{ spx_priority_tone }}" data-mobile-default="closed" open>
+  <summary class="marketPulseMobileSummary">
+    <span class="pill">SPX Priority</span>
+    <span class="marketPulseMobileSummaryTitle">Spot + Gamma Walls</span>
+    <span class="tiny muted">Cash index, regime, key levels</span>
+  </summary>
+  <div class="toolbar" id="spxPriorityCard">
   <div class="pill">SPX Priority</div>
   <div class="spxStaticCard {{ spx_priority_tone }}" id="spxPrioritySpotPanel">
     <div class="pillRow marketCardMeta">
@@ -334,7 +347,8 @@
       {% endif %}
     </div>
   </details>
-</div></div>
+  </div>
+</details>
 
 <details class="card stack12 marketPulseSection marketPulseOpsFold">
   <summary class="marketPulseOpsSummary">
@@ -381,10 +395,16 @@
   </div>
 </details>
 
-<div class="card stack12 marketPulseSection"><div class="toolbar">
+<details class="card stack12 marketPulseSection marketPulseMobileFold" data-mobile-default="closed" open>
+  <summary class="marketPulseMobileSummary">
+    <span class="pill">Core Tape</span>
+    <span class="marketPulseMobileSummaryTitle">Breadth + Leaders</span>
+    <span class="tiny muted">Advancers, decliners, biggest move</span>
+  </summary>
+  <div class="toolbar">
   <div class="pill">Core Tape</div>
   <div class="tiny stack8">Tracking {{ core_quotes|length }} tickers in this tape refresh.</div>
-  <div class="metricStrip marketPulseSummaryStrip">
+  <div class="metricStrip marketPulseSummaryStrip" data-no-mobile-compact="1">
     <div class="metric">
       <div class="label">Advancers</div>
       <div class="value" id="marketPulseAdvancers">{{ stats.advancers }}</div>
@@ -406,7 +426,7 @@
       <div class="sub">Top absolute mover</div>
     </div>
   </div>
-  <div class="statRow">
+  <div class="statRow" data-no-mobile-compact="1">
     {% for q in core_quotes %}
       <div class="stat marketPulseTapeCard {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}" data-symbol="{{ q.symbol }}">
         {% set q_state = (q.data_state or 'missing') %}
@@ -438,9 +458,10 @@
       </div>
     {% endfor %}
   </div>
-</div></div>
+  </div>
+</details>
 
-<div class="dashboardSupportGrid marketPulseSection">
+<div class="dashboardSupportGrid marketPulseSection" data-no-mobile-compact="1">
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">SPX Focus</div>
     <div class="supportLead">{{ context.headline_note }}</div>
@@ -458,7 +479,7 @@
   </div></div>
 </div>
 
-<div class="metricStrip researchOnly marketPulseSection">
+<div class="metricStrip researchOnly marketPulseSection" data-no-mobile-compact="1">
   <div class="metric">
     <div class="label">SPX Tape</div>
     <div class="value">{{ '%+.2f'|format(context.spx_pct) }}%</div>
@@ -593,12 +614,30 @@
   const loadingOverlay = document.getElementById("marketPulseLoadingOverlay");
   const loadingTitle = document.getElementById("marketPulseLoadingTitle");
   const loadingSub = document.getElementById("marketPulseLoadingSub");
+  const mobileFoldQuery = window.matchMedia("(max-width: 430px)");
+  const mobileFolds = Array.from(document.querySelectorAll(".marketPulseMobileFold[data-mobile-default='closed']"));
   if (!modeToggle || !guardMeta) return;
+  const storageGet = (key) => {
+    try {
+      return window.localStorage ? window.localStorage.getItem(key) : null;
+    } catch (_err) {
+      return null;
+    }
+  };
+  const storageSet = (key, value) => {
+    try {
+      if (window.localStorage) window.localStorage.setItem(key, value);
+    } catch (_err) {
+      // Mobile Safari private mode and strict contexts can throw here.
+    }
+  };
   const marketHours = guardMeta.dataset.marketHours === "1";
-  const storedMode = localStorage.getItem(MODE_KEY);
-  let mode = storedMode || (marketHours ? "execution" : "research");
+  const storedMode = storageGet(MODE_KEY);
+  let mode = storedMode || ((marketHours || mobileFoldQuery.matches) ? "execution" : "research");
   const guardrailActive = guardMeta.dataset.active === "1";
   const guardrailMessage = guardMeta.dataset.message || "Data Unsafe guardrail active.";
+  let bootSettled = false;
+  let mobileFoldsInitialized = false;
 
   const showReloadOverlay = (title, detail) => {
     if (typeof window.showMarketPulseLoading === "function") {
@@ -662,9 +701,14 @@
     modeToggle.setAttribute("aria-pressed", execution ? "true" : "false");
     modeToggle.textContent = execution ? "Research Mode" : "Execution Mode";
   };
+  const applyMobileFolds = () => {
+    if (mobileFoldsInitialized || !mobileFoldQuery.matches) return;
+    mobileFolds.forEach((fold) => fold.removeAttribute("open"));
+    mobileFoldsInitialized = true;
+  };
   modeToggle.addEventListener("click", () => {
     mode = (mode === "execution") ? "research" : "execution";
-    localStorage.setItem(MODE_KEY, mode);
+    storageSet(MODE_KEY, mode);
     applyMode();
   });
   const setStreamState = (status, detail) => {
@@ -692,12 +736,19 @@
   }
 
   applyMode();
+  applyMobileFolds();
   applyGuardrailLock();
-
-  // Entry motion once DOM is ready.
-  window.requestAnimationFrame(() => {
+  const settleBoot = () => {
+    if (bootSettled) return;
+    bootSettled = true;
     document.body.classList.add("marketPulseReady");
-    window.setTimeout(hideReloadOverlay, 340);
+    window.setTimeout(hideReloadOverlay, 180);
+  };
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(settleBoot);
   });
+  window.addEventListener("load", settleBoot, { once: true });
+  window.addEventListener("pageshow", settleBoot);
+  window.setTimeout(settleBoot, 1200);
 })();
 </script>
