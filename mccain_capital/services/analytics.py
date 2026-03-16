@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from datetime import datetime
 import re
 from urllib.parse import urlencode
 from typing import Any, Dict, List
@@ -12,7 +13,9 @@ from flask import render_template, request
 from mccain_capital.repositories import analytics as repo
 from mccain_capital.repositories import journal as journal_repo
 from mccain_capital.repositories import trades as trades_repo
+from mccain_capital import runtime as app_runtime
 from mccain_capital.runtime import money
+from mccain_capital.services import market_data_service
 from mccain_capital.services.ui import get_system_status, render_page
 from mccain_capital.services.viewmodels import (
     analytics_data_trust,
@@ -38,6 +41,132 @@ def _chart_empty_state() -> str:
       </div>
     </div>
     """
+
+
+def _minute_from_label(value: str) -> int:
+    raw = str(value or "").strip()
+    if not raw:
+        return 24 * 60
+    for fmt in ("%I:%M %p", "%I:%M:%S %p", "%H:%M"):
+        try:
+            parsed = datetime.strptime(raw.upper(), fmt)
+            return (parsed.hour * 60) + parsed.minute
+        except ValueError:
+            continue
+    return 24 * 60
+
+
+def _format_compact_clock(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=app_runtime.TZ)
+    return dt.astimezone(app_runtime.TZ).strftime("%I:%M %p ET").lstrip("0")
+
+
+def _intraday_points_for_day(symbol: str, day: str) -> List[Dict[str, Any]]:
+    try:
+        rows = market_data_service.get_intraday(symbol)
+    except Exception:
+        rows = []
+    points: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        ts_raw = str(row.get("ts") or "").strip()
+        close_v = row.get("close")
+        if not ts_raw or not isinstance(close_v, (int, float)):
+            continue
+        try:
+            dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=app_runtime.TZ)
+        dt_et = dt.astimezone(app_runtime.TZ)
+        if dt_et.date().isoformat() != day:
+            continue
+        points.append(
+            {
+                "minute": (dt_et.hour * 60) + dt_et.minute,
+                "ts": dt_et.isoformat(),
+                "label": dt_et.strftime("%I:%M %p ET").lstrip("0"),
+                "close": float(close_v),
+            }
+        )
+    return points
+
+
+def _nearest_intraday_snapshot(points: List[Dict[str, Any]], minute: int) -> Dict[str, Any] | None:
+    if not points or minute >= 24 * 60:
+        return None
+    return min(points, key=lambda row: abs(int(row.get("minute") or 0) - minute))
+
+
+def _market_arc_summary(day: str) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for symbol in ("SPX", "VIX"):
+        points = _intraday_points_for_day(symbol, day)
+        if not points:
+            rows.append(
+                {
+                    "label": symbol,
+                    "available": False,
+                    "summary": "No same-day intraday curve available.",
+                    "detail": "Provider did not return a usable same-day curve.",
+                }
+            )
+            continue
+        start = float(points[0]["close"])
+        end = float(points[-1]["close"])
+        highs = [float(p["close"]) for p in points]
+        low = min(highs)
+        high = max(highs)
+        delta = end - start
+        pct = (delta / start * 100.0) if abs(start) > 1e-9 else 0.0
+        rows.append(
+            {
+                "label": symbol,
+                "available": True,
+                "summary": f"{start:,.2f} open to {end:,.2f} close · {delta:+.2f} ({pct:+.2f}%)",
+                "detail": f"Session range {low:,.2f}-{high:,.2f} across {len(points)} intraday points.",
+            }
+        )
+    return rows
+
+
+def _macro_timeline_items(day: str) -> List[Dict[str, Any]]:
+    try:
+        from mccain_capital.services import core as core_svc
+    except Exception:
+        return []
+    try:
+        anchor = datetime.strptime(day, "%Y-%m-%d").date()
+    except ValueError:
+        return []
+    overlay = core_svc._forex_factory_usd_window_events(anchor, anchor)
+    items: List[Dict[str, Any]] = []
+    for event in list((overlay.get("events_by_day") or {}).get(day, [])):
+        if not isinstance(event, dict):
+            continue
+        impact = str(event.get("impact") or "").strip().lower()
+        items.append(
+            {
+                "kind": "macro",
+                "sort_minute": _minute_from_label(str(event.get("time_label") or "")),
+                "time_label": str(event.get("time_label") or "Macro window"),
+                "headline": str(event.get("title") or "USD macro event"),
+                "summary": str(event.get("tooltip") or event.get("impact") or "Calendar event"),
+                "tone": "negative" if impact == "high" else "warm",
+                "impact_label": str(event.get("impact") or "Scheduled"),
+            }
+        )
+    return items
 
 
 def _line_chart_svg(series: List[Dict[str, Any]], stroke: str, y_prefix: str = "$") -> str:
@@ -664,14 +793,20 @@ def session_replay_page():
     day_rows.sort(key=lambda r: int(r.get("id") or 0))
     running = 0.0
     timeline: List[Dict[str, Any]] = []
+    spx_intraday = _intraday_points_for_day("SPX", day)
+    vix_intraday = _intraday_points_for_day("VIX", day)
     for idx, r in enumerate(day_rows, start=1):
         net = float(r.get("net_pl") or 0.0)
         running += net
+        entry_time = str(r.get("entry_time") or "—")
+        minute = _minute_from_label(entry_time)
+        spx_snap = _nearest_intraday_snapshot(spx_intraday, minute)
+        vix_snap = _nearest_intraday_snapshot(vix_intraday, minute)
         timeline.append(
             {
                 "step": idx,
                 "id": int(r.get("id") or 0),
-                "entry_time": str(r.get("entry_time") or "—"),
+                "entry_time": entry_time,
                 "exit_time": str(r.get("exit_time") or "—"),
                 "ticker": str(r.get("ticker") or ""),
                 "opt_type": str(r.get("opt_type") or ""),
@@ -681,6 +816,8 @@ def session_replay_page():
                 "checklist_score": r.get("checklist_score"),
                 "net_pl": net,
                 "equity_delta": running,
+                "spx_snapshot": spx_snap,
+                "vix_snapshot": vix_snap,
             }
         )
     wins = len([t for t in timeline if float(t["net_pl"]) > 0])
@@ -759,12 +896,57 @@ def session_replay_page():
     notes_lines.append("Action plan for next session:")
     notes_lines.append("- Keep A+ setups only in strongest time block.")
     notes_lines.append("- Respect max size and stop-after-streak guardrails.")
+    replay_rail = list(_macro_timeline_items(day))
+    for t in timeline:
+        spx_snap = t.get("spx_snapshot") or {}
+        vix_snap = t.get("vix_snapshot") or {}
+        market_context_bits = []
+        if isinstance(spx_snap.get("close"), (int, float)):
+            market_context_bits.append(f"SPX {float(spx_snap['close']):,.2f}")
+        if isinstance(vix_snap.get("close"), (int, float)):
+            market_context_bits.append(f"VIX {float(vix_snap['close']):,.2f}")
+        replay_rail.append(
+            {
+                "kind": "trade",
+                "sort_minute": _minute_from_label(str(t.get("entry_time") or "")),
+                "time_label": str(t.get("entry_time") or "Trade"),
+                "headline": f"Trade #{t['id']} · {t['ticker']} {t['opt_type']}",
+                "summary": (
+                    f"{t.get('setup_tag') or 'Unlabeled'} · {t.get('session_tag') or 'No session tag'}"
+                ),
+                "tone": (
+                    "positive"
+                    if float(t["net_pl"]) > 0
+                    else "negative" if float(t["net_pl"]) < 0 else "neutral"
+                ),
+                "impact_label": money(float(t["net_pl"])),
+                "market_context": (
+                    " · ".join(market_context_bits)
+                    if market_context_bits
+                    else "Market snapshot unavailable"
+                ),
+                "detail": (
+                    f"Checklist {t['checklist_score']}"
+                    if t.get("checklist_score") is not None
+                    else "Checklist not scored"
+                ),
+                "rule_breaks": str(t.get("rule_break_tags") or "").strip(),
+            }
+        )
+    replay_rail.sort(
+        key=lambda item: (
+            int(item.get("sort_minute") or 0),
+            0 if item.get("kind") == "macro" else 1,
+        )
+    )
+    market_arc = _market_arc_summary(day)
     replay_journal_href = "/new?" + urlencode(
         {
             "prefill": "replay",
             "d": day,
             "entry_type": "trade_debrief",
             "link_all_day": "1",
+            "auto_draft": "1",
             "pnl": f"{day_net:.2f}",
             "notes": "\n".join(notes_lines),
             "template_notes": "Replay-linked debrief generated from Session Replay.",
@@ -787,6 +969,8 @@ def session_replay_page():
         rule_break_rows=rule_break_rows,
         replay_status=replay_status,
         intraday_arc=intraday_arc,
+        replay_rail=replay_rail,
+        market_arc=market_arc,
         replay_journal_href=replay_journal_href,
         money=money,
     )

@@ -11,6 +11,37 @@ def register(app):
     app.add_url_rule(
         "/login", endpoint="login_page", view_func=h.login_page, methods=["GET", "POST"]
     )
+    app.add_url_rule("/auth/passkeys", endpoint="passkeys_page", view_func=h.passkeys_page)
+    app.add_url_rule(
+        "/auth/passkeys/register/options",
+        endpoint="passkeys_register_options",
+        view_func=h.passkeys_register_options,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/auth/passkeys/register/verify",
+        endpoint="passkeys_register_verify",
+        view_func=h.passkeys_register_verify,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/auth/passkeys/auth/options",
+        endpoint="passkeys_auth_options",
+        view_func=h.passkeys_auth_options,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/auth/passkeys/auth/verify",
+        endpoint="passkeys_auth_verify",
+        view_func=h.passkeys_auth_verify,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/auth/passkeys/delete",
+        endpoint="passkeys_delete",
+        view_func=h.passkeys_delete,
+        methods=["POST"],
+    )
     app.add_url_rule("/logout", endpoint="logout_page", view_func=h.logout_page)
     app.add_url_rule("/healthz", endpoint="healthz", view_func=h.healthz)
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
@@ -41,6 +72,12 @@ def register(app):
         "/dashboard/milestone",
         endpoint="dashboard_milestone_update",
         view_func=h.dashboard_milestone_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/brief",
+        endpoint="dashboard_brief_update",
+        view_func=h.dashboard_brief_update,
         methods=["POST"],
     )
     app.add_url_rule("/candle-opens", endpoint="candle_opens_page", view_func=h.candle_opens_page)
@@ -74,6 +111,12 @@ def register(app):
         endpoint="vanquish_lock_state",
         view_func=h.vanquish_lock_state,
         methods=["GET"],
+    )
+    app.add_url_rule(
+        "/ops/trading-window",
+        endpoint="trading_window_config",
+        view_func=h.trading_window_config,
+        methods=["POST"],
     )
     app.add_url_rule("/export.json", endpoint="export_json", view_func=h.export_json)
     app.add_url_rule("/admin/backup", endpoint="backup_data", view_func=h.backup_data)

@@ -460,6 +460,8 @@ def build_spx_priority_context(
     call_wall = _safe_float(gamma_snapshot.get("call_wall"))
     put_wall = _safe_float(gamma_snapshot.get("put_wall"))
     net_gamma = _safe_float(gamma_snapshot.get("net_gex"))
+    call_wall_gamma_per_point = _safe_float(gamma_snapshot.get("call_wall_gamma_per_point"))
+    put_wall_gamma_per_point = _safe_float(gamma_snapshot.get("put_wall_gamma_per_point"))
     expected_move = _safe_float(gamma_snapshot.get("expected_move"))
 
     # TODO(api): wire backend payload for next_call_wall_above and next_put_wall_below.
@@ -494,6 +496,8 @@ def build_spx_priority_context(
         "narrative": narrative,
         "warning_badges": warning_badges,
         "net_gamma_text": format_net_gamma_human(net_gamma),
+        "call_wall_gamma_per_point_text": format_net_gamma_human(call_wall_gamma_per_point),
+        "put_wall_gamma_per_point_text": format_net_gamma_human(put_wall_gamma_per_point),
         "distance_to_flip_text": formatLevelDistance(metrics.get("distance_to_flip")),
         "distance_to_call_wall_text": formatLevelDistance(metrics.get("distance_to_call_wall")),
         "distance_to_put_wall_text": formatLevelDistance(metrics.get("distance_to_put_wall")),

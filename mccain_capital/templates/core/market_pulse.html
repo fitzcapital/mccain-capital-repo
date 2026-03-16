@@ -1,11 +1,3 @@
-<div id="marketPulseLoading" class="marketPulseLoadingOverlay" aria-hidden="true">
-  <div class="marketPulseLoadingCard">
-    <div class="marketPulseSpinner"></div>
-    <div class="marketPulseLoadingTitle">Loading Market Pulse</div>
-    <div class="marketPulseLoadingSub">Pulling live market data and rebuilding tape context…</div>
-  </div>
-</div>
-
 <div class="card pageHero marketPulseSection">
   <div class="toolbar">
     <div class="pageHeroHead">
@@ -18,13 +10,18 @@
             <div class="candleInlineNoteBody">Live market context for SPX-first trading: macro triggers, broad tape drivers, and watchlist headlines that can shift the session.</div>
           </details>
         </div>
-        <div class="pageSub">{{ source_label }} · {{ fetched_at or 'Awaiting live refresh' }}</div>
+        <div class="pageSub">
+          <span id="marketPulseSourceLabel">{{ source_label }}</span>
+          ·
+          <span id="marketPulseFetchedAt">{{ fetched_at or 'Awaiting live refresh' }}</span>
+        </div>
       </div>
       <div class="actionRow">
         <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
-        <button class="btn" id="autoRefreshToggle" type="button" aria-pressed="false">Auto Refresh Off</button>
         <button class="btn" id="viewModeToggle" type="button" aria-pressed="false">Execution Mode</button>
-        <span class="tiny muted" id="autoRefreshLabel" data-seconds="60">Next refresh in 60s</span>
+        <span class="trendChip" id="marketPulseStreamStatus">Live stream connecting</span>
+        <span class="trendChip {% if spx_quote.get('source_badge_tone') %}{{ spx_quote.get('source_badge_tone') }}{% endif %}" id="marketPulseSourceMode">{{ spx_quote.get('source_badge_label') or 'Awaiting feed' }}</span>
+        <span class="tiny muted" id="marketPulseStreamFreshness">Awaiting first tick…</span>
         <a class="btn" href="/candle-opens">Candle Opens</a>
       </div>
     </div>
@@ -38,26 +35,81 @@
 </div></div>
 {% endif %}
 
-<div class="card stack12 marketPulseSection"><div class="toolbar">
-  <div class="pill">Source Health</div>
-  <div class="supportLead">Overall: {{ source_health.overall_label if source_health else 'Unknown' }}</div>
-  <div class="integrityGrid">
-    {% for row in (source_health.rows if source_health else []) %}
-      <div class="integrityCell">
-        <div class="tiny muted">{{ row.name }}</div>
-        <div class="supportLead">{{ row.status_label }}</div>
-        <div class="tiny">{{ row.detail }}</div>
-      </div>
-    {% endfor %}
+<details class="card stack12 marketPulseSection marketPulseSetupCard marketPulseMobileFold" data-mobile-default="closed" open>
+  <summary class="marketPulseMobileSummary">
+    <span class="pill">Trade Setup Now</span>
+    <span class="marketPulseMobileSummaryTitle">Execution Map</span>
+    <span class="tiny muted">Bias, trigger, target, invalidation</span>
+  </summary>
+  <div class="toolbar">
+  <div class="pill">Trade Setup Now</div>
+  <div class="supportLead" id="marketPulseSetupHeadline">Waiting for SPX structure to resolve.</div>
+  <div class="tiny muted" id="marketPulseSetupSubline">Build the plan from level interaction first, then wait for the 5-minute Strat trigger.</div>
+  <div class="marketPulseSetupGrid">
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">Location</div>
+      <strong id="marketPulseSetupLocation">—</strong>
+      <div class="tiny" id="marketPulseSetupLocationLine">Waiting for live structure.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">Bias</div>
+      <strong id="marketPulseSetupBias">—</strong>
+      <div class="tiny" id="marketPulseSetupBiasLine">No directional edge yet.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">5m Strat Trigger</div>
+      <strong id="marketPulseSetupTrigger">—</strong>
+      <div class="tiny" id="marketPulseSetupTriggerLine">Need a clean trigger at a level.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">5m Trigger State</div>
+      <strong id="marketPulseSetupTriggerState">—</strong>
+      <div class="tiny" id="marketPulseSetupTriggerStateLine">No active trigger quality yet.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">Next Liquidity</div>
+      <strong id="marketPulseSetupTarget">—</strong>
+      <div class="tiny" id="marketPulseSetupTargetLine">Path updates with live ticks.</div>
+    </div>
+    <div class="marketPulseSetupCell">
+      <div class="tiny muted">Invalidation</div>
+      <strong id="marketPulseSetupInvalidation">—</strong>
+      <div class="tiny" id="marketPulseSetupInvalidationLine">Respect the level that breaks the thesis.</div>
+    </div>
   </div>
-</div></div>
+  <div class="marketPulseSetupFooter">
+    <span class="trendChip" id="marketPulseExecutionTone">Execution plan loading</span>
+    <span class="tiny muted" id="marketPulseSetupPlan">Synthesizing gamma structure, volatility state, and nearest liquidity path…</span>
+  </div>
+  <div class="marketPulseDecisionRail">
+    <div class="marketPulseDecisionBlock marketPulseDecisionBlock-do">
+      <div class="tiny muted">Do This</div>
+      <strong id="marketPulseDoThis">Wait for price to interact with a real level, then take the clean trigger.</strong>
+      <div class="tiny" id="marketPulseDoThisLine">Build the trade from structure first.</div>
+    </div>
+    <div class="marketPulseDecisionBlock marketPulseDecisionBlock-avoid">
+      <div class="tiny muted">Avoid This</div>
+      <strong id="marketPulseAvoidThis">Do not force entries in the middle of the board.</strong>
+      <div class="tiny" id="marketPulseAvoidThisLine">No blind anticipation away from liquidity.</div>
+    </div>
+  </div>
+  </div>
+</details>
 
-<div class="card stack12 marketPulseSection"><div class="toolbar" id="spxPriorityCard">
+{% set spx_priority_change = spx_quote.get('change_pct') if spx_quote else none %}
+{% set spx_priority_tone = 'glow-green' if spx_priority_change is not none and spx_priority_change > 0 else 'glow-red' if spx_priority_change is not none and spx_priority_change < 0 else '' %}
+<details class="card stack12 marketPulseSection spxPriorityShell marketPulseMobileFold {{ spx_priority_tone }}" data-mobile-default="closed" open>
+  <summary class="marketPulseMobileSummary">
+    <span class="pill">SPX Priority</span>
+    <span class="marketPulseMobileSummaryTitle">Spot + Gamma Walls</span>
+    <span class="tiny muted">Cash index, regime, key levels</span>
+  </summary>
+  <div class="toolbar" id="spxPriorityCard">
   <div class="pill">SPX Priority</div>
-  <div class="spxStaticCard">
+  <div class="spxStaticCard {{ spx_priority_tone }}" id="spxPrioritySpotPanel">
     <div class="pillRow marketCardMeta">
-      <span class="trendChip stateChip state-{{ spx_quote.get('data_state') or 'missing' }}">{{ spx_quote.get('data_status_label') or 'Live' }}</span>
-      <span class="tiny muted">{{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}</span>
+      <span class="trendChip stateChip state-{{ spx_quote.get('data_state') or 'missing' }}" id="spxPriorityStateChip">{{ spx_quote.get('data_status_label') or 'Live' }}</span>
+      <span class="tiny muted" id="spxPriorityFreshness">{{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}</span>
     </div>
     <div class="k">SPX</div>
     <div class="marketMiniSparkWrap">{{ spx_quote.get('sparkline_svg')|safe if spx_quote else '<div class="marketMiniSparkEmpty">No trend</div>' }}</div>
@@ -68,12 +120,13 @@
         —
       {% endif %}
     </div>
-    <div class="tiny">
+    <div class="tiny" id="spxPriorityChangeLine">
       {{ '%+.2f'|format(spx_quote.get('change')) if spx_quote.get('change') is not none else '—' }}
       · {{ '%+.2f'|format(spx_quote.get('change_pct')) if spx_quote.get('change_pct') is not none else '—' }}%
     </div>
-    <div class="tiny">State: {{ spx_quote.get('market_state') or 'Unavailable' }}</div>
-    <div class="tiny">Range: {{ spx_quote.get('day_range') or '—' }}</div>
+    <div class="tiny muted" id="spxPrioritySourceBadge">{{ spx_quote.get('source_badge_label') or source_label }}</div>
+    <div class="tiny" id="spxPriorityStateLine">State: {{ spx_quote.get('market_state') or 'Awaiting feed' }}</div>
+    <div class="tiny" id="spxPriorityRangeLine">Range: {{ spx_quote.get('day_range') or '—' }}</div>
     <div class="tiny muted">Primary cash index proxy for SPX options context.</div>
     <div class="tiny"><a href="{{ spx_quote.get('yahoo_href') or 'https://finance.yahoo.com/quote/%5EGSPC' }}" target="_blank" rel="noopener">View on Yahoo</a></div>
   </div>
@@ -83,11 +136,11 @@
       · {{ '%+.2f'|format(spx_quote.get('change')) }}
       · {{ '%+.2f'|format(spx_quote.get('change_pct')) }}%
     {% else %}
-      SPX quote unavailable
+      Awaiting SPX quote
     {% endif %}
-    · {{ spx_quote.get('market_state') or 'Unavailable' }}
+    · {{ spx_quote.get('market_state') or 'Awaiting feed' }}
   </div>
-  <div class="tiny stack8">
+  <div class="tiny stack8" id="spxPriorityFreshnessLine">
     {{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}
     {% if spx_quote.get('data_reason') %}
       · Reason: {{ spx_quote.get('data_reason') }}
@@ -178,11 +231,11 @@
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Call Wall Gamma/pt</div>
-          <strong id="spxPriorityCallGammaPerPoint">—</strong>
+          <strong id="spxPriorityCallGammaPerPoint">{{ spx_priority_context.get('call_wall_gamma_per_point_text') or '—' }}</strong>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Put Wall Gamma/pt</div>
-          <strong id="spxPriorityPutGammaPerPoint">—</strong>
+          <strong id="spxPriorityPutGammaPerPoint">{{ spx_priority_context.get('put_wall_gamma_per_point_text') or '—' }}</strong>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Wall Spread</div>
@@ -233,7 +286,7 @@
           <strong id="spxPriorityDayOpen">—</strong>
         </div>
         <div class="optionsGammaCell">
-          <div class="tiny">Session High / Low</div>
+          <div class="tiny">Session Low / High</div>
           <strong id="spxPrioritySessionRange">—</strong>
         </div>
         <div class="optionsGammaCell">
@@ -241,8 +294,14 @@
           <strong id="spxPriorityVWAP">—</strong>
         </div>
         <div class="optionsGammaCell">
-          <div class="tiny">Prior Day High / Low</div>
-          <strong id="spxPriorityPriorRange">—</strong>
+          <div class="tiny">Prior Day Low / High</div>
+          <strong id="spxPriorityPriorRange">
+            {% if spx_quote.get('prior_day_low') is not none and spx_quote.get('prior_day_high') is not none %}
+              {{ '%.2f - %.2f'|format(spx_quote.get('prior_day_low'), spx_quote.get('prior_day_high')) }}
+            {% else %}
+              —
+            {% endif %}
+          </strong>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Data Freshness</div>
@@ -259,7 +318,7 @@
     </div>
   </details>
 
-  <script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'market_now_iso': market_now_iso, 'vix_direction': context.get('vix_direction') if context else ''}|tojson }}</script>
+  <script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'vix_direction': context.get('vix_direction') if context else ''}|tojson }}</script>
 
   <details class="optionsContractsDropdown">
     <summary class="optionsContractsSummary">
@@ -284,97 +343,125 @@
           </details>
         {% endfor %}
       {% else %}
-        <div class="marketPulseAlert muted">No contract rows loaded yet.</div>
+        <div class="marketPulseAlert muted">Awaiting contract rows.</div>
       {% endif %}
     </div>
   </details>
-</div></div>
+  </div>
+</details>
 
-<div class="card stack12 marketPulseSection"><div class="toolbar">
-  <div class="pill">Data Integrity</div>
-  {% if guardrail.active %}
-    <div class="integrityAlert integrityAlert-critical">{{ guardrail.message }}</div>
-  {% endif %}
-  {% if alert.show %}
-    <div class="integrityAlert integrityAlert-{{ alert.tone }}">{{ alert.message }}</div>
-  {% endif %}
-  <div class="integrityGrid">
-    <div class="integrityCell">
-      <div class="tiny muted">Source</div>
-      <div class="supportLead">{{ source_label }}</div>
+<details class="card stack12 marketPulseSection marketPulseOpsFold">
+  <summary class="marketPulseOpsSummary">
+    <span class="pill">Feed Diagnostics</span>
+    <span class="supportLead">Source Health</span>
+    <span class="tiny muted">Overall: {{ source_health.overall_label if source_health else 'Unknown' }} · {{ integrity.live_count or 0 }} live · {{ integrity.delayed_count or 0 }} delayed · {{ integrity.cached_count or 0 }} cached · {{ integrity.missing_count or 0 }} missing</span>
+  </summary>
+  <div class="toolbar">
+    <div class="integrityGrid">
+      {% for row in (source_health.rows if source_health else []) %}
+        <div class="integrityCell">
+          <div class="tiny muted">{{ row.name }}</div>
+          <div class="supportLead">{{ row.status_label }}</div>
+          <div class="tiny">{{ row.detail }}</div>
+        </div>
+      {% endfor %}
     </div>
-    <div class="integrityCell">
-      <div class="tiny muted">Latency</div>
-      <div class="supportLead">{{ integrity.latency_ms or 0 }} ms</div>
-    </div>
-    <div class="integrityCell">
-      <div class="tiny muted">Coverage</div>
-      <div class="supportLead">{{ integrity.live_count or 0 }} live · {{ integrity.delayed_count or 0 }} delayed · {{ integrity.cached_count or 0 }} cached · {{ integrity.missing_count or 0 }} missing</div>
-    </div>
-    <div class="integrityCell">
-      <div class="tiny muted">Mode</div>
-      <div class="supportLead">{% if integrity.forced_refresh %}Forced refresh{% else %}Standard refresh{% endif %}</div>
+    <div class="hr"></div>
+    <div class="pill">Data Integrity</div>
+    {% if guardrail.active %}
+      <div class="integrityAlert integrityAlert-critical">{{ guardrail.message }}</div>
+    {% endif %}
+    {% if alert.show %}
+      <div class="integrityAlert integrityAlert-{{ alert.tone }}">{{ alert.message }}</div>
+    {% endif %}
+    <div class="integrityGrid">
+      <div class="integrityCell">
+        <div class="tiny muted">Source</div>
+        <div class="supportLead">{{ source_label }}</div>
+      </div>
+      <div class="integrityCell">
+        <div class="tiny muted">Latency</div>
+        <div class="supportLead">{{ integrity.latency_ms or 0 }} ms</div>
+      </div>
+      <div class="integrityCell">
+        <div class="tiny muted">Coverage</div>
+        <div class="supportLead">{{ integrity.live_count or 0 }} live · {{ integrity.delayed_count or 0 }} delayed · {{ integrity.cached_count or 0 }} cached · {{ integrity.missing_count or 0 }} missing</div>
+      </div>
+      <div class="integrityCell">
+        <div class="tiny muted">Mode</div>
+        <div class="supportLead">{% if integrity.forced_refresh %}Forced refresh{% else %}Standard refresh{% endif %}</div>
+      </div>
     </div>
   </div>
-</div></div>
+</details>
 
-<div class="card stack12 marketPulseSection"><div class="toolbar">
+<details class="card stack12 marketPulseSection marketPulseMobileFold" data-mobile-default="closed" open>
+  <summary class="marketPulseMobileSummary">
+    <span class="pill">Core Tape</span>
+    <span class="marketPulseMobileSummaryTitle">Breadth + Leaders</span>
+    <span class="tiny muted">Advancers, decliners, biggest move</span>
+  </summary>
+  <div class="toolbar">
   <div class="pill">Core Tape</div>
   <div class="tiny stack8">Tracking {{ core_quotes|length }} tickers in this tape refresh.</div>
-  <div class="metricStrip marketPulseSummaryStrip">
+  <div class="metricStrip marketPulseSummaryStrip" data-no-mobile-compact="1">
     <div class="metric">
       <div class="label">Advancers</div>
-      <div class="value">{{ stats.advancers }}</div>
+      <div class="value" id="marketPulseAdvancers">{{ stats.advancers }}</div>
       <div class="sub">Positive change</div>
     </div>
     <div class="metric">
       <div class="label">Decliners</div>
-      <div class="value">{{ stats.decliners }}</div>
+      <div class="value" id="marketPulseDecliners">{{ stats.decliners }}</div>
       <div class="sub">Negative change</div>
     </div>
     <div class="metric">
       <div class="label">Missing</div>
-      <div class="value">{{ stats.missing }}</div>
+      <div class="value" id="marketPulseMissing">{{ stats.missing }}</div>
       <div class="sub">Needs refresh/fallback</div>
     </div>
     <div class="metric">
       <div class="label">Biggest Move</div>
-      <div class="value">{{ stats.biggest_label }} {{ '%+.2f'|format(stats.biggest_move) }}%</div>
+      <div class="value" id="marketPulseBiggestMove">{{ stats.biggest_label }} {{ '%+.2f'|format(stats.biggest_move) }}%</div>
       <div class="sub">Top absolute mover</div>
     </div>
   </div>
-  <div class="statRow">
+  <div class="statRow" data-no-mobile-compact="1">
     {% for q in core_quotes %}
-      <div class="stat {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}">
+      <div class="stat marketPulseTapeCard {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}" data-symbol="{{ q.symbol }}">
         {% set q_state = (q.data_state or 'missing') %}
         {% set q_label = (q.data_status_label or q_state|title) %}
         <div class="pillRow marketCardMeta">
-          <span class="trendChip stateChip state-{{ q_state }}">{{ q_label }}</span>
-          <span class="tiny muted">{{ q.freshness_label or (q.asof or fetched_at) }}</span>
+          <span class="trendChip stateChip state-{{ q_state }}" data-role="state-chip">{{ q_label }}</span>
+          <span class="tiny muted" data-role="freshness">{{ q.freshness_label or (q.asof or fetched_at) }}</span>
         </div>
         <div class="k">{{ q.label }}</div>
-        <div class="marketMiniSparkWrap">{{ q.sparkline_svg|safe }}</div>
-        <div class="v">
+        <div class="marketMiniSparkWrap" data-role="sparkline">{{ q.sparkline_svg|safe }}</div>
+        <div class="v" data-role="price">
           {% if q.price is not none %}
             {{ '%.2f'|format(q.price) }}
           {% else %}
             —
           {% endif %}
         </div>
-        <div class="tiny">{{ '%+.2f'|format(q.change) }} · {{ '%+.2f'|format(q.change_pct) }}%</div>
-        <div class="tiny">State: {{ q.market_state }}</div>
+        <div class="tiny muted" data-role="source-badge">{{ q.source_badge_label or q.source_label or source_label }}</div>
+        <div class="tiny" data-role="change-line">{{ '%+.2f'|format(q.change) }} · {{ '%+.2f'|format(q.change_pct) }}%</div>
+        <div class="tiny" data-role="market-state">State: {{ q.market_state }}</div>
         {% if q.freshness_reason and q.data_state != 'live' %}
-          <div class="tiny muted">Reason: {{ q.freshness_reason }}</div>
+          <div class="tiny muted" data-role="reason-line">Reason: {{ q.freshness_reason }}</div>
+        {% else %}
+          <div class="tiny muted" data-role="reason-line" hidden></div>
         {% endif %}
-        <div class="tiny">Range: {{ q.day_range }}</div>
+        <div class="tiny" data-role="range-line">Range: {{ q.day_range }}</div>
         <div class="tiny muted">{{ q.focus }}</div>
         <div class="tiny"><a href="{{ q.yahoo_href }}" target="_blank" rel="noopener">View on Yahoo</a></div>
       </div>
     {% endfor %}
   </div>
-</div></div>
+  </div>
+</details>
 
-<div class="dashboardSupportGrid marketPulseSection">
+<div class="dashboardSupportGrid marketPulseSection" data-no-mobile-compact="1">
   <div class="card supportCard"><div class="toolbar">
     <div class="pill">SPX Focus</div>
     <div class="supportLead">{{ context.headline_note }}</div>
@@ -387,12 +474,12 @@
   </div></div>
   <div class="card supportCard subtleCard"><div class="toolbar">
     <div class="pill">Feed State</div>
-    <div class="supportLead">{% if news_available %}News briefing ready{% else %}Fallback mode{% endif %}</div>
+    <div class="supportLead">{% if news_available %}News briefing ready{% else %}Fallback Snapshot{% endif %}</div>
     <div class="supportBody">{{ news_source_note or source_note }}</div>
   </div></div>
 </div>
 
-<div class="metricStrip researchOnly marketPulseSection">
+<div class="metricStrip researchOnly marketPulseSection" data-no-mobile-compact="1">
   <div class="metric">
     <div class="label">SPX Tape</div>
     <div class="value">{{ '%+.2f'|format(context.spx_pct) }}%</div>
@@ -518,44 +605,74 @@
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>
 <script>
 (() => {
-  const KEY = "marketPulseAutoRefresh";
   const MODE_KEY = "marketPulseViewMode";
-  const toggle = document.getElementById("autoRefreshToggle");
   const modeToggle = document.getElementById("viewModeToggle");
-  const label = document.getElementById("autoRefreshLabel");
+  const streamStatus = document.getElementById("marketPulseStreamStatus");
+  const streamFreshness = document.getElementById("marketPulseStreamFreshness");
   const guardMeta = document.getElementById("marketGuardrailMeta");
   const refreshLink = document.getElementById("marketPulseRefreshLink");
-  const loadingOverlay = document.getElementById("marketPulseLoading");
-  if (!toggle || !label || !modeToggle || !guardMeta) return;
-  const baseSeconds = Math.max(15, Number(label.dataset.seconds || "60"));
-  let enabled = localStorage.getItem(KEY) === "on";
+  const loadingOverlay = document.getElementById("marketPulseLoadingOverlay");
+  const loadingTitle = document.getElementById("marketPulseLoadingTitle");
+  const loadingSub = document.getElementById("marketPulseLoadingSub");
+  const mobileFoldQuery = window.matchMedia("(max-width: 430px)");
+  const mobileFolds = Array.from(document.querySelectorAll(".marketPulseMobileFold[data-mobile-default='closed']"));
+  if (!modeToggle || !guardMeta) return;
+  const storageGet = (key) => {
+    try {
+      return window.localStorage ? window.localStorage.getItem(key) : null;
+    } catch (_err) {
+      return null;
+    }
+  };
+  const storageSet = (key, value) => {
+    try {
+      if (window.localStorage) window.localStorage.setItem(key, value);
+    } catch (_err) {
+      // Mobile Safari private mode and strict contexts can throw here.
+    }
+  };
   const marketHours = guardMeta.dataset.marketHours === "1";
-  const storedMode = localStorage.getItem(MODE_KEY);
-  let mode = storedMode || (marketHours ? "execution" : "research");
+  const storedMode = storageGet(MODE_KEY);
+  let mode = storedMode || ((marketHours || mobileFoldQuery.matches) ? "execution" : "research");
   const guardrailActive = guardMeta.dataset.active === "1";
   const guardrailMessage = guardMeta.dataset.message || "Data Unsafe guardrail active.";
-  let remaining = baseSeconds;
-  let timer = null;
-  let reloading = false;
-  const showLoading = () => {
+  let bootSettled = false;
+  let mobileFoldsInitialized = false;
+
+  const showReloadOverlay = (title, detail) => {
+    if (typeof window.showMarketPulseLoading === "function") {
+      window.showMarketPulseLoading(title, detail);
+      return;
+    }
     if (!loadingOverlay) return;
+    if (loadingTitle && title) loadingTitle.textContent = title;
+    if (loadingSub && detail) loadingSub.textContent = detail;
     loadingOverlay.classList.add("show");
     loadingOverlay.setAttribute("aria-hidden", "false");
+    loadingOverlay.dataset.active = "1";
+    document.documentElement.classList.add("marketPulseBooting");
+    document.body.classList.add("marketPulseBooting");
   };
 
-  const autoRefreshUrl = () => {
-    const url = new URL(window.location.href);
-    // Auto refresh should be lightweight; reserve force refresh for manual button only.
-    url.searchParams.delete("refresh");
-    return url.toString();
+  const hideReloadOverlay = () => {
+    if (typeof window.hideMarketPulseLoading === "function") {
+      window.hideMarketPulseLoading();
+      return;
+    }
+    if (!loadingOverlay) return;
+    loadingOverlay.classList.remove("show");
+    loadingOverlay.setAttribute("aria-hidden", "true");
+    loadingOverlay.dataset.active = "0";
+    document.documentElement.classList.remove("marketPulseBooting");
+    document.body.classList.remove("marketPulseBooting");
   };
 
   // If this page was opened with ?refresh=1, clean it up so auto-refresh doesn't keep force-refreshing.
   try {
-    const clean = new URL(window.location.href);
-    if (clean.searchParams.get("refresh") === "1") {
-      clean.searchParams.delete("refresh");
-      window.history.replaceState({}, "", clean.toString());
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("refresh") === "1") {
+      url.searchParams.delete("refresh");
+      window.history.replaceState({}, "", url.toString());
     }
   } catch (_err) {
     // no-op
@@ -584,58 +701,54 @@
     modeToggle.setAttribute("aria-pressed", execution ? "true" : "false");
     modeToggle.textContent = execution ? "Research Mode" : "Execution Mode";
   };
-
-  const updateUi = () => {
-    toggle.setAttribute("aria-pressed", enabled ? "true" : "false");
-    toggle.textContent = enabled ? "Auto Refresh On" : "Auto Refresh Off";
-    label.textContent = enabled ? `Next refresh in ${remaining}s` : "Auto refresh disabled";
+  const applyMobileFolds = () => {
+    if (mobileFoldsInitialized || !mobileFoldQuery.matches) return;
+    mobileFolds.forEach((fold) => fold.removeAttribute("open"));
+    mobileFoldsInitialized = true;
   };
-
-  const tick = () => {
-    if (!enabled || reloading) return;
-    if (document.visibilityState === "hidden") return;
-    remaining -= 1;
-    if (remaining <= 0) {
-      reloading = true;
-      showLoading();
-      window.location.assign(autoRefreshUrl());
-      return;
-    }
-    updateUi();
-  };
-
-  toggle.addEventListener("click", () => {
-    enabled = !enabled;
-    localStorage.setItem(KEY, enabled ? "on" : "off");
-    remaining = baseSeconds;
-    updateUi();
-  });
   modeToggle.addEventListener("click", () => {
     mode = (mode === "execution") ? "research" : "execution";
-    localStorage.setItem(MODE_KEY, mode);
+    storageSet(MODE_KEY, mode);
     applyMode();
+  });
+  const setStreamState = (status, detail) => {
+    if (streamStatus) {
+      streamStatus.textContent = status || "Live stream";
+    }
+    if (streamFreshness) {
+      streamFreshness.textContent = detail || "Awaiting first tick…";
+    }
+  };
+
+  setStreamState("Live stream connecting", "Awaiting first tick…");
+  window.addEventListener("market-pulse-stream-status", (event) => {
+    const detail = (event && event.detail) || {};
+    setStreamState(detail.status, detail.detail);
   });
   if (refreshLink) {
     refreshLink.addEventListener("click", () => {
-      reloading = true;
-      showLoading();
+      showReloadOverlay(
+        "Loading Market Pulse",
+        "Refreshing SPX priority, tape leadership, and macro catalysts…"
+      );
+      setStreamState("Refreshing", "Rebuilding full market context…");
     });
   }
 
-  timer = window.setInterval(tick, 1000);
-  updateUi();
   applyMode();
+  applyMobileFolds();
   applyGuardrailLock();
-
-  // Entry motion once DOM is ready.
-  window.requestAnimationFrame(() => {
+  const settleBoot = () => {
+    if (bootSettled) return;
+    bootSettled = true;
     document.body.classList.add("marketPulseReady");
+    window.setTimeout(hideReloadOverlay, 180);
+  };
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(settleBoot);
   });
-  window.addEventListener("beforeunload", () => {
-    if (timer) {
-      window.clearInterval(timer);
-      timer = null;
-    }
-  });
+  window.addEventListener("load", settleBoot, { once: true });
+  window.addEventListener("pageshow", settleBoot);
+  window.setTimeout(settleBoot, 1200);
 })();
 </script>

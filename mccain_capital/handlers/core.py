@@ -1,5 +1,6 @@
 """Core endpoint handlers (delegating to service layer)."""
 
+from mccain_capital.services import auth_passkeys as passkeys_svc
 from mccain_capital.services import core as svc
 from mccain_capital.services import goals as goals_svc
 
@@ -14,6 +15,30 @@ def setup_page():
 
 def login_page():
     return svc.login_page()
+
+
+def passkeys_page():
+    return passkeys_svc.passkeys_page()
+
+
+def passkeys_register_options():
+    return passkeys_svc.passkeys_register_options()
+
+
+def passkeys_register_verify():
+    return passkeys_svc.passkeys_register_verify()
+
+
+def passkeys_auth_options():
+    return passkeys_svc.passkeys_auth_options()
+
+
+def passkeys_auth_verify():
+    return passkeys_svc.passkeys_auth_verify()
+
+
+def passkeys_delete():
+    return passkeys_svc.passkeys_delete()
 
 
 def logout_page():
@@ -60,6 +85,10 @@ def dashboard_milestone_update():
     return svc.dashboard_milestone_update()
 
 
+def dashboard_brief_update():
+    return svc.dashboard_brief_update()
+
+
 def candle_opens_page():
     return svc.candle_opens_page()
 
@@ -98,6 +127,10 @@ def vanquish_lock_control():
 
 def vanquish_lock_state():
     return svc.vanquish_lock_state()
+
+
+def trading_window_config():
+    return svc.trading_window_config()
 
 
 def export_json():

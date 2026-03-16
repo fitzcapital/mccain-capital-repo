@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List
 
-from flask import abort, redirect, render_template, render_template_string, request, url_for
+from flask import abort, flash, redirect, render_template, render_template_string, request, url_for
 
 from mccain_capital.services import core as core_svc
 from mccain_capital.services.ui import render_page
 from mccain_capital.runtime import money
 from mccain_capital.repositories import strategies as repo
 from mccain_capital.repositories import analytics as analytics_repo
+from mccain_capital.services.viewmodels import StateBadgeViewModel
 
 
 def _strategy_form(title: str, t: str, body: str, errors: List[str]) -> str:
@@ -69,11 +70,54 @@ def strategies_page():
         item["win_rate"] = float(stat.get("win_rate") or 0.0)
         item["net"] = float(stat.get("net") or 0.0)
     headline = scorecards[0] if scorecards else None
+    total_trades = sum(int(card.get("count") or 0) for card in scorecards)
+    active_cards = sum(1 for card in scorecards if str(card.get("status") or "") == "Trade")
+    if headline and str(headline.get("status") or "") == "Trade":
+        hero_title = "Trade the Proven Seats"
+        hero_blurb = "The playbook has at least one setup earning its place. Keep size aligned with the cards actually paying."
+    elif headline:
+        hero_title = "Tighten the Playbook Before You Add Size"
+        hero_blurb = "There is data on the board, but the best seat still needs review before it deserves more risk."
+    else:
+        hero_title = "Build the Playbook From Real Edge"
+        hero_blurb = (
+            "Write one executable card at a time and let expectancy decide whether it survives."
+        )
+
+    strategy_status_badges = [
+        StateBadgeViewModel(
+            label="Confidence",
+            value=("High" if total_trades >= 20 else "Mixed"),
+            tone=("healthy" if total_trades >= 20 else "caution"),
+            title="Confidence in the playbook based on tracked strategy sample size.",
+        ),
+        StateBadgeViewModel(
+            label="Cards",
+            value=f"{len(scorecards)} active",
+            tone=("healthy" if scorecards else "neutral"),
+            title="Strategy scorecards currently being tracked.",
+        ),
+        StateBadgeViewModel(
+            label="Trade Seats",
+            value=(f"{active_cards} ready" if active_cards else "Review only"),
+            tone=("healthy" if active_cards else "caution"),
+            title="How many strategy cards are currently in tradeable shape.",
+        ),
+        StateBadgeViewModel(
+            label="Sample",
+            value=(f"{total_trades} trades" if total_trades else "No sample"),
+            tone=("healthy" if total_trades else "neutral"),
+            title="Total trades matched to strategy scorecards.",
+        ),
+    ]
     content = render_template(
         "strategies/index.html",
         items=items,
         scorecards=scorecards,
         headline=headline,
+        hero_title=hero_title,
+        hero_blurb=hero_blurb,
+        strategy_status_badges=strategy_status_badges,
         money=money,
     )
     return render_page(content, active="strategies")
@@ -89,6 +133,7 @@ def strategies_new():
                 active="strategies",
             )
         repo.create_strategy(title=title, body=body)
+        flash("Strategy saved.", "success")
         return redirect(url_for("strategies_page"))
     return render_page(_strategy_form("New Strategy", "", "", []), active="strategies")
 
@@ -107,6 +152,7 @@ def strategies_edit(sid: int):
                 active="strategies",
             )
         repo.update_strategy(sid=sid, title=title, body=body)
+        flash("Strategy updated.", "success")
         return redirect(url_for("strategies_page"))
 
     return render_page(
@@ -116,6 +162,7 @@ def strategies_edit(sid: int):
 
 def strategies_delete(sid: int):
     repo.delete_strategy(sid=sid)
+    flash("Strategy deleted.", "success")
     return redirect(url_for("strategies_page"))
 
 

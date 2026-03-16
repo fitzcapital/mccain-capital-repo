@@ -5,6 +5,7 @@ from __future__ import annotations
 from mccain_capital.services import trades as legacy
 from mccain_capital.services import trades_balance as trades_balance_svc
 from mccain_capital.services.viewmodels import (
+    StateBadgeViewModel,
     balance_state_badges,
     sync_state_badges,
     trades_data_trust,
@@ -121,6 +122,42 @@ def trades_page():
         if trades_count
         else "Import statement or add first trade, then complete setup/session review tags."
     )
+    if guardrail.get("locked"):
+        hero_title = "Protect Capital and Review"
+        hero_blurb = "The session is in protection mode. Audit the tape, lock in lessons, and avoid new risk."
+    elif trades_count == 0:
+        hero_title = "Start the Session Clean"
+        hero_blurb = "Open with a clean record: import, tag, and define the first valid setup before pace increases."
+    elif day_net > 0 and win_rate >= 60:
+        hero_title = "Defend the Day and Stay Selective"
+        hero_blurb = "Results are working. Keep the quality bar high and avoid giving back edge through boredom."
+    elif day_net < 0:
+        hero_title = "Tighten Risk and Review Fast"
+        hero_blurb = "Pressure is rising. Shrink the decision tree, fix the misses, and only keep A-grade intent on."
+    else:
+        hero_title = "Review the Tape and Keep Entries Selective"
+        hero_blurb = "The read is mixed. Use the log to narrow the next clean setup instead of forcing throughput."
+
+    trades_status_badges = [
+        StateBadgeViewModel(
+            label="Workflow",
+            value=("Review only" if guardrail.get("locked") else "Execution live"),
+            tone=("critical" if guardrail.get("locked") else "healthy"),
+            title="Current execution mode for the trades surface.",
+        ),
+        StateBadgeViewModel(
+            label="In Scope",
+            value=(f"{trades_count} trades" if trades_count else "No trades"),
+            tone=("healthy" if trades_count else "caution"),
+            title="Visible trades in the current date/search filter.",
+        ),
+        StateBadgeViewModel(
+            label="Review Tags",
+            value=("Required" if trades_count else "Stand by"),
+            tone=("caution" if trades_count else "neutral"),
+            title="Trade review tags should be completed before day end.",
+        ),
+    ]
     is_day_view = bool(d)
     primary_net_label = (
         f"💰 Day Net ({d})" if is_day_view else "💰 Filtered Net (All Visible Trades)"
@@ -163,6 +200,7 @@ def trades_page():
         next_action_msg=next_action_msg,
         guardrail=guardrail,
         data_trust=data_trust,
+        trades_status_badges=trades_status_badges,
         balance_integrity=balance_integrity,
         balance_badges=balance_badges,
         sync_badges=sync_badges,
@@ -172,6 +210,8 @@ def trades_page():
         primary_net_sub=primary_net_sub,
         secondary_total_label=secondary_total_label,
         secondary_total_value=secondary_total_value,
+        hero_title=hero_title,
+        hero_blurb=hero_blurb,
     )
 
     return legacy.render_page(content, active="trades")

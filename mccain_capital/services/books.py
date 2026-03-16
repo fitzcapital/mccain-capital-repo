@@ -7,7 +7,7 @@ import os
 from flask import abort, render_template_string, send_file
 
 from mccain_capital.repositories import books as repo
-from mccain_capital.runtime import BOOKS_DIR
+from mccain_capital import runtime as app_runtime
 from mccain_capital.services.ui import render_page
 
 
@@ -199,7 +199,7 @@ def books_page():
         </div></div>
         """,
         books=enriched,
-        books_dir=BOOKS_DIR,
+        books_dir=app_runtime.books_root(),
         featured=featured,
     )
     return render_page(content, active="books")
@@ -207,7 +207,7 @@ def books_page():
 
 def books_open(name: str):
     fn = repo.safe_filename(name)
-    path = os.path.join(BOOKS_DIR, fn)
+    path = os.path.join(app_runtime.books_root(), fn)
     if not os.path.exists(path) or not fn.lower().endswith(".pdf"):
         abort(404)
     return send_file(path, as_attachment=False)

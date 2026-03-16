@@ -1,28 +1,85 @@
-<div class="card"><div class="toolbar">
-  <div class="pill">System Check</div>
-  <div class="pageTitle">Storage & Runtime Health</div>
-  <div class="pageSub">
-    Status: <span class="trendChip {{ 'positive' if status == 'healthy' else 'negative' }}">{{ status|upper }}</span>
-    · {{ ok_count }}/{{ total_count }} checks passing
-  </div>
-  <div class="metricStrip" style="margin-top:12px">
-    <div class="metric">
-      <div class="label">Trades</div>
-      <div class="value">{{ trades_count }}</div>
-      <div class="sub">rows detected</div>
-    </div>
-    <div class="metric">
-      <div class="label">Journal</div>
-      <div class="value">{{ journal_count }}</div>
-      <div class="sub">entries detected</div>
-    </div>
-    <div class="metric">
-      <div class="label">Checks OK</div>
-      <div class="value">{{ ok_count }}</div>
-      <div class="sub">of {{ total_count }}</div>
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">🛠️ System Check</div>
+        <div class="pageTitleRow">
+          <h2 class="pageTitle">{{ hero_title }}</h2>
+        </div>
+        <div class="summaryLead stack8">{{ hero_blurb }}</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn primary" href="/ops/backups">Backup Center</a>
+        <a class="btn ctaLink" href="/analytics?tab=diagnostics">Diagnostics</a>
+      </div>
     </div>
   </div>
-</div></div>
+</div>
+
+<div class="statusBadgeStrip">
+  {% for badge in status_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="dashboardSupportGrid">
+  <div class="card supportCard workflowPromptCard"><div class="toolbar">
+    <div class="pill">Runtime Read</div>
+    <div class="supportLead">{{ support_lead }}</div>
+    <div class="supportBody">{{ support_body }}</div>
+    <div class="supportMeta">Status {{ status|upper }} · {{ ok_count }}/{{ total_count }} checks passing.</div>
+  </div></div>
+
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Next Move</div>
+    <div class="supportLead">
+      {% if status == 'healthy' %}
+        No immediate repair work is required.
+      {% else %}
+        Fix the degraded checks before trusting imports, analytics, or restores.
+      {% endif %}
+    </div>
+    <div class="supportBody">
+      {% if status == 'healthy' %}
+        Keep backups current and only revisit this page after restore work, path changes, or suspicious ledger drift.
+      {% else %}
+        Start with missing paths or write access, then confirm the tables and backup artifacts are readable again.
+      {% endif %}
+    </div>
+  </div></div>
+</div>
+
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">Storage Snapshot</div>
+    <div class="metricStrip">
+      <div class="metric">
+        <div class="label">Trades</div>
+        <div class="value">{{ trades_count }}</div>
+        <div class="sub">rows detected</div>
+      </div>
+      <div class="metric">
+        <div class="label">Journal</div>
+        <div class="value">{{ journal_count }}</div>
+        <div class="sub">entries detected</div>
+      </div>
+      <div class="metric">
+        <div class="label">Checks OK</div>
+        <div class="value">{{ ok_count }}</div>
+        <div class="sub">of {{ total_count }}</div>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Operational Rule</div>
+    <div class="supportLead">Trust runtime first, then trust the rest of the app.</div>
+    <div class="supportBody">A broken path or non-writable upload directory will cascade into imports, reviews, backups, and recovery work.</div>
+  </div></div>
+</div>
 
 <div class="card"><div class="toolbar">
   <div class="pill">Diagnostics</div>

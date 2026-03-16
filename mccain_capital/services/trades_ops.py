@@ -36,7 +36,7 @@ def _auto_backup_worker(app) -> None:
                 time.sleep(35)
                 continue
             try:
-                fd = os.open(legacy.AUTO_BACKUP_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                fd = os.open(legacy._auto_backup_lock_path(), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.close(fd)
             except FileExistsError:
                 time.sleep(20)
@@ -49,7 +49,7 @@ def _auto_backup_worker(app) -> None:
                     legacy._save_auto_backup_config(cfg)
             finally:
                 try:
-                    os.unlink(legacy.AUTO_BACKUP_LOCK_PATH)
+                    os.unlink(legacy._auto_backup_lock_path())
                 except OSError:
                     pass
             time.sleep(20)

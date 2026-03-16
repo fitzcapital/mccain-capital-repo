@@ -42,8 +42,6 @@ from mccain_capital import auth
 from mccain_capital import runtime as app_runtime
 from mccain_capital.migrations import run_migrations
 from mccain_capital.runtime import (
-    BOOKS_DIR,
-    UPLOAD_DIR,
     db,
     detect_paste_format,
     get_setting_float,
@@ -51,6 +49,7 @@ from mccain_capital.runtime import (
     money,
     now_iso,
     normalize_opt_type,
+    parse_date_any,
     parse_float,
     parse_int,
     today_iso,
@@ -71,20 +70,6 @@ trade_day_stats = repo.trade_day_stats
 calc_consistency = repo.calc_consistency
 week_total_net = repo.week_total_net
 
-BROKER_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync.json")
-BROKER_DEBUG_DIR = os.path.join(UPLOAD_DIR, "vanquish_debug")
-BROKER_SYNC_STATUS_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync_last_run.json")
-BROKER_SYNC_HISTORY_PATH = os.path.join(UPLOAD_DIR, ".vanquish_sync_history.json")
-BROKER_IMPORT_HISTORY_PATH = os.path.join(UPLOAD_DIR, ".vanquish_import_history.json")
-BROKER_NOTIFY_HISTORY_PATH = os.path.join(UPLOAD_DIR, ".vanquish_notify_history.json")
-PLAYBOOK_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".playbook_rules.json")
-ADMIN_AUDIT_LOG_PATH = os.path.join(UPLOAD_DIR, ".admin_audit_log.json")
-BROKER_AUTO_SYNC_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.json")
-BROKER_AUTO_SYNC_LOCK_PATH = os.path.join(UPLOAD_DIR, ".vanquish_auto_sync.lock")
-AUTO_BACKUP_CONFIG_PATH = os.path.join(UPLOAD_DIR, ".auto_backup_config.json")
-AUTO_BACKUP_DIR = os.path.join(UPLOAD_DIR, "backups")
-AUTO_BACKUP_LOCK_PATH = os.path.join(UPLOAD_DIR, ".auto_backup.lock")
-BG_JOB_DIR = os.path.join(UPLOAD_DIR, ".bg_jobs")
 BROKER_KEYCHAIN_SERVICE = "mccain-capital.vanquish.auto-sync"
 AUTO_SYNC_PASSWORD_FALLBACK = os.environ.get("AUTO_SYNC_PASSWORD_FALLBACK", "0") == "1"
 SYNC_HISTORY_MAX = 300
@@ -120,7 +105,97 @@ NOTIFY_DEDUPE_BY_EVENT = {
     ),
 }
 
-_BG_JOB_STORE = BackgroundJobStore(BG_JOB_DIR, now_iso)
+_BG_JOB_STORES: Dict[str, BackgroundJobStore] = {}
+
+
+def _upload_dir() -> str:
+    return app_runtime.upload_root()
+
+
+def _books_dir() -> str:
+    return app_runtime.books_root()
+
+
+def _upload_file(name: str) -> str:
+    return app_runtime.upload_path(name)
+
+
+def _broker_sync_config_path() -> str:
+    return str(BROKER_SYNC_CONFIG_PATH or _upload_file(".vanquish_sync.json"))
+
+
+def _broker_debug_dir() -> str:
+    return str(BROKER_DEBUG_DIR or _upload_file("vanquish_debug"))
+
+
+def _broker_sync_status_path() -> str:
+    return str(BROKER_SYNC_STATUS_PATH or _upload_file(".vanquish_sync_last_run.json"))
+
+
+def _broker_sync_history_path() -> str:
+    return str(BROKER_SYNC_HISTORY_PATH or _upload_file(".vanquish_sync_history.json"))
+
+
+def _broker_import_history_path() -> str:
+    return str(BROKER_IMPORT_HISTORY_PATH or _upload_file(".vanquish_import_history.json"))
+
+
+def _broker_notify_history_path() -> str:
+    return str(BROKER_NOTIFY_HISTORY_PATH or _upload_file(".vanquish_notify_history.json"))
+
+
+def _playbook_config_path() -> str:
+    return str(PLAYBOOK_CONFIG_PATH or _upload_file(".playbook_rules.json"))
+
+
+def _admin_audit_log_path() -> str:
+    return str(ADMIN_AUDIT_LOG_PATH or _upload_file(".admin_audit_log.json"))
+
+
+def _broker_auto_sync_config_path() -> str:
+    return str(BROKER_AUTO_SYNC_CONFIG_PATH or _upload_file(".vanquish_auto_sync.json"))
+
+
+def _broker_auto_sync_lock_path() -> str:
+    return str(BROKER_AUTO_SYNC_LOCK_PATH or _upload_file(".vanquish_auto_sync.lock"))
+
+
+def _auto_backup_config_path() -> str:
+    return str(AUTO_BACKUP_CONFIG_PATH or _upload_file(".auto_backup_config.json"))
+
+
+def _auto_backup_dir() -> str:
+    return str(AUTO_BACKUP_DIR or _upload_file("backups"))
+
+
+def _auto_backup_lock_path() -> str:
+    return str(AUTO_BACKUP_LOCK_PATH or _upload_file(".auto_backup.lock"))
+
+
+def _bg_job_store() -> BackgroundJobStore:
+    job_dir = str(BG_JOB_DIR or _upload_file(".bg_jobs"))
+    store = _BG_JOB_STORES.get(job_dir)
+    if store is None:
+        store = BackgroundJobStore(job_dir, now_iso)
+        _BG_JOB_STORES[job_dir] = store
+    return store
+
+
+# Optional path overrides used by targeted tests and local debugging.
+BROKER_SYNC_CONFIG_PATH: Optional[str] = None
+BROKER_DEBUG_DIR: Optional[str] = None
+BROKER_SYNC_STATUS_PATH: Optional[str] = None
+BROKER_SYNC_HISTORY_PATH: Optional[str] = None
+BROKER_IMPORT_HISTORY_PATH: Optional[str] = None
+BROKER_NOTIFY_HISTORY_PATH: Optional[str] = None
+PLAYBOOK_CONFIG_PATH: Optional[str] = None
+ADMIN_AUDIT_LOG_PATH: Optional[str] = None
+BROKER_AUTO_SYNC_CONFIG_PATH: Optional[str] = None
+BROKER_AUTO_SYNC_LOCK_PATH: Optional[str] = None
+AUTO_BACKUP_CONFIG_PATH: Optional[str] = None
+AUTO_BACKUP_DIR: Optional[str] = None
+AUTO_BACKUP_LOCK_PATH: Optional[str] = None
+BG_JOB_DIR: Optional[str] = None
 
 _AUDIT_ACTION_META = {
     "backup_created": {"label": "Backup Created", "group": "backup"},
@@ -181,15 +256,15 @@ def _sync_stage_label(stage: str) -> str:
 
 
 def _create_bg_job(kind: str, title: str, requested: Dict[str, Any]) -> Dict[str, Any]:
-    return _BG_JOB_STORE.create(kind, title, requested)
+    return _bg_job_store().create(kind, title, requested)
 
 
 def _update_bg_job(job_id: str, **updates: Any) -> Dict[str, Any]:
-    return _BG_JOB_STORE.update(job_id, **updates)
+    return _bg_job_store().update(job_id, **updates)
 
 
 def _get_bg_job(job_id: str) -> Dict[str, Any]:
-    return _BG_JOB_STORE.get(job_id)
+    return _bg_job_store().get(job_id)
 
 
 def _build_action_result_summary(
@@ -261,7 +336,7 @@ def _load_playbook_config() -> Dict[str, Any]:
         "critical_items": ["Bias Confirmed", "Risk Defined", "Stop Planned"],
     }
     try:
-        with open(PLAYBOOK_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(_playbook_config_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             if isinstance(parsed, dict):
                 cfg.update(parsed)
@@ -287,8 +362,8 @@ def _load_playbook_config() -> Dict[str, Any]:
 
 
 def _save_playbook_config(cfg: Dict[str, Any]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(PLAYBOOK_CONFIG_PATH, "w", encoding="utf-8") as f:
+    os.makedirs(_upload_dir(), exist_ok=True)
+    with open(_playbook_config_path(), "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 
 
@@ -405,6 +480,225 @@ def _playbook_violations(
     return violations
 
 
+def _trade_gate_setting_key(day: str) -> str:
+    return f"trade_gate::{str(day or '').strip()}"
+
+
+def _load_trade_gate(day: str) -> Dict[str, Any]:
+    raw = str(app_runtime.get_setting_value(_trade_gate_setting_key(day), "") or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _save_trade_gate(day: str, payload: Dict[str, Any]) -> None:
+    app_runtime.set_setting_value(_trade_gate_setting_key(day), json.dumps(payload))
+
+
+def _trade_gate_required(day: str) -> bool:
+    return len(fetch_trades(d=day, q="")) == 0 and not bool(_load_trade_gate(day).get("passed"))
+
+
+def _trade_gate_values(source: Dict[str, Any], saved: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "setup_type": str(source.get("gate_setup_type") or saved.get("setup_type") or "").strip(),
+        "invalidation": str(
+            source.get("gate_invalidation") or saved.get("invalidation") or ""
+        ).strip(),
+        "max_risk": str(source.get("gate_max_risk") or saved.get("max_risk") or "").strip(),
+        "focus": str(source.get("gate_focus") or saved.get("focus") or "").strip(),
+    }
+
+
+def _trade_gate_checks(source: Dict[str, Any], saved: Dict[str, Any]) -> Dict[str, bool]:
+    return {
+        "market_ready": str(
+            source.get("gate_market_ready") or ("1" if saved.get("market_ready") else "")
+        ).strip()
+        == "1",
+        "macro_clear": str(
+            source.get("gate_macro_clear") or ("1" if saved.get("macro_clear") else "")
+        ).strip()
+        == "1",
+        "risk_confirmed": str(
+            source.get("gate_risk_confirmed") or ("1" if saved.get("risk_confirmed") else "")
+        ).strip()
+        == "1",
+    }
+
+
+def _trade_gate_errors(values: Dict[str, str], checks: Dict[str, bool]) -> List[str]:
+    errors: List[str] = []
+    if not values.get("setup_type"):
+        errors.append("Choose the setup you are actually trading.")
+    if not values.get("invalidation"):
+        errors.append("Write the invalidation before entry.")
+    if not values.get("max_risk"):
+        errors.append("Set the max risk for the trade.")
+    if not checks.get("market_ready"):
+        errors.append("Confirm market structure is aligned.")
+    if not checks.get("macro_clear"):
+        errors.append("Confirm you are clear of the macro window.")
+    if not checks.get("risk_confirmed"):
+        errors.append("Confirm size and max loss are defined before entry.")
+    return errors
+
+
+def _trade_gate_viewmodel(day: str, source: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    source = source or {}
+    saved = _load_trade_gate(day)
+    required = _trade_gate_required(day)
+    passed = bool(saved.get("passed")) and not required
+    values = _trade_gate_values(source, saved)
+    checks = _trade_gate_checks(source, saved)
+    return {
+        "day": day,
+        "required": required,
+        "passed": passed,
+        "values": values,
+        "checks": checks,
+        "passed_label": str(saved.get("passed_label") or ""),
+        "summary": (
+            f"{saved.get('setup_type', 'Setup')} · risk {saved.get('max_risk', '—')} · {saved.get('passed_label', '')}"
+            if passed
+            else "Complete this once before the first manual trade of the day."
+        ),
+    }
+
+
+def _render_manual_trade_entry_form(
+    *,
+    pb_cfg: Dict[str, Any],
+    values: Optional[Dict[str, Any]] = None,
+    gate_error: str = "",
+) -> str:
+    values = values or {}
+    trade_date = str(values.get("trade_date") or today_iso()).strip() or today_iso()
+    strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
+    gate = _trade_gate_viewmodel(trade_date, values)
+    content = render_template_string(
+        """
+        <div class="card"><div class="toolbar">
+          <div class="pill">➕ Manual Trade Entry</div>
+          <div class="tiny stack8">First trade of the day now requires a short gate so execution starts from an actual plan.</div>
+          {% if gate_error %}
+            <div class="integrityAlert integrityAlert-warn">{{ gate_error }}</div>
+          {% endif %}
+          <div class="hr"></div>
+          <form method="post">
+            <div class="card supportCard subtleCard">
+              <div class="toolbar">
+                <div class="pillRow">
+                  <div class="pill">Trade Gate</div>
+                  {% if gate.passed %}
+                    <span class="trendChip positive">Passed</span>
+                  {% elif gate.required %}
+                    <span class="trendChip negative">Required</span>
+                  {% else %}
+                    <span class="trendChip">Optional</span>
+                  {% endif %}
+                </div>
+                <div class="supportLead">{{ gate.summary }}</div>
+                <div class="row stack10">
+                  <div>
+                    <label>Setup Type</label>
+                    <input name="gate_setup_type" list="strategy-options" value="{{ gate.values.setup_type }}" placeholder="ORB, continuation, fade, reclaim"/>
+                  </div>
+                  <div class="fieldGrow2">
+                    <label>Invalidation</label>
+                    <input name="gate_invalidation" value="{{ gate.values.invalidation }}" placeholder="What level or condition proves this trade wrong?"/>
+                  </div>
+                  <div>
+                    <label>Max Risk</label>
+                    <input name="gate_max_risk" value="{{ gate.values.max_risk }}" placeholder="$150 or 10 pts"/>
+                  </div>
+                </div>
+                <div class="stack10">
+                  <label>Focus Note</label>
+                  <textarea name="gate_focus" placeholder="Why is this trade allowed today?">{{ gate.values.focus }}</textarea>
+                </div>
+                <div class="row stack10">
+                  <div class="stack10"><label><input type="checkbox" name="gate_market_ready" value="1" {% if gate.checks.market_ready %}checked{% endif %}/> Structure is aligned with my setup</label></div>
+                  <div class="stack10"><label><input type="checkbox" name="gate_macro_clear" value="1" {% if gate.checks.macro_clear %}checked{% endif %}/> I am clear of the macro risk window</label></div>
+                  <div class="stack10"><label><input type="checkbox" name="gate_risk_confirmed" value="1" {% if gate.checks.risk_confirmed %}checked{% endif %}/> Size, stop, and max loss are defined</label></div>
+                </div>
+              </div>
+            </div>
+            <div class="hr"></div>
+            <div class="row">
+              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ values.get('trade_date', today) }}"/></div>
+              <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM" value="{{ values.get('entry_time', '') }}"/></div>
+              <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM" value="{{ values.get('exit_time', '') }}"/></div>
+            </div>
+            <div class="row stack10">
+              <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX" value="{{ values.get('ticker', '') }}"/></div>
+              <div>
+                <label>📌 Type</label>
+                <select name="opt_type">
+                  <option value="CALL" {% if values.get('opt_type', 'CALL') == 'CALL' %}selected{% endif %}>CALL</option>
+                  <option value="PUT" {% if values.get('opt_type') == 'PUT' %}selected{% endif %}>PUT</option>
+                </select>
+              </div>
+              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940" value="{{ values.get('strike', '') }}"/></div>
+            </div>
+            <div class="row stack10">
+              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ values.get('contracts', '1') }}"/></div>
+              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20" value="{{ values.get('entry_price', '') }}"/></div>
+              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30" value="{{ values.get('exit_price', '') }}"/></div>
+            </div>
+            <div class="row stack10">
+              <div><label>🏷️ Strategy</label><input name="strategy_label" list="strategy-options" placeholder="Fitz 2-2 REV" value="{{ values.get('strategy_label', values.get('setup_tag', '')) }}"/></div>
+              <div><label>🕒 Session Tag</label><input name="session_tag" placeholder="AM / Midday / PM" value="{{ values.get('session_tag', '') }}"/></div>
+              <div><label>✅ Checklist Score</label><input name="checklist_score" inputmode="numeric" placeholder="0-100" value="{{ values.get('checklist_score', '') }}"/></div>
+            </div>
+            <datalist id="strategy-options">
+              {% for strategy in strategy_options %}
+                <option value="{{ strategy['title'] }}"></option>
+              {% endfor %}
+            </datalist>
+            <div class="row stack10">
+              <div class="fieldGrow2">
+                <label>🧱 Critical Checklist Gate</label>
+                <div class="tiny stack8 line16">
+                  {% for item in critical_items %}
+                    <label style="display:inline-flex; gap:8px; margin-right:14px; align-items:center;">
+                      <input type="checkbox" name="critical_item" value="{{ item }}" {% if item in selected_critical_items %}checked{% endif %}> {{ item }}
+                    </label>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            <div class="row stack10">
+              <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="{{ values.get('comm', '0.70') }}"/></div>
+            </div>
+            <div class="hr"></div>
+            <div class="rightActions">
+              <button class="btn primary" type="submit">💾 Save Trade</button>
+              <a class="btn" href="/trades">← Back</a>
+            </div>
+          </form>
+        </div></div>
+        """,
+        today=today_iso(),
+        values=values,
+        gate=gate,
+        gate_error=gate_error,
+        strategy_options=strategy_options,
+        critical_items=pb_cfg.get("critical_items")
+        or ["Bias Confirmed", "Risk Defined", "Stop Planned"],
+        selected_critical_items=(
+            [str(x).strip() for x in values.getlist("critical_item") if hasattr(values, "getlist")]
+            if hasattr(values, "getlist")
+            else [str(x).strip() for x in (values.get("critical_item") or []) if str(x).strip()]
+        ),
+    )
+    return render_page(content, active="trades")
+
+
 def _keyring_client():
     try:
         import keyring  # type: ignore
@@ -437,7 +731,7 @@ def _fallback_fernet():
             return Fernet(raw_key.encode("utf-8"))
         except Exception:
             return None
-    secret = (os.environ.get("SECRET_KEY") or "dev-secret-key").strip()
+    secret = app_runtime.load_or_create_secret_key().strip()
     if not secret:
         return None
     digest = hashlib.sha256(f"mccain-auto-sync::{secret}".encode("utf-8")).digest()
@@ -520,7 +814,7 @@ def _load_broker_sync_config() -> Dict[str, str]:
         "report_locale": os.environ.get("VANQUISH_REPORT_LOCALE", "en"),
     }
     try:
-        with open(BROKER_SYNC_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_sync_config_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return defaults
@@ -555,7 +849,7 @@ def _safe_write_json(path: str, payload: Any) -> None:
 
 
 def _save_broker_sync_config(data: Dict[str, str]) -> None:
-    _safe_write_json(BROKER_SYNC_CONFIG_PATH, data)
+    _safe_write_json(_broker_sync_config_path(), data)
 
 
 def _humanize_et_timestamp(raw: str) -> str:
@@ -571,7 +865,7 @@ def _humanize_et_timestamp(raw: str) -> str:
 
 def _load_last_sync_status() -> Dict[str, Any]:
     try:
-        with open(BROKER_SYNC_STATUS_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_sync_status_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             if not isinstance(parsed, dict):
                 return {}
@@ -582,7 +876,7 @@ def _load_last_sync_status() -> Dict[str, Any]:
 
 
 def _save_last_sync_status(payload: Dict[str, Any]) -> None:
-    _safe_write_json(BROKER_SYNC_STATUS_PATH, payload)
+    _safe_write_json(_broker_sync_status_path(), payload)
     status = str(payload.get("status") or "").strip().lower()
     if status not in {"success", "failed", "debug_only"}:
         return
@@ -607,7 +901,7 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
     )
     if len(history) > SYNC_HISTORY_MAX:
         history = history[-SYNC_HISTORY_MAX:]
-    _safe_write_json(BROKER_SYNC_HISTORY_PATH, history)
+    _safe_write_json(_broker_sync_history_path(), history)
     if status == "failed":
         streak = 0
         for e in reversed(history):
@@ -642,7 +936,7 @@ def _save_last_sync_status(payload: Dict[str, Any]) -> None:
 
 def _load_sync_history() -> List[Dict[str, Any]]:
     try:
-        with open(BROKER_SYNC_HISTORY_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_sync_history_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             return [x for x in parsed if isinstance(x, dict)] if isinstance(parsed, list) else []
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -651,7 +945,7 @@ def _load_sync_history() -> List[Dict[str, Any]]:
 
 def _load_notify_history() -> Dict[str, Any]:
     try:
-        with open(BROKER_NOTIFY_HISTORY_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_notify_history_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             return parsed if isinstance(parsed, dict) else {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -659,18 +953,22 @@ def _load_notify_history() -> Dict[str, Any]:
 
 
 def _save_notify_history(state: Dict[str, Any]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(BROKER_NOTIFY_HISTORY_PATH, "w", encoding="utf-8") as f:
+    os.makedirs(_upload_dir(), exist_ok=True)
+    with open(_broker_notify_history_path(), "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
 
 def _load_admin_audit() -> List[Dict[str, Any]]:
-    try:
-        with open(ADMIN_AUDIT_LOG_PATH, "r", encoding="utf-8") as f:
-            parsed = json.load(f)
-            return [x for x in parsed if isinstance(x, dict)] if isinstance(parsed, list) else []
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return []
+    for path in _admin_audit_paths(for_read=True):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                parsed = json.load(f)
+                return (
+                    [x for x in parsed if isinstance(x, dict)] if isinstance(parsed, list) else []
+                )
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+    return []
 
 
 def record_admin_audit(
@@ -687,9 +985,36 @@ def record_admin_audit(
     )
     if len(rows) > 500:
         rows = rows[-500:]
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(ADMIN_AUDIT_LOG_PATH, "w", encoding="utf-8") as f:
-        json.dump(rows, f, indent=2)
+    if not _save_admin_audit(rows):
+        current_app.logger.error("Admin audit write failed; event kept in-memory only: %s", action)
+
+
+def _save_admin_audit(rows: List[Dict[str, Any]]) -> bool:
+    errors: List[str] = []
+    for path in _admin_audit_paths(for_read=False):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(rows, f, indent=2)
+            return True
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+    if errors:
+        current_app.logger.error("Admin audit write failed: %s", " | ".join(errors))
+    return False
+
+
+def _admin_audit_paths(for_read: bool = True) -> List[str]:
+    fallback = os.path.join(tempfile.gettempdir(), "mccain-capital", ".admin_audit_log.json")
+    ordered = (_admin_audit_log_path(), fallback)
+    if for_read and os.path.isfile(fallback):
+        ordered = (fallback, _admin_audit_log_path())
+    paths: List[str] = []
+    for path in ordered:
+        p = os.path.abspath(str(path))
+        if p and p not in paths:
+            paths.append(p)
+    return paths
 
 
 def _audit_action_meta(action: str) -> Dict[str, str]:
@@ -772,10 +1097,15 @@ def _load_auto_backup_config() -> Dict[str, Any]:
         "last_status": "",
         "last_message": "",
     }
-    try:
-        with open(AUTO_BACKUP_CONFIG_PATH, "r", encoding="utf-8") as f:
-            parsed = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    parsed: Any = None
+    for path in _auto_backup_config_paths(for_read=True):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                parsed = json.load(f)
+            break
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+    if parsed is None:
         return cfg
     if isinstance(parsed, dict):
         cfg["enabled"] = bool(parsed.get("enabled"))
@@ -796,17 +1126,39 @@ def _load_auto_backup_config() -> Dict[str, Any]:
     return cfg
 
 
-def _save_auto_backup_config(cfg: Dict[str, Any]) -> None:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(AUTO_BACKUP_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+def _save_auto_backup_config(cfg: Dict[str, Any]) -> bool:
+    errors: List[str] = []
+    for path in _auto_backup_config_paths(for_read=False):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2)
+            return True
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+    if errors:
+        current_app.logger.error("Auto backup config write failed: %s", " | ".join(errors))
+    return False
+
+
+def _auto_backup_config_paths(for_read: bool = True) -> List[str]:
+    fallback = os.path.join(tempfile.gettempdir(), "mccain-capital", ".auto_backup_config.json")
+    ordered = (_auto_backup_config_path(), fallback)
+    if for_read and os.path.isfile(fallback):
+        ordered = (fallback, _auto_backup_config_path())
+    paths: List[str] = []
+    for path in ordered:
+        p = os.path.abspath(str(path))
+        if p and p not in paths:
+            paths.append(p)
+    return paths
 
 
 def _create_backup_archive(reason: str, actor: str) -> Dict[str, Any]:
     stamp = datetime.now(ZoneInfo("America/New_York")).strftime("%Y%m%d_%H%M%S")
-    os.makedirs(AUTO_BACKUP_DIR, exist_ok=True)
+    os.makedirs(_auto_backup_dir(), exist_ok=True)
     name = f"mccain_backup_{stamp}_{secure_filename(reason or 'manual')}.zip"
-    out_path = os.path.join(AUTO_BACKUP_DIR, name)
+    out_path = os.path.join(_auto_backup_dir(), name)
     db_path = str(app_runtime.DB_PATH)
     upload_root = str(app_runtime.UPLOAD_DIR)
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -816,7 +1168,9 @@ def _create_backup_archive(reason: str, actor: str) -> Dict[str, Any]:
             for root, _, files in os.walk(upload_root):
                 for fn in files:
                     full = os.path.join(root, fn)
-                    if os.path.abspath(full).startswith(os.path.abspath(AUTO_BACKUP_DIR) + os.sep):
+                    if os.path.abspath(full).startswith(
+                        os.path.abspath(_auto_backup_dir()) + os.sep
+                    ):
                         continue
                     rel = os.path.relpath(full, upload_root)
                     zf.write(full, arcname=f"data/uploads/{rel}")
@@ -838,12 +1192,12 @@ def _create_backup_archive(reason: str, actor: str) -> Dict[str, Any]:
 
 
 def _prune_auto_backups(keep_count: int) -> None:
-    if not os.path.isdir(AUTO_BACKUP_DIR):
+    if not os.path.isdir(_auto_backup_dir()):
         return
     files = [
-        os.path.join(AUTO_BACKUP_DIR, n)
-        for n in os.listdir(AUTO_BACKUP_DIR)
-        if n.endswith(".zip") and os.path.isfile(os.path.join(AUTO_BACKUP_DIR, n))
+        os.path.join(_auto_backup_dir(), n)
+        for n in os.listdir(_auto_backup_dir())
+        if n.endswith(".zip") and os.path.isfile(os.path.join(_auto_backup_dir(), n))
     ]
     files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
     for p in files[max(3, keep_count) :]:
@@ -1145,7 +1499,7 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
 
 def _load_import_history() -> List[Dict[str, Any]]:
     try:
-        with open(BROKER_IMPORT_HISTORY_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_import_history_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             return [x for x in parsed if isinstance(x, dict)] if isinstance(parsed, list) else []
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -1157,7 +1511,7 @@ def _append_import_history(entry: Dict[str, Any]) -> None:
     history.append(entry)
     if len(history) > IMPORT_HISTORY_MAX:
         history = history[-IMPORT_HISTORY_MAX:]
-    _safe_write_json(BROKER_IMPORT_HISTORY_PATH, history)
+    _safe_write_json(_broker_import_history_path(), history)
 
 
 def _record_import_batch(
@@ -1272,7 +1626,7 @@ def _mark_import_batch_rolled_back(batch_id: str) -> None:
             e["rolled_back_at"] = now_iso()
             changed = True
     if changed:
-        _safe_write_json(BROKER_IMPORT_HISTORY_PATH, history)
+        _safe_write_json(_broker_import_history_path(), history)
 
 
 def rollback_import_batch() -> Any:
@@ -1349,7 +1703,7 @@ def _load_auto_sync_config() -> Dict[str, Any]:
         "last_run_date": "",
     }
     try:
-        with open(BROKER_AUTO_SYNC_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(_broker_auto_sync_config_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
             if not isinstance(parsed, dict):
                 return defaults
@@ -1373,7 +1727,7 @@ def _save_auto_sync_config(cfg: Dict[str, Any]) -> None:
     to_save = dict(cfg)
     to_save.pop("keyring_available", None)
     to_save.pop("password_stored", None)
-    _safe_write_json(BROKER_AUTO_SYNC_CONFIG_PATH, to_save)
+    _safe_write_json(_broker_auto_sync_config_path(), to_save)
 
 
 def _parse_sync_stage(message: str) -> str:
@@ -1396,14 +1750,14 @@ def _strip_stage_prefix(message: str) -> str:
 
 
 def _debug_relative(path: str) -> str:
-    rel = os.path.relpath(path, UPLOAD_DIR)
+    rel = os.path.relpath(path, _upload_dir())
     return rel.replace("\\", "/")
 
 
 def _debug_safe_path(rel: str) -> str:
     clean = (rel or "").replace("\\", "/").lstrip("/")
-    abs_path = os.path.abspath(os.path.join(UPLOAD_DIR, clean))
-    root = os.path.abspath(UPLOAD_DIR)
+    abs_path = os.path.abspath(os.path.join(_upload_dir(), clean))
+    root = os.path.abspath(_upload_dir())
     if not abs_path.startswith(root + os.sep) and abs_path != root:
         raise ValueError("unsafe path")
     return abs_path
@@ -1724,7 +2078,7 @@ def trades_update_balance_bases():
 
     if mode == "scope":
         scope_enabled = request.form.get("scope_enabled") == "1"
-        scope_start = (request.form.get("scope_start_date") or "").strip()
+        scope_start = _normalize_scope_start_date(request.form.get("scope_start_date") or "")
         scope_label = (request.form.get("scope_label") or "").strip()
         scope_balance_raw = (request.form.get("scope_starting_balance") or "").strip()
 
@@ -1743,7 +2097,8 @@ def trades_update_balance_bases():
 
         bal = parse_float(scope_balance_raw)
         try:
-            datetime.strptime(scope_start, "%Y-%m-%d")
+            if not scope_start:
+                raise ValueError("invalid scope start date")
             if bal is None:
                 raise ValueError("invalid scope balance")
             scope_balance = float(bal)
@@ -2004,8 +2359,8 @@ def trades_playbook():
             </details>
             <div class="hr"></div>
             <div class="rightActions">
-              <button class="btn primary" type="submit">Save Playbook</button>
-              <a class="btn" href="/trades">Back Trades</a>
+              <button class="btn primary" type="submit">Save Playbook Rules</button>
+              <a class="btn" href="/trades">Trades</a>
             </div>
           </form>
         </div></div>
@@ -2065,6 +2420,17 @@ def trades_new_manual():
         critical_items_checked = [
             str(x).strip() for x in f.getlist("critical_item") if str(x).strip()
         ]
+        gate_values = _trade_gate_values(f, _load_trade_gate(trade_date))
+        gate_checks = _trade_gate_checks(f, _load_trade_gate(trade_date))
+
+        if _trade_gate_required(trade_date):
+            gate_errors = _trade_gate_errors(gate_values, gate_checks)
+            if gate_errors:
+                return _render_manual_trade_entry_form(
+                    pb_cfg=pb_cfg,
+                    values=f,
+                    gate_error="Trade gate blocked first trade: " + " ".join(gate_errors),
+                )
 
         if (
             not ticker
@@ -2073,9 +2439,10 @@ def trades_new_manual():
             or entry_price is None
             or exit_price is None
         ):
-            return render_page(
-                simple_msg("Missing required fields (ticker/type/contracts/entry/exit)."),
-                active="trades",
+            return _render_manual_trade_entry_form(
+                pb_cfg=pb_cfg,
+                values=f,
+                gate_error="Missing required fields (ticker/type/contracts/entry/exit).",
             )
 
         gross_pl = (exit_price - entry_price) * 100.0 * contracts
@@ -2096,6 +2463,17 @@ def trades_new_manual():
             return render_page(
                 simple_msg("Playbook blocked trade: " + " ".join(violations)),
                 active="trades",
+            )
+        if _trade_gate_required(trade_date):
+            _save_trade_gate(
+                trade_date,
+                {
+                    **gate_values,
+                    **gate_checks,
+                    "passed": True,
+                    "passed_at": now_iso(),
+                    "passed_label": app_runtime.now_et().strftime("%b %d, %I:%M %p ET"),
+                },
             )
 
         with db() as conn:
@@ -2144,72 +2522,9 @@ def trades_new_manual():
                 rule_break_tags=auto_tags,
                 review_note="",
             )
+        flash("Trade saved.", "success")
         return redirect(url_for("trades_page", d=trade_date))
-
-    strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">➕ Manual Trade Entry</div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ today }}"/></div>
-              <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM"/></div>
-              <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX"/></div>
-              <div>
-                <label>📌 Type</label>
-                <select name="opt_type"><option>CALL</option><option>PUT</option></select>
-              </div>
-              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="1"/></div>
-              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20"/></div>
-              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🏷️ Strategy</label><input name="strategy_label" list="strategy-options" placeholder="Fitz 2-2 REV"/></div>
-              <div><label>🕒 Session Tag</label><input name="session_tag" placeholder="AM / Midday / PM"/></div>
-              <div><label>✅ Checklist Score</label><input name="checklist_score" inputmode="numeric" placeholder="0-100"/></div>
-            </div>
-            <datalist id="strategy-options">
-              {% for strategy in strategy_options %}
-                <option value="{{ strategy['title'] }}"></option>
-              {% endfor %}
-            </datalist>
-            <div class="row stack10">
-              <div class="fieldGrow2">
-                <label>🧱 Critical Checklist Gate</label>
-                <div class="tiny stack8 line16">
-                  {% for item in critical_items %}
-                    <label style="display:inline-flex; gap:8px; margin-right:14px; align-items:center;">
-                      <input type="checkbox" name="critical_item" value="{{ item }}"> {{ item }}
-                    </label>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-            <div class="row stack10">
-              <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="0.70"/></div>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save Trade</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
-        today=today_iso(),
-        strategy_options=strategy_options,
-        critical_items=pb_cfg.get("critical_items")
-        or ["Bias Confirmed", "Risk Defined", "Stop Planned"],
-    )
-    return render_page(content, active="trades")
+    return _render_manual_trade_entry_form(pb_cfg=pb_cfg, values={"trade_date": today_iso()})
 
 
 def trades_paste_broker():
@@ -2316,7 +2631,7 @@ def trades_upload_pdf():
         if ext not in {".pdf", ".html", ".htm"}:
             return render_page(simple_msg("Please upload a .pdf or .html file."), active="trades")
 
-        path = os.path.join(UPLOAD_DIR, filename)
+        path = os.path.join(_upload_dir(), filename)
         f.save(path)
 
         # ✅ HTML path (no OCR)
@@ -2492,7 +2807,7 @@ def _run_live_sync_once(
 ) -> Dict[str, Any]:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = (
-        os.path.join(BROKER_DEBUG_DIR, f"live_{from_date}_{to_date}_{stamp}")
+        os.path.join(_broker_debug_dir(), f"live_{from_date}_{to_date}_{stamp}")
         if debug_capture
         else None
     )
@@ -2539,9 +2854,9 @@ def _run_live_sync_once(
         )
         return result
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(_upload_dir(), exist_ok=True)
     filename = f"vanquish_statement_live_{from_date}_{to_date}_{stamp}.html"
-    path = os.path.join(UPLOAD_DIR, filename)
+    path = os.path.join(_upload_dir(), filename)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html_text)
     artifacts_rel = artifacts_rel + [_debug_relative(path)]
@@ -3279,7 +3594,7 @@ def _auto_sync_worker(app) -> None:
                 time.sleep(60)
                 continue
             try:
-                fd = os.open(BROKER_AUTO_SYNC_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                fd = os.open(_broker_auto_sync_lock_path(), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.close(fd)
             except FileExistsError:
                 time.sleep(20)
@@ -3340,7 +3655,7 @@ def _auto_sync_worker(app) -> None:
                     )
             finally:
                 try:
-                    os.unlink(BROKER_AUTO_SYNC_LOCK_PATH)
+                    os.unlink(_broker_auto_sync_lock_path())
                 except OSError:
                     pass
             time.sleep(45)
@@ -3379,7 +3694,7 @@ def _auto_backup_worker(app) -> None:
                 time.sleep(35)
                 continue
             try:
-                fd = os.open(AUTO_BACKUP_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                fd = os.open(_auto_backup_lock_path(), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.close(fd)
             except FileExistsError:
                 time.sleep(20)
@@ -3392,7 +3707,7 @@ def _auto_backup_worker(app) -> None:
                     _save_auto_backup_config(cfg)
             finally:
                 try:
-                    os.unlink(AUTO_BACKUP_LOCK_PATH)
+                    os.unlink(_auto_backup_lock_path())
                 except OSError:
                     pass
             time.sleep(20)
@@ -3520,6 +3835,19 @@ def _require_ops_mutation_auth() -> None:
         abort(403)
 
 
+def _normalize_scope_start_date(raw: str) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    parsed = parse_date_any(text)
+    if parsed:
+        return parsed
+    # Browsers/locales can render date input as "MM / DD / YYYY".
+    compact = text.replace(" ", "")
+    parsed = parse_date_any(compact)
+    return parsed or ""
+
+
 def _sorted_alerts(
     state: Dict[str, Any], status_filter: str, event_filter: str
 ) -> List[Dict[str, Any]]:
@@ -3567,172 +3895,8 @@ def ops_alerts_page():
         }
         | set(NOTIFY_DEDUPE_BY_EVENT.keys())
     )
-    content = render_template_string(
-        """
-        <div class="metricStrip">
-          <div class="metric"><div class="label">Active Alerts</div><div class="value">{{ active_count }}</div></div>
-          <div class="metric"><div class="label">Open</div><div class="value">{{ open_count }}</div></div>
-          <div class="metric"><div class="label">Acknowledged</div><div class="value">{{ ack_count }}</div></div>
-          <div class="metric"><div class="label">Resolved</div><div class="value">{{ resolved_count }}</div></div>
-        </div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧭 Ops Quick Access</div>
-          <div class="leftActions">
-            <a class="btn" href="/analytics?tab=diagnostics">🧪 Analytics Diagnostics</a>
-            <a class="btn" href="/trades/upload/statement?ws=reconcile">🧮 Reconcile Batches</a>
-            <a class="btn" href="/trades/upload/statement?ws=live">🤖 Live Sync Reliability</a>
-            <a class="btn" href="/ops/backups">💾 Backup Center</a>
-          </div>
-        </div></div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">🚨 Ops Alerts Inbox</div>
-          <div class="tiny stack10 line15">Track sync/risk/integrity alerts with acknowledge, resolve, and mute controls.</div>
-          <div class="tiny stack8 line16">Why this matters: unresolved alerts hide reliability risk and can distort performance review.</div>
-          <div class="tiny stack8 line16">Next best action: clear open alerts first, then tune noise with advanced mute controls.</div>
-          <div class="hr"></div>
-          <div class="actionRow">
-            <a class="btn {% if status_filter == 'active' %}primary{% endif %}" href="/ops/alerts?status=active">Active</a>
-            <a class="btn {% if status_filter == 'open' %}primary{% endif %}" href="/ops/alerts?status=open">Open</a>
-            <a class="btn {% if status_filter == 'acknowledged' %}primary{% endif %}" href="/ops/alerts?status=acknowledged">Acknowledged</a>
-            <a class="btn {% if status_filter == 'resolved' %}primary{% endif %}" href="/ops/alerts?status=resolved">Resolved</a>
-            <a class="btn {% if status_filter == 'all' %}primary{% endif %}" href="/ops/alerts?status=all">All</a>
-            {% if resolveable_count %}
-              <form method="post" action="/ops/alerts/resolve" style="display:inline">
-                <input type="hidden" name="resolve_scope" value="visible">
-                <input type="hidden" name="status_filter" value="{{ status_filter }}">
-                <input type="hidden" name="event_filter" value="{{ event_filter }}">
-                <button class="btn" type="submit">Resolve All ({{ resolveable_count }})</button>
-              </form>
-            {% endif %}
-          </div>
-          <details class="syncDetails stack10">
-            <summary>Advanced Alert Controls</summary>
-            <div class="hr"></div>
-            <form method="post" action="/ops/alerts/mute" class="row">
-              <div>
-                <label>Mute Event Type</label>
-                <select name="event_type">
-                  {% for et in event_types %}
-                  <option value="{{ et }}">{{ et }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div>
-                <label>Minutes</label>
-                <input type="number" min="0" max="10080" step="1" name="minutes" value="60" />
-              </div>
-              <div class="tiny stack10">
-                {% if muted %}
-                  {% for et, until in muted.items() %}
-                    • {{ et }} muted until {{ until }}<br>
-                  {% endfor %}
-                {% else %}
-                  No active mutes.
-                {% endif %}
-              </div>
-              <div class="actionRow"><button class="btn" type="submit">Apply Mute</button></div>
-            </form>
-          </details>
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>When</th><th>Event</th><th>Status</th><th>Count</th><th>Message</th><th>Action</th></tr></thead>
-            <tbody>
-            {% for a in alerts %}
-              <tr>
-                <td>{{ a.get('last_seen_at', '—') }}</td>
-                <td><code>{{ a.get('event_type', '—') }}</code></td>
-                <td>{{ (a.get('status') or 'open')|upper }}</td>
-                <td>{{ a.get('count', 1) }}</td>
-                <td class="tiny line16">{{ a.get('message', '') }}</td>
-                <td>
-                  {% if a.get('status') != 'resolved' %}
-                    <form method="post" action="/ops/alerts/ack" style="display:inline">
-                      <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
-                      <button class="btn" type="submit">Ack</button>
-                    </form>
-                    <form method="post" action="/ops/alerts/resolve" style="display:inline">
-                      <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
-                      <button class="btn" type="submit">Resolve</button>
-                    </form>
-                  {% else %}
-                    <span class="tiny">Resolved by {{ a.get('resolved_by') or '—' }}</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% else %}
-              <tr><td colspan="6">No alerts in this view.</td></tr>
-            {% endfor %}
-            </tbody>
-          </table></div>
-        </div></div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">💾 Auto Backup Settings</div>
-          <div class="tiny stack10 line15">Schedule app backups to local storage with your own frequency.</div>
-          <div class="tiny stack8 line16">Why this matters: recoverability depends on recent, verified backups.</div>
-          <div class="tiny stack8 line16">Next best action: keep auto backup enabled and run one manual backup after major imports.</div>
-          <div class="hr"></div>
-          <form method="post" action="/ops/backups/config" class="row">
-            <div><label><input type="checkbox" name="enabled" value="1" {% if auto_backup_cfg.get('enabled') %}checked{% endif %}/> Enable auto backups</label></div>
-            <div class="tiny stack10">
-              Last run: {{ auto_backup_cfg.get('last_run_at') or 'Never' }}<br>
-              Status: {{ auto_backup_cfg.get('last_status') or 'n/a' }}<br>
-              {{ auto_backup_cfg.get('last_message') or '' }}
-            </div>
-            <div class="actionRow"><button class="btn" type="submit">Save</button></div>
-            <details class="syncDetails stack10 fieldGrow2">
-              <summary>Advanced Schedule Controls</summary>
-              <div class="row">
-                <div>
-                  <label>Frequency (hours)</label>
-                  <input type="number" name="frequency_hours" min="1" max="168" step="1" value="{{ auto_backup_cfg.get('frequency_hours', 24) }}" />
-                </div>
-                <div>
-                  <label>Keep Last (files)</label>
-                  <input type="number" name="keep_count" min="3" max="120" step="1" value="{{ auto_backup_cfg.get('keep_count', 21) }}" />
-                </div>
-              </div>
-            </details>
-          </form>
-          <div class="hr"></div>
-          <form method="post" action="/ops/backups/run" class="rightActions" id="backup-run-form">
-            <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
-          </form>
-          <div class="syncRunway" id="backup-job-runway" style="display:none;" aria-live="polite">
-            <div class="syncRunwayTop">
-              <span class="syncBadge" id="backup-job-badge">Running</span>
-              <span class="syncStageLabel" id="backup-job-label">Creating backup archive from current app data.</span>
-            </div>
-            <div class="syncTrack"><div class="syncTrackBar" id="backup-job-track"></div></div>
-            <div class="syncSteps">
-              <span class="syncStep is-active" data-backup-step>Archive</span>
-              <span class="syncStep" data-backup-step>Verify</span>
-              <span class="syncStep" data-backup-step>Summary</span>
-              <span class="syncStep" data-backup-step>Ready</span>
-            </div>
-          </div>
-          <div id="ops-job-summary" style="display:none;"></div>
-        </div></div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧾 Admin Action Timeline</div>
-          <div class="tiny stack8 line15">Audit log for rollback, recompute, backup, and alert state changes.</div>
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Details</th></tr></thead>
-            <tbody>
-            {% for r in audit_rows %}
-              <tr>
-                <td>{{ r.get('at', '—') }}</td>
-                <td><code>{{ r.get('action', '—') }}</code></td>
-                <td>{{ r.get('actor', '—') }}</td>
-                <td class="tiny line16"><code>{{ r.get('details', {})|tojson }}</code></td>
-              </tr>
-            {% else %}
-              <tr><td colspan="4">No admin audit events yet.</td></tr>
-            {% endfor %}
-            </tbody>
-          </table></div>
-        </div></div>
-        """,
+    content = render_template(
+        "ops/alerts.html",
         alerts=alerts,
         status_filter=status_filter,
         event_filter=event_filter,
@@ -3892,14 +4056,15 @@ def ops_backups_config():
         1, min(168, parse_int(request.form.get("frequency_hours") or "24") or 24)
     )
     cfg["keep_count"] = max(3, min(120, parse_int(request.form.get("keep_count") or "21") or 21))
-    _save_auto_backup_config(cfg)
+    saved_cfg = _save_auto_backup_config(cfg)
     scope_enabled = request.form.get("account_scope_enabled") == "1"
-    scope_start = (request.form.get("account_scope_start") or "").strip()
+    scope_start = _normalize_scope_start_date(request.form.get("account_scope_start") or "")
     scope_label = (request.form.get("account_scope_label") or "").strip()
     scope_balance_raw = request.form.get("account_scope_start_balance") or ""
     if scope_enabled:
         try:
-            datetime.strptime(scope_start, "%Y-%m-%d")
+            if not scope_start:
+                raise ValueError("invalid account scope start date")
             scope_balance = parse_float(scope_balance_raw)
             if scope_balance is None:
                 raise ValueError("invalid account scope balance")
@@ -3922,7 +4087,10 @@ def ops_backups_config():
             "account_scope_label": scope_label if scope_enabled else "",
         },
     )
-    flash("Backup settings and account scope saved.", "success")
+    if saved_cfg:
+        flash("Backup settings and account scope saved.", "success")
+    else:
+        flash("Settings applied in this session, but backup config could not be persisted.", "warn")
     return redirect(url_for("ops_backups_page"))
 
 
@@ -4022,8 +4190,8 @@ def _safe_backup_file_path(name: str) -> str:
     clean = (name or "").strip().replace("\\", "/").split("/")[-1]
     if not clean.endswith(".zip"):
         raise ValueError("invalid backup file")
-    full = os.path.abspath(os.path.join(AUTO_BACKUP_DIR, clean))
-    root = os.path.abspath(AUTO_BACKUP_DIR)
+    full = os.path.abspath(os.path.join(_auto_backup_dir(), clean))
+    root = os.path.abspath(_auto_backup_dir())
     if not full.startswith(root + os.sep):
         raise ValueError("unsafe backup path")
     return full
@@ -4164,13 +4332,13 @@ def _restore_dry_run(path: str) -> Dict[str, Any]:
 
 
 def _list_saved_backups() -> List[Dict[str, Any]]:
-    if not os.path.isdir(AUTO_BACKUP_DIR):
+    if not os.path.isdir(_auto_backup_dir()):
         return []
     out: List[Dict[str, Any]] = []
-    for n in os.listdir(AUTO_BACKUP_DIR):
+    for n in os.listdir(_auto_backup_dir()):
         if not n.endswith(".zip"):
             continue
-        p = os.path.join(AUTO_BACKUP_DIR, n)
+        p = os.path.join(_auto_backup_dir(), n)
         if not os.path.isfile(p):
             continue
         verify = _backup_verification(p)
@@ -4195,6 +4363,7 @@ def ops_backups_page():
     cfg = _load_auto_backup_config()
     backups = _list_saved_backups()
     account_scope = repo.account_scope_snapshot()
+    persistence = app_runtime.persistence_snapshot()
     dry_run_name = (request.args.get("dry_run") or "").strip()
     dry_run_report: Dict[str, Any] | None = None
     if dry_run_name:
@@ -4212,7 +4381,7 @@ def ops_backups_page():
         "ops/backups.html",
         cfg=cfg,
         backups=backups,
-        backup_dir=AUTO_BACKUP_DIR,
+        backup_dir=_auto_backup_dir(),
         dry_run_name=dry_run_name,
         dry_run_report=dry_run_report,
         audit_rows=audit_rows,
@@ -4220,6 +4389,7 @@ def ops_backups_page():
         audit_action=audit_action,
         audit_limit=audit_limit,
         account_scope=account_scope,
+        persistence=persistence,
     )
     return render_page(content, active="ops")
 
@@ -4289,14 +4459,14 @@ def _restore_from_backup_path(path: str) -> None:
 def _clear_live_app_data(*, preserve_backups: bool = True) -> Dict[str, Any]:
     db_path = str(app_runtime.DB_PATH)
     upload_root = str(app_runtime.UPLOAD_DIR)
-    books_root = str(getattr(app_runtime, "BOOKS_DIR", BOOKS_DIR))
+    books_root = _books_dir()
     preserved: set[str] = set()
     if preserve_backups:
         preserved.update(
             {
-                os.path.abspath(AUTO_BACKUP_DIR),
-                os.path.abspath(AUTO_BACKUP_CONFIG_PATH),
-                os.path.abspath(ADMIN_AUDIT_LOG_PATH),
+                os.path.abspath(_auto_backup_dir()),
+                os.path.abspath(_auto_backup_config_path()),
+                os.path.abspath(_admin_audit_log_path()),
             }
         )
 
@@ -4923,7 +5093,7 @@ def trades_open_positions():
             <div class="actionRow">
               <button class="btn" type="submit">Apply</button>
               <a class="btn" href="/trades/open-positions">Reset</a>
-              <a class="btn" href="/trades">Back Trades</a>
+              <a class="btn" href="/trades">Trades</a>
             </div>
           </form>
         </div></div>

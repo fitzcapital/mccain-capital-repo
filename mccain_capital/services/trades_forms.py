@@ -75,6 +75,7 @@ def trades_edit(trade_id: int):
             )
 
         legacy.repo.recompute_balances()
+        legacy.flash("Trade updated.", "success")
         return legacy.redirect(
             legacy.url_for("trades_page", d=d, q=q)
             if (d or q)
@@ -168,6 +169,7 @@ def trades_review(trade_id: int):
             rule_break_tags=rule_break_tags,
             review_note=review_note,
         )
+        legacy.flash("Trade review saved.", "success")
         return legacy.redirect(
             legacy.url_for("trades_page", d=d, q=q) if (d or q) else legacy.url_for("trades_page")
         )
@@ -235,6 +237,7 @@ def trades_risk_controls():
         daily_max_loss = legacy.parse_float(legacy.request.form.get("daily_max_loss", "")) or 0.0
         enforce_lockout = 1 if legacy.request.form.get("enforce_lockout") == "1" else 0
         legacy.repo.save_risk_controls(daily_max_loss, enforce_lockout)
+        legacy.flash("Risk controls saved.", "success")
         return legacy.redirect(legacy.url_for("trades_risk_controls"))
 
     rc = legacy.repo.get_risk_controls()
@@ -261,8 +264,8 @@ def trades_risk_controls():
             </div>
             <div class="hr"></div>
             <div class="rightActions">
-              <button class="btn primary" type="submit">Save Controls</button>
-              <a class="btn" href="/trades">Back to Trades</a>
+              <button class="btn primary" type="submit">Save Risk Controls</button>
+              <a class="btn" href="/trades">Trades</a>
             </div>
           </form>
         </div></div>

@@ -14,7 +14,7 @@ from datetime import timedelta
 from datetime import timezone
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,6 +24,7 @@ from mccain_capital import runtime as app_runtime
 
 YF_SYMBOL_ALIASES = {
     "SPX": "^GSPC",
+    "VIX": "^VIX",
 }
 
 MASSIVE_SYMBOL_ALIASES = {
@@ -37,9 +38,43 @@ TRADIER_SYMBOL_ALIASES = {
     "^VIX": "VIX",
 }
 
+MARKET_CURVE_CACHE_TTL_SECONDS = 45
+_INTRADAY_CURVE_CACHE: Dict[str, Dict[str, Any]] = {}
+_PRIOR_SESSION_CURVE_CACHE: Dict[str, Dict[str, Any]] = {}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _clone_curve_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [dict(row) for row in rows if isinstance(row, dict)]
+
+
+def _curve_cache_get(
+    cache: Dict[str, Dict[str, Any]], key: str, *, ttl_seconds: int
+) -> Optional[List[Dict[str, Any]]]:
+    cached = cache.get(key) or {}
+    stored_at = cached.get("stored_at")
+    rows = cached.get("rows")
+    if not isinstance(stored_at, datetime) or not isinstance(rows, list):
+        return None
+    age = (datetime.now(timezone.utc) - stored_at).total_seconds()
+    if age >= max(1, int(ttl_seconds)):
+        cache.pop(key, None)
+        return None
+    return _clone_curve_rows(rows)
+
+
+def _curve_cache_set(
+    cache: Dict[str, Dict[str, Any]], key: str, rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    cloned = _clone_curve_rows(rows)
+    cache[key] = {
+        "stored_at": datetime.now(timezone.utc),
+        "rows": cloned,
+    }
+    return _clone_curve_rows(cloned)
 
 
 def _safe_float(v: Any) -> Optional[float]:
@@ -71,6 +106,10 @@ def _tradier_symbol(symbol: str) -> str:
     return TRADIER_SYMBOL_ALIASES.get(sym, sym)
 
 
+def tradier_stream_available() -> bool:
+    return bool(_tradier_api_key())
+
+
 def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
     key = _tradier_api_key()
     if not key:
@@ -92,6 +131,96 @@ def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
             return parsed if isinstance(parsed, dict) else None
     except Exception:
         return None
+
+
+def _tradier_post_json(path: str, data: Dict[str, Any]) -> Dict[str, Any] | None:
+    key = _tradier_api_key()
+    if not key:
+        return None
+    base = (os.environ.get("TRADIER_BASE_URL") or "https://api.tradier.com").strip().rstrip("/")
+    body = urllib.parse.urlencode(data).encode("utf-8")
+    req = urllib.request.Request(
+        base + path,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "mccain-capital/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def _tradier_stream_base_url() -> str:
+    return (
+        (os.environ.get("TRADIER_STREAM_URL") or "https://stream.tradier.com").strip().rstrip("/")
+    )
+
+
+def _tradier_market_session_id() -> str:
+    payload = _tradier_post_json("/v1/markets/events/session", {}) or {}
+    stream = payload.get("stream") if isinstance(payload.get("stream"), dict) else {}
+    return str(stream.get("sessionid") or payload.get("sessionid") or "").strip()
+
+
+def iter_tradier_market_events(
+    symbols: List[str], *, filters: Optional[List[str]] = None
+) -> Iterator[Dict[str, Any]]:
+    if not tradier_stream_available():
+        return
+    clean = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
+    if not clean:
+        return
+    session_id = _tradier_market_session_id()
+    if not session_id:
+        return
+
+    body = urllib.parse.urlencode(
+        {
+            "sessionid": session_id,
+            "symbols": ",".join(_tradier_symbol(s) for s in clean),
+            "filter": ",".join(filters or ["summary", "trade", "quote"]),
+            "linebreak": "true",
+            "heartbeat": "true",
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        _tradier_stream_base_url() + "/v1/markets/events",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {_tradier_api_key()}",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "mccain-capital/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            while True:
+                raw = resp.readline()
+                if not raw:
+                    break
+                line = raw.decode("utf-8", errors="ignore").strip()
+                if not line:
+                    continue
+                if line.startswith("data:"):
+                    line = line[5:].strip()
+                try:
+                    payload = json.loads(line)
+                except Exception:
+                    continue
+                if isinstance(payload, dict):
+                    yield payload
+    except Exception:
+        return
 
 
 def _massive_symbol(symbol: str) -> str:
@@ -147,18 +276,26 @@ def _tradier_quote_map(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
 
 
 def _tradier_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
-    key = _tradier_api_key()
-    if not key:
-        return []
     now_et = app_runtime.now_et()
     start_et = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
     if now_et < start_et:
         start_et = (start_et - timedelta(days=1)).replace(hour=9, minute=30)
+    return _tradier_intraday_rows_for_window(symbol, start_et, now_et)
+
+
+def _tradier_intraday_rows_for_window(
+    symbol: str,
+    start_et: datetime,
+    end_et: datetime,
+) -> List[Dict[str, Any]]:
+    key = _tradier_api_key()
+    if not key:
+        return []
     params = {
         "symbol": _tradier_symbol(symbol),
         "interval": "1min",
         "start": start_et.strftime("%Y-%m-%d %H:%M"),
-        "end": now_et.strftime("%Y-%m-%d %H:%M"),
+        "end": end_et.strftime("%Y-%m-%d %H:%M"),
         "session_filter": "all",
     }
     payload = _tradier_json("/v1/markets/timesales", params) or {}
@@ -198,6 +335,26 @@ def _tradier_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
             }
         )
     return out
+
+
+def _tradier_intraday_rows_for_date(symbol: str, session_day: date) -> List[Dict[str, Any]]:
+    start_et = datetime(
+        session_day.year,
+        session_day.month,
+        session_day.day,
+        9,
+        30,
+        tzinfo=app_runtime.TZ,
+    )
+    end_et = datetime(
+        session_day.year,
+        session_day.month,
+        session_day.day,
+        16,
+        0,
+        tzinfo=app_runtime.TZ,
+    )
+    return _tradier_intraday_rows_for_window(symbol, start_et, end_et)
 
 
 def _massive_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -241,8 +398,12 @@ def _massive_error_code(path: str, params: Dict[str, Any]) -> str:
 
 
 def _massive_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
+    return _massive_intraday_rows_for_date(symbol, date.today())
+
+
+def _massive_intraday_rows_for_date(symbol: str, session_day: date) -> List[Dict[str, Any]]:
     ticker = urllib.parse.quote(_massive_symbol(symbol), safe="")
-    d = date.today().isoformat()
+    d = session_day.isoformat()
     payload = _massive_json(
         f"/v2/aggs/ticker/{ticker}/range/1/minute/{d}/{d}",
         {"adjusted": "true", "sort": "asc", "limit": 50000},
@@ -396,11 +557,15 @@ def _yf_ticker(symbol: str):
 
 
 def _yf_history(symbol: str):
+    return _yf_history_period(symbol, period="1d", prepost=True)
+
+
+def _yf_history_period(symbol: str, *, period: str, prepost: bool):
     ticker = _yf_ticker(symbol)
     if ticker is None:
         return None
     try:
-        return ticker.history(period="1d", interval="1m", prepost=True)
+        return ticker.history(period=period, interval="1m", prepost=prepost)
     except Exception:
         return None
 
@@ -489,14 +654,23 @@ def get_price(symbol: str) -> Optional[float]:
 
 
 def get_intraday(symbol: str) -> List[Dict[str, Any]]:
+    cache_key = str(symbol or "").strip().upper()
+    cached_rows = _curve_cache_get(
+        _INTRADAY_CURVE_CACHE,
+        cache_key,
+        ttl_seconds=MARKET_CURVE_CACHE_TTL_SECONDS,
+    )
+    if cached_rows is not None:
+        return cached_rows
+
     tradier_rows = _tradier_intraday_rows(symbol)
     if len(tradier_rows) >= 20:
-        return tradier_rows
+        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
 
     if _massive_api_key():
         rows = _massive_intraday_rows(symbol)
         if len(rows) >= 20:
-            return rows
+            return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, rows)
 
     hist = _yf_history(symbol)
     if hist is None:
@@ -522,9 +696,74 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
         return []
     # If provider intraday is sparse/unavailable, yfinance offers a fuller curve for charting.
     if out:
-        return out
+        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, out)
     if tradier_rows:
+        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
+    return []
+
+
+def _previous_trading_day(anchor_day: date) -> date:
+    out = anchor_day - timedelta(days=1)
+    while out.weekday() >= 5:
+        out -= timedelta(days=1)
+    return out
+
+
+def get_prior_session_intraday(
+    symbol: str, *, anchor_session_day: Optional[date] = None
+) -> List[Dict[str, Any]]:
+    anchor_day = anchor_session_day or app_runtime.now_et().date()
+    session_day = _previous_trading_day(anchor_day)
+    cache_key = f"{str(symbol or '').strip().upper()}::{session_day.isoformat()}"
+    cached_rows = _curve_cache_get(
+        _PRIOR_SESSION_CURVE_CACHE,
+        cache_key,
+        ttl_seconds=MARKET_CURVE_CACHE_TTL_SECONDS,
+    )
+    if cached_rows is not None:
+        return cached_rows
+
+    tradier_rows = _tradier_intraday_rows_for_date(symbol, session_day)
+    if len(tradier_rows) >= 20:
+        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
+
+    if _massive_api_key():
+        rows = _massive_intraday_rows_for_date(symbol, session_day)
+        if len(rows) >= 20:
+            return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, rows)
+
+    hist = _yf_history_period(symbol, period="5d", prepost=False)
+    if hist is None:
         return tradier_rows
+    out: List[Dict[str, Any]] = []
+    try:
+        if hist.empty:
+            return tradier_rows
+        for idx, row in hist.iterrows():
+            ts = getattr(idx, "to_pydatetime", lambda: idx)()
+            if not isinstance(ts, datetime):
+                continue
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=app_runtime.TZ)
+            ts_et = ts.astimezone(app_runtime.TZ)
+            if ts_et.date() != session_day:
+                continue
+            out.append(
+                {
+                    "ts": ts.astimezone(timezone.utc).isoformat(timespec="seconds"),
+                    "open": float(row.get("Open") or 0.0),
+                    "high": float(row.get("High") or 0.0),
+                    "low": float(row.get("Low") or 0.0),
+                    "close": float(row.get("Close") or 0.0),
+                    "volume": float(row.get("Volume") or 0.0),
+                }
+            )
+    except Exception:
+        return tradier_rows
+    if out:
+        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, out)
+    if tradier_rows:
+        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
     return []
 
 

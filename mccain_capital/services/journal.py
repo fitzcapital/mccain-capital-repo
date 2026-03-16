@@ -3,23 +3,31 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from flask import (
     abort,
+    flash,
     jsonify,
     redirect,
     render_template,
-    render_template_string,
     request,
+    send_file,
     url_for,
 )
+from werkzeug.utils import secure_filename
 
 from mccain_capital.repositories import journal as repo
 from mccain_capital.repositories import trades as trades_repo
+from mccain_capital import runtime as app_runtime
 from mccain_capital.runtime import money, parse_float, today_iso
 from mccain_capital.services.ui import render_page
+from mccain_capital.services.viewmodels import StateBadgeViewModel
+
+_CAPTURE_ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def _entry_form(
@@ -56,12 +64,100 @@ def journal_home():
         entry["entry_date_display"] = _format_entry_date(entry.get("entry_date"))
         entry["updated_at_display"] = _format_updated_timestamp(entry.get("updated_at"))
 
+    latest_entry = entries[0] if entries else {}
+    linked_trades_total = sum(int(entry.get("linked_trades") or 0) for entry in entries)
+    grade_count = sum(1 for entry in entries if str(entry.get("grade") or "").strip())
+    latest_day = str(
+        latest_entry.get("entry_date_display") or latest_entry.get("entry_date") or ""
+    ).strip()
+    latest_mood = str(latest_entry.get("mood") or "").strip()
+    latest_setup = str(latest_entry.get("setup") or "").strip()
+    latest_grade = str(latest_entry.get("grade") or "").strip()
+
+    if not entries:
+        hero_title = "Capture Today While It Is Fresh"
+        hero_blurb = "A fast note beats a perfect memory. Log what you saw, what you did, and what it taught you."
+        review_focus_lead = "No journal entries are in scope yet."
+        review_focus_body = "Use Quick Capture right after the next setup or create a full debrief before the close."
+        review_focus_meta = "One clean entry unlocks weekly review and pattern tracking."
+        capture_lead = "The review loop is empty."
+        capture_body = "Start with one short note, one mood tag, and one linked trade so the debrief system has something real to learn from."
+        capture_meta = "Next move: open Quick Capture from phone or desktop."
+    elif d:
+        hero_title = "Close the Loop on This Session"
+        hero_blurb = "Review the selected day cleanly before the next session adds more noise."
+        review_focus_lead = f"{latest_day or 'Selected day'} is the active review window."
+        review_focus_body = (
+            f"Latest note: {latest_setup or 'Context only'}"
+            + (f" · Mood {latest_mood}" if latest_mood else "")
+            + (f" · Grade {latest_grade}" if latest_grade else "")
+        )
+        review_focus_meta = (
+            "Refine the lesson, link the missing trades, then lock the weekly narrative."
+        )
+        capture_lead = (
+            f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} in this day filter."
+        )
+        capture_body = "Keep the selected session tight: finish the main debrief, add any screenshot evidence, then stop adding duplicate notes."
+        capture_meta = "Next move: edit the strongest entry or add one missing post-trade note."
+    else:
+        hero_title = "Close the Learning Loop"
+        hero_blurb = "Use the journal as a review system, not a note dump. Keep the lesson sharp and the next rule obvious."
+        review_focus_lead = f"Latest review: {latest_day or 'Recent session'}" + (
+            f" · {latest_setup}" if latest_setup else ""
+        )
+        review_focus_body = f"Most recent note carries {latest_mood or 'neutral'} tone" + (
+            f" with grade {latest_grade}." if latest_grade else "."
+        )
+        review_focus_meta = (
+            "Promote the cleanest lesson into weekly review instead of stacking similar entries."
+        )
+        capture_lead = f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} in scope · {linked_trades_total} linked trades."
+        capture_body = "Keep capture fast: one clear lesson, one emotion tag, one linked trade cluster. Save the long reflection for the weekly review."
+        capture_meta = "Next move: use Quick Capture for the next live observation, then write one fuller debrief."
+
+    journal_status_badges = [
+        StateBadgeViewModel(
+            label="Entries",
+            value=f"{len(entries)} in scope",
+            tone=("healthy" if entries else "caution"),
+            title="Journal entries visible in the current filter.",
+        ),
+        StateBadgeViewModel(
+            label="Linked Trades",
+            value=(str(linked_trades_total) if linked_trades_total else "0"),
+            tone=("healthy" if linked_trades_total else "neutral"),
+            title="Trade rows linked into these journal entries.",
+        ),
+        StateBadgeViewModel(
+            label="Graded",
+            value=(f"{grade_count} tagged" if grade_count else "Not graded"),
+            tone=("healthy" if grade_count else "caution"),
+            title="Entries with an explicit grade in the current scope.",
+        ),
+        StateBadgeViewModel(
+            label="Last Update",
+            value=(str(latest_entry.get("updated_at_display") or "No entries")),
+            tone=("healthy" if latest_entry else "neutral"),
+            title="Most recent update timestamp in the current filter.",
+        ),
+    ]
+
     content = render_template(
         "journal/home.html",
         q=q,
         d=d,
         entries=entries,
         money=money,
+        hero_title=hero_title,
+        hero_blurb=hero_blurb,
+        review_focus_lead=review_focus_lead,
+        review_focus_body=review_focus_body,
+        review_focus_meta=review_focus_meta,
+        capture_lead=capture_lead,
+        capture_body=capture_body,
+        capture_meta=capture_meta,
+        journal_status_badges=journal_status_badges,
     )
     return render_page(content, active="journal")
 
@@ -95,9 +191,14 @@ def new_entry():
         linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
+        screenshot_path = _save_capture_upload(request.files.get("capture_screenshot"), entry_date)
+        if not screenshot_path:
+            screenshot_path = (f.get("existing_capture_screenshot_path") or "").strip()
         if not notes:
             values = dict(f)
             values["entry_date"] = entry_date
+            values["capture_screenshot_path"] = screenshot_path
+            values["capture_screenshot_href"] = _capture_href(screenshot_path)
             return render_page(
                 _entry_form(
                     "new",
@@ -119,17 +220,20 @@ def new_entry():
                 "mood": f.get("mood"),
                 "notes": notes,
                 "entry_type": entry_type,
-                "template_payload": {"template_notes": template_notes},
+                "template_payload": _entry_template_payload(template_notes, screenshot_path),
             }
         )
         repo.set_entry_trade_links(entry_id, linked_ids)
-        return redirect(url_for("edit_entry", entry_id=entry_id))
+        flash("Journal entry saved.", "success")
+        return redirect(url_for("journal_home", d=entry_date))
 
     prefill_date = (request.args.get("d") or "").strip()
     entry_date = prefill_date or _default_entry_date_for_journal()
     initial_values = {
         "entry_date": entry_date,
         "entry_type": (request.args.get("entry_type") or "post_market").strip() or "post_market",
+        "auto_draft": "1" if (request.args.get("auto_draft") or "0").strip() == "1" else "0",
+        "quick_capture": "1" if (request.args.get("quick_capture") or "0").strip() == "1" else "0",
         "link_all_day": "1" if (request.args.get("link_all_day") or "1").strip() == "1" else "0",
         "market": (request.args.get("market") or "").strip(),
         "setup": (request.args.get("setup") or "").strip(),
@@ -138,12 +242,14 @@ def new_entry():
         "pnl": (request.args.get("pnl") or "").strip(),
         "notes": (request.args.get("notes") or "").strip(),
         "template_notes": (request.args.get("template_notes") or "").strip(),
+        "capture_screenshot_path": (request.args.get("capture_screenshot_path") or "").strip(),
     }
     selected_ids = _trade_ids_for_date(entry_date) if initial_values["link_all_day"] == "1" else []
     scaffold = _build_debrief_scaffold(
         entry_date,
         initial_values["entry_type"],
         selected_ids,
+        auto_draft=initial_values["auto_draft"] == "1",
     )
     if not initial_values["template_notes"]:
         initial_values["template_notes"] = scaffold["template_notes"]
@@ -151,6 +257,15 @@ def new_entry():
         initial_values["notes"] = scaffold["notes"]
     if not initial_values["pnl"] and scaffold["pnl"] is not None:
         initial_values["pnl"] = f"{float(scaffold['pnl']):.2f}"
+    if not initial_values["market"] and scaffold.get("market"):
+        initial_values["market"] = str(scaffold["market"])
+    if not initial_values["setup"] and scaffold.get("setup"):
+        initial_values["setup"] = str(scaffold["setup"])
+    if not initial_values["mood"] and scaffold.get("mood"):
+        initial_values["mood"] = str(scaffold["mood"])
+    initial_values["capture_screenshot_href"] = _capture_href(
+        initial_values["capture_screenshot_path"]
+    )
     return render_page(
         _entry_form(
             "new",
@@ -176,9 +291,14 @@ def edit_entry(entry_id: int):
         linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
+        screenshot_path = _save_capture_upload(request.files.get("capture_screenshot"), entry_date)
+        if not screenshot_path:
+            screenshot_path = (f.get("existing_capture_screenshot_path") or "").strip()
         if not notes:
             values = dict(f)
             values["entry_date"] = entry_date
+            values["capture_screenshot_path"] = screenshot_path
+            values["capture_screenshot_href"] = _capture_href(screenshot_path)
             return render_page(
                 _entry_form(
                     "edit",
@@ -202,20 +322,24 @@ def edit_entry(entry_id: int):
                 "mood": f.get("mood"),
                 "notes": notes,
                 "entry_type": entry_type,
-                "template_payload": {"template_notes": template_notes},
+                "template_payload": _entry_template_payload(template_notes, screenshot_path),
             },
         )
         repo.set_entry_trade_links(entry_id, linked_ids)
-        return redirect(url_for("journal_home"))
+        flash("Journal entry saved.", "success")
+        return redirect(url_for("journal_home", d=entry_date))
 
     values = dict(row)
     if values.get("pnl") is None:
         values["pnl"] = ""
     payload = _safe_template_payload(values.get("template_payload"))
     values["template_notes"] = payload.get("template_notes", "")
+    values["capture_screenshot_path"] = str(payload.get("capture_screenshot_path") or "").strip()
+    values["capture_screenshot_href"] = _capture_href(values["capture_screenshot_path"])
     linked_ids = repo.fetch_entry_trade_ids(entry_id)
     values["linked_trade_ids"] = ",".join(str(i) for i in linked_ids)
     values["link_all_day"] = "0"
+    values["quick_capture"] = "0"
     entry_date = (values.get("entry_date") or today_iso()).strip()
     return render_page(
         _entry_form(
@@ -232,7 +356,127 @@ def edit_entry(entry_id: int):
 
 def delete_entry_route(entry_id: int):
     repo.delete_entry(entry_id)
+    flash("Journal entry deleted.", "success")
     return redirect(url_for("journal_home"))
+
+
+def journal_capture_asset(name: str):
+    rel = str(name or "").strip().lstrip("/")
+    if not rel:
+        abort(404)
+    ext = os.path.splitext(rel)[1].lower()
+    if ext not in _CAPTURE_ALLOWED_EXTS:
+        abort(404)
+    root = os.path.abspath(app_runtime.upload_path("journal-captures"))
+    path = os.path.abspath(app_runtime.upload_path(rel))
+    if not path.startswith(root + os.sep):
+        abort(404)
+    if not os.path.exists(path):
+        abort(404)
+    return send_file(path, as_attachment=False)
+
+
+def _entry_template_payload(template_notes: str, screenshot_path: str) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"template_notes": template_notes}
+    if screenshot_path:
+        payload["capture_screenshot_path"] = screenshot_path
+    return payload
+
+
+def _capture_href(relpath: str) -> str:
+    rel = str(relpath or "").strip()
+    if not rel:
+        return ""
+    return url_for("journal_capture_asset", name=rel)
+
+
+def _save_capture_upload(upload: Any, entry_date: str) -> str:
+    if not upload or not getattr(upload, "filename", ""):
+        return ""
+    filename = secure_filename(str(upload.filename or ""))
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in _CAPTURE_ALLOWED_EXTS:
+        return ""
+    day = str(entry_date or today_iso()).strip() or today_iso()
+    rel_dir = os.path.join("journal-captures", day)
+    abs_dir = app_runtime.upload_path(rel_dir)
+    os.makedirs(abs_dir, exist_ok=True)
+    stored = f"{day.replace('-', '')}-{secrets.token_hex(6)}{ext}"
+    abs_path = app_runtime.upload_path(rel_dir, stored)
+    upload.save(abs_path)
+    return os.path.join(rel_dir, stored).replace("\\", "/")
+
+
+def _weekly_coach_rule(top_break: str, strongest_setup: str, strongest_session: str) -> str:
+    tag = str(top_break or "").strip().lower()
+    if tag in {"revenge", "revenge-trading"}:
+        return "After a red trade, pause and re-state the setup before any next entry."
+    if tag in {"oversized", "size creep"}:
+        return "Cut size before you cut standards. Keep size fixed until the A setup is obvious."
+    if tag in {"late-entry", "early entry"}:
+        return "Let confirmation print first. Missed is cheaper than forcing the first touch."
+    if strongest_setup and strongest_setup != "No setup data":
+        if strongest_session:
+            return f"Press {strongest_setup} only when the tape matches your {strongest_session} conditions."
+        return f"Repeat {strongest_setup} only when structure is clean enough to name before entry."
+    return "If the setup is not named and the invalidation is not obvious, do not take it."
+
+
+def _weekly_coach_summary(
+    setup_stats: List[Dict[str, Any]],
+    mood_stats: List[Dict[str, Any]],
+    rule_breaks: List[Dict[str, Any]],
+    day_rollups: List[Dict[str, Any]],
+) -> Dict[str, str]:
+    strongest = next((row for row in setup_stats if float(row.get("net") or 0.0) > 0), None)
+    leak = rule_breaks[0] if rule_breaks else None
+    weakest_mood = None
+    mood_candidates = [row for row in mood_stats if int(row.get("count") or 0) > 0]
+    if mood_candidates:
+        weakest_mood = min(mood_candidates, key=lambda row: float(row.get("avg_pnl") or 0.0))
+    best_day = max(day_rollups, key=lambda row: float(row.get("pnl_total") or 0.0), default=None)
+    worst_day = min(day_rollups, key=lambda row: float(row.get("pnl_total") or 0.0), default=None)
+    week_net = sum(float(row.get("pnl_total") or 0.0) for row in day_rollups)
+    active_days = len(day_rollups)
+    green_days = len([row for row in day_rollups if float(row.get("pnl_total") or 0.0) > 0])
+    strongest_setup = str((strongest or {}).get("setup") or "")
+    return {
+        "headline": "Press the edge, cut the leak, and keep the week small enough to control.",
+        "strongest_setup": (
+            f"{strongest_setup} · {money(float((strongest or {}).get('net') or 0.0))}"
+            if strongest
+            else "No setup edge identified yet."
+        ),
+        "biggest_leak": (
+            f"{str(leak.get('tag') or '').replace('-', ' ')} · {int(leak.get('count') or 0)}x"
+            if leak
+            else (
+                f"Mood drift: {weakest_mood.get('mood')} averaged {money(float(weakest_mood.get('avg_pnl') or 0.0))}"
+                if weakest_mood and float(weakest_mood.get("avg_pnl") or 0.0) < 0
+                else "No repeated leak tagged yet."
+            )
+        ),
+        "one_rule": _weekly_coach_rule(
+            str((leak or {}).get("tag") or ""),
+            strongest_setup,
+            str((strongest or {}).get("session") or ""),
+        ),
+        "consistency": (
+            f"{green_days}/{active_days} green day{'s' if active_days != 1 else ''} · {money(week_net)} net"
+            if active_days
+            else "No active journal days this week."
+        ),
+        "best_day": (
+            f"{best_day.get('entry_date')} · {money(float(best_day.get('pnl_total') or 0.0))}"
+            if best_day
+            else "No best day yet."
+        ),
+        "worst_day": (
+            f"{worst_day.get('entry_date')} · {money(float(worst_day.get('pnl_total') or 0.0))}"
+            if worst_day
+            else "No worst day yet."
+        ),
+    }
 
 
 def journal_weekly_review():
@@ -251,6 +495,7 @@ def journal_weekly_review():
     week_end = end.isoformat()
 
     entries = repo.fetch_entries_range(week_start, week_end)
+    day_rollups = repo.fetch_entry_day_rollups(week_start, week_end)
     setup_stats = repo.weekly_setup_stats(week_start, week_end)
     mood_stats = repo.weekly_mood_stats(week_start, week_end)
     rule_breaks = repo.weekly_rule_break_tags(week_start, week_end)
@@ -260,148 +505,16 @@ def journal_weekly_review():
     top_mood_avg = float(mood_stats[0]["avg_pnl"] or 0.0) if mood_stats else 0.0
     top_break = rule_breaks[0]["tag"] if rule_breaks else "No repeated tags"
     top_break_count = int(rule_breaks[0]["count"] or 0) if rule_breaks else 0
-
-    content = render_template_string(
-        """
-        <div class="metricStrip">
-          <div class="metric"><div class="label">Week</div><div class="value">{{ week_start }} → {{ week_end }}</div></div>
-          <div class="metric"><div class="label">Journal Entries</div><div class="value">{{ entries|length }}</div></div>
-          <div class="metric"><div class="label">Setups Tracked</div><div class="value">{{ setup_stats|length }}</div></div>
-          <div class="metric"><div class="label">Rule-Break Tags</div><div class="value">{{ rule_breaks|length }}</div></div>
-        </div>
-
-        <div class="card pageHero">
-          <div class="toolbar">
-            <div class="pageHeroHead">
-              <div>
-                <div class="pill">📘 Weekly Review</div>
-                <h2 class="pageTitle">Behavior Snapshot</h2>
-                <div class="pageSub">Review setup quality, mood outcomes, and repeated rule breaks for the selected week window.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card"><div class="toolbar">
-          <form method="get" class="row">
-            <div><label>Week Start</label><input type="date" name="week_start" value="{{ week_start }}"></div>
-            <div class="actionRow">
-              <button class="btn" type="submit">Apply</button>
-              <a class="btn" href="/journal/review/weekly">Current Week</a>
-              <a class="btn" href="/journal">Back Journal</a>
-            </div>
-          </form>
-        </div></div>
-
-        <div class="insightGrid stack12">
-          <div class="insightCard">
-            <div class="insightTitle">🏁 Best Setup (Week)</div>
-            <div class="insightBody">{{ top_setup }} · Net {{ money(top_setup_net) }}</div>
-          </div>
-          <div class="insightCard">
-            <div class="insightTitle">😶‍🌫️ Mood Signal</div>
-            <div class="insightBody">{{ top_mood }} · Avg {{ money(top_mood_avg) }}</div>
-          </div>
-          <div class="insightCard">
-            <div class="insightTitle">⚠️ Most Repeated Break</div>
-            <div class="insightBody">{{ top_break }}{% if top_break_count %} · {{ top_break_count }}x{% endif %}</div>
-          </div>
-        </div>
-
-        <div class="twoCol stack12">
-          <div class="card"><div class="toolbar">
-            <div class="pill">📌 Best Setups (linked trades)</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th></tr></thead>
-              <tbody>
-              {% for r in setup_stats %}
-                <tr><td>{{ r.setup }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td></tr>
-              {% endfor %}
-              {% if setup_stats|length == 0 %}<tr><td colspan="4">No linked-trade setup data this week.</td></tr>{% endif %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
-                {% for r in setup_stats %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.setup }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                    </div>
-                  </div></div>
-                {% endfor %}
-                {% if setup_stats|length == 0 %}
-                  <div class="card"><div class="toolbar"><div class="tiny">No linked-trade setup data this week.</div></div></div>
-                {% endif %}
-              </div>
-            </div>
-          </div></div>
-
-          <div class="card"><div class="toolbar">
-            <div class="pill">😶‍🌫️ Mood vs PnL Pattern</div>
-            <div class="hr"></div>
-            <div class="tableWrap desktopOnly"><table class="tableDense">
-              <thead><tr><th>Mood</th><th>Entries</th><th>Win Rate</th><th>Avg PnL</th></tr></thead>
-              <tbody>
-              {% for r in mood_stats %}
-                <tr><td>{{ r.mood }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.avg_pnl) }}</td></tr>
-              {% endfor %}
-              {% if mood_stats|length == 0 %}<tr><td colspan="4">No mood data this week.</td></tr>{% endif %}
-              </tbody>
-            </table></div>
-            <div class="mobileOnly">
-              <div class="grid">
-                {% for r in mood_stats %}
-                  <div class="card"><div class="toolbar">
-                    <div class="pill">{{ r.mood }}</div>
-                    <div class="metaRow">
-                      <span class="meta">Entries: <b>{{ r.count }}</b></span>
-                      <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                      <span class="meta">Avg: <b>{{ money(r.avg_pnl) }}</b></span>
-                    </div>
-                  </div></div>
-                {% endfor %}
-                {% if mood_stats|length == 0 %}
-                  <div class="card"><div class="toolbar"><div class="tiny">No mood data this week.</div></div></div>
-                {% endif %}
-              </div>
-            </div>
-          </div></div>
-        </div>
-
-        <div class="card stack12"><div class="toolbar">
-          <div class="pill">⚠️ Repeated Rule Breaks</div>
-          <div class="hr"></div>
-          <div class="tableWrap desktopOnly"><table class="tableDense">
-            <thead><tr><th>Tag</th><th>Count</th></tr></thead>
-            <tbody>
-            {% for r in rule_breaks %}
-              <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
-            {% endfor %}
-            {% if rule_breaks|length == 0 %}<tr><td colspan="2">No rule-break tags for linked trades this week.</td></tr>{% endif %}
-            </tbody>
-          </table></div>
-          <div class="mobileOnly">
-            <div class="grid">
-              {% for r in rule_breaks %}
-                <div class="card"><div class="toolbar">
-                  <div class="pill">{{ r.tag }}</div>
-                  <div class="meta">Count: <b>{{ r.count }}</b></div>
-                </div></div>
-              {% endfor %}
-              {% if rule_breaks|length == 0 %}
-                <div class="card"><div class="toolbar"><div class="tiny">No rule-break tags for linked trades this week.</div></div></div>
-              {% endif %}
-            </div>
-          </div>
-        </div></div>
-        """,
+    coach = _weekly_coach_summary(setup_stats, mood_stats, rule_breaks, day_rollups)
+    week_net = sum(float(row.get("pnl_total") or 0.0) for row in day_rollups)
+    active_days = len(day_rollups)
+    green_days = len([row for row in day_rollups if float(row.get("pnl_total") or 0.0) > 0])
+    content = render_template(
+        "journal/weekly_review.html",
         week_start=week_start,
         week_end=week_end,
         entries=entries,
+        day_rollups=day_rollups,
         setup_stats=setup_stats,
         mood_stats=mood_stats,
         rule_breaks=rule_breaks,
@@ -411,6 +524,10 @@ def journal_weekly_review():
         top_mood_avg=top_mood_avg,
         top_break=top_break,
         top_break_count=top_break_count,
+        coach=coach,
+        week_net=week_net,
+        active_days=active_days,
+        green_days=green_days,
         money=money,
     )
     return render_page(content, active="journal")
@@ -490,7 +607,7 @@ def _linked_trade_ids_from_form(entry_date: str, form: Any) -> List[int]:
 
 
 def _build_debrief_scaffold(
-    entry_date: str, entry_type: str, linked_trade_ids: List[int]
+    entry_date: str, entry_type: str, linked_trade_ids: List[int], *, auto_draft: bool = False
 ) -> Dict[str, str]:
     entry_kind = (entry_type or "").strip() or "post_market"
     if entry_kind == "pre_market":
@@ -523,6 +640,34 @@ def _build_debrief_scaffold(
         }
         - {""}
     )
+    dominant_setup = strategy_labels[0] if strategy_labels else ""
+    session_tags = sorted(
+        {
+            str((review_map.get(int(t["id"]), {}) or {}).get("session_tag") or "").strip()
+            for t in trades
+            if t.get("id") is not None
+        }
+        - {""}
+    )
+    rule_breaks = sorted(
+        {
+            tag.strip()
+            for t in trades
+            if t.get("id") is not None
+            for tag in str(
+                (review_map.get(int(t["id"]), {}) or {}).get("rule_break_tags") or ""
+            ).split(",")
+            if tag.strip()
+        }
+    )
+    sorted_trades = sorted(
+        [dict(t) for t in trades],
+        key=lambda row: float(row.get("net_pl") or 0.0),
+        reverse=True,
+    )
+    best_trade = sorted_trades[0] if sorted_trades else None
+    worst_trade = sorted_trades[-1] if sorted_trades else None
+    market_context = _debrief_market_context(entry_date)
     template_lines = [
         f"Session date: {entry_date}",
         f"Trades linked: {len(trades)}",
@@ -531,24 +676,160 @@ def _build_debrief_scaffold(
         "Tickers: " + (", ".join(tickers) if tickers else "None linked yet"),
         "Strategies: " + (", ".join(strategy_labels) if strategy_labels else "Unlabeled"),
     ]
-    notes_lines = [
-        "What I saw:",
-        "- Day context / market behavior:",
-        "- Best setup or read:",
-        "",
-        "What I did:",
-        f"- Risk and execution summary ({int(stats.get('wins', 0) or 0)}W/{int(stats.get('losses', 0) or 0)}L, {money(float(stats.get('total', 0.0) or 0.0))} net):",
-        "- Rule adherence / mistakes:",
-        "",
-        "What I learned:",
-        "- Keep doing:",
-        "- Stop doing:",
-        "- Next session adjustment:",
-    ]
+    if market_context.get("headline"):
+        template_lines.extend(
+            [
+                f"Market pulse: {market_context['headline']}",
+                f"Key levels: {market_context['levels']}",
+                f"Macro watch: {market_context['macro']}",
+            ]
+        )
+    if dominant_setup:
+        template_lines.append(f"Dominant setup: {dominant_setup}")
+    if session_tags:
+        template_lines.append("Session tags: " + ", ".join(session_tags))
+    if rule_breaks:
+        template_lines.append("Rule breaks: " + ", ".join(rule_breaks))
+
+    if auto_draft:
+        notes_lines = [
+            "Auto Debrief Draft",
+            "",
+            "Session scorecard:",
+            f"- Result: {int(stats.get('wins', 0) or 0)}W / {int(stats.get('losses', 0) or 0)}L · {money(float(stats.get('total', 0.0) or 0.0))} net",
+            f"- Tickers traded: {', '.join(tickers) if tickers else 'None linked yet'}",
+            f"- Dominant setup: {dominant_setup or 'Unlabeled'}",
+            f"- Session focus: {', '.join(session_tags) if session_tags else 'Not tagged yet'}",
+            "",
+            "Market context:",
+            f"- {market_context.get('headline') or 'Market context unavailable'}",
+            f"- Key levels: {market_context.get('levels') or 'Not available'}",
+            f"- Macro watch: {market_context.get('macro') or 'No macro catalyst loaded'}",
+            "",
+            "Execution read:",
+            f"- Best trade: {_trade_line(best_trade) if best_trade else 'None'}",
+            f"- Worst trade: {_trade_line(worst_trade) if worst_trade else 'None'}",
+            f"- Rule breaks logged: {', '.join(rule_breaks) if rule_breaks else 'none logged'}",
+            "",
+            "Prompt yourself:",
+            "- What did the market offer that actually matched the plan?",
+            "- Where did execution slip versus what the setup required?",
+            "- What one adjustment matters most next session?",
+        ]
+    else:
+        notes_lines = [
+            "What I saw:",
+            "- Day context / market behavior:",
+            "- Best setup or read:",
+            "",
+            "What I did:",
+            f"- Risk and execution summary ({int(stats.get('wins', 0) or 0)}W/{int(stats.get('losses', 0) or 0)}L, {money(float(stats.get('total', 0.0) or 0.0))} net):",
+            "- Rule adherence / mistakes:",
+            "",
+            "What I learned:",
+            "- Keep doing:",
+            "- Stop doing:",
+            "- Next session adjustment:",
+        ]
     return {
         "template_notes": "\n".join(template_lines),
         "notes": "\n".join(notes_lines),
         "pnl": float(stats.get("total", 0.0) or 0.0),
+        "market": market_context.get("market") or "",
+        "setup": dominant_setup,
+        "mood": _draft_mood_label(
+            float(stats.get("total", 0.0) or 0.0),
+            int(stats.get("wins", 0) or 0),
+            int(stats.get("losses", 0) or 0),
+        ),
+    }
+
+
+def _trade_line(row: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(row, dict):
+        return ""
+    return (
+        f"#{int(row.get('id') or 0)} "
+        f"{str(row.get('ticker') or '').strip()} {str(row.get('opt_type') or '').strip()} "
+        f"{str(row.get('entry_time') or '—')}->{str(row.get('exit_time') or '—')} "
+        f"{money(float(row.get('net_pl') or 0.0))}"
+    ).strip()
+
+
+def _draft_mood_label(day_net: float, wins: int, losses: int) -> str:
+    if wins and day_net > 0:
+        return "Confident but controlled"
+    if losses and day_net < 0:
+        return "Frustrated - review discipline"
+    return "Neutral / process review"
+
+
+def _debrief_market_context(entry_date: str) -> Dict[str, str]:
+    try:
+        from mccain_capital.services import core as core_svc
+        from mccain_capital.services import gamma_map_service
+    except Exception:
+        return {"headline": "", "levels": "", "macro": "", "market": ""}
+
+    now_et = app_runtime.now_et()
+    try:
+        snapshot = core_svc._market_pulse_snapshot()
+        quotes = core_svc._market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
+        context = core_svc._market_pulse_context(quotes)
+    except Exception:
+        quotes = []
+        context = {}
+    try:
+        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    except Exception:
+        gamma_snapshot = {}
+    try:
+        news_snapshot = core_svc._market_news_snapshot()
+    except Exception:
+        news_snapshot = {"macro_events": []}
+
+    spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
+    vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
+    spot = float(spx_quote.get("price") or 0.0) if spx_quote.get("price") is not None else None
+    vix = float(vix_quote.get("price") or 0.0) if vix_quote.get("price") is not None else None
+    gamma_flip = gamma_snapshot.get("gamma_flip")
+    call_wall = gamma_snapshot.get("call_wall")
+    put_wall = gamma_snapshot.get("put_wall")
+
+    structure = str(context.get("structure") or context.get("market_posture") or "").strip()
+    if spot is not None:
+        headline = f"SPX {spot:.2f}"
+        if structure:
+            headline += f" · {structure}"
+        if vix is not None:
+            headline += f" · VIX {vix:.2f}"
+    else:
+        headline = structure or "Market context unavailable"
+
+    level_parts = []
+    if put_wall is not None:
+        level_parts.append(f"Put wall {float(put_wall):.0f}")
+    if gamma_flip is not None:
+        level_parts.append(f"Gamma flip {float(gamma_flip):.0f}")
+    if call_wall is not None:
+        level_parts.append(f"Call wall {float(call_wall):.0f}")
+    levels = " · ".join(level_parts)
+
+    macro_rows = list(news_snapshot.get("macro_events") or [])[:2]
+    macro = " / ".join(
+        f"{str(row.get('headline') or 'Macro event')} ({str(row.get('published_label') or 'time TBD')})"
+        for row in macro_rows
+        if isinstance(row, dict)
+    )
+
+    market = "SPX"
+    if vix is not None:
+        market = f"SPX / VIX {vix:.2f}"
+    return {
+        "headline": headline,
+        "levels": levels,
+        "macro": macro,
+        "market": market,
     }
 
 

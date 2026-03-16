@@ -12,7 +12,7 @@ services:
       UPLOAD_DIR: /data/uploads
       BOOKS_DIR: /data/books
     volumes:
-      - ../podman_data:/data:Z
+      - ../persistent-data:/data:Z
     expose:
       - "5001"
 

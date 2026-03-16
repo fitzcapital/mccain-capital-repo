@@ -1,15 +1,30 @@
 """Package entrypoints for McCain Capital app."""
 
+import hmac
 import os
 from datetime import timedelta
 
-from flask import redirect, request, url_for, render_template_string
+from flask import abort, redirect, request, session, url_for, render_template_string
 
 from mccain_capital import auth
 from mccain_capital.config import select_config
 from mccain_capital import app_core as core
 from mccain_capital import runtime
 from mccain_capital.routes import register_all_routes
+
+_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _csrf_enabled(app) -> bool:
+    if app.config.get("TESTING") and not app.config.get("CSRF_ENABLED", False):
+        return False
+    return bool(app.config.get("CSRF_ENABLED", True))
+
+
+def _validate_csrf() -> bool:
+    sent = str(request.headers.get("X-CSRF-Token") or request.form.get("csrf_token") or "").strip()
+    expected = str(session.get("_csrf_token") or "").strip()
+    return bool(sent and expected and hmac.compare_digest(sent, expected))
 
 
 def create_app():
@@ -19,15 +34,16 @@ def create_app():
     runtime.DB_PATH = core.DB_PATH
     runtime.UPLOAD_DIR = core.UPLOAD_DIR
     runtime.BOOKS_DIR = core.BOOKS_DIR
-    os.makedirs(os.path.dirname(runtime.DB_PATH) or ".", exist_ok=True)
-    os.makedirs(runtime.UPLOAD_DIR, exist_ok=True)
-    os.makedirs(runtime.BOOKS_DIR, exist_ok=True)
+    runtime.ensure_storage_dirs()
 
     app.config.from_object(select_config())
+    app.config.setdefault("CSRF_ENABLED", True)
     env = os.environ.get("APP_ENV", "dev").lower().strip()
-    if env in {"prod", "production"} and not (os.environ.get("SECRET_KEY") or "").strip():
+    secret_key = runtime.load_or_create_secret_key()
+    if env in {"prod", "production"} and not secret_key:
         raise RuntimeError("SECRET_KEY must be set when APP_ENV=prod.")
-    app.secret_key = app.config["SECRET_KEY"]
+    app.config["SECRET_KEY"] = secret_key
+    app.secret_key = secret_key
     app.permanent_session_lifetime = timedelta(
         minutes=app.config["PERMANENT_SESSION_LIFETIME_MINUTES"]
     )
@@ -76,11 +92,20 @@ def create_app():
                 allow_safe = {"safe_mode_page", "healthz", "favicon", "static"}
                 if request.endpoint not in allow_safe:
                     return redirect(url_for("safe_mode_page"))
+            if (
+                _csrf_enabled(app)
+                and request.method.upper() in _UNSAFE_METHODS
+                and request.endpoint not in {"static", "healthz"}
+                and not _validate_csrf()
+            ):
+                abort(400, description="CSRF token missing or invalid.")
             if not auth.auth_enabled():
                 return None
             allow = {
                 "login_page",
                 "logout_page",
+                "passkeys_auth_options",
+                "passkeys_auth_verify",
                 "healthz",
                 "favicon",
                 "static",
@@ -118,7 +143,7 @@ def create_app():
     if app.config.get("SAFE_MODE"):
         return app
     if not getattr(app, "_auto_sync_worker_started", False):
-        from mccain_capital.services import trades as trades_service
+        from mccain_capital.services import trades_sync as trades_service
 
         trades_service.ensure_auto_sync_worker_started(app)
         app._auto_sync_worker_started = True

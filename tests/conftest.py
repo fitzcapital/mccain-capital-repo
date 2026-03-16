@@ -29,7 +29,7 @@ def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(core, "APP_PASSWORD_HASH", "")
 
     flask_app = create_app()
-    flask_app.config.update(TESTING=True)
+    flask_app.config.update(TESTING=True, CSRF_ENABLED=False)
     yield flask_app
 
 

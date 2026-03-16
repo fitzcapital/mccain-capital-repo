@@ -1,5 +1,6 @@
 """Analytics repository metric tests."""
 
+from mccain_capital.services import analytics as analytics_service
 from mccain_capital.repositories import analytics as repo
 from mccain_capital.runtime import db, now_iso
 
@@ -185,6 +186,44 @@ def test_session_replay_page_renders(client):
     assert b"Session Replay" in resp.data
     assert b"Timeline" in resp.data
     assert b"Create Journal Entry" in resp.data
+
+
+def test_session_replay_page_builds_replay_rail_with_macro_and_market_context(client, monkeypatch):
+    _seed_trades()
+    from mccain_capital.services import core as core_service
+
+    monkeypatch.setattr(
+        analytics_service.market_data_service,
+        "get_intraday",
+        lambda symbol: [
+            {"ts": "2026-01-02T09:35:00-05:00", "close": 6001.0 if symbol == "SPX" else 18.2},
+            {"ts": "2026-01-02T10:20:00-05:00", "close": 5992.0 if symbol == "SPX" else 19.1},
+        ],
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_forex_factory_usd_window_events",
+        lambda start_day, end_day: {
+            "events_by_day": {
+                "2026-01-02": [
+                    {
+                        "time_label": "10:00 AM ET",
+                        "title": "ISM Services PMI",
+                        "tooltip": "High impact • 10:00 AM ET • ISM Services PMI",
+                        "impact": "High",
+                    }
+                ]
+            }
+        },
+    )
+
+    resp = client.get("/analytics/replay?date=2026-01-02", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Replay Rail" in body
+    assert "ISM Services PMI" in body
+    assert "SPX 6,001.00" in body or "SPX 6001.00" in body
+    assert "Tradier" not in body  # rail should show market context, not provider noise
 
 
 def test_analytics_performance_renders_what_if_simulator(client):

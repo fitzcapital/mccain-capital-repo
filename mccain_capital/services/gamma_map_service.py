@@ -39,6 +39,8 @@ _CACHE: Dict[str, Any] = {
     "gamma_flip": None,
     "call_wall": None,
     "put_wall": None,
+    "call_wall_gamma_per_point": None,
+    "put_wall_gamma_per_point": None,
     "gamma_walls_top3": [],
     "void_zone": {"start": None, "end": None},
     "bias": "insufficient_data",
@@ -524,6 +526,8 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
             "gamma_flip": None,
             "call_wall": None,
             "put_wall": None,
+            "call_wall_gamma_per_point": None,
+            "put_wall_gamma_per_point": None,
         }
 
     net_gex = float(expo_df["gex"].sum())
@@ -540,6 +544,12 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
     put_idx = int(put_base["put_side_gex"].idxmax())
     call_wall = float(expo_df.loc[call_idx, "strike"]) if len(expo_df.index) else None
     put_wall = float(expo_df.loc[put_idx, "strike"]) if len(expo_df.index) else None
+    call_wall_gamma_per_point = (
+        float(expo_df.loc[call_idx, "call_side_gex"]) if len(expo_df.index) else None
+    )
+    put_wall_gamma_per_point = (
+        float(expo_df.loc[put_idx, "put_side_gex"]) if len(expo_df.index) else None
+    )
 
     if (
         call_wall is not None
@@ -560,6 +570,8 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
         "gamma_flip": _identify_gamma_flip(expo_df, float(spot)),
         "call_wall": call_wall,
         "put_wall": put_wall,
+        "call_wall_gamma_per_point": call_wall_gamma_per_point,
+        "put_wall_gamma_per_point": put_wall_gamma_per_point,
     }
 
 
@@ -726,6 +738,8 @@ def run_gamma_refresh_once() -> Dict[str, Any]:
         "gamma_flip": levels.get("gamma_flip"),
         "call_wall": levels.get("call_wall"),
         "put_wall": levels.get("put_wall"),
+        "call_wall_gamma_per_point": levels.get("call_wall_gamma_per_point"),
+        "put_wall_gamma_per_point": levels.get("put_wall_gamma_per_point"),
         "gamma_walls_top3": levels.get("gamma_walls_top3") or [],
         "void_zone": levels.get("void_zone") or {"start": None, "end": None},
         "bias": summary.get("bias"),

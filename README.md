@@ -91,6 +91,13 @@ python -m mccain_capital.cli
 
 Open: `http://localhost:5001`
 
+Default local persistence now lives under `./persistent-data/`:
+
+- DB: `persistent-data/journal.db`
+- uploads/debug/artifacts: `persistent-data/uploads/`
+- books: `persistent-data/books/`
+- generated secret key: `persistent-data/.secret_key`
+
 Optional explicit migration run:
 
 ```bash
@@ -101,29 +108,52 @@ python migrate.py
 
 ```bash
 cd /mccain-capital-repo
-podman build -t mccain-capital-app:latest -f Containerfile .
-podman rm -f mccain-capital-app 2>/dev/null || true
-podman volume create mccain-capital-data
-podman run -d --name mccain-capital-app -p 5001:5001 \
-  -e DB_PATH=/data/journal.db \
-  -e UPLOAD_DIR=/data/uploads \
-  -e BOOKS_DIR=/data/books \
-  -v mccain-capital-data:/data \
-  mccain-capital-app:latest
-podman logs -f mccain-capital-app
+./scripts/run_podman_app.sh
 ```
 
 Open: `http://localhost:5001`
 
 ### Data Persistence
 
-With the `mccain-capital-data` volume, all app data persists across rebuilds/restarts:
+The recommended container flow bind-mounts the repo's real `persistent-data/` into `/data`,
+so the container uses the same journal DB, uploads, books, and generated secret key as local runs.
+
+- host DB: `persistent-data/journal.db`
+- host uploads/debug artifacts: `persistent-data/uploads/`
+- host books/library files: `persistent-data/books/`
+- host secret key: `persistent-data/.secret_key`
+
+Equivalent manual run:
+
+```bash
+cd /mccain-capital-repo
+podman build -t localhost/mccain-capital-app:latest -f Containerfile .
+podman rm -f mccain-capital-app 2>/dev/null || true
+podman run -d --name mccain-capital-app -p 5001:5001 \
+  -v "$(pwd)/persistent-data:/data" \
+  localhost/mccain-capital-app:latest
+podman logs -f mccain-capital-app
+```
+
+In-container paths:
 
 - journal/trades database: `/data/journal.db`
 - uploads/debug artifacts: `/data/uploads`
 - books/library files: `/data/books`
+- generated secret key: `/data/.secret_key`
 
----
+### Tailscale
+
+If this Mac is on Tailscale and Podman publishes `5001`, the app is reachable on the machine's
+Tailscale IP as well:
+
+```bash
+tailscale ip -4
+curl -sf http://YOUR_TAILSCALE_IP:5001/healthz
+```
+
+The included sidecar config at `services/podman-compose.tailscale.yml` now mounts `../persistent-data`
+into the app container so the Tailscale-served container also uses the real chart/app data.
 
 ## 🖼️ Screenshots
 Refreshed from the live authenticated container on **March 2, 2026**.

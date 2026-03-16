@@ -451,6 +451,261 @@
     return derived;
   }
 
+  function bestInvalidationLevel(levels) {
+    const usable = (Array.isArray(levels) ? levels : [])
+      .filter((row) => row && asNum(row.value) !== null);
+    if (!usable.length) return null;
+    usable.sort((a, b) => Math.abs(asNum(a.distance) || 999) - Math.abs(asNum(b.distance) || 999));
+    return usable[0];
+  }
+
+  function buildLiquidityPath(spot, levels) {
+    const s = asNum(spot);
+    const usable = (Array.isArray(levels) ? levels : [])
+      .map((row) => ({ ...row, value: asNum(row.value) }))
+      .filter((row) => row.value !== null);
+    if (s === null || !usable.length) return "Await the next clean interaction.";
+    const higher = usable.filter((row) => row.value >= s).sort((a, b) => a.value - b.value);
+    const lower = usable.filter((row) => row.value <= s).sort((a, b) => b.value - a.value);
+    const upPath = higher.slice(0, 2).map((row) => `${row.label} ${formatNumber(row.value, 0)}`).join(" -> ");
+    const downPath = lower.slice(0, 2).map((row) => `${row.label} ${formatNumber(row.value, 0)}`).join(" -> ");
+    if (upPath && downPath) return `${downPath} | ${upPath}`;
+    return upPath || downPath || "Await the next clean interaction.";
+  }
+
+  function buildTriggerState(trigger, tone) {
+    const triggerText = String(trigger || "").toLowerCase();
+    if (tone === "warn") {
+      return {
+        label: "Blocked until edge",
+        line: "No valid 5m trigger matters until price reaches a real boundary.",
+      };
+    }
+    if (triggerText.includes("bearish")) {
+      return {
+        label: "Armed for bearish confirmation",
+        line: "Only actionable if the 5m reversal or continuation confirms at the level.",
+      };
+    }
+    if (triggerText.includes("bullish")) {
+      return {
+        label: "Armed for bullish confirmation",
+        line: "Only actionable if the 5m reversal or continuation confirms at the level.",
+      };
+    }
+    if (triggerText.includes("wait")) {
+      return {
+        label: "Waiting for clean confirmation",
+        line: "The structure is mapped, but the entry has not earned itself yet.",
+      };
+    }
+    if (triggerText.includes("stand down")) {
+      return {
+        label: "Stand down",
+        line: "No trigger quality right now.",
+      };
+    }
+    return {
+      label: "Context only",
+      line: "Use the level interaction first, then let the 5m chart confirm.",
+    };
+  }
+
+  function buildExecutionPlan(input, derived) {
+    const spot = asNum(input.spot);
+    const gammaFlip = asNum(input.gammaFlip);
+    const callWall = asNum(input.callWall);
+    const putWall = asNum(input.putWall);
+    const nextCallWall = asNum(derived.nextCallWall);
+    const nextPutWall = asNum(derived.nextPutWall);
+    const nearCall = (abs(derived.distanceToCallWall) || 999) <= 8;
+    const nearPut = (abs(derived.distanceToPutWall) || 999) <= 8;
+    const nearFlip = (abs(derived.distanceToFlip) || 999) <= 6;
+    const aboveFlip = derived.aboveOrBelowFlip === "above";
+    const belowFlip = derived.aboveOrBelowFlip === "below";
+    const bearishExpansion = derived.dealerRegime === "Negative Gamma / Momentum Amplifying";
+    const levelStack = [
+      { label: "Put Wall", value: putWall, distance: derived.distanceToPutWall },
+      { label: "Gamma Flip", value: gammaFlip, distance: derived.distanceToFlip },
+      { label: "Call Wall", value: callWall, distance: derived.distanceToCallWall },
+      { label: "Next Call", value: nextCallWall, distance: spot !== null && nextCallWall !== null ? spot - nextCallWall : null },
+      { label: "Next Put", value: nextPutWall, distance: spot !== null && nextPutWall !== null ? spot - nextPutWall : null },
+      { label: "Day Open", value: asNum(input.dayOpen), distance: spot !== null && asNum(input.dayOpen) !== null ? spot - asNum(input.dayOpen) : null },
+      { label: "VWAP", value: asNum(input.vwap), distance: spot !== null && asNum(input.vwap) !== null ? spot - asNum(input.vwap) : null },
+    ];
+
+    if (derived.noTradeCenter) {
+      return {
+        tone: "warn",
+        headline: "No trade in the center. Wait for the edge.",
+        subline: `Structure is compressed between ${formatNumber(putWall, 0)} and ${formatNumber(callWall, 0)} with gamma flip nearby.`,
+        location: "Inside the no-trade center",
+        locationLine: "Price is too close to the flip/wall cluster to force an intraday read.",
+        bias: "Neutral / responsive",
+        biasLine: "Do not pick a side until price reaches a real liquidity boundary.",
+        trigger: "Stand down",
+        triggerLine: "Wait for a 5m Strat trigger only after price tags put wall, call wall, or cleanly accepts away from the flip.",
+        target: "Nearest edge first",
+        targetLine: `Watch for movement toward ${formatNumber(putWall, 0)} or ${formatNumber(callWall, 0)} before building a path.`,
+        invalidation: "No thesis yet",
+        invalidationLine: "If you cannot define the edge first, there is no valid entry.",
+        plan: "Let price interact with a real level first. No mid-range entries.",
+        doThis: "Wait for an edge touch, then re-evaluate the side.",
+        doThisLine: "Only build a trade after price tags put wall, call wall, or cleanly accepts away from the flip.",
+        avoidThis: "Avoid all center-board entries.",
+        avoidThisLine: "No 5m trigger in the middle counts as an edge.",
+      };
+    }
+
+    if (nearCall && derived.reversalSetupFit.label !== "Poor") {
+      return {
+        tone: "negative",
+        headline: "Call wall test. Fade only if the 5m trigger confirms.",
+        subline: bearishExpansion
+          ? "Negative gamma can still squeeze overhead. Require rejection before acting."
+          : "This is only a reversal setup if price cannot accept above the wall.",
+        location: `At Call Wall ${formatNumber(callWall, 0)}`,
+        locationLine: `Spot is ${formatLevelDistance(derived.distanceToCallWall)} from the ceiling.`,
+        bias: "Responsive short bias",
+        biasLine: "Only trade the fade if price rejects the wall and loses micro structure.",
+        trigger: "5m bearish Strat",
+        triggerLine: "Wait for a 2-1-2 down or 3-1-2 reversal back under the wall.",
+        target: gammaFlip !== null ? `Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Back to the flip",
+        targetLine: buildLiquidityPath(spot, [
+          { label: "Call Wall", value: callWall },
+          { label: "Gamma Flip", value: gammaFlip },
+          { label: "Put Wall", value: putWall },
+        ]),
+        invalidation: nextCallWall !== null ? `Acceptance above ${formatNumber(nextCallWall, 0)}` : `Acceptance above ${formatNumber(callWall, 0)}`,
+        invalidationLine: "If price holds above the wall, the fade thesis is wrong.",
+        plan: "Reversal only. No blind shorting into a wall without rejection.",
+        doThis: "Let the wall reject first, then short the confirmed 5m reversal.",
+        doThisLine: "You want the failure under resistance, not a front-run into strength.",
+        avoidThis: "Avoid fading a clean acceptance above the wall.",
+        avoidThisLine: "If price is holding above the wall, the short idea is dead.",
+      };
+    }
+
+    if (nearPut && derived.reversalSetupFit.label !== "Poor") {
+      return {
+        tone: "positive",
+        headline: "Put wall support. Buy only if the 5m trigger confirms.",
+        subline: bearishExpansion
+          ? "Negative gamma can still flush support. Require hold/reclaim before acting."
+          : "This is only a reversal setup if price respects the wall and reclaims structure.",
+        location: `At Put Wall ${formatNumber(putWall, 0)}`,
+        locationLine: `Spot is ${formatLevelDistance(derived.distanceToPutWall)} from the floor.`,
+        bias: "Responsive long bias",
+        biasLine: "Only trade the bounce if support holds and price reclaims the level cleanly.",
+        trigger: "5m bullish Strat",
+        triggerLine: "Wait for a 2-1-2 up or 3-1-2 reversal off the wall.",
+        target: gammaFlip !== null ? `Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Back to the flip",
+        targetLine: buildLiquidityPath(spot, [
+          { label: "Put Wall", value: putWall },
+          { label: "Gamma Flip", value: gammaFlip },
+          { label: "Call Wall", value: callWall },
+        ]),
+        invalidation: nextPutWall !== null ? `Acceptance below ${formatNumber(nextPutWall, 0)}` : `Acceptance below ${formatNumber(putWall, 0)}`,
+        invalidationLine: "If price loses the wall and cannot reclaim it, the bounce thesis is wrong.",
+        plan: "Support reclaim only. No catching a falling knife under support.",
+        doThis: "Wait for the hold or reclaim, then buy the confirmed 5m reversal.",
+        doThisLine: "You want proof that support is working before the long exists.",
+        avoidThis: "Avoid catching breakdowns under support.",
+        avoidThisLine: "If price accepts below the wall, the bounce setup is gone.",
+      };
+    }
+
+    if (aboveFlip && !nearFlip) {
+      return {
+        tone: "positive",
+        headline: "Above the flip. Momentum long is the cleaner plan.",
+        subline: "Structure favors continuation if price holds above gamma flip and starts accepting through nearby resistance.",
+        location: gammaFlip !== null ? `Above Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Above core support",
+        locationLine: `Spot is ${formatLevelDistance(derived.distanceToFlip)} from the flip with ${derived.structureType.toLowerCase()} structure.`,
+        bias: "Continuation long",
+        biasLine: bearishExpansion
+          ? "Breaks can run harder in negative gamma. Respect speed and avoid late entries."
+          : "Positive gamma supports cleaner level-to-level continuation.",
+        trigger: "5m bullish Strat",
+        triggerLine: "Wait for a 2-1-2 up / 3-1-2 continuation after hold or reclaim above the flip.",
+        target: callWall !== null && (spot === null || spot < callWall) ? `Call Wall ${formatNumber(callWall, 0)}` : `Next Call ${formatNumber(nextCallWall, 0)}`,
+        targetLine: buildLiquidityPath(spot, [
+          { label: "Gamma Flip", value: gammaFlip },
+          { label: "Call Wall", value: callWall },
+          { label: "Next Call", value: nextCallWall },
+        ]),
+        invalidation: gammaFlip !== null ? `Lose ${formatNumber(gammaFlip, 0)}` : "Lose the reclaim",
+        invalidationLine: "If price slips back through the flip and cannot reclaim it, reset the long thesis.",
+        plan: "Longs only after the 5m trigger confirms acceptance above the working level.",
+        doThis: "Buy continuation only after the 5m bullish confirmation above structure.",
+        doThisLine: "Hold/reclaim above the flip first, then trade the move toward the next liquidity shelf.",
+        avoidThis: "Avoid chasing extended upside away from the level.",
+        avoidThisLine: "If the entry is late and the invalidation is wide, skip it.",
+      };
+    }
+
+    if (belowFlip && !nearFlip) {
+      return {
+        tone: "negative",
+        headline: "Below the flip. Momentum short is the cleaner plan.",
+        subline: "Structure favors continuation lower if failed bounces stay below gamma flip and price accepts lower liquidity.",
+        location: gammaFlip !== null ? `Below Gamma Flip ${formatNumber(gammaFlip, 0)}` : "Below core resistance",
+        locationLine: `Spot is ${formatLevelDistance(derived.distanceToFlip)} from the flip with ${derived.structureType.toLowerCase()} structure.`,
+        bias: "Continuation short",
+        biasLine: bearishExpansion
+          ? "Negative gamma supports faster downside extension after accepted breaks."
+          : "Below the flip, failed bounces deserve more respect than impulsive longs.",
+        trigger: "5m bearish Strat",
+        triggerLine: "Wait for a 2-1-2 down / 3-1-2 continuation after failure under the flip.",
+        target: putWall !== null && (spot === null || spot > putWall) ? `Put Wall ${formatNumber(putWall, 0)}` : `Next Put ${formatNumber(nextPutWall, 0)}`,
+        targetLine: buildLiquidityPath(spot, [
+          { label: "Gamma Flip", value: gammaFlip },
+          { label: "Put Wall", value: putWall },
+          { label: "Next Put", value: nextPutWall },
+        ]),
+        invalidation: gammaFlip !== null ? `Reclaim ${formatNumber(gammaFlip, 0)}` : "Reclaim the failed level",
+        invalidationLine: "If price reclaims the flip and holds, the short thesis is wrong.",
+        plan: "Shorts only after the 5m trigger confirms rejection under the working level.",
+        doThis: "Short continuation only after the 5m bearish confirmation under structure.",
+        doThisLine: "Let the failed bounce prove itself, then trade toward the next lower liquidity pocket.",
+        avoidThis: "Avoid pressing shorts into support without confirmation.",
+        avoidThisLine: "If price reclaims the flip, the downside thesis is wrong.",
+      };
+    }
+
+    const invalidation = bestInvalidationLevel(levelStack);
+    return {
+      tone: "neutral",
+      headline: "Responsive only. Let the level decide the trade.",
+      subline: "The page has context, but structure is still mixed. Wait for a cleaner interaction before committing.",
+      location: nearFlip ? "At the flip" : "Between major levels",
+      locationLine: nearFlip
+        ? "Price is sitting too close to gamma flip for blind momentum."
+        : buildLiquidityPath(spot, [
+            { label: "Put Wall", value: putWall },
+            { label: "Gamma Flip", value: gammaFlip },
+            { label: "Call Wall", value: callWall },
+          ]),
+      bias: "Two-way",
+      biasLine: "Trade the reaction, not a prediction. Let the next level interaction choose the side.",
+      trigger: "Wait for 5m confirmation",
+      triggerLine: "Bullish only on acceptance above structure. Bearish only on rejection below it.",
+      target: "Nearest liquidity",
+      targetLine: buildLiquidityPath(spot, [
+        { label: "Put Wall", value: putWall },
+        { label: "Gamma Flip", value: gammaFlip },
+        { label: "Call Wall", value: callWall },
+      ]),
+      invalidation: invalidation ? `${invalidation.label} ${formatNumber(invalidation.value, 0)}` : "Reset if thesis breaks",
+      invalidationLine: "If the level you are trading off stops mattering, the trade is over.",
+      plan: "No forcing. Wait for price to interact with a wall or cleanly accept away from the flip first.",
+      doThis: "Stay responsive and let the next touched level pick the side.",
+      doThisLine: "The next good trade comes from interaction, not prediction.",
+      avoidThis: "Avoid pre-committing in mixed structure.",
+      avoidThisLine: "No entry deserves size until the board simplifies.",
+    };
+  }
+
   const exported = {
     formatNetGamma,
     formatLevelDistance,
@@ -466,6 +721,7 @@
     classifyReversalSetupFit,
     buildAutoRead,
     buildWarningBadges,
+    buildExecutionPlan,
     getSessionWindowState,
     computeDistanceMetrics,
   };
@@ -481,6 +737,8 @@
 
   const card = document.getElementById("spxPriorityCard");
   if (!card) return;
+  const shell = card.closest(".spxPriorityShell");
+  const spotPanel = document.getElementById("spxPrioritySpotPanel");
 
   const toneForBadge = (label) => {
     const l = String(label || "").toLowerCase();
@@ -534,6 +792,254 @@
       chip.textContent = label;
       root.appendChild(chip);
     });
+  };
+
+  const tapeCards = Array.from(document.querySelectorAll(".marketPulseTapeCard[data-symbol]"));
+
+  const dispatchStreamStatus = (status, detail) => {
+    window.dispatchEvent(new CustomEvent("market-pulse-stream-status", { detail: { status, detail } }));
+  };
+
+  const formatSigned = (value, digits = 2) => {
+    const n = asNum(value);
+    if (n === null) return "—";
+    return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}`;
+  };
+
+  const inferAbsoluteChange = (price, pctChange) => {
+    const p = asNum(price);
+    const pct = asNum(pctChange);
+    if (p === null || pct === null) return null;
+    const prior = p / (1 + (pct / 100));
+    if (!Number.isFinite(prior)) return null;
+    return p - prior;
+  };
+
+  const seriesValueCount = (points) => (
+    (Array.isArray(points) ? points : [])
+      .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
+      .filter((value) => value !== null)
+      .length
+  );
+
+  const pickBestSeries = (...candidates) => {
+    let fallback = [];
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate)) continue;
+      const count = seriesValueCount(candidate);
+      if (count >= 2) return candidate;
+      if (!fallback.length && count >= 1) fallback = candidate;
+    }
+    return fallback;
+  };
+
+  const formatEtLabel = (iso) => {
+    const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(ts)) return "Awaiting live refresh";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+      timeZoneName: "short",
+    }).format(new Date(ts));
+  };
+
+  const formatRange = (points) => {
+    const values = (Array.isArray(points) ? points : [])
+      .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
+      .filter((value) => value !== null);
+    if (!values.length) return "—";
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    return Math.abs(high - low) < 0.01 ? high.toFixed(2) : `${low.toFixed(2)} to ${high.toFixed(2)}`;
+  };
+
+  const sparkTone = (pctChange) => {
+    const pct = asNum(pctChange);
+    if (pct === null) return "flat";
+    if (pct > 0) return "up";
+    if (pct < 0) return "down";
+    return "flat";
+  };
+
+  const buildSparklineSvg = (points, tone) => {
+    const values = (Array.isArray(points) ? points : [])
+      .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
+      .filter((value) => value !== null);
+    if (values.length < 2) {
+      return '<div class="marketMiniSparkEmpty">No trend</div>';
+    }
+    const width = 120;
+    const height = 28;
+    let minV = Math.min(...values);
+    let maxV = Math.max(...values);
+    if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
+    const step = width / Math.max(values.length - 1, 1);
+    const pts = values.map((value, index) => {
+      const x = index * step;
+      const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    });
+    return (
+      `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">`
+      + `<polyline class="marketMiniSparkLine ${tone}" points="${pts.join(" ")}" />`
+      + `</svg>`
+    );
+  };
+
+  const deriveDataState = (quote) => {
+    const provider = String((quote || {}).provider || "").toLowerCase();
+    const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
+    const explicit = String((quote || {}).data_state || "").trim().toLowerCase();
+    if (!provider && !reason && ["live", "delayed", "cached", "missing"].includes(explicit)) return explicit;
+    const price = asNum((quote || {}).price);
+    if (price === null) return "missing";
+    if (reason.includes("cached")) return "cached";
+    if (provider === "tradier" && reason.startsWith("tradier_")) return "live";
+    if (
+      reason.includes("fallback")
+      || reason.includes("close")
+      || reason.includes("snapshot")
+      || reason.includes("intraday")
+      || reason.includes("prev_close")
+    ) {
+      return "delayed";
+    }
+    if (provider && provider !== "tradier") return "delayed";
+    return "live";
+  };
+
+  const dataStateLabel = (state) => {
+    if (state === "live") return "Live";
+    if (state === "delayed") return "Delayed";
+    if (state === "cached") return "Cached";
+    return "Missing";
+  };
+
+  const sourceBadgeLabel = (quote) => {
+    const provider = String((quote || {}).provider || "").toLowerCase();
+    const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
+    const explicit = String((quote || {}).source_badge_label || "").trim();
+    if (!provider && !reason && explicit) return explicit;
+    if (provider === "tradier" && reason.startsWith("tradier_stream_")) return "Tradier Stream";
+    if (provider === "tradier" && reason.startsWith("tradier_live")) return "Tradier Live Quote";
+    if (provider === "tradier" && reason.startsWith("tradier_close")) return "Tradier Close";
+    if (provider === "massive") return "Massive Fallback";
+    if (provider === "yfinance") return "Yahoo Fallback";
+    if (provider) return `${provider[0].toUpperCase()}${provider.slice(1)} Fallback`;
+    return "Feed unavailable";
+  };
+
+  const updateStateChip = (node, state) => {
+    if (!node) return;
+    const nextState = String(state || "missing");
+    node.textContent = dataStateLabel(nextState);
+    node.classList.remove("state-live", "state-delayed", "state-cached", "state-missing");
+    node.classList.add(`state-${nextState}`);
+  };
+
+  const updateTextNode = (node, value) => {
+    if (!node) return;
+    const next = String(value ?? "—");
+    if (node.textContent !== next) node.textContent = next;
+  };
+
+  const updateSparkNode = (node, points, tone) => {
+    if (!node) return;
+    node.innerHTML = buildSparklineSvg(points, tone);
+  };
+
+  const applyGlowState = (nodes, pctChange) => {
+    const pct = asNum(pctChange);
+    const positive = pct !== null && pct > 0;
+    const negative = pct !== null && pct < 0;
+    (Array.isArray(nodes) ? nodes : []).forEach((node) => {
+      if (!node) return;
+      node.classList.toggle("glow-green", positive);
+      node.classList.toggle("glow-red", negative);
+    });
+  };
+
+  const setChipTone = (id, label, tone) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.textContent = String(label || "—");
+    node.classList.remove("positive", "negative", "warn", "critical", "neutral");
+    if (tone) node.classList.add(tone);
+  };
+
+  const updateTapeSummary = (prices) => {
+    const tracked = tapeCards
+      .map((card) => String(card.dataset.symbol || "").toUpperCase())
+      .filter(Boolean);
+    let advancers = 0;
+    let decliners = 0;
+    let missing = 0;
+    let biggestLabel = "—";
+    let biggestMove = null;
+
+    tracked.forEach((symbol) => {
+      const quote = ((prices || {})[symbol] || {});
+      const pct = asNum(quote.pct_change);
+      const price = asNum(quote.price);
+      if (price === null || pct === null) {
+        missing += 1;
+        return;
+      }
+      if (pct > 0) advancers += 1;
+      else if (pct < 0) decliners += 1;
+      if (biggestMove === null || Math.abs(pct) > Math.abs(biggestMove)) {
+        biggestMove = pct;
+        biggestLabel = symbol;
+      }
+    });
+
+    setText("marketPulseAdvancers", String(advancers));
+    setText("marketPulseDecliners", String(decliners));
+    setText("marketPulseMissing", String(missing));
+    setText(
+      "marketPulseBiggestMove",
+      biggestMove === null ? "—" : `${biggestLabel} ${formatSigned(biggestMove, 2)}%`
+    );
+  };
+
+  const applyTapeCardUpdate = (card, quote, points) => {
+    if (!card || !quote || typeof quote !== "object") return;
+    const price = asNum(quote.price);
+    const pct = asNum(quote.pct_change);
+    const state = deriveDataState(quote);
+    const tone = sparkTone(pct);
+    const reason = String(quote.reason || "").trim();
+    const asOf = String(quote.as_of || quote.asof || "").trim();
+
+    updateStateChip(card.querySelector('[data-role="state-chip"]'), state);
+    updateTextNode(card.querySelector('[data-role="freshness"]'), formatEtLabel(asOf));
+    updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2));
+    updateTextNode(
+      card.querySelector('[data-role="change-line"]'),
+      `${formatSigned(inferAbsoluteChange(price, pct), 2)} · ${formatSigned(pct, 2)}%`
+    );
+    updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
+    updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
+    updateTextNode(card.querySelector('[data-role="range-line"]'), `Range: ${formatRange(points)}`);
+
+    const reasonNode = card.querySelector('[data-role="reason-line"]');
+    if (reasonNode) {
+      if (state !== "live" && reason) {
+        reasonNode.hidden = false;
+        updateTextNode(reasonNode, `Reason: ${reason}`);
+      } else {
+        reasonNode.hidden = true;
+        updateTextNode(reasonNode, "");
+      }
+    }
+
+    card.classList.toggle("glow-green", (pct || 0) > 0);
+    card.classList.toggle("glow-red", (pct || 0) < 0);
   };
 
   const adaptInput = (base) => {
@@ -601,10 +1107,27 @@
   const render = (base) => {
     const input = adaptInput(base);
     const derived = computeDistanceMetrics(input);
+    const executionPlan = buildExecutionPlan(input, derived);
+    const triggerState = buildTriggerState(executionPlan.trigger, executionPlan.tone);
     const bullets = buildAutoRead(input, derived);
     const badges = buildWarningBadges(input, derived);
+    const spxQuote = (base && base.spx_quote) || {};
+    const spxPoints = pickBestSeries(
+      (((base || {}).series_points || {}).SPX),
+      (((base || {}).series_points || {})["^GSPC"]),
+      (Array.isArray(spxQuote.series) ? spxQuote.series : []),
+      (Array.isArray(spxQuote.mini_series) ? spxQuote.mini_series : [])
+    );
+    const spxState = deriveDataState(spxQuote);
+    const spxAbsChange = inferAbsoluteChange(spxQuote.price, spxQuote.change_pct);
 
     setText("spxPrioritySpotValue", formatNumber(input.spot, 2));
+    setText(
+      "spxPrioritySpotLead",
+      input.spot === null
+        ? "SPX quote unavailable"
+        : `${formatNumber(input.spot, 2)} · ${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`
+    );
     setText("spxPriorityGammaFlipValue", formatNumber(input.gammaFlip, 0));
     setText("spxPriorityCallWallValue", formatNumber(input.callWall, 0));
     setText("spxPriorityPutWallValue", formatNumber(input.putWall, 0));
@@ -665,10 +1188,44 @@
         (base.spx_quote || {}).provider || (base.spx_quote || {}).data_reason
       )
     );
+    updateStateChip(document.getElementById("spxPriorityStateChip"), spxState);
+    setText("spxPriorityFreshness", formatEtLabel(tickTimeRaw));
+    setText(
+      "spxPriorityFreshnessLine",
+      `${formatEtLabel(tickTimeRaw)}${spxQuote.provider ? ` · ${spxQuote.provider}` : ""}`
+    );
+    setText("spxPrioritySourceBadge", sourceBadgeLabel(spxQuote));
+    setText("marketPulseSourceMode", sourceBadgeLabel(spxQuote));
+    setText("spxPriorityChangeLine", `${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`);
+    setText("spxPriorityRangeLine", `Range: ${formatRange(spxPoints)}`);
+    updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), spxPoints, sparkTone(spxQuote.change_pct));
+    applyGlowState([shell, spotPanel], spxQuote.change_pct);
+    setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
 
     setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
     setText("spxPriorityTrap", String(derived.trapZoneState || "unavailable").replace(/_/g, " "));
+
+    setText("marketPulseSetupHeadline", executionPlan.headline);
+    setText("marketPulseSetupSubline", executionPlan.subline);
+    setText("marketPulseSetupLocation", executionPlan.location);
+    setText("marketPulseSetupLocationLine", executionPlan.locationLine);
+    setText("marketPulseSetupBias", executionPlan.bias);
+    setText("marketPulseSetupBiasLine", executionPlan.biasLine);
+    setText("marketPulseSetupTrigger", executionPlan.trigger);
+    setText("marketPulseSetupTriggerLine", executionPlan.triggerLine);
+    setText("marketPulseSetupTriggerState", triggerState.label);
+    setText("marketPulseSetupTriggerStateLine", triggerState.line);
+    setText("marketPulseSetupTarget", executionPlan.target);
+    setText("marketPulseSetupTargetLine", executionPlan.targetLine);
+    setText("marketPulseSetupInvalidation", executionPlan.invalidation);
+    setText("marketPulseSetupInvalidationLine", executionPlan.invalidationLine);
+    setText("marketPulseSetupPlan", executionPlan.plan);
+    setText("marketPulseDoThis", executionPlan.doThis);
+    setText("marketPulseDoThisLine", executionPlan.doThisLine);
+    setText("marketPulseAvoidThis", executionPlan.avoidThis);
+    setText("marketPulseAvoidThisLine", executionPlan.avoidThisLine);
+    setChipTone("marketPulseExecutionTone", executionPlan.tone === "positive" ? "Long-biased plan" : executionPlan.tone === "negative" ? "Short-biased plan" : executionPlan.tone === "warn" ? "Stand down" : "Responsive plan", executionPlan.tone);
 
     setBullets("spxPriorityNarrative", bullets);
     setBadges("spxPriorityWarningBadges", badges);
@@ -687,9 +1244,13 @@
   const base = getJson("spxPriorityBasePayload") || {};
   let current = JSON.parse(JSON.stringify(base));
   render(current);
+  dispatchStreamStatus("Live stream connecting", "Waiting for first tick…");
 
   const connectStream = () => {
     const stream = new EventSource("/stream/market");
+    stream.onopen = () => {
+      dispatchStreamStatus("Live stream connected", "Listening for fresh ticks…");
+    };
     stream.onmessage = (event) => {
       if (!event || !event.data) return;
       let payload = null;
@@ -700,6 +1261,7 @@
       }
 
       const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
+      const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
       const gamma = payload && typeof payload === "object" ? (payload.gamma_map || {}) : {};
       const spxTick = prices.SPX || prices["^GSPC"] || null;
       const vixTick = prices.VIX || prices["^VIX"] || null;
@@ -712,7 +1274,14 @@
         if (tickPct !== null) nextSpx.change_pct = tickPct;
         if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
         if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
-        if (typeof spxTick.provider === "string") nextSpx.data_reason = spxTick.provider;
+        if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
+        if (typeof spxTick.reason === "string") {
+          nextSpx.reason = spxTick.reason;
+          nextSpx.data_reason = spxTick.reason;
+        }
+        nextSpx.data_state = deriveDataState(nextSpx);
+        nextSpx.data_status_label = dataStateLabel(nextSpx.data_state);
+        nextSpx.source_badge_label = sourceBadgeLabel(nextSpx);
       }
 
       const nextVix = { ...(current.vix_quote || {}) };
@@ -721,6 +1290,14 @@
         if (vixPrice !== null) nextVix.price = vixPrice;
         const vixPct = asNum(vixTick.pct_change);
         if (vixPct !== null) nextVix.change_pct = vixPct;
+        if (typeof vixTick.provider === "string") nextVix.provider = vixTick.provider;
+        if (typeof vixTick.reason === "string") {
+          nextVix.reason = vixTick.reason;
+          nextVix.data_reason = vixTick.reason;
+        }
+        nextVix.data_state = deriveDataState(nextVix);
+        nextVix.data_status_label = dataStateLabel(nextVix.data_state);
+        nextVix.source_badge_label = sourceBadgeLabel(nextVix);
       }
 
       current = {
@@ -730,15 +1307,33 @@
         market_now_iso: new Date().toISOString(),
         updated_at: payload.updated_at || (current || {}).updated_at || null,
         server_ts: payload.server_ts || null,
+        series_points: {
+          ...((current || {}).series_points || {}),
+          ...(seriesPoints || {}),
+        },
         gamma_snapshot: {
           ...(current.gamma_snapshot || {}),
           ...(gamma || {}),
         },
       };
       render(current);
+      tapeCards.forEach((card) => {
+        const symbol = String(card.dataset.symbol || "").toUpperCase();
+        if (!symbol) return;
+        applyTapeCardUpdate(card, prices[symbol] || {}, seriesPoints[symbol] || []);
+      });
+      updateTapeSummary(prices);
+      dispatchStreamStatus(
+        "Live stream on",
+        buildTickPingLabel(
+          (spxTick || {}).as_of || payload.updated_at || payload.server_ts || new Date().toISOString(),
+          (spxTick || {}).provider || ""
+        )
+      );
     };
 
     stream.onerror = () => {
+      dispatchStreamStatus("Live stream retrying", "Connection dropped. Reconnecting to market feed…");
       try {
         stream.close();
       } catch (_err) {

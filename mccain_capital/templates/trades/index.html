@@ -4,12 +4,13 @@
       <div>
         <div class="pill">⚡ Execution Console</div>
         <div class="pageTitleRow">
-          <h2 class="pageTitle">Execution Log</h2>
+          <h2 class="pageTitle">{{ hero_title }}</h2>
           <details class="inlineHelp">
             <summary aria-label="Execution log help">?</summary>
             <div class="helpPopover">Log, review, and import trades with quick context on risk, consistency, and exposure.</div>
           </details>
         </div>
+        <div class="summaryLead stack8">{{ hero_blurb }}</div>
       </div>
       <div class="actionRow">
         <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
@@ -29,6 +30,15 @@
       {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
       {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
     </div>
+    {% if data_trust.badges %}
+      <div class="trustBadgeRow">
+        {% for badge in data_trust.badges %}
+          <span class="trustBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+            {{ badge.label }} <b>{{ badge.value }}</b>
+          </span>
+        {% endfor %}
+      </div>
+    {% endif %}
     <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
       {{ data_trust.message }}
     </div>
@@ -42,8 +52,8 @@
     {% endif %}
   </div></div>
 
-  <div class="card supportCard"><div class="toolbar">
-    <div class="pill">Desk Focus</div>
+  <div class="card supportCard workflowPromptCard"><div class="toolbar">
+    <div class="pill">Next Move</div>
     <div class="supportLead">{{ execution_msg }}</div>
     <div class="supportBody">{{ next_action_msg }}</div>
     <div class="supportMeta">{{ risk_msg }}</div>
@@ -51,6 +61,12 @@
 </div>
 
 <div class="statusBadgeStrip">
+  {% for badge in trades_status_badges %}
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+      <span class="statusBadgeLabel">{{ badge.label }}</span>
+      <strong>{{ badge.value }}</strong>
+    </div>
+  {% endfor %}
   {% for badge in balance_badges %}
     <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
       <span class="statusBadgeLabel">{{ badge.label }}</span>
@@ -469,7 +485,7 @@
         <tr><td colspan="17">
           <div class="emptyState">
             <div class="emptyStateTitle">No trades in this view yet.</div>
-            <div class="emptyStateBody">Next best action: upload statement first, then complete setup/session tags and review scores.</div>
+            <div class="emptyStateBody">Start by uploading a statement, then add setup, session, and review tags.</div>
           </div>
         </td></tr>
       {% endif %}
@@ -543,12 +559,12 @@
   </div>
   {% if total_rows == 0 %}
     <div class="card stack12"><div class="toolbar">
-      <div class="pill">🧭 First Trade Coaching</div>
+      <div class="pill">First Trade Setup</div>
       <div class="tiny stack8 line16"><b>Why this matters:</b> trade analytics is only as good as logging consistency.</div>
-      <div class="tiny stack8 line16"><b>Next best action:</b> upload statement first, then add setup/session tags and checklist score.</div>
+      <div class="tiny stack8 line16"><b>Start here:</b> upload a statement, then add setup, session, and checklist tags.</div>
       <div class="actionRow stack10">
-        <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
-        <a class="btn" href="/trades/new">➕ Add Manual Trade</a>
+        <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
+        <a class="btn" href="/trades/new">Add Manual Trade</a>
       </div>
     </div></div>
   {% endif %}

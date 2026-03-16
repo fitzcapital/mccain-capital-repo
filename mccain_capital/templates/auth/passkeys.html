@@ -1,0 +1,69 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pill">🔐 Passkey Control</div>
+    <h2 class="pageTitle">Use Face ID, Touch ID, or This Device To Sign In</h2>
+    <div class="pageSub">Register passkeys for the devices you trust most. Password recovery stays available, but daily sign-in can be faster and much harder to phish.</div>
+    <div class="badgeRow stack10">
+      <span class="trustBadge">RP ID {{ rp_id }}</span>
+      <span class="trustBadge">{{ passkeys|length }} registered</span>
+      <span class="trustBadge">Origins {{ expected_origins|join(' • ') }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="toolbar">
+    <div class="pill">🚀 Register This Device</div>
+    <div class="tiny line16">On Apple hardware, the browser will offer Face ID or Touch ID automatically through the platform authenticator.</div>
+    <div class="row stack10 passkeyControlRow">
+      <div class="fieldGrow">
+        <label>Device Label</label>
+        <input id="passkeyLabelInput" type="text" maxlength="80" value="{{ request.host }}" placeholder="MacBook Pro · Face ID" />
+      </div>
+      <div class="rightActions passkeyControlActions">
+        <button class="btn primary" type="button" data-passkey-register>Register Passkey</button>
+      </div>
+    </div>
+    <div class="tiny metaBlue line16" id="passkeyStatus" aria-live="polite">Next move: register the device you use most often so the login page can unlock with one tap.</div>
+  </div>
+</div>
+
+<div class="passkeyGrid">
+  {% for row in passkeys %}
+    <div class="card passkeyCard">
+      <div class="toolbar">
+        <div class="pill">Trusted Device</div>
+        <h3 class="cardTitle">{{ row.device_label }}</h3>
+        <div class="tiny line16">Credential …{{ row.credential_suffix }} · {{ row.host_label }}</div>
+        <div class="badgeRow stack10">
+          <span class="trustBadge">Added {{ row.added_label }}</span>
+          <span class="trustBadge">Last used {{ row.last_used_label }}</span>
+          {% if row.credential_backed_up %}<span class="trustBadge">Backed up</span>{% endif %}
+          {% if row.credential_device_type %}<span class="trustBadge">{{ row.credential_device_type|replace('_', ' ')|title }}</span>{% endif %}
+        </div>
+        <form method="post" action="{{ url_for('passkeys_delete') }}" class="rightActions">
+          <input type="hidden" name="credential_id" value="{{ row.credential_id }}" />
+          <button class="btn danger" type="submit">Remove</button>
+        </form>
+      </div>
+    </div>
+  {% else %}
+    <div class="card">
+      <div class="toolbar">
+        <div class="pill">No Passkeys Yet</div>
+        <div class="tiny line16">Register one after sign-in and the login page will expose a direct Face ID / passkey button for this app.</div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<script>
+  window.mcPasskeys = {
+    mode: "manage",
+    registerOptionsUrl: "{{ url_for('passkeys_register_options') }}",
+    registerVerifyUrl: "{{ url_for('passkeys_register_verify') }}",
+    labelInputId: "passkeyLabelInput",
+    statusId: "passkeyStatus"
+  };
+</script>
+<script src="{{ url_for('static', filename='js/passkeys.js') }}"></script>

@@ -12,9 +12,9 @@
         </div>
       </div>
       <div class="actionRow">
-        <a class="btn" href="/candle-opens?y={{ prev_y }}&m={{ prev_m }}">⬅️ Prev</a>
-        <a class="btn primary" href="/candle-opens">🎯 This Month</a>
-        <a class="btn" href="/candle-opens?y={{ next_y }}&m={{ next_m }}">Next ➡️</a>
+        <a class="btn" href="/candle-opens?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
+        <a class="btn primary" href="/candle-opens">This Month</a>
+        <a class="btn" href="/candle-opens?y={{ next_y }}&m={{ next_m }}">Next</a>
       </div>
     </div>
   </div>
@@ -31,20 +31,40 @@
     <div class="value">{{ signal_count }}</div>
     <div class="sub">Combined daily + weekly resets</div>
   </div>
-  <div class="metric">
+  <div class="metric candleMetricLegend">
     <div class="label">Day Cycles</div>
     <div class="value">{{ day_legend }}</div>
     <div class="sub">Session-count opens</div>
   </div>
-  <div class="metric">
+  <div class="metric candleMetricLegend">
     <div class="label">Week Cycles</div>
     <div class="value">{{ week_legend }}</div>
     <div class="sub">First tradable day only</div>
   </div>
-  <div class="metric">
+  <div class="metric candleMetricLegend">
     <div class="label">Month Cycles</div>
     <div class="value">{{ month_legend }}</div>
     <div class="sub">From January month opens</div>
+  </div>
+</div>
+
+<div class="card candleCyclePanel">
+  <div class="toolbar">
+    <div class="pill">Cycles</div>
+    <div class="candleCycleGrid">
+      <div class="candleCycleCell">
+        <div class="label">Day</div>
+        <div class="value">{{ day_legend }}</div>
+      </div>
+      <div class="candleCycleCell">
+        <div class="label">Week</div>
+        <div class="value">{{ week_legend }}</div>
+      </div>
+      <div class="candleCycleCell">
+        <div class="label">Month</div>
+        <div class="value">{{ month_legend }}</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -54,10 +74,20 @@
       <div>
         <div class="pill">🗞️ USD News</div>
         <div class="pageSub candleCondensedSub">{{ news_week_range }} · {{ news_summary }}</div>
+        <div class="candleSourceRow">
+          <span class="candleConfidenceChip is-{{ news_source_mode }}">{{ news_confidence_label }}</span>
+          {% if news_fallback_count %}
+            <span class="tiny candleSourceNote">{{ news_source_note }}</span>
+          {% endif %}
+        </div>
       </div>
       <div class="candleNewsCounts">
         <span class="newsCountChip is-high">{{ news_high }} red</span>
         <span class="newsCountChip is-medium">{{ news_medium }} orange</span>
+        {% if news_fallback_count %}
+          <span class="newsCountChip">{{ news_provider_count }} live</span>
+          <span class="newsCountChip is-curated">{{ news_fallback_count }} backup</span>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -66,7 +96,39 @@
   {% endif %}
 </div>
 
-<div class="card candleNewsPanel">
+{% if news_top_days %}
+<div class="candlePriorityStrip">
+  {% for top_day in news_top_days %}
+    <a class="card candlePriorityCard is-{{ top_day.focus_key }}" href="#news-day-{{ top_day.iso }}">
+      <div class="pillRow">
+        <div class="pill">Key Day</div>
+        <span class="candlePriorityFocus">{{ top_day.focus_label }}</span>
+      </div>
+      <div class="candlePriorityDate">{{ top_day.date_label }}</div>
+      <div class="candlePriorityHeadline">{{ top_day.headline }}</div>
+      <div class="candlePriorityMeta">
+        {% if top_day.high_count %}
+          <span class="newsCountChip is-high">{{ top_day.high_count }} red</span>
+        {% endif %}
+        {% if top_day.medium_count %}
+          <span class="newsCountChip is-medium">{{ top_day.medium_count }} orange</span>
+        {% endif %}
+        {% if top_day.curated_count %}
+          <span class="candleSourceChip">backup mixed</span>
+        {% endif %}
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<details class="card candleNewsPanel candleMobileFold" data-mobile-default="closed" open>
+  <summary class="candleMobileSummary">
+    <span class="pill">USD Events</span>
+    <span class="candleMobileSummaryTitle">{{ news_week_range }}</span>
+    <span class="tiny muted">{{ news_summary }}</span>
+  </summary>
+  <div class="candleMobileFoldBody">
   <div class="candleNewsHead compact">
     <div class="pillRow candlePillHelpRow">
       <div class="pill">🔎 Markers</div>
@@ -79,9 +141,31 @@
   {% if news_available and news_days %}
     <div class="candleNewsDayGrid">
       {% for news_day in news_days %}
-        <section class="candleNewsDayCard" id="news-day-{{ news_day.iso }}">
+        <details class="candleNewsDayCard candleNewsDayFold{% if news_day.is_key_day %} is-key is-{{ news_day.focus_key }}{% endif %}" id="news-day-{{ news_day.iso }}" data-mobile-default="closed" open>
+          <summary class="candleNewsDaySummary">
+            <div>
+              <div class="candleNewsDayTitle">{{ news_day.date_label }}</div>
+              {% if news_day.is_key_day %}
+                <div class="candleDayFocus">{{ news_day.focus_label }} priority</div>
+              {% endif %}
+            </div>
+            <div class="candleNewsCounts">
+              {% if news_day.high_count %}
+                <span class="newsCountChip is-high">{{ news_day.high_count }} red</span>
+              {% endif %}
+              {% if news_day.medium_count %}
+                <span class="newsCountChip is-medium">{{ news_day.medium_count }} orange</span>
+              {% endif %}
+            </div>
+          </summary>
+          <div class="candleNewsDayBody">
           <div class="candleNewsDayHead">
-            <div class="candleNewsDayTitle">{{ news_day.date_label }}</div>
+            <div>
+              <div class="candleNewsDayTitle">{{ news_day.date_label }}</div>
+              {% if news_day.is_key_day %}
+                <div class="candleDayFocus">{{ news_day.focus_label }} priority</div>
+              {% endif %}
+            </div>
             <div class="candleNewsCounts">
               {% if news_day.high_count %}
                 <span class="newsCountChip is-high">{{ news_day.high_count }} red</span>
@@ -96,18 +180,25 @@
               {% for event in news_day.events %}
                 <div class="candleNewsEventRow is-{{ event.impact_class }}">
                   <span class="candleNewsEventTime">{{ event.time_label }}</span>
-                  <span>{{ event.title }}</span>
+                  <span class="candleNewsEventBody">
+                    <span>{{ event.title }}</span>
+                    {% if event.source == 'curated' %}
+                      <span class="candleSourceChip">backup</span>
+                    {% endif %}
+                  </span>
                 </div>
               {% endfor %}
             {% else %}
               <div class="tiny">No scheduled USD red/orange events yet for this week.</div>
             {% endif %}
           </div>
-        </section>
+          </div>
+        </details>
       {% endfor %}
     </div>
   {% endif %}
-</div>
+  </div>
+</details>
 
 <div class="card candleShell">
   <div class="toolbar">
@@ -136,7 +227,7 @@
           {% endif %}
         {% endfor %}
         {% if ns.visible > 0 %}
-          <details class="mobileCandleWeek" {% if loop.first %}open{% endif %}>
+          <details class="mobileCandleWeek" data-mobile-default="closed">
             <summary>
               <span class="mobileCandleWeekTitle">Week {{ loop.index }}</span>
               <span class="mobileCandleWeekMeta">{{ ns.first[5:] }} to {{ ns.last[5:] }}</span>
@@ -146,6 +237,15 @@
               {% for cell in week %}
                 {% if cell.in_month %}
                   <div class="mobileCandleDay{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}">
+                    {% set mobile_tags = namespace(shown=0) %}
+                    {% set mobile_news = namespace(high=0, medium=0) %}
+                    {% for event in cell.news_events %}
+                      {% if event.impact_class == 'high' %}
+                        {% set mobile_news.high = mobile_news.high + 1 %}
+                      {% elif event.impact_class == 'medium' %}
+                        {% set mobile_news.medium = mobile_news.medium + 1 %}
+                      {% endif %}
+                    {% endfor %}
                     <div class="mobileCandleDayTop">
                       <div>
                         <div class="mobileCandleWeekday">{{ cell.weekday_label }}</div>
@@ -163,22 +263,37 @@
                     {% if cell.labels %}
                       <div class="mobileCandleTags">
                         {% for label in cell.day_labels %}
-                          <span class="candleTag">{{ label }}</span>
+                          {% if mobile_tags.shown < 4 %}
+                            <span class="candleTag">{{ label }}</span>
+                            {% set mobile_tags.shown = mobile_tags.shown + 1 %}
+                          {% endif %}
                         {% endfor %}
                         {% for label in cell.week_labels %}
-                          <span class="candleTag candleTagWeek">{{ label }}</span>
+                          {% if mobile_tags.shown < 4 %}
+                            <span class="candleTag candleTagWeek">{{ label }}</span>
+                            {% set mobile_tags.shown = mobile_tags.shown + 1 %}
+                          {% endif %}
                         {% endfor %}
                         {% for label in cell.month_labels %}
-                          <span class="candleTag candleTagMonth">{{ label }}</span>
+                          {% if mobile_tags.shown < 4 %}
+                            <span class="candleTag candleTagMonth">{{ label }}</span>
+                            {% set mobile_tags.shown = mobile_tags.shown + 1 %}
+                          {% endif %}
                         {% endfor %}
+                        {% if (cell.labels|length) > mobile_tags.shown %}
+                          <span class="candleTag candleTagOverflow">+{{ (cell.labels|length) - mobile_tags.shown }}</span>
+                        {% endif %}
                       </div>
                     {% endif %}
                     {% if cell.news_events %}
                       <a class="candleNewsJump" href="#news-day-{{ cell.iso }}" aria-label="Open {{ cell.iso }} news details">
-                        <div class="candleNewsIcons">
-                          {% for event in cell.news_events %}
-                            <span class="candleNewsIcon is-{{ event.impact_class }}" title="{{ event.tooltip }}">{{ event.icon }}</span>
-                          {% endfor %}
+                        <div class="candleNewsCountsCompact">
+                          {% if mobile_news.high %}
+                            <span class="newsCountChip is-high">{{ mobile_news.high }} red</span>
+                          {% endif %}
+                          {% if mobile_news.medium %}
+                            <span class="newsCountChip is-medium">{{ mobile_news.medium }} orange</span>
+                          {% endif %}
                         </div>
                       </a>
                     {% endif %}
@@ -201,40 +316,77 @@
       <div class="candleWeekday">Sat</div>
       {% for week in weeks %}
         {% for cell in week %}
-          <div class="candleCell{% if not cell.in_month %} is-muted{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cell.day_labels %} has-day-signal{% endif %}{% if cell.week_labels %} has-week-signal{% endif %}">
+          <div class="candleCell{% if not cell.in_month %} is-muted{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cell.day_labels %} has-day-signal{% endif %}{% if cell.week_labels %} has-week-signal{% endif %}{% if cell.is_key_news_day %} has-key-news is-{{ cell.news_focus_key }}{% endif %}{% if cell.has_curated_news %} has-curated-news{% endif %}{% if cell.is_quiet_day %} is-quiet{% endif %}">
+            {% set desktop_tags = namespace(shown=0) %}
+            {% set desktop_news = namespace(high=0, medium=0) %}
+            {% for event in cell.news_events %}
+              {% if event.impact_class == 'high' %}
+                {% set desktop_news.high = desktop_news.high + 1 %}
+              {% elif event.impact_class == 'medium' %}
+                {% set desktop_news.medium = desktop_news.medium + 1 %}
+              {% endif %}
+            {% endfor %}
             <div class="candleCellTop">
               <div class="candleWeekdayInline">{{ cell.weekday_label }}</div>
               <div class="candleDate">{{ cell.day }}</div>
             </div>
-            <div class="candleIso">{{ cell.iso }}</div>
-            {% if cell.is_holiday %}
-              <div class="candleMeta">{{ cell.holiday_name }}</div>
-            {% elif cell.in_month and cell.is_weekend %}
-              <div class="candleMeta">Weekend</div>
-            {% elif cell.in_month and cell.is_trading and not cell.labels %}
-              <div class="candleMeta">No reset</div>
-            {% endif %}
-            {% if cell.labels %}
-              <div class="candleTags">
-                {% for label in cell.day_labels %}
-                  <span class="candleTag">{{ label }}</span>
-                {% endfor %}
-                {% for label in cell.week_labels %}
-                  <span class="candleTag candleTagWeek">{{ label }}</span>
-                {% endfor %}
-                {% for label in cell.month_labels %}
-                  <span class="candleTag candleTagMonth">{{ label }}</span>
-                {% endfor %}
+            <div class="candleCellBody">
+              <div class="candleIso">{{ cell.iso }}</div>
+              {% if cell.is_key_news_day %}
+                <div class="candleKeyMacroTag">{{ cell.news_focus_label }}</div>
+              {% endif %}
+              {% if cell.is_holiday %}
+                <div class="candleMeta">{{ cell.holiday_name }}</div>
+              {% elif cell.in_month and cell.is_weekend %}
+                <div class="candleMeta">Weekend</div>
+              {% elif cell.in_month and cell.is_trading and not cell.labels %}
+                <div class="candleMeta">No reset</div>
+              {% endif %}
+            </div>
+            {% if cell.labels or cell.news_events %}
+              <div class="candleCellFooter">
+                {% if cell.labels %}
+                  <div class="candleTagRail">
+                    <div class="candleTags">
+                      {% for label in cell.day_labels %}
+                        {% if desktop_tags.shown < 4 %}
+                          <span class="candleTag">{{ label }}</span>
+                          {% set desktop_tags.shown = desktop_tags.shown + 1 %}
+                        {% endif %}
+                      {% endfor %}
+                      {% for label in cell.week_labels %}
+                        {% if desktop_tags.shown < 4 %}
+                          <span class="candleTag candleTagWeek">{{ label }}</span>
+                          {% set desktop_tags.shown = desktop_tags.shown + 1 %}
+                        {% endif %}
+                      {% endfor %}
+                      {% for label in cell.month_labels %}
+                        {% if desktop_tags.shown < 4 %}
+                          <span class="candleTag candleTagMonth">{{ label }}</span>
+                          {% set desktop_tags.shown = desktop_tags.shown + 1 %}
+                        {% endif %}
+                      {% endfor %}
+                      {% if (cell.labels|length) > desktop_tags.shown %}
+                        <span class="candleTag candleTagOverflow">+{{ (cell.labels|length) - desktop_tags.shown }}</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endif %}
+                {% if cell.news_events %}
+                  <div class="candleNewsRail">
+                    <a class="candleNewsJump" href="#news-day-{{ cell.iso }}" aria-label="Open {{ cell.iso }} news details">
+                      <div class="candleNewsCountsCompact">
+                        {% if desktop_news.high %}
+                          <span class="newsCountChip is-high">{{ desktop_news.high }} red</span>
+                        {% endif %}
+                        {% if desktop_news.medium %}
+                          <span class="newsCountChip is-medium">{{ desktop_news.medium }} orange</span>
+                        {% endif %}
+                      </div>
+                    </a>
+                  </div>
+                {% endif %}
               </div>
-            {% endif %}
-            {% if cell.news_events %}
-              <a class="candleNewsJump" href="#news-day-{{ cell.iso }}" aria-label="Open {{ cell.iso }} news details">
-                <div class="candleNewsIcons">
-                  {% for event in cell.news_events %}
-                    <span class="candleNewsIcon is-{{ event.impact_class }}" title="{{ event.tooltip }}">{{ event.icon }}</span>
-                  {% endfor %}
-                </div>
-              </a>
             {% endif %}
           </div>
         {% endfor %}
@@ -242,3 +394,25 @@
     </div>
   </div>
 </div>
+
+<script>
+(() => {
+  const mobileQuery = window.matchMedia("(max-width: 720px)");
+  const folds = Array.from(document.querySelectorAll("[data-mobile-default='closed']"));
+  const applyMobileFolds = () => {
+    if (!mobileQuery.matches) return;
+    folds.forEach((fold) => fold.removeAttribute("open"));
+  };
+  const openHashTarget = () => {
+    const hash = window.location.hash;
+    if (!hash || hash.length < 2) return;
+    const target = document.getElementById(hash.slice(1));
+    if (!target) return;
+    const details = target.closest("details");
+    if (details) details.open = true;
+  };
+  applyMobileFolds();
+  openHashTarget();
+  window.addEventListener("hashchange", openHashTarget);
+})();
+</script>

@@ -8,19 +8,25 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
+import shutil
 import sqlite3
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("America/New_York")
-DB_PATH = os.environ.get("DB_PATH", "journal.db")
-BOOKS_DIR = os.environ.get("BOOKS_DIR", "books")
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+PERSISTENT_DATA_DIR = os.environ.get("PERSISTENT_DATA_DIR", "persistent-data")
+DB_PATH = os.environ.get("DB_PATH", os.path.join(PERSISTENT_DATA_DIR, "journal.db"))
+BOOKS_DIR = os.environ.get("BOOKS_DIR", os.path.join(PERSISTENT_DATA_DIR, "books"))
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(PERSISTENT_DATA_DIR, "uploads"))
 BASE_MONTHLY_INCOME = float(os.environ.get("BASE_MONTHLY_INCOME", "7800"))
 DEFAULT_PROTECT_BUFFER = float(os.environ.get("PAYOUT_PROTECT_BUFFER", "1000"))
 PROFIT_BUFFER_LEVEL_50K = 52875.0
 FIXED_LOSS_LIMIT_50K = 50375.0
+SQLITE_BUSY_TIMEOUT_MS = max(1000, int(os.environ.get("SQLITE_BUSY_TIMEOUT_MS", "10000") or 10000))
+SQLITE_SYNCHRONOUS = str(os.environ.get("SQLITE_SYNCHRONOUS", "NORMAL") or "NORMAL").upper()
+SQLITE_JOURNAL_MODE = str(os.environ.get("SQLITE_JOURNAL_MODE", "WAL") or "WAL").upper()
 _HEADER_HINTS = {
     "date",
     "entry",
@@ -35,9 +41,138 @@ _HEADER_HINTS = {
 }
 
 
+def upload_root() -> str:
+    return str(UPLOAD_DIR)
+
+
+def books_root() -> str:
+    return str(BOOKS_DIR)
+
+
+def upload_path(*parts: str) -> str:
+    root = upload_root()
+    return os.path.join(root, *parts) if parts else root
+
+
+def books_path(*parts: str) -> str:
+    root = books_root()
+    return os.path.join(root, *parts) if parts else root
+
+
+def ensure_storage_dirs() -> None:
+    db_dir = os.path.dirname(str(DB_PATH)) or "."
+    os.makedirs(db_dir, exist_ok=True)
+    os.makedirs(upload_root(), exist_ok=True)
+    os.makedirs(books_root(), exist_ok=True)
+
+
+def _secret_key_path() -> str:
+    configured = str(os.environ.get("SECRET_KEY_FILE") or "").strip()
+    if configured:
+        return configured
+    db_dir = os.path.dirname(os.path.abspath(str(DB_PATH))) or os.path.abspath(PERSISTENT_DATA_DIR)
+    return os.path.join(db_dir, ".secret_key")
+
+
+def secret_key_file_path() -> str:
+    return _secret_key_path()
+
+
+def load_or_create_secret_key() -> str:
+    env_secret = str(os.environ.get("SECRET_KEY") or "").strip()
+    if env_secret:
+        return env_secret
+
+    path = _secret_key_path()
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            existing = handle.read().strip()
+            if existing:
+                return existing
+    except FileNotFoundError:
+        pass
+
+    token = secrets.token_urlsafe(48)
+    try:
+        with open(path, "x", encoding="utf-8") as handle:
+            handle.write(token)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        return token
+    except FileExistsError:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+
+
+def _apply_sqlite_pragmas(conn: sqlite3.Connection) -> None:
+    conn.execute(f"PRAGMA busy_timeout = {int(SQLITE_BUSY_TIMEOUT_MS)}")
+    conn.execute("PRAGMA foreign_keys = ON")
+    if str(DB_PATH) != ":memory:":
+        journal_mode = (
+            SQLITE_JOURNAL_MODE if SQLITE_JOURNAL_MODE in {"WAL", "DELETE", "TRUNCATE"} else "WAL"
+        )
+        synchronous = (
+            SQLITE_SYNCHRONOUS
+            if SQLITE_SYNCHRONOUS in {"OFF", "NORMAL", "FULL", "EXTRA"}
+            else "NORMAL"
+        )
+        conn.execute(f"PRAGMA journal_mode = {journal_mode}")
+        conn.execute(f"PRAGMA synchronous = {synchronous}")
+
+
+def persistence_snapshot() -> Dict[str, Any]:
+    ensure_storage_dirs()
+    db_path = os.path.abspath(str(DB_PATH))
+    upload_dir = os.path.abspath(upload_root())
+    books_dir = os.path.abspath(books_root())
+    secret_path = os.path.abspath(secret_key_file_path())
+    snapshot: Dict[str, Any] = {
+        "persistent_data_dir": os.path.abspath(str(PERSISTENT_DATA_DIR)),
+        "db_path": db_path,
+        "upload_dir": upload_dir,
+        "books_dir": books_dir,
+        "secret_key_file": secret_path,
+        "db_exists": os.path.exists(db_path),
+        "upload_dir_exists": os.path.isdir(upload_dir),
+        "books_dir_exists": os.path.isdir(books_dir),
+        "secret_key_exists": os.path.exists(secret_path),
+        "sqlite_busy_timeout_ms": int(SQLITE_BUSY_TIMEOUT_MS),
+        "sqlite_journal_mode": "",
+        "sqlite_synchronous": SQLITE_SYNCHRONOUS,
+        "disk_free_bytes": None,
+        "disk_total_bytes": None,
+    }
+    try:
+        usage = shutil.disk_usage(os.path.dirname(db_path) or ".")
+        snapshot["disk_free_bytes"] = int(usage.free)
+        snapshot["disk_total_bytes"] = int(usage.total)
+    except OSError:
+        pass
+    try:
+        with db() as conn:
+            row = conn.execute("PRAGMA journal_mode").fetchone()
+            if row:
+                snapshot["sqlite_journal_mode"] = str(row[0] or "")
+            row = conn.execute("PRAGMA synchronous").fetchone()
+            if row:
+                sync_map = {0: "OFF", 1: "NORMAL", 2: "FULL", 3: "EXTRA"}
+                snapshot["sqlite_synchronous"] = sync_map.get(int(row[0]), str(row[0]))
+    except sqlite3.DatabaseError:
+        pass
+    return snapshot
+
+
 def db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    ensure_storage_dirs()
+    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000.0)
     conn.row_factory = sqlite3.Row
+    try:
+        _apply_sqlite_pragmas(conn)
+    except sqlite3.DatabaseError:
+        pass
     return conn
 
 
