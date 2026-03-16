@@ -111,8 +111,14 @@ def _apply_sqlite_pragmas(conn: sqlite3.Connection) -> None:
     conn.execute(f"PRAGMA busy_timeout = {int(SQLITE_BUSY_TIMEOUT_MS)}")
     conn.execute("PRAGMA foreign_keys = ON")
     if str(DB_PATH) != ":memory:":
-        journal_mode = SQLITE_JOURNAL_MODE if SQLITE_JOURNAL_MODE in {"WAL", "DELETE", "TRUNCATE"} else "WAL"
-        synchronous = SQLITE_SYNCHRONOUS if SQLITE_SYNCHRONOUS in {"OFF", "NORMAL", "FULL", "EXTRA"} else "NORMAL"
+        journal_mode = (
+            SQLITE_JOURNAL_MODE if SQLITE_JOURNAL_MODE in {"WAL", "DELETE", "TRUNCATE"} else "WAL"
+        )
+        synchronous = (
+            SQLITE_SYNCHRONOUS
+            if SQLITE_SYNCHRONOUS in {"OFF", "NORMAL", "FULL", "EXTRA"}
+            else "NORMAL"
+        )
         conn.execute(f"PRAGMA journal_mode = {journal_mode}")
         conn.execute(f"PRAGMA synchronous = {synchronous}")
 

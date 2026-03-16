@@ -531,7 +531,9 @@ def test_candle_opens_uses_titled_march_backup_events(monkeypatch):
         "2026-03-31",
     ):
         assert expected in event_days
-    march_18_titles = [row["title"] for row in (out.get("events_by_day") or {}).get("2026-03-18", [])]
+    march_18_titles = [
+        row["title"] for row in (out.get("events_by_day") or {}).get("2026-03-18", [])
+    ]
     assert "FOMC Rate Decision" in march_18_titles
     assert "FOMC Press Conference" in march_18_titles
 
@@ -612,10 +614,7 @@ def test_candle_open_calendar_surfaces_key_macro_days(monkeypatch):
     assert top_days[0]["iso"] == "2026-03-18"
     assert top_days[0]["focus_key"] == "federal"
     march_18 = next(
-        cell
-        for week in calendar["weeks"]
-        for cell in week
-        if cell.get("iso") == "2026-03-18"
+        cell for week in calendar["weeks"] for cell in week if cell.get("iso") == "2026-03-18"
     )
     assert bool(march_18["is_key_news_day"])
     assert march_18["news_focus_label"] == "Fed Day"
@@ -880,7 +879,12 @@ def test_market_pulse_empty_state_uses_consistent_feed_copy(client, monkeypatch)
             "source_label": "Fallback Snapshot",
             "source_note": "Cached pre-open snapshot",
             "quotes": [],
-            "integrity": {"live_count": 0, "delayed_count": 0, "cached_count": 1, "missing_count": 4},
+            "integrity": {
+                "live_count": 0,
+                "delayed_count": 0,
+                "cached_count": 1,
+                "missing_count": 4,
+            },
         },
     )
     monkeypatch.setattr(
@@ -1205,15 +1209,15 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
                     "asof_epoch": 1741194000,
                     "data_state": "live",
                     "data_reason": "tradier_live",
-                        "provider": "tradier",
-                        "mini_series": [5096.0, 5108.0, 5120.35],
-                        "series": [],
-                        "prior_day_low": 5064.25,
-                        "prior_day_high": 5098.75,
-                    }
-                ],
-                "integrity": {},
-            },
+                    "provider": "tradier",
+                    "mini_series": [5096.0, 5108.0, 5120.35],
+                    "series": [],
+                    "prior_day_low": 5064.25,
+                    "prior_day_high": 5098.75,
+                }
+            ],
+            "integrity": {},
+        },
     )
     monkeypatch.setattr(
         core_service,

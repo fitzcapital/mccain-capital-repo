@@ -18,7 +18,11 @@ def _bootstrap_request_allowed() -> bool:
         return True
     if os.environ.get("ALLOW_REMOTE_BOOTSTRAP", "0") == "1":
         return True
-    remote = str(request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
+    remote = (
+        str(request.headers.get("X-Forwarded-For") or request.remote_addr or "")
+        .split(",")[0]
+        .strip()
+    )
     host = str(request.host or "").split(":", 1)[0].strip("[]").lower()
     return remote in {"127.0.0.1", "::1"} or host in {"127.0.0.1", "localhost", "::1"}
 

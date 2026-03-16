@@ -914,16 +914,31 @@ def session_replay_page():
                 "summary": (
                     f"{t.get('setup_tag') or 'Unlabeled'} · {t.get('session_tag') or 'No session tag'}"
                 ),
-                "tone": "positive" if float(t["net_pl"]) > 0 else "negative" if float(t["net_pl"]) < 0 else "neutral",
+                "tone": (
+                    "positive"
+                    if float(t["net_pl"]) > 0
+                    else "negative" if float(t["net_pl"]) < 0 else "neutral"
+                ),
                 "impact_label": money(float(t["net_pl"])),
-                "market_context": " · ".join(market_context_bits) if market_context_bits else "Market snapshot unavailable",
+                "market_context": (
+                    " · ".join(market_context_bits)
+                    if market_context_bits
+                    else "Market snapshot unavailable"
+                ),
                 "detail": (
-                    f"Checklist {t['checklist_score']}" if t.get("checklist_score") is not None else "Checklist not scored"
+                    f"Checklist {t['checklist_score']}"
+                    if t.get("checklist_score") is not None
+                    else "Checklist not scored"
                 ),
                 "rule_breaks": str(t.get("rule_break_tags") or "").strip(),
             }
         )
-    replay_rail.sort(key=lambda item: (int(item.get("sort_minute") or 0), 0 if item.get("kind") == "macro" else 1))
+    replay_rail.sort(
+        key=lambda item: (
+            int(item.get("sort_minute") or 0),
+            0 if item.get("kind") == "macro" else 1,
+        )
+    )
     market_arc = _market_arc_summary(day)
     replay_journal_href = "/new?" + urlencode(
         {

@@ -87,9 +87,7 @@ def _parse_rule(item: Any, idx: int) -> Rule:
     from_contains = _normalize_list(item.get("from_contains"))
     subject_contains = _normalize_list(item.get("subject_contains"))
     if not from_contains and not subject_contains:
-        raise ValueError(
-            f"Rule '{name}' must define at least one sender or subject matcher."
-        )
+        raise ValueError(f"Rule '{name}' must define at least one sender or subject matcher.")
     return Rule(
         name=name,
         folder=folder,

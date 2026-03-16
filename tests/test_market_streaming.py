@@ -72,12 +72,18 @@ def test_merge_stream_event_updates_cache_with_live_tick(monkeypatch):
     monkeypatch.setattr(
         market_worker,
         "_SERIES",
-        {symbol: deque(maxlen=market_worker.MAX_SERIES_POINTS) for symbol in market_worker.WATCHLIST},
+        {
+            symbol: deque(maxlen=market_worker.MAX_SERIES_POINTS)
+            for symbol in market_worker.WATCHLIST
+        },
     )
     monkeypatch.setattr(
         market_worker,
         "_SERIES_POINTS",
-        {symbol: deque(maxlen=market_worker.MAX_SERIES_POINTS) for symbol in market_worker.WATCHLIST},
+        {
+            symbol: deque(maxlen=market_worker.MAX_SERIES_POINTS)
+            for symbol in market_worker.WATCHLIST
+        },
     )
     monkeypatch.setattr(
         market_worker, "_STREAM_CONTEXT", {symbol: {} for symbol in market_worker.WATCHLIST}

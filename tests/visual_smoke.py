@@ -26,7 +26,12 @@ SCENARIOS = [
     ("desktop-calculator", "/calculator", {"width": 1600, "height": 1000}, None),
     ("desktop-analytics", "/analytics?tab=performance", {"width": 1600, "height": 1100}, None),
     ("mobile-dashboard-390x844", "/dashboard", {"width": 390, "height": 844}, None),
-    ("mobile-dashboard-menu-390x844", "/dashboard", {"width": 390, "height": 844}, "#mobileDockMenuBtn"),
+    (
+        "mobile-dashboard-menu-390x844",
+        "/dashboard",
+        {"width": 390, "height": 844},
+        "#mobileDockMenuBtn",
+    ),
     ("mobile-market-pulse-390x844", "/market-pulse?refresh=1", {"width": 390, "height": 844}, None),
     ("mobile-trades-390x844", "/trades", {"width": 390, "height": 844}, None),
     ("mobile-journal-390x844", "/journal", {"width": 390, "height": 844}, None),

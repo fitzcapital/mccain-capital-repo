@@ -23,8 +23,12 @@ def test_runtime_dependent_paths_follow_create_app_overrides(tmp_path: Path, mon
 
     create_app()
 
-    assert trades_service._auto_backup_config_path() == str(uploads_dir / ".auto_backup_config.json")
-    assert ui_service._forex_factory_cache_file() == str(uploads_dir / ".forex_factory_weekly_cache.json")
+    assert trades_service._auto_backup_config_path() == str(
+        uploads_dir / ".auto_backup_config.json"
+    )
+    assert ui_service._forex_factory_cache_file() == str(
+        uploads_dir / ".forex_factory_weekly_cache.json"
+    )
 
 
 def test_csrf_rejects_missing_token(client):

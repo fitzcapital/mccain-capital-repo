@@ -80,7 +80,9 @@ def strategies_page():
         hero_blurb = "There is data on the board, but the best seat still needs review before it deserves more risk."
     else:
         hero_title = "Build the Playbook From Real Edge"
-        hero_blurb = "Write one executable card at a time and let expectancy decide whether it survives."
+        hero_blurb = (
+            "Write one executable card at a time and let expectancy decide whether it survives."
+        )
 
     strategy_status_badges = [
         StateBadgeViewModel(

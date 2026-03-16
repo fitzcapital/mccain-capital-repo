@@ -264,7 +264,9 @@ def passkeys_auth_verify():
         abort(400, description="Missing passkey credential.")
     credential_id = str(credential.get("id") or "").strip()
     passkeys = _load_passkeys()
-    stored = next((row for row in passkeys if str(row.get("credential_id") or "") == credential_id), None)
+    stored = next(
+        (row for row in passkeys if str(row.get("credential_id") or "") == credential_id), None
+    )
     if not stored:
         abort(400, description="Unknown passkey.")
 

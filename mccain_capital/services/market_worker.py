@@ -97,7 +97,9 @@ def _stream_type(event: Dict[str, Any]) -> str:
     return str(event.get("type") or event.get("event") or "").strip().lower()
 
 
-def _pct_change(price: float | None, change_pct: float | None, change: float | None, prev_close: float | None) -> float | None:
+def _pct_change(
+    price: float | None, change_pct: float | None, change: float | None, prev_close: float | None
+) -> float | None:
     if change_pct is not None:
         return change_pct
     if change is not None and price is not None and (price - change) != 0:
@@ -304,9 +306,12 @@ def _tradier_stream_loop() -> None:
     while True:
         saw_event = False
         try:
-            for event in market_data_service.iter_tradier_market_events(
-                WATCHLIST, filters=["summary", "trade", "quote"]
-            ) or []:
+            for event in (
+                market_data_service.iter_tradier_market_events(
+                    WATCHLIST, filters=["summary", "trade", "quote"]
+                )
+                or []
+            ):
                 saw_event = True
                 _merge_stream_event(event)
         except Exception:

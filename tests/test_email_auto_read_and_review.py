@@ -8,9 +8,7 @@ from pathlib import Path
 import pytest
 
 
-SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1] / "scripts" / "email_auto_read_and_review.py"
-)
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "email_auto_read_and_review.py"
 SPEC = importlib.util.spec_from_file_location("email_auto_read_and_review", SCRIPT_PATH)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader

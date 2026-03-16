@@ -202,12 +202,12 @@ def _payout_readiness_planner(
     return _payout_cache_set(
         cache_key,
         {
-        "mu": mu,
-        "sigma": sigma,
-        "h5": simulate(5),
-        "h10": simulate(10),
-        "h20": simulate(20),
-        "target_balance": target_balance,
+            "mu": mu,
+            "sigma": sigma,
+            "h5": simulate(5),
+            "h10": simulate(10),
+            "h20": simulate(20),
+            "target_balance": target_balance,
         },
     )
 
@@ -297,13 +297,13 @@ def _trading_day_quantiles_to_goal(
     return _payout_cache_set(
         cache_key,
         {
-        "days_p50": p50,
-        "days_p70": p70,
-        "days_p90": p90,
-        "hit_prob_5d": _hit_prob(5),
-        "hit_prob_10d": _hit_prob(10),
-        "hit_prob_20d": _hit_prob(20),
-        "floor_breach_prob_at_target_horizon": floor_prob,
+            "days_p50": p50,
+            "days_p70": p70,
+            "days_p90": p90,
+            "hit_prob_5d": _hit_prob(5),
+            "hit_prob_10d": _hit_prob(10),
+            "hit_prob_20d": _hit_prob(20),
+            "floor_breach_prob_at_target_horizon": floor_prob,
         },
     )  # type: ignore[return-value]
 

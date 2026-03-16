@@ -159,7 +159,9 @@ def _tradier_post_json(path: str, data: Dict[str, Any]) -> Dict[str, Any] | None
 
 
 def _tradier_stream_base_url() -> str:
-    return (os.environ.get("TRADIER_STREAM_URL") or "https://stream.tradier.com").strip().rstrip("/")
+    return (
+        (os.environ.get("TRADIER_STREAM_URL") or "https://stream.tradier.com").strip().rstrip("/")
+    )
 
 
 def _tradier_market_session_id() -> str:

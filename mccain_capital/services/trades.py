@@ -506,7 +506,9 @@ def _trade_gate_required(day: str) -> bool:
 def _trade_gate_values(source: Dict[str, Any], saved: Dict[str, Any]) -> Dict[str, str]:
     return {
         "setup_type": str(source.get("gate_setup_type") or saved.get("setup_type") or "").strip(),
-        "invalidation": str(source.get("gate_invalidation") or saved.get("invalidation") or "").strip(),
+        "invalidation": str(
+            source.get("gate_invalidation") or saved.get("invalidation") or ""
+        ).strip(),
         "max_risk": str(source.get("gate_max_risk") or saved.get("max_risk") or "").strip(),
         "focus": str(source.get("gate_focus") or saved.get("focus") or "").strip(),
     }
@@ -514,9 +516,18 @@ def _trade_gate_values(source: Dict[str, Any], saved: Dict[str, Any]) -> Dict[st
 
 def _trade_gate_checks(source: Dict[str, Any], saved: Dict[str, Any]) -> Dict[str, bool]:
     return {
-        "market_ready": str(source.get("gate_market_ready") or ("1" if saved.get("market_ready") else "")).strip() == "1",
-        "macro_clear": str(source.get("gate_macro_clear") or ("1" if saved.get("macro_clear") else "")).strip() == "1",
-        "risk_confirmed": str(source.get("gate_risk_confirmed") or ("1" if saved.get("risk_confirmed") else "")).strip() == "1",
+        "market_ready": str(
+            source.get("gate_market_ready") or ("1" if saved.get("market_ready") else "")
+        ).strip()
+        == "1",
+        "macro_clear": str(
+            source.get("gate_macro_clear") or ("1" if saved.get("macro_clear") else "")
+        ).strip()
+        == "1",
+        "risk_confirmed": str(
+            source.get("gate_risk_confirmed") or ("1" if saved.get("risk_confirmed") else "")
+        ).strip()
+        == "1",
     }
 
 
@@ -679,15 +690,11 @@ def _render_manual_trade_entry_form(
         strategy_options=strategy_options,
         critical_items=pb_cfg.get("critical_items")
         or ["Bias Confirmed", "Risk Defined", "Stop Planned"],
-        selected_critical_items=[
-            str(x).strip()
-            for x in values.getlist("critical_item")
+        selected_critical_items=(
+            [str(x).strip() for x in values.getlist("critical_item") if hasattr(values, "getlist")]
             if hasattr(values, "getlist")
-        ] if hasattr(values, "getlist") else [
-            str(x).strip()
-            for x in (values.get("critical_item") or [])
-            if str(x).strip()
-        ],
+            else [str(x).strip() for x in (values.get("critical_item") or []) if str(x).strip()]
+        ),
     )
     return render_page(content, active="trades")
 
@@ -1161,7 +1168,9 @@ def _create_backup_archive(reason: str, actor: str) -> Dict[str, Any]:
             for root, _, files in os.walk(upload_root):
                 for fn in files:
                     full = os.path.join(root, fn)
-                    if os.path.abspath(full).startswith(os.path.abspath(_auto_backup_dir()) + os.sep):
+                    if os.path.abspath(full).startswith(
+                        os.path.abspath(_auto_backup_dir()) + os.sep
+                    ):
                         continue
                     rel = os.path.relpath(full, upload_root)
                     zf.write(full, arcname=f"data/uploads/{rel}")

@@ -67,7 +67,9 @@ def journal_home():
     latest_entry = entries[0] if entries else {}
     linked_trades_total = sum(int(entry.get("linked_trades") or 0) for entry in entries)
     grade_count = sum(1 for entry in entries if str(entry.get("grade") or "").strip())
-    latest_day = str(latest_entry.get("entry_date_display") or latest_entry.get("entry_date") or "").strip()
+    latest_day = str(
+        latest_entry.get("entry_date_display") or latest_entry.get("entry_date") or ""
+    ).strip()
     latest_mood = str(latest_entry.get("mood") or "").strip()
     latest_setup = str(latest_entry.get("setup") or "").strip()
     latest_grade = str(latest_entry.get("grade") or "").strip()
@@ -90,22 +92,26 @@ def journal_home():
             + (f" · Mood {latest_mood}" if latest_mood else "")
             + (f" · Grade {latest_grade}" if latest_grade else "")
         )
-        review_focus_meta = "Refine the lesson, link the missing trades, then lock the weekly narrative."
-        capture_lead = f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} in this day filter."
+        review_focus_meta = (
+            "Refine the lesson, link the missing trades, then lock the weekly narrative."
+        )
+        capture_lead = (
+            f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} in this day filter."
+        )
         capture_body = "Keep the selected session tight: finish the main debrief, add any screenshot evidence, then stop adding duplicate notes."
         capture_meta = "Next move: edit the strongest entry or add one missing post-trade note."
     else:
         hero_title = "Close the Learning Loop"
         hero_blurb = "Use the journal as a review system, not a note dump. Keep the lesson sharp and the next rule obvious."
-        review_focus_lead = (
-            f"Latest review: {latest_day or 'Recent session'}"
-            + (f" · {latest_setup}" if latest_setup else "")
+        review_focus_lead = f"Latest review: {latest_day or 'Recent session'}" + (
+            f" · {latest_setup}" if latest_setup else ""
         )
-        review_focus_body = (
-            f"Most recent note carries {latest_mood or 'neutral'} tone"
-            + (f" with grade {latest_grade}." if latest_grade else ".")
+        review_focus_body = f"Most recent note carries {latest_mood or 'neutral'} tone" + (
+            f" with grade {latest_grade}." if latest_grade else "."
         )
-        review_focus_meta = "Promote the cleanest lesson into weekly review instead of stacking similar entries."
+        review_focus_meta = (
+            "Promote the cleanest lesson into weekly review instead of stacking similar entries."
+        )
         capture_lead = f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} in scope · {linked_trades_total} linked trades."
         capture_body = "Keep capture fast: one clear lesson, one emotion tag, one linked trade cluster. Save the long reflection for the weekly review."
         capture_meta = "Next move: use Quick Capture for the next live observation, then write one fuller debrief."
@@ -257,7 +263,9 @@ def new_entry():
         initial_values["setup"] = str(scaffold["setup"])
     if not initial_values["mood"] and scaffold.get("mood"):
         initial_values["mood"] = str(scaffold["mood"])
-    initial_values["capture_screenshot_href"] = _capture_href(initial_values["capture_screenshot_path"])
+    initial_values["capture_screenshot_href"] = _capture_href(
+        initial_values["capture_screenshot_path"]
+    )
     return render_page(
         _entry_form(
             "new",
@@ -646,7 +654,9 @@ def _build_debrief_scaffold(
             tag.strip()
             for t in trades
             if t.get("id") is not None
-            for tag in str((review_map.get(int(t["id"]), {}) or {}).get("rule_break_tags") or "").split(",")
+            for tag in str(
+                (review_map.get(int(t["id"]), {}) or {}).get("rule_break_tags") or ""
+            ).split(",")
             if tag.strip()
         }
     )
@@ -727,7 +737,11 @@ def _build_debrief_scaffold(
         "pnl": float(stats.get("total", 0.0) or 0.0),
         "market": market_context.get("market") or "",
         "setup": dominant_setup,
-        "mood": _draft_mood_label(float(stats.get("total", 0.0) or 0.0), int(stats.get("wins", 0) or 0), int(stats.get("losses", 0) or 0)),
+        "mood": _draft_mood_label(
+            float(stats.get("total", 0.0) or 0.0),
+            int(stats.get("wins", 0) or 0),
+            int(stats.get("losses", 0) or 0),
+        ),
     }
 
 

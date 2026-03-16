@@ -928,6 +928,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 "series": [],
             }
         )
+
     def _rows_session_day(rows: List[Dict[str, Any]]) -> Optional[date]:
         for row in reversed(rows):
             if not isinstance(row, dict):
@@ -1314,7 +1315,9 @@ def _market_pulse_enrich_quotes(
 
 def _quote_source_badge(quote: Dict[str, Any]) -> Dict[str, str]:
     provider = str((quote or {}).get("provider") or "").strip().lower()
-    reason = str((quote or {}).get("reason") or (quote or {}).get("data_reason") or "").strip().lower()
+    reason = (
+        str((quote or {}).get("reason") or (quote or {}).get("data_reason") or "").strip().lower()
+    )
     if provider == "tradier" and reason.startswith("tradier_stream_"):
         return {"label": "Tradier Stream", "tone": "positive"}
     if provider == "tradier" and reason.startswith("tradier_live"):
@@ -1765,7 +1768,9 @@ def _dashboard_daily_brief_viewmodel(
 ) -> Dict[str, Any]:
     day_key = now_et.date().isoformat()
     saved = _load_dashboard_brief_settings(day_key)
-    is_tuned = any(str(saved.get(key) or "").strip() for key in ("focus", "plan_a", "plan_b", "no_trade"))
+    is_tuned = any(
+        str(saved.get(key) or "").strip() for key in ("focus", "plan_a", "plan_b", "no_trade")
+    )
 
     def _num(value: Any) -> Optional[float]:
         try:
@@ -1783,11 +1788,21 @@ def _dashboard_daily_brief_viewmodel(
     put_wall = _num(gamma_snapshot.get("put_wall"))
     day_open = _num(dashboard_spx.get("day_open"))
 
-    if spot is not None and gamma_flip is not None and spot > gamma_flip and (change_pct or 0.0) >= 0:
+    if (
+        spot is not None
+        and gamma_flip is not None
+        and spot > gamma_flip
+        and (change_pct or 0.0) >= 0
+    ):
         bias_label = "Bullish above flip"
         bias_tone = "positive"
         bias_summary = f"SPX is trading above gamma flip {gamma_flip:.0f}, so continuation longs have cleaner structure than reactive fades."
-    elif spot is not None and gamma_flip is not None and spot < gamma_flip and (change_pct or 0.0) <= 0:
+    elif (
+        spot is not None
+        and gamma_flip is not None
+        and spot < gamma_flip
+        and (change_pct or 0.0) <= 0
+    ):
         bias_label = "Defensive below flip"
         bias_tone = "negative"
         bias_summary = f"SPX is below gamma flip {gamma_flip:.0f}, so failed bounces and risk-off structure deserve more respect than impulsive longs."
@@ -1836,19 +1851,17 @@ def _dashboard_daily_brief_viewmodel(
     if not key_levels and spot is not None:
         key_levels.append({"label": "Spot", "value": f"{spot:.2f}", "tone": ""})
 
-    default_focus = (
-        f"{bias_label}. Respect {volatility_label.lower()} and trade only when SPX confirms around your levels."
-    )
+    default_focus = f"{bias_label}. Respect {volatility_label.lower()} and trade only when SPX confirms around your levels."
     if gamma_flip is not None:
-        plan_a = (
-            f"Primary setup: continuation only if price accepts {'above' if bias_tone == 'positive' else 'below' if bias_tone == 'negative' else 'through'} {gamma_flip:.0f} with risk defined before entry."
-        )
+        plan_a = f"Primary setup: continuation only if price accepts {'above' if bias_tone == 'positive' else 'below' if bias_tone == 'negative' else 'through'} {gamma_flip:.0f} with risk defined before entry."
     else:
         plan_a = "Primary setup: only take the cleanest continuation entry with risk defined before entry."
     if call_wall is not None and put_wall is not None:
         plan_b = f"Secondary setup: responsive fade only at edges near {put_wall:.0f} support or {call_wall:.0f} resistance after rejection is obvious."
     else:
-        plan_b = "Secondary setup: responsive fade only at obvious extremes after rejection is obvious."
+        plan_b = (
+            "Secondary setup: responsive fade only at obvious extremes after rejection is obvious."
+        )
     if macro_events:
         no_trade = f"No trade during or immediately into {macro_events[0]['headline']} unless structure is already resolved and risk is smaller than usual."
     else:
@@ -2049,7 +2062,10 @@ def dashboard_milestone_update():
 
 
 def dashboard_brief_update():
-    day = str(request.form.get("brief_day") or app_runtime.today_iso()).strip() or app_runtime.today_iso()
+    day = (
+        str(request.form.get("brief_day") or app_runtime.today_iso()).strip()
+        or app_runtime.today_iso()
+    )
     reset = str(request.form.get("brief_reset") or "").strip() == "1"
     _save_dashboard_brief_settings(
         day,
@@ -2873,7 +2889,9 @@ def system_check_page():
     ok_count = len([c for c in checks if c["ok"]])
     status = "healthy" if ok_count == len(checks) else "degraded"
     hero_title = (
-        "Runtime Looks Healthy" if status == "healthy" else "Resolve Runtime Gaps Before They Compound"
+        "Runtime Looks Healthy"
+        if status == "healthy"
+        else "Resolve Runtime Gaps Before They Compound"
     )
     hero_blurb = (
         "Confirm storage, runtime paths, and backup posture before trusting the rest of the stack."
@@ -2883,9 +2901,7 @@ def system_check_page():
         if status == "healthy"
         else "One or more core runtime checks are degraded."
     )
-    support_body = (
-        "This page is the fast answer to whether the app can safely store, read, and recover its working state."
-    )
+    support_body = "This page is the fast answer to whether the app can safely store, read, and recover its working state."
     status_badges = [
         StateBadgeViewModel(
             label="Confidence",
@@ -3560,7 +3576,12 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
                     "is_key_news_day": bool(news_meta.get("is_key_day")),
                     "has_curated_news": bool(news_meta.get("curated_count")),
                     "is_quiet_day": bool(
-                        in_month and is_trading and not day_labels and not week_labels and not month_labels and not day_news
+                        in_month
+                        and is_trading
+                        and not day_labels
+                        and not week_labels
+                        and not month_labels
+                        and not day_news
                     ),
                     "labels": day_labels + week_labels + month_labels,
                 }
