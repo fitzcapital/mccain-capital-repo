@@ -815,6 +815,24 @@
     return p - prior;
   };
 
+  const seriesValueCount = (points) => (
+    (Array.isArray(points) ? points : [])
+      .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
+      .filter((value) => value !== null)
+      .length
+  );
+
+  const pickBestSeries = (...candidates) => {
+    let fallback = [];
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate)) continue;
+      const count = seriesValueCount(candidate);
+      if (count >= 2) return candidate;
+      if (!fallback.length && count >= 1) fallback = candidate;
+    }
+    return fallback;
+  };
+
   const formatEtLabel = (iso) => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
     if (!Number.isFinite(ts)) return "Awaiting live refresh";
@@ -874,10 +892,12 @@
   };
 
   const deriveDataState = (quote) => {
-    const price = asNum((quote || {}).price);
-    if (price === null) return "missing";
     const provider = String((quote || {}).provider || "").toLowerCase();
     const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
+    const explicit = String((quote || {}).data_state || "").trim().toLowerCase();
+    if (!provider && !reason && ["live", "delayed", "cached", "missing"].includes(explicit)) return explicit;
+    const price = asNum((quote || {}).price);
+    if (price === null) return "missing";
     if (reason.includes("cached")) return "cached";
     if (provider === "tradier" && reason.startsWith("tradier_")) return "live";
     if (
@@ -903,6 +923,8 @@
   const sourceBadgeLabel = (quote) => {
     const provider = String((quote || {}).provider || "").toLowerCase();
     const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
+    const explicit = String((quote || {}).source_badge_label || "").trim();
+    if (!provider && !reason && explicit) return explicit;
     if (provider === "tradier" && reason.startsWith("tradier_stream_")) return "Tradier Stream";
     if (provider === "tradier" && reason.startsWith("tradier_live")) return "Tradier Live Quote";
     if (provider === "tradier" && reason.startsWith("tradier_close")) return "Tradier Close";
@@ -1090,11 +1112,11 @@
     const bullets = buildAutoRead(input, derived);
     const badges = buildWarningBadges(input, derived);
     const spxQuote = (base && base.spx_quote) || {};
-    const spxPoints = (
-      (((base || {}).series_points || {}).SPX)
-      || (((base || {}).series_points || {})["^GSPC"])
-      || (Array.isArray(spxQuote.series) ? spxQuote.series : [])
-      || (Array.isArray(spxQuote.mini_series) ? spxQuote.mini_series : [])
+    const spxPoints = pickBestSeries(
+      (((base || {}).series_points || {}).SPX),
+      (((base || {}).series_points || {})["^GSPC"]),
+      (Array.isArray(spxQuote.series) ? spxQuote.series : []),
+      (Array.isArray(spxQuote.mini_series) ? spxQuote.mini_series : [])
     );
     const spxState = deriveDataState(spxQuote);
     const spxAbsChange = inferAbsoluteChange(spxQuote.price, spxQuote.change_pct);
@@ -1253,7 +1275,13 @@
         if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
         if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
         if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
-        if (typeof spxTick.reason === "string") nextSpx.data_reason = spxTick.reason;
+        if (typeof spxTick.reason === "string") {
+          nextSpx.reason = spxTick.reason;
+          nextSpx.data_reason = spxTick.reason;
+        }
+        nextSpx.data_state = deriveDataState(nextSpx);
+        nextSpx.data_status_label = dataStateLabel(nextSpx.data_state);
+        nextSpx.source_badge_label = sourceBadgeLabel(nextSpx);
       }
 
       const nextVix = { ...(current.vix_quote || {}) };
@@ -1263,7 +1291,13 @@
         const vixPct = asNum(vixTick.pct_change);
         if (vixPct !== null) nextVix.change_pct = vixPct;
         if (typeof vixTick.provider === "string") nextVix.provider = vixTick.provider;
-        if (typeof vixTick.reason === "string") nextVix.data_reason = vixTick.reason;
+        if (typeof vixTick.reason === "string") {
+          nextVix.reason = vixTick.reason;
+          nextVix.data_reason = vixTick.reason;
+        }
+        nextVix.data_state = deriveDataState(nextVix);
+        nextVix.data_status_label = dataStateLabel(nextVix.data_state);
+        nextVix.source_badge_label = sourceBadgeLabel(nextVix);
       }
 
       current = {

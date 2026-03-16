@@ -20,8 +20,8 @@
         <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
         <button class="btn" id="viewModeToggle" type="button" aria-pressed="false">Execution Mode</button>
         <span class="trendChip" id="marketPulseStreamStatus">Live stream connecting</span>
-        <span class="trendChip {% if spx_quote.get('source_badge_tone') %}{{ spx_quote.get('source_badge_tone') }}{% endif %}" id="marketPulseSourceMode">{{ spx_quote.get('source_badge_label') or 'Feed unavailable' }}</span>
-        <span class="tiny muted" id="marketPulseStreamFreshness">Waiting for first tick…</span>
+        <span class="trendChip {% if spx_quote.get('source_badge_tone') %}{{ spx_quote.get('source_badge_tone') }}{% endif %}" id="marketPulseSourceMode">{{ spx_quote.get('source_badge_label') or 'Awaiting feed' }}</span>
+        <span class="tiny muted" id="marketPulseStreamFreshness">Awaiting first tick…</span>
         <a class="btn" href="/candle-opens">Candle Opens</a>
       </div>
     </div>
@@ -125,7 +125,7 @@
       · {{ '%+.2f'|format(spx_quote.get('change_pct')) if spx_quote.get('change_pct') is not none else '—' }}%
     </div>
     <div class="tiny muted" id="spxPrioritySourceBadge">{{ spx_quote.get('source_badge_label') or source_label }}</div>
-    <div class="tiny" id="spxPriorityStateLine">State: {{ spx_quote.get('market_state') or 'Unavailable' }}</div>
+    <div class="tiny" id="spxPriorityStateLine">State: {{ spx_quote.get('market_state') or 'Awaiting feed' }}</div>
     <div class="tiny" id="spxPriorityRangeLine">Range: {{ spx_quote.get('day_range') or '—' }}</div>
     <div class="tiny muted">Primary cash index proxy for SPX options context.</div>
     <div class="tiny"><a href="{{ spx_quote.get('yahoo_href') or 'https://finance.yahoo.com/quote/%5EGSPC' }}" target="_blank" rel="noopener">View on Yahoo</a></div>
@@ -136,9 +136,9 @@
       · {{ '%+.2f'|format(spx_quote.get('change')) }}
       · {{ '%+.2f'|format(spx_quote.get('change_pct')) }}%
     {% else %}
-      SPX quote unavailable
+      Awaiting SPX quote
     {% endif %}
-    · {{ spx_quote.get('market_state') or 'Unavailable' }}
+    · {{ spx_quote.get('market_state') or 'Awaiting feed' }}
   </div>
   <div class="tiny stack8" id="spxPriorityFreshnessLine">
     {{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}
@@ -318,7 +318,7 @@
     </div>
   </details>
 
-  <script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'market_now_iso': market_now_iso, 'vix_direction': context.get('vix_direction') if context else ''}|tojson }}</script>
+  <script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'vix_direction': context.get('vix_direction') if context else ''}|tojson }}</script>
 
   <details class="optionsContractsDropdown">
     <summary class="optionsContractsSummary">
@@ -343,7 +343,7 @@
           </details>
         {% endfor %}
       {% else %}
-        <div class="marketPulseAlert muted">No contract rows loaded yet.</div>
+        <div class="marketPulseAlert muted">Awaiting contract rows.</div>
       {% endif %}
     </div>
   </details>
@@ -474,7 +474,7 @@
   </div></div>
   <div class="card supportCard subtleCard"><div class="toolbar">
     <div class="pill">Feed State</div>
-    <div class="supportLead">{% if news_available %}News briefing ready{% else %}Fallback mode{% endif %}</div>
+    <div class="supportLead">{% if news_available %}News briefing ready{% else %}Fallback Snapshot{% endif %}</div>
     <div class="supportBody">{{ news_source_note or source_note }}</div>
   </div></div>
 </div>
@@ -716,11 +716,11 @@
       streamStatus.textContent = status || "Live stream";
     }
     if (streamFreshness) {
-      streamFreshness.textContent = detail || "Waiting for first tick…";
+      streamFreshness.textContent = detail || "Awaiting first tick…";
     }
   };
 
-  setStreamState("Live stream connecting", "Waiting for first tick…");
+  setStreamState("Live stream connecting", "Awaiting first tick…");
   window.addEventListener("market-pulse-stream-status", (event) => {
     const detail = (event && event.detail) || {};
     setStreamState(detail.status, detail.detail);

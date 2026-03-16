@@ -485,7 +485,7 @@
         <tr><td colspan="17">
           <div class="emptyState">
             <div class="emptyStateTitle">No trades in this view yet.</div>
-            <div class="emptyStateBody">Next best action: upload statement first, then complete setup/session tags and review scores.</div>
+            <div class="emptyStateBody">Start by uploading a statement, then add setup, session, and review tags.</div>
           </div>
         </td></tr>
       {% endif %}
@@ -559,12 +559,12 @@
   </div>
   {% if total_rows == 0 %}
     <div class="card stack12"><div class="toolbar">
-      <div class="pill">🧭 First Trade Coaching</div>
+      <div class="pill">First Trade Setup</div>
       <div class="tiny stack8 line16"><b>Why this matters:</b> trade analytics is only as good as logging consistency.</div>
-      <div class="tiny stack8 line16"><b>Next best action:</b> upload statement first, then add setup/session tags and checklist score.</div>
+      <div class="tiny stack8 line16"><b>Start here:</b> upload a statement, then add setup, session, and checklist tags.</div>
       <div class="actionRow stack10">
-        <a class="btn primary" href="/trades/upload/statement">📄 Upload Statement</a>
-        <a class="btn" href="/trades/new">➕ Add Manual Trade</a>
+        <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
+        <a class="btn" href="/trades/new">Add Manual Trade</a>
       </div>
     </div></div>
   {% endif %}

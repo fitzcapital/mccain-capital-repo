@@ -8,7 +8,7 @@
       </div>
       <div class="actionRow">
         <a class="btn primary" href="{{ replay_journal_href }}">Create Journal Entry</a>
-        <a class="btn" href="/analytics">Back Analytics</a>
+        <a class="btn" href="/analytics">Analytics</a>
       </div>
     </div>
     <div class="hr"></div>
@@ -80,7 +80,7 @@
     {% if journal_summary %}
       <div class="supportLead">{{ journal_entries|length }} journal entr{% if journal_entries|length == 1 %}y{% else %}ies{% endif %} on {{ day }}</div>
       <div class="supportBody">Mood {{ journal_summary.mood or '—' }} · Grade {{ journal_summary.grade or '—' }} · PnL {{ money(journal_summary.pnl or 0) }}</div>
-      <div class="rightActions"><a class="btn primary" href="/journal/edit/{{ journal_summary.id }}">Open Debrief</a></div>
+      <div class="rightActions"><a class="btn primary" href="/journal/edit/{{ journal_summary.id }}">Journal Entry</a></div>
     {% else %}
       <div class="supportLead">No linked debrief yet</div>
       <div class="supportBody">Convert this replay into one debrief while the day is still fresh.</div>

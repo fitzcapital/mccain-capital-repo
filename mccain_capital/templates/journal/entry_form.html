@@ -8,7 +8,7 @@
       <div class="summaryLead stack8">Document observations, execution, and lessons with clarity so the review loop stays useful.</div>
     </div>
     <div class="actionRow">
-      <a class="btn" href="/journal">Back to Journal</a>
+      <a class="btn" href="/journal">Journal</a>
       <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
     </div>
   </div>
@@ -38,166 +38,211 @@
   <form method="post" action="{{ action }}" enctype="multipart/form-data">
     <input type="hidden" name="existing_capture_screenshot_path" value="{{ values.get('capture_screenshot_path','') }}">
     <input type="hidden" name="quick_capture" value="{{ values.get('quick_capture','0') }}">
-    <div class="row journalMetaRow">
-      <div class="journalDateField">
-        <label>Date</label>
-        <input id="journal-entry-date" class="journalDateInput" type="date" name="entry_date" value="{{ values.get('entry_date','') }}">
-      </div>
-      <div class="journalMarketField">
-        <label>Market</label>
-        <input name="market" value="{{ values.get('market','') }}" placeholder="SPX / QQQ / NQ...">
-      </div>
-      <div class="journalSetupField">
-        <label>Setup</label>
-        <input name="setup" value="{{ values.get('setup','') }}" placeholder="Midday CE Strike...">
+    {% set grade_value = values.get('grade','') %}
+    {% set et = values.get('entry_type','post_market') %}
+    {% set quick_capture_open = values.get('quick_capture') == '1' or values.get('capture_screenshot_href') %}
+    {% set trade_links_open = values.get('link_all_day') == '1' or selected_trade_ids_set|length > 0 %}
+    {% set template_notes_open = values.get('template_notes','') %}
+
+    <div class="card journalPrimaryCard">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Core Entry</div>
+          <span class="trendChip">{{ et|replace('_', ' ')|title }}</span>
+        </div>
+        <div class="tiny stack8 line16">Capture the date, setup, emotional tone, and main lesson before adding any supporting detail.</div>
+
+        <div class="row journalMetaRow">
+          <div class="journalDateField">
+            <label>Date</label>
+            <input id="journal-entry-date" class="journalDateInput" type="date" name="entry_date" value="{{ values.get('entry_date','') }}">
+          </div>
+          <div class="journalMarketField">
+            <label>Market</label>
+            <input name="market" value="{{ values.get('market','') }}" placeholder="SPX / QQQ / NQ...">
+          </div>
+          <div class="journalSetupField">
+            <label>Setup</label>
+            <input name="setup" value="{{ values.get('setup','') }}" placeholder="Midday CE Strike...">
+          </div>
+        </div>
+
+        <div class="row stack10 journalPrimaryRow">
+          <div>
+            <label>Entry Type</label>
+            <select name="entry_type">
+              <option value="pre_market" {% if et == 'pre_market' %}selected{% endif %}>Pre-Market Plan</option>
+              <option value="trade_debrief" {% if et == 'trade_debrief' %}selected{% endif %}>Trade Debrief</option>
+              <option value="post_market" {% if et == 'post_market' %}selected{% endif %}>Post-Market Review</option>
+            </select>
+          </div>
+          <div>
+            <label>Grade</label>
+            <select name="grade">
+              <option value="" {% if not grade_value %}selected{% endif %}>Select grade</option>
+              <option value="A+" {% if grade_value == 'A+' %}selected{% endif %}>A+</option>
+              <option value="A" {% if grade_value == 'A' %}selected{% endif %}>A</option>
+              <option value="A-" {% if grade_value == 'A-' %}selected{% endif %}>A-</option>
+              <option value="B+" {% if grade_value == 'B+' %}selected{% endif %}>B+</option>
+              <option value="B" {% if grade_value == 'B' %}selected{% endif %}>B</option>
+              <option value="B-" {% if grade_value == 'B-' %}selected{% endif %}>B-</option>
+              <option value="C+" {% if grade_value == 'C+' %}selected{% endif %}>C+</option>
+              <option value="C" {% if grade_value == 'C' %}selected{% endif %}>C</option>
+              <option value="C-" {% if grade_value == 'C-' %}selected{% endif %}>C-</option>
+              <option value="D" {% if grade_value == 'D' %}selected{% endif %}>D</option>
+              <option value="F" {% if grade_value == 'F' %}selected{% endif %}>F</option>
+            </select>
+          </div>
+          <div>
+            <label>Mood</label>
+            <input id="journal-entry-mood" name="mood" value="{{ values.get('mood','') }}" placeholder="Calm / anxious / revenge...">
+          </div>
+          <div>
+            <label>PnL</label>
+            <input id="journal-entry-pnl" class="journalPnlInput" name="pnl" inputmode="decimal" value="{{ values.get('pnl','') }}" placeholder="e.g. 327.90">
+            <div class="tiny stack8" id="journal-entry-pnl-note">Auto-filled from selected trades.</div>
+          </div>
+        </div>
+
+        <div class="stack12">
+          <label>Main Notes</label>
+          <textarea name="notes" placeholder="Capture context, execution, and improvement plan...">{{ values.get('notes','') }}</textarea>
+        </div>
       </div>
     </div>
 
-    <div class="card journalCaptureCard">
-      <div class="toolbar">
-        <div class="pillRow">
-          <div class="pill">Mobile Quick Capture</div>
-          {% if values.get('quick_capture') == '1' %}
-            <span class="trendChip positive">Phone-first</span>
-          {% endif %}
-        </div>
-        <div class="tiny stack8 line16">Fast note, emotion tag, and screenshot capture for in-session use.</div>
-        <div class="journalQuickCaptureGrid">
-          <div class="stack10">
-            <label>Emotion shortcuts</label>
-            <div class="pillRow journalQuickMoodRow">
-              {% for mood_label in ['Calm','Focused','Hesitant','Frustrated','Overconfident'] %}
-                <button class="trendChip journalQuickMoodBtn" type="button" data-mood="{{ mood_label }}">{{ mood_label }}</button>
-              {% endfor %}
-            </div>
+    <details class="syncDetails journalFormFold"{% if trade_links_open %} open{% endif %}>
+      <summary>
+        <span>Trade Links</span>
+        <span class="tiny muted">
+          {{ selected_trade_ids_set|length }} selected{% if values.get('entry_date','') %} · {{ values.get('entry_date','') }}{% endif %}
+        </span>
+      </summary>
+      <div class="journalFoldBody">
+        <div class="row stack10 journalLinkModeRow">
+          <div>
+            <label>Day Link Mode</label>
+            <label class="pillRow stack8">
+              <input id="journal-link-all-day" type="checkbox" name="link_all_day" value="1" {% if values.get('link_all_day') == '1' %}checked{% endif %}>
+              Link all trades for selected date
+            </label>
           </div>
-          <div class="stack10">
-            <label>Screenshot</label>
-            <input type="file" name="capture_screenshot" accept="image/png,image/jpeg,image/webp" capture="environment">
-            <div class="tiny stack8">Phone camera or screenshot picker. Images stay in your persistent journal capture storage.</div>
+        </div>
+
+        {% if available_trades|length == 0 %}
+          <div class="tiny mb6" id="journal-linked-trades-empty">
+            No trades found for <b>{{ values.get('entry_date','(no date)') }}</b>. Change date to a trading day or save with Day Link Mode after setting the date.
+          </div>
+        {% else %}
+          <div class="tiny mb6" id="journal-linked-trades-empty">
+            Showing {{ available_trades|length }} trade{{ '' if available_trades|length == 1 else 's' }} for <b>{{ values.get('entry_date','') }}</b>.
+          </div>
+        {% endif %}
+        <div class="journalTradePicker">
+          <div class="journalTradePickerHead">
+            <div class="tiny stack8" id="journal-linked-trades-summary">
+              {{ selected_trade_ids_set|length }} selected
+            </div>
+            <button class="btn btnCompact" type="button" id="journal-clear-trades">Clear</button>
+          </div>
+          <div id="journal-linked-trades" class="journalTradeList">
+            {% for t in available_trades %}
+              <label class="tradeCard journalTradeOption {% if t['id'] in selected_trade_ids_set %}isSelected{% endif %}">
+                <div class="tradeCardHead">
+                  <span class="pill">Trade #{{ t['id'] }}</span>
+                  <input
+                    class="journalTradeCheckbox"
+                    type="checkbox"
+                    name="linked_trade_ids_multi"
+                    value="{{ t['id'] }}"
+                    data-net-pl="{{ '%.2f'|format(t.get('net_pl') or 0) }}"
+                    {% if t['id'] in selected_trade_ids_set %}checked{% endif %}
+                  >
+                </div>
+                <div class="tradeCardGrid">
+                  <div><span class="meta">Time</span><div>{{ t['trade_date'] }} {{ t.get('entry_time') or '—' }}</div></div>
+                  <div><span class="meta">Contract</span><div>{{ t.get('ticker') or '—' }} {{ t.get('opt_type') or '' }}</div></div>
+                  <div><span class="meta">Net</span><div>{{ money(t.get('net_pl') or 0) }}</div></div>
+                  <div><span class="meta">Trade ID</span><div>#{{ t['id'] }}</div></div>
+                </div>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="tiny stack8">
+          Pick the trades you want in this review. Day Link Mode auto-selects everything for the chosen date.
+        </div>
+      </div>
+    </details>
+
+    <details class="syncDetails journalFormFold"{% if quick_capture_open %} open{% endif %}>
+      <summary>
+        <span>Quick Capture</span>
+        <span class="tiny muted">
+          {% if values.get('capture_screenshot_href') %}
+            Screenshot attached
+          {% elif values.get('quick_capture') == '1' %}
+            Phone-first mode
+          {% else %}
+            Mood shortcuts and screenshot
+          {% endif %}
+        </span>
+      </summary>
+      <div class="journalFoldBody">
+        <div class="card journalCaptureCard">
+          <div class="toolbar">
+            <div class="pillRow">
+              <div class="pill">Mobile Quick Capture</div>
+              {% if values.get('quick_capture') == '1' %}
+                <span class="trendChip positive">Phone-first</span>
+              {% endif %}
+            </div>
+            <div class="tiny stack8 line16">Fast note, emotion tag, and screenshot capture for in-session use.</div>
+            <div class="journalQuickCaptureGrid">
+              <div class="stack10">
+                <label>Emotion shortcuts</label>
+                <div class="pillRow journalQuickMoodRow">
+                  {% for mood_label in ['Calm','Focused','Hesitant','Frustrated','Overconfident'] %}
+                    <button class="trendChip journalQuickMoodBtn" type="button" data-mood="{{ mood_label }}">{{ mood_label }}</button>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="stack10">
+                <label>Screenshot</label>
+                <input type="file" name="capture_screenshot" accept="image/png,image/jpeg,image/webp" capture="environment">
+                <div class="tiny stack8">Phone camera or screenshot picker. Images stay in your persistent journal capture storage.</div>
+                {% if values.get('capture_screenshot_href') %}
+                  <a class="btn btnCompact" href="{{ values.get('capture_screenshot_href') }}" target="_blank" rel="noopener">Open Current Screenshot</a>
+                {% endif %}
+              </div>
+            </div>
             {% if values.get('capture_screenshot_href') %}
-              <a class="btn btnCompact" href="{{ values.get('capture_screenshot_href') }}" target="_blank" rel="noopener">Open Current Screenshot</a>
+              <div class="journalCapturePreview">
+                <img src="{{ values.get('capture_screenshot_href') }}" alt="Journal capture preview">
+              </div>
             {% endif %}
           </div>
         </div>
-        {% if values.get('capture_screenshot_href') %}
-          <div class="journalCapturePreview">
-            <img src="{{ values.get('capture_screenshot_href') }}" alt="Journal capture preview">
-          </div>
-        {% endif %}
       </div>
-    </div>
+    </details>
 
-    <div class="row stack10">
-      <div>
-        <label>Grade</label>
-        {% set grade_value = values.get('grade','') %}
-        <select name="grade">
-          <option value="" {% if not grade_value %}selected{% endif %}>Select grade</option>
-          <option value="A+" {% if grade_value == 'A+' %}selected{% endif %}>A+</option>
-          <option value="A" {% if grade_value == 'A' %}selected{% endif %}>A</option>
-          <option value="A-" {% if grade_value == 'A-' %}selected{% endif %}>A-</option>
-          <option value="B+" {% if grade_value == 'B+' %}selected{% endif %}>B+</option>
-          <option value="B" {% if grade_value == 'B' %}selected{% endif %}>B</option>
-          <option value="B-" {% if grade_value == 'B-' %}selected{% endif %}>B-</option>
-          <option value="C+" {% if grade_value == 'C+' %}selected{% endif %}>C+</option>
-          <option value="C" {% if grade_value == 'C' %}selected{% endif %}>C</option>
-          <option value="C-" {% if grade_value == 'C-' %}selected{% endif %}>C-</option>
-          <option value="D" {% if grade_value == 'D' %}selected{% endif %}>D</option>
-          <option value="F" {% if grade_value == 'F' %}selected{% endif %}>F</option>
-        </select>
-      </div>
-      <div>
-        <label>Mood</label>
-        <input id="journal-entry-mood" name="mood" value="{{ values.get('mood','') }}" placeholder="Calm / anxious / revenge...">
-      </div>
-      <div>
-        <label>PnL</label>
-        <input id="journal-entry-pnl" class="journalPnlInput" name="pnl" inputmode="decimal" value="{{ values.get('pnl','') }}" placeholder="e.g. 327.90">
-        <div class="tiny stack8" id="journal-entry-pnl-note">Auto-filled from selected trades.</div>
-      </div>
-    </div>
-
-    <div class="row stack10">
-      <div>
-        <label>Entry Type</label>
-        <select name="entry_type">
-          {% set et = values.get('entry_type','post_market') %}
-          <option value="pre_market" {% if et == 'pre_market' %}selected{% endif %}>Pre-Market Plan</option>
-          <option value="trade_debrief" {% if et == 'trade_debrief' %}selected{% endif %}>Trade Debrief</option>
-          <option value="post_market" {% if et == 'post_market' %}selected{% endif %}>Post-Market Review</option>
-        </select>
-      </div>
-      <div>
-        <label>Day Link Mode</label>
-        <label class="pillRow stack8">
-          <input id="journal-link-all-day" type="checkbox" name="link_all_day" value="1" {% if values.get('link_all_day') == '1' %}checked{% endif %}>
-          Link all trades for selected date
-        </label>
-      </div>
-    </div>
-
-    <div class="stack12">
-      <label>Linked Trades</label>
-      {% if available_trades|length == 0 %}
-        <div class="tiny mb6" id="journal-linked-trades-empty">
-          No trades found for <b>{{ values.get('entry_date','(no date)') }}</b>. Change date to a trading day or save with Day Link Mode after setting the date.
-        </div>
-      {% else %}
-        <div class="tiny mb6" id="journal-linked-trades-empty">
-          Showing {{ available_trades|length }} trade{{ '' if available_trades|length == 1 else 's' }} for <b>{{ values.get('entry_date','') }}</b>.
-        </div>
-      {% endif %}
-      <div class="journalTradePicker">
-        <div class="journalTradePickerHead">
-          <div class="tiny stack8" id="journal-linked-trades-summary">
-            {{ selected_trade_ids_set|length }} selected
-          </div>
-          <button class="btn btnCompact" type="button" id="journal-clear-trades">Clear</button>
-        </div>
-        <div id="journal-linked-trades" class="journalTradeList">
-          {% for t in available_trades %}
-            <label class="tradeCard journalTradeOption {% if t['id'] in selected_trade_ids_set %}isSelected{% endif %}">
-              <div class="tradeCardHead">
-                <span class="pill">Trade #{{ t['id'] }}</span>
-                <input
-                  class="journalTradeCheckbox"
-                  type="checkbox"
-                  name="linked_trade_ids_multi"
-                  value="{{ t['id'] }}"
-                  data-net-pl="{{ '%.2f'|format(t.get('net_pl') or 0) }}"
-                  {% if t['id'] in selected_trade_ids_set %}checked{% endif %}
-                >
-              </div>
-              <div class="tradeCardGrid">
-                <div><span class="meta">Time</span><div>{{ t['trade_date'] }} {{ t.get('entry_time') or '—' }}</div></div>
-                <div><span class="meta">Contract</span><div>{{ t.get('ticker') or '—' }} {{ t.get('opt_type') or '' }}</div></div>
-                <div><span class="meta">Net</span><div>{{ money(t.get('net_pl') or 0) }}</div></div>
-                <div><span class="meta">Trade ID</span><div>#{{ t['id'] }}</div></div>
-              </div>
-            </label>
-          {% endfor %}
+    <details class="syncDetails journalFormFold"{% if template_notes_open %} open{% endif %}>
+      <summary>
+        <span>Plan Context</span>
+        <span class="tiny muted">Planned levels, risk model, and follow-up checklist.</span>
+      </summary>
+      <div class="journalFoldBody">
+        <div class="stack12">
+          <label>Template Notes</label>
+          <textarea name="template_notes" placeholder="Planned levels, risk model, follow-up checklist...">{{ values.get('template_notes','') }}</textarea>
         </div>
       </div>
-      <div class="tiny stack8">
-        Pick the trades you want in this review. Day Link Mode auto-selects everything for the chosen date.
-      </div>
-    </div>
-
-    <div class="stack12">
-      <label>Template Notes</label>
-      <textarea name="template_notes" placeholder="Planned levels, risk model, follow-up checklist...">{{ values.get('template_notes','') }}</textarea>
-    </div>
-
-    <div class="stack12">
-      <label>Notes</label>
-      <textarea name="notes" placeholder="Capture context, execution, and improvement plan...">{{ values.get('notes','') }}</textarea>
-    </div>
+    </details>
 
     <div class="hr"></div>
     <div class="rightActions">
       <button class="btn primary" type="submit">Save</button>
-      <a class="btn" href="/journal">Back</a>
+      <a class="btn" href="/journal">Journal</a>
     </div>
   </form>
 </div></div>

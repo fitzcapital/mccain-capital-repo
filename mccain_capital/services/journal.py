@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import (
     abort,
+    flash,
     jsonify,
     redirect,
     render_template,
@@ -217,7 +218,8 @@ def new_entry():
             }
         )
         repo.set_entry_trade_links(entry_id, linked_ids)
-        return redirect(url_for("edit_entry", entry_id=entry_id))
+        flash("Journal entry saved.", "success")
+        return redirect(url_for("journal_home", d=entry_date))
 
     prefill_date = (request.args.get("d") or "").strip()
     entry_date = prefill_date or _default_entry_date_for_journal()
@@ -316,7 +318,8 @@ def edit_entry(entry_id: int):
             },
         )
         repo.set_entry_trade_links(entry_id, linked_ids)
-        return redirect(url_for("journal_home"))
+        flash("Journal entry saved.", "success")
+        return redirect(url_for("journal_home", d=entry_date))
 
     values = dict(row)
     if values.get("pnl") is None:
@@ -345,6 +348,7 @@ def edit_entry(entry_id: int):
 
 def delete_entry_route(entry_id: int):
     repo.delete_entry(entry_id)
+    flash("Journal entry deleted.", "success")
     return redirect(url_for("journal_home"))
 
 

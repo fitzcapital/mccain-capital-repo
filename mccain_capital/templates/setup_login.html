@@ -1,26 +1,50 @@
-<div class="card"><div class="toolbar authCard">
-  <div class="pill">🔐 Setup Login</div>
-  <div class="tiny stack10 line16">
-    Create your app login. After the first sign-in, you can add passkeys for Face ID or Touch ID from the admin menu.
+<div class="card pageHero"><div class="toolbar">
+  <div class="pageHeroHead">
+    <div>
+      <div class="pill">🔐 Setup Login</div>
+      <h2 class="pageTitle">Create the First Secure Access Path</h2>
+      <div class="pageSub">Set the primary password once, sign in, then register passkeys on the devices you trust most for faster daily access.</div>
+    </div>
   </div>
-  {% if err %}<div class="hr"></div><div class="tiny metaRed">{{ err }}</div>{% endif %}
-  {% if msg %}<div class="hr"></div><div class="tiny metaBlue">{{ msg }}</div>{% endif %}
-  <div class="hr"></div>
-  <form method="post">
-    {{ csrf_input|safe }}
-    <div class="row">
-      <div><label>Username</label><input name="username" value="{{ default_user }}" autocomplete="username" required></div>
-    </div>
-    <div class="row stack10">
-      <div><label>Password</label><input type="password" name="password" autocomplete="new-password" required></div>
-    </div>
-    <div class="row stack10">
-      <div><label>Confirm Password</label><input type="password" name="confirm_password" autocomplete="new-password" required></div>
-    </div>
-    <div class="hr"></div>
-    <div class="rightActions">
-      <button class="btn primary" type="submit">Save Login</button>
-      <a class="btn" href="/dashboard">Cancel</a>
-    </div>
-  </form>
 </div></div>
+
+<div class="dashboardSupportGrid authSupportGrid">
+  <div class="card supportCard workflowPromptCard"><div class="toolbar">
+    <div class="pill">Setup Rule</div>
+    <div class="supportLead">Keep the first login simple and durable.</div>
+    <div class="supportBody">Choose one username, one strong password, then move all convenience to passkeys after the initial setup is complete.</div>
+  </div></div>
+
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Next Move</div>
+    <div class="supportLead">Finish password setup, then register Face ID or Touch ID later.</div>
+    <div class="supportBody">The login page will expose passkey sign-in once a trusted device is registered from inside the app.</div>
+  </div></div>
+</div>
+
+<div class="authShell authShellSingle">
+  <div class="card authPanel"><div class="toolbar authCard">
+    <div class="pill">Primary Login</div>
+    <div class="tiny stack10 line16">Create the fallback credential first. It stays available even after passkeys are added.</div>
+    {% if err %}<div class="hr"></div><div class="tiny metaRed">{{ err }}</div>{% endif %}
+    {% if msg %}<div class="hr"></div><div class="tiny metaBlue">{{ msg }}</div>{% endif %}
+    <div class="hr"></div>
+    <form method="post">
+      {{ csrf_input|safe }}
+      <div class="row">
+        <div><label>Username</label><input name="username" value="{{ default_user }}" autocomplete="username" required></div>
+      </div>
+      <div class="row stack10">
+        <div><label>Password</label><input type="password" name="password" autocomplete="new-password" required></div>
+      </div>
+      <div class="row stack10">
+        <div><label>Confirm Password</label><input type="password" name="confirm_password" autocomplete="new-password" required></div>
+      </div>
+      <div class="hr"></div>
+      <div class="rightActions">
+        <button class="btn primary" type="submit">Save Login</button>
+        <a class="btn" href="/dashboard">Cancel</a>
+      </div>
+    </form>
+  </div></div>
+</div>

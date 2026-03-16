@@ -373,6 +373,8 @@ def get_trading_window_state() -> dict[str, Any]:
         state = "off"
         state_label = "Window Off"
         message = "Trading window controls are disabled."
+        rail_label = "Window Off"
+        rail_detail = "Enable from Menu"
     elif not is_trading_day and not using_test_clock:
         state = "closed"
         state_label = holiday_name or "Market Closed"
@@ -380,22 +382,32 @@ def get_trading_window_state() -> dict[str, Any]:
             message = "Trading window is hidden because today is not a trading day."
         else:
             message = f"Trading window is hidden for {holiday_name}."
+        rail_label = state_label
+        rail_detail = "Closed Today"
     elif now_min < start_min:
         state = "pending"
         state_label = "Stand By"
         message = f"Stand by. Trading window starts at {start_et} ET."
+        rail_label = "Stand By"
+        rail_detail = f"Starts {start_et} ET"
     elif now_min < done_min:
         state = "active"
         state_label = "In Window"
         message = f"Execution window is open. Be done by {done_by_et} ET."
+        rail_label = "Window Live"
+        rail_detail = f"Done By {done_by_et} ET"
     elif now_min < stop_min:
         state = "warning"
         state_label = "Done By Now"
         message = f"Wind down now. Hard stop hits at {hard_stop_et} ET."
+        rail_label = "Done By"
+        rail_detail = f"Hard Stop {hard_stop_et} ET"
     else:
         state = "stop"
         state_label = "Stop Trading"
         message = "STOP TRADING. Hard stop has been reached."
+        rail_label = "Stop Trading"
+        rail_detail = f"Hard Stop {hard_stop_et} ET"
 
     return {
         "enabled": enabled,
@@ -411,6 +423,8 @@ def get_trading_window_state() -> dict[str, Any]:
         "test_time_et": test_time_et,
         "state": state,
         "state_label": state_label,
+        "rail_label": rail_label,
+        "rail_detail": rail_detail,
         "message": message,
         "now_label": now_et.strftime("%a %b %-d · %I:%M %p ET"),
     }
@@ -584,10 +598,12 @@ def _global_top_notice() -> dict | None:
             continue
         day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "
         title = str(row.get("title") or "USD high impact").strip() or "USD high impact"
+        compact_title = re.sub(r"\s+", " ", title)
+        if len(compact_title) > 28:
+            compact_title = f"{compact_title[:25].rstrip()}..."
         detail_href = f"/candle-opens?y={starts_at.year}&m={starts_at.month}#news-day-{starts_at.date().isoformat()}"
         return {
-            "label": "Red Folder",
-            "text": f"🔴 {day_prefix}{starts_at.strftime('%-I:%M %p ET')}",
+            "text": f"{day_prefix}{starts_at.strftime('%-I:%M %p ET')} · {compact_title}",
             "detail": f"High impact · {starts_at.strftime('%b %-d %I:%M %p ET')} · {title}",
             "href": detail_href,
             "level": "high",

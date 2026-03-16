@@ -30,20 +30,17 @@
         {% if account_scope and account_scope.enabled %}
           <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
           <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
-          <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
         {% else %}
           <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
         {% endif %}
         <a class="btn primary" href="/analytics/replay">Session Replay</a>
         <a class="btn ctaLink" href="/trades">Trades</a>
-        <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
-        <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
       </div>
     </div>
   </div>
 </div>
 
-<div class="card analyticsToplineCard">
+<div class="card analyticsToplineCard analyticsCommandDeck">
   <div class="toolbar">
     <div class="analyticsTopline">
       <div class="analyticsBalanceBlock">
@@ -72,6 +69,63 @@
         </div>
       </div>
     </div>
+    <div class="hr"></div>
+    <div class="analyticsModeRail">
+      <a class="analyticsModeCard{% if tab == 'performance' %} is-active{% endif %}" href="/analytics?tab=performance&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">
+        <span class="analyticsModeKicker">Performance</span>
+        <strong>Outcome and curves</strong>
+        <span>Read P/L, drawdown, and sizing context.</span>
+      </a>
+      <a class="analyticsModeCard{% if tab == 'behavior' %} is-active{% endif %}" href="/analytics?tab=behavior&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">
+        <span class="analyticsModeKicker">Behavior</span>
+        <strong>Sessions and mistakes</strong>
+        <span>Review session quality and rule-break drift.</span>
+      </a>
+      <a class="analyticsModeCard{% if tab == 'edge' %} is-active{% endif %}" href="/analytics?tab=edge&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">
+        <span class="analyticsModeKicker">Edge</span>
+        <strong>Setup and time edge</strong>
+        <span>Find where the edge actually compounds.</span>
+      </a>
+      <a class="analyticsModeCard{% if tab == 'diagnostics' %} is-active{% endif %}" href="/analytics?tab=diagnostics&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">
+        <span class="analyticsModeKicker">Diagnostics</span>
+        <strong>Trust the input</strong>
+        <span>Fix stale or missing data before review.</span>
+      </a>
+    </div>
+    <div class="analyticsShortcutRow">
+      <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
+      <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
+      <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
+    </div>
+    <details class="syncDetails analyticsControlFold">
+      <summary>
+        <span>Range and Filters</span>
+        <span class="tiny muted">
+          {{ start_date or 'Start open' }} to {{ end_date or 'Today' }}
+          {% if explain_day %} · Explain {{ explain_day }}{% endif %}
+        </span>
+      </summary>
+      <form method="get" class="row">
+        <input type="hidden" name="tab" value="{{ tab }}">
+        <div><label>Start</label><input class="appDateInput" type="date" name="start" value="{{ start_date }}"></div>
+        <div><label>End</label><input class="appDateInput" type="date" name="end" value="{{ end_date }}"></div>
+        <div>
+          <label>Explain Day</label>
+          <input class="appDateInput" type="date" name="explain_day" value="{{ explain_day }}" />
+        </div>
+        <div>
+          <label>Expectancy View</label>
+          <select name="expectancy_granularity">
+            <option value="monthly" {% if expectancy_granularity == 'monthly' %}selected{% endif %}>Monthly</option>
+            <option value="weekly" {% if expectancy_granularity == 'weekly' %}selected{% endif %}>Weekly</option>
+          </select>
+        </div>
+        <div class="actionRow">
+          <button class="btn" type="submit">Apply</button>
+          <a class="btn" href="/analytics">Reset</a>
+        </div>
+      </form>
+    </details>
   </div>
 </div>
 
@@ -108,144 +162,107 @@
   </div></div>
 </div>
 
-<div class="card analyticsOpsBand"><div class="toolbar">
-  <div class="analyticsOpsHead">
-    <div>
-      <div class="pill">Review Ops</div>
-      <div class="analyticsOpsLead">Trust the data first, then review with confidence.</div>
-    </div>
-    {% if data_trust.primary_href and data_trust.primary_label %}
-      <div class="rightActions stack8">
-        <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-        {% if data_trust.secondary_href and data_trust.secondary_label %}
-          <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+{% set review_setup_open = tab == 'diagnostics' or data_trust.tone == 'critical' %}
+<details class="syncDetails analyticsFoldSection analyticsTrustFold" {% if review_setup_open %}open{% endif %}>
+  <summary>
+    <span>Review Setup and Data Trust</span>
+    <span class="tiny muted">Open sync health, balance trust, and deeper metrics when you need to validate the read.</span>
+  </summary>
+  <div class="stack12">
+    <div class="card analyticsOpsBand"><div class="toolbar">
+      <div class="analyticsOpsHead">
+        <div>
+          <div class="pill">Review Ops</div>
+          <div class="analyticsOpsLead">Trust the data first, then review with confidence.</div>
+        </div>
+        {% if data_trust.primary_href and data_trust.primary_label %}
+          <div class="rightActions stack8">
+            <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+            {% if data_trust.secondary_href and data_trust.secondary_label %}
+              <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+            {% endif %}
+          </div>
         {% endif %}
       </div>
-    {% endif %}
-  </div>
-  <div class="statusBadgeStrip analyticsStatusStrip">
-    {% for badge in balance_badges %}
-      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-        <span class="statusBadgeLabel">{{ badge.label }}</span>
-        <strong>{{ badge.value }}</strong>
-      </div>
-    {% endfor %}
-    {% for badge in sync_badges %}
-      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-        <span class="statusBadgeLabel">{{ badge.label }}</span>
-        <strong>{{ badge.value }}</strong>
-      </div>
-    {% endfor %}
-  </div>
-  <div class="analyticsOpsNarrative">
-    <div class="supportLead">Data Trust</div>
-    {% if data_trust.badges %}
-      <div class="trustBadgeRow">
-        {% for badge in data_trust.badges %}
-          <span class="trustBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-            {{ badge.label }} <b>{{ badge.value }}</b>
-          </span>
+      <div class="statusBadgeStrip analyticsStatusStrip">
+        {% for badge in balance_badges %}
+          <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+            <span class="statusBadgeLabel">{{ badge.label }}</span>
+            <strong>{{ badge.value }}</strong>
+          </div>
+        {% endfor %}
+        {% for badge in sync_badges %}
+          <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+            <span class="statusBadgeLabel">{{ badge.label }}</span>
+            <strong>{{ badge.value }}</strong>
+          </div>
         {% endfor %}
       </div>
-    {% endif %}
-    <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">{{ data_trust.message }}</div>
-  </div>
-</div></div>
-
-<div class="showcaseGrid">
-  <div class="showcaseCard">
-    <div class="showcaseHead">
-      <div class="showcaseTitle">
-        <svg class="mcIcon"><use href="#mc-crown"></use></svg>
-        Edge Intensity
+      <div class="analyticsOpsNarrative">
+        <div class="supportLead">Data Trust</div>
+        {% if data_trust.badges %}
+          <div class="trustBadgeRow">
+            {% for badge in data_trust.badges %}
+              <span class="trustBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+                {{ badge.label }} <b>{{ badge.value }}</b>
+              </span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">{{ data_trust.message }}</div>
       </div>
-      <span class="trendChip">{{ perf.total_trades }} trades</span>
-    </div>
-    <div class="showcaseValue">{{ money(perf.expectancy) }}</div>
-    <div class="showcaseMeta">
-      Profit factor {% if perf.profit_factor is not none %}{{ '%.2f'|format(perf.profit_factor) }}{% else %}∞{% endif %}
-      · Win rate {{ '%.1f'|format(perf.win_rate) }}%.
-    </div>
-    <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(edge_pulse) }}%">
-      <div class="showcasePulseFill"></div>
-      <div class="showcaseWave"></div>
-    </div>
-  </div>
-  <div class="showcaseCard">
-    <div class="showcaseHead">
-      <div class="showcaseTitle">
-        <svg class="mcIcon"><use href="#mc-crest"></use></svg>
-        Risk Control State
-      </div>
-      <span class="trendChip">DD streak {{ dd.current_drawdown_streak }}</span>
-    </div>
-    <div class="showcaseValue">{{ money(dd.current_drawdown) }}</div>
-    <div class="showcaseMeta">
-      Max DD {{ money(dd.max_drawdown) }} · Current streak {{ dd.current_drawdown_streak }}.
-    </div>
-    <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(control_pulse) }}%">
-      <div class="showcasePulseFill"></div>
-      <div class="showcaseWave"></div>
-    </div>
-  </div>
-</div>
+    </div></div>
 
-<details class="syncDetails analyticsFoldSection">
-  <summary>
-    <span>Core Metrics</span>
-    <span class="tiny muted">Open the full metric strip when you need the numeric spread.</span>
-  </summary>
-  <div class="metricStrip analyticsMetricStrip stack10">
-    <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div><div class="sub">Reviewed sample in range</div></div>
-    <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div><div class="sub">Reviewed trades</div></div>
-    <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div><div class="sub">Average per trade</div></div>
-    <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div><div class="sub">Wins vs losses</div></div>
-    <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div><div class="sub">Peak to trough</div></div>
-    <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div><div class="sub">Longest streak</div></div>
-    <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div><div class="sub">Active now</div></div>
-    <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div><div class="sub">Score alignment</div></div>
+    <div class="showcaseGrid">
+      <div class="showcaseCard">
+        <div class="showcaseHead">
+          <div class="showcaseTitle">
+            <svg class="mcIcon"><use href="#mc-crown"></use></svg>
+            Edge Intensity
+          </div>
+          <span class="trendChip">{{ perf.total_trades }} trades</span>
+        </div>
+        <div class="showcaseValue">{{ money(perf.expectancy) }}</div>
+        <div class="showcaseMeta">
+          Profit factor {% if perf.profit_factor is not none %}{{ '%.2f'|format(perf.profit_factor) }}{% else %}∞{% endif %}
+          · Win rate {{ '%.1f'|format(perf.win_rate) }}%.
+        </div>
+        <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(edge_pulse) }}%">
+          <div class="showcasePulseFill"></div>
+          <div class="showcaseWave"></div>
+        </div>
+      </div>
+      <div class="showcaseCard">
+        <div class="showcaseHead">
+          <div class="showcaseTitle">
+            <svg class="mcIcon"><use href="#mc-crest"></use></svg>
+            Risk Control State
+          </div>
+          <span class="trendChip">DD streak {{ dd.current_drawdown_streak }}</span>
+        </div>
+        <div class="showcaseValue">{{ money(dd.current_drawdown) }}</div>
+        <div class="showcaseMeta">
+          Max DD {{ money(dd.max_drawdown) }} · Current streak {{ dd.current_drawdown_streak }}.
+        </div>
+        <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(control_pulse) }}%">
+          <div class="showcasePulseFill"></div>
+          <div class="showcaseWave"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="metricStrip analyticsMetricStrip stack10">
+      <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div><div class="sub">Reviewed sample in range</div></div>
+      <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div><div class="sub">Reviewed trades</div></div>
+      <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div><div class="sub">Average per trade</div></div>
+      <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div><div class="sub">Wins vs losses</div></div>
+      <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div><div class="sub">Peak to trough</div></div>
+      <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div><div class="sub">Longest streak</div></div>
+      <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div><div class="sub">Active now</div></div>
+      <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div><div class="sub">Score alignment</div></div>
+    </div>
   </div>
 </details>
-
-<div class="card controlPanel"><div class="toolbar">
-  <div class="controlHead">
-    <div>
-      <div class="pill">Analysis Controls</div>
-      <div class="summaryLead stack8">Switch tabs, tune the date range, and explain a specific day without leaving the analytics surface.</div>
-    </div>
-  </div>
-  <div class="actionRow">
-    <a class="btn {% if tab == 'performance' %}primary{% endif %}" href="/analytics?tab=performance&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Performance</a>
-    <a class="btn {% if tab == 'behavior' %}primary{% endif %}" href="/analytics?tab=behavior&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Behavior</a>
-    <a class="btn {% if tab == 'edge' %}primary{% endif %}" href="/analytics?tab=edge&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Edge</a>
-    <a class="btn {% if tab == 'diagnostics' %}primary{% endif %}" href="/analytics?tab=diagnostics&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">Diagnostics</a>
-  </div>
-  <div class="hr"></div>
-  <form method="get" class="row">
-    <input type="hidden" name="tab" value="{{ tab }}">
-    <div><label>Start</label><input class="appDateInput" type="date" name="start" value="{{ start_date }}"></div>
-    <div><label>End</label><input class="appDateInput" type="date" name="end" value="{{ end_date }}"></div>
-    <div>
-      <label>Explain Day</label>
-      <input class="appDateInput" type="date" name="explain_day" value="{{ explain_day }}" />
-    </div>
-    <div>
-      <label>Expectancy View</label>
-      <select name="expectancy_granularity">
-        <option value="monthly" {% if expectancy_granularity == 'monthly' %}selected{% endif %}>Monthly</option>
-        <option value="weekly" {% if expectancy_granularity == 'weekly' %}selected{% endif %}>Weekly</option>
-      </select>
-    </div>
-    <div class="actionRow">
-      <button class="btn" type="submit">Apply</button>
-      <a class="btn" href="/analytics">Reset</a>
-    </div>
-  </form>
-</div></div>
-
-<div class="analyticsSectionDivider" aria-hidden="true">
-  <span>Review Surface</span>
-</div>
 
 {% if tab == 'performance' %}
 <div class="twoCol stack12">

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List
 
-from flask import abort, redirect, render_template, render_template_string, request, url_for
+from flask import abort, flash, redirect, render_template, render_template_string, request, url_for
 
 from mccain_capital.services import core as core_svc
 from mccain_capital.services.ui import render_page
@@ -131,6 +131,7 @@ def strategies_new():
                 active="strategies",
             )
         repo.create_strategy(title=title, body=body)
+        flash("Strategy saved.", "success")
         return redirect(url_for("strategies_page"))
     return render_page(_strategy_form("New Strategy", "", "", []), active="strategies")
 
@@ -149,6 +150,7 @@ def strategies_edit(sid: int):
                 active="strategies",
             )
         repo.update_strategy(sid=sid, title=title, body=body)
+        flash("Strategy updated.", "success")
         return redirect(url_for("strategies_page"))
 
     return render_page(
@@ -158,6 +160,7 @@ def strategies_edit(sid: int):
 
 def strategies_delete(sid: int):
     repo.delete_strategy(sid=sid)
+    flash("Strategy deleted.", "success")
     return redirect(url_for("strategies_page"))
 
 

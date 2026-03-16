@@ -2350,8 +2350,8 @@ def trades_playbook():
             </details>
             <div class="hr"></div>
             <div class="rightActions">
-              <button class="btn primary" type="submit">Save Playbook</button>
-              <a class="btn" href="/trades">Back Trades</a>
+              <button class="btn primary" type="submit">Save Playbook Rules</button>
+              <a class="btn" href="/trades">Trades</a>
             </div>
           </form>
         </div></div>
@@ -2513,6 +2513,7 @@ def trades_new_manual():
                 rule_break_tags=auto_tags,
                 review_note="",
             )
+        flash("Trade saved.", "success")
         return redirect(url_for("trades_page", d=trade_date))
     return _render_manual_trade_entry_form(pb_cfg=pb_cfg, values={"trade_date": today_iso()})
 
@@ -5083,7 +5084,7 @@ def trades_open_positions():
             <div class="actionRow">
               <button class="btn" type="submit">Apply</button>
               <a class="btn" href="/trades/open-positions">Reset</a>
-              <a class="btn" href="/trades">Back Trades</a>
+              <a class="btn" href="/trades">Trades</a>
             </div>
           </form>
         </div></div>

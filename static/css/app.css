@@ -221,8 +221,8 @@
       display:flex;
       align-items:center;
       gap:8px;
-      flex-wrap:nowrap;
-      min-width:max-content;
+      flex-wrap:wrap;
+      min-width:0;
     }
     .navLabel{
       color:var(--muted);
@@ -332,7 +332,7 @@
 
 
     .toolbar{padding:var(--card-pad)}
-    .authCard{max-width:560px;margin:18px auto}
+    .authCard{max-width:560px;margin:0 auto}
 
     label{font-size:var(--type-meta);color:var(--muted);font-weight:700;letter-spacing:.01em}
     input, select, textarea{
@@ -538,10 +538,55 @@
       font-size:11px;
       color:var(--muted);
     }
+    .tradingWindowDrawerStatus{
+      display:flex;
+      align-items:flex-start;
+      gap:10px;
+      padding:12px 14px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.08);
+      background:
+        linear-gradient(135deg, rgba(26, 36, 54, .94), rgba(12, 20, 34, .94)),
+        rgba(255,255,255,.02);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .tradingWindowDrawerStatus.is-active{
+      border-color:rgba(255,104,126,.26);
+    }
+    .tradingWindowDrawerStatus.is-warning{
+      border-color:rgba(255,184,93,.24);
+    }
+    .tradingWindowDrawerStatus.is-stop{
+      border-color:rgba(255,98,124,.28);
+    }
+    .tradingWindowDrawerCopy{
+      min-width:0;
+      display:grid;
+      gap:4px;
+    }
+    .tradingWindowDrawerLead{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      color:var(--text);
+      font-size:13px;
+      font-weight:900;
+    }
+    .tradingWindowDrawerMeta{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.5;
+    }
     .tradingWindowEditor{
       margin-top:8px;
       border-top:1px dashed rgba(var(--accent-rgb),.26);
       padding-top:8px;
+    }
+    .tradingWindowDrawerEditor{
+      margin-top:2px;
+      border-top:1px dashed rgba(255,255,255,.10);
+      padding-top:10px;
     }
     .tradingWindowEditor summary{
       cursor:pointer;
@@ -625,8 +670,8 @@
       margin:8px 0 0;
       font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
       font-size:var(--type-title);
-      line-height:1.15;
-      letter-spacing:.01em;
+      line-height:1.1;
+      letter-spacing:0;
       font-weight:800;
       text-shadow:0 0 26px rgba(var(--accent-rgb),.10);
     }
@@ -1047,12 +1092,14 @@
     .footerTip{
       margin:18px auto 0;
       max-width:720px;
-      padding:10px 14px;
+      padding:11px 16px;
       border-radius:999px;
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.02);
       text-align:center;
       color:rgba(237,244,255,.72);
+      font-size:11px;
+      line-height:1.45;
     }
     .summaryPanel{
       background:
@@ -1745,12 +1792,29 @@
     .kbd{border:1px solid rgba(255,255,255,.14);padding:2px 6px;border-radius:7px;font-size:12px;color:var(--muted)}
 
     .topRight{
+      display:grid;
+      justify-items:end;
+      gap:10px;
+      min-width:0;
+      flex: 1 1 520px;
+    }
+    .topNoticeRow{
+      width:100%;
+      min-width:0;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .statusRow{
+      width:100%;
+      min-width:0;
       display:flex;
       align-items:center;
       justify-content:flex-end;
       gap:10px;
-      min-width:0;
-      flex: 1 1 420px;
+      flex-wrap:wrap;
     }
     .topbar .nav{
       flex:1 1 100%;
@@ -1762,6 +1826,80 @@
       font-size:13px;
       font-weight:700;
     }
+    .flashStack{
+      display:grid;
+      gap:10px;
+      margin:0 0 14px;
+    }
+    .flashMessage{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:12px 14px;
+      border-radius:16px;
+      border:1px solid rgba(126,184,255,.18);
+      background:
+        linear-gradient(135deg, rgba(18, 33, 54, .96), rgba(10, 20, 36, .94)),
+        rgba(8, 15, 28, .96);
+      color:rgba(237,244,255,.9);
+      box-shadow:
+        0 8px 24px rgba(3, 8, 17, .26),
+        inset 0 0 0 1px rgba(255,255,255,.03);
+    }
+    .flashMessage::before{
+      content:"";
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      flex:0 0 auto;
+      background:rgba(126,184,255,.92);
+      box-shadow:
+        0 0 0 3px rgba(126,184,255,.12),
+        0 0 10px rgba(126,184,255,.28);
+    }
+    .flashMessage.is-success{
+      border-color:rgba(46,204,113,.30);
+      background:
+        linear-gradient(135deg, rgba(10, 34, 24, .96), rgba(7, 24, 18, .94)),
+        rgba(8, 15, 28, .96);
+    }
+    .flashMessage.is-success::before{
+      background:rgba(46,204,113,.94);
+      box-shadow:
+        0 0 0 3px rgba(46,204,113,.14),
+        0 0 10px rgba(46,204,113,.32);
+    }
+    .flashMessage.is-warn,
+    .flashMessage.is-warning{
+      border-color:rgba(255,170,82,.30);
+      background:
+        linear-gradient(135deg, rgba(48, 29, 11, .96), rgba(30, 19, 8, .94)),
+        rgba(8, 15, 28, .96);
+    }
+    .flashMessage.is-warn::before,
+    .flashMessage.is-warning::before{
+      background:rgba(255,170,82,.95);
+      box-shadow:
+        0 0 0 3px rgba(255,170,82,.14),
+        0 0 10px rgba(255,170,82,.30);
+    }
+    .flashMessage.is-danger{
+      border-color:rgba(255,98,124,.30);
+      background:
+        linear-gradient(135deg, rgba(52, 18, 24, .96), rgba(32, 12, 16, .94)),
+        rgba(8, 15, 28, .96);
+    }
+    .flashMessage.is-danger::before{
+      background:rgba(255,98,124,.95);
+      box-shadow:
+        0 0 0 3px rgba(255,98,124,.14),
+        0 0 10px rgba(255,98,124,.30);
+    }
+    .flashMessageText{
+      min-width:0;
+      font-weight:700;
+      letter-spacing:.01em;
+    }
     .clockPill{
       display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
       border:1px solid rgba(126,184,255,.20);
@@ -1769,7 +1907,7 @@
         radial-gradient(circle at 12% 18%, rgba(82, 148, 255, .14), transparent 34%),
         linear-gradient(135deg, rgba(22, 37, 61, .96), rgba(12, 24, 44, .92) 48%, rgba(10, 19, 35, .98));
       color:rgba(237,244,255,.86);
-      font-size:12px;font-weight:700;white-space:nowrap;min-width:154px;justify-content:center;
+      font-size:12px;font-weight:700;white-space:nowrap;min-width:0;justify-content:center;
       overflow:hidden;
       box-shadow:
         0 0 0 1px rgba(138, 196, 255, .04) inset,
@@ -1810,17 +1948,18 @@
       z-index:1;
     }
     .cockpitPill{
-      min-height:58px;
-      padding:10px 18px;
+      min-height:52px;
+      padding:9px 16px;
       font-size:13px;
       letter-spacing:.01em;
+      flex:0 0 auto;
     }
     .clockStatusPill{
-      min-width:208px;
+      min-width:190px;
       justify-content:flex-start;
-      gap:10px;
-      padding-right:14px;
-      padding-left:16px;
+      gap:8px;
+      padding-right:12px;
+      padding-left:14px;
     }
     .modeStateTrading{
       border-color:rgba(83, 234, 170, .28);
@@ -1854,10 +1993,13 @@
       color:var(--muted);
     }
     .topNoticePill{
-      max-width:min(420px, 42vw);
+      max-width:min(560px, 100%);
       min-width:0;
       justify-content:flex-start;
       gap:8px;
+      flex:0 1 auto;
+      padding-right:14px;
+      padding-left:14px;
     }
     .topNoticePill.is-high{
       border-color:rgba(255,98,124,.28);
@@ -1866,6 +2008,16 @@
     .topNoticePill.is-medium{
       border-color:rgba(249,115,22,.28);
       background:rgba(249,115,22,.10);
+    }
+    .topNoticeSignal{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      flex:0 0 auto;
+      background:rgba(255,108,126,.98);
+      box-shadow:
+        0 0 0 3px rgba(255,92,120,.14),
+        0 0 12px rgba(255,92,120,.42);
     }
     .topNoticeLabel{
       font-size:11px;
@@ -1876,24 +2028,125 @@
       flex:0 0 auto;
     }
     .topNoticeText{
+      white-space:nowrap;
       min-width:0;
       overflow:hidden;
       text-overflow:ellipsis;
-      white-space:nowrap;
+      flex:1 1 auto;
     }
     a.topNoticePill{
       text-decoration:none;
       color:inherit;
     }
+    .tradingWindowPillGroup{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      min-width:0;
+      max-width:min(420px, 100%);
+      flex:0 1 auto;
+    }
+    .tradingWindowPill{
+      min-width:0;
+      justify-content:flex-start;
+      gap:8px;
+      flex:1 1 auto;
+      padding-right:14px;
+      padding-left:12px;
+      border-color:rgba(255,255,255,.16);
+      background:
+        radial-gradient(circle at 12% 18%, rgba(255, 126, 159, .10), transparent 34%),
+        linear-gradient(135deg, rgba(25, 35, 54, .96), rgba(13, 21, 36, .94) 48%, rgba(10, 16, 30, .98));
+    }
+    .tradingWindowPill.is-active{
+      border-color:rgba(255,104,126,.30);
+      box-shadow:
+        0 0 0 1px rgba(255, 126, 159, .06) inset,
+        0 10px 30px rgba(4, 10, 20, .35),
+        0 0 26px rgba(255, 90, 126, .14);
+    }
+    .tradingWindowPill.is-warning{
+      border-color:rgba(255,184,93,.28);
+      box-shadow:
+        0 0 0 1px rgba(255, 214, 152, .06) inset,
+        0 10px 30px rgba(4, 10, 20, .35),
+        0 0 24px rgba(255, 166, 67, .12);
+    }
+    .tradingWindowPill.is-stop{
+      border-color:rgba(255,98,124,.34);
+      box-shadow:
+        0 0 0 1px rgba(255, 130, 156, .08) inset,
+        0 10px 30px rgba(4, 10, 20, .35),
+        0 0 28px rgba(255, 88, 118, .18);
+    }
+    .tradingWindowPillLabel{
+      flex:0 0 auto;
+      color:var(--text);
+      font-weight:900;
+    }
+    .tradingWindowPillAction{
+      width:38px;
+      min-width:38px;
+      min-height:38px;
+      padding:0;
+      border-radius:999px;
+      flex:0 0 auto;
+      cursor:pointer;
+      color:rgba(237,244,255,.88);
+    }
+    .tradingWindowPillAction:hover{
+      border-color:rgba(126,184,255,.28);
+    }
+    .tradingWindowPillAction span{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:100%;
+      font-size:14px;
+      line-height:1;
+    }
+    .tradingWindowPillMeta{
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      color:var(--muted);
+      font-size:11px;
+    }
+    .tradingWindowSignal{
+      width:8px;
+      height:8px;
+      border-radius:999px;
+      flex:0 0 auto;
+      background:rgba(174, 191, 214, .72);
+      box-shadow:0 0 0 3px rgba(124, 153, 184, .12);
+    }
+    .tradingWindowPill.is-active .tradingWindowSignal{
+      background:rgba(255,108,126,.98);
+      box-shadow:
+        0 0 0 3px rgba(255,92,120,.14),
+        0 0 10px rgba(255,92,120,.34);
+    }
+    .tradingWindowPill.is-warning .tradingWindowSignal{
+      background:rgba(255,184,93,.98);
+      box-shadow:
+        0 0 0 3px rgba(255,184,93,.12),
+        0 0 10px rgba(255,166,67,.24);
+    }
+    .tradingWindowPill.is-stop .tradingWindowSignal{
+      background:rgba(255,98,124,.98);
+      box-shadow:
+        0 0 0 3px rgba(255,98,124,.14),
+        0 0 10px rgba(255,98,124,.30);
+    }
     .clockTime{
       color:var(--text);font-weight:900;letter-spacing:.2px;
       font-variant-numeric: tabular-nums;
       font-feature-settings: "tnum" 1;
-      width:12ch;
-      min-width:12ch;
+      width:11ch;
+      min-width:11ch;
       display: inline-block;
       text-align: center;
-      flex:0 0 12ch;
+      flex:0 0 11ch;
       text-shadow:0 0 14px rgba(157, 212, 255, .16);
     }
     .marketState{
@@ -2088,21 +2341,21 @@
   position:fixed;
   left:10px; right:10px; bottom:max(10px, calc(env(safe-area-inset-bottom) + 10px));
   z-index:95;
-  padding:9px;
-  border-radius:18px;
+  padding:7px;
+  border-radius:16px;
   border:1px solid rgba(var(--accent-rgb),.26);
   background: rgba(4,8,14,.92);
   backdrop-filter: blur(8px);
   box-shadow:0 18px 36px rgba(0,0,0,.28);
-  gap:6px;
+  gap:5px;
   grid-template-columns: repeat(5,1fr);
 }
 .mobileDock .btn{
-  padding:10px 6px;
-  font-size:12px;
-  min-height:48px;
+  padding:8px 4px;
+  font-size:11px;
+  min-height:42px;
   justify-content:center;
-  border-radius:15px;
+  border-radius:13px;
 }
 .mobileDockMenu[aria-expanded="true"]{
   border-color:rgba(var(--accent-rgb),.34);
@@ -2208,6 +2461,12 @@
     .analyticsToplineCard{
       margin-bottom:12px;
     }
+    .analyticsCommandDeck{
+      border-color:rgba(var(--accent-rgb),.18);
+      background:
+        radial-gradient(140% 120% at 0% 0%, rgba(var(--accent-rgb),.10), transparent 58%),
+        linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01));
+    }
     .analyticsTopline{
       display:flex;
       align-items:flex-end;
@@ -2240,6 +2499,64 @@
       gap:10px;
       flex:1 1 560px;
       min-width:min(100%, 560px);
+    }
+    .analyticsModeRail{
+      display:grid;
+      grid-template-columns:repeat(4, minmax(0, 1fr));
+      gap:12px;
+    }
+    .analyticsModeCard{
+      display:grid;
+      gap:6px;
+      padding:14px 16px;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.08);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015)),
+        rgba(255,255,255,.02);
+      color:inherit;
+      text-decoration:none;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+      transition:border-color var(--motion-mid) var(--motion-ease), transform var(--motion-mid) var(--motion-ease), box-shadow var(--motion-mid) var(--motion-ease);
+    }
+    .analyticsModeCard:hover{
+      border-color:rgba(var(--accent-rgb),.28);
+      transform:translateY(-1px);
+    }
+    .analyticsModeCard.is-active{
+      border-color:rgba(var(--accent-rgb),.34);
+      background:
+        linear-gradient(180deg, rgba(var(--accent-rgb),.12), rgba(var(--accent-rgb),.05)),
+        rgba(255,255,255,.02);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.06),
+        0 0 20px rgba(var(--accent-rgb),.10);
+    }
+    .analyticsModeKicker{
+      font-size:10px;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      color:rgba(214, 228, 243, .60);
+      font-weight:800;
+    }
+    .analyticsModeCard strong{
+      font-size:15px;
+      line-height:1.2;
+      color:#f4f9ff;
+    }
+    .analyticsModeCard span:last-child{
+      color:rgba(223, 235, 248, .72);
+      font-size:12px;
+      line-height:1.45;
+    }
+    .analyticsShortcutRow{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top:12px;
+    }
+    .analyticsControlFold{
+      margin-top:12px;
     }
     .analyticsTopStat{
       min-height:82px;
@@ -2477,47 +2794,47 @@
       }
     }
 
-    @media (max-width: 640px){
-      .wrap{
-        padding:14px 10px 164px;
-        min-height:100vh;
-      }
-      .card .toolbar{padding:10px}
-      input, select, textarea, button{font-size:16px}
-      .nav{display:none}
-      .hamburger{display:flex}
-      .sub{display:none}
-      .logo{width:34px;height:34px}
-      h1{
-        font-size:clamp(16px, 5.1vw, 18px);
-        white-space:normal;
-        line-height:1.2;
-      }
-      .brandSignature{
-        font-size:clamp(9px, 2.8vw, 10px);
-        letter-spacing:.12em;
-      }
-      .brandText,
-      .pageHeroHead > div,
-      .dashboardHeroHead > div,
+@media (max-width: 640px){
+  .wrap{
+    padding:10px 8px 148px;
+    min-height:100vh;
+  }
+  .card .toolbar{padding:9px}
+  input, select, textarea, button{font-size:16px}
+  .nav{display:none}
+  .hamburger{display:flex}
+  .sub{display:none}
+  .logo{width:30px;height:30px}
+  h1{
+    font-size:clamp(15px, 4.9vw, 17px);
+    white-space:normal;
+    line-height:1.2;
+  }
+  .brandSignature{
+    font-size:clamp(8px, 2.5vw, 9px);
+    letter-spacing:.10em;
+  }
+  .brandText,
+  .pageHeroHead > div,
+  .dashboardHeroHead > div,
       .actionRow,
       .rightActions,
       .leftActions,
       .row > div{
         min-width:0;
       }
-      .topbar{
-        padding:10px;
-        margin-bottom:10px;
-        display:grid;
-        grid-template-columns:1fr;
-        gap:10px;
-        border-radius:16px;
-      }
-      .brand{
-        width:100%;
-        flex:1 1 auto;
-      }
+  .topbar{
+    padding:8px;
+    margin-bottom:8px;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    border-radius:14px;
+  }
+  .brand{
+    width:100%;
+    flex:1 1 auto;
+  }
       .row{
         display:grid;
         grid-template-columns:1fr;
@@ -2529,31 +2846,37 @@
         min-width:0;
         flex:1 1 auto;
       }
-      .topRight{width:100%; display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center}
-      #modePill{grid-column:1 / 2; min-width:0; width:100%; justify-content:center}
-      .topRight .clockPill{min-width:0; width:100%; justify-content:center; padding:10px 12px}
-      .topNoticePill{max-width:none}
-      .topRight .hamburger{grid-column:2 / 3; grid-row:1 / span 2; align-self:stretch; height:100%; min-height:108px}
-      .glow-green,.glow-red{animation-duration:3.4s}
-      .mobileDock{
-        display:grid;
-        left:max(10px, env(safe-area-inset-left));
-        right:max(10px, env(safe-area-inset-right));
-      }
-      .quickLauncher{
-        right:10px;
-        bottom:78px;
-      }
-      .quickPanel{
-        position:fixed;
-        left:10px;
-        right:10px;
-        width:auto;
-        bottom:140px;
-      }
-      .quickPanel .quickList{
-        grid-template-columns:1fr 1fr;
-      }
+  .topRight{width:100%; display:grid; grid-template-columns: 1fr auto; gap:6px; align-items:start}
+  .topNoticeRow,
+  .statusRow{grid-column:1 / 2; width:100%}
+  .statusRow{justify-content:flex-start; gap:6px}
+  #modePill{min-width:0; width:auto; justify-content:center}
+  .topRight .clockPill{min-width:0; min-height:36px; padding:8px 10px; border-radius:14px}
+  .topNoticePill,
+  .tradingWindowPillGroup{max-width:none; width:100%}
+  .tradingWindowPill{max-width:none; width:auto}
+  .tradingWindowPillAction{width:36px; min-width:36px; min-height:36px}
+  .topRight .hamburger{grid-column:2 / 3; grid-row:1 / span 2; align-self:stretch; height:100%; min-height:92px; border-radius:14px}
+  .glow-green,.glow-red{animation-duration:3.4s}
+  .mobileDock{
+    display:grid;
+    left:max(8px, env(safe-area-inset-left));
+    right:max(8px, env(safe-area-inset-right));
+  }
+  .quickLauncher{
+    right:8px;
+    bottom:70px;
+  }
+  .quickPanel{
+    position:fixed;
+    left:8px;
+    right:8px;
+    width:auto;
+    bottom:126px;
+  }
+  .quickPanel .quickList{
+    grid-template-columns:1fr 1fr;
+  }
       .insightGrid{
         grid-template-columns:1fr;
       }
@@ -2563,9 +2886,12 @@
       .showcaseGrid{
         grid-template-columns:1fr;
       }
-    .analyticsTopline{
-      align-items:flex-start;
-    }
+      .analyticsTopline{
+        align-items:flex-start;
+      }
+      .analyticsModeRail{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+      }
       .analyticsWorkflowGrid{
         grid-template-columns:1fr;
       }
@@ -4493,7 +4819,7 @@
 .workflowKicker{
       font-size:11px;
       font-weight:800;
-      letter-spacing:.14em;
+      letter-spacing:.12em;
       text-transform:uppercase;
       color: rgba(237,244,255,.56);
 }
@@ -5562,7 +5888,7 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
   .pageHero .actionRow{
     display:grid;
     grid-template-columns:1fr 1fr;
-    gap:8px;
+    gap:6px;
     width:100%;
   }
   .pageHero .actionRow .btn{
@@ -6942,6 +7268,9 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
 }
 
 @media (max-width: 640px){
+  .analyticsModeRail{
+    grid-template-columns:1fr;
+  }
   .commandCalendarStats{
     grid-template-columns:1fr 1fr;
   }
@@ -7019,6 +7348,36 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
   margin:12px 0 16px;
   border-color:rgba(105, 184, 255, .24);
   box-shadow:0 0 18px rgba(72, 141, 255, .14), inset 0 1px 0 rgba(193, 229, 255, .05);
+}
+
+.journalPrimaryCard{
+  margin-bottom:14px;
+  border-color:rgba(105, 184, 255, .22);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(78, 168, 255, .10), transparent 48%),
+    linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.012)),
+    var(--panel);
+}
+
+.journalPrimaryRow{
+  align-items:flex-start;
+}
+
+.journalFormFold{
+  margin:0 0 14px;
+  padding:12px 14px;
+  border:1px solid rgba(255,255,255,.07);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,.01)),
+    rgba(4, 10, 22, .62);
+}
+
+.journalFoldBody{
+  margin-top:12px;
+}
+
+.journalLinkModeRow{
+  margin-bottom:12px;
 }
 
 .journalQuickCaptureGrid{
@@ -7978,23 +8337,42 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
 }
 
 .page-dashboard .dashboardCoreTapeCard{
-  max-width:486px;
-  margin:0 auto 10px;
+  max-width:none;
+  margin:0 0 10px;
 }
 
 .page-dashboard .dashboardCoreTapeCard .toolbar{
-  padding:5px;
+  padding:8px;
 }
 
 .page-dashboard .dashboardCoreTapeRow{
-  grid-template-columns:repeat(2, minmax(0, 214px));
-  gap:8px;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.page-dashboard .dashboardTapeHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+
+.page-dashboard .dashboardTapeHeaderBrand{
+  display:flex;
+  align-items:center;
+}
+
+.page-dashboard .dashboardTapeHeaderStatus{
+  display:flex;
+  align-items:center;
+  gap:10px;
 }
 
 .page-dashboard .dashboardCoreTapeStat{
-  min-height:212px;
-  max-height:228px;
-  padding:10px 10px 9px;
+  min-height:216px;
+  max-height:none;
+  padding:12px 12px 11px;
 }
 
 .page-dashboard .dashboardCoreTapeStat.dashboardCoreTapeHero{
@@ -8003,11 +8381,54 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
     0 0 18px rgba(70, 255, 214, .18),
     0 0 38px rgba(88, 170, 255, .16),
     inset 0 0 0 1px rgba(154, 255, 231, .12),
-    inset 0 0 12px rgba(70, 255, 214, .05);
+    inset 0 0 18px rgba(70, 255, 214, .06);
+}
+
+.page-dashboard .dashboardTapePremiumCard{
+  gap:7px;
+  background:
+    radial-gradient(120% 120% at 88% 16%, rgba(91, 189, 255, .10), transparent 56%),
+    radial-gradient(100% 110% at 18% 100%, rgba(74, 158, 255, .07), rgba(74, 158, 255, 0) 54%),
+    linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.008)),
+    rgba(7, 12, 24, .96);
+}
+
+.page-dashboard .dashboardTapeTopline{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.page-dashboard .dashboardTapeIdentity{
+  display:grid;
+  gap:6px;
+}
+
+.page-dashboard .dashboardTapeSparkBand{
+  position:relative;
+  min-height:40px;
+  padding:2px 4px 0;
+}
+
+.page-dashboard .dashboardTapeSparkBand::after{
+  content:"";
+  position:absolute;
+  inset:auto 14% 0 14%;
+  height:24px;
+  pointer-events:none;
+  background:radial-gradient(circle, rgba(86, 196, 255, .22) 0%, rgba(86, 196, 255, 0) 74%);
+  filter:blur(10px);
+  opacity:.92;
+}
+
+.page-dashboard .dashboardTapePriceBlock{
+  display:grid;
+  gap:3px;
 }
 
 .page-dashboard .dashboardCoreTapeStat .v{
-  font-size:20px;
+  font-size:24px;
   font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
   font-weight:700;
   font-variant-numeric:tabular-nums;
@@ -8020,28 +8441,52 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
 }
 
 .page-dashboard .dashboardCoreTapeStat .marketMiniSpark{
-  height:28px;
+  height:30px;
 }
 
 .page-dashboard .dashboardCoreTapeStat .tiny{
-  font-size:9px;
-  line-height:1.05;
+  font-size:10px;
+  line-height:1.08;
 }
 
 .page-dashboard .dashboardCoreTapeFreshness{
-  max-width:44%;
+  max-width:36%;
 }
 
-.page-dashboard .dashboardCoreTapeMetaRow{
+.page-dashboard .dashboardTapeMetaLine{
+  color:rgba(214, 226, 243, .72);
+}
+
+.page-dashboard .dashboardTapeStatsRow{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+  margin-top:auto;
+  padding-top:8px;
+  border-top:1px solid rgba(150, 198, 255, .10);
+}
+
+.page-dashboard .dashboardTapeStatCell{
+  display:grid;
+  gap:3px;
+  padding:0;
+  border:none;
+  background:none;
+  box-shadow:none;
+}
+
+.page-dashboard .dashboardTapeStatCell .tiny:last-child{
+  color:rgba(237,244,255,.88);
+}
+
+.page-dashboard .dashboardGapLine{
   display:flex;
   align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  margin-top:2px;
+  min-height:20px;
 }
 
-.page-dashboard .dashboardCoreTapeMetaRow .tiny:last-child{
-  color:rgba(237,244,255,.60);
+.page-dashboard .dashboardGapLine .trendChip{
+  width:max-content;
 }
 
 .page-dashboard .dashboardCoreTapeStat.glow-green{
@@ -8234,6 +8679,14 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
   margin-top:10px;
 }
 
+.page-dashboard .dashboardSupportFold .dashboardMilestoneCard{
+  margin-bottom:10px;
+}
+
+.page-dashboard .dashboardSupportFold .dashboardMetricStrip{
+  margin-bottom:12px;
+}
+
 .page-dashboard .analyticsFold{
   margin-top:8px;
 }
@@ -8254,15 +8707,22 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
   .page-dashboard .dashboardCoreTapeCard{
     max-width:100%;
   }
+  .page-dashboard .dashboardTapeHeader{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .page-dashboard .dashboardTapeHeaderStatus{
+    justify-items:start;
+  }
   .page-dashboard .dashboardCoreTapeRow{
     grid-template-columns:repeat(2, minmax(0, 1fr));
   }
   .page-dashboard .dashboardCoreTapeStat{
-    min-height:206px;
-    max-height:228px;
+    min-height:194px;
+    max-height:210px;
   }
   .page-dashboard .dashboardCoreTapeStat .v{
-    font-size:19px;
+    font-size:22px;
   }
   .page-dashboard .statusBadgeStrip{
     grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -8377,13 +8837,14 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
 }
 
 .supportLead{
-  font-size:12px;
-  line-height:1.45;
+  font-size:12.5px;
+  line-height:1.5;
+  letter-spacing:.01em;
 }
 
 .supportBody{
   font-size:11px;
-  line-height:1.45;
+  line-height:1.5;
 }
 
 .showcaseCard{
@@ -8430,7 +8891,8 @@ textarea:focus-visible{
 .page-journal .pageHero,
 .page-analytics .pageHero,
 .page-strategies .pageHero,
-.page-payouts .pageHero{
+.page-payouts .pageHero,
+.page-auth .pageHero{
   background:
     radial-gradient(120% 140% at 100% 0%, rgba(69, 185, 255, .12), transparent 44%),
     radial-gradient(90% 120% at 0% 0%, rgba(34, 95, 168, .16), transparent 56%),
@@ -8442,9 +8904,41 @@ textarea:focus-visible{
 .page-journal .pageHero .summaryLead,
 .page-analytics .pageHero .summaryLead,
 .page-strategies .pageHero .summaryLead,
-.page-payouts .pageHero .summaryLead{
+.page-payouts .pageHero .summaryLead,
+.page-auth .pageHero .summaryLead{
   max-width:60ch;
   color:rgba(224, 238, 255, .78);
+}
+
+.authShell{
+  display:grid;
+  grid-template-columns:minmax(0, 1.15fr) minmax(280px, .85fr);
+  gap:14px;
+  align-items:start;
+}
+
+.authShellSingle{
+  grid-template-columns:minmax(0, 1fr);
+}
+
+.authSupportGrid{
+  margin-bottom:12px;
+}
+
+.page-auth .supportCard,
+.page-auth .authPanel,
+.page-auth .passkeyCard{
+  background:
+    radial-gradient(120% 110% at 100% 0%, rgba(66, 174, 255, .10), transparent 46%),
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.01)),
+    var(--panel);
+}
+
+.page-auth .authPanel{
+  border-color:rgba(111, 177, 255, .20);
+  box-shadow:
+    inset 0 1px 0 rgba(194, 228, 255, .05),
+    0 10px 24px rgba(6, 18, 38, .22);
 }
 
 .workflowPromptCard{
@@ -8521,23 +9015,21 @@ textarea:focus-visible{
   .statusBadgeStrip{
     grid-template-columns:1fr;
   }
-  .card .toolbar{
-    padding:10px;
-  }
+  .card .toolbar{padding:9px;}
   .btn{
-    min-height:38px;
+    min-height:36px;
     font-size:12px;
   }
   .topbar{
-    gap:10px;
+    gap:8px;
   }
   .clockPill{
-    min-height:40px;
-    padding:7px 11px;
+    min-height:36px;
+    padding:6px 10px;
   }
   .cockpitPill{
-    min-height:50px;
-    padding:8px 14px;
+    min-height:44px;
+    padding:7px 12px;
   }
 }
 
@@ -8557,7 +9049,7 @@ textarea:focus-visible{
 }
 
 .dashboardStage{
-  grid-template-columns:minmax(0, 1.45fr) minmax(320px, .95fr);
+  grid-template-columns:minmax(0, 1.3fr) minmax(380px, 1.02fr);
   margin-bottom:14px;
 }
 
@@ -8991,6 +9483,35 @@ textarea:focus-visible{
   grid-template-columns:minmax(0, 1.4fr) minmax(320px, .88fr);
 }
 
+.page-ops .pageHero,
+.page-ops .supportCard,
+.page-ops .opsConsoleCard,
+.page-ops .opsCommandDeck{
+  background:
+    radial-gradient(130% 120% at 100% 0%, rgba(66, 174, 255, .10), transparent 48%),
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.01)),
+    var(--panel);
+}
+
+.page-ops .opsCommandDeck{
+  border-color:rgba(111, 177, 255, .20);
+  box-shadow:
+    inset 0 1px 0 rgba(194, 228, 255, .05),
+    0 10px 24px rgba(6, 18, 38, .22);
+}
+
+.page-ops .opsConsoleCard{
+  border-color:rgba(255,255,255,.08);
+}
+
+.opsStatusStrip{
+  margin-top:10px;
+}
+
+.opsControlFold{
+  margin-top:8px;
+}
+
 .opsSafetyGrid{
   grid-template-columns:1fr;
 }
@@ -9025,7 +9546,8 @@ textarea:focus-visible{
   .dashboardStage,
   .workspaceShell,
   .workspaceShellSingle,
-  .opsShell{
+  .opsShell,
+  .authShell{
     grid-template-columns:1fr;
   }
   .dashboardStageSupportGrid,
@@ -9056,6 +9578,25 @@ textarea:focus-visible{
 }
 
 @media (max-width: 640px){
+  .pageHero{
+    margin-bottom:10px;
+  }
+  .pageHero .toolbar,
+  .workspaceHero .toolbar{
+    gap:8px;
+  }
+  .pageHero .pageTitle{
+    font-size:clamp(20px, 7.2vw, 24px);
+    line-height:1.05;
+  }
+  .pageHero .summaryLead,
+  .pageHero .pageSub{
+    font-size:11px;
+    line-height:1.4;
+  }
+  .pageHero .actionRow .btn{
+    min-height:36px;
+  }
   .page-dashboard .dashboardStage,
   .page-dashboard .dashboardStageLead,
   .page-dashboard .dashboardPriorityGrid,

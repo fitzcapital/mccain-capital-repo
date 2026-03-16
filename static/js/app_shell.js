@@ -113,6 +113,35 @@
     window.requestAnimationFrame(focusDrawerPrimary);
   }
 
+  function openTradingWindowSettings() {
+    openDrawer();
+    window.requestAnimationFrame(() => {
+      const section = doc.getElementById("drawerTradingWindow");
+      const editor = doc.getElementById("tradingWindowDrawerEditor");
+      if (!section || !editor) return;
+      editor.open = true;
+      section.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      const target = editor.querySelector("input, select, textarea, button");
+      if (target) target.focus();
+    });
+  }
+
+  function initTradingWindowIntent() {
+    const params = new URLSearchParams(window.location.search || "");
+    if (params.get("tw") !== "settings") return;
+    openTradingWindowSettings();
+    params.delete("tw");
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash || ""}`;
+    window.requestAnimationFrame(() => {
+      try {
+        window.history.replaceState({}, "", nextUrl);
+      } catch (_err) {
+        // Ignore environments that block history updates.
+      }
+    });
+  }
+
   function closeDrawer() {
     const drawer = doc.getElementById("drawer");
     const overlay = doc.getElementById("drawerOverlay");
@@ -174,6 +203,7 @@
     window.toggleMoreMenu = toggleMoreMenu;
     window.toggleQuickPanel = toggleQuickPanel;
     window.openDrawer = openDrawer;
+    window.openTradingWindowSettings = openTradingWindowSettings;
     window.closeDrawer = closeDrawer;
 
     window.addEventListener("click", (event) => {
@@ -345,11 +375,13 @@
         timeZone: "America/New_York",
         weekday: "short",
       }).format(now);
-      const hour24 = Number(new Intl.DateTimeFormat("en-US", {
+      const hm = new Intl.DateTimeFormat("en-US", {
         timeZone: "America/New_York",
         hour: "2-digit",
+        minute: "2-digit",
         hour12: false,
-      }).format(now));
+      }).format(now).split(":");
+      const nyMinutes = (Number(hm[0] || 0) * 60) + Number(hm[1] || 0);
       const clock = doc.getElementById("etClock");
       const mode = doc.getElementById("modePill");
       const market = doc.getElementById("marketState");
@@ -358,24 +390,20 @@
         const isWeekend = weekday === "Sat" || weekday === "Sun";
         mode.classList.remove("modeStateWeekend", "modeStateStudy", "modeStateTrading", "modeStateLoading");
         if (isWeekend) {
-          mode.textContent = "🧠 Weekend Mode";
+          mode.textContent = "Weekend";
           mode.classList.add("modeStateWeekend");
-        } else if (hour24 >= 16) {
-          mode.textContent = "📚 Study Mode";
+        } else if (nyMinutes < 570) {
+          mode.textContent = "Pre-Market";
           mode.classList.add("modeStateStudy");
-        } else {
-          mode.textContent = "📈 Trading Day";
+        } else if (nyMinutes < 960) {
+          mode.textContent = "Market Session";
           mode.classList.add("modeStateTrading");
+        } else {
+          mode.textContent = "After Close";
+          mode.classList.add("modeStateStudy");
         }
       }
       if (market) {
-        const hm = new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        }).format(now).split(":");
-        const nyMinutes = (Number(hm[0] || 0) * 60) + Number(hm[1] || 0);
         const isWeekend = weekday === "Sat" || weekday === "Sun";
         const isOpen = !isWeekend && nyMinutes >= 570 && nyMinutes < 960;
         market.textContent = isOpen ? "Open" : "Closed";
@@ -598,6 +626,7 @@
     setupMobileDensityCompaction();
     initShortcutHelp();
     initCardStagger();
+    initTradingWindowIntent();
     window.setInterval(updateETClock, 1000);
     updateETClock();
   }

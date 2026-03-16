@@ -59,6 +59,24 @@ def test_journal_page_uses_review_focus_workflow_surface(client):
     assert "Last Update" in body
 
 
+def test_trades_empty_state_uses_consistent_start_here_copy(client):
+    resp = client.get("/trades", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "No trades in this view yet." in body
+    assert "Start by uploading a statement, then add setup, session, and review tags." in body
+    assert "First Trade Setup" in body
+    assert "Start here:" in body
+
+
+def test_journal_empty_state_uses_consistent_capture_copy(client):
+    resp = client.get("/journal", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "No journal entries in this view yet." in body
+    assert "Quick Capture" in body
+
+
 def test_strategies_page_uses_playbook_workflow_surface(client):
     resp = client.get("/strategies", follow_redirects=True)
     assert resp.status_code == 200
@@ -66,6 +84,33 @@ def test_strategies_page_uses_playbook_workflow_surface(client):
     assert "Build the Playbook From Real Edge" in body
     assert "Trade Seats" in body
     assert "Playbook Rule" in body
+
+
+def test_strategy_mutations_flash_feedback(client):
+    created = client.post(
+        "/strategies/new",
+        data={"title": "ORB", "body": "Open range break with defined risk."},
+        follow_redirects=True,
+    )
+    assert created.status_code == 200
+    assert b"Strategy saved." in created.data
+
+    with db() as conn:
+        row = conn.execute("SELECT id FROM strategies WHERE title = ?", ("ORB",)).fetchone()
+        assert row is not None
+        sid = int(row["id"])
+
+    updated = client.post(
+        f"/strategies/edit/{sid}",
+        data={"title": "ORB+", "body": "Open range break with stricter confirmation."},
+        follow_redirects=True,
+    )
+    assert updated.status_code == 200
+    assert b"Strategy updated." in updated.data
+
+    deleted = client.post(f"/strategies/delete/{sid}", follow_redirects=True)
+    assert deleted.status_code == 200
+    assert b"Strategy deleted." in deleted.data
 
 
 def test_payouts_page_uses_unlock_workflow_surface(client):
@@ -346,7 +391,7 @@ def test_vanquish_lock_state_endpoint(client):
     assert "unlock_label" in payload
 
 
-def test_dashboard_trading_window_banner_uses_test_mode_stop_state(client):
+def test_dashboard_trading_window_status_pill_uses_test_mode_stop_state(client):
     from mccain_capital.runtime import set_setting_value
 
     set_setting_value("trading_window_enabled", "1")
@@ -359,13 +404,15 @@ def test_dashboard_trading_window_banner_uses_test_mode_stop_state(client):
 
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Trading Window" in resp.data
+    assert b"tradingWindowPill" in resp.data
+    assert b"openTradingWindowSettings()" in resp.data
+    assert b">Trading Window</button>" in resp.data
     assert b"Test Mode" in resp.data
-    assert b"STOP TRADING" in resp.data
-    assert b"Done By 11:30 ET" in resp.data
+    assert b"Stop Trading" in resp.data
+    assert b"Hard Stop 12:00 ET" in resp.data
 
 
-def test_dashboard_trading_window_banner_hidden_on_weekend_without_test_mode(client):
+def test_dashboard_trading_window_status_pill_hidden_on_weekend_without_test_mode(client):
     from mccain_capital.runtime import set_setting_value
 
     set_setting_value("trading_window_enabled", "1")
@@ -389,7 +436,7 @@ def test_dashboard_trading_window_banner_hidden_on_weekend_without_test_mode(cli
 
         resp = client.get("/dashboard", follow_redirects=True)
         assert resp.status_code == 200
-        assert b"Trading Window" not in resp.data
+        assert b"tradingWindowPill" not in resp.data
     finally:
         ui_service.datetime = original_datetime
 
@@ -410,7 +457,7 @@ def test_trading_window_config_endpoint_saves_times(client):
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers.get("Location", "").endswith("/dashboard")
+    assert resp.headers.get("Location", "").endswith("/dashboard?tw=settings")
 
     assert str(get_setting_value("trading_window_enabled", "")) == "1"
     assert str(get_setting_value("trading_window_start_et", "")) == "09:35"
@@ -419,6 +466,23 @@ def test_trading_window_config_endpoint_saves_times(client):
     assert str(get_setting_value("trading_window_test_mode", "")) == "1"
     assert str(get_setting_value("trading_window_test_date", "")) == "2026-03-12"
     assert str(get_setting_value("trading_window_test_time_et", "")) == "10:15"
+
+
+def test_trading_window_config_follow_redirect_shows_success_feedback(client):
+    resp = client.post(
+        "/ops/trading-window",
+        data={
+            "tw_enabled": "1",
+            "tw_start_et": "09:40",
+            "tw_done_by_et": "11:10",
+            "tw_hard_stop_et": "11:35",
+            "next": "/dashboard",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"Trading window saved." in resp.data
+    assert b"tradingWindowPill" in resp.data
 
 
 def test_candle_opens_news_includes_placeholder_weeks(monkeypatch):
@@ -800,7 +864,62 @@ def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):
     resp = client.get("/market-pulse", follow_redirects=True)
     assert resp.status_code == 200
     assert b'data-market-hours="1"' in resp.data
-    assert b'let mode = storedMode || (marketHours ? "execution" : "research");' in resp.data
+    assert (
+        b'let mode = storedMode || ((marketHours || mobileFoldQuery.matches) ? "execution" : "research");'
+        in resp.data
+    )
+
+
+def test_market_pulse_empty_state_uses_consistent_feed_copy(client, monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 16, 2026 9:29 AM ET",
+            "source_label": "Fallback Snapshot",
+            "source_note": "Cached pre-open snapshot",
+            "quotes": [],
+            "integrity": {"live_count": 0, "delayed_count": 0, "cached_count": 1, "missing_count": 4},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {
+            "available": False,
+            "source_note": "No live headlines loaded",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
+    )
+    monkeypatch.setattr(core_service, "_market_pulse_market_hours", lambda now_et: False)
+
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {"asof": "", "regime": "unavailable", "bias": "insufficient_data"},
+    )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {"asof": "", "symbols": {"SPX": {"contracts": []}}},
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Awaiting feed" in body
+    assert "Awaiting first tick" in body
+    assert "Awaiting SPX quote" in body
+    assert "Awaiting contract rows." in body
+    assert "Fallback Snapshot" in body
 
 
 def test_calculator_shows_projected_balances_for_stop_and_target(client):
@@ -988,7 +1107,7 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"Gap O/N:" in resp.data
     assert b"Tradier Live Quote" in resp.data
     assert b"-8.48 (-0.13%)" in resp.data
-    assert b"Range 6773.42-6775.80" in resp.data
+    assert b"6773.42-6775.80" in resp.data
     assert b"VIX pulse" in resp.data
 
 
@@ -1363,6 +1482,111 @@ def test_trades_page_uses_derived_running_balance(client):
     assert resp.status_code == 200
     # 50,000 + (399 + 3,000) = 53,399
     assert b"$53,399.00" in resp.data
+
+
+def test_trade_mutations_flash_feedback(client):
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                today_iso(),
+                "9:35 AM",
+                "9:40 AM",
+                "SPX",
+                "CALL",
+                5000.0,
+                1.0,
+                1.2,
+                1,
+                100.0,
+                1.0,
+                19.0,
+                19.0,
+                19.0,
+                50019.0,
+                "seed",
+                now_iso(),
+            ),
+        )
+        trade_id = int(conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"])
+
+    reviewed = client.post(
+        f"/trades/review/{trade_id}?d={today_iso()}",
+        data={
+            "strategy_label": "ORB",
+            "session_tag": "Open",
+            "checklist_score": "82",
+            "rule_break_tags": "",
+            "review_note": "Good process.",
+        },
+        follow_redirects=True,
+    )
+    assert reviewed.status_code == 200
+    assert b"Trade review saved." in reviewed.data
+
+    edited = client.post(
+        f"/trades/edit/{trade_id}?d={today_iso()}",
+        data={
+            "trade_date": today_iso(),
+            "entry_time": "9:35 AM",
+            "exit_time": "9:42 AM",
+            "ticker": "SPX",
+            "opt_type": "CALL",
+            "strike": "5000",
+            "contracts": "1",
+            "entry_price": "1.00",
+            "exit_price": "1.30",
+            "comm": "1.00",
+        },
+        follow_redirects=True,
+    )
+    assert edited.status_code == 200
+    assert b"Trade updated." in edited.data
+
+    risk = client.post(
+        "/trades/risk-controls",
+        data={"daily_max_loss": "250", "enforce_lockout": "1"},
+        follow_redirects=True,
+    )
+    assert risk.status_code == 200
+    assert b"Risk controls saved." in risk.data
+
+
+def test_manual_trade_save_flashes_and_redirects(client):
+    resp = client.post(
+        "/trades/new",
+        data={
+            "trade_date": today_iso(),
+            "entry_time": "9:35 AM",
+            "exit_time": "9:40 AM",
+            "ticker": "SPX",
+            "opt_type": "CALL",
+            "strike": "5000",
+            "contracts": "1",
+            "entry_price": "1.00",
+            "exit_price": "1.20",
+            "comm": "1.00",
+            "strategy_label": "",
+            "session_tag": "",
+            "checklist_score": "",
+            "gate_setup_type": "Opening drive",
+            "gate_invalidation": "Lose opening range low",
+            "gate_max_risk": "100",
+            "gate_focus": "Take one clean A setup",
+            "gate_market_ready": "1",
+            "gate_macro_clear": "1",
+            "gate_risk_confirmed": "1",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"Trade saved." in resp.data
 
 
 def test_dashboard_shows_balance_basis_and_drift_signal(client):

@@ -1,179 +1,207 @@
 <div class="card pageHero">
   <div class="toolbar">
-    <div class="pill">🚨 Ops Alerts</div>
-    <h2 class="pageTitle">Clear Reliability Risk Before It Pollutes Review</h2>
-    <div class="pageSub">Acknowledge noise, resolve real issues, and keep sync, backup, and integrity in a state you can trust before it bleeds into trading decisions.</div>
-    <div class="metricStrip compact">
-      <div class="metric"><div class="label">Active Alerts</div><div class="value">{{ active_count }}</div></div>
-      <div class="metric"><div class="label">Open</div><div class="value">{{ open_count }}</div></div>
-      <div class="metric"><div class="label">Acknowledged</div><div class="value">{{ ack_count }}</div></div>
-      <div class="metric"><div class="label">Resolved</div><div class="value">{{ resolved_count }}</div></div>
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">🚨 Ops Alerts</div>
+        <h2 class="pageTitle">Clear Reliability Risk Before It Pollutes Review</h2>
+        <div class="pageSub">Acknowledge noise, resolve real issues, and keep sync, backup, and integrity in a state you can trust before it bleeds into trading decisions.</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn" href="/analytics?tab=diagnostics">Diagnostics</a>
+        <a class="btn" href="/trades/upload/statement?ws=reconcile">Reconcile</a>
+        <a class="btn" href="/trades/upload/statement?ws=live">Live Sync</a>
+        <a class="btn primary" href="/ops/backups">Backup Center</a>
+      </div>
+    </div>
+    <div class="statusBadgeStrip opsStatusStrip">
+      <div class="statusBadge is-healthy"><span class="statusBadgeLabel">Active</span><strong>{{ active_count }}</strong></div>
+      <div class="statusBadge is-critical"><span class="statusBadgeLabel">Open</span><strong>{{ open_count }}</strong></div>
+      <div class="statusBadge is-warn"><span class="statusBadgeLabel">Acknowledged</span><strong>{{ ack_count }}</strong></div>
+      <div class="statusBadge is-neutral"><span class="statusBadgeLabel">Resolved</span><strong>{{ resolved_count }}</strong></div>
     </div>
   </div>
 </div>
 
-<div class="card">
-  <div class="toolbar">
-    <div class="pill">🧭 Review Ops</div>
-    <div class="tiny line16">Next move: clear open alerts first, then use mutes only to suppress known noise without hiding real faults.</div>
-    <div class="actionRow">
-      <a class="btn" href="/analytics?tab=diagnostics">Analytics Diagnostics</a>
-      <a class="btn" href="/trades/upload/statement?ws=reconcile">Reconcile Batches</a>
-      <a class="btn" href="/trades/upload/statement?ws=live">Live Sync Reliability</a>
-      <a class="btn" href="/ops/backups">Backup Center</a>
-    </div>
-  </div>
-</div>
+<div class="opsShell">
+  <div class="opsPrimary">
+    <div class="card opsCommandDeck"><div class="toolbar">
+      <div class="pill">🧭 Review Ops</div>
+      <div class="workspaceSectionLead">Clear open alerts first, then mute only known noise. Reliability controls should support review quality, not bury it.</div>
+      <div class="actionRow">
+        <a class="btn" href="/analytics?tab=diagnostics">Analytics Diagnostics</a>
+        <a class="btn" href="/trades/upload/statement?ws=reconcile">Reconcile Batches</a>
+        <a class="btn" href="/trades/upload/statement?ws=live">Live Sync Reliability</a>
+        {% if resolveable_count %}
+          <form method="post" action="/ops/alerts/resolve" style="display:inline">
+            <input type="hidden" name="resolve_scope" value="visible">
+            <input type="hidden" name="status_filter" value="{{ status_filter }}">
+            <input type="hidden" name="event_filter" value="{{ event_filter }}">
+            <button class="btn primary" type="submit">Resolve Visible ({{ resolveable_count }})</button>
+          </form>
+        {% endif %}
+      </div>
+    </div></div>
 
-<div class="card">
-  <div class="toolbar">
-    <div class="pill">Inbox</div>
-    <div class="actionRow">
-      <a class="btn {% if status_filter == 'active' %}primary{% endif %}" href="/ops/alerts?status=active">Active</a>
-      <a class="btn {% if status_filter == 'open' %}primary{% endif %}" href="/ops/alerts?status=open">Open</a>
-      <a class="btn {% if status_filter == 'acknowledged' %}primary{% endif %}" href="/ops/alerts?status=acknowledged">Acknowledged</a>
-      <a class="btn {% if status_filter == 'resolved' %}primary{% endif %}" href="/ops/alerts?status=resolved">Resolved</a>
-      <a class="btn {% if status_filter == 'all' %}primary{% endif %}" href="/ops/alerts?status=all">All</a>
-      {% if resolveable_count %}
-        <form method="post" action="/ops/alerts/resolve" style="display:inline">
-          <input type="hidden" name="resolve_scope" value="visible">
-          <input type="hidden" name="status_filter" value="{{ status_filter }}">
-          <input type="hidden" name="event_filter" value="{{ event_filter }}">
-          <button class="btn" type="submit">Resolve Visible ({{ resolveable_count }})</button>
+    <div class="card opsConsoleCard"><div class="toolbar">
+      <div class="pill">Alert Inbox</div>
+      <div class="actionRow">
+        <a class="btn {% if status_filter == 'active' %}primary{% endif %}" href="/ops/alerts?status=active">Active</a>
+        <a class="btn {% if status_filter == 'open' %}primary{% endif %}" href="/ops/alerts?status=open">Open</a>
+        <a class="btn {% if status_filter == 'acknowledged' %}primary{% endif %}" href="/ops/alerts?status=acknowledged">Acknowledged</a>
+        <a class="btn {% if status_filter == 'resolved' %}primary{% endif %}" href="/ops/alerts?status=resolved">Resolved</a>
+        <a class="btn {% if status_filter == 'all' %}primary{% endif %}" href="/ops/alerts?status=all">All</a>
+      </div>
+      <details class="syncDetails stack10 opsControlFold"{% if muted %} open{% endif %}>
+        <summary>
+          <span>Mute Controls</span>
+          <span class="tiny muted">{% if muted %}{{ muted|length }} active{% else %}No active mutes{% endif %}</span>
+        </summary>
+        <div class="hr"></div>
+        <form method="post" action="/ops/alerts/mute" class="row">
+          <div>
+            <label>Mute Event Type</label>
+            <select name="event_type">
+              {% for et in event_types %}
+                <option value="{{ et }}">{{ et }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Minutes</label>
+            <input type="number" min="0" max="10080" step="1" name="minutes" value="60" />
+          </div>
+          <div class="tiny stack10 line16 fieldGrow2">
+            {% if muted %}
+              {% for et, until in muted.items() %}
+                • {{ et }} muted until {{ until }}<br>
+              {% endfor %}
+            {% else %}
+              No active mutes.
+            {% endif %}
+          </div>
+          <div class="actionRow"><button class="btn" type="submit">Apply Mute</button></div>
         </form>
-      {% endif %}
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Advanced Alert Controls</summary>
-      <div class="hr"></div>
-      <form method="post" action="/ops/alerts/mute" class="row">
-        <div>
-          <label>Mute Event Type</label>
-          <select name="event_type">
-            {% for et in event_types %}
-              <option value="{{ et }}">{{ et }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label>Minutes</label>
-          <input type="number" min="0" max="10080" step="1" name="minutes" value="60" />
-        </div>
-        <div class="tiny stack10 line16 fieldGrow2">
-          {% if muted %}
-            {% for et, until in muted.items() %}
-              • {{ et }} muted until {{ until }}<br>
-            {% endfor %}
-          {% else %}
-            No active mutes.
-          {% endif %}
-        </div>
-        <div class="actionRow"><button class="btn" type="submit">Apply Mute</button></div>
-      </form>
-    </details>
-    <div class="hr"></div>
-    <div class="tableWrap">
-      <table class="tableDense">
-        <thead><tr><th>When</th><th>Event</th><th>Status</th><th>Count</th><th>Message</th><th>Action</th></tr></thead>
-        <tbody>
-        {% for a in alerts %}
-          <tr>
-            <td>{{ a.get('last_seen_at', '—') }}</td>
-            <td><code>{{ a.get('event_type', '—') }}</code></td>
-            <td>{{ (a.get('status') or 'open')|upper }}</td>
-            <td>{{ a.get('count', 1) }}</td>
-            <td class="tiny line16">{{ a.get('message', '') }}</td>
-            <td>
-              {% if a.get('status') != 'resolved' %}
-                <form method="post" action="/ops/alerts/ack" style="display:inline">
-                  <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
-                  <button class="btn" type="submit">Ack</button>
-                </form>
-                <form method="post" action="/ops/alerts/resolve" style="display:inline">
-                  <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
-                  <button class="btn" type="submit">Resolve</button>
-                </form>
-              {% else %}
-                <span class="tiny">Resolved by {{ a.get('resolved_by') or '—' }}</span>
-              {% endif %}
-            </td>
-          </tr>
-        {% else %}
-          <tr><td colspan="6">No alerts in this view.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="toolbar">
-    <div class="pill">💾 Backup Controls</div>
-    <div class="tiny line16">Keep auto backup enabled and run a manual archive after major imports or account-structure changes.</div>
-    <form method="post" action="/ops/backups/config" class="row">
-      <div><label><input type="checkbox" name="enabled" value="1" {% if auto_backup_cfg.get('enabled') %}checked{% endif %}/> Enable auto backups</label></div>
-      <div class="tiny stack10 line16">
-        Last run: {{ auto_backup_cfg.get('last_run_at') or 'Never' }}<br>
-        Status: {{ auto_backup_cfg.get('last_status') or 'n/a' }}<br>
-        {{ auto_backup_cfg.get('last_message') or '' }}
-      </div>
-      <div class="actionRow"><button class="btn" type="submit">Save</button></div>
-      <details class="syncDetails stack10 fieldGrow2">
-        <summary>Advanced Schedule Controls</summary>
-        <div class="row">
-          <div>
-            <label>Frequency (hours)</label>
-            <input type="number" name="frequency_hours" min="1" max="168" step="1" value="{{ auto_backup_cfg.get('frequency_hours', 24) }}" />
-          </div>
-          <div>
-            <label>Keep Last (files)</label>
-            <input type="number" name="keep_count" min="3" max="120" step="1" value="{{ auto_backup_cfg.get('keep_count', 21) }}" />
-          </div>
-        </div>
       </details>
-    </form>
-    <div class="hr"></div>
-    <form method="post" action="/ops/backups/run" class="rightActions" id="backup-run-form">
-      <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
-    </form>
-    <div class="syncRunway" id="backup-job-runway" style="display:none;" aria-live="polite">
-      <div class="syncRunwayTop">
-        <span class="syncBadge" id="backup-job-badge">Running</span>
-        <span class="syncStageLabel" id="backup-job-label">Creating backup archive from current app data.</span>
+      <div class="hr"></div>
+      <div class="tableWrap">
+        <table class="tableDense">
+          <thead><tr><th>When</th><th>Event</th><th>Status</th><th>Count</th><th>Message</th><th>Action</th></tr></thead>
+          <tbody>
+          {% for a in alerts %}
+            <tr>
+              <td>{{ a.get('last_seen_at', '—') }}</td>
+              <td><code>{{ a.get('event_type', '—') }}</code></td>
+              <td>{{ (a.get('status') or 'open')|upper }}</td>
+              <td>{{ a.get('count', 1) }}</td>
+              <td class="tiny line16">{{ a.get('message', '') }}</td>
+              <td>
+                {% if a.get('status') != 'resolved' %}
+                  <form method="post" action="/ops/alerts/ack" style="display:inline">
+                    <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
+                    <button class="btn" type="submit">Ack</button>
+                  </form>
+                  <form method="post" action="/ops/alerts/resolve" style="display:inline">
+                    <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
+                    <button class="btn" type="submit">Resolve</button>
+                  </form>
+                {% else %}
+                  <span class="tiny">Resolved by {{ a.get('resolved_by') or '—' }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No alerts in this view.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
       </div>
-      <div class="syncTrack"><div class="syncTrackBar" id="backup-job-track"></div></div>
-      <div class="syncSteps">
-        <span class="syncStep is-active" data-backup-step>Archive</span>
-        <span class="syncStep" data-backup-step>Verify</span>
-        <span class="syncStep" data-backup-step>Summary</span>
-        <span class="syncStep" data-backup-step>Ready</span>
-      </div>
-    </div>
-    <div id="ops-job-summary" style="display:none;"></div>
-  </div>
-</div>
+    </div></div>
 
-<div class="card">
-  <div class="toolbar">
-    <div class="pill">🧾 Admin Timeline</div>
-    <div class="tiny line16">Audit trail for rollback, recompute, backup, and alert-state changes.</div>
-    <div class="tableWrap">
-      <table class="tableDense">
-        <thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Details</th></tr></thead>
-        <tbody>
-        {% for r in audit_rows %}
-          <tr>
-            <td>{{ r.get('at', '—') }}</td>
-            <td><code>{{ r.get('action', '—') }}</code></td>
-            <td>{{ r.get('actor', '—') }}</td>
-            <td class="tiny line16"><code>{{ r.get('details', {})|tojson }}</code></td>
-          </tr>
-        {% else %}
-          <tr><td colspan="4">No admin audit events yet.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    <div class="card opsConsoleCard"><div class="toolbar">
+      <div class="pill">💾 Backup Controls</div>
+      <div class="workspaceSectionLead">Keep auto backup enabled and run a manual archive after major imports or account-structure changes.</div>
+      <form method="post" action="/ops/backups/config" class="row">
+        <div><label><input type="checkbox" name="enabled" value="1" {% if auto_backup_cfg.get('enabled') %}checked{% endif %}/> Enable auto backups</label></div>
+        <div class="tiny stack10 line16">
+          Last run: {{ auto_backup_cfg.get('last_run_at') or 'Never' }}<br>
+          Status: {{ auto_backup_cfg.get('last_status') or 'n/a' }}<br>
+          {{ auto_backup_cfg.get('last_message') or '' }}
+        </div>
+        <div class="actionRow"><button class="btn" type="submit">Save</button></div>
+        <details class="syncDetails stack10 fieldGrow2">
+          <summary>Advanced Schedule Controls</summary>
+          <div class="row">
+            <div>
+              <label>Frequency (hours)</label>
+              <input type="number" name="frequency_hours" min="1" max="168" step="1" value="{{ auto_backup_cfg.get('frequency_hours', 24) }}" />
+            </div>
+            <div>
+              <label>Keep Last (files)</label>
+              <input type="number" name="keep_count" min="3" max="120" step="1" value="{{ auto_backup_cfg.get('keep_count', 21) }}" />
+            </div>
+          </div>
+        </details>
+      </form>
+      <div class="hr"></div>
+      <form method="post" action="/ops/backups/run" class="rightActions" id="backup-run-form">
+        <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
+      </form>
+      <div class="syncRunway" id="backup-job-runway" style="display:none;" aria-live="polite">
+        <div class="syncRunwayTop">
+          <span class="syncBadge" id="backup-job-badge">Running</span>
+          <span class="syncStageLabel" id="backup-job-label">Creating backup archive from current app data.</span>
+        </div>
+        <div class="syncTrack"><div class="syncTrackBar" id="backup-job-track"></div></div>
+        <div class="syncSteps">
+          <span class="syncStep is-active" data-backup-step>Archive</span>
+          <span class="syncStep" data-backup-step>Verify</span>
+          <span class="syncStep" data-backup-step>Summary</span>
+          <span class="syncStep" data-backup-step>Ready</span>
+        </div>
+      </div>
+      <div id="ops-job-summary" style="display:none;"></div>
+    </div></div>
+
+    <div class="card opsConsoleCard"><div class="toolbar">
+      <div class="pill">🧾 Admin Timeline</div>
+      <div class="workspaceSectionLead">Audit trail for rollback, recompute, backup, and alert-state changes.</div>
+      <div class="tableWrap">
+        <table class="tableDense">
+          <thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Details</th></tr></thead>
+          <tbody>
+          {% for r in audit_rows %}
+            <tr>
+              <td>{{ r.get('at', '—') }}</td>
+              <td><code>{{ r.get('action', '—') }}</code></td>
+              <td>{{ r.get('actor', '—') }}</td>
+              <td class="tiny line16"><code>{{ r.get('details', {})|tojson }}</code></td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4">No admin audit events yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div></div>
   </div>
+
+  <aside class="opsSecondary">
+    <div class="dashboardSupportGrid opsSafetyGrid">
+      <div class="card supportCard"><div class="toolbar">
+        <div class="pill">Response Order</div>
+        <div class="supportLead">Open faults first, acknowledged next, resolved last.</div>
+        <div class="supportBody">The goal is not zero alerts. It is making sure unresolved reliability risk is visible before it distorts trading review.</div>
+      </div></div>
+      <div class="card supportCard subtleCard"><div class="toolbar">
+        <div class="pill">Mute Discipline</div>
+        <div class="supportLead">Mute known noise, not uncertainty.</div>
+        <div class="supportBody">If you are not sure whether an event is harmless, leave it visible until the underlying source is explained or fixed.</div>
+      </div></div>
+      <div class="card supportCard subtleCard"><div class="toolbar">
+        <div class="pill">Backup State</div>
+        <div class="supportLead">{{ auto_backup_cfg.get('last_status') or 'No backup status yet' }}</div>
+        <div class="supportBody">Last run {{ auto_backup_cfg.get('last_run_at') or 'never' }}{% if auto_backup_cfg.get('last_message') %} · {{ auto_backup_cfg.get('last_message') }}{% endif %}</div>
+      </div></div>
+    </div>
+  </aside>
 </div>

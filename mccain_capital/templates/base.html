@@ -117,6 +117,7 @@
       }
     })();
   </script>
+  {% set tw = trading_window if trading_window is defined else {} %}
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
@@ -126,29 +127,57 @@
         <div class="brandText">
           <h1 class="brandTitle">{{ brand_title or 'McCain Capital' }}</h1>
           <div class="brandSignature">
-            <span class="mcMark"><svg class="mcIcon"><use href="#mc-crown"></use></svg> McCain Capital Reserve</span>
-            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Elite Personal Trading Cockpit</span>
+            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Personal Trading Cockpit</span>
           </div>
-          <div class="sub">{% if active == 'dashboard' %}Command deck for execution, review, and control.{% else %}Private command deck for your edge.{% endif %}</div>
+          <div class="sub">Execution, review, and risk control.</div>
         </div>
       </div>
 
       <div class="topRight">
-        {% if top_notice %}
-          {% if top_notice.href %}
-            <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
-              <span class="topNoticeText">{{ top_notice.text }}</span>
-            </a>
-          {% else %}
-            <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
-              <span class="topNoticeText">{{ top_notice.text }}</span>
-            </div>
-          {% endif %}
+        {% if top_notice or (active != 'auth' and tw and tw.show_banner) %}
+          <div class="topNoticeRow">
+            {% if top_notice.href %}
+              <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
+                {% if top_notice.level == 'high' %}<span class="topNoticeSignal" aria-hidden="true"></span>{% endif %}
+                {% if top_notice.label %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
+                <span class="topNoticeText">{{ top_notice.text }}</span>
+              </a>
+            {% else %}
+              <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
+                {% if top_notice.level == 'high' %}<span class="topNoticeSignal" aria-hidden="true"></span>{% endif %}
+                {% if top_notice.label %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
+                <span class="topNoticeText">{{ top_notice.text }}</span>
+              </div>
+            {% endif %}
+            {% if active != 'auth' and tw and tw.show_banner %}
+              <div class="tradingWindowPillGroup">
+                <div class="clockPill tradingWindowPill is-{{ tw.state }}" title="{{ tw.message }}">
+                  <span class="tradingWindowSignal" aria-hidden="true"></span>
+                  <span class="tradingWindowPillLabel">{{ tw.rail_label or tw.state_label }}</span>
+                  <span class="tradingWindowPillMeta">{{ tw.rail_detail or tw.message }}</span>
+                  {% if tw.using_test_clock %}
+                    <span class="tradingWindowTag">Test Mode</span>
+                  {% endif %}
+                </div>
+                <button
+                  class="clockPill tradingWindowPillAction"
+                  type="button"
+                  aria-label="Open trading window settings"
+                  title="Open trading window settings"
+                  onclick="openTradingWindowSettings()"
+                >
+                  <span aria-hidden="true">⚙</span>
+                </button>
+              </div>
+            {% endif %}
+          </div>
         {% endif %}
-        <div id="modePill" class="clockPill cockpitPill modeStateLoading">Loading…</div>
-        <div class="clockPill cockpitPill clockStatusPill" aria-label="Eastern time and market status">
-          <span id="etClock" class="clockTime">--:--:--</span>
-          <span id="marketState" class="marketState marketClosed">Closed</span>
+        <div class="statusRow">
+          <div id="modePill" class="clockPill cockpitPill modeStateLoading">Loading…</div>
+          <div class="clockPill cockpitPill clockStatusPill" aria-label="Eastern time and market status">
+            <span id="etClock" class="clockTime">--:--:--</span>
+            <span id="marketState" class="marketState marketClosed">Closed</span>
+          </div>
         </div>
 
         <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
@@ -163,29 +192,24 @@
 
       <div class="nav">
         <div class="navGroup">
-          <span class="navLabel">Workflow</span>
-          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">Run Day</a>
+          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">Dashboard</a>
+          <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
+          <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
+          <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
+          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Risk</a>
           <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
-          <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Execute</a>
-          <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Debrief</a>
-        </div>
-        <div class="navDivider"></div>
-        <div class="navGroup">
-          <span class="navLabel">Decide</span>
-          <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Review</a>
-          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Plan Risk</a>
-          <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payout Plan</a>
+          <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
         </div>
 
         <div class="menuMore">
           <button class="btn moreBtn" type="button" onclick="toggleMoreMenu()" aria-haspopup="true" aria-expanded="false">
-            More ▾
+            Menu ▾
           </button>
 
           <div id="moreMenu" class="moreMenu" role="menu">
             {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
             <div class="menuTitle">Workspace</div>
-            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">P/L Calendar</a>
+            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
             <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
@@ -193,6 +217,7 @@
             <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='books' %}active{% endif %}" href="/books">Books</a>
             <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
+            <button class="btn" type="button" onclick="openTradingWindowSettings()">Trading Window</button>
             <div class="hr"></div>
             <div class="menuTitle">Business</div>
             <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">Income Tracker</a>
@@ -226,63 +251,17 @@
       </div>
     </div>
 
-    {% set tw = trading_window if trading_window is defined else {} %}
-    {% if active != 'auth' and tw and tw.show_banner %}
-      <div class="tradingWindowStrip is-{{ tw.state }}">
-        <div class="tradingWindowHead">
-          <span class="pill">Trading Window</span>
-          <span class="tradingWindowState">{{ tw.state_label }}</span>
-          {% if tw.using_test_clock %}
-            <span class="tradingWindowTag">Test Mode</span>
-          {% endif %}
-          <span class="tradingWindowNow">{{ tw.now_label }}</span>
-        </div>
-        <div class="tradingWindowMessage">{{ tw.message }}</div>
-        <div class="tradingWindowTimeline">
-          <span>Start {{ tw.start_et }} ET</span>
-          <span>Done By {{ tw.done_by_et }} ET</span>
-          <span>Hard Stop {{ tw.hard_stop_et }} ET</span>
-        </div>
-        <details class="tradingWindowEditor"{% if tw.using_test_clock %} open{% endif %}>
-          <summary>Adjust Trading Window</summary>
-          <form method="post" action="/ops/trading-window" class="tradingWindowForm">
-            {{ csrf_input|safe }}
-            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-            <label class="tradingWindowToggle">
-              <input type="checkbox" name="tw_enabled" value="1" {% if tw.enabled %}checked{% endif %}>
-              Enable enforcement banner
-            </label>
-            <label>
-              Start (ET)
-              <input type="time" name="tw_start_et" value="{{ tw.start_et }}" required>
-            </label>
-            <label>
-              Done By (ET)
-              <input type="time" name="tw_done_by_et" value="{{ tw.done_by_et }}" required>
-            </label>
-            <label>
-              Hard Stop (ET)
-              <input type="time" name="tw_hard_stop_et" value="{{ tw.hard_stop_et }}" required>
-            </label>
-            <label class="tradingWindowToggle">
-              <input type="checkbox" name="tw_test_mode" value="1" {% if tw.test_mode %}checked{% endif %} data-tw-test-mode>
-              Test mode (simulate clock)
-            </label>
-            <label>
-              Test Date
-              <input type="date" name="tw_test_date" value="{{ tw.test_date }}" data-tw-test-field>
-            </label>
-            <label>
-              Test Time (ET)
-              <input type="time" name="tw_test_time_et" value="{{ tw.test_time_et }}" data-tw-test-field>
-            </label>
-            <div class="tradingWindowActions">
-              <button class="btn primary" type="submit">Save Window</button>
+    {% with flashes = get_flashed_messages(with_categories=true) %}
+      {% if flashes %}
+        <div class="flashStack" role="status" aria-live="polite">
+          {% for category, message in flashes %}
+            <div class="flashMessage is-{{ category|default('info')|replace('_', '-') }}">
+              <span class="flashMessageText">{{ message }}</span>
             </div>
-          </form>
-        </details>
-      </div>
-    {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
 
     {% if active == 'dashboard' %}
       {% set ss = system_status if system_status is defined else {} %}
@@ -293,7 +272,7 @@
           <div class="dashboardOperationalHead">
             <div>
               <div class="pill">🧭 Ops Band</div>
-              <div class="dashboardOperationalLead">Drop this down when you need the sync and workflow rail. It should stay quiet unless something breaks.</div>
+              <div class="dashboardOperationalLead">Open this only when sync status or workflow support needs attention. It should stay quiet when the system is healthy.</div>
             </div>
           </div>
           <div class="dashboardOperationalSummaryStrip">
@@ -358,21 +337,21 @@
             <div class="workflowGrid">
               <a class="workflowStep guideStep {% if active=='calc' %}flowActive{% endif %}" data-guide-item="plan-risk" href="/calculator">
                 <div class="workflowKicker">Plan</div>
-                <div class="workflowTitle">Plan Risk</div>
+                <div class="workflowTitle">Risk Planner</div>
                 <div class="workflowText">Set size and risk first.</div>
               </a>
               <a class="workflowStep guideStep {% if active=='trades' %}flowActive{% endif %}" data-guide-item="upload-statement" href="/trades">
-                <div class="workflowKicker">Execute</div>
+                <div class="workflowKicker">Trades</div>
                 <div class="workflowTitle">Execution Log</div>
                 <div class="workflowText">Log the day cleanly.</div>
               </a>
               <a class="workflowStep guideStep {% if active=='analytics' %}flowActive{% endif %}" data-guide-item="review-trades" href="/analytics?tab=performance">
-                <div class="workflowKicker">Review</div>
+                <div class="workflowKicker">Analytics</div>
                 <div class="workflowTitle">Analyze Day</div>
                 <div class="workflowText">Check edge and discipline.</div>
               </a>
               <a class="workflowStep guideStep {% if active=='journal' %}flowActive{% endif %}" data-guide-item="weekly-debrief" href="/journal">
-                <div class="workflowKicker">Debrief</div>
+                <div class="workflowKicker">Journal</div>
                 <div class="workflowTitle">Journal</div>
                 <div class="workflowText">Write the lesson while fresh.</div>
               </a>
@@ -392,7 +371,7 @@
         <div class="drawerHead">
           <div>
             <div class="drawerTitle">Menu</div>
-            <div class="drawerSub">Fast access to the trading cockpit.</div>
+            <div class="drawerSub">Fast access to core tools and settings.</div>
           </div>
           <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
         </div>
@@ -410,10 +389,10 @@
         <section class="drawerSection">
           <div class="drawerSectionTitle">Navigate</div>
           <div class="drawerPrimaryGrid">
-            <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Day</a>
+            <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Dashboard</a>
             <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
-            <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
-            <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Notes</a>
+            <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
+            <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
           </div>
@@ -422,8 +401,8 @@
         <section class="drawerSection">
           <div class="drawerSectionTitle">Tools</div>
           <div class="drawerStack">
-            <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Plan Risk</a>
-            <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payout Plan</a>
+            <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Risk</a>
+            <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payouts</a>
             <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">Strategies</a>
             <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>
@@ -431,6 +410,67 @@
             <a class="btn {% if active=='goals' %}primary{% endif %}" href="/goals">Income Tracker</a>
           </div>
         </section>
+
+        {% if active != 'auth' and tw %}
+          <section id="drawerTradingWindow" class="drawerSection">
+            <div class="drawerSectionTitle">Trading Window</div>
+            <div class="tradingWindowDrawerStatus is-{{ tw.state }}">
+              <span class="tradingWindowSignal" aria-hidden="true"></span>
+              <div class="tradingWindowDrawerCopy">
+                <div class="tradingWindowDrawerLead">
+                  {{ tw.state_label }}
+                  {% if tw.using_test_clock %}
+                    <span class="tradingWindowTag">Test Mode</span>
+                  {% endif %}
+                </div>
+                <div class="tradingWindowDrawerMeta">{{ tw.message }}</div>
+                <div class="tradingWindowTimeline">
+                  <span>Start {{ tw.start_et }} ET</span>
+                  <span>Done By {{ tw.done_by_et }} ET</span>
+                  <span>Hard Stop {{ tw.hard_stop_et }} ET</span>
+                </div>
+              </div>
+            </div>
+            <details id="tradingWindowDrawerEditor" class="tradingWindowEditor tradingWindowDrawerEditor"{% if tw.using_test_clock %} open{% endif %}>
+              <summary>Adjust Window</summary>
+              <form method="post" action="/ops/trading-window" class="tradingWindowForm">
+                {{ csrf_input|safe }}
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <label class="tradingWindowToggle">
+                  <input type="checkbox" name="tw_enabled" value="1" {% if tw.enabled %}checked{% endif %}>
+                  Enable enforcement banner
+                </label>
+                <label>
+                  Start (ET)
+                  <input type="time" name="tw_start_et" value="{{ tw.start_et }}" required>
+                </label>
+                <label>
+                  Done By (ET)
+                  <input type="time" name="tw_done_by_et" value="{{ tw.done_by_et }}" required>
+                </label>
+                <label>
+                  Hard Stop (ET)
+                  <input type="time" name="tw_hard_stop_et" value="{{ tw.hard_stop_et }}" required>
+                </label>
+                <label class="tradingWindowToggle">
+                  <input type="checkbox" name="tw_test_mode" value="1" {% if tw.test_mode %}checked{% endif %} data-tw-test-mode>
+                  Test mode (simulate clock)
+                </label>
+                <label>
+                  Test Date
+                  <input type="date" name="tw_test_date" value="{{ tw.test_date }}" data-tw-test-field>
+                </label>
+                <label>
+                  Test Time (ET)
+                  <input type="time" name="tw_test_time_et" value="{{ tw.test_time_et }}" data-tw-test-field>
+                </label>
+                <div class="tradingWindowActions">
+                  <button class="btn primary" type="submit">Save Window</button>
+                </div>
+              </form>
+            </details>
+          </section>
+        {% endif %}
 
         <section class="drawerSection">
           <div class="drawerSectionTitle">System</div>
@@ -476,16 +516,16 @@
     </div>
 
     <nav class="mobileDock" aria-label="Quick navigation">
-      <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Day</a>
+      <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Dashboard</a>
       <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
-      <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics/replay">Replay</a>
-      <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Notes</a>
+      <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
+      <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
       <button id="mobileDockMenuBtn" class="btn mobileDockMenu" type="button" aria-expanded="false" onclick="openDrawer()">Menu</button>
     </nav>
 
     <div class="tiny footerTip">
       Tip: Keep your journal precise. Your edge compounds through consistency.
-      <span class="kbd">Ctrl</span> + <span class="kbd">K</span> focuses Search.
+      <span class="kbd">Ctrl</span> + <span class="kbd">K</span> focuses search.
     </div>
   </div>
 <script>

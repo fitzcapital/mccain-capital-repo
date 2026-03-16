@@ -894,6 +894,8 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 "group": spec["group"],
                 "focus": spec["focus"],
                 "name": spec["label"],
+                "provider": provider,
+                "reason": reason,
                 "price": price_num,
                 "change": change,
                 "change_pct": pct_num,
@@ -914,6 +916,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 "overnight_high": None,  # TODO(api): wire overnight high from upstream provider payload.
                 "overnight_low": None,  # TODO(api): wire overnight low from upstream provider payload.
                 "yahoo_href": _market_pulse_yahoo_href(spec["symbol"]),
+                "as_of": as_of or fetched_label,
                 "asof": as_of or fetched_label,
                 "asof_epoch": asof_epoch,
                 "data_state": state,
@@ -1323,7 +1326,7 @@ def _quote_source_badge(quote: Dict[str, Any]) -> Dict[str, str]:
     if provider == "yfinance":
         return {"label": "Yahoo Fallback", "tone": "warm"}
     if provider == "massive":
-        return {"label": "Massive Fallback", "tone": "warm"}
+        return {"label": "Fallback Snapshot", "tone": "warm"}
     if provider:
         return {"label": f"{provider.title()} Fallback", "tone": "warm"}
     return {"label": "Feed unavailable", "tone": "neutral"}
@@ -1880,7 +1883,7 @@ def _dashboard_daily_brief_viewmodel(
             + (f" · Today {app_runtime.money(today_net)}" if today_count else "")
         ),
         "summary": bias_summary,
-        "cta_label": "Open Trade Gate" if today_count == 0 else "Add Another Trade",
+        "cta_label": "Trade Gate" if today_count == 0 else "Add Trade",
         "source_label": "Manually tuned" if is_tuned else "Auto-generated",
         "source_detail": (
             "Using your saved brief edits for this day."
@@ -2746,6 +2749,11 @@ def market_pulse_page():
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
     quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
+    series_points = {
+        str(q.get("label") or q.get("symbol") or ""): list(q.get("series") or [])
+        for q in quotes
+        if isinstance(q, dict) and str(q.get("label") or q.get("symbol") or "").strip()
+    }
     spx_priority_context = build_spx_priority_context(
         spx_quote=spx_quote, gamma_snapshot=gamma_snapshot
     )
@@ -2794,6 +2802,7 @@ def market_pulse_page():
         source_health=source_health,
         gamma_updated_label=gamma_updated_label,
         market_now_iso=now_et.isoformat(),
+        series_points=series_points,
         gamma_csv_href=gamma_csv_href,
         gamma_png_href=gamma_png_href,
         options_contracts=options_contracts,
@@ -3169,8 +3178,21 @@ def trading_window_config():
     else:
         next_href = str(request.referrer or url_for("dashboard"))
     state = save_trading_window_settings(request.form)
+    parsed_next = urllib.parse.urlsplit(next_href)
+    next_query = urllib.parse.parse_qsl(parsed_next.query, keep_blank_values=True)
+    next_query = [(key, value) for key, value in next_query if key != "tw"]
+    next_query.append(("tw", "settings"))
+    next_href = urllib.parse.urlunsplit(
+        (
+            parsed_next.scheme,
+            parsed_next.netloc,
+            parsed_next.path,
+            urllib.parse.urlencode(next_query),
+            parsed_next.fragment,
+        )
+    )
     flash(
-        f"Trading window saved: {state.get('start_et')} → {state.get('done_by_et')} → {state.get('hard_stop_et')} ET.",
+        f"Trading window saved. {state.get('start_et')} → {state.get('done_by_et')} → {state.get('hard_stop_et')} ET.",
         "success",
     )
     return redirect(next_href)

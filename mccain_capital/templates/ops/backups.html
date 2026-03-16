@@ -15,7 +15,8 @@
     </div>
     <div class="actionRow">
       <a class="btn" href="/ops/alerts">Ops Alerts</a>
-      <a class="btn" href="/admin/restore">Restore Backup</a>
+      <a class="btn" href="/analytics?tab=diagnostics">Diagnostics</a>
+      <a class="btn primary" href="/admin/restore">Restore Backup</a>
     </div>
   </div>
 </div></div>
@@ -31,6 +32,24 @@
 
 <div class="opsShell">
   <div class="opsPrimary">
+    <div class="card opsCommandDeck"><div class="toolbar">
+      <div class="pill">🧭 Recovery Command Deck</div>
+      <div class="workspaceSectionLead">Run the lightest action that restores trust: integrity check first, archive second, restore only when the current state is no longer reliable.</div>
+      <div class="actionRow stack10">
+        <form method="post" action="/ops/integrity/run" class="inlineForm" id="integrity-check-form">
+          <button class="btn primary" type="submit" id="integrity-check-submit">Run Integrity Check</button>
+        </form>
+        <form method="post" action="/ops/backups/run" class="inlineForm" id="backup-run-form">
+          <button class="btn" type="submit" id="backup-run-submit">Run Backup Now</button>
+        </form>
+        <a class="btn" href="/analytics?tab=diagnostics">Open Diagnostics</a>
+      </div>
+      {{ runway('integrity-check-runway', ['Ledger', 'Reviews', 'Balances', 'Summary'], badge='Checking', label='Scanning ledger, reviews, and balances...') }}
+      {{ runway('backup-job-runway', ['Archive', 'Verify', 'Summary', 'Ready'], label='Creating backup archive from current app data.') }}
+      <div id="integrity-check-result" style="display:none;"></div>
+      <div id="ops-job-summary" style="display:none;"></div>
+    </div></div>
+
     <div class="card"><div class="toolbar">
       <div class="pillRow">
         <div class="pill">Integrity Check</div>
@@ -40,14 +59,7 @@
         </details>
       </div>
       <div class="workspaceSectionLead">First line of defense after a restore, import, or suspicious balance movement.</div>
-      <div class="actionRow stack10">
-        <form method="post" action="/ops/integrity/run" class="inlineForm" id="integrity-check-form">
-          <button class="btn primary" type="submit" id="integrity-check-submit">Run Integrity Check</button>
-        </form>
-        <a class="btn" href="/analytics?tab=diagnostics">Open Diagnostics</a>
-      </div>
-      {{ runway('integrity-check-runway', ['Ledger', 'Reviews', 'Balances', 'Summary'], badge='Checking', label='Scanning ledger, reviews, and balances...') }}
-      <div id="integrity-check-result" style="display:none;"></div>
+      <div class="tiny stack8 line15">Use the command deck above for the actual run. This panel explains when to use it and what it validates.</div>
     </div></div>
 
     <div class="card"><div class="toolbar">
@@ -90,13 +102,7 @@
         <div class="actionRow"><button class="btn" type="submit">Save Schedule</button></div>
       </form>
       <div class="hr"></div>
-      <div class="rightActions">
-        <form method="post" action="/ops/backups/run" class="inlineForm" id="backup-run-form">
-          <button class="btn primary" type="submit" id="backup-run-submit">Run Backup Now</button>
-        </form>
-      </div>
-      {{ runway('backup-job-runway', ['Archive', 'Verify', 'Summary', 'Ready'], label='Creating backup archive from current app data.') }}
-      <div id="ops-job-summary" style="display:none;"></div>
+      <div class="tiny stack8 line15">Manual archive runs are available from the command deck above so schedule edits and on-demand actions stay separated.</div>
     </div></div>
 
     <div class="card"><div class="toolbar">
@@ -245,6 +251,11 @@
         <div class="pill">Safe Flow</div>
         <div class="supportLead">Dry run before hard restore.</div>
         <div class="supportBody">Preview row deltas and upload overwrite risk before you touch the live state.</div>
+      </div></div>
+      <div class="card supportCard subtleCard"><div class="toolbar">
+        <div class="pill">Recovery Standard</div>
+        <div class="supportLead">Trust comes from repeatable recovery, not from having a zip file.</div>
+        <div class="supportBody">Keep the archive list boring, the integrity checks recent, and the restore path obvious enough that you do not improvise under pressure.</div>
       </div></div>
     </div>
 
