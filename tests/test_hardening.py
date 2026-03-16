@@ -70,7 +70,7 @@ def test_csrf_accepts_valid_token(client):
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers.get("Location", "").endswith("/dashboard")
+    assert resp.headers.get("Location", "").endswith("/dashboard?tw=settings")
 
 
 def test_sqlite_connection_uses_wal_mode():
