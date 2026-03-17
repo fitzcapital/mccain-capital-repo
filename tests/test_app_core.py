@@ -270,6 +270,39 @@ def test_dashboard_renders_daily_brief_card(client):
     assert b"No-trade condition" in resp.data
 
 
+def test_dashboard_renders_accountability_checklist(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Daily accountability checklist" in body
+    assert "Brief locked" in body
+    assert "Session data" in body
+    assert "Journal today" in body
+    assert "No debrief or quick capture logged for today yet." in body
+
+
+def test_dashboard_accountability_checklist_reflects_today_journal_capture(client):
+    from mccain_capital.repositories import journal as journal_repo
+
+    journal_repo.create_entry(
+        {
+            "entry_date": today_iso(),
+            "market": "SPX",
+            "setup": "Opening drive",
+            "notes": "Logged while context was fresh.",
+            "template_payload": {
+                "capture_screenshot_path": "journal-captures/2026-03-17/test-shot.png",
+            },
+        }
+    )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "1 entry logged" in body
+    assert "1 capture attached." in body
+
+
 def test_dashboard_brief_update_saves_daily_plan(client):
     resp = client.post(
         "/dashboard/brief",

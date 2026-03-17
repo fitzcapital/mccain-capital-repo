@@ -39,6 +39,16 @@
               <span class="trendChip">{{ today_wins }}W / {{ today_losses }}L</span>
               <span class="trendChip" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</span>
             </div>
+            <div class="dashboardChecklist" aria-label="Daily accountability checklist">
+              {% for item in dashboard_checklist %}
+                <a class="dashboardChecklistItem {% if item.done %}is-done{% else %}is-missing{% endif %}" href="{{ item.href }}" title="{{ item.detail }}">
+                  <span class="dashboardChecklistEyebrow">{{ item.status }}</span>
+                  <span class="dashboardChecklistTitle">{{ item.label }}</span>
+                  <span class="dashboardChecklistDetail">{{ item.detail }}</span>
+                  <span class="dashboardChecklistAction">{{ item.action }}</span>
+                </a>
+              {% endfor %}
+            </div>
           </div>
           <div class="rightActions">
             {% if account_scope and account_scope.enabled %}
@@ -55,7 +65,7 @@
     </div>
 
     <div class="dashboardPriorityGrid">
-      <div class="card supportCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
+      <div id="daily-brief-card" class="card supportCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
         <div class="pillRow">
           <div class="pill">Daily Brief</div>
           <span class="trendChip {% if daily_brief.bias_tone %}{{ daily_brief.bias_tone }}{% endif %}">{{ daily_brief.bias_label }}</span>

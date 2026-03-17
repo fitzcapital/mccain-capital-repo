@@ -1241,6 +1241,86 @@
       line-height:1.55;
       max-width:720px;
     }
+    .dashboardChecklist{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+      gap:10px;
+      margin-top:14px;
+    }
+    .dashboardChecklistItem{
+      min-width:0;
+      display:grid;
+      gap:4px;
+      padding:12px 14px;
+      border-radius:18px;
+      border:1px solid rgba(151, 197, 255, .16);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.012)),
+        radial-gradient(120% 130% at 0% 0%, rgba(var(--accent-rgb), .08), transparent 60%),
+        rgba(8, 16, 29, .72);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.04),
+        0 14px 32px rgba(3, 10, 22, .20);
+      color:inherit;
+      text-decoration:none;
+      transition:border-color .18s ease, transform .18s ease, background .18s ease;
+    }
+    .dashboardChecklistItem:hover{
+      border-color:rgba(151, 197, 255, .26);
+      transform:translateY(-1px);
+    }
+    .dashboardChecklistItem.is-done{
+      border-color:rgba(54, 206, 123, .26);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.01)),
+        radial-gradient(120% 130% at 0% 0%, rgba(38, 209, 126, .12), transparent 58%),
+        rgba(8, 16, 29, .74);
+    }
+    .dashboardChecklistItem.is-missing{
+      border-color:rgba(255, 116, 116, .22);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,.008)),
+        radial-gradient(120% 130% at 0% 0%, rgba(255, 92, 92, .10), transparent 58%),
+        rgba(8, 16, 29, .74);
+    }
+    .dashboardChecklistEyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      min-width:0;
+      font-size:10px;
+      line-height:1;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      color:rgba(227, 237, 249, .70);
+    }
+    .dashboardChecklistItem.is-done .dashboardChecklistEyebrow{
+      color:rgba(143, 244, 188, .90);
+    }
+    .dashboardChecklistItem.is-missing .dashboardChecklistEyebrow{
+      color:rgba(255, 168, 168, .90);
+    }
+    .dashboardChecklistTitle{
+      min-width:0;
+      font-size:17px;
+      line-height:1.15;
+      color:var(--text);
+    }
+    .dashboardChecklistDetail{
+      min-width:0;
+      font-size:11px;
+      line-height:1.45;
+      color:rgba(224, 234, 246, .76);
+    }
+    .dashboardChecklistAction{
+      min-width:0;
+      margin-top:2px;
+      font-size:10px;
+      line-height:1;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      color:rgba(205, 226, 255, .88);
+    }
     .metric{
       padding:14px;
       border-radius:16px;
@@ -10710,6 +10790,25 @@ textarea:focus-visible{
   .page-dashboard .dashboardHeroMetaRow,
   .page-dashboard .dashboardBriefMeta{
     gap:5px;
+  }
+
+  .page-dashboard .dashboardChecklist{
+    grid-template-columns:1fr;
+    gap:8px;
+    margin-top:12px;
+  }
+
+  .page-dashboard .dashboardChecklistItem{
+    padding:11px 12px;
+    border-radius:16px;
+  }
+
+  .page-dashboard .dashboardChecklistTitle{
+    font-size:15px;
+  }
+
+  .page-dashboard .dashboardChecklistDetail{
+    font-size:10.5px;
   }
 
   .page-dashboard .dashboardHeroMetaRow .trendChip,

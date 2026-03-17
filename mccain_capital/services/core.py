@@ -2189,6 +2189,7 @@ def dashboard():
     from mccain_capital.services import market_worker
     from mccain_capital.services import gamma_map_service
     from mccain_capital.repositories import analytics as analytics_repo
+    from mccain_capital.repositories import journal as journal_repo
     from mccain_capital.repositories import trades as trades_repo
 
     scope = trades_repo.account_scope_snapshot()
@@ -2297,8 +2298,9 @@ def dashboard():
     ytd_wins = int(ytd_stats.get("wins", 0) or 0)
     ytd_losses = int(ytd_stats.get("losses", 0) or 0)
     ytd_win_rate = float(ytd_stats.get("win_rate", 0.0))
-    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=app_runtime.today_iso(), q="")]
-    if scope_active and scope_start and app_runtime.today_iso() < scope_start:
+    today_key = app_runtime.today_iso()
+    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="")]
+    if scope_active and scope_start and today_key < scope_start:
         today_rows = []
     today_stats = trades_repo.trade_day_stats(today_rows)
     today_net = float(today_stats.get("total", 0.0))
@@ -2621,6 +2623,68 @@ def dashboard():
         today_count=today_count,
         today_net=today_net,
     )
+    journal_today_rows = [dict(r) for r in journal_repo.fetch_entries(d=today_key)]
+    journal_capture_count_today = 0
+    for row in journal_today_rows:
+        try:
+            payload = json.loads(row.get("template_payload") or "{}")
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        if str(payload.get("capture_screenshot_path") or "").strip():
+            journal_capture_count_today += 1
+    brief_ready = all(
+        str(daily_brief.get(field) or "").strip() for field in ("focus", "plan_a", "no_trade")
+    )
+    journal_count_today = len(journal_today_rows)
+    dashboard_checklist = [
+        {
+            "label": "Brief locked",
+            "status": "Ready" if brief_ready else "Needs tune",
+            "detail": (
+                "Focus, Plan A, and no-trade rule are set."
+                if brief_ready
+                else "Tighten the brief before adding risk."
+            ),
+            "done": brief_ready,
+            "href": "#daily-brief-card",
+            "action": "Review" if brief_ready else "Tune",
+        },
+        {
+            "label": "Session data",
+            "status": "Loaded" if today_count else "Missing",
+            "detail": (
+                f"{today_count} trade{'s' if today_count != 1 else ''} synced for today."
+                if today_count
+                else "No statement synced for today's session yet."
+            ),
+            "done": today_count > 0,
+            "href": "/trades" if today_count else "/trades/upload/statement",
+            "action": "Open" if today_count else "Upload",
+        },
+        {
+            "label": "Journal today",
+            "status": "Logged" if journal_count_today else "Missing",
+            "detail": (
+                f"{journal_count_today} entr{'y' if journal_count_today == 1 else 'ies'} logged"
+                + (
+                    f" · {journal_capture_count_today} capture{'s' if journal_capture_count_today != 1 else ''} attached."
+                    if journal_capture_count_today
+                    else "."
+                )
+                if journal_count_today
+                else "No debrief or quick capture logged for today yet."
+            ),
+            "done": journal_count_today > 0,
+            "href": (
+                f"/journal?d={today_key}"
+                if journal_count_today
+                else f"/journal/new?d={today_key}&entry_type=trade_debrief&link_all_day=1&auto_draft=1"
+            ),
+            "action": "Open" if journal_count_today else "Log",
+        },
+    ]
 
     dashboard_tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
     dashboard_tape_updated_label = _format_iso_et_label(dashboard_tape_updated_raw)
@@ -2674,6 +2738,7 @@ def dashboard():
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
         daily_brief=daily_brief,
+        dashboard_checklist=dashboard_checklist,
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),
