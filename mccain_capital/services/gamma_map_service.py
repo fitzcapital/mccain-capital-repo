@@ -24,7 +24,10 @@ try:
 except Exception:  # pragma: no cover - fallback for offline test envs
     go = None
 
-POLL_SECONDS = 900
+ACTIVE_POLL_SECONDS = 60
+SHOULDER_POLL_SECONDS = 180
+WEEKDAY_IDLE_POLL_SECONDS = 600
+WEEKEND_POLL_SECONDS = 1800
 MAX_SNAPSHOT_PAGES = 8
 CSV_FILENAME = "gamma_data.csv"
 PNG_FILENAME = "gamma_map.png"
@@ -86,6 +89,19 @@ class _FallbackFigure:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _gamma_poll_seconds(now_et: Optional[datetime] = None) -> int:
+    current = now_et.astimezone(app_runtime.TZ) if now_et else app_runtime.now_et()
+    if current.weekday() >= 5:
+        return WEEKEND_POLL_SECONDS
+
+    minutes = current.hour * 60 + current.minute
+    if 480 <= minutes <= 975:
+        return ACTIVE_POLL_SECONDS
+    if 360 <= minutes < 480 or 975 < minutes <= 1080:
+        return SHOULDER_POLL_SECONDS
+    return WEEKDAY_IDLE_POLL_SECONDS
 
 
 def _safe_float(v: Any) -> Optional[float]:
@@ -557,10 +573,12 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
         and abs(call_wall - put_wall) < 0.001
         and len(expo_df.index) > 1
     ):
-        alt_put = put_base.sort_values("put_side_gex", ascending=False)["strike"].tolist()
-        for strike in alt_put:
-            if abs(float(strike) - float(call_wall)) >= 0.001:
-                put_wall = float(strike)
+        alt_put = put_base.sort_values("put_side_gex", ascending=False)
+        for _, row in alt_put.iterrows():
+            strike = float(row["strike"])
+            if abs(strike - float(call_wall)) >= 0.001:
+                put_wall = strike
+                put_wall_gamma_per_point = float(row["put_side_gex"])
                 break
 
     return {
@@ -773,10 +791,10 @@ def _worker_loop() -> None:
                 _CACHE["diagnostics"] = dict(_CACHE.get("diagnostics") or {})
                 _CACHE["diagnostics"]["status"] = "error"
                 _CACHE["diagnostics"]["error"] = str(exc)
-                _CACHE["diagnostics"]["refresh_ms"] = int(POLL_SECONDS * 1000)
+                _CACHE["diagnostics"]["refresh_ms"] = int(_gamma_poll_seconds() * 1000)
                 if not _CACHE.get("asof"):
                     _CACHE["asof"] = _now_iso()
-        time.sleep(POLL_SECONDS)
+        time.sleep(_gamma_poll_seconds())
 
 
 def start_gamma_worker_once() -> None:

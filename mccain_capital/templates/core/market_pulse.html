@@ -2,86 +2,90 @@
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">Market News</div>
+        <div class="pill">Market Pulse</div>
         <div class="pageTitleRow candleTitleRow">
           <h2 class="pageTitle">What Matters For SPX</h2>
           <details class="candleInlineNote">
             <summary class="candleInlineNoteToggle" aria-label="Market news help">?</summary>
-            <div class="candleInlineNoteBody">Live market context for SPX-first trading: macro triggers, broad tape drivers, and watchlist headlines that can shift the session.</div>
+            <div class="candleInlineNoteBody">Live market context for SPX-first trading: macro triggers, broad tape drivers, and SPX structure that can shift the session.</div>
           </details>
         </div>
-        <div class="pageSub">
-          <span id="marketPulseSourceLabel">{{ source_label }}</span>
-          ·
-          <span id="marketPulseFetchedAt">{{ fetched_at or 'Awaiting live refresh' }}</span>
-        </div>
+        <div class="pageSub">Macro triggers, tape drivers, and SPX structure in one decision deck.</div>
       </div>
       <div class="actionRow">
         <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
         <button class="btn" id="viewModeToggle" type="button" aria-pressed="false">Execution Mode</button>
-        <span class="trendChip" id="marketPulseStreamStatus">Live stream connecting</span>
-        <span class="trendChip {% if spx_quote.get('source_badge_tone') %}{{ spx_quote.get('source_badge_tone') }}{% endif %}" id="marketPulseSourceMode">{{ spx_quote.get('source_badge_label') or 'Awaiting feed' }}</span>
-        <span class="tiny muted" id="marketPulseStreamFreshness">Awaiting first tick…</span>
         <a class="btn" href="/candle-opens">Candle Opens</a>
       </div>
     </div>
   </div>
 </div>
 
-{% if source_health and source_health.is_degraded %}
-<div class="card stack12 marketPulseSection"><div class="toolbar">
-  <div class="pill">Degraded Mode</div>
-  <div class="integrityAlert integrityAlert-warn">{{ source_health.banner }}</div>
-</div></div>
-{% endif %}
-
-<details class="card stack12 marketPulseSection marketPulseSetupCard marketPulseMobileFold" data-mobile-default="closed" open>
-  <summary class="marketPulseMobileSummary">
-    <span class="pill">Trade Setup Now</span>
-    <span class="marketPulseMobileSummaryTitle">Execution Map</span>
-    <span class="tiny muted">Bias, trigger, target, invalidation</span>
+{% set gamma_quality_tone = 'marketPulseTrustChip-critical' if gamma_quality.get('tone') == 'critical' else 'marketPulseTrustChip-warn' if gamma_quality.get('tone') == 'warn' else 'marketPulseTrustChip-ok' %}
+{% set trust_summary_bits = [] %}
+{% set _ = trust_summary_bits.append(spx_quote.get('source_badge_label') or 'Awaiting feed') %}
+{% set _ = trust_summary_bits.append(gamma_quality.get('warning') or 'Gamma aligned') %}
+{% set _ = trust_summary_bits.append('Next walls: ' ~ (spx_priority_context.get('next_levels_source_label') or '—')) %}
+<details class="card stack12 marketPulseSection marketPulseTrustRow marketPulseOpsFold">
+  <summary class="marketPulseOpsSummary">
+    <span class="pill">Live Data Status</span>
+    <span class="marketPulseMobileSummaryTitle">{{ trust_summary_bits|join(' · ') }}</span>
+    <span class="tiny muted">Freshness, source trust, and inferred vs provider-backed levels.</span>
   </summary>
   <div class="toolbar">
-  <div class="pill">Trade Setup Now</div>
-  <div class="supportLead" id="marketPulseSetupHeadline">Waiting for SPX structure to resolve.</div>
-  <div class="tiny muted" id="marketPulseSetupSubline">Build the plan from level interaction first, then wait for the 5-minute Strat trigger.</div>
-  <div class="marketPulseSetupGrid">
-    <div class="marketPulseSetupCell">
-      <div class="tiny muted">Location</div>
-      <strong id="marketPulseSetupLocation">—</strong>
-      <div class="tiny" id="marketPulseSetupLocationLine">Waiting for live structure.</div>
-    </div>
-    <div class="marketPulseSetupCell">
-      <div class="tiny muted">Bias</div>
-      <strong id="marketPulseSetupBias">—</strong>
-      <div class="tiny" id="marketPulseSetupBiasLine">No directional edge yet.</div>
-    </div>
-    <div class="marketPulseSetupCell">
-      <div class="tiny muted">5m Strat Trigger</div>
-      <strong id="marketPulseSetupTrigger">—</strong>
-      <div class="tiny" id="marketPulseSetupTriggerLine">Need a clean trigger at a level.</div>
-    </div>
-    <div class="marketPulseSetupCell">
-      <div class="tiny muted">5m Trigger State</div>
-      <strong id="marketPulseSetupTriggerState">—</strong>
-      <div class="tiny" id="marketPulseSetupTriggerStateLine">No active trigger quality yet.</div>
-    </div>
-    <div class="marketPulseSetupCell">
-      <div class="tiny muted">Next Liquidity</div>
-      <strong id="marketPulseSetupTarget">—</strong>
-      <div class="tiny" id="marketPulseSetupTargetLine">Path updates with live ticks.</div>
-    </div>
-    <div class="marketPulseSetupCell">
-      <div class="tiny muted">Invalidation</div>
-      <strong id="marketPulseSetupInvalidation">—</strong>
-      <div class="tiny" id="marketPulseSetupInvalidationLine">Respect the level that breaks the thesis.</div>
+    <div class="marketPulseTrustGrid">
+      <div class="marketPulseTrustCell">
+        <div class="tiny muted">Feed mode</div>
+        <div class="marketPulseTrustInline">
+          <span class="trendChip {% if spx_quote.get('source_badge_tone') %}{{ spx_quote.get('source_badge_tone') }}{% endif %}" id="marketPulseSourceMode">{{ spx_quote.get('source_badge_label') or 'Awaiting feed' }}</span>
+          <span class="tiny" id="marketPulseFetchedAt">{{ fetched_at or 'Awaiting live refresh' }}</span>
+        </div>
+        <div class="tiny muted" id="marketPulseSourceLabel">{{ source_label }}</div>
+      </div>
+      <div class="marketPulseTrustCell">
+        <div class="tiny muted">Live stream</div>
+        <div class="marketPulseTrustInline">
+          <span class="trendChip" id="marketPulseStreamStatus">Live stream connecting</span>
+          <span class="tiny" id="marketPulseStreamFreshness">Awaiting first tick…</span>
+        </div>
+      </div>
+      <div class="marketPulseTrustCell">
+        <div class="tiny muted">Gamma snapshot</div>
+        <div class="marketPulseTrustInline">
+          <span class="trendChip marketPulseTrustChip {{ gamma_quality_tone }}">{{ gamma_quality.get('warning') or 'Gamma aligned' }}</span>
+          <span class="tiny">{{ gamma_updated_label }}</span>
+        </div>
+        <div class="tiny muted">{{ gamma_quality.get('summary') }}</div>
+      </div>
+      <div class="marketPulseTrustCell">
+        <div class="tiny muted">Level sources</div>
+        <div class="marketPulseTrustStack">
+          <span class="tiny">Next walls: {{ spx_priority_context.get('next_levels_source_label') }}</span>
+          <span class="tiny">Expected move: {{ spx_priority_context.get('expected_move_source_label') }}</span>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="marketPulseSetupFooter">
-    <span class="trendChip" id="marketPulseExecutionTone">Execution plan loading</span>
-    <span class="tiny muted" id="marketPulseSetupPlan">Synthesizing gamma structure, volatility state, and nearest liquidity path…</span>
+ </details>
+
+<details id="marketPulseTradeReadCard" class="card stack12 marketPulseSection marketPulseSetupCard marketPulseActionableCard marketPulseMobileFold tradeRead-wait" data-mobile-default="closed" open>
+  <summary class="marketPulseMobileSummary">
+    <span class="pill">Trade Read</span>
+    <span class="marketPulseMobileSummaryTitle">Live Recommendation</span>
+    <span class="tiny muted">State, do this, avoid this, and next trigger.</span>
+  </summary>
+  <div class="toolbar">
+  <div class="pill">Trade Read</div>
+  <div class="marketPulseActionableHead">
+    <div class="marketPulseActionableLead">
+      <div class="marketPulseTradeReadStateWrap">
+        <span class="trendChip marketPulseTradeReadStateChip" id="marketPulseTradeReadState">Building read</span>
+      </div>
+      <div class="supportLead marketPulseTradeReadHeadline" id="marketPulseSetupHeadline">Waiting for SPX structure to resolve.</div>
+      <div class="tiny muted" id="marketPulseSetupSubline">Build the plan from level interaction first, then wait for the 5-minute Strat trigger.</div>
+    </div>
   </div>
-  <div class="marketPulseDecisionRail">
+  <div class="marketPulseDecisionRail marketPulseDecisionRail-top">
     <div class="marketPulseDecisionBlock marketPulseDecisionBlock-do">
       <div class="tiny muted">Do This</div>
       <strong id="marketPulseDoThis">Wait for price to interact with a real level, then take the clean trigger.</strong>
@@ -93,6 +97,49 @@
       <div class="tiny" id="marketPulseAvoidThisLine">No blind anticipation away from liquidity.</div>
     </div>
   </div>
+  <details class="marketPulseOpsFold marketPulseTradeReadMore">
+    <summary class="marketPulseOpsSummary">
+      <span class="pill">More Detail</span>
+      <span class="marketPulseMobileSummaryTitle">Execution map</span>
+      <span class="tiny muted">Location, bias, trigger, invalidation, and liquidity path.</span>
+    </summary>
+    <div class="toolbar">
+      <div class="marketPulseActionableGrid">
+        <div class="marketPulseSetupCell">
+          <div class="tiny muted">Location</div>
+          <strong id="marketPulseSetupLocation">—</strong>
+          <div class="tiny" id="marketPulseSetupLocationLine">Waiting for live structure.</div>
+        </div>
+        <div class="marketPulseSetupCell">
+          <div class="tiny muted">Bias</div>
+          <strong id="marketPulseSetupBias">—</strong>
+          <div class="tiny" id="marketPulseSetupBiasLine">No directional edge yet.</div>
+        </div>
+        <div class="marketPulseSetupCell">
+          <div class="tiny muted">5m Strat Trigger</div>
+          <strong id="marketPulseSetupTrigger">—</strong>
+          <div class="tiny" id="marketPulseSetupTriggerLine">Need a clean trigger at a level.</div>
+        </div>
+        <div class="marketPulseSetupCell">
+          <div class="tiny muted">Invalidation</div>
+          <strong id="marketPulseSetupInvalidation">—</strong>
+          <div class="tiny" id="marketPulseSetupInvalidationLine">Respect the level that breaks the thesis.</div>
+        </div>
+      </div>
+      <div class="marketPulseActionableFooter">
+        <div class="marketPulseSetupCell">
+          <div class="tiny muted">Next Liquidity</div>
+          <strong id="marketPulseSetupTarget">—</strong>
+          <div class="tiny" id="marketPulseSetupTargetLine">Path updates with live ticks.</div>
+        </div>
+        <div class="marketPulseSetupCell">
+          <div class="tiny muted">5m Trigger State</div>
+          <strong id="marketPulseSetupTriggerState">—</strong>
+          <div class="tiny" id="marketPulseSetupTriggerStateLine">No active trigger quality yet.</div>
+        </div>
+      </div>
+    </div>
+  </details>
   </div>
 </details>
 
@@ -125,26 +172,7 @@
       · {{ '%+.2f'|format(spx_quote.get('change_pct')) if spx_quote.get('change_pct') is not none else '—' }}%
     </div>
     <div class="tiny muted" id="spxPrioritySourceBadge">{{ spx_quote.get('source_badge_label') or source_label }}</div>
-    <div class="tiny" id="spxPriorityStateLine">State: {{ spx_quote.get('market_state') or 'Awaiting feed' }}</div>
-    <div class="tiny" id="spxPriorityRangeLine">Range: {{ spx_quote.get('day_range') or '—' }}</div>
-    <div class="tiny muted">Primary cash index proxy for SPX options context.</div>
-    <div class="tiny"><a href="{{ spx_quote.get('yahoo_href') or 'https://finance.yahoo.com/quote/%5EGSPC' }}" target="_blank" rel="noopener">View on Yahoo</a></div>
-  </div>
-  <div class="supportLead" id="spxPrioritySpotLead">
-    {% if spx_quote and spx_quote.get('price') is not none %}
-      {{ '%.2f'|format(spx_quote.get('price')) }}
-      · {{ '%+.2f'|format(spx_quote.get('change')) }}
-      · {{ '%+.2f'|format(spx_quote.get('change_pct')) }}%
-    {% else %}
-      Awaiting SPX quote
-    {% endif %}
-    · {{ spx_quote.get('market_state') or 'Awaiting feed' }}
-  </div>
-  <div class="tiny stack8" id="spxPriorityFreshnessLine">
-    {{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}
-    {% if spx_quote.get('data_reason') %}
-      · Reason: {{ spx_quote.get('data_reason') }}
-    {% endif %}
+    <div class="tiny" id="spxPriorityStateLine">{{ spx_quote.get('market_state') or 'Awaiting feed' }} · <span id="spxPriorityRangeLine">{{ spx_quote.get('day_range') or '—' }}</span></div>
   </div>
   <div class="tiny stack8">
     Tick Ping: <span id="spxPriorityTickPing">—</span>
@@ -313,7 +341,16 @@
             {{ (gamma_quality or {}).get('summary') or 'Non-live spot · OI age unknown · 0 contracts' }}
             · Updated {{ gamma_updated_label }}
           </div>
+          {% if gamma_quality and gamma_quality.get('warning') %}
+            <div class="tiny {% if gamma_quality.get('tone') == 'critical' %}metaRed{% else %}metaWarm{% endif %}">
+              {{ gamma_quality.get('warning') }}
+            </div>
+          {% endif %}
         </div>
+      </div>
+      <div class="tiny muted stack8">
+        Next walls: {{ spx_priority_context.get('next_levels_source_label') or '—' }}
+        · Expected move: {{ spx_priority_context.get('expected_move_source_label') or '—' }}
       </div>
     </div>
   </details>
@@ -453,8 +490,6 @@
           <div class="tiny muted" data-role="reason-line" hidden></div>
         {% endif %}
         <div class="tiny" data-role="range-line">Range: {{ q.day_range }}</div>
-        <div class="tiny muted">{{ q.focus }}</div>
-        <div class="tiny"><a href="{{ q.yahoo_href }}" target="_blank" rel="noopener">View on Yahoo</a></div>
       </div>
     {% endfor %}
   </div>
@@ -496,9 +531,9 @@
     <div class="sub">USD triggers queued</div>
   </div>
   <div class="metric">
-    <div class="label">Drivers</div>
-    <div class="value">{{ market_items|length }}</div>
-    <div class="sub">Relevant market headlines</div>
+    <div class="label">Tape Drivers</div>
+    <div class="value">{{ [market_items|length, 3]|min }}</div>
+    <div class="sub">Fresh SPX-relevant headlines</div>
   </div>
 </div>
 
@@ -535,21 +570,28 @@
   </div></div>
 
   <div class="card"><div class="toolbar">
-    <div class="pill">Market Drivers</div>
-    <div class="tiny stack8">Filtered live headlines that are most likely to move SPX, QQQ, IWM, SPY, rates, or vol.</div>
+    <div class="pill">Tape Drivers</div>
+    <div class="tiny stack8">Only the freshest index, rates, vol, and mega-cap headlines that are worth caring about right now.</div>
     <div class="hr"></div>
     {% if market_items %}
       <div class="newsListCompact">
-        {% for item in market_items %}
+        {% for item in market_items[:3] %}
           <details class="newsCollapse">
             <summary class="newsCollapseSummary">
               <span class="trendChip">{{ item.tag }}</span>
               <span class="newsCollapseTitle">{{ item.headline }}</span>
-              <span class="tiny muted">{{ item.source }}{% if item.published_label %} · {{ item.published_label }}{% endif %}</span>
+              <span class="tiny muted">
+                {{ item.source }}
+                {% if item.stale %} · Stale{% endif %}
+                {% if item.published_label %} · {{ item.published_label }}{% endif %}
+              </span>
             </summary>
             <div class="newsCollapseBody">
               <div class="tiny">{{ item.summary }}</div>
-              <div class="tiny muted">{{ item.why }}</div>
+              <div class="tiny muted">
+                {{ item.why }}
+                {% if item.absolute_label %} · {{ item.absolute_label }}{% endif %}
+              </div>
               {% if item.url %}
                 <a class="btn" href="{{ item.url }}" target="_blank" rel="noopener">Open source</a>
               {% endif %}
@@ -559,42 +601,12 @@
       </div>
     {% else %}
       <div class="chartEmpty">
-        <div class="chartEmptyTitle">No market headlines loaded.</div>
-        <div class="chartEmptySub">Finnhub did not return a usable market-news set in this refresh window.</div>
+        <div class="chartEmptyTitle">No fresh market drivers loaded.</div>
+        <div class="chartEmptySub">The current refresh window did not return enough fresh index, rates, or vol headlines to trust.</div>
       </div>
     {% endif %}
   </div></div>
 </div>
-
-<div class="card stack12 researchOnly marketPulseSection"><div class="toolbar">
-  <div class="pill">Watchlist Headlines</div>
-  <div class="tiny stack8">One live headline for each ticker on your leadership watch so you can spot what is dragging or lifting the tape.</div>
-  <div class="hr"></div>
-  {% if watchlist_items %}
-    <div class="newsWatchGrid">
-      {% for item in watchlist_items %}
-        <details class="newsCollapse watch">
-          <summary class="newsCollapseSummary">
-            <span class="trendChip">{{ item.symbol or item.tag }}</span>
-            <span class="newsCollapseTitle watchHeadline">{{ item.headline }}</span>
-            <span class="tiny muted">{{ item.source }}{% if item.published_label %} · {{ item.published_label }}{% endif %}</span>
-          </summary>
-          <div class="newsCollapseBody">
-            <div class="tiny">{{ item.summary }}</div>
-            {% if item.url %}
-              <a class="btn" href="{{ item.url }}" target="_blank" rel="noopener">Open source</a>
-            {% endif %}
-          </div>
-        </details>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="chartEmpty">
-      <div class="chartEmptyTitle">Watchlist news unavailable.</div>
-      <div class="chartEmptySub">Ticker-specific headlines were not returned by Finnhub in this refresh window.</div>
-    </div>
-  {% endif %}
-</div></div>
 
 <div id="marketGuardrailMeta"
      data-active="{{ '1' if guardrail.active else '0' }}"

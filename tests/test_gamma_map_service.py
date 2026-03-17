@@ -1,5 +1,8 @@
+from datetime import datetime
+
 import pandas as pd
 
+from mccain_capital import runtime as app_runtime
 from mccain_capital.services import gamma_map_service as svc
 
 
@@ -103,3 +106,28 @@ def test_identify_levels_prefers_split_call_put_walls_around_spot():
     levels = svc.identify_levels(df, spot=5102.0)
     assert levels["call_wall"] == 5110.0
     assert levels["put_wall"] == 5100.0
+
+
+def test_identify_levels_keeps_put_wall_strength_in_sync_when_wall_is_reassigned():
+    df = pd.DataFrame(
+        [
+            {"strike": 5100.0, "gex": 20.0, "call_side_gex": 300.0, "put_side_gex": 280.0},
+            {"strike": 5095.0, "gex": -12.0, "call_side_gex": 40.0, "put_side_gex": 190.0},
+        ]
+    )
+
+    levels = svc.identify_levels(df, spot=5099.0)
+
+    assert levels["call_wall"] == 5100.0
+    assert levels["put_wall"] == 5095.0
+    assert levels["put_wall_gamma_per_point"] == 190.0
+
+
+def test_gamma_poll_seconds_is_faster_during_market_hours():
+    current = datetime(2026, 3, 16, 10, 0, tzinfo=app_runtime.TZ)
+    assert svc._gamma_poll_seconds(current) == svc.ACTIVE_POLL_SECONDS
+
+
+def test_gamma_poll_seconds_is_slower_on_weekends():
+    current = datetime(2026, 3, 14, 10, 0, tzinfo=app_runtime.TZ)
+    assert svc._gamma_poll_seconds(current) == svc.WEEKEND_POLL_SECONDS

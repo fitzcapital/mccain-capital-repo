@@ -467,6 +467,18 @@ def build_spx_priority_context(
     # TODO(api): wire backend payload for next_call_wall_above and next_put_wall_below.
     next_call_from_backend = _safe_float(gamma_snapshot.get("next_call_wall_above"))
     next_put_from_backend = _safe_float(gamma_snapshot.get("next_put_wall_below"))
+    next_levels_provider_count = int(next_call_from_backend is not None) + int(
+        next_put_from_backend is not None
+    )
+    if next_levels_provider_count == 2:
+        next_levels_source_label = "Provider-backed"
+    elif next_levels_provider_count == 1:
+        next_levels_source_label = "Mixed provider + inferred"
+    else:
+        next_levels_source_label = "Inferred from strike ladder"
+    expected_move_source_label = (
+        "Provider-backed" if expected_move is not None else "Inferred from wall spacing"
+    )
 
     # TODO(api): wire backend expected_move payload when provider is available.
     data: GammaContextInput = {
@@ -513,6 +525,8 @@ def build_spx_priority_context(
             ),
             str(metrics.get("wall_proximity_state") or "unavailable"),
         ),
+        "expected_move_source_label": expected_move_source_label,
+        "next_levels_source_label": next_levels_source_label,
         "trap_zone_label": str(metrics.get("trap_zone_state") or "unavailable").replace("_", " "),
         "missing_expected_move": expected_move is None and metrics.get("expected_move_up") is None,
         "missing_next_levels": (

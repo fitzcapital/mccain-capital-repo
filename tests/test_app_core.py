@@ -1,5 +1,6 @@
 """Core app behavior tests."""
 
+from datetime import datetime
 import json
 
 from mccain_capital.runtime import db, get_setting_value, now_iso, today_iso
@@ -626,6 +627,54 @@ def test_market_pulse_includes_tesla_in_quotes_and_watchlist():
     assert "TSLA" in set(core_service.MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS)
 
 
+def test_market_news_item_marks_stale_headlines_and_uses_relative_labels():
+    now_et = datetime(2026, 3, 16, 10, 0, tzinfo=core_service.app_runtime.TZ)
+    fresh = core_service._market_news_item(
+        {
+            "headline": "Treasury yields cool into the open",
+            "summary": "Rates ease ahead of cash session.",
+            "source": "Finnhub",
+            "url": "https://example.com/fresh",
+            "datetime": int(
+                datetime(2026, 3, 16, 9, 15, tzinfo=core_service.app_runtime.TZ).timestamp()
+            ),
+            "related": "SPX",
+        },
+        now_et=now_et,
+    )
+    stale = core_service._market_news_item(
+        {
+            "headline": "Legacy index driver",
+            "summary": "Older market context.",
+            "source": "Yahoo Finance RSS",
+            "url": "https://example.com/stale",
+            "datetime": int(
+                datetime(2026, 3, 14, 12, 0, tzinfo=core_service.app_runtime.TZ).timestamp()
+            ),
+            "related": "SPY",
+        },
+        now_et=now_et,
+    )
+
+    assert fresh["stale"] is False
+    assert "ago" in fresh["published_label"] or "Today" in fresh["published_label"]
+    assert stale["stale"] is True
+    assert stale["absolute_label"]
+
+
+def test_market_news_recent_filter_drops_old_rows():
+    now_et = datetime(2026, 3, 16, 10, 0, tzinfo=core_service.app_runtime.TZ)
+    fresh_stamp = int(datetime(2026, 3, 16, 7, 0, tzinfo=core_service.app_runtime.TZ).timestamp())
+    old_stamp = int(datetime(2026, 3, 13, 7, 0, tzinfo=core_service.app_runtime.TZ).timestamp())
+
+    assert core_service._market_news_is_recent(
+        fresh_stamp, now_et, core_service.MARKET_NEWS_MAX_AGE_SECONDS
+    )
+    assert not core_service._market_news_is_recent(
+        old_stamp, now_et, core_service.MARKET_NEWS_MAX_AGE_SECONDS
+    )
+
+
 def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     monkeypatch.setattr(
         core_service,
@@ -689,11 +738,82 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"marketPulseStreamStatus" in resp.data
     assert b"Tradier Live Quote" in resp.data
     assert b"Yahoo Fallback" in resp.data
-    assert b"Trade Setup Now" in resp.data
+    assert b"Trade Read" in resp.data
+    assert b"Live Data Status" in resp.data
     assert b"marketPulseSetupHeadline" in resp.data
+    assert b"marketPulseTradeReadState" in resp.data
     assert b"marketPulseLoadingOverlay" in resp.data
     assert b"Loading Market Pulse" in resp.data
     assert b"autoRefreshToggle" not in resp.data
+
+
+def test_market_pulse_news_surface_keeps_tape_drivers_and_removes_watchlist_block(
+    client, monkeypatch
+):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 16, 2026 10:30 AM ET",
+            "source_label": "Massive market feed",
+            "source_note": "",
+            "quotes": [],
+            "integrity": {},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {
+            "available": True,
+            "source_note": "Fresh Finnhub drivers plus Forex Factory macro triggers.",
+            "macro_events": [
+                {
+                    "headline": "Core Retail Sales m/m",
+                    "summary": "High impact scheduled event.",
+                    "source": "Forex Factory",
+                    "url": "/candle-opens",
+                    "published_label": "Wed 8:30 AM ET",
+                    "tag": "Macro",
+                    "why": "Calendar event",
+                }
+            ],
+            "market_items": [
+                {
+                    "headline": "Treasury yields ease before open",
+                    "summary": "Rates cool into the session.",
+                    "source": "Finnhub",
+                    "url": "https://example.com/1",
+                    "published_label": "12m ago",
+                    "absolute_label": "Mar 16, 10:18 AM ET",
+                    "tag": "Rates",
+                    "why": "Rates / liquidity backdrop",
+                    "stale": False,
+                }
+            ],
+            "watchlist_items": [
+                {
+                    "headline": "Legacy TSLA headline",
+                    "summary": "Older single-name item.",
+                    "source": "Finnhub",
+                    "url": "https://example.com/tsla",
+                    "published_label": "Yesterday 3:10 PM ET",
+                    "absolute_label": "Mar 15, 3:10 PM ET",
+                    "tag": "TSLA",
+                    "symbol": "TSLA",
+                    "why": "Single-name context",
+                    "stale": True,
+                }
+            ],
+        },
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Tape Drivers" in resp.data
+    assert b"Watchlist Headlines" not in resp.data
+    assert b"Treasury yields ease before open" in resp.data
 
 
 def test_market_pulse_refresh_query_forces_snapshot_refresh(client, monkeypatch):
@@ -921,7 +1041,7 @@ def test_market_pulse_empty_state_uses_consistent_feed_copy(client, monkeypatch)
     body = resp.get_data(as_text=True)
     assert "Awaiting feed" in body
     assert "Awaiting first tick" in body
-    assert "Awaiting SPX quote" in body
+    assert "No trend" in body
     assert "Awaiting contract rows." in body
     assert "Fallback Snapshot" in body
 
@@ -1315,8 +1435,28 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
     assert b"245.0 million" in resp.data
     assert b"198.0 million" in resp.data
     assert b"5064.25 - 5098.75" in resp.data
+    assert b"Next walls: Inferred from strike ladder" in resp.data
+    assert b"Expected move: Inferred from wall spacing" in resp.data
     assert b"Best Contracts" in resp.data
     assert b"SPXW 2026-03-06 5125C" in resp.data
+
+
+def test_market_pulse_gamma_quality_flags_stale_snapshots(client):
+    quotes = [
+        {
+            "label": "SPX",
+            "data_state": "live",
+            "data_reason": "tradier_live",
+        }
+    ]
+    gamma_snapshot = {
+        "asof": "2026-03-16T10:25:00-04:00",
+        "diagnostics": {"status": "ok", "contracts_used": 84},
+    }
+    now_et = datetime(2026, 3, 16, 10, 40, tzinfo=core_service.app_runtime.TZ)
+    quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
+    assert quality["tone"] == "warn"
+    assert quality["warning"] == "Gamma stale >5m"
 
 
 def test_market_pulse_renders_source_health_and_degraded_banner(client, monkeypatch):
@@ -1362,7 +1502,7 @@ def test_market_pulse_renders_source_health_and_degraded_banner(client, monkeypa
     resp = client.get("/market-pulse", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Source Health" in resp.data
-    assert b"Degraded Mode" in resp.data
+    assert b"Live Data Status" in resp.data
 
 
 def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):

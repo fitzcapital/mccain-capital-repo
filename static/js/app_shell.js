@@ -384,34 +384,41 @@
       const nyMinutes = (Number(hm[0] || 0) * 60) + Number(hm[1] || 0);
       const clock = doc.getElementById("etClock");
       const mode = doc.getElementById("modePill");
-      const market = doc.getElementById("marketState");
+      const modeLabel = doc.getElementById("sessionStateLabel");
       if (clock) clock.textContent = `${timeStr} ET`;
       if (mode) {
         const isWeekend = weekday === "Sat" || weekday === "Sun";
-        mode.classList.remove("modeStateWeekend", "modeStateStudy", "modeStateTrading", "modeStateLoading");
+        mode.classList.remove(
+          "modeStateWeekend",
+          "modeStatePre",
+          "modeStateTrading",
+          "modeStatePost",
+          "modeStateLoading"
+        );
+        let modeText = "Weekend";
+        let modeTitle = "US market is closed for the weekend";
         if (isWeekend) {
-          mode.textContent = "Weekend";
+          modeText = "Weekend";
           mode.classList.add("modeStateWeekend");
         } else if (nyMinutes < 570) {
-          mode.textContent = "Pre-Market";
-          mode.classList.add("modeStateStudy");
+          modeText = "Pre-Market";
+          modeTitle = "US market is closed before the regular session opens at 9:30 AM ET";
+          mode.classList.add("modeStatePre");
         } else if (nyMinutes < 960) {
-          mode.textContent = "Market Session";
+          modeText = "Regular Session";
+          modeTitle = "US market is open (9:30 AM - 4:00 PM ET)";
           mode.classList.add("modeStateTrading");
         } else {
-          mode.textContent = "After Close";
-          mode.classList.add("modeStateStudy");
+          modeText = "After Hours";
+          modeTitle = "US market is closed after the regular session ends at 4:00 PM ET";
+          mode.classList.add("modeStatePost");
         }
-      }
-      if (market) {
-        const isWeekend = weekday === "Sat" || weekday === "Sun";
-        const isOpen = !isWeekend && nyMinutes >= 570 && nyMinutes < 960;
-        market.textContent = isOpen ? "Open" : "Closed";
-        market.classList.toggle("marketOpen", isOpen);
-        market.classList.toggle("marketClosed", !isOpen);
-        market.title = isOpen
-          ? "US market is open (9:30 AM - 4:00 PM ET)"
-          : "US market is closed";
+        if (modeLabel) {
+          modeLabel.textContent = modeText;
+        } else {
+          mode.textContent = modeText;
+        }
+        mode.title = modeTitle;
       }
     } catch (err) {
       console.error(err);

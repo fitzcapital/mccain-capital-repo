@@ -537,8 +537,8 @@
     if (derived.noTradeCenter) {
       return {
         tone: "warn",
-        headline: "No trade in the center. Wait for the edge.",
-        subline: `Structure is compressed between ${formatNumber(putWall, 0)} and ${formatNumber(callWall, 0)} with gamma flip nearby.`,
+        headline: "No trade in the center.",
+        subline: `Compressed between ${formatNumber(putWall, 0)} and ${formatNumber(callWall, 0)} near gamma flip.`,
         location: "Inside the no-trade center",
         locationLine: "Price is too close to the flip/wall cluster to force an intraday read.",
         bias: "Neutral / responsive",
@@ -549,11 +549,11 @@
         targetLine: `Watch for movement toward ${formatNumber(putWall, 0)} or ${formatNumber(callWall, 0)} before building a path.`,
         invalidation: "No thesis yet",
         invalidationLine: "If you cannot define the edge first, there is no valid entry.",
-        plan: "Let price interact with a real level first. No mid-range entries.",
-        doThis: "Wait for an edge touch, then re-evaluate the side.",
-        doThisLine: "Only build a trade after price tags put wall, call wall, or cleanly accepts away from the flip.",
-        avoidThis: "Avoid all center-board entries.",
-        avoidThisLine: "No 5m trigger in the middle counts as an edge.",
+        plan: "Wait for wall interaction first.",
+        doThis: "Wait for a real edge first.",
+        doThisLine: "Reassess only after put wall or call wall interaction.",
+        avoidThis: "Do not trade the center.",
+        avoidThisLine: "Mid-range triggers do not count.",
       };
     }
 
@@ -972,6 +972,40 @@
     if (tone) node.classList.add(tone);
   };
 
+  const updateTradeReadState = (executionPlan) => {
+    const card = document.getElementById("marketPulseTradeReadCard");
+    const chip = document.getElementById("marketPulseTradeReadState");
+    const tone = String((executionPlan || {}).tone || "neutral");
+
+    let stateClass = "tradeRead-wait";
+    let chipClass = "tradeReadChip-wait";
+    let label = "Wait for Edge";
+
+    if (tone === "warn") {
+      stateClass = "tradeRead-stand-down";
+      chipClass = "tradeReadChip-stand-down";
+      label = "Stand Down";
+    } else if (tone === "positive") {
+      stateClass = "tradeRead-tradeable";
+      chipClass = "tradeReadChip-tradeable";
+      label = "Tradeable Long";
+    } else if (tone === "negative") {
+      stateClass = "tradeRead-tradeable";
+      chipClass = "tradeReadChip-tradeable";
+      label = "Tradeable Short";
+    }
+
+    if (card) {
+      card.classList.remove("tradeRead-stand-down", "tradeRead-wait", "tradeRead-tradeable");
+      card.classList.add(stateClass);
+    }
+    if (chip) {
+      chip.textContent = label;
+      chip.classList.remove("tradeReadChip-stand-down", "tradeReadChip-wait", "tradeReadChip-tradeable");
+      chip.classList.add(chipClass);
+    }
+  };
+
   const updateTapeSummary = (prices) => {
     const tracked = tapeCards
       .map((card) => String(card.dataset.symbol || "").toUpperCase())
@@ -1122,12 +1156,6 @@
     const spxAbsChange = inferAbsoluteChange(spxQuote.price, spxQuote.change_pct);
 
     setText("spxPrioritySpotValue", formatNumber(input.spot, 2));
-    setText(
-      "spxPrioritySpotLead",
-      input.spot === null
-        ? "SPX quote unavailable"
-        : `${formatNumber(input.spot, 2)} · ${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`
-    );
     setText("spxPriorityGammaFlipValue", formatNumber(input.gammaFlip, 0));
     setText("spxPriorityCallWallValue", formatNumber(input.callWall, 0));
     setText("spxPriorityPutWallValue", formatNumber(input.putWall, 0));
@@ -1190,14 +1218,11 @@
     );
     updateStateChip(document.getElementById("spxPriorityStateChip"), spxState);
     setText("spxPriorityFreshness", formatEtLabel(tickTimeRaw));
-    setText(
-      "spxPriorityFreshnessLine",
-      `${formatEtLabel(tickTimeRaw)}${spxQuote.provider ? ` · ${spxQuote.provider}` : ""}`
-    );
     setText("spxPrioritySourceBadge", sourceBadgeLabel(spxQuote));
     setText("marketPulseSourceMode", sourceBadgeLabel(spxQuote));
     setText("spxPriorityChangeLine", `${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`);
-    setText("spxPriorityRangeLine", `Range: ${formatRange(spxPoints)}`);
+    setText("spxPriorityStateLine", `${spxQuote.market_state || "Awaiting feed"} · ${formatRange(spxPoints)}`);
+    setText("spxPriorityRangeLine", formatRange(spxPoints));
     updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), spxPoints, sparkTone(spxQuote.change_pct));
     applyGlowState([shell, spotPanel], spxQuote.change_pct);
     setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
@@ -1220,12 +1245,11 @@
     setText("marketPulseSetupTargetLine", executionPlan.targetLine);
     setText("marketPulseSetupInvalidation", executionPlan.invalidation);
     setText("marketPulseSetupInvalidationLine", executionPlan.invalidationLine);
-    setText("marketPulseSetupPlan", executionPlan.plan);
     setText("marketPulseDoThis", executionPlan.doThis);
     setText("marketPulseDoThisLine", executionPlan.doThisLine);
     setText("marketPulseAvoidThis", executionPlan.avoidThis);
     setText("marketPulseAvoidThisLine", executionPlan.avoidThisLine);
-    setChipTone("marketPulseExecutionTone", executionPlan.tone === "positive" ? "Long-biased plan" : executionPlan.tone === "negative" ? "Short-biased plan" : executionPlan.tone === "warn" ? "Stand down" : "Responsive plan", executionPlan.tone);
+    updateTradeReadState(executionPlan);
 
     setBullets("spxPriorityNarrative", bullets);
     setBadges("spxPriorityWarningBadges", badges);

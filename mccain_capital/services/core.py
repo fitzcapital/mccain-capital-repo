@@ -69,6 +69,9 @@ MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD = 2
 MARKET_NEWS_CACHE_TTL_SECONDS = 900
 MARKET_NEWS_RSS_TIMEOUT_SECONDS = 1.25
 MARKET_NEWS_RSS_SYMBOL_LIMIT = 5
+MARKET_NEWS_FRESH_SECONDS = 12 * 60 * 60
+MARKET_NEWS_MAX_AGE_SECONDS = 36 * 60 * 60
+WATCHLIST_NEWS_MAX_AGE_SECONDS = 48 * 60 * 60
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 FINNHUB_API_KEY = (os.environ.get("FINNHUB_API_KEY") or "").strip()
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
@@ -1162,9 +1165,12 @@ def _gamma_data_quality(
     spx_state = str(spx.get("data_state") or "").lower()
     spx_reason = str(spx.get("data_reason") or "").lower()
     spot_live = spx_state == "live" and spx_reason.startswith("tradier")
+    diagnostics = dict(gamma_snapshot.get("diagnostics") or {})
+    gamma_status = str(diagnostics.get("status") or "waiting").lower()
 
     asof_raw = str(gamma_snapshot.get("asof") or "").strip()
     oi_age = "unknown"
+    age_s = None
     if asof_raw:
         try:
             asof_dt = datetime.fromisoformat(asof_raw.replace("Z", "+00:00")).astimezone(
@@ -1181,13 +1187,35 @@ def _gamma_data_quality(
             oi_age = "unknown"
 
     contracts_used = int(((gamma_snapshot.get("diagnostics") or {}).get("contracts_used")) or 0)
-    tone = "ok" if spot_live and contracts_used >= 50 else "warn"
+    warning = ""
+    if gamma_status == "error":
+        tone = "critical"
+        warning = "Gamma refresh error"
+    elif age_s is None:
+        tone = "critical"
+        warning = "Gamma timestamp missing"
+    elif age_s > 900:
+        tone = "critical"
+        warning = "Gamma stale >15m"
+    elif age_s > 300:
+        tone = "warn"
+        warning = "Gamma stale >5m"
+    elif not spot_live:
+        tone = "warn"
+        warning = "Spot not live"
+    elif contracts_used < 50:
+        tone = "warn"
+        warning = "Thin contract coverage"
+    else:
+        tone = "ok"
+
     return {
         "tone": tone,
         "summary": (
             f"{'Live spot' if spot_live else 'Non-live spot'} · "
             f"OI age {oi_age} · {contracts_used} contracts"
         ),
+        "warning": warning,
     }
 
 
@@ -1388,6 +1416,46 @@ def _market_news_timestamp_label(stamp: Any) -> str:
     return datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ).strftime("%b %-d, %-I:%M %p ET")
 
 
+def _market_news_age_seconds(stamp: Any, now_et: datetime) -> int | None:
+    if not isinstance(stamp, (int, float)):
+        return None
+    try:
+        return max(0, int(now_et.timestamp()) - int(stamp))
+    except Exception:
+        return None
+
+
+def _market_news_age_label(stamp: Any, now_et: datetime) -> str:
+    age_s = _market_news_age_seconds(stamp, now_et)
+    if age_s is None:
+        return ""
+    if age_s < 3600:
+        mins = max(1, age_s // 60)
+        return f"{mins}m ago"
+    if age_s < 12 * 3600:
+        return f"{age_s // 3600}h ago"
+
+    published = datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ)
+    if published.date() == now_et.date():
+        return published.strftime("Today %-I:%M %p ET")
+    if published.date() == (now_et.date() - timedelta(days=1)):
+        return published.strftime("Yesterday %-I:%M %p ET")
+    return published.strftime("%b %-d, %-I:%M %p ET")
+
+
+def _market_news_is_recent(stamp: Any, now_et: datetime, max_age_seconds: int) -> bool:
+    age_s = _market_news_age_seconds(stamp, now_et)
+    return age_s is not None and age_s <= int(max_age_seconds)
+
+
+def _market_news_row_priority(row: Dict[str, Any], now_et: datetime) -> tuple[int, int, int]:
+    score = _market_news_score(row)
+    age_s = _market_news_age_seconds(row.get("datetime"), now_et)
+    freshness_bucket = 0 if age_s is not None and age_s <= MARKET_NEWS_FRESH_SECONDS else 1
+    recency_key = -(int(row.get("datetime") or 0))
+    return (freshness_bucket, -score, recency_key)
+
+
 def _market_news_theme(text: str) -> Tuple[str, str]:
     raw = text.lower()
     themes = [
@@ -1461,22 +1529,26 @@ def _market_news_score(row: Dict[str, Any]) -> int:
 
 
 def _market_news_item(
-    row: Dict[str, Any], *, symbol: str = "", forced_tag: str = ""
+    row: Dict[str, Any], *, now_et: datetime, symbol: str = "", forced_tag: str = ""
 ) -> Dict[str, Any]:
     headline = str(row.get("headline") or "").strip()
     summary = str(row.get("summary") or "").strip()
     source = str(row.get("source") or "Source").strip() or "Source"
     url = str(row.get("url") or "").strip()
     tag, why = _market_news_theme(f"{headline} {summary} {row.get('related') or ''}")
+    age_s = _market_news_age_seconds(row.get("datetime"), now_et)
+    stale = bool(age_s is not None and age_s > MARKET_NEWS_FRESH_SECONDS)
     return {
         "headline": headline or "Market headline",
         "summary": summary or why,
         "source": source,
         "url": url,
-        "published_label": _market_news_timestamp_label(row.get("datetime")),
+        "published_label": _market_news_age_label(row.get("datetime"), now_et),
+        "absolute_label": _market_news_timestamp_label(row.get("datetime")),
         "tag": forced_tag or tag,
         "why": why,
         "symbol": symbol,
+        "stale": stale,
     }
 
 
@@ -1580,7 +1652,7 @@ def _market_news_snapshot() -> Dict[str, Any]:
 
     market_items: List[Dict[str, Any]] = []
     watchlist_items: List[Dict[str, Any]] = []
-    source_note = "Yahoo Finance RSS watchlist headlines plus Forex Factory macro triggers."
+    source_note = "Fresh drivers from Yahoo Finance RSS plus Forex Factory macro triggers."
     if FINNHUB_API_KEY:
         general_payload = _market_pulse_json_request_any(
             FINNHUB_BASE_URL + "/news",
@@ -1589,13 +1661,14 @@ def _market_news_snapshot() -> Dict[str, Any]:
         )
         market_rows = general_payload if isinstance(general_payload, list) else []
         relevant_general = [
-            row for row in market_rows if isinstance(row, dict) and _market_news_score(row) >= 4
+            row
+            for row in market_rows
+            if isinstance(row, dict)
+            and _market_news_score(row) >= 4
+            and _market_news_is_recent(row.get("datetime"), now_et, MARKET_NEWS_MAX_AGE_SECONDS)
         ]
-        relevant_general.sort(
-            key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
-            reverse=True,
-        )
-        market_items = [_market_news_item(row) for row in relevant_general[:8]]
+        relevant_general.sort(key=lambda row: _market_news_row_priority(row, now_et))
+        market_items = [_market_news_item(row, now_et=now_et) for row in relevant_general[:8]]
 
         from_day = (now_et.date() - timedelta(days=5)).isoformat()
         to_day = now_et.date().isoformat()
@@ -1607,31 +1680,46 @@ def _market_news_snapshot() -> Dict[str, Any]:
             )
             if not isinstance(payload, list):
                 continue
-            best = next(
-                (
-                    row
-                    for row in payload
-                    if isinstance(row, dict) and str(row.get("headline") or "").strip()
-                ),
-                None,
-            )
+            rows = [
+                row
+                for row in payload
+                if isinstance(row, dict)
+                and str(row.get("headline") or "").strip()
+                and _market_news_is_recent(
+                    row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS
+                )
+            ]
+            rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
+            best = rows[0] if rows else None
             if best is None:
                 continue
-            watchlist_items.append(_market_news_item(best, symbol=symbol, forced_tag=symbol))
-        source_note = "Finnhub market news plus Forex Factory macro triggers."
+            watchlist_items.append(
+                _market_news_item(best, now_et=now_et, symbol=symbol, forced_tag=symbol)
+            )
+        source_note = "Fresh Finnhub drivers plus Forex Factory macro triggers."
     else:
         all_rows: List[Dict[str, Any]] = []
         for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS[:MARKET_NEWS_RSS_SYMBOL_LIMIT]:
             rows = _market_news_rss_rows(symbol, limit=4)
             if rows:
-                all_rows.extend(rows)
-                watchlist_items.append(_market_news_item(rows[0], symbol=symbol, forced_tag=symbol))
+                fresh_rows = [
+                    row
+                    for row in rows
+                    if _market_news_is_recent(
+                        row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS
+                    )
+                ]
+                all_rows.extend(fresh_rows)
+                if fresh_rows:
+                    fresh_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
+                    watchlist_items.append(
+                        _market_news_item(
+                            fresh_rows[0], now_et=now_et, symbol=symbol, forced_tag=symbol
+                        )
+                    )
         all_rows = [row for row in all_rows if isinstance(row, dict)]
-        all_rows.sort(
-            key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
-            reverse=True,
-        )
-        market_items = [_market_news_item(row) for row in all_rows[:8]]
+        all_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
+        market_items = [_market_news_item(row, now_et=now_et) for row in all_rows[:8]]
 
     result = {
         "available": bool(market_items or watchlist_items or macro_events),
@@ -1656,7 +1744,9 @@ def _market_news_snapshot() -> Dict[str, Any]:
             merged = True
         if merged:
             result["available"] = True
-            result["source_note"] = "Live + cached merge (restored missing news/macro sections)."
+            result["source_note"] = (
+                "Live + cached merge (restored missing fresh sections where possible)."
+            )
     if (
         (not result["available"])
         and isinstance(disk_payload, dict)
@@ -1667,7 +1757,9 @@ def _market_news_snapshot() -> Dict[str, Any]:
         )
     ):
         fallback = dict(disk_payload)
-        fallback["source_note"] = "Using cached news/macro snapshot (live fetch unavailable)."
+        fallback["source_note"] = (
+            "Using cached news/macro snapshot (live fetch unavailable). Headline freshness may be degraded."
+        )
         _market_news_cache["fetched_at"] = now_et
         _market_news_cache["payload"] = fallback
         return fallback
