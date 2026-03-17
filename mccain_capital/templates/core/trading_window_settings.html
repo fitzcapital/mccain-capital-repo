@@ -1,0 +1,93 @@
+{% set tw = trading_window or {} %}
+<div class="card pageHero"><div class="toolbar">
+  <div class="pageHeroHead">
+    <div>
+      <div class="pill">Trading Window</div>
+      <div class="pageTitleRow">
+        <h2 class="pageTitle">Session Guardrail Settings</h2>
+      </div>
+      <div class="dashboardLead stack8">Keep the rule simple: green when trading is allowed, red when it is not. There is no separate hard-stop phase anymore.</div>
+    </div>
+    <div class="actionRow">
+      <a class="btn" href="/dashboard">Dashboard</a>
+      <a class="btn" href="/ops/backups">Backups</a>
+    </div>
+  </div>
+</div></div>
+
+<div class="opsShell">
+  <div class="opsPrimary">
+    <div class="card"><div class="toolbar">
+      <div class="pill">Current Status</div>
+      <div class="workspaceSectionLead">The header pill is green only inside the active trading window. It is red before the window opens, after you are done, or on closed sessions.</div>
+      <div class="metricStrip metricStripCompact">
+        <div class="metric">
+          <div class="label">Status</div>
+          <div class="value">{{ tw.state_label or 'Unknown' }}</div>
+        </div>
+        <div class="metric">
+          <div class="label">Rule</div>
+          <div class="value">{{ tw.start_et }} → {{ tw.done_by_et }} ET</div>
+        </div>
+        <div class="metric">
+          <div class="label">Tone</div>
+          <div class="value">{{ 'Green' if tw.pill_tone == 'positive' else 'Red' }}</div>
+        </div>
+      </div>
+      <div class="tiny stack8 line15">
+        {{ tw.message }}
+        {% if tw.using_test_clock %}
+          Test mode is active for {{ tw.test_date }} {{ tw.test_time_et }} ET.
+        {% endif %}
+      </div>
+    </div></div>
+
+    <div class="card"><div class="toolbar">
+      <div class="pill">Window Settings</div>
+      <div class="workspaceSectionLead">Once the done-by time hits, the app flips to red and stays there. No extra hard stop is applied.</div>
+      <form method="post" action="/ops/trading-window" class="tradingWindowForm">
+        <input type="hidden" name="next" value="/ops/trading-window">
+        <label class="tradingWindowToggle">
+          <input type="checkbox" name="tw_enabled" value="1" {% if tw.enabled %}checked{% endif %}>
+          Enable trading window guidance
+        </label>
+        <label>
+          Start (ET)
+          <input type="time" name="tw_start_et" value="{{ tw.start_et }}" required>
+        </label>
+        <label>
+          Done By (ET)
+          <input type="time" name="tw_done_by_et" value="{{ tw.done_by_et }}" required>
+        </label>
+        <label class="tradingWindowToggle">
+          <input type="checkbox" name="tw_test_mode" value="1" {% if tw.test_mode %}checked{% endif %} data-tw-test-mode>
+          Test mode (simulate clock)
+        </label>
+        <label>
+          Test Date
+          <input type="date" name="tw_test_date" value="{{ tw.test_date }}" data-tw-test-field>
+        </label>
+        <label>
+          Test Time (ET)
+          <input type="time" name="tw_test_time_et" value="{{ tw.test_time_et }}" data-tw-test-field>
+        </label>
+        <div class="tradingWindowActions">
+          <button class="btn primary" type="submit">Save Window</button>
+        </div>
+      </form>
+    </div></div>
+  </div>
+
+  <aside class="opsSecondary">
+    <div class="card supportCard"><div class="toolbar">
+      <div class="pill">Guidance</div>
+      <div class="supportLead">This should be boring and strict.</div>
+      <div class="supportBody">Pick the earliest realistic cutoff for your session. If you are done, the app should stay red so you do not negotiate with yourself.</div>
+    </div></div>
+    <div class="card supportCard subtleCard"><div class="toolbar">
+      <div class="pill">Header Behavior</div>
+      <div class="supportLead">No inline editing in the top bar.</div>
+      <div class="supportBody">The header now only reports state. Changes belong here on the settings page, reachable from the menu.</div>
+    </div></div>
+  </aside>
+</div>

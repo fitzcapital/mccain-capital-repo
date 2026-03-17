@@ -35,7 +35,6 @@ TRADING_WINDOW_DEFAULTS = {
     "enabled": "1",
     "start_et": "09:30",
     "done_by_et": "11:30",
-    "hard_stop_et": "12:00",
     "test_mode": "0",
     "test_date": "",
     "test_time_et": "",
@@ -271,7 +270,7 @@ def _setting_text(key: str, default: str = "") -> str:
     return str(get_setting_value(key, default) or "").strip()
 
 
-def _resolve_window_times(start_text: str, done_text: str, stop_text: str) -> tuple[str, str, str]:
+def _resolve_window_times(start_text: str, done_text: str, stop_text: str = "") -> tuple[str, str, str]:
     start_min = _parse_hhmm_minutes(start_text)
     done_min = _parse_hhmm_minutes(done_text)
     stop_min = _parse_hhmm_minutes(stop_text)
@@ -301,8 +300,9 @@ def save_trading_window_settings(form: Mapping[str, Any]) -> dict[str, Any]:
     start_et, done_by_et, hard_stop_et = _resolve_window_times(
         str(form.get("tw_start_et") or ""),
         str(form.get("tw_done_by_et") or ""),
-        str(form.get("tw_hard_stop_et") or ""),
+        str(form.get("tw_hard_stop_et") or form.get("tw_done_by_et") or ""),
     )
+    hard_stop_et = done_by_et
 
     raw_test_date = str(form.get("tw_test_date") or "").strip()
     try:
@@ -330,7 +330,7 @@ def get_trading_window_state() -> dict[str, Any]:
     start_et, done_by_et, hard_stop_et = _resolve_window_times(
         _setting_text("trading_window_start_et", TRADING_WINDOW_DEFAULTS["start_et"]),
         _setting_text("trading_window_done_by_et", TRADING_WINDOW_DEFAULTS["done_by_et"]),
-        _setting_text("trading_window_hard_stop_et", TRADING_WINDOW_DEFAULTS["hard_stop_et"]),
+        _setting_text("trading_window_hard_stop_et", _setting_text("trading_window_done_by_et", TRADING_WINDOW_DEFAULTS["done_by_et"])),
     )
 
     test_mode = _setting_bool("trading_window_test_mode", False)
@@ -367,47 +367,44 @@ def get_trading_window_state() -> dict[str, Any]:
     now_min = now_et.hour * 60 + now_et.minute
     start_min = _parse_hhmm_minutes(start_et) or 0
     done_min = _parse_hhmm_minutes(done_by_et) or (start_min + 120)
-    stop_min = _parse_hhmm_minutes(hard_stop_et) or (done_min + 30)
-
     if not enabled:
         state = "off"
-        state_label = "Window Off"
+        state_label = "Do Not Trade"
         message = "Trading window controls are disabled."
-        rail_label = "Window Off"
-        rail_detail = "Enable from Menu"
+        rail_label = "Do Not Trade"
+        rail_detail = "Window disabled"
+        pill_tone = "negative"
     elif not is_trading_day and not using_test_clock:
         state = "closed"
-        state_label = holiday_name or "Market Closed"
+        state_label = "Do Not Trade"
         if session_day.weekday() >= 5:
             message = "Trading window is hidden because today is not a trading day."
         else:
             message = f"Trading window is hidden for {holiday_name}."
-        rail_label = state_label
+        rail_label = "Do Not Trade"
         rail_detail = "Closed Today"
+        pill_tone = "negative"
     elif now_min < start_min:
         state = "pending"
-        state_label = "Stand By"
-        message = f"Stand by. Trading window starts at {start_et} ET."
-        rail_label = "Stand By"
+        state_label = "Do Not Trade"
+        message = f"Wait for the window to open at {start_et} ET."
+        rail_label = "Do Not Trade"
         rail_detail = f"Starts {start_et} ET"
+        pill_tone = "negative"
     elif now_min < done_min:
         state = "active"
-        state_label = "In Window"
+        state_label = "Trade Window Open"
         message = f"Execution window is open. Be done by {done_by_et} ET."
-        rail_label = "Window Live"
+        rail_label = "Good To Trade"
         rail_detail = f"Done By {done_by_et} ET"
-    elif now_min < stop_min:
-        state = "warning"
-        state_label = "Done By Now"
-        message = f"Wind down now. Hard stop hits at {hard_stop_et} ET."
-        rail_label = "Done By"
-        rail_detail = f"Hard Stop {hard_stop_et} ET"
+        pill_tone = "positive"
     else:
         state = "stop"
-        state_label = "Stop Trading"
-        message = "STOP TRADING. Hard stop has been reached."
-        rail_label = "Stop Trading"
-        rail_detail = f"Hard Stop {hard_stop_et} ET"
+        state_label = "Done Trading"
+        message = f"You are done for the session. Window closed at {done_by_et} ET."
+        rail_label = "Do Not Trade"
+        rail_detail = f"Closed {done_by_et} ET"
+        pill_tone = "negative"
 
     return {
         "enabled": enabled,
@@ -422,6 +419,7 @@ def get_trading_window_state() -> dict[str, Any]:
         "test_date": (test_date_text or now_et.date().isoformat()),
         "test_time_et": test_time_et,
         "state": state,
+        "pill_tone": pill_tone,
         "state_label": state_label,
         "rail_label": rail_label,
         "rail_detail": rail_detail,

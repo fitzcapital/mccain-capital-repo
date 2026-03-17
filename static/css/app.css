@@ -2165,21 +2165,14 @@
         radial-gradient(circle at 12% 18%, rgba(255, 126, 159, .10), transparent 34%),
         linear-gradient(135deg, rgba(25, 35, 54, .96), rgba(13, 21, 36, .94) 48%, rgba(10, 16, 30, .98));
     }
-    .tradingWindowPill.is-active{
-      border-color:rgba(255,104,126,.30);
+    .tradingWindowPill.is-positive{
+      border-color:rgba(70,214,146,.30);
       box-shadow:
-        0 0 0 1px rgba(255, 126, 159, .06) inset,
+        0 0 0 1px rgba(96, 238, 169, .08) inset,
         0 10px 30px rgba(4, 10, 20, .35),
-        0 0 26px rgba(255, 90, 126, .14);
+        0 0 26px rgba(70,214,146,.18);
     }
-    .tradingWindowPill.is-warning{
-      border-color:rgba(255,184,93,.28);
-      box-shadow:
-        0 0 0 1px rgba(255, 214, 152, .06) inset,
-        0 10px 30px rgba(4, 10, 20, .35),
-        0 0 24px rgba(255, 166, 67, .12);
-    }
-    .tradingWindowPill.is-stop{
+    .tradingWindowPill.is-negative{
       border-color:rgba(255,98,124,.34);
       box-shadow:
         0 0 0 1px rgba(255, 130, 156, .08) inset,
@@ -2227,19 +2220,13 @@
       background:rgba(174, 191, 214, .72);
       box-shadow:0 0 0 3px rgba(124, 153, 184, .12);
     }
-    .tradingWindowPill.is-active .tradingWindowSignal{
-      background:rgba(255,108,126,.98);
+    .tradingWindowPill.is-positive .tradingWindowSignal{
+      background:rgba(46, 204, 113, .98);
       box-shadow:
-        0 0 0 3px rgba(255,92,120,.14),
-        0 0 10px rgba(255,92,120,.34);
+        0 0 0 3px rgba(46, 204, 113, .16),
+        0 0 10px rgba(46, 204, 113, .34);
     }
-    .tradingWindowPill.is-warning .tradingWindowSignal{
-      background:rgba(255,184,93,.98);
-      box-shadow:
-        0 0 0 3px rgba(255,184,93,.12),
-        0 0 10px rgba(255,166,67,.24);
-    }
-    .tradingWindowPill.is-stop .tradingWindowSignal{
+    .tradingWindowPill.is-negative .tradingWindowSignal{
       background:rgba(255,98,124,.98);
       box-shadow:
         0 0 0 3px rgba(255,98,124,.14),

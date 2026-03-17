@@ -4307,6 +4307,23 @@ def _safe_backup_file_path(name: str) -> str:
     return full
 
 
+def _uploaded_restore_dir() -> str:
+    path = _upload_file(".restore_uploads")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _save_uploaded_restore_archive(upload: Any) -> str:
+    filename = secure_filename(str(getattr(upload, "filename", "") or "").strip())
+    if not filename or not filename.lower().endswith(".zip"):
+        raise ValueError("Please upload a .zip backup file.")
+    stamp = datetime.now(ZoneInfo("America/New_York")).strftime("%Y%m%d_%H%M%S")
+    out_name = f"restore_upload_{stamp}_{uuid4().hex[:10]}_{filename}"
+    out_path = os.path.join(_uploaded_restore_dir(), out_name)
+    upload.save(out_path)
+    return out_path
+
+
 def _count_db_rows(db_path: str) -> Dict[str, int]:
     out = {"trades": 0, "entries": 0, "trade_reviews": 0}
     try:
@@ -4613,7 +4630,12 @@ def _clear_live_app_data(*, preserve_backups: bool = True) -> Dict[str, Any]:
     }
 
 
-def _start_restore_job(path: str, actor: str, clear_first: bool = False) -> Dict[str, Any]:
+def _start_restore_job(
+    path: str,
+    actor: str,
+    clear_first: bool = False,
+    cleanup_source: bool = False,
+) -> Dict[str, Any]:
     app = current_app._get_current_object()
     job = _create_bg_job(
         "restore",
@@ -4690,6 +4712,12 @@ def _start_restore_job(path: str, actor: str, clear_first: bool = False) -> Dict
                 summary={"file": os.path.basename(path), "error": str(e)},
                 result_summary=summary,
             )
+        finally:
+            if cleanup_source:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
 
     threading.Thread(target=runner, daemon=True, name=f"restore-job-{job['id'][:8]}").start()
     return job

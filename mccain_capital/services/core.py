@@ -41,6 +41,7 @@ from flask import (
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital import runtime as app_runtime
 from mccain_capital.services.ui import (
+    get_trading_window_state,
     get_forex_factory_feed,
     get_forex_factory_month_feed,
     get_forex_factory_next_week_feed,
@@ -3278,29 +3279,19 @@ def vanquish_lock_control():
 
 
 def trading_window_config():
-    if request.method != "POST":
-        return redirect(url_for("dashboard"))
-    raw_next = str(request.form.get("next") or "").strip()
-    if raw_next.startswith("/") and not raw_next.startswith("//"):
-        next_href = raw_next
-    else:
-        next_href = str(request.referrer or url_for("dashboard"))
-    state = save_trading_window_settings(request.form)
-    parsed_next = urllib.parse.urlsplit(next_href)
-    next_query = urllib.parse.parse_qsl(parsed_next.query, keep_blank_values=True)
-    next_query = [(key, value) for key, value in next_query if key != "tw"]
-    next_query.append(("tw", "settings"))
-    next_href = urllib.parse.urlunsplit(
-        (
-            parsed_next.scheme,
-            parsed_next.netloc,
-            parsed_next.path,
-            urllib.parse.urlencode(next_query),
-            parsed_next.fragment,
+    if request.method == "GET":
+        content = render_template(
+            "core/trading_window_settings.html",
+            trading_window=get_trading_window_state(),
         )
-    )
+        return render_page(content, active="ops")
+    raw_next = str(request.form.get("next") or "").strip()
+    next_href = url_for("trading_window_config")
+    if raw_next.startswith("/") and not raw_next.startswith("//") and raw_next != request.path:
+        next_href = raw_next
+    state = save_trading_window_settings(request.form)
     flash(
-        f"Trading window saved. {state.get('start_et')} → {state.get('done_by_et')} → {state.get('hard_stop_et')} ET.",
+        f"Trading window saved. {state.get('start_et')} → {state.get('done_by_et')} ET.",
         "success",
     )
     return redirect(next_href)
@@ -3362,82 +3353,58 @@ def backup_data():
 
 
 def restore_data():
-    if request.method == "GET":
+    from mccain_capital.services import trades as trades_svc
+
+    def render_restore_page(
+        *,
+        message: str = "",
+        tone: str = "info",
+        restore_job_id: str = "",
+        restore_filename: str = "",
+    ):
         content = render_template(
             "core/restore_backup.html",
             db_path=str(app_runtime.DB_PATH),
             upload_dir=str(app_runtime.UPLOAD_DIR),
+            message=str(message or "").strip(),
+            tone=str(tone or "info").strip() or "info",
+            restore_job_id=str(restore_job_id or "").strip(),
+            restore_filename=str(restore_filename or "").strip(),
         )
         return render_page(content, active="dashboard")
 
+    if request.method == "GET":
+        return render_restore_page(
+            restore_job_id=(request.args.get("job") or "").strip(),
+            restore_filename=(request.args.get("file") or "").strip(),
+        )
+
     f = request.files.get("backup_zip")
     if not f or not f.filename:
-        return render_page(simple_msg("Please choose a backup zip file."), active="dashboard")
+        return render_restore_page(message="Please choose a backup zip file.", tone="warning")
 
+    filename = str(getattr(f, "filename", "") or "").strip()
+    actor = effective_username() if auth_enabled() else _legacy().APP_USERNAME
     try:
-        with zipfile.ZipFile(f.stream) as zf:
-            names = zf.namelist()
-            if not names:
-                return render_page(simple_msg("Backup zip is empty."), active="dashboard")
-
-            allowed_prefixes = ("data/journal.db", "data/uploads/", "data/meta.json")
-            for n in names:
-                if n.startswith("/") or ".." in n:
-                    return render_page(
-                        simple_msg("Backup zip contains unsafe paths."), active="dashboard"
-                    )
-                if not any(n == p or n.startswith(p) for p in allowed_prefixes):
-                    return render_page(
-                        simple_msg("Backup zip contains unsupported files."), active="dashboard"
-                    )
-
-            db_member = "data/journal.db"
-            if db_member in names:
-                db_path = str(app_runtime.DB_PATH)
-                os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-                db_dir = os.path.dirname(db_path) or "."
-                fd, tmp_db = tempfile.mkstemp(prefix="restore_db_", suffix=".tmp", dir=db_dir)
-                os.close(fd)
-                try:
-                    with zf.open(db_member) as src, open(tmp_db, "wb") as dst:
-                        shutil.copyfileobj(src, dst, length=1024 * 1024)
-                    os.replace(tmp_db, db_path)
-                finally:
-                    if os.path.exists(tmp_db):
-                        os.unlink(tmp_db)
-
-            upload_dir = str(app_runtime.UPLOAD_DIR)
-            os.makedirs(upload_dir, exist_ok=True)
-            for n in names:
-                if not n.startswith("data/uploads/") or n.endswith("/"):
-                    continue
-                rel = n[len("data/uploads/") :]
-                out_path = os.path.join(upload_dir, rel)
-                out_dir = os.path.dirname(out_path)
-                if out_dir:
-                    os.makedirs(out_dir, exist_ok=True)
-                with zf.open(n) as src, open(out_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst, length=1024 * 1024)
-    except zipfile.BadZipFile:
-        return render_page(simple_msg("Invalid zip file."), active="dashboard")
+        restore_path = trades_svc._save_uploaded_restore_archive(f)
+    except ValueError as e:
+        return render_restore_page(message=str(e), tone="warning")
     except Exception as e:
-        return render_page(simple_msg(f"Restore failed: {e}"), active="dashboard")
+        return render_restore_page(message=f"Restore upload failed: {e}", tone="danger")
 
-    try:
-        from mccain_capital.services.trades import record_admin_audit
-
-        record_admin_audit(
-            "manual_backup_restored",
-            {"source_filename": f.filename if f else ""},
-            actor=(
-                _legacy()._effective_username()
-                if _legacy().auth_enabled()
-                else _legacy().APP_USERNAME
-            ),
-        )
-    except Exception:
-        pass
-    return render_page(simple_msg("Backup restore completed."), active="dashboard")
+    job = trades_svc._start_restore_job(
+        restore_path,
+        actor=actor,
+        cleanup_source=True,
+    )
+    if (request.args.get("async") or "").strip() == "1":
+        return jsonify({"ok": True, "job": trades_svc._job_response_payload(job)})
+    return render_restore_page(
+        message=f"Restore started for {filename or os.path.basename(restore_path)}.",
+        tone="info",
+        restore_job_id=str(job.get("id") or ""),
+        restore_filename=filename or os.path.basename(restore_path),
+    )
 
 
 def strat_page():

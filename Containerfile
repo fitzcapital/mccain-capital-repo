@@ -47,7 +47,6 @@ ENV BOOKS_DIR=/data/books
 ENV SECRET_KEY_FILE=/data/.secret_key
 ENV AUTO_SYNC_PASSWORD_FALLBACK=1
 RUN mkdir -p /data/uploads /data/books
-VOLUME ["/data"]
 EXPOSE 5001
 
 # Gunicorn for production.

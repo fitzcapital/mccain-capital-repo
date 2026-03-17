@@ -113,35 +113,6 @@
     window.requestAnimationFrame(focusDrawerPrimary);
   }
 
-  function openTradingWindowSettings() {
-    openDrawer();
-    window.requestAnimationFrame(() => {
-      const section = doc.getElementById("drawerTradingWindow");
-      const editor = doc.getElementById("tradingWindowDrawerEditor");
-      if (!section || !editor) return;
-      editor.open = true;
-      section.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      const target = editor.querySelector("input, select, textarea, button");
-      if (target) target.focus();
-    });
-  }
-
-  function initTradingWindowIntent() {
-    const params = new URLSearchParams(window.location.search || "");
-    if (params.get("tw") !== "settings") return;
-    openTradingWindowSettings();
-    params.delete("tw");
-    const nextQuery = params.toString();
-    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash || ""}`;
-    window.requestAnimationFrame(() => {
-      try {
-        window.history.replaceState({}, "", nextUrl);
-      } catch (_err) {
-        // Ignore environments that block history updates.
-      }
-    });
-  }
-
   function closeDrawer() {
     const drawer = doc.getElementById("drawer");
     const overlay = doc.getElementById("drawerOverlay");
@@ -203,7 +174,6 @@
     window.toggleMoreMenu = toggleMoreMenu;
     window.toggleQuickPanel = toggleQuickPanel;
     window.openDrawer = openDrawer;
-    window.openTradingWindowSettings = openTradingWindowSettings;
     window.closeDrawer = closeDrawer;
 
     window.addEventListener("click", (event) => {
@@ -633,7 +603,6 @@
     setupMobileDensityCompaction();
     initShortcutHelp();
     initCardStagger();
-    initTradingWindowIntent();
     window.setInterval(updateETClock, 1000);
     updateETClock();
   }

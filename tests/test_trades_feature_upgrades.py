@@ -1,5 +1,6 @@
 """Tests for open positions and rebuild reviews feature upgrades."""
 
+import io
 import json
 import os
 import time
@@ -1327,3 +1328,75 @@ def test_manual_trade_first_trade_gate_saves_pass_and_allows_followup_without_ga
         follow_redirects=False,
     )
     assert second.status_code == 302
+
+
+def test_admin_restore_upload_runs_async_job(client, monkeypatch, tmp_path):
+    from mccain_capital import runtime as app_runtime
+    from mccain_capital.services import trades as trades_svc
+
+    backup_dir = tmp_path / "backups"
+    audit_path = tmp_path / ".admin_audit_log.json"
+    monkeypatch.setattr(trades_svc, "AUTO_BACKUP_DIR", str(backup_dir))
+    monkeypatch.setattr(trades_svc, "ADMIN_AUDIT_LOG_PATH", str(audit_path))
+
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_username", "owner"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_password_hash", "pbkdf2:sha256:1$stub$stub"),
+        )
+
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    marker = os.path.join(app_runtime.UPLOAD_DIR, "restore_marker_async.txt")
+    with open(marker, "w", encoding="utf-8") as f:
+        f.write("before-upload-restore")
+
+    run_resp = client.post("/ops/backups/run", follow_redirects=True)
+    assert run_resp.status_code == 200
+    names = [n for n in os.listdir(backup_dir) if n.endswith(".zip")]
+    assert names
+    backup_name = names[0]
+    backup_path = os.path.join(backup_dir, backup_name)
+
+    with open(marker, "w", encoding="utf-8") as f:
+        f.write("after-upload-restore")
+
+    with open(backup_path, "rb") as fh:
+        upload_resp = client.post(
+            "/admin/restore?async=1",
+            data={"backup_zip": (io.BytesIO(fh.read()), backup_name)},
+            content_type="multipart/form-data",
+        )
+    assert upload_resp.status_code == 200
+    payload = upload_resp.get_json()
+    assert payload["ok"] is True
+    job_id = str(payload["job"]["id"])
+
+    final_payload = None
+    for _ in range(100):
+        status_resp = client.get(f"/ops/jobs/{job_id}")
+        assert status_resp.status_code == 200
+        final_payload = status_resp.get_json()
+        assert final_payload["ok"] is True
+        if str(final_payload["job"]["status"]) not in {"queued", "running"}:
+            break
+        time.sleep(0.05)
+
+    assert final_payload is not None
+    assert final_payload["job"]["status"] == "success"
+    assert "Restore Complete" in str(final_payload["job"].get("result_html") or "")
+
+    with open(marker, "r", encoding="utf-8") as f:
+        restored = f.read()
+    assert restored == "before-upload-restore"
+
+    page_resp = client.get(f"/admin/restore?job={job_id}", follow_redirects=True)
+    assert page_resp.status_code == 200
+    assert b"Upload Restore Archive" in page_resp.data
+    assert b"restore-upload-runway" in page_resp.data

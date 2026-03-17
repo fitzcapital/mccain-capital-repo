@@ -151,7 +151,7 @@
             {% endif %}
             {% if active != 'auth' and tw and tw.show_banner %}
               <div class="tradingWindowPillGroup">
-                <div class="clockPill tradingWindowPill is-{{ tw.state }}" title="{{ tw.message }}">
+                <div class="clockPill tradingWindowPill is-{{ tw.pill_tone or 'negative' }}" title="{{ tw.message }}">
                   <span class="tradingWindowSignal" aria-hidden="true"></span>
                   <span class="tradingWindowPillLabel">{{ tw.rail_label or tw.state_label }}</span>
                   <span class="tradingWindowPillMeta">{{ tw.rail_detail or tw.message }}</span>
@@ -159,15 +159,6 @@
                     <span class="tradingWindowTag">Test Mode</span>
                   {% endif %}
                 </div>
-                <button
-                  class="clockPill tradingWindowPillAction"
-                  type="button"
-                  aria-label="Open trading window settings"
-                  title="Open trading window settings"
-                  onclick="openTradingWindowSettings()"
-                >
-                  <span aria-hidden="true">⚙</span>
-                </button>
               </div>
             {% endif %}
           </div>
@@ -219,7 +210,7 @@
             <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='books' %}active{% endif %}" href="/books">Books</a>
             <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
-            <button class="btn" type="button" onclick="openTradingWindowSettings()">Trading Window</button>
+            <a class="btn {% if request.path == '/ops/trading-window' %}active{% endif %}" href="/ops/trading-window">Trading Window</a>
             <div class="hr"></div>
             <div class="menuTitle">Business</div>
             <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">Income Tracker</a>
@@ -413,70 +404,10 @@
           </div>
         </section>
 
-        {% if active != 'auth' and tw %}
-          <section id="drawerTradingWindow" class="drawerSection">
-            <div class="drawerSectionTitle">Trading Window</div>
-            <div class="tradingWindowDrawerStatus is-{{ tw.state }}">
-              <span class="tradingWindowSignal" aria-hidden="true"></span>
-              <div class="tradingWindowDrawerCopy">
-                <div class="tradingWindowDrawerLead">
-                  {{ tw.state_label }}
-                  {% if tw.using_test_clock %}
-                    <span class="tradingWindowTag">Test Mode</span>
-                  {% endif %}
-                </div>
-                <div class="tradingWindowDrawerMeta">{{ tw.message }}</div>
-                <div class="tradingWindowTimeline">
-                  <span>Start {{ tw.start_et }} ET</span>
-                  <span>Done By {{ tw.done_by_et }} ET</span>
-                  <span>Hard Stop {{ tw.hard_stop_et }} ET</span>
-                </div>
-              </div>
-            </div>
-            <details id="tradingWindowDrawerEditor" class="tradingWindowEditor tradingWindowDrawerEditor"{% if tw.using_test_clock %} open{% endif %}>
-              <summary>Adjust Window</summary>
-              <form method="post" action="/ops/trading-window" class="tradingWindowForm">
-                {{ csrf_input|safe }}
-                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-                <label class="tradingWindowToggle">
-                  <input type="checkbox" name="tw_enabled" value="1" {% if tw.enabled %}checked{% endif %}>
-                  Enable enforcement banner
-                </label>
-                <label>
-                  Start (ET)
-                  <input type="time" name="tw_start_et" value="{{ tw.start_et }}" required>
-                </label>
-                <label>
-                  Done By (ET)
-                  <input type="time" name="tw_done_by_et" value="{{ tw.done_by_et }}" required>
-                </label>
-                <label>
-                  Hard Stop (ET)
-                  <input type="time" name="tw_hard_stop_et" value="{{ tw.hard_stop_et }}" required>
-                </label>
-                <label class="tradingWindowToggle">
-                  <input type="checkbox" name="tw_test_mode" value="1" {% if tw.test_mode %}checked{% endif %} data-tw-test-mode>
-                  Test mode (simulate clock)
-                </label>
-                <label>
-                  Test Date
-                  <input type="date" name="tw_test_date" value="{{ tw.test_date }}" data-tw-test-field>
-                </label>
-                <label>
-                  Test Time (ET)
-                  <input type="time" name="tw_test_time_et" value="{{ tw.test_time_et }}" data-tw-test-field>
-                </label>
-                <div class="tradingWindowActions">
-                  <button class="btn primary" type="submit">Save Window</button>
-                </div>
-              </form>
-            </details>
-          </section>
-        {% endif %}
-
         <section class="drawerSection drawerSectionSystem">
           <div class="drawerSectionTitle">System</div>
           <div class="drawerStack">
+            <a class="btn {% if request.path == '/ops/trading-window' %}primary{% endif %}" href="/ops/trading-window">Trading Window</a>
             <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">Backups</a>
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>

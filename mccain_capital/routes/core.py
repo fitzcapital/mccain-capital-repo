@@ -116,7 +116,7 @@ def register(app):
         "/ops/trading-window",
         endpoint="trading_window_config",
         view_func=h.trading_window_config,
-        methods=["POST"],
+        methods=["GET", "POST"],
     )
     app.add_url_rule("/export.json", endpoint="export_json", view_func=h.export_json)
     app.add_url_rule("/admin/backup", endpoint="backup_data", view_func=h.backup_data)
