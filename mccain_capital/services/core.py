@@ -3354,6 +3354,7 @@ def backup_data():
 
 def restore_data():
     from mccain_capital.services import trades as trades_svc
+    async_requested = (request.args.get("async") or "").strip() == "1"
 
     def render_restore_page(
         *,
@@ -3381,6 +3382,10 @@ def restore_data():
 
     f = request.files.get("backup_zip")
     if not f or not f.filename:
+        if async_requested:
+            return jsonify(
+                {"ok": False, "error": "missing_backup_zip", "message": "Please choose a backup zip file."}
+            ), 400
         return render_restore_page(message="Please choose a backup zip file.", tone="warning")
 
     filename = str(getattr(f, "filename", "") or "").strip()
@@ -3388,8 +3393,21 @@ def restore_data():
     try:
         restore_path = trades_svc._save_uploaded_restore_archive(f)
     except ValueError as e:
+        if async_requested:
+            return jsonify({"ok": False, "error": "invalid_backup_zip", "message": str(e)}), 400
         return render_restore_page(message=str(e), tone="warning")
     except Exception as e:
+        if async_requested:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "restore_upload_failed",
+                        "message": f"Restore upload failed: {e}",
+                    }
+                ),
+                500,
+            )
         return render_restore_page(message=f"Restore upload failed: {e}", tone="danger")
 
     job = trades_svc._start_restore_job(
@@ -3397,7 +3415,7 @@ def restore_data():
         actor=actor,
         cleanup_source=True,
     )
-    if (request.args.get("async") or "").strip() == "1":
+    if async_requested:
         return jsonify({"ok": True, "job": trades_svc._job_response_payload(job)})
     return render_restore_page(
         message=f"Restore started for {filename or os.path.basename(restore_path)}.",

@@ -1400,3 +1400,16 @@ def test_admin_restore_upload_runs_async_job(client, monkeypatch, tmp_path):
     assert page_resp.status_code == 200
     assert b"Upload Restore Archive" in page_resp.data
     assert b"restore-upload-runway" in page_resp.data
+
+
+def test_admin_restore_async_returns_json_error_when_missing_file(client):
+    resp = client.post(
+        "/admin/restore?async=1",
+        data={},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    payload = resp.get_json()
+    assert payload["ok"] is False
+    assert payload["error"] == "missing_backup_zip"
+    assert "Please choose a backup zip file." in payload["message"]

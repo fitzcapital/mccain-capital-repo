@@ -1,5 +1,42 @@
 <script>
   window.McAsyncJobs = window.McAsyncJobs || (function() {
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function setSummaryMessage(summary, tone, message) {
+      if (!summary) return;
+      const safeTone = tone === 'danger' ? 'danger' : (tone === 'warning' ? 'warning' : 'info');
+      const safeMessage = escapeHtml(message || '');
+      summary.innerHTML = safeMessage
+        ? `<div class="card"><div class="toolbar"><div class="pill">${safeTone === 'danger' ? 'Restore Failed' : 'Update'}</div><div class="workspaceSectionLead stack8">${safeMessage}</div></div></div>`
+        : '';
+      summary.style.display = safeMessage ? 'block' : 'none';
+    }
+
+    function parseErrorResponse(response) {
+      return response.text().then((text) => {
+        let payload = null;
+        try {
+          payload = text ? JSON.parse(text) : null;
+        } catch (_err) {
+          payload = null;
+        }
+        const message = payload && payload.message
+          ? String(payload.message)
+          : (text || `Request failed (${response.status})`).trim();
+        const error = new Error(message || 'Request failed.');
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+      });
+    }
+
     function observeJob(config) {
       const runway = config.runway;
       const summary = config.summary;
@@ -128,21 +165,25 @@
           headers: { 'Accept': 'application/json' },
           body: new FormData(form)
         })
-          .then(r => r.ok ? r.json() : Promise.reject(new Error('start_failed')))
+          .then(r => r.ok ? r.json() : parseErrorResponse(r))
           .then(payload => {
             if (!payload || !payload.ok || !payload.job || !payload.job.id) {
-              throw new Error('start_failed');
+              throw new Error('Could not start the job.');
             }
             observeJob({ ...config, jobId: payload.job.id, skipInit: true });
           })
-          .catch(() => {
+          .catch((err) => {
+            const message = err && err.message
+              ? err.message
+              : 'Could not start the job.';
             setRunwayState(runway, {
               badge: 'Failed',
-              label: 'Could not start the job.',
+              label: message,
               stepIndex: 1,
               complete: true,
               failed: true
             });
+            setSummaryMessage(summary, 'danger', message);
             button.disabled = false;
             button.textContent = doneLabel;
           });
