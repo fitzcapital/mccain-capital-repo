@@ -256,6 +256,7 @@
         {% set spx_gap_compact = dashboard_spx.get('overnight_gap_compact') or spx_gap_full %}
         {% set spx_range_full = dashboard_spx.get('day_range') or '—' %}
         {% set spx_range_compact = dashboard_spx.get('day_range_compact') or spx_range_full %}
+        {% set spx_range_parts = spx_range_compact.split('-', 1) if spx_range_compact and spx_range_compact != '—' and '-' in spx_range_compact else [] %}
         {% set spx_change_points = dashboard_spx.get('change_points') %}
         {% if spx_change_points is none %}
           {% set spx_change_points = dashboard_spx.get('change') %}
@@ -299,9 +300,22 @@
                 </span>
               </div>
             </div>
-            <div class="dashboardTapeStatCell">
+            <div class="dashboardTapeStatCell dashboardTapeStatCell--range">
               <div class="tiny muted">Range</div>
-              <div class="tiny" title="Range {{ spx_range_full }}" data-role="range-line">{{ spx_range_compact }}</div>
+              <div class="tiny dashboardTapeRangeDesktop" title="Range {{ spx_range_full }}" data-role="range-line">{{ spx_range_compact }}</div>
+              {% if spx_range_parts|length == 2 %}
+                <div class="dashboardTapeRangeMobile" title="Range {{ spx_range_full }}">
+                  <div class="dashboardTapeRangeEdge" data-side="low">
+                    <span class="dashboardTapeRangeTag">Low</span>
+                    <span class="dashboardTapeRangeValue">{{ spx_range_parts[0] }}</span>
+                  </div>
+                  <span class="dashboardTapeRangeTrack" aria-hidden="true"></span>
+                  <div class="dashboardTapeRangeEdge" data-side="high">
+                    <span class="dashboardTapeRangeTag">High</span>
+                    <span class="dashboardTapeRangeValue">{{ spx_range_parts[1] }}</span>
+                  </div>
+                </div>
+              {% endif %}
             </div>
           </div>
         </article>
@@ -314,6 +328,7 @@
         {% set vix_gap_compact = dashboard_vix.get('overnight_gap_compact') or vix_gap_full %}
         {% set vix_range_full = dashboard_vix.get('day_range') or '—' %}
         {% set vix_range_compact = dashboard_vix.get('day_range_compact') or vix_range_full %}
+        {% set vix_range_parts = vix_range_compact.split('-', 1) if vix_range_compact and vix_range_compact != '—' and '-' in vix_range_compact else [] %}
         {% set vix_change_points = dashboard_vix.get('change_points') %}
         {% if vix_change_points is none %}
           {% set vix_change_points = dashboard_vix.get('change') %}
@@ -357,9 +372,22 @@
                 </span>
               </div>
             </div>
-            <div class="dashboardTapeStatCell">
+            <div class="dashboardTapeStatCell dashboardTapeStatCell--range">
               <div class="tiny muted">Range</div>
-              <div class="tiny" title="Range {{ vix_range_full }}" data-role="range-line">{{ vix_range_compact }}</div>
+              <div class="tiny dashboardTapeRangeDesktop" title="Range {{ vix_range_full }}" data-role="range-line">{{ vix_range_compact }}</div>
+              {% if vix_range_parts|length == 2 %}
+                <div class="dashboardTapeRangeMobile" title="Range {{ vix_range_full }}">
+                  <div class="dashboardTapeRangeEdge" data-side="low">
+                    <span class="dashboardTapeRangeTag">Low</span>
+                    <span class="dashboardTapeRangeValue">{{ vix_range_parts[0] }}</span>
+                  </div>
+                  <span class="dashboardTapeRangeTrack" aria-hidden="true"></span>
+                  <div class="dashboardTapeRangeEdge" data-side="high">
+                    <span class="dashboardTapeRangeTag">High</span>
+                    <span class="dashboardTapeRangeValue">{{ vix_range_parts[1] }}</span>
+                  </div>
+                </div>
+              {% endif %}
             </div>
           </div>
         </article>

@@ -1,10 +1,7 @@
-# Containerfile (Dockerfile compatible)
+# Dockerfile for Railway / generic Docker hosts.
+# Keep this in sync with Containerfile, which is used for local Podman workflows.
 FROM python:3.11-slim
 
-# System deps:
-# - poppler-utils: required by pdf2image
-# - tesseract-ocr: required by pytesseract
-# - libgl1/libglib2.0-0: common image deps (safe add)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     tesseract-ocr \
@@ -38,7 +35,6 @@ RUN python -m playwright install chromium
 
 COPY . .
 
-# App listens on 5001 by default (matches app.py)
 ENV PORT=5001
 ENV PERSISTENT_DATA_DIR=/data
 ENV DB_PATH=/data/journal.db
@@ -46,11 +42,10 @@ ENV UPLOAD_DIR=/data/uploads
 ENV BOOKS_DIR=/data/books
 ENV SECRET_KEY_FILE=/data/.secret_key
 ENV AUTO_SYNC_PASSWORD_FALLBACK=1
+
 RUN mkdir -p /data/uploads /data/books
+
 VOLUME ["/data"]
 EXPOSE 5001
 
-# Gunicorn for production.
-# Live broker sync can exceed the default 30s request timeout, so raise the timeout
-# and keep an extra worker available while one request is busy running Playwright.
 CMD ["sh", "-lc", "gunicorn --workers 2 --timeout 180 --graceful-timeout 30 -b 0.0.0.0:${PORT:-5001} mccain_capital.wsgi:app"]

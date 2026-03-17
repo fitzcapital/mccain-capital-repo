@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <meta name="csrf-token" content="{{ csrf_token }}"/>
   <title>{{ title }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-tape-20260311n">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-tape-20260317a">
 </head>
 
 <body class="{% if active %}page-{{ active|replace('_', '-')|replace(' ', '-') }}{% endif %}">
@@ -376,7 +376,7 @@
           <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
         </div>
 
-        <section class="drawerSection">
+        <section class="drawerSection drawerSectionActions">
           <div class="drawerSectionTitle">Quick Actions</div>
           <div class="drawerQuickGrid">
             <a class="btn" href="/trades/new">Add Trade</a>
@@ -386,7 +386,7 @@
           </div>
         </section>
 
-        <section class="drawerSection">
+        <section class="drawerSection drawerSectionNavigate">
           <div class="drawerSectionTitle">Navigate</div>
           <div class="drawerPrimaryGrid">
             <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Dashboard</a>
@@ -398,7 +398,7 @@
           </div>
         </section>
 
-        <section class="drawerSection">
+        <section class="drawerSection drawerSectionTools">
           <div class="drawerSectionTitle">Tools</div>
           <div class="drawerStack">
             <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Risk</a>
@@ -472,7 +472,7 @@
           </section>
         {% endif %}
 
-        <section class="drawerSection">
+        <section class="drawerSection drawerSectionSystem">
           <div class="drawerSectionTitle">System</div>
           <div class="drawerStack">
             <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">Backups</a>
@@ -516,11 +516,11 @@
     </div>
 
     <nav class="mobileDock" aria-label="Quick navigation">
-      <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Dashboard</a>
-      <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
-      <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
-      <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
-      <button id="mobileDockMenuBtn" class="btn mobileDockMenu" type="button" aria-expanded="false" onclick="openDrawer()">Menu</button>
+      <a class="btn mobileDockItem {% if active=='dashboard' %}primary{% endif %}" href="/dashboard"><span class="mobileDockLabel">Dashboard</span></a>
+      <a class="btn mobileDockItem {% if active=='trades' %}primary{% endif %}" href="/trades"><span class="mobileDockLabel">Trades</span></a>
+      <a class="btn mobileDockItem {% if active=='analytics' %}primary{% endif %}" href="/analytics"><span class="mobileDockLabel">Analytics</span></a>
+      <a class="btn mobileDockItem {% if active=='journal' %}primary{% endif %}" href="/journal"><span class="mobileDockLabel">Journal</span></a>
+      <button id="mobileDockMenuBtn" class="btn mobileDockItem mobileDockMenu" type="button" aria-expanded="false" onclick="openDrawer()"><span class="mobileDockLabel">Menu</span></button>
     </nav>
 
     <div class="tiny footerTip">
