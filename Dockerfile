@@ -45,7 +45,6 @@ ENV AUTO_SYNC_PASSWORD_FALLBACK=1
 
 RUN mkdir -p /data/uploads /data/books
 
-VOLUME ["/data"]
 EXPOSE 5001
 
 CMD ["sh", "-lc", "gunicorn --workers 2 --timeout 180 --graceful-timeout 30 -b 0.0.0.0:${PORT:-5001} mccain_capital.wsgi:app"]
