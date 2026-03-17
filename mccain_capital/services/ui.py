@@ -737,6 +737,10 @@ def get_forex_factory_month_feed() -> list[dict] | None:
 def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **page_ctx):
     static_root = current_app.static_folder or "static"
     top_notice = page_ctx.pop("top_notice", None) or _global_top_notice()
+    if isinstance(top_notice, dict):
+        text = str(top_notice.get("text") or "")
+        text = re.sub(r"^\s*[🔴🟠🟡🟢🔵]\s*", "", text)
+        top_notice = {**top_notice, "text": text}
     vanquish_lock = page_ctx.pop("vanquish_lock", None)
     trading_window = page_ctx.pop("trading_window", None)
     csrf_token = csrf_token_value()
