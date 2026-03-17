@@ -2,6 +2,8 @@ journal.db
 uploads/
 books/
 podman_data/
+persistent-data/
+artifacts/
 
 .git
 .venv/
