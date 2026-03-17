@@ -1,20 +1,54 @@
-<div class="card pageHero"><div class="toolbar">
+{% set current_consistency_ratio = current_consistency.ratio * 100 if current_consistency.ratio is not none else none %}
+{% set planner_state = out.plan_state if out else 'Awaiting plan' %}
+{% set planner_state_tone = 'healthy' if out and out.plan_state == 'Sharp' else 'caution' if out and out.plan_state == 'Manageable' else 'danger' if out else 'neutral' %}
+
+<div class="card pageHero plannerHero"><div class="toolbar">
   <div class="pageHeroHead">
     <div>
       <div class="pill">🧮 Risk Planner</div>
       <div class="pageTitleRow">
         <h2 class="pageTitle">Plan the Trade Before It Plans You</h2>
       </div>
-      <div class="summaryLead stack8">Confirm the stop, target, and balance impact before the order goes live.</div>
+      <div class="summaryLead stack8">Turn the trade into a clear accept-or-reject decision before the order goes live.</div>
     </div>
     <div class="actionRow">
       <a class="btn primary" href="/trades/new">Trade Gate</a>
+      <a class="btn ctaLink" href="/trades">Execution Log</a>
       <a class="btn ctaLink" href="/dashboard">Dashboard</a>
     </div>
   </div>
 </div></div>
 
-<div class="dashboardSupportGrid">
+<div class="plannerSignalGrid">
+  <div class="plannerSignalCard plannerSignalCardState is-{{ planner_state_tone }}">
+    <span class="plannerSignalLabel">Planner State</span>
+    <strong>{{ planner_state }}</strong>
+    <span class="plannerSignalMeta">
+      {% if out %}
+        {{ money(out.risk_net) }} at risk · {{ out.rr }}R reward ratio
+      {% else %}
+        Enter a live plan to see whether the trade is sharp, manageable, or too hot.
+      {% endif %}
+    </span>
+  </div>
+  <div class="plannerSignalCard">
+    <span class="plannerSignalLabel">Current Balance</span>
+    <strong>{{ money(current_balance) }}</strong>
+    <span class="plannerSignalMeta">This is the balance the plan will pressure if the stop is wrong.</span>
+  </div>
+  <div class="plannerSignalCard">
+    <span class="plannerSignalLabel">Current Consistency</span>
+    <strong>{% if current_consistency_ratio is not none %}{{ '%.1f'|format(current_consistency_ratio) }}%{% else %}—{% endif %}</strong>
+    <span class="plannerSignalMeta">{{ current_consistency.status if current_consistency.status else 'Consistency unavailable' }}</span>
+  </div>
+  <div class="plannerSignalCard">
+    <span class="plannerSignalLabel">Approval Gate</span>
+    <strong>{% if out and out.risk_pct_balance <= 1 and out.rr >= 2 %}A-tier{% elif out and out.risk_pct_balance <= 2 and out.rr >= 1.5 %}Manageable{% elif out %}Reject{% else %}Waiting{% endif %}</strong>
+    <span class="plannerSignalMeta">A-tier stays under 1% balance risk and clears a 2R payout profile.</span>
+  </div>
+</div>
+
+<div class="dashboardSupportGrid plannerSupportGrid">
   <div class="card supportCard workflowPromptCard"><div class="toolbar">
     <div class="pill">Decision Rule</div>
     <div class="supportLead">If the stop feels vague, the size is wrong or the setup is not ready.</div>
@@ -22,30 +56,39 @@
   </div></div>
 
   <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Approval Gate</div>
+    <div class="supportLead">Risk first, reward second.</div>
+    <div class="supportBody">A good target never rescues a loose stop. Approve the loss profile before you admire the upside.</div>
+  </div></div>
+
+  <div class="card supportCard"><div class="toolbar">
     <div class="pill">Next Move</div>
     <div class="supportLead">Set the stop first, then inspect the balance and consistency damage.</div>
     <div class="supportBody">Only after that should the target ladder matter.</div>
   </div></div>
 </div>
 
-<div class="twoCol">
-  <div class="card controlPanel"><div class="toolbar">
-    <div class="calculatorTopline">
-      <div class="pill">🧮 Quick Stop + Take Profit</div>
+<div class="plannerWorkbench">
+  <div class="card controlPanel plannerWorkbenchCard"><div class="toolbar">
+    <div class="plannerWorkbenchHead">
+      <div>
+        <div class="pill">Execution Planner</div>
+        <div class="supportLead">Build the plan in the same order you should think it.</div>
+        <div class="tiny stack8 line16">Entry, size, stop, then target. If the stop breaks the account posture, the trade is done before it starts.</div>
+      </div>
       <details class="calcHelper">
         <summary aria-label="Calculator help">?</summary>
         <div class="calcHelperPopover">
           <div>Risk = (Entry → Stop) × 100 × contracts + fees</div>
           <div>Reward = (Target → Entry) × 100 × contracts − fees</div>
-          <div>Confirm first. Hope is not a setup.</div>
+          <div>Sharp plans keep risk small enough that one mistake does not distort the week.</div>
         </div>
       </details>
     </div>
-    <div class="tiny stack10 line15">Fast plan-first sizing. Keep it sharp enough to use during the day.</div>
 
-    <div class="calcPresetRow">
-      <button class="btn btnCompact calcPresetBtn" type="button" data-stop="15" data-target="30">1R quick</button>
-      <button class="btn btnCompact calcPresetBtn" type="button" data-stop="20" data-target="40">2R standard</button>
+    <div class="calcPresetRow plannerPresetRow">
+      <button class="btn btnCompact calcPresetBtn" type="button" data-stop="15" data-target="30">Scalp 1R</button>
+      <button class="btn btnCompact calcPresetBtn" type="button" data-stop="20" data-target="40">Standard 2R</button>
       <button class="btn btnCompact calcPresetBtn" type="button" data-stop="25" data-target="60">Runner</button>
     </div>
 
@@ -54,40 +97,37 @@
       {% if err %}• {{ err }}{% endif %}
     </div>
 
-    <form id="plan-risk-form" method="post">
-      <div class="row">
+    <form id="plan-risk-form" method="post" class="plannerForm">
+      <div class="plannerFormGrid">
         <div>
-          <label>💰 Entry Premium</label>
+          <label>Entry Premium</label>
           <input name="entry" inputmode="decimal" placeholder="e.g. 6.20" value="{{ vals.entry }}">
         </div>
         <div>
-          <label>🧾 Contracts</label>
+          <label>Contracts</label>
           <input name="contracts" inputmode="numeric" value="{{ vals.contracts }}">
         </div>
-      </div>
-
-      <div class="row stack10">
         <div>
-          <label>🛑 Stop %</label>
+          <label>Stop %</label>
           <input name="stop_pct" inputmode="decimal" value="{{ vals.stop_pct }}">
         </div>
         <div>
-          <label>🎯 Target %</label>
+          <label>Target %</label>
           <input name="target_pct" inputmode="decimal" value="{{ vals.target_pct }}">
         </div>
-        <div>
-          <label>💵 Fee / Contract (round-trip)</label>
+        <div class="plannerFormWide">
+          <label>Fee / Contract (round-trip)</label>
           <input name="fee_per_contract" inputmode="decimal" value="{{ vals.fee_per_contract }}">
         </div>
       </div>
 
-      <div class="hr"></div>
-      <div class="rightActions">
-        <button id="calc-submit" class="btn primary" type="submit">⚡ Calculate</button>
-        <a class="btn" href="/dashboard">📊 Dashboard</a>
-        <a class="btn" href="/trades">📅 Trades</a>
+      <div class="rightActions plannerActionRow">
+        <button id="calc-submit" class="btn primary" type="submit">Calculate Plan</button>
+        <a class="btn" href="/trades/new">Open Trade Gate</a>
+        <a class="btn" href="/trades">Review Trades</a>
       </div>
     </form>
+
     <div id="calc-runway" class="syncRunway" style="display:none">
       <div class="syncRunwayTop">
         <span id="calc-badge" class="syncBadge">Calculating</span>
@@ -103,35 +143,51 @@
         <div class="syncStep" data-calc-step>Projection</div>
       </div>
     </div>
-    <div class="hr"></div>
-    <div class="statRow">
-      <div class="stat">
-        <div class="k">🏦 Current Balance</div>
-        <div class="v" id="balNow">{{ money(current_balance) }}</div>
-      </div>
-      <div class="stat">
-        <div class="k">🛑 Balance If Stop Hits</div>
-        <div class="v" id="balStop">—</div>
-      </div>
-      <div class="stat">
-        <div class="k">🎯 Balance If Target Hits</div>
-        <div class="v" id="balTarget">—</div>
-      </div>
-      <div class="stat {{ current_consistency.class }}">
-        <div class="k">📏 Current Consistency</div>
-        <div class="v">
-          {% if current_consistency.ratio is not none %}{{ '%.1f'|format(current_consistency.ratio * 100) }}%{% else %}—{% endif %}
-        </div>
-      </div>
-      {% if out %}
-      <div class="stat">
-        <div class="k">Plan State</div>
-        <div class="v"><span class="tradeValueBubble {% if out.plan_state == 'Sharp' %}tradeValueBubbleGain{% elif out.plan_state == 'Manageable' %}tradeValueBubbleWarm{% else %}tradeValueBubbleLoss{% endif %}">{{ out.plan_state }}</span></div>
-      </div>
-      {% endif %}
-    </div>
   </div></div>
 
+  <div class="plannerSidebar">
+    <div class="card supportCard plannerPreviewCard"><div class="toolbar">
+      <div class="pill">Live Preview</div>
+      <div class="plannerPreviewGrid">
+        <div class="plannerPreviewMetric">
+          <div class="k">Current Balance</div>
+          <div class="v" id="balNow">{{ money(current_balance) }}</div>
+        </div>
+        <div class="plannerPreviewMetric">
+          <div class="k">Balance If Stop Hits</div>
+          <div class="v" id="balStop">—</div>
+        </div>
+        <div class="plannerPreviewMetric">
+          <div class="k">Balance If Target Hits</div>
+          <div class="v" id="balTarget">—</div>
+        </div>
+        <div class="plannerPreviewMetric {{ current_consistency.class }}">
+          <div class="k">Current Consistency</div>
+          <div class="v">
+            {% if current_consistency_ratio is not none %}{{ '%.1f'|format(current_consistency_ratio) }}%{% else %}—{% endif %}
+          </div>
+        </div>
+      </div>
+    </div></div>
+
+    <div class="card supportCard subtleCard plannerStandardsCard"><div class="toolbar">
+      <div class="pill">Standards</div>
+      <div class="plannerStandardList">
+        <div class="plannerStandardItem is-good">
+          <div class="plannerStandardTitle">A-tier</div>
+          <div class="plannerStandardBody">Risk stays under 1% of balance and clears at least 2R.</div>
+        </div>
+        <div class="plannerStandardItem is-warm">
+          <div class="plannerStandardTitle">Manageable</div>
+          <div class="plannerStandardBody">Risk stays under 2% and still clears at least 1.5R.</div>
+        </div>
+        <div class="plannerStandardItem is-bad">
+          <div class="plannerStandardTitle">Reject</div>
+          <div class="plannerStandardBody">Anything hotter than that is pressure, not edge.</div>
+        </div>
+      </div>
+    </div></div>
+  </div>
 </div>
 
 <div id="calc-results">
@@ -265,62 +321,64 @@
       if(badge){
         badge.textContent = "Calculating";
       }
-      if(stageLabel){
-        stageLabel.textContent = "Computing risk, reward, and consistency.";
-      }
+      const messages = [
+        "Checking plan inputs.",
+        "Mapping stop and reward profile.",
+        "Projecting consistency damage.",
+        "Building approval summary.",
+      ];
+      let idx = 0;
       setStep(0);
-      let index = 0;
+      if(stageLabel){
+        stageLabel.textContent = messages[0];
+      }
       if(stageTimer){
         window.clearInterval(stageTimer);
       }
       stageTimer = window.setInterval(() => {
-        index = Math.min(index + 1, steps.length - 1);
-        setStep(index);
+        idx = Math.min(idx + 1, messages.length - 1);
+        setStep(idx);
+        if(stageLabel){
+          stageLabel.textContent = messages[idx];
+        }
       }, 260);
     }
 
-    form.addEventListener("submit", async (event) => {
+    async function submitForm(event){
       event.preventDefault();
       startRunway();
-      if(submitBtn){
-        submitBtn.disabled = true;
-        submitBtn.textContent = "Calculating...";
-      }
+      submitBtn.disabled = true;
       try{
-        const response = await fetch(form.action || window.location.pathname, {
+        const formData = new FormData(form);
+        const response = await fetch("/calculator", {
           method: "POST",
           headers: {
             "X-Requested-With": "XMLHttpRequest",
-            "Accept": "application/json"
+            "Accept": "application/json",
           },
-          body: new FormData(form)
+          body: formData,
         });
         const payload = await response.json();
-        if(!response.ok){
-          throw new Error(payload && payload.err ? payload.err : "Calculation failed.");
+        if(!payload.ok){
+          stopRunway(false, payload.err || "Fix the plan inputs and try again.");
+          showError(payload.err || "Unable to calculate plan.");
+          return;
         }
-        if(resultsEl){
-          resultsEl.innerHTML = payload.results_html || "";
+        if(resultsEl && typeof payload.results_html === "string"){
+          resultsEl.innerHTML = payload.results_html;
         }
-        showError(payload.err || "");
-        stopRunway(!payload.err, payload.err ? "Update the inputs and recalculate." : "Plan updated. Risk and balance projections are ready.");
-      }catch(error){
-        showError(error && error.message ? error.message : "Calculation failed.");
-        stopRunway(false, "Calculation failed. Check the inputs and try again.");
+        stopRunway(true, "Plan is ready. Approve or reject it from the result rail.");
+      }catch(err){
+        stopRunway(false, "Request failed. Try again.");
+        showError("Request failed. Try again.");
       }finally{
-        if(submitBtn){
-          submitBtn.disabled = false;
-          submitBtn.textContent = "⚡ Calculate";
-        }
+        submitBtn.disabled = false;
       }
-    });
+    }
 
-    ["input","change"].forEach((evt)=>{
-      entryEl.addEventListener(evt, updatePreview);
-      contractsEl.addEventListener(evt, updatePreview);
-      stopPctEl.addEventListener(evt, updatePreview);
-      targetPctEl.addEventListener(evt, updatePreview);
-      feeEl.addEventListener(evt, updatePreview);
+    form.addEventListener("submit", submitForm);
+    [entryEl, contractsEl, stopPctEl, targetPctEl, feeEl].forEach((input) => {
+      input.addEventListener("input", updatePreview);
     });
     updatePreview();
   })();

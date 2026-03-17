@@ -56,9 +56,9 @@
               <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
               <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
             {% else %}
-              <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
+              <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
             {% endif %}
-            <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
+            <a class="btn primary" href="/trades/upload/statement">Import Statement</a>
           </div>
         </div>
       </div>
@@ -301,6 +301,15 @@
             </div>
           </div>
           <div class="tiny muted dashboardTapeMetaLine" data-role="source-badge">{{ dashboard_spx.get('source_badge_label') or dashboard_spx.get('source_label') or 'Awaiting feed' }}</div>
+          {% if spx_state != 'Live' %}
+            <div class="tiny muted dashboardTapeMetaLine dashboardTapeMetaStatus">
+              {% if spx_state == 'Delayed' %}
+                Using delayed quote data. Confirm timing before treating tape changes as actionable.
+              {% else %}
+                Waiting on a live Tradier quote. Tape values will fill when the feed recovers.
+              {% endif %}
+            </div>
+          {% endif %}
           <div class="dashboardTapeStatsRow">
             <div class="dashboardTapeStatCell">
               <div class="tiny muted">Gap</div>
@@ -373,6 +382,15 @@
             </div>
           </div>
           <div class="tiny muted dashboardTapeMetaLine" data-role="source-badge">{{ dashboard_vix.get('source_badge_label') or dashboard_vix.get('source_label') or 'Awaiting feed' }}</div>
+          {% if vix_state != 'Live' %}
+            <div class="tiny muted dashboardTapeMetaLine dashboardTapeMetaStatus">
+              {% if vix_state == 'Delayed' %}
+                Using delayed quote data. Treat VIX moves as context, not live tape confirmation.
+              {% else %}
+                Waiting on a live Tradier quote. VIX context will return when the feed recovers.
+              {% endif %}
+            </div>
+          {% endif %}
           <div class="dashboardTapeStatsRow">
             <div class="dashboardTapeStatCell">
               <div class="tiny muted">Gap</div>

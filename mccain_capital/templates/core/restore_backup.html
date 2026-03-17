@@ -21,6 +21,7 @@
       <div class="pill">Restore Target</div>
       <div class="workspaceSectionLead">This replaces <code>{{ db_path }}</code> and merges files into <code>{{ upload_dir }}</code>.</div>
       <div class="tiny stack8 line15">Use the backup center when you want dry-run, clear-first restore, or saved-archive selection. This page is for direct ZIP upload.</div>
+      <div class="tiny stack8 line15">Current upload limit: <b>{{ max_upload_mb }}MB</b>. Large restores can take a minute after upload before the summary appears.</div>
       {% if message %}
       <div class="hr"></div>
       <div class="pill">
@@ -74,6 +75,9 @@
       badge: 'Restore',
       startMessage: 'Uploading backup archive to the server.',
       stageMap: { validate_archive: 1, apply_restore: 2, complete: 3, failed: 3 },
+      startErrorMessage: 'Restore could not start. Check archive size, session auth, and retry.',
+      pollErrorMessage: 'Restore status refresh failed. Reload this page before retrying the restore.',
+      errorTitle: 'Restore Needs Attention',
       startPollDelayMs: 500
     });
 
@@ -86,7 +90,9 @@
         startMessage: uploadedName
           ? ('Restore queued for ' + uploadedName + '.')
           : 'Restore queued. Validating backup archive.',
-        stageMap: { validate_archive: 1, apply_restore: 2, complete: 3, failed: 3 }
+        stageMap: { validate_archive: 1, apply_restore: 2, complete: 3, failed: 3 },
+        pollErrorMessage: 'Restore status refresh failed. Reload this page before retrying the restore.',
+        errorTitle: 'Restore Needs Attention'
       });
     }
   })();

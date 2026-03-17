@@ -189,7 +189,7 @@
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
           <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
-          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Risk</a>
+          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
           <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
           <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
         </div>
@@ -220,7 +220,7 @@
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
-            <a class="btn" href="/setup">Setup Login</a>
+            <a class="btn" href="/setup">Login Setup</a>
             <div class="hr"></div>
             <div class="menuTitle">External</div>
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
@@ -394,7 +394,7 @@
         <section class="drawerSection drawerSectionTools">
           <div class="drawerSectionTitle">Tools</div>
           <div class="drawerStack">
-            <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Risk</a>
+            <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Planner</a>
             <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payouts</a>
             <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">Strategies</a>
@@ -412,7 +412,7 @@
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
-            <a class="btn" href="/setup">Setup Login</a>
+            <a class="btn" href="/setup">Login Setup</a>
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
             {% if vanquish_lock and vanquish_lock.active %}
               <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>

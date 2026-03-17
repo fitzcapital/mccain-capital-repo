@@ -383,7 +383,15 @@
     .toolbar{padding:var(--card-pad)}
     .authCard{max-width:560px;margin:0 auto}
 
-    label{font-size:var(--type-meta);color:var(--muted);font-weight:700;letter-spacing:.01em}
+    label{
+      display:block;
+      margin-bottom:6px;
+      font-size:11px;
+      color:rgba(224, 238, 255, .72);
+      font-weight:800;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
     input, select, textarea{
       width:100%;
       background: var(--panel2);
@@ -1112,12 +1120,19 @@
     @media (max-width: 920px){
       table{display:block;overflow-x:auto;white-space:nowrap}
     }
-    .tableWrap{overflow:auto;border-radius:12px}
+    .tableWrap{
+      overflow:auto;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.08);
+      background:rgba(5, 11, 20, .22);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
     .tableDense th, .tableDense td{
-      padding:8px 10px;
+      padding:10px 11px;
       font-size:12px;
       line-height:1.4;
       font-variant-numeric: tabular-nums;
+      vertical-align:top;
     }
     .tableDense tbody td{
       transition: background-color var(--motion-fast) var(--motion-ease);
@@ -3885,6 +3900,182 @@
   align-items:center;
   justify-content:space-between;
   gap:10px;
+}
+.plannerSignalGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+  margin-bottom:12px;
+}
+.plannerSignalCard,
+.payoutSignalCard{
+  min-width:0;
+  display:grid;
+  gap:6px;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid rgba(133, 180, 255, .18);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(66, 174, 255, .10), transparent 48%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012)),
+    var(--panel);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 10px 24px rgba(6, 18, 38, .18);
+}
+.plannerSignalCard.is-healthy,
+.payoutSignalCard.is-healthy{
+  border-color:rgba(78, 222, 151, .24);
+}
+.plannerSignalCard.is-caution,
+.payoutSignalCard.is-caution{
+  border-color:rgba(255, 200, 92, .24);
+}
+.plannerSignalCard.is-danger,
+.payoutSignalCard.is-danger{
+  border-color:rgba(255, 118, 118, .22);
+}
+.plannerSignalLabel,
+.payoutSignalLabel{
+  font-size:10px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:rgba(224, 238, 255, .68);
+}
+.plannerSignalCard strong,
+.payoutSignalCard strong{
+  font-size:28px;
+  line-height:1.02;
+  letter-spacing:-.03em;
+}
+.plannerSignalMeta,
+.payoutSignalMeta{
+  font-size:11px;
+  line-height:1.45;
+  color:rgba(224, 238, 255, .76);
+}
+.plannerSupportGrid{
+  margin-bottom:12px;
+}
+.plannerWorkbench{
+  display:grid;
+  grid-template-columns:minmax(0, 1.25fr) minmax(300px, .8fr);
+  gap:12px;
+  align-items:start;
+}
+.plannerWorkbenchCard,
+.plannerPreviewCard,
+.plannerStandardsCard,
+.plannerVerdictCard,
+.plannerResultMetrics,
+.plannerLadderCard{
+  background:
+    radial-gradient(120% 120% at 100% 0%, rgba(66, 174, 255, .10), transparent 48%),
+    linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.01)),
+    var(--panel);
+}
+.plannerWorkbenchHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.plannerPresetRow{
+  margin-top:12px;
+}
+.plannerForm{
+  display:grid;
+  gap:14px;
+}
+.plannerFormGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+.plannerFormWide{
+  grid-column:1 / -1;
+}
+.plannerActionRow{
+  justify-content:flex-start;
+}
+.plannerSidebar{
+  display:grid;
+  gap:12px;
+}
+.plannerPreviewGrid,
+.payoutRunwayGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+.plannerPreviewMetric{
+  min-width:0;
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(6, 12, 24, .34);
+}
+.plannerPreviewMetric .k{
+  font-size:11px;
+  color:var(--muted);
+}
+.plannerPreviewMetric .v{
+  margin-top:6px;
+  font-size:22px;
+  line-height:1.06;
+  letter-spacing:-.03em;
+}
+.plannerStandardList{
+  display:grid;
+  gap:10px;
+}
+.plannerStandardItem{
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(7, 13, 25, .32);
+}
+.plannerStandardItem.is-good{ border-color:rgba(78, 222, 151, .22); }
+.plannerStandardItem.is-warm{ border-color:rgba(255, 200, 92, .20); }
+.plannerStandardItem.is-bad{ border-color:rgba(255, 118, 118, .20); }
+.plannerStandardTitle{
+  font-size:16px;
+  color:var(--text);
+}
+.plannerStandardBody{
+  margin-top:4px;
+  font-size:12px;
+  line-height:1.5;
+  color:rgba(224, 238, 255, .74);
+}
+.plannerResultsShell{
+  display:grid;
+  gap:12px;
+  margin-top:12px;
+}
+.plannerVerdictHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.plannerVerdictBadges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.plannerVerdictCard-sharp{
+  border-color:rgba(78, 222, 151, .22);
+}
+.plannerVerdictCard-manageable{
+  border-color:rgba(255, 200, 92, .22);
+}
+.plannerVerdictCard-too-hot{
+  border-color:rgba(255, 118, 118, .22);
+}
+.plannerLadderCard table{
+  width:100%;
 }
 .calcHelper{
   position:relative;
@@ -8950,6 +9141,91 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
   gap:8px;
   margin-top:10px;
 }
+.executionSignalGrid,
+.analyticsSignalGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+  margin-bottom:12px;
+}
+.executionSignalCard,
+.analyticsSignalCard{
+  min-width:0;
+  display:grid;
+  gap:6px;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid rgba(133, 180, 255, .18);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(66, 174, 255, .10), transparent 48%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012)),
+    var(--panel);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 10px 24px rgba(6, 18, 38, .18);
+}
+.executionSignalCard.is-healthy,
+.analyticsSignalCard.is-healthy{
+  border-color:rgba(78, 222, 151, .24);
+}
+.executionSignalCard.is-danger,
+.analyticsSignalCard.is-danger{
+  border-color:rgba(255, 118, 118, .22);
+}
+.executionSignalCard.is-neutral,
+.analyticsSignalCard.is-neutral{
+  border-color:rgba(255,255,255,.12);
+}
+.executionSignalLabel,
+.analyticsSignalLabel{
+  font-size:10px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:rgba(224, 238, 255, .68);
+}
+.executionSignalCard strong,
+.analyticsSignalCard strong{
+  font-size:25px;
+  line-height:1.04;
+  letter-spacing:-.03em;
+}
+.executionSignalMeta,
+.analyticsSignalMeta{
+  font-size:11px;
+  line-height:1.45;
+  color:rgba(224, 238, 255, .76);
+}
+.dashboardTapeMetaStatus{
+  margin-top:4px;
+  color:rgba(224, 238, 255, .66);
+  line-height:1.45;
+}
+.executionMetricStrip{
+  margin-top:0;
+}
+.tradesControlRail{
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.executionQuickLinks{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+.analyticsModeSummary{
+  display:grid;
+  gap:8px;
+  margin-top:12px;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.07);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)),
+    rgba(6, 12, 24, .28);
+}
+.analyticsModeSummaryMeta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
 
 /* Dashboard A-pass: tighter hierarchy, lower clutter, faster scanning */
 .page-dashboard .card::after{
@@ -9741,6 +10017,7 @@ textarea:focus-visible{
 }
 
 .page-trades .pageHero,
+.page-calc .pageHero,
 .page-journal .pageHero,
 .page-analytics .pageHero,
 .page-strategies .pageHero,
@@ -9754,6 +10031,7 @@ textarea:focus-visible{
 }
 
 .page-trades .pageHero .summaryLead,
+.page-calc .pageHero .summaryLead,
 .page-journal .pageHero .summaryLead,
 .page-analytics .pageHero .summaryLead,
 .page-strategies .pageHero .summaryLead,
@@ -9801,6 +10079,14 @@ textarea:focus-visible{
     var(--panel);
 }
 
+.page-calc .controlPanel,
+.page-calc .supportCard{
+  background:
+    radial-gradient(120% 110% at 100% 0%, rgba(66, 174, 255, .10), transparent 46%),
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.01)),
+    var(--panel);
+}
+
 .journalSupportGrid{
   margin-bottom:12px;
 }
@@ -9826,6 +10112,69 @@ textarea:focus-visible{
     inset 0 0 0 1px rgba(103, 243, 200, .14),
     0 0 18px rgba(72, 193, 255, .10);
 }
+.payoutSignalGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+  margin-bottom:12px;
+}
+.payoutSupportGrid{
+  margin-bottom:12px;
+}
+.payoutWorkspace{
+  display:grid;
+  grid-template-columns:minmax(0, 1.12fr) minmax(300px, .88fr);
+  gap:12px;
+  align-items:start;
+  margin-bottom:12px;
+}
+.payoutPlannerCard,
+.payoutReadCard,
+.payoutProjectionCard,
+.payoutTotalsCard,
+.payoutForecastCard,
+.payoutReadinessCard{
+  background:
+    radial-gradient(120% 110% at 100% 0%, rgba(66, 174, 255, .10), transparent 46%),
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.01)),
+    var(--panel);
+}
+.payoutInputGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+  align-items:end;
+}
+.payoutInputActions{
+  grid-column:1 / -1;
+  justify-content:flex-start;
+}
+.payoutSidebar{
+  display:grid;
+  gap:12px;
+}
+.payoutForecastGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+  margin-top:12px;
+}
+.payoutForecastPath{
+  border-color:rgba(111, 177, 255, .18);
+}
+.payoutForecastStats{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+.payoutProbabilityRail{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.payoutReadinessHead{
+  margin:12px 0;
+}
 
 .syncDetails summary{
   display:flex;
@@ -9847,6 +10196,20 @@ textarea:focus-visible{
   .wrap{
     padding:16px 12px 76px;
   }
+  .executionSignalGrid,
+  .plannerSignalGrid,
+  .analyticsSignalGrid,
+  .payoutSignalGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+  .plannerWorkbench,
+  .payoutWorkspace,
+  .payoutForecastGrid{
+    grid-template-columns:1fr;
+  }
+  .payoutForecastStats{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
   .metricStrip{
     grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:8px;
@@ -9863,9 +10226,32 @@ textarea:focus-visible{
 }
 
 @media (max-width: 620px){
+  .executionSignalGrid,
   .metricStrip,
   .dashboardSupportGrid,
+  .analyticsSignalGrid,
   .statusBadgeStrip{
+    grid-template-columns:1fr;
+  }
+  .plannerFormGrid,
+  .plannerPreviewGrid,
+  .payoutRunwayGrid,
+  .payoutInputGrid,
+  .payoutForecastStats{
+    grid-template-columns:1fr;
+  }
+  .plannerSignalCard strong,
+  .payoutSignalCard strong{
+    font-size:24px;
+  }
+  .plannerPreviewMetric .v{
+    font-size:19px;
+  }
+  .tradesControlRail{
+    width:100%;
+    justify-content:stretch;
+  }
+  .executionQuickLinks{
     grid-template-columns:1fr;
   }
   .card .toolbar{padding:9px;}

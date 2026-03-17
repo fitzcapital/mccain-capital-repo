@@ -9,12 +9,13 @@
         .replace(/'/g, '&#39;');
     }
 
-    function setSummaryMessage(summary, tone, message) {
+    function setSummaryMessage(summary, tone, message, title) {
       if (!summary) return;
       const safeTone = tone === 'danger' ? 'danger' : (tone === 'warning' ? 'warning' : 'info');
       const safeMessage = escapeHtml(message || '');
+      const safeTitle = escapeHtml(title || (safeTone === 'danger' ? 'Needs Attention' : 'Update'));
       summary.innerHTML = safeMessage
-        ? `<div class="card"><div class="toolbar"><div class="pill">${safeTone === 'danger' ? 'Restore Failed' : 'Update'}</div><div class="workspaceSectionLead stack8">${safeMessage}</div></div></div>`
+        ? `<div class="card"><div class="toolbar"><div class="pill">${safeTitle}</div><div class="workspaceSectionLead stack8">${safeMessage}</div></div></div>`
         : '';
       summary.style.display = safeMessage ? 'block' : 'none';
     }
@@ -82,13 +83,15 @@
             if (typeof config.onComplete === 'function') config.onComplete(job);
           })
           .catch(() => {
+            const pollMessage = config.pollErrorMessage || 'Live status refresh failed. Reload and check the last known job state.';
             setRunwayState(runway, {
               badge: 'Failed',
-              label: 'Status polling failed.',
+              label: pollMessage,
               stepIndex: 1,
               complete: true,
               failed: true
             });
+            setSummaryMessage(summary, 'danger', pollMessage, config.errorTitle || 'Needs Attention');
             if (button) {
               button.disabled = false;
               button.textContent = doneLabel;
@@ -175,7 +178,7 @@
           .catch((err) => {
             const message = err && err.message
               ? err.message
-              : 'Could not start the job.';
+              : (config.startErrorMessage || 'Could not start the job.');
             setRunwayState(runway, {
               badge: 'Failed',
               label: message,
@@ -183,7 +186,7 @@
               complete: true,
               failed: true
             });
-            setSummaryMessage(summary, 'danger', message);
+            setSummaryMessage(summary, 'danger', message, config.errorTitle || 'Needs Attention');
             button.disabled = false;
             button.textContent = doneLabel;
           });

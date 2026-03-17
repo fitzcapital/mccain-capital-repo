@@ -3428,10 +3428,12 @@ def restore_data():
         restore_job_id: str = "",
         restore_filename: str = "",
     ):
+        max_upload_mb = int((current_app.config.get("MAX_CONTENT_LENGTH") or 0) / (1024 * 1024))
         content = render_template(
             "core/restore_backup.html",
             db_path=str(app_runtime.DB_PATH),
             upload_dir=str(app_runtime.UPLOAD_DIR),
+            max_upload_mb=max_upload_mb,
             message=str(message or "").strip(),
             tone=str(tone or "info").strip() or "info",
             restore_job_id=str(restore_job_id or "").strip(),
