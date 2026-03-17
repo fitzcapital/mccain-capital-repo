@@ -210,3 +210,50 @@ def test_get_prior_session_intraday_uses_short_lived_curve_cache(monkeypatch):
     assert len(first) == 25
     assert first == second
     assert first is not second
+
+
+def test_get_price_returns_none_when_tradier_has_no_quote(monkeypatch):
+    monkeypatch.setattr(market_data_service, "_tradier_quote_map", lambda symbols: {})
+    monkeypatch.setattr(
+        market_data_service,
+        "_massive_watch_quote",
+        lambda symbol: (_ for _ in ()).throw(AssertionError("massive fallback should not run")),
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "_yf_watch_quote",
+        lambda symbol: (_ for _ in ()).throw(AssertionError("yfinance fallback should not run")),
+    )
+
+    assert market_data_service.get_price("SPX") is None
+
+
+def test_get_watchlist_is_tradier_only(monkeypatch):
+    monkeypatch.setattr(
+        market_data_service,
+        "_tradier_quote_map",
+        lambda symbols: {
+            "SPX": {
+                "price": None,
+                "pct_change": None,
+                "as_of": "2026-03-17T14:30:00+00:00",
+                "provider": "tradier",
+                "reason": "tradier_no_data",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "_massive_watch_quote",
+        lambda symbol: (_ for _ in ()).throw(AssertionError("massive fallback should not run")),
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "_yf_watch_quote",
+        lambda symbol: (_ for _ in ()).throw(AssertionError("yfinance fallback should not run")),
+    )
+
+    out = market_data_service.get_watchlist(["SPX"], allow_yf_fallback=True)
+
+    assert out["SPX"]["provider"] == "tradier"
+    assert out["SPX"]["reason"] == "tradier_no_data"

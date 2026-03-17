@@ -1,10 +1,4 @@
-"""Market data adapter for dashboard pulse.
-
-Provider priority:
-1) Tradier
-2) Massive/Polygon
-3) yfinance (optional fallback)
-"""
+"""Tradier-backed market data adapter for dashboard pulse."""
 
 from __future__ import annotations
 
@@ -643,14 +637,7 @@ def _yf_watch_quote(symbol: str) -> Dict[str, Any]:
 
 def get_price(symbol: str) -> Optional[float]:
     tq = _tradier_quote_map([symbol]).get(str(symbol or "").strip().upper(), {})
-    if tq.get("price") is not None:
-        return _safe_float(tq.get("price"))
-    if _massive_api_key():
-        q = _massive_watch_quote(symbol)
-        if q.get("price") is not None:
-            return _safe_float(q.get("price"))
-    q = _yf_watch_quote(symbol)
-    return _safe_float(q.get("price"))
+    return _safe_float(tq.get("price"))
 
 
 def get_intraday(symbol: str) -> List[Dict[str, Any]]:
@@ -666,37 +653,6 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
     tradier_rows = _tradier_intraday_rows(symbol)
     if len(tradier_rows) >= 20:
         return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
-
-    if _massive_api_key():
-        rows = _massive_intraday_rows(symbol)
-        if len(rows) >= 20:
-            return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, rows)
-
-    hist = _yf_history(symbol)
-    if hist is None:
-        return []
-    out: List[Dict[str, Any]] = []
-    try:
-        if hist.empty:
-            return out
-        for idx, row in hist.iterrows():
-            ts = getattr(idx, "to_pydatetime", lambda: idx)()
-            ts_iso = ts.isoformat(timespec="seconds") if hasattr(ts, "isoformat") else str(ts)
-            out.append(
-                {
-                    "ts": ts_iso,
-                    "open": float(row.get("Open") or 0.0),
-                    "high": float(row.get("High") or 0.0),
-                    "low": float(row.get("Low") or 0.0),
-                    "close": float(row.get("Close") or 0.0),
-                    "volume": float(row.get("Volume") or 0.0),
-                }
-            )
-    except Exception:
-        return []
-    # If provider intraday is sparse/unavailable, yfinance offers a fuller curve for charting.
-    if out:
-        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, out)
     if tradier_rows:
         return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
     return []
@@ -726,42 +682,6 @@ def get_prior_session_intraday(
     tradier_rows = _tradier_intraday_rows_for_date(symbol, session_day)
     if len(tradier_rows) >= 20:
         return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
-
-    if _massive_api_key():
-        rows = _massive_intraday_rows_for_date(symbol, session_day)
-        if len(rows) >= 20:
-            return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, rows)
-
-    hist = _yf_history_period(symbol, period="5d", prepost=False)
-    if hist is None:
-        return tradier_rows
-    out: List[Dict[str, Any]] = []
-    try:
-        if hist.empty:
-            return tradier_rows
-        for idx, row in hist.iterrows():
-            ts = getattr(idx, "to_pydatetime", lambda: idx)()
-            if not isinstance(ts, datetime):
-                continue
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=app_runtime.TZ)
-            ts_et = ts.astimezone(app_runtime.TZ)
-            if ts_et.date() != session_day:
-                continue
-            out.append(
-                {
-                    "ts": ts.astimezone(timezone.utc).isoformat(timespec="seconds"),
-                    "open": float(row.get("Open") or 0.0),
-                    "high": float(row.get("High") or 0.0),
-                    "low": float(row.get("Low") or 0.0),
-                    "close": float(row.get("Close") or 0.0),
-                    "volume": float(row.get("Volume") or 0.0),
-                }
-            )
-    except Exception:
-        return tradier_rows
-    if out:
-        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, out)
     if tradier_rows:
         return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
     return []
@@ -770,34 +690,8 @@ def get_prior_session_intraday(
 def get_watchlist(
     symbols: List[str], *, allow_yf_fallback: bool = True
 ) -> Dict[str, Dict[str, Any]]:
-    snapshot: Dict[str, Dict[str, Any]] = {}
-    tradier_map = _tradier_quote_map(symbols)
-    use_massive = bool(_massive_api_key())
-    if use_massive and not allow_yf_fallback:
-        return get_watchlist_massive(symbols)
-    for raw in symbols:
-        symbol = str(raw or "").strip().upper()
-        if not symbol:
-            continue
-        quote = dict(tradier_map.get(symbol) or {})
-        if not quote:
-            quote = (
-                _massive_watch_quote(symbol)
-                if use_massive
-                else {
-                    "price": None,
-                    "pct_change": None,
-                    "as_of": _now_iso(),
-                    "provider": "massive",
-                    "reason": "massive_key_missing",
-                }
-            )
-        # If primary provider fails for this symbol, fallback per-symbol.
-        if quote.get("price") is None and use_massive and allow_yf_fallback:
-            quote = _yf_watch_quote(symbol)
-            quote["provider"] = "yfinance"
-        snapshot[symbol] = quote
-    return snapshot
+    _ = allow_yf_fallback
+    return get_watchlist_tradier(symbols)
 
 
 def get_watchlist_tradier(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -827,37 +721,4 @@ def get_watchlist_tradier(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
 
 
 def get_watchlist_massive(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
-    snapshot: Dict[str, Dict[str, Any]] = {}
-    tradier_map = _tradier_quote_map(symbols)
-    stock_symbols: List[str] = []
-    index_symbols: List[str] = []
-    for raw in symbols:
-        symbol = str(raw or "").strip().upper()
-        if not symbol:
-            continue
-        if symbol in tradier_map and tradier_map[symbol].get("price") is not None:
-            snapshot[symbol] = tradier_map[symbol]
-            continue
-        mapped = _massive_symbol(symbol)
-        if ":" in mapped:
-            index_symbols.append(symbol)
-        else:
-            stock_symbols.append(symbol)
-
-    if stock_symbols:
-        bulk = _massive_bulk_stock_quotes(stock_symbols)
-        for symbol in stock_symbols:
-            if symbol in bulk:
-                snapshot[symbol] = bulk[symbol]
-            else:
-                snapshot[symbol] = {
-                    "price": None,
-                    "pct_change": None,
-                    "as_of": _now_iso(),
-                    "provider": "massive",
-                    "reason": "massive_no_data",
-                }
-
-    for symbol in index_symbols:
-        snapshot[symbol] = _massive_watch_quote(symbol)
-    return snapshot
+    return get_watchlist_tradier(symbols)

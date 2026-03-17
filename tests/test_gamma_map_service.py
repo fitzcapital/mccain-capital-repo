@@ -131,3 +131,21 @@ def test_gamma_poll_seconds_is_faster_during_market_hours():
 def test_gamma_poll_seconds_is_slower_on_weekends():
     current = datetime(2026, 3, 14, 10, 0, tzinfo=app_runtime.TZ)
     assert svc._gamma_poll_seconds(current) == svc.WEEKEND_POLL_SECONDS
+
+
+def test_fetch_spx_chain_for_expiries_does_not_fallback_when_tradier_is_empty(monkeypatch):
+    monkeypatch.setattr(svc, "_fetch_spx_chain_from_tradier", lambda expiries: pd.DataFrame())
+    monkeypatch.setattr(
+        svc,
+        "_massive_json",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("polygon fallback should not run")),
+    )
+    monkeypatch.setattr(
+        svc,
+        "_fetch_spx_chain_from_cboe",
+        lambda expiries: (_ for _ in ()).throw(AssertionError("cboe fallback should not run")),
+    )
+
+    out = svc.fetch_spx_chain_for_expiries(["2026-03-17"])
+
+    assert out.empty

@@ -1,4 +1,4 @@
-"""SPX gamma map engine (Massive/Polygon-backed)."""
+"""SPX gamma map engine (Tradier only)."""
 
 from __future__ import annotations
 
@@ -198,105 +198,7 @@ def fetch_spx_chain_for_expiries(expiries: List[str]) -> pd.DataFrame:
     if not tradier_first.empty:
         tradier_first.attrs["contracts_seen"] = int(tradier_first.attrs.get("contracts_seen") or 0)
         return tradier_first
-
-    expiry_set = {str(x) for x in expiries if str(x)}
-    rows: Dict[Tuple[str, float], Dict[str, Any]] = {}
-    seen = 0
-    pages = 0
-    cursor: Optional[str] = None
-
-    while pages < MAX_SNAPSHOT_PAGES:
-        params: Dict[str, Any] = {"limit": 1000}
-        if cursor:
-            params["cursor"] = cursor
-        payload = _massive_json("/v3/snapshot/options/SPX", params)
-        pages += 1
-        if not isinstance(payload, dict):
-            break
-        results = payload.get("results")
-        if not isinstance(results, list):
-            break
-
-        for row in results:
-            if not isinstance(row, dict):
-                continue
-            seen += 1
-            details = row.get("details") if isinstance(row.get("details"), dict) else {}
-            ticker = str(details.get("ticker") or row.get("ticker") or "")
-            parsed = _parse_option_ticker(ticker)
-
-            expiration = str(details.get("expiration_date") or parsed.get("expiration") or "")
-            if expiration not in expiry_set:
-                continue
-
-            strike = _safe_float(details.get("strike_price"))
-            if strike is None:
-                strike = _safe_float(parsed.get("strike"))
-            if strike is None:
-                continue
-
-            cp_raw = str(details.get("contract_type") or "").lower()
-            cp = (
-                "call"
-                if cp_raw.startswith("c")
-                else (
-                    "put"
-                    if cp_raw.startswith("p")
-                    else ("call" if parsed.get("cp") == "C" else "put")
-                )
-            )
-
-            oi = _safe_int(row.get("open_interest") or details.get("open_interest"))
-            greeks = row.get("greeks") if isinstance(row.get("greeks"), dict) else {}
-            gamma = _safe_float(greeks.get("gamma")) or 0.0
-            vega = _safe_float(greeks.get("vega")) or 0.0
-            delta = _safe_float(greeks.get("delta")) or 0.0
-
-            key = (expiration, float(strike))
-            bucket = rows.setdefault(
-                key,
-                {
-                    "expiration": expiration,
-                    "strike": float(strike),
-                    "call_oi": 0.0,
-                    "put_oi": 0.0,
-                    "call_gamma": 0.0,
-                    "put_gamma": 0.0,
-                    "call_vega": 0.0,
-                    "put_vega": 0.0,
-                    "call_delta": 0.0,
-                    "put_delta": 0.0,
-                },
-            )
-            if cp == "call":
-                bucket["call_oi"] = float(oi)
-                bucket["call_gamma"] = float(gamma)
-                bucket["call_vega"] = float(vega)
-                bucket["call_delta"] = float(delta)
-            else:
-                bucket["put_oi"] = float(oi)
-                bucket["put_gamma"] = float(gamma)
-                bucket["put_vega"] = float(vega)
-                bucket["put_delta"] = float(delta)
-
-        next_url = str(payload.get("next_url") or "")
-        if not next_url:
-            break
-        parsed_url = urllib.parse.urlparse(next_url)
-        cursor = urllib.parse.parse_qs(parsed_url.query).get("cursor", [None])[0]
-        if not cursor:
-            break
-
-    df = pd.DataFrame(list(rows.values()))
-    if df.empty:
-        fallback = _fetch_spx_chain_from_cboe(expiry_set)
-        if not fallback.empty:
-            fallback.attrs["contracts_seen"] = int(fallback.attrs.get("contracts_seen") or 0)
-            return fallback
-    if df.empty:
-        return df
-    df.attrs["contracts_seen"] = seen
-    return df
+    return pd.DataFrame()
 
 
 def _fetch_spx_chain_from_tradier(expiry_set: set[str]) -> pd.DataFrame:
