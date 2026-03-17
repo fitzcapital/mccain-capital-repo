@@ -129,6 +129,11 @@
         <div class="pill">Sync Job Status</div>
         <div class="workspaceSectionLead">Current run progress and artifacts stay here so the primary lane always answers “what is happening now?”</div>
         <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
+        <div class="row" id="sync-job-actions" {% if (job.get('status') or '') not in ['queued', 'running'] %}hidden{% endif %}>
+          <form method="post" action="/trades/sync/job/{{ job.get('id') }}/cancel" onsubmit="return window.confirm('Cancel this sync job? Any late output from this run will be ignored.');">
+            <button class="btn danger" type="submit" id="sync-job-cancel-btn">Cancel Sync</button>
+          </form>
+        </div>
         {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
         <div class="statRow">
           <div class="stat">
@@ -684,11 +689,15 @@
       const summaryEl = document.getElementById('sync-job-summary');
       const artifactsEl = document.getElementById('sync-job-artifacts');
       const resultHtmlEl = document.getElementById('sync-job-result-html');
+      const actionsEl = document.getElementById('sync-job-actions');
+      const cancelBtn = document.getElementById('sync-job-cancel-btn');
       if (statusEl) statusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
       if (badgeEl) badgeEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
       if (stageEl) stageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
       if (stageLabelEl) stageLabelEl.textContent = job.message || stageText;
       if (messageEl) messageEl.textContent = job.message || 'Working...';
+      if (actionsEl) actionsEl.hidden = terminal;
+      if (cancelBtn) cancelBtn.disabled = terminal;
       if (durationEl) durationEl.textContent = (job.duration_sec !== null && job.duration_sec !== undefined) ? `${Number(job.duration_sec).toFixed(1)}s` : '—';
       if (insertedEl) insertedEl.textContent = String(summary.inserted || 0);
       if (summaryEl) {

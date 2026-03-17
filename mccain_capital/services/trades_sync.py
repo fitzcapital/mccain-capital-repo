@@ -269,6 +269,23 @@ def trades_sync_job_status(job_id: str):
     )
 
 
+def trades_sync_job_cancel(job_id: str):
+    key = (job_id or "").strip()
+    job = legacy._get_bg_job(key)
+    if not job:
+        return jsonify({"ok": False, "error": "job_not_found"}), 404
+    job = legacy._cancel_sync_job(key)
+    flash("Sync job cancelled. Any late result from that run will be ignored.", "warn")
+    if request.headers.get("Accept") == "application/json":
+        return jsonify(
+            {
+                "ok": True,
+                "job": job_response_payload(job, humanize_timestamp=legacy._humanize_et_timestamp),
+            }
+        )
+    return redirect(url_for("trades_upload_pdf", ws="live", job=key))
+
+
 def ensure_auto_sync_worker_started(app) -> None:
     global _AUTO_SYNC_THREAD_STARTED, _AUTO_BACKUP_THREAD_STARTED
     with _AUTO_SYNC_THREAD_LOCK:

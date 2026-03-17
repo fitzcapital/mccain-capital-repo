@@ -1201,6 +1201,26 @@ def test_anomaly_watch_scanner_emits_alert(monkeypatch, tmp_path):
     assert "anomaly_size_spike" in event_types
 
 
+def test_live_sync_job_can_be_cancelled(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(tmp_path / ".bg_jobs"))
+    job = trades_svc._create_bg_job(
+        "sync",
+        "Live Sync",
+        {"source": "manual_live", "from_date": "2026-03-17", "to_date": "2026-03-17"},
+    )
+    trades_svc._update_bg_job(job["id"], status="running", stage="submit_login", message="Logging in.")
+
+    resp = client.post(f"/trades/sync/job/{job['id']}/cancel", follow_redirects=False)
+
+    assert resp.status_code == 302
+    cancelled = trades_svc._get_bg_job(job["id"])
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["stage"] == "cancelled"
+    assert "ignored" in str(cancelled["message"]).lower()
+
+
 def test_manual_trade_auto_adds_no_cut_20_loss_review_tag(client):
     resp = client.post(
         "/trades/new",

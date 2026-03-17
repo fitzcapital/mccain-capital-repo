@@ -75,6 +75,10 @@ def trades_sync_job_status(job_id: str):
     return trades_sync.trades_sync_job_status(job_id)
 
 
+def trades_sync_job_cancel(job_id: str):
+    return trades_sync.trades_sync_job_cancel(job_id)
+
+
 def trades_sync_debug_file(name: str):
     return svc.trades_sync_debug_file(name)
 

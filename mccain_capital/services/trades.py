@@ -106,6 +106,12 @@ NOTIFY_DEDUPE_BY_EVENT = {
 }
 
 _BG_JOB_STORES: Dict[str, BackgroundJobStore] = {}
+_SYNC_CANCEL_EVENTS: Dict[str, threading.Event] = {}
+_SYNC_CANCEL_LOCK = threading.Lock()
+
+
+class SyncJobCancelled(RuntimeError):
+    """Raised when a sync job is cancelled by the user."""
 
 
 def _upload_dir() -> str:
@@ -265,6 +271,86 @@ def _update_bg_job(job_id: str, **updates: Any) -> Dict[str, Any]:
 
 def _get_bg_job(job_id: str) -> Dict[str, Any]:
     return _bg_job_store().get(job_id)
+
+
+def _sync_cancel_event(job_id: str) -> threading.Event:
+    key = str(job_id or "").strip()
+    with _SYNC_CANCEL_LOCK:
+        event = _SYNC_CANCEL_EVENTS.get(key)
+        if event is None:
+            event = threading.Event()
+            _SYNC_CANCEL_EVENTS[key] = event
+        return event
+
+
+def _clear_sync_cancel_event(job_id: str) -> None:
+    key = str(job_id or "").strip()
+    if not key:
+        return
+    with _SYNC_CANCEL_LOCK:
+        _SYNC_CANCEL_EVENTS.pop(key, None)
+
+
+def _sync_job_cancelled(job_id: str) -> bool:
+    job = _get_bg_job(job_id)
+    return str(job.get("status") or "").strip().lower() == "cancelled"
+
+
+def _ensure_sync_job_active(job_id: str, cancel_event: Optional[threading.Event] = None) -> None:
+    if cancel_event and cancel_event.is_set():
+        raise SyncJobCancelled("Sync cancelled by user.")
+    if _sync_job_cancelled(job_id):
+        raise SyncJobCancelled("Sync cancelled by user.")
+
+
+def _cancel_sync_job(job_id: str) -> Dict[str, Any]:
+    job = _get_bg_job(job_id)
+    if not job:
+        return {}
+    status = str(job.get("status") or "").strip().lower()
+    if status in {"success", "failed", "debug_only", "cancelled"}:
+        return job
+    _sync_cancel_event(job_id).set()
+    summary = {
+        "message": "Sync cancelled. Late background output will be ignored.",
+        "warn_count": 0,
+        "error_count": 0,
+        "inserted": 0,
+        "artifacts_rel": list(((job.get("summary") or {}).get("artifacts_rel") or []))[:20],
+        "statement_file": str(((job.get("summary") or {}).get("statement_file") or "")).strip(),
+    }
+    _save_last_sync_status(
+        {
+            "status": "cancelled",
+            "stage": "cancelled",
+            "message": summary["message"],
+            "requested": job.get("requested") or {},
+            "artifacts_rel": summary["artifacts_rel"],
+            "statement_file": summary["statement_file"],
+            "updated_at": now_iso(),
+        }
+    )
+    return _update_bg_job(
+        job_id,
+        status="cancelled",
+        stage="cancelled",
+        message=summary["message"],
+        summary=summary,
+        result_summary=_build_action_result_summary(
+            tone="warning",
+            title="Live Sync Cancelled",
+            happened="The sync run was cancelled manually.",
+            changed="No further result from this run will update the workspace card.",
+            next_action="Retry once the broker page is responsive again.",
+            actions=[
+                {
+                    "label": "Open Live Sync",
+                    "href": "/trades/upload/statement?ws=live",
+                    "kind": "primary",
+                }
+            ],
+        ),
+    )
 
 
 def _build_action_result_summary(
@@ -2804,6 +2890,7 @@ def _run_live_sync_once(
     debug_only: bool,
     source_label: str,
     progress_cb: Optional[Callable[[str, str], None]] = None,
+    cancel_cb: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Any]:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = (
@@ -2813,7 +2900,13 @@ def _run_live_sync_once(
     )
     artifacts_rel: List[str] = []
     result: Dict[str, Any] = {"ok": False, "warns": [], "artifacts_rel": [], "message": ""}
+
+    def ensure_active() -> None:
+        if cancel_cb:
+            cancel_cb()
+
     try:
+        ensure_active()
         html_text, warns, artifacts_abs, sync_meta = (
             vanquish_live_sync.fetch_statement_html_via_login(
                 base_origin=base_url,
@@ -2831,6 +2924,7 @@ def _run_live_sync_once(
                 progress_cb=progress_cb,
             )
         )
+        ensure_active()
         artifacts_rel = [_debug_relative(p) for p in artifacts_abs]
         result["warns"] = warns
         result["sync_meta"] = sync_meta
@@ -2860,6 +2954,7 @@ def _run_live_sync_once(
     with open(path, "w", encoding="utf-8") as f:
         f.write(html_text)
     artifacts_rel = artifacts_rel + [_debug_relative(path)]
+    ensure_active()
 
     if debug_only:
         result.update(
@@ -2877,6 +2972,7 @@ def _run_live_sync_once(
         batch_id = _new_import_batch_id("live")
         if progress_cb:
             progress_cb("parse_statement_html", "Parsing statement rows.")
+        ensure_active()
         paste_text, balance_val, parse_warns = importing.parse_statement_html_to_broker_paste(path)
         warns_all = (result.get("warns") or []) + (parse_warns or [])
         date_range_fallback = any(
@@ -2947,6 +3043,7 @@ def _run_live_sync_once(
         if RECONCILE_GATE_ENABLED:
             if progress_cb:
                 progress_cb("reconcile_gate", "Running reconcile guardrails.")
+            ensure_active()
             gate = _reconcile_gate_result(pre_report)
             if gate["blocked"]:
                 _emit_notification(
@@ -2975,6 +3072,7 @@ def _run_live_sync_once(
                 return result
         if progress_cb:
             progress_cb("import_trades", "Importing trades.")
+        ensure_active()
         inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
             ending_balance=balance_val,
@@ -3004,6 +3102,7 @@ def _run_live_sync_once(
     batch_id = _new_import_batch_id("livebal")
     if progress_cb:
         progress_cb("parse_statement_html", "Parsing statement balance.")
+    ensure_active()
     _, balance_val, parse_warns = importing.parse_statement_html_to_broker_paste(path)
     warns_all = (result.get("warns") or []) + (parse_warns or [])
     if balance_val is None:
@@ -3091,11 +3190,13 @@ def _start_sync_job(
 ) -> Dict[str, Any]:
     app = current_app._get_current_object()
     job = _create_bg_job("sync", title, requested)
+    cancel_event = _sync_cancel_event(job["id"])
 
     def runner() -> None:
         started = time.time()
 
         def progress(stage: str, message: str) -> None:
+            _ensure_sync_job_active(job["id"], cancel_event)
             stage_message = message or _sync_stage_label(stage)
             _update_bg_job(job["id"], status="running", stage=stage, message=stage_message)
             _save_last_sync_status(
@@ -3129,7 +3230,10 @@ def _start_sync_job(
                     debug_only=debug_only,
                     source_label=source_label,
                     progress_cb=progress,
+                    cancel_cb=lambda: _ensure_sync_job_active(job["id"], cancel_event),
                 )
+                if cancel_event.is_set() or _sync_job_cancelled(job["id"]):
+                    return
                 duration_sec = round(max(0.0, time.time() - started), 2)
                 status = (
                     "debug_only"
@@ -3249,7 +3353,11 @@ def _start_sync_job(
                         ),
                     ),
                 )
+        except SyncJobCancelled:
+            return
         except Exception as e:  # pragma: no cover
+            if cancel_event.is_set() or _sync_job_cancelled(job["id"]):
+                return
             duration_sec = round(max(0.0, time.time() - started), 2)
             fail_message = f"Background sync worker error: {e}"
             _save_last_sync_status(
@@ -3283,6 +3391,8 @@ def _start_sync_job(
                     ],
                 ),
             )
+        finally:
+            _clear_sync_cancel_event(job["id"])
 
     threading.Thread(target=runner, daemon=True, name=f"sync-job-{job['id'][:8]}").start()
     return job
