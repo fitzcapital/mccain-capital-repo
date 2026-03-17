@@ -953,6 +953,138 @@
       line-height:1.4;
     }
     .notes{white-space:pre-wrap;line-height:1.45;margin-top:10px}
+    .entryBodyGrid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:14px;
+      margin-top:14px;
+      min-width:0;
+    }
+    .entryBodyGrid.hasEvidence{
+      grid-template-columns:minmax(220px, 320px) minmax(0, 1fr);
+      align-items:start;
+    }
+    .entryEvidenceCard,
+    .entryNotesCard,
+    .entryNoteSection{
+      min-width:0;
+      border:1px solid rgba(255,255,255,.07);
+      background:rgba(255,255,255,.025);
+      border-radius:18px;
+    }
+    .entryEvidenceCard{
+      overflow:hidden;
+    }
+    .entryEvidenceButton{
+      display:block;
+      width:100%;
+      padding:0;
+      border:0;
+      background:transparent;
+      cursor:zoom-in;
+    }
+    .entryEvidenceButton img{
+      display:block;
+      width:100%;
+      aspect-ratio:4 / 3;
+      object-fit:cover;
+      background:rgba(4, 11, 22, .82);
+    }
+    .entryEvidenceMeta{
+      padding:12px;
+      display:grid;
+      gap:10px;
+    }
+    .entryEvidenceCaption{
+      color:rgba(227,236,248,.78);
+      line-height:1.45;
+      font-size:13px;
+    }
+    .entryEvidenceActions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .entryNotesCard{
+      padding:12px;
+    }
+    .entryNotesGrid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+      gap:10px;
+    }
+    .entryNoteSection{
+      padding:12px;
+      background:linear-gradient(180deg, rgba(var(--accent-rgb),.06), rgba(255,255,255,.015));
+      border-color:rgba(var(--accent-rgb),.16);
+    }
+    .entryNoteHeading{
+      font-size:11px;
+      line-height:1;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-weight:900;
+      color:rgba(180, 214, 255, .82);
+      margin-bottom:8px;
+    }
+    .entryNoteBody{
+      white-space:pre-wrap;
+      line-height:1.55;
+      color:var(--text);
+      font-size:14px;
+    }
+    .journalPreviewLightbox{
+      position:fixed;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      z-index:999999;
+    }
+    .journalPreviewLightbox.open{
+      display:flex;
+    }
+    .journalPreviewBackdrop{
+      position:absolute;
+      inset:0;
+      border:0;
+      background:rgba(1, 5, 13, .78);
+      backdrop-filter:blur(10px);
+      cursor:pointer;
+    }
+    .journalPreviewDialog{
+      position:relative;
+      z-index:1;
+      width:min(92vw, 1180px);
+      max-height:88vh;
+      border-radius:24px;
+      overflow:hidden;
+      border:1px solid rgba(140, 187, 255, .22);
+      background:rgba(4, 10, 22, .94);
+      box-shadow:0 30px 80px rgba(0,0,0,.48);
+    }
+    .journalPreviewDialog img{
+      display:block;
+      width:100%;
+      max-height:88vh;
+      object-fit:contain;
+      background:radial-gradient(circle at center, rgba(22, 48, 76, .86), rgba(4, 9, 18, .98));
+    }
+    .journalPreviewClose{
+      position:absolute;
+      top:14px;
+      right:14px;
+      width:42px;
+      height:42px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(7, 15, 28, .72);
+      color:var(--text);
+      font-size:18px;
+      cursor:pointer;
+      z-index:2;
+    }
 
     table{
       width:100%;
@@ -10216,9 +10348,18 @@ textarea:focus-visible{
   .journalQuickCaptureGrid{
     grid-template-columns:1fr;
   }
+  .entryBodyGrid.hasEvidence{
+    grid-template-columns:1fr;
+  }
+  .entryNotesGrid{
+    grid-template-columns:1fr;
+  }
 }
 
 @media (max-width: 640px){
+  .journalPreviewLightbox{
+    padding:14px;
+  }
   .pageHero{
     margin-bottom:10px;
   }

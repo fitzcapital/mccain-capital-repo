@@ -375,7 +375,7 @@
           modeTitle = "US market is closed before the regular session opens at 9:30 AM ET";
           mode.classList.add("modeStatePre");
         } else if (nyMinutes < 960) {
-          modeText = "Regular Session";
+          modeText = "Market Open";
           modeTitle = "US market is open (9:30 AM - 4:00 PM ET)";
           mode.classList.add("modeStateTrading");
         } else {

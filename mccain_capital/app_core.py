@@ -58,7 +58,7 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(PERSISTENT_DATA_DIR, "upl
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_UPLOAD_EXTS = {".pdf", ".html", ".htm"}
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "250"))
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "1024"))
 APP_USERNAME = os.environ.get("APP_USERNAME", "owner")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "")

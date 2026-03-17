@@ -63,6 +63,14 @@ def journal_home():
     for entry in entries:
         entry["entry_date_display"] = _format_entry_date(entry.get("entry_date"))
         entry["updated_at_display"] = _format_updated_timestamp(entry.get("updated_at"))
+        payload = _safe_template_payload(entry.get("template_payload"))
+        screenshot_path = str(payload.get("capture_screenshot_path") or "").strip()
+        entry["capture_screenshot_path"] = screenshot_path
+        entry["capture_screenshot_href"] = _capture_href(screenshot_path)
+        entry["capture_screenshot_note"] = str(payload.get("capture_screenshot_note") or "").strip()
+        note_view = _render_note_sections(str(entry.get("notes") or "").strip())
+        entry["note_sections"] = note_view["sections"]
+        entry["note_plain"] = note_view["plain"]
 
     latest_entry = entries[0] if entries else {}
     linked_trades_total = sum(int(entry.get("linked_trades") or 0) for entry in entries)
@@ -194,6 +202,7 @@ def new_entry():
         screenshot_path = _save_capture_upload(request.files.get("capture_screenshot"), entry_date)
         if not screenshot_path:
             screenshot_path = (f.get("existing_capture_screenshot_path") or "").strip()
+        screenshot_note = (f.get("capture_screenshot_note") or "").strip()
         if not notes:
             values = dict(f)
             values["entry_date"] = entry_date
@@ -220,7 +229,9 @@ def new_entry():
                 "mood": f.get("mood"),
                 "notes": notes,
                 "entry_type": entry_type,
-                "template_payload": _entry_template_payload(template_notes, screenshot_path),
+                "template_payload": _entry_template_payload(
+                    template_notes, screenshot_path, screenshot_note
+                ),
             }
         )
         repo.set_entry_trade_links(entry_id, linked_ids)
@@ -243,6 +254,7 @@ def new_entry():
         "notes": (request.args.get("notes") or "").strip(),
         "template_notes": (request.args.get("template_notes") or "").strip(),
         "capture_screenshot_path": (request.args.get("capture_screenshot_path") or "").strip(),
+        "capture_screenshot_note": (request.args.get("capture_screenshot_note") or "").strip(),
     }
     selected_ids = _trade_ids_for_date(entry_date) if initial_values["link_all_day"] == "1" else []
     scaffold = _build_debrief_scaffold(
@@ -294,6 +306,7 @@ def edit_entry(entry_id: int):
         screenshot_path = _save_capture_upload(request.files.get("capture_screenshot"), entry_date)
         if not screenshot_path:
             screenshot_path = (f.get("existing_capture_screenshot_path") or "").strip()
+        screenshot_note = (f.get("capture_screenshot_note") or "").strip()
         if not notes:
             values = dict(f)
             values["entry_date"] = entry_date
@@ -322,7 +335,9 @@ def edit_entry(entry_id: int):
                 "mood": f.get("mood"),
                 "notes": notes,
                 "entry_type": entry_type,
-                "template_payload": _entry_template_payload(template_notes, screenshot_path),
+                "template_payload": _entry_template_payload(
+                    template_notes, screenshot_path, screenshot_note
+                ),
             },
         )
         repo.set_entry_trade_links(entry_id, linked_ids)
@@ -336,6 +351,7 @@ def edit_entry(entry_id: int):
     values["template_notes"] = payload.get("template_notes", "")
     values["capture_screenshot_path"] = str(payload.get("capture_screenshot_path") or "").strip()
     values["capture_screenshot_href"] = _capture_href(values["capture_screenshot_path"])
+    values["capture_screenshot_note"] = str(payload.get("capture_screenshot_note") or "").strip()
     linked_ids = repo.fetch_entry_trade_ids(entry_id)
     values["linked_trade_ids"] = ",".join(str(i) for i in linked_ids)
     values["link_all_day"] = "0"
@@ -376,11 +392,66 @@ def journal_capture_asset(name: str):
     return send_file(path, as_attachment=False)
 
 
-def _entry_template_payload(template_notes: str, screenshot_path: str) -> Dict[str, Any]:
+def _entry_template_payload(
+    template_notes: str, screenshot_path: str, screenshot_note: str = ""
+) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"template_notes": template_notes}
     if screenshot_path:
         payload["capture_screenshot_path"] = screenshot_path
+    if screenshot_note:
+        payload["capture_screenshot_note"] = screenshot_note
     return payload
+
+
+def _normalize_note_heading(text: str) -> str:
+    clean = " ".join(str(text or "").strip().replace("_", " ").split())
+    lower = clean.lower().rstrip(":")
+    aliases = {
+        "what i saw": "What I Saw",
+        "context": "What I Saw",
+        "read": "What I Saw",
+        "what i did": "What I Did",
+        "execution": "What I Did",
+        "what happened": "What Happened",
+        "lesson": "Lesson",
+        "takeaway": "Lesson",
+        "next time": "Next Time",
+        "next action": "Next Time",
+        "rule": "Rule",
+        "plan": "Plan",
+    }
+    return aliases.get(lower, clean.rstrip(":"))
+
+
+def _render_note_sections(text: str) -> Dict[str, Any]:
+    raw = str(text or "").strip()
+    if not raw:
+        return {"sections": [], "plain": ""}
+    blocks = [block.strip() for block in raw.split("\n\n") if block.strip()]
+    sections: List[Dict[str, str]] = []
+    for block in blocks:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        first = lines[0]
+        title = ""
+        body = ""
+        if ":" in first:
+            maybe_title, maybe_body = first.split(":", 1)
+            if len(maybe_title.strip()) <= 24:
+                title = _normalize_note_heading(maybe_title)
+                tail = [maybe_body.strip()] if maybe_body.strip() else []
+                if len(lines) > 1:
+                    tail.extend(lines[1:])
+                body = "\n".join([line for line in tail if line])
+        elif len(lines) >= 2 and len(first) <= 24:
+            title = _normalize_note_heading(first)
+            body = "\n".join(lines[1:])
+        if title and body:
+            sections.append({"title": title, "body": body})
+    if sections:
+        return {"sections": sections, "plain": ""}
+    return {"sections": [], "plain": raw}
 
 
 def _capture_href(relpath: str) -> str:

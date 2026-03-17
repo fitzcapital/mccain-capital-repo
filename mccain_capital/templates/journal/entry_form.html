@@ -106,7 +106,8 @@
 
         <div class="stack12">
           <label>Main Notes</label>
-          <textarea name="notes" placeholder="Capture context, execution, and improvement plan...">{{ values.get('notes','') }}</textarea>
+          <textarea name="notes" placeholder="What I saw:\n\nWhat I did:\n\nNext time:">{{ values.get('notes','') }}</textarea>
+          <div class="tiny stack8">Use short blocks like <b>What I saw</b>, <b>What I did</b>, and <b>Next time</b> so the journal feed can render the lesson cleanly.</div>
         </div>
       </div>
     </div>
@@ -211,6 +212,12 @@
                 <label>Screenshot</label>
                 <input type="file" name="capture_screenshot" accept="image/png,image/jpeg,image/webp" capture="environment">
                 <div class="tiny stack8">Phone camera or screenshot picker. Images stay in your persistent journal capture storage.</div>
+                <label>Screenshot note</label>
+                <input
+                  name="capture_screenshot_note"
+                  value="{{ values.get('capture_screenshot_note','') }}"
+                  placeholder="Why this screenshot matters..."
+                >
                 {% if values.get('capture_screenshot_href') %}
                   <a class="btn btnCompact" href="{{ values.get('capture_screenshot_href') }}" target="_blank" rel="noopener">Open Current Screenshot</a>
                 {% endif %}
@@ -220,6 +227,9 @@
               <div class="journalCapturePreview">
                 <img src="{{ values.get('capture_screenshot_href') }}" alt="Journal capture preview">
               </div>
+              {% if values.get('capture_screenshot_note') %}
+                <div class="tiny stack8 line16">{{ values.get('capture_screenshot_note') }}</div>
+              {% endif %}
             {% endif %}
           </div>
         </div>

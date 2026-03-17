@@ -36,6 +36,7 @@ RUN python -m playwright install chromium
 COPY . .
 
 ENV PORT=5001
+ENV MAX_UPLOAD_MB=1024
 ENV PERSISTENT_DATA_DIR=/data
 ENV DB_PATH=/data/journal.db
 ENV UPLOAD_DIR=/data/uploads
