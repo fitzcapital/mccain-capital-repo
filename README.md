@@ -91,6 +91,29 @@ python -m mccain_capital.cli
 
 Open: `http://localhost:5001`
 
+## 🖥️ Fitz CLI
+
+The repo now exposes an installable `fitz` command for terminal tools.
+
+```bash
+cd /mccain-capital-repo
+python -m pip install .
+fitz status
+```
+
+If you want isolated install semantics, use `pipx install .` instead. That gives you the same
+`fitz status` command and is the cleanest base for a later Homebrew formula.
+
+For Homebrew, publish the formula in a tap repo first, then install from the tap:
+
+```bash
+brew tap fitzcapital/tap
+brew install --HEAD fitzcapital/tap/fitz
+fitz status
+```
+
+The tap should live in a separate repository named `fitzcapital/homebrew-tap`.
+
 Default local persistence now lives under `./persistent-data/`:
 
 - DB: `persistent-data/journal.db`
@@ -155,8 +178,39 @@ curl -sf http://YOUR_TAILSCALE_IP:5001/healthz
 The included sidecar config at `services/podman-compose.tailscale.yml` now mounts `../persistent-data`
 into the app container so the Tailscale-served container also uses the real chart/app data.
 
+## 🚆 Railway Deployment
+
+Railway is configured to build directly from the repo `Dockerfile` and probe the app on `/healthz`.
+
+- Build config: `railway.json`
+- Railway compatibility entrypoint: `main.py`
+- Container runtime: `Dockerfile`
+- App bind target: `0.0.0.0:${PORT}`
+
+Recommended Railway setup:
+
+```bash
+APP_ENV=prod
+SECRET_KEY=your-long-random-secret
+APP_USERNAME=your-login
+APP_PASSWORD=your-password
+PORT=5001
+PERSISTENT_DATA_DIR=/data
+DB_PATH=/data/journal.db
+UPLOAD_DIR=/data/uploads
+BOOKS_DIR=/data/books
+SECRET_KEY_FILE=/data/.secret_key
+```
+
+Recommended deployment notes:
+
+- Attach a Railway volume mounted at `/data` so journal data, uploads, artifacts, books, and the generated secret key survive restarts.
+- Keep the Railway health check pointed at `/healthz`.
+- `main.py` exists so Railway environments that assume `gunicorn main:app` still boot the packaged Flask app correctly.
+- If you use a public Railway domain, make sure auth is enabled with `APP_ENV=prod` and a real `SECRET_KEY`.
+
 ## 🖼️ Screenshots
-Refreshed from the live authenticated container on **March 2, 2026**.
+Refreshed from the live authenticated app on **March 18, 2026** with **Midnight Galaxy** as the default theme.
 
 Capture command:
 ```bash

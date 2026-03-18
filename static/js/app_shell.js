@@ -405,12 +405,13 @@
   }
 
   function initThemeAndGuided() {
-    const themeMigrationKey = "mc_theme_v2";
+    const themeMigrationKey = "mc_theme_v3";
     const themeOrder = ["obsidian", "galaxy", "black", "steel", "red", "green", "default", "white"];
     const themeLabels = {
       obsidian: "Theme: True Dark",
       black: "Theme: Midnight",
       default: "Theme: Classic",
+      white: "Theme: Classic White",
       galaxy: "Theme: Midnight Galaxy",
       red: "Theme: Red",
       green: "Theme: Green",
@@ -424,7 +425,7 @@
     };
 
     const applyTheme = (theme) => {
-      const normalized = themeOrder.includes(theme) ? theme : "black";
+      const normalized = themeOrder.includes(theme) ? theme : "galaxy";
       body.setAttribute("data-theme", normalized);
       syncThemeButtons(normalized);
     };
@@ -460,7 +461,7 @@
     };
 
     window.toggleTheme = () => {
-      const current = body.getAttribute("data-theme") || "obsidian";
+      const current = body.getAttribute("data-theme") || "galaxy";
       const idx = themeOrder.indexOf(current);
       const next = themeOrder[(idx + 1) % themeOrder.length];
       storageSet("mc_theme", next);
@@ -473,13 +474,13 @@
 
     if (storageGet(themeMigrationKey) !== "1") {
       const savedTheme = storageGet("mc_theme");
-      if (!savedTheme || savedTheme === "galaxy" || savedTheme === "black") {
-        storageSet("mc_theme", "obsidian");
+      if (!savedTheme) {
+        storageSet("mc_theme", "galaxy");
       }
       storageSet(themeMigrationKey, "1");
     }
 
-    applyTheme(storageGet("mc_theme") || "obsidian");
+    applyTheme(storageGet("mc_theme") || "galaxy");
     const savedGuide = storageGet("mc_guided_mode");
     const firstRunSeen = storageGet("mc_guided_seen");
     if (savedGuide === "1") setGuidedMode(true);
