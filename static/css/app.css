@@ -10723,6 +10723,218 @@ textarea:focus-visible{
   margin-top:2px;
 }
 
+.syncControlDeck{
+  border-color:rgba(120, 198, 255, .28) !important;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(90, 196, 255, .12), rgba(90, 196, 255, 0) 44%),
+    linear-gradient(180deg, rgba(16, 34, 60, .86), rgba(7, 18, 34, .94)) !important;
+}
+
+.syncControlGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+
+.syncControlPanel{
+  padding:12px 14px;
+  border-radius:14px;
+  border:1px solid rgba(126, 202, 255, .24);
+  background:
+    linear-gradient(180deg, rgba(22, 47, 83, .56), rgba(9, 22, 42, .48)),
+    rgba(8, 18, 33, .32);
+  box-shadow:inset 0 0 18px rgba(73, 164, 255, .06);
+  display:grid;
+  gap:8px;
+}
+
+.syncControlValue{
+  font-size:13px;
+  line-height:1.52;
+  color:rgba(238, 245, 255, .9);
+}
+
+.syncQuickActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+
+.syncGuidePanel{
+  display:grid;
+  gap:8px;
+}
+
+.syncGuideHeadline{
+  font-size:14px;
+  font-weight:800;
+  color:#eef6ff;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+
+.syncGuideList{
+  display:grid;
+  gap:6px;
+  color:rgba(230, 242, 255, .74);
+  font-size:12px;
+  line-height:1.45;
+}
+
+.syncProfileRail{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  margin-top:2px;
+}
+
+.syncProfileBtn{
+  border-color:rgba(126, 202, 255, .22) !important;
+  background:linear-gradient(180deg, rgba(19, 43, 78, .8), rgba(10, 23, 43, .76)) !important;
+}
+
+.syncProfileNote{
+  color:rgba(232, 242, 255, .72);
+  line-height:1.45;
+}
+
+.syncArtifactGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:8px;
+}
+
+.syncArtifactTile{
+  display:grid;
+  gap:4px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(126, 202, 255, .2);
+  background:linear-gradient(180deg, rgba(17, 38, 70, .64), rgba(9, 22, 42, .42));
+  text-decoration:none;
+  color:inherit;
+}
+
+.syncArtifactTile strong{
+  color:#eef6ff;
+  font-size:12px;
+}
+
+.syncArtifactTile span{
+  color:rgba(230, 242, 255, .68);
+  font-size:11px;
+  line-height:1.35;
+  word-break:break-word;
+}
+
+.syncJobCard.is-compact .workspaceSectionLead{
+  margin-bottom:2px;
+}
+
+.syncJobDetails{
+  display:grid;
+  gap:10px;
+}
+
+.syncJobSummaryToggle,
+.syncAsideFold summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  cursor:pointer;
+  list-style:none;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:rgba(232, 242, 255, .82);
+}
+
+.syncJobSummaryToggle::-webkit-details-marker,
+.syncAsideFold summary::-webkit-details-marker{
+  display:none;
+}
+
+.syncJobSummaryToggle::after,
+.syncAsideFold summary::after{
+  content:"▾";
+  font-size:13px;
+  color:rgba(232, 242, 255, .6);
+  transition:transform .18s ease;
+}
+
+.syncJobDetails:not([open]) .syncJobSummaryToggle::after,
+.syncAsideFold:not([open]) summary::after{
+  transform:rotate(-90deg);
+}
+
+.syncAsideFold{
+  display:grid;
+  gap:10px;
+}
+
+.syncAsideMeta{
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:0;
+  text-transform:none;
+  color:rgba(232, 242, 255, .64);
+}
+
+.syncWorkspaceLive .workspaceSecondary{
+  gap:10px;
+}
+
+.syncHealthStrip{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:2px;
+}
+
+.syncHealthChip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 10px;
+  border-radius:999px;
+  border:1px solid rgba(126, 202, 255, .2);
+  background:linear-gradient(180deg, rgba(18, 38, 70, .7), rgba(9, 20, 39, .5));
+  color:rgba(232, 244, 255, .88);
+  font-size:11px;
+  line-height:1.2;
+}
+
+.syncHealthChipStatus{
+  border-color:rgba(96, 208, 255, .34);
+  box-shadow:inset 0 0 18px rgba(76, 167, 255, .08);
+}
+
+.syncHealthChipMuted{
+  color:rgba(232, 244, 255, .66);
+}
+
+.syncLockBanner{
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255, 187, 92, .28);
+  background:linear-gradient(180deg, rgba(88, 56, 10, .32), rgba(47, 27, 8, .18));
+  color:rgba(255, 234, 204, .92);
+  font-size:12px;
+  line-height:1.45;
+}
+
+.syncLockBannerHidden{
+  display:none;
+}
+
+.syncWorkspaceLive .statRow{
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+}
+
 .opsShell{
   grid-template-columns:minmax(0, 1.4fr) minmax(320px, .88fr);
 }
@@ -10798,6 +11010,12 @@ textarea:focus-visible{
   .opsSafetyGrid{
     grid-template-columns:repeat(2, minmax(0, 1fr));
   }
+  .syncControlGrid{
+    grid-template-columns:1fr;
+  }
+  .syncWorkspaceLive .statRow{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px){
@@ -10809,6 +11027,31 @@ textarea:focus-visible{
   }
   .dashboardBriefGrid{
     grid-template-columns:1fr;
+  }
+  .syncArtifactGrid{
+    grid-template-columns:1fr;
+  }
+  .syncWorkspaceLive .syncProfileRail{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    align-items:stretch;
+  }
+  .syncWorkspaceLive .syncProfileNote{
+    grid-column:1 / -1;
+  }
+  .syncWorkspaceLive .rightActions{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    width:100%;
+  }
+  .syncWorkspaceLive .syncQuickActions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .syncWorkspaceLive .syncControlPanel,
+  .syncWorkspaceLive .syncJobCard,
+  .syncWorkspaceLive .workspaceSecondary .card{
+    border-radius:16px;
   }
   .workspaceHeroActions,
   .workspaceHero .actionRow,
@@ -10828,6 +11071,30 @@ textarea:focus-visible{
 }
 
 @media (max-width: 640px){
+  .syncWorkspaceLive .syncControlDeck .toolbar,
+  .syncWorkspaceLive .syncJobCard .toolbar,
+  .syncWorkspaceLive .workspaceSecondary .toolbar{
+    gap:8px;
+  }
+  .syncWorkspaceLive .syncHealthStrip{
+    gap:6px;
+  }
+  .syncWorkspaceLive .syncHealthChip{
+    width:100%;
+    justify-content:flex-start;
+  }
+  .syncWorkspaceLive .syncProfileRail{
+    grid-template-columns:1fr;
+  }
+  .syncWorkspaceLive .rightActions{
+    grid-template-columns:1fr;
+  }
+  .syncWorkspaceLive .statRow{
+    grid-template-columns:1fr;
+  }
+  .syncWorkspaceLive .syncControlPanel{
+    padding:11px 12px;
+  }
   .journalPreviewLightbox{
     padding:14px;
   }

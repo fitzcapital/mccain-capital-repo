@@ -20,19 +20,60 @@ _AUTO_BACKUP_THREAD_STARTED = False
 _AUTO_BACKUP_THREAD_LOCK = threading.Lock()
 
 
+def _wants_async_json() -> bool:
+    return (request.args.get("async") or "").strip() == "1" or (
+        "application/json" in str(request.headers.get("Accept") or "").lower()
+    )
+
+
+def _json_error(message: str, *, status_code: int = 400):
+    return jsonify({"ok": False, "message": str(message or "Request failed.")}), status_code
+
+
+def prepare_sync_runtime_state() -> None:
+    legacy._reconcile_sync_runtime_state()
+
+
+def _active_sync_conflict():
+    active_job = legacy._latest_active_sync_job()
+    if not active_job:
+        return None
+    message = (
+        f"Another sync is already active: {active_job.get('title') or 'Sync'} "
+        f"({str(active_job.get('stage') or 'start').replace('_', ' ')}). "
+        "Cancel it or wait for it to finish before starting a new run."
+    )
+    payload = {
+        "ok": False,
+        "message": message,
+        "job": job_response_payload(active_job, humanize_timestamp=legacy._humanize_et_timestamp),
+    }
+    return active_job, payload
+
+
 def trades_sync_live():
     if request.method != "POST":
         return redirect(url_for("trades_upload_pdf"))
+    conflict = _active_sync_conflict()
+    if conflict:
+        active_job, payload = conflict
+        if _wants_async_json():
+            return jsonify(payload), 409
+        flash(payload["message"], "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live", job=active_job["id"]))
 
     mode = (request.form.get("mode") or "broker").strip()
     guardrail = legacy.trade_lockout_state(legacy.today_iso())
     if guardrail["locked"] and mode == "broker":
+        message = (
+            f"Daily max-loss guardrail is active for {guardrail['day']}. "
+            f"Day net {legacy.money(guardrail['day_net'])} reached limit "
+            f"{legacy.money(guardrail['daily_max_loss'])}."
+        )
+        if _wants_async_json():
+            return _json_error(message, status_code=409)
         return legacy.render_page(
-            legacy.simple_msg(
-                f"Daily max-loss guardrail is active for {guardrail['day']}. "
-                f"Day net {legacy.money(guardrail['day_net'])} reached limit "
-                f"{legacy.money(guardrail['daily_max_loss'])}."
-            ),
+            legacy.simple_msg(message),
             active="trades",
         )
 
@@ -55,13 +96,19 @@ def trades_sync_live():
     remember_connection = request.form.get("remember_connection") == "1"
 
     if not username or not password:
+        message = "Username and password are required for live login sync."
+        if _wants_async_json():
+            return _json_error(message)
         return legacy.render_page(
-            legacy.simple_msg("Username and password are required for live login sync."),
+            legacy.simple_msg(message),
             active="trades",
         )
     if not base_url or not account:
+        message = "Base origin and account are required for live login sync."
+        if _wants_async_json():
+            return _json_error(message)
         return legacy.render_page(
-            legacy.simple_msg("Base origin and account are required for live login sync."),
+            legacy.simple_msg(message),
             active="trades",
         )
 
@@ -120,6 +167,13 @@ def trades_sync_live():
         debug_only=debug_only,
         requested=requested,
     )
+    if _wants_async_json():
+        return jsonify(
+            {
+                "ok": True,
+                "job": job_response_payload(job, humanize_timestamp=legacy._humanize_et_timestamp),
+            }
+        )
     flash("Live sync started. Progress and result will update below.", "success")
     return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
 
@@ -208,11 +262,24 @@ def trades_sync_auto_config():
 
 
 def trades_sync_auto_run_now():
+    conflict = _active_sync_conflict()
+    if conflict:
+        active_job, payload = conflict
+        if _wants_async_json():
+            return jsonify(payload), 409
+        flash(payload["message"], "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live", job=active_job["id"]))
+
     cfg = legacy._load_auto_sync_config()
     auto_password = legacy._get_auto_sync_password(cfg)
     if not cfg.get("username") or not auto_password:
+        message = (
+            "Auto sync credentials are missing. Save username and password in the Live Sync workspace first."
+        )
+        if _wants_async_json():
+            return _json_error(message)
         flash(
-            "Auto sync credentials are missing. Save username and password in the Live Sync workspace first.",
+            message,
             "warn",
         )
         return redirect(url_for("trades_upload_pdf", ws="live"))
@@ -253,6 +320,13 @@ def trades_sync_auto_run_now():
         debug_only=False,
         requested=requested,
     )
+    if _wants_async_json():
+        return jsonify(
+            {
+                "ok": True,
+                "job": job_response_payload(job, humanize_timestamp=legacy._humanize_et_timestamp),
+            }
+        )
     flash("Auto sync started. Live status will update below.", "success")
     return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
 
@@ -288,6 +362,7 @@ def trades_sync_job_cancel(job_id: str):
 
 def ensure_auto_sync_worker_started(app) -> None:
     global _AUTO_SYNC_THREAD_STARTED, _AUTO_BACKUP_THREAD_STARTED
+    legacy.ensure_sync_dispatcher_started(app)
     with _AUTO_SYNC_THREAD_LOCK:
         if not _AUTO_SYNC_THREAD_STARTED:
             t = threading.Thread(

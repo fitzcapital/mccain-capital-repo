@@ -208,6 +208,9 @@ def test_upload_statement_workspaces_render(client):
     resp_live = client.get("/trades/upload/statement?ws=live", follow_redirects=True)
     assert resp_live.status_code == 200
     assert b"Sync Reliability (30D)" in resp_live.data
+    assert b"Operator Deck" in resp_live.data
+    assert b"Balanced Run" in resp_live.data
+    assert b"Failure Guide" in resp_live.data
 
     resp_upload = client.get("/trades/upload/statement?ws=upload", follow_redirects=True)
     assert resp_upload.status_code == 200
@@ -426,6 +429,43 @@ def test_live_sync_skips_balance_reconcile_when_date_fallback_warning(monkeypatc
     assert any(
         "skipped ending-balance reconcile" in str(w).lower() for w in (out.get("warns") or [])
     )
+
+
+def test_live_sync_reports_browser_boot_stage(monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(
+        trades_svc.vanquish_live_sync,
+        "fetch_statement_html_via_login",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(
+                "[stage:browser_boot] Chromium session could not be created. Target page, context or browser has been closed"
+            )
+        ),
+    )
+
+    out = trades_svc._run_live_sync_once(
+        mode="broker",
+        username="u",
+        password="p",
+        base_url="https://trade.vanquishtrader.com",
+        account="default:OEV0035974",
+        wl="vanquishtrader",
+        time_zone="America/New_York",
+        date_locale="en-US",
+        report_locale="en",
+        from_date="2026-03-18",
+        to_date="2026-03-18",
+        headless=True,
+        debug_capture=False,
+        debug_only=False,
+        source_label="LIVE LOGIN HTML",
+    )
+
+    assert out.get("ok") is False
+    assert out.get("stage") == "browser_boot"
+    assert "Chromium session could not be created" in str(out.get("message") or "")
+    assert "[stage:" not in str(out.get("message") or "")
 
 
 def test_rollback_import_batch_deletes_only_target_batch(client, monkeypatch, tmp_path):
@@ -868,14 +908,14 @@ def test_save_auto_backup_config_falls_back_when_primary_unwritable(monkeypatch,
         lambda for_read=True: [str(primary), str(fallback)],
     )
 
-    real_open = open
+    real_safe_write_json = trades_svc._safe_write_json
 
-    def _fake_open(path, mode="r", *args, **kwargs):
-        if os.path.abspath(str(path)) == os.path.abspath(str(primary)) and "w" in mode:
+    def _fake_safe_write_json(path, payload):
+        if os.path.abspath(str(path)) == os.path.abspath(str(primary)):
             raise PermissionError("permission denied (test)")
-        return real_open(path, mode, *args, **kwargs)
+        return real_safe_write_json(path, payload)
 
-    monkeypatch.setattr("builtins.open", _fake_open)
+    monkeypatch.setattr(trades_svc, "_safe_write_json", _fake_safe_write_json)
 
     ok = trades_svc._save_auto_backup_config({"enabled": True, "run_times_et": ["16:30"]})
     assert ok is True
@@ -940,20 +980,83 @@ def test_record_admin_audit_falls_back_when_primary_unwritable(monkeypatch, tmp_
         lambda for_read=True: [str(primary), str(fallback)],
     )
 
-    real_open = open
+    real_safe_write_json = trades_svc._safe_write_json
 
-    def _fake_open(path, mode="r", *args, **kwargs):
-        if os.path.abspath(str(path)) == os.path.abspath(str(primary)) and "w" in mode:
+    def _fake_safe_write_json(path, payload):
+        if os.path.abspath(str(path)) == os.path.abspath(str(primary)):
             raise PermissionError("permission denied (test)")
-        return real_open(path, mode, *args, **kwargs)
+        return real_safe_write_json(path, payload)
 
-    monkeypatch.setattr("builtins.open", _fake_open)
+    monkeypatch.setattr(trades_svc, "_safe_write_json", _fake_safe_write_json)
 
     trades_svc.record_admin_audit("auto_backup_config_saved", {"enabled": True}, actor="owner")
 
     assert fallback.exists()
     rows = json.loads(fallback.read_text(encoding="utf-8"))
     assert rows and rows[-1].get("action") == "auto_backup_config_saved"
+
+
+def test_ops_alert_ack_falls_back_when_primary_notify_history_is_unwritable(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    primary = tmp_path / "blocked" / ".vanquish_notify_history.json"
+    fallback = tmp_path / "fallback" / ".vanquish_notify_history.json"
+    monkeypatch.setattr(
+        trades_svc,
+        "_notify_history_paths",
+        lambda for_read=True: [str(primary), str(fallback)],
+    )
+    fallback.parent.mkdir(parents=True, exist_ok=True)
+    fallback.write_text(
+        json.dumps(
+            {
+                "alerts": [
+                    {
+                        "id": "al_perm",
+                        "event_type": "sync_fail_streak",
+                        "title": "Sync fail streak",
+                        "message": "failed 3x",
+                        "status": "open",
+                        "count": 1,
+                        "first_seen_at": now_iso(),
+                        "last_seen_at": now_iso(),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    real_safe_write_json = trades_svc._safe_write_json
+
+    def _fake_safe_write_json(path, payload):
+        if os.path.abspath(str(path)) == os.path.abspath(str(primary)):
+            raise PermissionError("permission denied (test)")
+        return real_safe_write_json(path, payload)
+
+    monkeypatch.setattr(trades_svc, "_safe_write_json", _fake_safe_write_json)
+
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_username", "owner"),
+        )
+        conn.execute(
+            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("auth_password_hash", "pbkdf2:sha256:1$stub$stub"),
+        )
+
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    ack = client.post("/ops/alerts/ack", data={"alert_id": "al_perm"}, follow_redirects=True)
+
+    assert ack.status_code == 200
+    saved = json.loads(fallback.read_text(encoding="utf-8"))
+    row = saved.get("alerts", [])[0]
+    assert row.get("status") == "acknowledged"
+    assert row.get("ack_by") == "owner"
 
 
 def test_ops_async_backup_job_status_returns_result_html(client, monkeypatch, tmp_path):
@@ -1220,6 +1323,228 @@ def test_live_sync_job_can_be_cancelled(client, monkeypatch, tmp_path):
     assert cancelled["status"] == "cancelled"
     assert cancelled["stage"] == "cancelled"
     assert "ignored" in str(cancelled["message"]).lower()
+
+
+def test_live_sync_async_start_returns_job_json(client, monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(trades_svc, "trade_lockout_state", lambda _day: {"locked": False})
+    monkeypatch.setattr(
+        trades_svc,
+        "_load_broker_sync_config",
+        lambda: {
+            "base_url": "https://trade.vanquishtrader.com",
+            "account": "default:OEXXXXXXXX",
+            "wl": "vanquishtrader",
+            "time_zone": "America/New_York",
+            "date_locale": "en-US",
+            "report_locale": "en",
+        },
+    )
+    monkeypatch.setattr(
+        trades_svc,
+        "_start_sync_job",
+        lambda **_kwargs: {
+            "id": "job-123",
+            "kind": "sync",
+            "title": "Live Sync",
+            "status": "queued",
+            "stage": "start",
+            "message": "Queued and waiting to start.",
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "summary": {},
+            "requested": {"source": "manual_live"},
+        },
+    )
+
+    resp = client.post(
+        "/trades/sync/live?async=1",
+        data={
+            "mode": "broker",
+            "from_date": "2026-03-18",
+            "to_date": "2026-03-18",
+            "username": "demo-user",
+            "password": "demo-pass",
+            "base_url": "https://trade.vanquishtrader.com",
+            "account": "default:OEXXXXXXXX",
+        },
+        headers={"Accept": "application/json"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert payload["job"]["id"] == "job-123"
+    assert payload["job"]["status"] == "queued"
+
+
+def test_stale_sync_job_is_reconciled_when_polled(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    bg_dir = tmp_path / ".bg_jobs"
+    status_path = tmp_path / ".vanquish_sync_last_run.json"
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(bg_dir))
+    monkeypatch.setattr(trades_svc, "BROKER_SYNC_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(trades_svc, "SYNC_JOB_STALE_SECONDS", 1)
+
+    job = trades_svc._create_bg_job(
+        "sync",
+        "Live Sync",
+        {"source": "manual_live", "from_date": "2026-03-18", "to_date": "2026-03-18"},
+    )
+    stale_stamp = "2026-03-18T09:30:00-04:00"
+    stale_job = {
+        **job,
+        "status": "running",
+        "stage": "submit_login",
+        "message": "Logging in.",
+        "created_at": stale_stamp,
+        "updated_at": stale_stamp,
+        "summary": {},
+    }
+    bg_dir.mkdir(parents=True, exist_ok=True)
+    with open(bg_dir / f"{job['id']}.json", "w", encoding="utf-8") as handle:
+        json.dump(stale_job, handle, indent=2)
+    with open(status_path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "job_id": job["id"],
+                "status": "running",
+                "stage": "submit_login",
+                "message": "Logging in.",
+                "requested": {"source": "manual_live"},
+                "updated_at": stale_stamp,
+            },
+            handle,
+            indent=2,
+        )
+    trades_svc._BG_JOB_STORES.pop(str(bg_dir), None)
+
+    resp = client.get(f"/trades/sync/job/{job['id']}", follow_redirects=False)
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert payload["job"]["status"] == "failed"
+    assert payload["job"]["stage"] == "stale"
+    assert "stale" in str(payload["job"]["message"]).lower()
+    sync_status = trades_svc._load_last_sync_status()
+    assert sync_status["status"] == "failed"
+    assert sync_status["stage"] == "stale"
+
+
+def test_sync_runtime_state_reconciles_stale_jobs_at_startup(monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    bg_dir = tmp_path / ".bg_jobs"
+    status_path = tmp_path / ".vanquish_sync_last_run.json"
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(bg_dir))
+    monkeypatch.setattr(trades_svc, "BROKER_SYNC_STATUS_PATH", str(status_path))
+    monkeypatch.setattr(trades_svc, "SYNC_JOB_STALE_SECONDS", 1)
+
+    job = trades_svc._create_bg_job(
+        "sync",
+        "Live Sync",
+        {"source": "manual_live", "from_date": "2026-03-18", "to_date": "2026-03-18"},
+    )
+    stale_stamp = "2026-03-18T09:30:00-04:00"
+    bg_dir.mkdir(parents=True, exist_ok=True)
+    with open(bg_dir / f"{job['id']}.json", "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                **job,
+                "status": "running",
+                "stage": "generate_statement",
+                "message": "Generating statement.",
+                "created_at": stale_stamp,
+                "updated_at": stale_stamp,
+            },
+            handle,
+            indent=2,
+        )
+    with open(status_path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "job_id": job["id"],
+                "status": "running",
+                "stage": "generate_statement",
+                "message": "Generating statement.",
+                "requested": {"source": "manual_live"},
+                "updated_at": stale_stamp,
+            },
+            handle,
+            indent=2,
+        )
+    trades_svc._BG_JOB_STORES.pop(str(bg_dir), None)
+
+    snapshot = trades_svc._reconcile_sync_runtime_state()
+
+    assert snapshot["reconciled_jobs"] >= 1
+    assert snapshot["active_job"] == {}
+    assert snapshot["last_status"]["status"] == "failed"
+    assert snapshot["last_status"]["stage"] == "stale"
+
+
+def test_live_workspace_shows_latest_active_sync_job_without_query_param(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    bg_dir = tmp_path / ".bg_jobs"
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(bg_dir))
+
+    job = trades_svc._create_bg_job(
+        "sync",
+        "Live Sync",
+        {"source": "manual_live", "from_date": "2026-03-18", "to_date": "2026-03-18"},
+    )
+    trades_svc._update_bg_job(job["id"], status="running", stage="generate_statement", message="Generating statement.")
+
+    resp = client.get("/trades/upload/statement?ws=live", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert b"Sync Job Status" in resp.data
+    assert b"Generating statement." in resp.data
+
+
+def test_live_sync_rejects_overlap_with_existing_running_job(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    bg_dir = tmp_path / ".bg_jobs"
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(bg_dir))
+
+    active_job = trades_svc._create_bg_job(
+        "sync",
+        "Live Sync",
+        {"source": "manual_live", "from_date": "2026-03-18", "to_date": "2026-03-18"},
+    )
+    trades_svc._update_bg_job(
+        active_job["id"],
+        status="running",
+        stage="submit_login",
+        message="Logging in.",
+    )
+
+    resp = client.post(
+        "/trades/sync/live?async=1",
+        data={
+            "mode": "broker",
+            "from_date": "2026-03-18",
+            "to_date": "2026-03-18",
+            "username": "demo-user",
+            "password": "demo-pass",
+            "base_url": "https://trade.vanquishtrader.com",
+            "account": "default:OEXXXXXXXX",
+        },
+        headers={"Accept": "application/json"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 409
+    payload = resp.get_json()
+    assert payload["ok"] is False
+    assert payload["job"]["id"] == active_job["id"]
+    assert "already active" in payload["message"].lower()
 
 
 def test_manual_trade_auto_adds_no_cut_20_loss_review_tag(client):

@@ -14,6 +14,7 @@ import urllib.request
 import urllib.error
 import threading
 import time
+import queue
 import zipfile
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -103,11 +104,18 @@ NOTIFY_DEDUPE_BY_EVENT = {
     "anomaly_setup_underperformance": int(
         os.environ.get("NOTIFY_DEDUPE_ANOMALY_SETUP_UNDERPERF_SECONDS", "900") or 900
     ),
+    "gamma_levels_ready": int(
+        os.environ.get("NOTIFY_DEDUPE_GAMMA_LEVELS_READY_SECONDS", "21600") or 21600
+    ),
 }
 
 _BG_JOB_STORES: Dict[str, BackgroundJobStore] = {}
 _SYNC_CANCEL_EVENTS: Dict[str, threading.Event] = {}
 _SYNC_CANCEL_LOCK = threading.Lock()
+_SYNC_JOB_QUEUE: "queue.Queue[Optional[Dict[str, Any]]]" = queue.Queue()
+_SYNC_DISPATCH_THREAD_STARTED = False
+_SYNC_DISPATCH_THREAD_LOCK = threading.Lock()
+SYNC_JOB_STALE_SECONDS = int(os.environ.get("SYNC_JOB_STALE_SECONDS", "1200") or 1200)
 
 
 class SyncJobCancelled(RuntimeError):
@@ -226,6 +234,10 @@ _AUDIT_ACTION_META = {
 }
 
 SYNC_STAGE_HELP = {
+    "queue_dispatch": "The sync worker queue could not accept or start the job. Retry once; if it repeats, inspect app resource limits.",
+    "system_resource": "The container hit a temporary resource limit while starting sync work. Retry after load settles or reduce worker pressure.",
+    "storage_io": "Sync could not write required files under uploads/debug storage. Check mounted volume permissions and free space.",
+    "browser_boot": "Chromium could not start or keep its first page open. Retry once, then inspect container resources and Playwright logs.",
     "open_login": "Broker login page did not load cleanly. Check Base Origin and network.",
     "locate_username": "Could not find the username input. Broker UI likely changed.",
     "locate_password": "Could not find the password input. Broker login form likely changed.",
@@ -235,10 +247,15 @@ SYNC_STAGE_HELP = {
     "configure_statement_period": "Could not set statement date range in the dialog.",
     "generate_statement": "Generate Statement did not complete as expected.",
     "capture_statement_html": "Statement page loaded but HTML capture/parse failed.",
+    "stale": "The sync worker stopped updating. Retry the run and inspect logs if it stalls again.",
 }
 
 SYNC_STAGE_LABELS = {
     "start": "Queued and preparing sync run.",
+    "queue_dispatch": "Starting sync worker.",
+    "system_resource": "Waiting for system resources.",
+    "storage_io": "Writing sync artifacts.",
+    "browser_boot": "Starting Chromium session.",
     "open_login": "Opening broker login page.",
     "locate_username": "Finding username field.",
     "fill_username": "Entering username.",
@@ -249,6 +266,7 @@ SYNC_STAGE_LABELS = {
     "configure_statement_period": "Setting statement date range.",
     "generate_statement": "Generating statement HTML.",
     "capture_statement_html": "Capturing statement HTML.",
+    "stale": "Sync stalled before completion.",
     "parse_statement_html": "Parsing statement rows.",
     "reconcile_gate": "Running reconcile guardrails.",
     "import_trades": "Importing trades.",
@@ -270,7 +288,145 @@ def _update_bg_job(job_id: str, **updates: Any) -> Dict[str, Any]:
 
 
 def _get_bg_job(job_id: str) -> Dict[str, Any]:
-    return _bg_job_store().get(job_id)
+    return _reconcile_stale_sync_job(_bg_job_store().get(job_id))
+
+
+def _stale_sync_job_message(stage: str) -> str:
+    stage_label = _sync_stage_label(stage or "start")
+    return (
+        f"Sync job became stale before completion during {stage_label}. "
+        "The worker likely stopped or the app restarted. Start a new sync run."
+    )
+
+
+def _mark_last_sync_status_stale(job: Dict[str, Any], *, message: str, duration_sec: float) -> None:
+    raw = _read_last_sync_status()
+    raw_job_id = str(raw.get("job_id") or "").strip()
+    status = str(raw.get("status") or "").strip().lower()
+    if raw_job_id != str(job.get("id") or "").strip() or status not in {"queued", "running"}:
+        return
+    _save_last_sync_status(
+        {
+            "job_id": raw_job_id,
+            "status": "failed",
+            "stage": "stale",
+            "message": message,
+            "stage_help": SYNC_STAGE_HELP.get("stale", ""),
+            "requested": raw.get("requested") if isinstance(raw.get("requested"), dict) else {},
+            "artifacts_rel": list(((job.get("summary") or {}).get("artifacts_rel") or []))[:20],
+            "statement_file": str(((job.get("summary") or {}).get("statement_file") or "")).strip(),
+            "duration_sec": duration_sec,
+            "updated_at": now_iso(),
+        }
+    )
+
+
+def _reconcile_stale_sync_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(job, dict) or not job:
+        return {}
+    if str(job.get("kind") or "").strip().lower() != "sync":
+        return job
+    status = str(job.get("status") or "").strip().lower()
+    if status not in {"queued", "running"}:
+        return job
+    updated_epoch = _parse_iso_epoch(str(job.get("updated_at") or job.get("created_at") or ""))
+    if updated_epoch is None:
+        return job
+    elapsed = time.time() - updated_epoch
+    if elapsed < float(SYNC_JOB_STALE_SECONDS):
+        return job
+    created_epoch = _parse_iso_epoch(str(job.get("created_at") or "")) or updated_epoch
+    duration_sec = round(max(0.0, time.time() - created_epoch), 2)
+    message = _stale_sync_job_message(str(job.get("stage") or "start"))
+    summary = {
+        "message": message,
+        "warn_count": int(((job.get("summary") or {}).get("warn_count")) or 0),
+        "error_count": max(1, int(((job.get("summary") or {}).get("error_count")) or 0)),
+        "inserted": int(((job.get("summary") or {}).get("inserted")) or 0),
+        "artifacts_rel": list(((job.get("summary") or {}).get("artifacts_rel") or []))[:20],
+        "statement_file": str(((job.get("summary") or {}).get("statement_file") or "")).strip(),
+    }
+    stale = _update_bg_job(
+        str(job.get("id") or ""),
+        status="failed",
+        stage="stale",
+        message=message,
+        duration_sec=duration_sec,
+        summary=summary,
+        result_summary=_build_action_result_summary(
+            tone="danger",
+            title="Live Sync Stale",
+            happened=message,
+            changed="No import was finalized from this stale run.",
+            next_action="Retry the sync. If the problem repeats, inspect the latest debug artifacts and server logs.",
+            metrics=[
+                {"label": "Inserted", "value": str(summary["inserted"])},
+                {"label": "Warnings", "value": str(summary["warn_count"])},
+                {"label": "Errors", "value": str(summary["error_count"])},
+            ],
+            actions=[
+                {
+                    "label": "Open Live Sync",
+                    "href": "/trades/upload/statement?ws=live",
+                    "kind": "primary",
+                }
+            ],
+        ),
+    )
+    _mark_last_sync_status_stale(stale or job, message=message, duration_sec=duration_sec)
+    return stale or job
+
+
+def _latest_active_sync_job() -> Dict[str, Any]:
+    try:
+        names = sorted(os.listdir(BG_JOB_DIR))
+    except OSError:
+        return {}
+    candidates: List[Dict[str, Any]] = []
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        job = _get_bg_job(name[:-5])
+        if not job:
+            continue
+        if str(job.get("kind") or "").strip().lower() != "sync":
+            continue
+        if str(job.get("status") or "").strip().lower() not in {"queued", "running"}:
+            continue
+        candidates.append(job)
+    if not candidates:
+        return {}
+    candidates.sort(
+        key=lambda item: _parse_iso_epoch(str(item.get("updated_at") or item.get("created_at") or "")) or 0.0,
+        reverse=True,
+    )
+    return candidates[0]
+
+
+def _reconcile_sync_runtime_state() -> Dict[str, Any]:
+    reconciled = 0
+    active = {}
+    try:
+        names = sorted(os.listdir(BG_JOB_DIR))
+    except OSError:
+        names = []
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        job = _get_bg_job(name[:-5])
+        if not job:
+            continue
+        if str(job.get("kind") or "").strip().lower() != "sync":
+            continue
+        reconciled += 1
+        if not active and str(job.get("status") or "").strip().lower() in {"queued", "running"}:
+            active = job
+    status = _load_last_sync_status()
+    return {
+        "reconciled_jobs": reconciled,
+        "active_job": active,
+        "last_status": status,
+    }
 
 
 def _sync_cancel_event(job_id: str) -> threading.Event:
@@ -321,6 +477,7 @@ def _cancel_sync_job(job_id: str) -> Dict[str, Any]:
     }
     _save_last_sync_status(
         {
+            "job_id": str(job.get("id") or ""),
             "status": "cancelled",
             "stage": "cancelled",
             "message": summary["message"],
@@ -912,7 +1069,7 @@ def _load_broker_sync_config() -> Dict[str, str]:
 
 def _safe_write_json(path: str, payload: Any) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    tmp_path = f"{path}.tmp"
+    tmp_path = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
@@ -949,16 +1106,35 @@ def _humanize_et_timestamp(raw: str) -> str:
         return text
 
 
-def _load_last_sync_status() -> Dict[str, Any]:
+def _read_last_sync_status() -> Dict[str, Any]:
     try:
         with open(_broker_sync_status_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
-            if not isinstance(parsed, dict):
-                return {}
-            parsed["updated_at_human"] = _humanize_et_timestamp(str(parsed.get("updated_at") or ""))
-            return parsed
+            return parsed if isinstance(parsed, dict) else {}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
+
+
+def _load_last_sync_status() -> Dict[str, Any]:
+    parsed = _read_last_sync_status()
+    if not parsed:
+        return {}
+    status = str(parsed.get("status") or "").strip().lower()
+    updated_epoch = _parse_iso_epoch(str(parsed.get("updated_at") or ""))
+    if status in {"queued", "running"} and updated_epoch is not None:
+        if (time.time() - updated_epoch) >= float(SYNC_JOB_STALE_SECONDS):
+            message = _stale_sync_job_message(str(parsed.get("stage") or "start"))
+            parsed = {
+                **parsed,
+                "status": "failed",
+                "stage": "stale",
+                "message": message,
+                "stage_help": SYNC_STAGE_HELP.get("stale", ""),
+                "updated_at": now_iso(),
+            }
+            _save_last_sync_status(parsed)
+    parsed["updated_at_human"] = _humanize_et_timestamp(str(parsed.get("updated_at") or ""))
+    return parsed
 
 
 def _save_last_sync_status(payload: Dict[str, Any]) -> None:
@@ -1030,18 +1206,39 @@ def _load_sync_history() -> List[Dict[str, Any]]:
 
 
 def _load_notify_history() -> Dict[str, Any]:
-    try:
-        with open(_broker_notify_history_path(), "r", encoding="utf-8") as f:
-            parsed = json.load(f)
-            return parsed if isinstance(parsed, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return {}
+    for path in _notify_history_paths(for_read=True):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                parsed = json.load(f)
+                return parsed if isinstance(parsed, dict) else {}
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+    return {}
 
 
 def _save_notify_history(state: Dict[str, Any]) -> None:
-    os.makedirs(_upload_dir(), exist_ok=True)
-    with open(_broker_notify_history_path(), "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
+    errors: List[str] = []
+    for path in _notify_history_paths(for_read=False):
+        try:
+            _safe_write_json(path, state)
+            return
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+    if errors:
+        raise OSError("Notify history write failed: " + " | ".join(errors))
+
+
+def _notify_history_paths(for_read: bool = True) -> List[str]:
+    fallback = os.path.join(tempfile.gettempdir(), "mccain-capital", ".vanquish_notify_history.json")
+    ordered = (_broker_notify_history_path(), fallback)
+    if for_read and os.path.isfile(fallback):
+        ordered = (fallback, _broker_notify_history_path())
+    paths: List[str] = []
+    for path in ordered:
+        p = os.path.abspath(str(path))
+        if p and p not in paths:
+            paths.append(p)
+    return paths
 
 
 def _load_admin_audit() -> List[Dict[str, Any]]:
@@ -1838,6 +2035,17 @@ def _strip_stage_prefix(message: str) -> str:
 def _debug_relative(path: str) -> str:
     rel = os.path.relpath(path, _upload_dir())
     return rel.replace("\\", "/")
+
+
+def _classify_sync_stage(raw_error: str, fallback_stage: str = "unknown") -> str:
+    text = str(raw_error or "").strip().lower()
+    if "resource temporarily unavailable" in text or "[errno 11]" in text:
+        return "system_resource"
+    if "permission denied" in text or "[errno 13]" in text:
+        return "storage_io"
+    if "target page, context or browser has been closed" in text:
+        return "browser_boot"
+    return fallback_stage
 
 
 def _debug_safe_path(rel: str) -> str:
@@ -2848,6 +3056,8 @@ def trades_upload_pdf():
     reconcile_summary = _reconcile_summary(import_history, days=30)
     sync_job_id = (request.args.get("job") or "").strip()
     sync_job = _get_bg_job(sync_job_id) if sync_job_id else {}
+    if not sync_job:
+        sync_job = _latest_active_sync_job()
     content = render_template(
         "trades/upload_statement.html",
         workspace=workspace,
@@ -2930,7 +3140,7 @@ def _run_live_sync_once(
         result["sync_meta"] = sync_meta
     except Exception as e:
         raw_error = str(e)
-        failed_stage = _parse_sync_stage(raw_error)
+        failed_stage = _classify_sync_stage(raw_error, _parse_sync_stage(raw_error))
         clean_error = _strip_stage_prefix(raw_error)
         if debug_dir and os.path.isdir(debug_dir):
             artifacts_rel = [
@@ -3167,6 +3377,221 @@ def _sync_requested_payload(
     }
 
 
+def _execute_sync_job(
+    *,
+    app,
+    job: Dict[str, Any],
+    cancel_event: threading.Event,
+    title: str,
+    source_label: str,
+    record_source: str,
+    mode: str,
+    username: str,
+    password: str,
+    base_url: str,
+    account: str,
+    wl: str,
+    time_zone: str,
+    date_locale: str,
+    report_locale: str,
+    from_date: str,
+    to_date: str,
+    headless: bool,
+    debug_capture: bool,
+    debug_only: bool,
+    requested: Dict[str, Any],
+) -> None:
+    started = time.time()
+
+    def progress(stage: str, message: str) -> None:
+        _ensure_sync_job_active(job["id"], cancel_event)
+        stage_message = message or _sync_stage_label(stage)
+        _update_bg_job(job["id"], status="running", stage=stage, message=stage_message)
+        _save_last_sync_status(
+            {
+                "job_id": job["id"],
+                "status": "running",
+                "stage": stage,
+                "message": stage_message,
+                "stage_help": SYNC_STAGE_HELP.get(stage, ""),
+                "requested": requested,
+                "updated_at": now_iso(),
+            }
+        )
+
+    try:
+        with app.app_context():
+            progress("queue_dispatch", "Sync worker picked up the job.")
+            run = _run_live_sync_once(
+                mode=mode,
+                username=username,
+                password=password,
+                base_url=base_url,
+                account=account,
+                wl=wl,
+                time_zone=time_zone,
+                date_locale=date_locale,
+                report_locale=report_locale,
+                from_date=from_date,
+                to_date=to_date,
+                headless=headless,
+                debug_capture=debug_capture,
+                debug_only=debug_only,
+                source_label=source_label,
+                progress_cb=progress,
+                cancel_cb=lambda: _ensure_sync_job_active(job["id"], cancel_event),
+            )
+            if cancel_event.is_set() or _sync_job_cancelled(job["id"]):
+                return
+            duration_sec = round(max(0.0, time.time() - started), 2)
+            status = "debug_only" if run.get("debug_only") else ("success" if run.get("ok") else "failed")
+            stage = str(
+                run.get("stage")
+                or ("capture_statement_html" if run.get("debug_only") else "")
+                or ("import_complete" if run.get("ok") else "unknown")
+            )
+            summary = {
+                "message": str(run.get("message") or ""),
+                "warn_count": len(run.get("warns") or []),
+                "error_count": len(run.get("errors") or []),
+                "inserted": int(run.get("inserted") or 0),
+                "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
+                "statement_file": (
+                    _debug_relative(run.get("statement_path", "")) if run.get("statement_path") else ""
+                ),
+            }
+            _record_import_batch(
+                batch_id=str(run.get("batch_id") or ""),
+                source=record_source,
+                mode=mode,
+                report=run.get("report") if isinstance(run.get("report"), dict) else None,
+                status="success" if run.get("ok") else "failed",
+                message=str(run.get("message") or ""),
+            )
+            _save_last_sync_status(
+                {
+                    "job_id": job["id"],
+                    "status": status,
+                    "stage": stage,
+                    "message": run.get("message") or "",
+                    "stage_help": SYNC_STAGE_HELP.get(stage, ""),
+                    "requested": requested,
+                    "sync_meta": run.get("sync_meta", {}),
+                    "artifacts_rel": summary["artifacts_rel"],
+                    "statement_file": summary["statement_file"],
+                    "duration_sec": duration_sec,
+                    "updated_at": now_iso(),
+                }
+            )
+            _update_bg_job(
+                job["id"],
+                status=status,
+                stage=stage,
+                message=summary["message"] or _sync_stage_label(stage),
+                duration_sec=duration_sec,
+                summary=summary,
+                result_summary=_build_action_result_summary(
+                    tone=("success" if run.get("ok") else ("warning" if run.get("debug_only") else "danger")),
+                    title=(
+                        "Live Sync Complete"
+                        if run.get("ok")
+                        else ("Debug Capture Complete" if run.get("debug_only") else "Live Sync Failed")
+                    ),
+                    happened=str(run.get("message") or _sync_stage_label(stage)),
+                    changed=(
+                        f"Imported {int(run.get('inserted') or 0)} trade(s) into the execution log."
+                        if run.get("ok")
+                        else ("No trade import was committed." if not run.get("debug_only") else "Captured artifacts only; no import was committed.")
+                    ),
+                    warnings=[str(x) for x in (run.get("warns") or [])],
+                    next_action=(
+                        "Review imported trades, analyze the session, then debrief it while context is fresh."
+                        if run.get("ok")
+                        else "Open diagnostics or retry the sync after correcting the broker/session issue."
+                    ),
+                    metrics=[
+                        {"label": "Inserted", "value": str(int(run.get("inserted") or 0))},
+                        {"label": "Warnings", "value": str(len(run.get("warns") or []))},
+                        {"label": "Errors", "value": str(len(run.get("errors") or []))},
+                    ],
+                    actions=(
+                        [
+                            {"label": "Open Imported Trades", "href": f"/trades?d={to_date}", "kind": "primary"},
+                            {"label": "Analyze Session", "href": f"/analytics?tab=performance&start={from_date}&end={to_date}"},
+                            {"label": "Journal This Session", "href": f"/journal/new?d={to_date}&entry_type=trade_debrief&link_all_day=1"},
+                        ]
+                        if run.get("ok")
+                        else [
+                            {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
+                            {"label": "Open Reconcile", "href": "/trades/upload/statement?ws=reconcile"},
+                        ]
+                    ),
+                ),
+            )
+    except SyncJobCancelled:
+        return
+    except Exception as e:  # pragma: no cover
+        if cancel_event.is_set() or _sync_job_cancelled(job["id"]):
+            return
+        duration_sec = round(max(0.0, time.time() - started), 2)
+        raw_message = str(e)
+        stage = _classify_sync_stage(raw_message, "auto_worker")
+        fail_message = _strip_stage_prefix(raw_message)
+        _save_last_sync_status(
+            {
+                "job_id": job["id"],
+                "status": "failed",
+                "stage": stage,
+                "message": fail_message,
+                "stage_help": SYNC_STAGE_HELP.get(stage, ""),
+                "requested": requested,
+                "updated_at": now_iso(),
+            }
+        )
+        _update_bg_job(
+            job["id"],
+            status="failed",
+            stage=stage,
+            message=fail_message,
+            duration_sec=duration_sec,
+            summary={"message": fail_message, "warn_count": 0, "error_count": 1, "inserted": 0, "artifacts_rel": [], "statement_file": ""},
+            result_summary=_build_action_result_summary(
+                tone="danger",
+                title="Live Sync Failed",
+                happened=fail_message,
+                changed="No sync result was committed because the background worker terminated early.",
+                next_action="Return to the Live Sync workspace, retry the run, and inspect any captured diagnostics.",
+                actions=[
+                    {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
+                    {"label": "Open Ops Alerts", "href": "/ops/alerts"},
+                ],
+            ),
+        )
+    finally:
+        _clear_sync_cancel_event(job["id"])
+
+
+def _sync_dispatch_loop(app) -> None:
+    while True:
+        item = _SYNC_JOB_QUEUE.get()
+        if item is None:
+            continue
+        try:
+            _execute_sync_job(app=app, **item)
+        finally:
+            _SYNC_JOB_QUEUE.task_done()
+
+
+def ensure_sync_dispatcher_started(app) -> None:
+    global _SYNC_DISPATCH_THREAD_STARTED
+    with _SYNC_DISPATCH_THREAD_LOCK:
+        if _SYNC_DISPATCH_THREAD_STARTED:
+            return
+        t = threading.Thread(target=_sync_dispatch_loop, args=(app,), daemon=True, name="sync-job-dispatcher")
+        t.start()
+        _SYNC_DISPATCH_THREAD_STARTED = True
+
+
 def _start_sync_job(
     *,
     title: str,
@@ -3189,212 +3614,69 @@ def _start_sync_job(
     requested: Dict[str, Any],
 ) -> Dict[str, Any]:
     app = current_app._get_current_object()
+    ensure_sync_dispatcher_started(app)
     job = _create_bg_job("sync", title, requested)
     cancel_event = _sync_cancel_event(job["id"])
-
-    def runner() -> None:
-        started = time.time()
-
-        def progress(stage: str, message: str) -> None:
-            _ensure_sync_job_active(job["id"], cancel_event)
-            stage_message = message or _sync_stage_label(stage)
-            _update_bg_job(job["id"], status="running", stage=stage, message=stage_message)
-            _save_last_sync_status(
-                {
-                    "status": "running",
-                    "stage": stage,
-                    "message": stage_message,
-                    "stage_help": SYNC_STAGE_HELP.get(stage, ""),
-                    "requested": requested,
-                    "updated_at": now_iso(),
-                }
-            )
-
-        try:
-            with app.app_context():
-                progress("start", "Sync job started.")
-                run = _run_live_sync_once(
-                    mode=mode,
-                    username=username,
-                    password=password,
-                    base_url=base_url,
-                    account=account,
-                    wl=wl,
-                    time_zone=time_zone,
-                    date_locale=date_locale,
-                    report_locale=report_locale,
-                    from_date=from_date,
-                    to_date=to_date,
-                    headless=headless,
-                    debug_capture=debug_capture,
-                    debug_only=debug_only,
-                    source_label=source_label,
-                    progress_cb=progress,
-                    cancel_cb=lambda: _ensure_sync_job_active(job["id"], cancel_event),
-                )
-                if cancel_event.is_set() or _sync_job_cancelled(job["id"]):
-                    return
-                duration_sec = round(max(0.0, time.time() - started), 2)
-                status = (
-                    "debug_only"
-                    if run.get("debug_only")
-                    else ("success" if run.get("ok") else "failed")
-                )
-                stage = str(
-                    run.get("stage")
-                    or ("capture_statement_html" if run.get("debug_only") else "")
-                    or ("import_complete" if run.get("ok") else "unknown")
-                )
-                summary = {
-                    "message": str(run.get("message") or ""),
-                    "warn_count": len(run.get("warns") or []),
-                    "error_count": len(run.get("errors") or []),
-                    "inserted": int(run.get("inserted") or 0),
-                    "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
-                    "statement_file": (
-                        _debug_relative(run.get("statement_path", ""))
-                        if run.get("statement_path")
-                        else ""
-                    ),
-                }
-                _record_import_batch(
-                    batch_id=str(run.get("batch_id") or ""),
-                    source=record_source,
-                    mode=mode,
-                    report=run.get("report") if isinstance(run.get("report"), dict) else None,
-                    status="success" if run.get("ok") else "failed",
-                    message=str(run.get("message") or ""),
-                )
-                _save_last_sync_status(
-                    {
-                        "status": status,
-                        "stage": stage,
-                        "message": run.get("message") or "",
-                        "stage_help": SYNC_STAGE_HELP.get(stage, ""),
-                        "requested": requested,
-                        "sync_meta": run.get("sync_meta", {}),
-                        "artifacts_rel": summary["artifacts_rel"],
-                        "statement_file": summary["statement_file"],
-                        "duration_sec": duration_sec,
-                        "updated_at": now_iso(),
-                    }
-                )
-                _update_bg_job(
-                    job["id"],
-                    status=status,
-                    stage=stage,
-                    message=summary["message"] or _sync_stage_label(stage),
-                    duration_sec=duration_sec,
-                    summary=summary,
-                    result_summary=_build_action_result_summary(
-                        tone=(
-                            "success"
-                            if run.get("ok")
-                            else ("warning" if run.get("debug_only") else "danger")
-                        ),
-                        title=(
-                            "Live Sync Complete"
-                            if run.get("ok")
-                            else (
-                                "Debug Capture Complete"
-                                if run.get("debug_only")
-                                else "Live Sync Failed"
-                            )
-                        ),
-                        happened=str(run.get("message") or _sync_stage_label(stage)),
-                        changed=(
-                            f"Imported {int(run.get('inserted') or 0)} trade(s) into the execution log."
-                            if run.get("ok")
-                            else (
-                                "No trade import was committed."
-                                if not run.get("debug_only")
-                                else "Captured artifacts only; no import was committed."
-                            )
-                        ),
-                        warnings=[str(x) for x in (run.get("warns") or [])],
-                        next_action=(
-                            "Review imported trades, analyze the session, then debrief it while context is fresh."
-                            if run.get("ok")
-                            else "Open diagnostics or retry the sync after correcting the broker/session issue."
-                        ),
-                        metrics=[
-                            {"label": "Inserted", "value": str(int(run.get("inserted") or 0))},
-                            {"label": "Warnings", "value": str(len(run.get("warns") or []))},
-                            {"label": "Errors", "value": str(len(run.get("errors") or []))},
-                        ],
-                        actions=(
-                            [
-                                {
-                                    "label": "Open Imported Trades",
-                                    "href": f"/trades?d={to_date}",
-                                    "kind": "primary",
-                                },
-                                {
-                                    "label": "Analyze Session",
-                                    "href": f"/analytics?tab=performance&start={from_date}&end={to_date}",
-                                },
-                                {
-                                    "label": "Journal This Session",
-                                    "href": f"/journal/new?d={to_date}&entry_type=trade_debrief&link_all_day=1",
-                                },
-                            ]
-                            if run.get("ok")
-                            else [
-                                {
-                                    "label": "Open Live Sync",
-                                    "href": "/trades/upload/statement?ws=live",
-                                    "kind": "primary",
-                                },
-                                {
-                                    "label": "Open Reconcile",
-                                    "href": "/trades/upload/statement?ws=reconcile",
-                                },
-                            ]
-                        ),
-                    ),
-                )
-        except SyncJobCancelled:
-            return
-        except Exception as e:  # pragma: no cover
-            if cancel_event.is_set() or _sync_job_cancelled(job["id"]):
-                return
-            duration_sec = round(max(0.0, time.time() - started), 2)
-            fail_message = f"Background sync worker error: {e}"
-            _save_last_sync_status(
-                {
-                    "status": "failed",
-                    "stage": "auto_worker",
-                    "message": fail_message,
-                    "updated_at": now_iso(),
-                }
-            )
-            _update_bg_job(
-                job["id"],
-                status="failed",
-                stage="auto_worker",
-                message=fail_message,
-                duration_sec=duration_sec,
-                summary={"message": fail_message, "warn_count": 0, "error_count": 1},
-                result_summary=_build_action_result_summary(
-                    tone="danger",
-                    title="Live Sync Failed",
-                    happened=fail_message,
-                    changed="No sync result was committed because the background worker terminated early.",
-                    next_action="Return to the Live Sync workspace, retry the run, and inspect any captured diagnostics.",
-                    actions=[
-                        {
-                            "label": "Open Live Sync",
-                            "href": "/trades/upload/statement?ws=live",
-                            "kind": "primary",
-                        },
-                        {"label": "Open Ops Alerts", "href": "/ops/alerts"},
-                    ],
-                ),
-            )
-        finally:
-            _clear_sync_cancel_event(job["id"])
-
-    threading.Thread(target=runner, daemon=True, name=f"sync-job-{job['id'][:8]}").start()
+    try:
+        _SYNC_JOB_QUEUE.put_nowait(
+            {
+                "job": job,
+                "cancel_event": cancel_event,
+                "title": title,
+                "source_label": source_label,
+                "record_source": record_source,
+                "mode": mode,
+                "username": username,
+                "password": password,
+                "base_url": base_url,
+                "account": account,
+                "wl": wl,
+                "time_zone": time_zone,
+                "date_locale": date_locale,
+                "report_locale": report_locale,
+                "from_date": from_date,
+                "to_date": to_date,
+                "headless": headless,
+                "debug_capture": debug_capture,
+                "debug_only": debug_only,
+                "requested": requested,
+            }
+        )
+    except Exception as e:
+        raw_message = str(e)
+        fail_message = _strip_stage_prefix(raw_message)
+        stage = _classify_sync_stage(raw_message, "queue_dispatch")
+        _save_last_sync_status(
+            {
+                "job_id": job["id"],
+                "status": "failed",
+                "stage": stage,
+                "message": fail_message,
+                "stage_help": SYNC_STAGE_HELP.get(stage, ""),
+                "requested": requested,
+                "updated_at": now_iso(),
+            }
+        )
+        _update_bg_job(
+            job["id"],
+            status="failed",
+            stage=stage,
+            message=fail_message,
+            duration_sec=0.0,
+            summary={"message": fail_message, "warn_count": 0, "error_count": 1, "inserted": 0, "artifacts_rel": [], "statement_file": ""},
+            result_summary=_build_action_result_summary(
+                tone="danger",
+                title="Live Sync Failed",
+                happened=fail_message,
+                changed="The sync job could not be handed off to the background dispatcher.",
+                next_action="Retry once load settles. If it repeats, inspect app resource limits.",
+                actions=[
+                    {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
+                    {"label": "Open Ops Alerts", "href": "/ops/alerts"},
+                ],
+            ),
+        )
+        _clear_sync_cancel_event(job["id"])
     return job
 
 
