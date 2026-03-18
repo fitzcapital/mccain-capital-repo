@@ -795,9 +795,121 @@
   };
 
   const tapeCards = Array.from(document.querySelectorAll(".marketPulseTapeCard[data-symbol]"));
+  const mobilePulseQuery = window.matchMedia("(max-width: 640px)");
+  const scrollRoot = document.scrollingElement || document.documentElement;
+  const MOBILE_STREAM_FLUSH_MS = 900;
+  let pendingStreamPayload = null;
+  let pendingStreamTimer = null;
 
   const dispatchStreamStatus = (status, detail) => {
     window.dispatchEvent(new CustomEvent("market-pulse-stream-status", { detail: { status, detail } }));
+  };
+
+  const preserveMobileScroll = (beforeBottomGap) => {
+    if (!mobilePulseQuery.matches || beforeBottomGap === null) return;
+    window.requestAnimationFrame(() => {
+      const currentTop = scrollRoot.scrollTop;
+      const currentBottomGap = scrollRoot.scrollHeight - (currentTop + window.innerHeight);
+      if (beforeBottomGap > 140 && currentBottomGap > 140) return;
+      const nextTop = Math.max(0, scrollRoot.scrollHeight - window.innerHeight - Math.max(0, beforeBottomGap));
+      if (Math.abs(currentTop - nextTop) > 2) {
+        scrollRoot.scrollTop = nextTop;
+      }
+    });
+  };
+
+  const applyStreamPayload = (payload) => {
+    if (!payload || typeof payload !== "object") return;
+    const beforeBottomGap = mobilePulseQuery.matches
+      ? Math.max(0, scrollRoot.scrollHeight - (scrollRoot.scrollTop + window.innerHeight))
+      : null;
+
+    const prices = payload.prices || {};
+    const seriesPoints = payload.series_points || {};
+    const gamma = payload.gamma_map || {};
+    const spxTick = prices.SPX || prices["^GSPC"] || null;
+    const vixTick = prices.VIX || prices["^VIX"] || null;
+
+    const nextSpx = { ...(current.spx_quote || {}) };
+    if (spxTick && typeof spxTick === "object") {
+      const tickPrice = asNum(spxTick.price);
+      if (tickPrice !== null) nextSpx.price = tickPrice;
+      const tickPct = asNum(spxTick.pct_change);
+      if (tickPct !== null) nextSpx.change_pct = tickPct;
+      if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
+      if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
+      if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
+      if (typeof spxTick.reason === "string") {
+        nextSpx.reason = spxTick.reason;
+        nextSpx.data_reason = spxTick.reason;
+      }
+      nextSpx.data_state = deriveDataState(nextSpx);
+      nextSpx.data_status_label = dataStateLabel(nextSpx.data_state);
+      nextSpx.source_badge_label = sourceBadgeLabel(nextSpx);
+    }
+
+    const nextVix = { ...(current.vix_quote || {}) };
+    if (vixTick && typeof vixTick === "object") {
+      const vixPrice = asNum(vixTick.price);
+      if (vixPrice !== null) nextVix.price = vixPrice;
+      const vixPct = asNum(vixTick.pct_change);
+      if (vixPct !== null) nextVix.change_pct = vixPct;
+      if (typeof vixTick.provider === "string") nextVix.provider = vixTick.provider;
+      if (typeof vixTick.reason === "string") {
+        nextVix.reason = vixTick.reason;
+        nextVix.data_reason = vixTick.reason;
+      }
+      nextVix.data_state = deriveDataState(nextVix);
+      nextVix.data_status_label = dataStateLabel(nextVix.data_state);
+      nextVix.source_badge_label = sourceBadgeLabel(nextVix);
+    }
+
+    current = {
+      ...(current || {}),
+      spx_quote: nextSpx,
+      vix_quote: nextVix,
+      market_now_iso: new Date().toISOString(),
+      updated_at: payload.updated_at || (current || {}).updated_at || null,
+      server_ts: payload.server_ts || null,
+      series_points: {
+        ...((current || {}).series_points || {}),
+        ...(seriesPoints || {}),
+      },
+      gamma_snapshot: {
+        ...(current.gamma_snapshot || {}),
+        ...(gamma || {}),
+      },
+    };
+    render(current);
+    tapeCards.forEach((card) => {
+      const symbol = String(card.dataset.symbol || "").toUpperCase();
+      if (!symbol) return;
+      applyTapeCardUpdate(card, prices[symbol] || {}, seriesPoints[symbol] || []);
+    });
+    updateTapeSummary(prices);
+    dispatchStreamStatus(
+      "Live stream on",
+      buildTickPingLabel(
+        (spxTick || {}).as_of || payload.updated_at || payload.server_ts || new Date().toISOString(),
+        (spxTick || {}).provider || ""
+      )
+    );
+    preserveMobileScroll(beforeBottomGap);
+  };
+
+  const queueStreamPayload = (payload) => {
+    if (!mobilePulseQuery.matches) {
+      applyStreamPayload(payload);
+      return;
+    }
+    pendingStreamPayload = payload;
+    if (pendingStreamTimer !== null) return;
+    pendingStreamTimer = window.setTimeout(() => {
+      pendingStreamTimer = null;
+      const nextPayload = pendingStreamPayload;
+      pendingStreamPayload = null;
+      applyStreamPayload(nextPayload);
+    }, MOBILE_STREAM_FLUSH_MS);
   };
 
   const formatSigned = (value, digits = 2) => {
@@ -1283,77 +1395,7 @@
       } catch (_err) {
         return;
       }
-
-      const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
-      const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
-      const gamma = payload && typeof payload === "object" ? (payload.gamma_map || {}) : {};
-      const spxTick = prices.SPX || prices["^GSPC"] || null;
-      const vixTick = prices.VIX || prices["^VIX"] || null;
-
-      const nextSpx = { ...(current.spx_quote || {}) };
-      if (spxTick && typeof spxTick === "object") {
-        const tickPrice = asNum(spxTick.price);
-        if (tickPrice !== null) nextSpx.price = tickPrice;
-        const tickPct = asNum(spxTick.pct_change);
-        if (tickPct !== null) nextSpx.change_pct = tickPct;
-        if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
-        if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
-        if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
-        if (typeof spxTick.reason === "string") {
-          nextSpx.reason = spxTick.reason;
-          nextSpx.data_reason = spxTick.reason;
-        }
-        nextSpx.data_state = deriveDataState(nextSpx);
-        nextSpx.data_status_label = dataStateLabel(nextSpx.data_state);
-        nextSpx.source_badge_label = sourceBadgeLabel(nextSpx);
-      }
-
-      const nextVix = { ...(current.vix_quote || {}) };
-      if (vixTick && typeof vixTick === "object") {
-        const vixPrice = asNum(vixTick.price);
-        if (vixPrice !== null) nextVix.price = vixPrice;
-        const vixPct = asNum(vixTick.pct_change);
-        if (vixPct !== null) nextVix.change_pct = vixPct;
-        if (typeof vixTick.provider === "string") nextVix.provider = vixTick.provider;
-        if (typeof vixTick.reason === "string") {
-          nextVix.reason = vixTick.reason;
-          nextVix.data_reason = vixTick.reason;
-        }
-        nextVix.data_state = deriveDataState(nextVix);
-        nextVix.data_status_label = dataStateLabel(nextVix.data_state);
-        nextVix.source_badge_label = sourceBadgeLabel(nextVix);
-      }
-
-      current = {
-        ...(current || {}),
-        spx_quote: nextSpx,
-        vix_quote: nextVix,
-        market_now_iso: new Date().toISOString(),
-        updated_at: payload.updated_at || (current || {}).updated_at || null,
-        server_ts: payload.server_ts || null,
-        series_points: {
-          ...((current || {}).series_points || {}),
-          ...(seriesPoints || {}),
-        },
-        gamma_snapshot: {
-          ...(current.gamma_snapshot || {}),
-          ...(gamma || {}),
-        },
-      };
-      render(current);
-      tapeCards.forEach((card) => {
-        const symbol = String(card.dataset.symbol || "").toUpperCase();
-        if (!symbol) return;
-        applyTapeCardUpdate(card, prices[symbol] || {}, seriesPoints[symbol] || []);
-      });
-      updateTapeSummary(prices);
-      dispatchStreamStatus(
-        "Live stream on",
-        buildTickPingLabel(
-          (spxTick || {}).as_of || payload.updated_at || payload.server_ts || new Date().toISOString(),
-          (spxTick || {}).provider || ""
-        )
-      );
+      queueStreamPayload(payload);
     };
 
     stream.onerror = () => {

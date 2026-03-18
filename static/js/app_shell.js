@@ -34,6 +34,15 @@
 
   let previousDrawerFocus = null;
 
+  function focusWithoutScroll(target) {
+    if (!target || typeof target.focus !== "function") return;
+    try {
+      target.focus({ preventScroll: true });
+    } catch (_err) {
+      target.focus();
+    }
+  }
+
   function closeMoreMenu() {
     const menu = doc.getElementById("moreMenu");
     if (menu) menu.classList.remove("open");
@@ -94,7 +103,7 @@
     const target = focusable.find((el) => el.classList.contains("drawerClose"))
       || focusable.find((el) => el.closest(".drawerQuickGrid"))
       || focusable[0];
-    if (target) target.focus();
+    focusWithoutScroll(target);
   }
 
   function openDrawer() {
@@ -123,7 +132,7 @@
     syncDrawerScrollLock();
     doc.removeEventListener("keydown", handleDrawerKeydown, true);
     if (previousDrawerFocus && doc.contains(previousDrawerFocus)) {
-      previousDrawerFocus.focus();
+      focusWithoutScroll(previousDrawerFocus);
     }
     previousDrawerFocus = null;
   }
