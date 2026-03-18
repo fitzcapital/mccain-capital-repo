@@ -39,6 +39,7 @@ TRADING_WINDOW_DEFAULTS = {
     "test_date": "",
     "test_time_et": "",
 }
+TRADING_WINDOW_UPCOMING_NOTICE_MINUTES = 60
 
 
 def _is_market_session(day: date) -> bool:
@@ -296,6 +297,11 @@ def _resolve_window_times(start_text: str, done_text: str, stop_text: str = "") 
 def save_trading_window_settings(form: Mapping[str, Any]) -> dict[str, Any]:
     enabled = str(form.get("tw_enabled") or "") in {"1", "true", "on", "yes"}
     test_mode = str(form.get("tw_test_mode") or "") in {"1", "true", "on", "yes"}
+    try:
+        upcoming_notice_minutes = int(str(form.get("tw_upcoming_notice_minutes") or "").strip() or TRADING_WINDOW_UPCOMING_NOTICE_MINUTES)
+    except ValueError:
+        upcoming_notice_minutes = TRADING_WINDOW_UPCOMING_NOTICE_MINUTES
+    upcoming_notice_minutes = max(0, min(240, upcoming_notice_minutes))
 
     start_et, done_by_et, hard_stop_et = _resolve_window_times(
         str(form.get("tw_start_et") or ""),
@@ -322,6 +328,7 @@ def save_trading_window_settings(form: Mapping[str, Any]) -> dict[str, Any]:
     set_setting_value("trading_window_test_mode", "1" if test_mode else "0")
     set_setting_value("trading_window_test_date", normalized_test_date)
     set_setting_value("trading_window_test_time_et", normalized_test_time)
+    set_setting_value("trading_window_upcoming_notice_minutes", str(upcoming_notice_minutes))
     return get_trading_window_state()
 
 
@@ -367,6 +374,13 @@ def get_trading_window_state() -> dict[str, Any]:
     now_min = now_et.hour * 60 + now_et.minute
     start_min = _parse_hhmm_minutes(start_et) or 0
     done_min = _parse_hhmm_minutes(done_by_et) or (start_min + 120)
+    upcoming_notice_minutes = app_runtime.parse_int(
+        _setting_text("trading_window_upcoming_notice_minutes", str(TRADING_WINDOW_UPCOMING_NOTICE_MINUTES))
+    )
+    if upcoming_notice_minutes is None:
+        upcoming_notice_minutes = TRADING_WINDOW_UPCOMING_NOTICE_MINUTES
+    upcoming_notice_minutes = max(0, min(240, int(upcoming_notice_minutes)))
+    minutes_until_start = start_min - now_min
     if not enabled:
         state = "off"
         state_label = "Do Not Trade"
@@ -374,6 +388,7 @@ def get_trading_window_state() -> dict[str, Any]:
         rail_label = "Do Not Trade"
         rail_detail = "Window disabled"
         pill_tone = "negative"
+        show_banner = False
     elif not is_trading_day and not using_test_clock:
         state = "closed"
         state_label = "Do Not Trade"
@@ -384,13 +399,15 @@ def get_trading_window_state() -> dict[str, Any]:
         rail_label = "Do Not Trade"
         rail_detail = "Closed Today"
         pill_tone = "negative"
+        show_banner = False
     elif now_min < start_min:
-        state = "pending"
+        state = "upcoming" if minutes_until_start <= upcoming_notice_minutes else "pending"
         state_label = "Do Not Trade"
         message = f"Wait for the window to open at {start_et} ET."
         rail_label = "Do Not Trade"
         rail_detail = f"Starts {start_et} ET"
         pill_tone = "negative"
+        show_banner = state == "upcoming"
     elif now_min < done_min:
         state = "active"
         state_label = "Trade Window Open"
@@ -398,6 +415,7 @@ def get_trading_window_state() -> dict[str, Any]:
         rail_label = "Good To Trade"
         rail_detail = f"Done By {done_by_et} ET"
         pill_tone = "positive"
+        show_banner = True
     else:
         state = "stop"
         state_label = "Done Trading"
@@ -405,16 +423,18 @@ def get_trading_window_state() -> dict[str, Any]:
         rail_label = "Do Not Trade"
         rail_detail = f"Closed {done_by_et} ET"
         pill_tone = "negative"
+        show_banner = False
 
     return {
         "enabled": enabled,
         "start_et": start_et,
         "done_by_et": done_by_et,
         "hard_stop_et": hard_stop_et,
+        "upcoming_notice_minutes": upcoming_notice_minutes,
         "test_mode": test_mode,
         "using_test_clock": using_test_clock,
         "is_trading_day": is_trading_day,
-        "show_banner": bool(enabled and (is_trading_day or using_test_clock)),
+        "show_banner": bool(show_banner),
         "holiday_name": holiday_name,
         "test_date": (test_date_text or now_et.date().isoformat()),
         "test_time_et": test_time_et,

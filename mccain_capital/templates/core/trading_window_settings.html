@@ -19,7 +19,7 @@
   <div class="opsPrimary">
     <div class="card"><div class="toolbar">
       <div class="pill">Current Status</div>
-      <div class="workspaceSectionLead">The header pill is green only inside the active trading window. It is red before the window opens, after you are done, or on closed sessions.</div>
+      <div class="workspaceSectionLead">The header pill is visible only when the window is active or close enough to matter.</div>
       <div class="metricStrip metricStripCompact">
         <div class="metric">
           <div class="label">Status</div>
@@ -33,6 +33,10 @@
           <div class="label">Tone</div>
           <div class="value">{{ 'Green' if tw.pill_tone == 'positive' else 'Red' }}</div>
         </div>
+        <div class="metric">
+          <div class="label">Upcoming Notice</div>
+          <div class="value">{{ tw.upcoming_notice_minutes or 0 }} min</div>
+        </div>
       </div>
       <div class="tiny stack8 line15">
         {{ tw.message }}
@@ -44,7 +48,7 @@
 
     <div class="card"><div class="toolbar">
       <div class="pill">Window Settings</div>
-      <div class="workspaceSectionLead">Once the done-by time hits, the app flips to red and stays there. No extra hard stop is applied.</div>
+      <div class="workspaceSectionLead">Show the header pill only when it is actionable: active now, or upcoming soon. No extra hard stop is applied.</div>
       <form method="post" action="/ops/trading-window" class="tradingWindowForm">
         <input type="hidden" name="next" value="/ops/trading-window">
         <label class="tradingWindowToggle">
@@ -58,6 +62,10 @@
         <label>
           Done By (ET)
           <input type="time" name="tw_done_by_et" value="{{ tw.done_by_et }}" required>
+        </label>
+        <label>
+          Upcoming Notice (minutes)
+          <input type="number" name="tw_upcoming_notice_minutes" value="{{ tw.upcoming_notice_minutes or 60 }}" min="0" max="240" step="5">
         </label>
         <label class="tradingWindowToggle">
           <input type="checkbox" name="tw_test_mode" value="1" {% if tw.test_mode %}checked{% endif %} data-tw-test-mode>
@@ -82,12 +90,12 @@
     <div class="card supportCard"><div class="toolbar">
       <div class="pill">Guidance</div>
       <div class="supportLead">This should be boring and strict.</div>
-      <div class="supportBody">Pick the earliest realistic cutoff for your session. If you are done, the app should stay red so you do not negotiate with yourself.</div>
+      <div class="supportBody">Pick the earliest realistic cutoff for your session. After you are done, the pill should disappear instead of lingering as dead chrome.</div>
     </div></div>
     <div class="card supportCard subtleCard"><div class="toolbar">
       <div class="pill">Header Behavior</div>
       <div class="supportLead">No inline editing in the top bar.</div>
-      <div class="supportBody">The header now only reports state. Changes belong here on the settings page, reachable from the menu.</div>
+      <div class="supportBody">The header now only reports actionable state: active now, or upcoming within the configured notice window. Changes belong here on the settings page.</div>
     </div></div>
   </aside>
 </div>

@@ -425,8 +425,9 @@ def test_vanquish_lock_state_endpoint(client):
     assert "unlock_label" in payload
 
 
-def test_dashboard_trading_window_status_pill_uses_simple_red_state_after_done_by(client):
+def test_dashboard_trading_window_status_pill_hidden_after_done_by(client):
     from mccain_capital.runtime import set_setting_value
+    from mccain_capital.services import ui as ui_service
 
     set_setting_value("trading_window_enabled", "1")
     set_setting_value("trading_window_start_et", "09:30")
@@ -435,14 +436,54 @@ def test_dashboard_trading_window_status_pill_uses_simple_red_state_after_done_b
     set_setting_value("trading_window_test_date", "2026-03-12")
     set_setting_value("trading_window_test_time_et", "12:45")
 
+    state = ui_service.get_trading_window_state()
+    assert state["state"] == "stop"
+    assert state["show_banner"] is False
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"tradingWindowPill" not in resp.data
+
+
+def test_dashboard_trading_window_status_pill_shows_only_when_open_is_soon(client):
+    from mccain_capital.runtime import set_setting_value
+    from mccain_capital.services import ui as ui_service
+
+    set_setting_value("trading_window_enabled", "1")
+    set_setting_value("trading_window_start_et", "09:30")
+    set_setting_value("trading_window_done_by_et", "11:30")
+    set_setting_value("trading_window_test_mode", "1")
+    set_setting_value("trading_window_test_date", "2026-03-12")
+    set_setting_value("trading_window_test_time_et", "08:50")
+
+    state = ui_service.get_trading_window_state()
+    assert state["state"] == "upcoming"
+    assert state["show_banner"] is True
+
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     assert b"tradingWindowPill" in resp.data
-    assert b"tradingWindowPillAction" not in resp.data
-    assert b'href="/ops/trading-window"' in resp.data
-    assert b"Test Mode" in resp.data
-    assert b"Do Not Trade" in resp.data
-    assert b"Closed 11:30 ET" in resp.data
+    assert b"Starts 09:30 ET" in resp.data
+
+
+def test_dashboard_trading_window_status_pill_hidden_when_open_is_not_soon(client):
+    from mccain_capital.runtime import set_setting_value
+    from mccain_capital.services import ui as ui_service
+
+    set_setting_value("trading_window_enabled", "1")
+    set_setting_value("trading_window_start_et", "09:30")
+    set_setting_value("trading_window_done_by_et", "11:30")
+    set_setting_value("trading_window_test_mode", "1")
+    set_setting_value("trading_window_test_date", "2026-03-12")
+    set_setting_value("trading_window_test_time_et", "07:15")
+
+    state = ui_service.get_trading_window_state()
+    assert state["state"] == "pending"
+    assert state["show_banner"] is False
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"tradingWindowPill" not in resp.data
 
 
 def test_dashboard_trading_window_status_pill_hidden_on_weekend_without_test_mode(client):
@@ -480,6 +521,7 @@ def test_trading_window_config_endpoint_saves_times(client):
             "tw_enabled": "1",
             "tw_start_et": "09:35",
             "tw_done_by_et": "11:20",
+            "tw_upcoming_notice_minutes": "45",
             "tw_test_mode": "1",
             "tw_test_date": "2026-03-12",
             "tw_test_time_et": "10:15",
@@ -494,6 +536,7 @@ def test_trading_window_config_endpoint_saves_times(client):
     assert str(get_setting_value("trading_window_start_et", "")) == "09:35"
     assert str(get_setting_value("trading_window_done_by_et", "")) == "11:20"
     assert str(get_setting_value("trading_window_hard_stop_et", "")) == "11:20"
+    assert str(get_setting_value("trading_window_upcoming_notice_minutes", "")) == "45"
     assert str(get_setting_value("trading_window_test_mode", "")) == "1"
     assert str(get_setting_value("trading_window_test_date", "")) == "2026-03-12"
     assert str(get_setting_value("trading_window_test_time_et", "")) == "10:15"
@@ -506,6 +549,7 @@ def test_trading_window_config_follow_redirect_shows_success_feedback(client):
             "tw_enabled": "1",
             "tw_start_et": "09:40",
             "tw_done_by_et": "11:10",
+            "tw_upcoming_notice_minutes": "30",
             "next": "/ops/trading-window",
         },
         follow_redirects=True,
@@ -513,7 +557,7 @@ def test_trading_window_config_follow_redirect_shows_success_feedback(client):
     assert resp.status_code == 200
     assert b"Trading window saved." in resp.data
     assert b"Session Guardrail Settings" in resp.data
-    assert b"no separate hard-stop phase anymore" in resp.data
+    assert b"Upcoming Notice" in resp.data
 
 
 def test_trading_window_settings_page_renders_form(client):

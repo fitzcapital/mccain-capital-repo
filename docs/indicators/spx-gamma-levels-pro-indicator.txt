@@ -1,0 +1,448 @@
+//@version=6
+indicator("SPX Gamma Levels Pro", overlay=true, max_lines_count=20, max_labels_count=20)
+
+// =============================================================================
+// SPX Gamma Levels Pro
+// Manual gamma structure levels for SPX cash session.
+//
+// Design notes:
+// - PW / CW / GF are never derived from OHLC or standard indicators.
+// - Levels are sourced through a dedicated abstraction layer so manual inputs can
+//   later be replaced with external values.
+// - The script manages current live levels cleanly and avoids synthetic gamma math.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+const string SESSION_TZ = "America/New_York"
+const string GROUP_LEVELS = "A) Level Inputs"
+const string GROUP_CONTROLS = "B) Session / Update Controls"
+const string GROUP_STYLE = "C) Styling"
+const string GROUP_REGIME = "D) Regime Logic"
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+f_lineStyle(string styleInput) =>
+    styleInput == "Dashed" ? line.style_dashed : styleInput == "Dotted" ? line.style_dotted : line.style_solid
+
+f_labelSize(string sizeInput) =>
+    sizeInput == "Tiny" ? size.tiny : sizeInput == "Normal" ? size.normal : size.small
+
+f_tablePosition(string posInput) =>
+    posInput == "Top Left" ? position.top_left :
+     posInput == "Bottom Right" ? position.bottom_right :
+     posInput == "Bottom Left" ? position.bottom_left :
+     position.top_right
+
+f_levelValue(float rawValue) =>
+    rawValue > 0 ? rawValue : na
+
+f_hasLevel(float levelValue) =>
+    not na(levelValue)
+
+f_priceText(float priceValue) =>
+    f_hasLevel(priceValue) ? str.tostring(priceValue, format.mintick) : "--"
+
+f_sideText(float priceValue, float referenceValue) =>
+    not f_hasLevel(priceValue) or not f_hasLevel(referenceValue) ? "--" : priceValue > referenceValue ? "Above" : priceValue < referenceValue ? "Below" : "At"
+
+f_contrastText(color bgColor) =>
+    float luminance = (color.r(bgColor) * 0.299) + (color.g(bgColor) * 0.587) + (color.b(bgColor) * 0.114)
+    luminance > 150 ? color.black : color.white
+
+f_safeBarIndex(int targetBar) =>
+    // TradingView rejects line x-coordinates more than 10k bars behind the current bar.
+    math.max(targetBar, bar_index - 9999)
+
+f_manageLine(line lineRef, bool shouldShow, float levelPrice, color lineColor, int widthValue, styleValue, bool extendRightValue, int startBar, int endBar) =>
+    line result = lineRef
+    if shouldShow and f_hasLevel(levelPrice) and not na(startBar) and not na(endBar)
+        int safeStartBar = f_safeBarIndex(startBar)
+        int safeEndBar = math.max(endBar, safeStartBar + 1)
+        if na(result)
+            result := line.new(safeStartBar, levelPrice, safeEndBar, levelPrice, xloc=xloc.bar_index, extend=extendRightValue ? extend.right : extend.none, color=lineColor, width=widthValue, style=styleValue)
+        else
+            line.set_xy1(result, safeStartBar, levelPrice)
+            line.set_xy2(result, safeEndBar, levelPrice)
+            line.set_extend(result, extendRightValue ? extend.right : extend.none)
+            line.set_color(result, lineColor)
+            line.set_width(result, widthValue)
+            line.set_style(result, styleValue)
+    else
+        if not na(result)
+            line.delete(result)
+            result := na
+    result
+
+f_manageLabel(label labelRef, bool shouldShow, float yPrice, string textValue, color textColorValue, labelSizeValue, int xBarOffset) =>
+    label result = labelRef
+    if shouldShow and f_hasLevel(yPrice)
+        int labelX = bar_index + xBarOffset
+        if na(result)
+            result := label.new(labelX, yPrice, textValue, xloc=xloc.bar_index, style=label.style_none, color=color.new(color.black, 100), textcolor=textColorValue, size=labelSizeValue)
+        else
+            label.set_x(result, labelX)
+            label.set_y(result, yPrice)
+            label.set_text(result, textValue)
+            label.set_color(result, color.new(color.black, 100))
+            label.set_textcolor(result, textColorValue)
+            label.set_size(result, labelSizeValue)
+    else
+        if not na(result)
+            label.delete(result)
+            result := na
+    result
+
+f_extendLineAndLabel(line lineRef, label labelRef, int x2Bar, float linePrice, float labelPrice, bool useExtendRight) =>
+    if not na(lineRef)
+        line.set_x2(lineRef, x2Bar)
+        line.set_y1(lineRef, linePrice)
+        line.set_y2(lineRef, linePrice)
+        line.set_extend(lineRef, useExtendRight ? extend.right : extend.none)
+    if not na(labelRef)
+        label.set_x(labelRef, x2Bar)
+        label.set_y(labelRef, labelPrice)
+
+// -----------------------------------------------------------------------------
+// Input: levels
+// -----------------------------------------------------------------------------
+manualPWInput = input.float(0.0, "Put Wall", step=0.25, group=GROUP_LEVELS, tooltip="Enter the SPX Put Wall price manually. Use 0 to leave unset.")
+manualCWInput = input.float(0.0, "Call Wall", step=0.25, group=GROUP_LEVELS, tooltip="Enter the SPX Call Wall price manually. Use 0 to leave unset.")
+manualGFInput = input.float(0.0, "Gamma Flip", step=0.25, group=GROUP_LEVELS, tooltip="Enter the SPX Gamma Flip price manually. Use 0 to leave unset.")
+useTodayCustomLevels = input.bool(true, "Use today's custom levels", group=GROUP_LEVELS, tooltip="When enabled, the current source values are eligible to become today's active levels.")
+
+// -----------------------------------------------------------------------------
+// Input: controls
+// -----------------------------------------------------------------------------
+cashSession = input.session("0930-1600", "US Cash Session", group=GROUP_CONTROLS)
+resetLevelsEachNewDay = input.bool(false, "Reset levels each new day", group=GROUP_CONTROLS, tooltip="If enabled, active levels clear at the start of a new New York trading day. This setting takes precedence over carry-forward.")
+autoCarryPreviousLevels = input.bool(true, "Auto-carry previous levels until changed", group=GROUP_CONTROLS, tooltip="Carries forward the last valid PW/CW/GF into a new day when reset is disabled.")
+freezeLevelsAfterOpen = input.bool(false, "Freeze levels after session open", group=GROUP_CONTROLS, tooltip="Locks active levels from the first 09:30 ET cash-session bar onward. With manual TradingView inputs, this is best-effort because input edits recompile the script.")
+allowIntradayEdits = input.bool(true, "Allow intraday edits", group=GROUP_CONTROLS, tooltip="If enabled and levels are not frozen, active levels can update during the cash session.")
+extendLinesRight = input.bool(true, "Extend lines right", group=GROUP_CONTROLS, tooltip="If disabled, lines are confined to the active day instead of extending indefinitely.")
+showLabels = input.bool(true, "Show labels", group=GROUP_CONTROLS)
+rightLabelOffsetBars = input.int(12, "Right label offset (bars)", minval=1, maxval=200, group=GROUP_CONTROLS)
+lineExtensionBars = input.int(12, "Line extension bars", minval=1, maxval=300, group=GROUP_CONTROLS, tooltip="Used for the same bar-extension behavior as daily structure lines like CDH/CDL.")
+
+// -----------------------------------------------------------------------------
+// Input: styling
+// -----------------------------------------------------------------------------
+pwColor = input.color(color.new(color.red, 0), "PW color", group=GROUP_STYLE)
+cwColor = input.color(color.new(color.orange, 0), "CW color", group=GROUP_STYLE)
+gfColor = input.color(color.new(color.aqua, 0), "GF color", group=GROUP_STYLE)
+lineWidth = input.int(2, "Line width", minval=1, maxval=5, group=GROUP_STYLE)
+lineStyleInput = input.string("Solid", "Line style", options=["Solid", "Dashed", "Dotted"], group=GROUP_STYLE)
+labelSizeInput = input.string("Small", "Label text size", options=["Tiny", "Small", "Normal"], group=GROUP_STYLE)
+tablePositionInput = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=GROUP_STYLE)
+tableLayoutInput = input.string("Horizontal", "Table layout", options=["Horizontal", "Vertical"], group=GROUP_STYLE)
+tableTextSizeInput = input.string("Tiny", "Table text size", options=["Tiny", "Small", "Normal"], group=GROUP_STYLE)
+labelCollisionTicks = input.int(12, "Label separation (ticks)", minval=1, maxval=100, group=GROUP_STYLE, tooltip="Vertical offset applied when levels are close together.")
+
+// -----------------------------------------------------------------------------
+// Input: regime
+// -----------------------------------------------------------------------------
+flipThreshold = input.float(1.00, "Flip threshold in points", step=0.25, minval=0.0, group=GROUP_REGIME)
+showExtraDistanceMetrics = input.bool(true, "Show extra distance metrics", group=GROUP_REGIME)
+
+// -----------------------------------------------------------------------------
+// Source abstraction
+// Replace this function later with external imported / bridged level values.
+// Keep the rest of the script unchanged.
+// -----------------------------------------------------------------------------
+f_resolveGammaSources() =>
+    float sourcePW = f_levelValue(manualPWInput)
+    float sourceCW = f_levelValue(manualCWInput)
+    float sourceGF = f_levelValue(manualGFInput)
+    [sourcePW, sourceCW, sourceGF]
+
+[sourcePW, sourceCW, sourceGF] = f_resolveGammaSources()
+
+// -----------------------------------------------------------------------------
+// Session / day state
+// -----------------------------------------------------------------------------
+lineStyleValue = f_lineStyle(lineStyleInput)
+labelSizeValue = f_labelSize(labelSizeInput)
+tableTextSizeValue = f_labelSize(tableTextSizeInput)
+tablePositionValue = f_tablePosition(tablePositionInput)
+carryForwardEnabled = autoCarryPreviousLevels and not resetLevelsEachNewDay
+
+nyYear = year(time, SESSION_TZ)
+nyMonth = month(time, SESSION_TZ)
+nyDay = dayofmonth(time, SESSION_TZ)
+dayKey = (nyYear * 10000) + (nyMonth * 100) + nyDay
+newTradingDay = bar_index > 0 ? dayKey != dayKey[1] : false
+
+isIntradayChart = timeframe.isintraday
+inCashSession = isIntradayChart ? not na(time(timeframe.period, cashSession, SESSION_TZ)) : true
+sessionOpened = isIntradayChart ? (bar_index > 0 ? inCashSession and not inCashSession[1] : inCashSession) : newTradingDay or barstate.isfirst
+
+var int dayStartBar = na
+if barstate.isfirst
+    dayStartBar := bar_index
+if newTradingDay
+    dayStartBar := bar_index
+
+// -----------------------------------------------------------------------------
+// Active level state
+// -----------------------------------------------------------------------------
+var float activePW = na
+var float activeCW = na
+var float activeGF = na
+
+var int pwStartBar = na
+var int cwStartBar = na
+var int gfStartBar = na
+
+var bool sessionLocked = false
+
+f_adoptLevel(float currentLevel, float incomingLevel, int currentStartBar, bool shouldAdopt) =>
+    float nextLevel = currentLevel
+    int nextStartBar = currentStartBar
+    if shouldAdopt and f_hasLevel(incomingLevel)
+        bool changed = not f_hasLevel(currentLevel) or currentLevel != incomingLevel
+        nextLevel := incomingLevel
+        if changed or na(nextStartBar)
+            nextStartBar := bar_index
+    [nextLevel, nextStartBar]
+
+f_clearIfNeeded(float currentLevel, int currentStartBar, bool shouldClear) =>
+    float nextLevel = shouldClear ? na : currentLevel
+    int nextStartBar = shouldClear ? na : currentStartBar
+    [nextLevel, nextStartBar]
+
+if newTradingDay
+    sessionLocked := false
+
+    if resetLevelsEachNewDay
+        [nextPW, nextPWStart] = f_clearIfNeeded(activePW, pwStartBar, true)
+        activePW := nextPW
+        pwStartBar := nextPWStart
+
+        [nextCW, nextCWStart] = f_clearIfNeeded(activeCW, cwStartBar, true)
+        activeCW := nextCW
+        cwStartBar := nextCWStart
+
+        [nextGF, nextGFStart] = f_clearIfNeeded(activeGF, gfStartBar, true)
+        activeGF := nextGF
+        gfStartBar := nextGFStart
+    else if carryForwardEnabled
+        if f_hasLevel(activePW) and not extendLinesRight
+            pwStartBar := bar_index
+        if f_hasLevel(activeCW) and not extendLinesRight
+            cwStartBar := bar_index
+        if f_hasLevel(activeGF) and not extendLinesRight
+            gfStartBar := bar_index
+    else
+        [nextPW, nextPWStart] = f_clearIfNeeded(activePW, pwStartBar, true)
+        activePW := nextPW
+        pwStartBar := nextPWStart
+
+        [nextCW, nextCWStart] = f_clearIfNeeded(activeCW, cwStartBar, true)
+        activeCW := nextCW
+        cwStartBar := nextCWStart
+
+        [nextGF, nextGFStart] = f_clearIfNeeded(activeGF, gfStartBar, true)
+        activeGF := nextGF
+        gfStartBar := nextGFStart
+
+canApplyPreOpen = not inCashSession
+canApplyIntraday = inCashSession and allowIntradayEdits and not sessionLocked and not freezeLevelsAfterOpen
+canApplyAtOpen = sessionOpened
+canApplySources = useTodayCustomLevels and (canApplyPreOpen or canApplyIntraday or canApplyAtOpen)
+
+if canApplySources
+    [nextPW, nextPWStart] = f_adoptLevel(activePW, sourcePW, pwStartBar, true)
+    activePW := nextPW
+    pwStartBar := nextPWStart
+
+    [nextCW, nextCWStart] = f_adoptLevel(activeCW, sourceCW, cwStartBar, true)
+    activeCW := nextCW
+    cwStartBar := nextCWStart
+
+    [nextGF, nextGFStart] = f_adoptLevel(activeGF, sourceGF, gfStartBar, true)
+    activeGF := nextGF
+    gfStartBar := nextGFStart
+
+if sessionOpened and freezeLevelsAfterOpen
+    if useTodayCustomLevels
+        [nextPW, nextPWStart] = f_adoptLevel(activePW, sourcePW, pwStartBar, true)
+        activePW := nextPW
+        pwStartBar := nextPWStart
+
+        [nextCW, nextCWStart] = f_adoptLevel(activeCW, sourceCW, cwStartBar, true)
+        activeCW := nextCW
+        cwStartBar := nextCWStart
+
+        [nextGF, nextGFStart] = f_adoptLevel(activeGF, sourceGF, gfStartBar, true)
+        activeGF := nextGF
+        gfStartBar := nextGFStart
+    sessionLocked := true
+
+// -----------------------------------------------------------------------------
+// Label de-confliction
+// -----------------------------------------------------------------------------
+collisionGap = labelCollisionTicks * syminfo.mintick
+pwYOffset = 0.0
+cwYOffset = 0.0
+gfYOffset = 0.0
+
+if f_hasLevel(activePW) and f_hasLevel(activeCW) and math.abs(activeCW - activePW) <= collisionGap
+    cwYOffset += collisionGap
+
+if f_hasLevel(activePW) and f_hasLevel(activeGF) and math.abs((activeGF + gfYOffset) - (activePW + pwYOffset)) <= collisionGap
+    gfYOffset += collisionGap
+
+if f_hasLevel(activeCW) and f_hasLevel(activeGF) and math.abs((activeGF + gfYOffset) - (activeCW + cwYOffset)) <= collisionGap
+    gfYOffset += collisionGap
+
+pwLabelY = f_hasLevel(activePW) ? activePW + pwYOffset : na
+cwLabelY = f_hasLevel(activeCW) ? activeCW + cwYOffset : na
+gfLabelY = f_hasLevel(activeGF) ? activeGF + gfYOffset : na
+
+// -----------------------------------------------------------------------------
+// Drawings
+// -----------------------------------------------------------------------------
+pwPlotStartBar = extendLinesRight ? pwStartBar : (f_hasLevel(activePW) ? nz(dayStartBar, pwStartBar) : na)
+cwPlotStartBar = extendLinesRight ? cwStartBar : (f_hasLevel(activeCW) ? nz(dayStartBar, cwStartBar) : na)
+gfPlotStartBar = extendLinesRight ? gfStartBar : (f_hasLevel(activeGF) ? nz(dayStartBar, gfStartBar) : na)
+
+plotEndBar = bar_index + lineExtensionBars
+
+showPWLine = f_hasLevel(activePW) and not na(pwPlotStartBar)
+showCWLine = f_hasLevel(activeCW) and not na(cwPlotStartBar)
+showGFLine = f_hasLevel(activeGF) and not na(gfPlotStartBar)
+
+pwEndBar = plotEndBar
+cwEndBar = plotEndBar
+gfEndBar = plotEndBar
+
+var line pwLine = na
+var line cwLine = na
+var line gfLine = na
+
+var label pwLabel = na
+var label cwLabel = na
+var label gfLabel = na
+
+pwLine := f_manageLine(pwLine, showPWLine, activePW, pwColor, lineWidth, lineStyleValue, extendLinesRight, pwPlotStartBar, pwEndBar)
+cwLine := f_manageLine(cwLine, showCWLine, activeCW, cwColor, lineWidth, lineStyleValue, extendLinesRight, cwPlotStartBar, cwEndBar)
+gfLine := f_manageLine(gfLine, showGFLine, activeGF, gfColor, lineWidth, lineStyleValue, extendLinesRight, gfPlotStartBar, gfEndBar)
+
+if barstate.islast
+    pwLabelText = "PW"
+    cwLabelText = "CW"
+    gfLabelText = "GF"
+
+    pwLabel := f_manageLabel(pwLabel, showLabels and showPWLine, pwLabelY, pwLabelText, pwColor, labelSizeValue, math.max(lineExtensionBars, rightLabelOffsetBars))
+    cwLabel := f_manageLabel(cwLabel, showLabels and showCWLine, cwLabelY, cwLabelText, cwColor, labelSizeValue, math.max(lineExtensionBars, rightLabelOffsetBars))
+    gfLabel := f_manageLabel(gfLabel, showLabels and showGFLine, gfLabelY, gfLabelText, gfColor, labelSizeValue, math.max(lineExtensionBars, rightLabelOffsetBars))
+
+f_extendLineAndLabel(pwLine, pwLabel, bar_index + math.max(lineExtensionBars, rightLabelOffsetBars), activePW, pwLabelY, extendLinesRight)
+f_extendLineAndLabel(cwLine, cwLabel, bar_index + math.max(lineExtensionBars, rightLabelOffsetBars), activeCW, cwLabelY, extendLinesRight)
+f_extendLineAndLabel(gfLine, gfLabel, bar_index + math.max(lineExtensionBars, rightLabelOffsetBars), activeGF, gfLabelY, extendLinesRight)
+
+// -----------------------------------------------------------------------------
+// Gamma regime
+// -----------------------------------------------------------------------------
+hasGF = f_hasLevel(activeGF)
+hasAnyLevel = f_hasLevel(activePW) or f_hasLevel(activeCW) or f_hasLevel(activeGF)
+atFlip = hasGF and math.abs(close - activeGF) <= flipThreshold
+positiveGamma = hasGF and not atFlip and close > activeGF
+negativeGamma = hasGF and not atFlip and close < activeGF
+
+regimeText = not hasAnyLevel ? "Awaiting manual levels" : not hasGF ? "No Gamma Flip" : atFlip ? "At Gamma Flip" : positiveGamma ? "Positive Gamma" : "Negative Gamma"
+regimeColor = not hasGF ? color.new(color.gray, 0) : atFlip ? color.new(color.yellow, 0) : positiveGamma ? color.new(color.green, 0) : color.new(color.red, 0)
+regimeColor := not hasAnyLevel ? color.new(color.orange, 0) : regimeColor
+
+distanceToGF = hasGF ? close - activeGF : na
+distanceToPW = f_hasLevel(activePW) ? close - activePW : na
+distanceToCW = f_hasLevel(activeCW) ? close - activeCW : na
+
+// -----------------------------------------------------------------------------
+// Regime table
+// -----------------------------------------------------------------------------
+var table regimeTable = table.new(tablePositionValue, 12, 9, bgcolor=color.new(color.black, 10), border_width=1, border_color=color.new(color.gray, 60))
+
+if barstate.islast
+    table.clear(regimeTable, 0, 0, 11, 8)
+
+    if tableLayoutInput == "Horizontal"
+        table.cell(regimeTable, 0, 0, "PW", text_color=color.white, bgcolor=color.new(pwColor, 70), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 1, 0, f_priceText(activePW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 2, 0, "CW", text_color=color.white, bgcolor=color.new(cwColor, 70), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 3, 0, f_priceText(activeCW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 4, 0, "GF", text_color=color.white, bgcolor=color.new(gfColor, 70), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 5, 0, f_priceText(activeGF), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 6, 0, "PX", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 7, 0, str.tostring(close, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 8, 0, "dGF", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 9, 0, f_priceText(distanceToGF), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 10, 0, "Reg", text_color=f_contrastText(regimeColor), bgcolor=regimeColor, text_size=tableTextSizeValue)
+        table.cell(regimeTable, 11, 0, regimeText, text_color=f_contrastText(regimeColor), bgcolor=regimeColor, text_size=tableTextSizeValue)
+
+        if showExtraDistanceMetrics
+            table.cell(regimeTable, 6, 1, "dPW", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+            table.cell(regimeTable, 7, 1, f_priceText(distanceToPW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+            table.cell(regimeTable, 8, 1, "dCW", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+            table.cell(regimeTable, 9, 1, f_priceText(distanceToCW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+            table.cell(regimeTable, 10, 1, "Side", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+            table.cell(regimeTable, 11, 1, f_sideText(close, activePW) + " / " + f_sideText(close, activeCW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+    else
+        table.cell(regimeTable, 0, 0, "PW", text_color=color.white, bgcolor=color.new(pwColor, 70), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 1, 0, f_priceText(activePW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+
+        table.cell(regimeTable, 0, 1, "CW", text_color=color.white, bgcolor=color.new(cwColor, 70), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 1, 1, f_priceText(activeCW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+
+        table.cell(regimeTable, 0, 2, "GF", text_color=color.white, bgcolor=color.new(gfColor, 70), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 1, 2, f_priceText(activeGF), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+
+        table.cell(regimeTable, 0, 3, "PX", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 1, 3, str.tostring(close, format.mintick), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+
+        table.cell(regimeTable, 0, 4, "dGF", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+        table.cell(regimeTable, 1, 4, f_priceText(distanceToGF), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+
+        table.cell(regimeTable, 0, 5, "Reg", text_color=f_contrastText(regimeColor), bgcolor=regimeColor, text_size=tableTextSizeValue)
+        table.cell(regimeTable, 1, 5, regimeText, text_color=f_contrastText(regimeColor), bgcolor=regimeColor, text_size=tableTextSizeValue)
+
+        if showExtraDistanceMetrics
+            table.cell(regimeTable, 0, 6, "dPW", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+            table.cell(regimeTable, 1, 6, f_priceText(distanceToPW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+
+            table.cell(regimeTable, 0, 7, "dCW", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+            table.cell(regimeTable, 1, 7, f_priceText(distanceToCW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+
+            table.cell(regimeTable, 0, 8, "Side", text_color=color.white, bgcolor=color.new(color.silver, 75), text_size=tableTextSizeValue)
+            table.cell(regimeTable, 1, 8, f_sideText(close, activePW) + " / " + f_sideText(close, activeCW), text_color=color.white, bgcolor=color.new(color.black, 0), text_size=tableTextSizeValue)
+
+// -----------------------------------------------------------------------------
+// Alerts
+// -----------------------------------------------------------------------------
+crossAbovePW = f_hasLevel(activePW) and ta.crossover(close, activePW)
+crossBelowPW = f_hasLevel(activePW) and ta.crossunder(close, activePW)
+crossAboveCW = f_hasLevel(activeCW) and ta.crossover(close, activeCW)
+crossBelowCW = f_hasLevel(activeCW) and ta.crossunder(close, activeCW)
+crossAboveGF = f_hasLevel(activeGF) and ta.crossover(close, activeGF)
+crossBelowGF = f_hasLevel(activeGF) and ta.crossunder(close, activeGF)
+
+regimeNegativeToPositive = positiveGamma and negativeGamma[1]
+regimePositiveToNegative = negativeGamma and positiveGamma[1]
+
+alertcondition(crossAbovePW, "Cross Above Put Wall", "SPX Gamma Levels Pro: price crossed above PW at {{close}}.")
+alertcondition(crossBelowPW, "Cross Below Put Wall", "SPX Gamma Levels Pro: price crossed below PW at {{close}}.")
+alertcondition(crossAboveCW, "Cross Above Call Wall", "SPX Gamma Levels Pro: price crossed above CW at {{close}}.")
+alertcondition(crossBelowCW, "Cross Below Call Wall", "SPX Gamma Levels Pro: price crossed below CW at {{close}}.")
+alertcondition(crossAboveGF, "Cross Above Gamma Flip", "SPX Gamma Levels Pro: price crossed above GF at {{close}}.")
+alertcondition(crossBelowGF, "Cross Below Gamma Flip", "SPX Gamma Levels Pro: price crossed below GF at {{close}}.")
+alertcondition(regimeNegativeToPositive, "Gamma Regime Shift: Negative to Positive", "SPX Gamma Levels Pro: gamma regime shifted from Negative Gamma to Positive Gamma.")
+alertcondition(regimePositiveToNegative, "Gamma Regime Shift: Positive to Negative", "SPX Gamma Levels Pro: gamma regime shifted from Positive Gamma to Negative Gamma.")
+
+// -----------------------------------------------------------------------------
+// Price-scale markers
+// -----------------------------------------------------------------------------
+plot(activePW, title="Put Wall", color=pwColor, linewidth=2, style=plot.style_linebr, trackprice=true, display=display.price_scale)
+plot(activeCW, title="Call Wall", color=cwColor, linewidth=2, style=plot.style_linebr, trackprice=true, display=display.price_scale)
+plot(activeGF, title="Gamma Flip", color=gfColor, linewidth=2, style=plot.style_linebr, trackprice=true, display=display.price_scale)
