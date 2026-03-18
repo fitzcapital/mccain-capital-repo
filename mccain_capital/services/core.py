@@ -1646,6 +1646,9 @@ def _market_news_snapshot() -> Dict[str, Any]:
                 "source": "Forex Factory",
                 "url": str(event.get("jump_href") or "/candle-opens"),
                 "published_label": str(event.get("date_label") or ""),
+                "starts_at": str(event.get("starts_at") or ""),
+                "time_label": str(event.get("time_label") or ""),
+                "iso": str(event.get("iso") or ""),
                 "tag": "Macro",
                 "why": str(event.get("tooltip") or "Calendar event"),
             }
@@ -1881,6 +1884,18 @@ def _dashboard_daily_brief_viewmodel(
     put_wall = _num(gamma_snapshot.get("put_wall"))
     day_open = _num(dashboard_spx.get("day_open"))
 
+    def _macro_event_dt(row: Dict[str, Any]) -> Optional[datetime]:
+        raw = str(row.get("starts_at") or "").strip()
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=app_runtime.TZ)
+            return parsed.astimezone(app_runtime.TZ)
+        except Exception:
+            return None
+
     if (
         spot is not None
         and gamma_flip is not None
@@ -1913,14 +1928,26 @@ def _dashboard_daily_brief_viewmodel(
     else:
         volatility_label = "Vol unknown"
 
+    relevant_macro_rows: List[Dict[str, Any]] = []
+    stale_cutoff = now_et - timedelta(minutes=30)
+    for row in list(news_snapshot.get("macro_events") or []):
+        if not isinstance(row, dict):
+            continue
+        event_dt = _macro_event_dt(row)
+        if event_dt is None:
+            continue
+        if event_dt < stale_cutoff:
+            continue
+        relevant_macro_rows.append(dict(row))
+    relevant_macro_rows.sort(key=lambda row: _macro_event_dt(row) or now_et)
     macro_events = [
         {
             "headline": str(row.get("headline") or "Macro event"),
             "published_label": str(row.get("published_label") or ""),
             "summary": str(row.get("summary") or ""),
+            "starts_at": str(row.get("starts_at") or ""),
         }
-        for row in list(news_snapshot.get("macro_events") or [])[:3]
-        if isinstance(row, dict)
+        for row in relevant_macro_rows[:3]
     ]
     if not macro_events:
         macro_events = [
@@ -2380,17 +2407,36 @@ def dashboard():
     tape_prices = dict(tape_snapshot.get("prices") or {})
     dashboard_spx = dict(tape_prices.get("SPX") or {})
     dashboard_vix = dict(tape_prices.get("VIX") or {})
-    # Dashboard tape should prefer broker-native Tradier quotes over generic fallbacks.
-    try:
-        tradier_quotes = market_data_service.get_watchlist_tradier(["SPX", "VIX"])
-    except Exception:
-        tradier_quotes = {}
-    tradier_spx = dict(tradier_quotes.get("SPX") or {})
-    tradier_vix = dict(tradier_quotes.get("VIX") or {})
-    if tradier_spx.get("price") is not None:
-        dashboard_spx = tradier_spx
-    if tradier_vix.get("price") is not None:
-        dashboard_vix = tradier_vix
+    tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
+    tape_fresh = False
+    if tape_updated_raw:
+        try:
+            tape_updated_at = datetime.fromisoformat(tape_updated_raw)
+            if tape_updated_at.tzinfo is None:
+                tape_updated_at = tape_updated_at.replace(tzinfo=app_runtime.TZ)
+            tape_fresh = (app_runtime.now_et() - tape_updated_at.astimezone(app_runtime.TZ)).total_seconds() <= 5
+        except Exception:
+            tape_fresh = False
+    worker_quotes_ready = (
+        tape_fresh
+        and dashboard_spx.get("price") is not None
+        and dashboard_vix.get("price") is not None
+        and str(dashboard_spx.get("provider") or "").strip()
+        and str(dashboard_vix.get("provider") or "").strip()
+    )
+    # Prefer the market worker's live cache when it is fresh. Fall back to direct
+    # Tradier fetches only when the cache is cold or incomplete.
+    if not worker_quotes_ready:
+        try:
+            tradier_quotes = market_data_service.get_watchlist_tradier(["SPX", "VIX"])
+        except Exception:
+            tradier_quotes = {}
+        tradier_spx = dict(tradier_quotes.get("SPX") or {})
+        tradier_vix = dict(tradier_quotes.get("VIX") or {})
+        if tradier_spx.get("price") is not None:
+            dashboard_spx = tradier_spx
+        if tradier_vix.get("price") is not None:
+            dashboard_vix = tradier_vix
     if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
         try:
             fallback = market_data_service.get_watchlist(["SPX", "VIX"], allow_yf_fallback=False)
@@ -2403,6 +2449,23 @@ def dashboard():
 
     now_et = app_runtime.now_et()
     now_epoch = int(now_et.timestamp())
+
+    intraday_rows_cache: Dict[str, List[Dict[str, Any]]] = {}
+
+    def _dashboard_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
+        key = str(symbol or "").strip().upper()
+        if not key:
+            return []
+        cached = intraday_rows_cache.get(key)
+        if cached is not None:
+            return cached
+        try:
+            rows = market_data_service.get_intraday(key)
+        except Exception:
+            rows = []
+        cleaned = [dict(row) for row in rows if isinstance(row, dict)]
+        intraday_rows_cache[key] = cleaned
+        return cleaned
 
     def _dashboard_sparkline_svg(
         series: List[float], tone: str, prev_close: Optional[float] = None
@@ -2471,10 +2534,7 @@ def dashboard():
                 return deduped_raw[-40:]
 
         # If cached tape points are too sparse/flat, pull a clean intraday curve directly.
-        try:
-            rows = market_data_service.get_intraday(symbol)
-        except Exception:
-            rows = []
+        rows = _dashboard_intraday_rows(symbol)
         intraday = [
             float(r.get("close"))
             for r in rows[-120:]
@@ -2499,7 +2559,43 @@ def dashboard():
     def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
         enriched = dict(quote or {})
         intraday_series = _dashboard_mini_series(symbol)
-        if intraday_series:
+        full_intraday_rows = _dashboard_intraday_rows(symbol)
+        if full_intraday_rows:
+            first_open = next(
+                (
+                    float(r.get("open"))
+                    for r in full_intraday_rows
+                    if isinstance(r.get("open"), (int, float))
+                ),
+                None,
+            )
+            highs = [
+                float(r.get("high"))
+                for r in full_intraday_rows
+                if isinstance(r.get("high"), (int, float))
+            ]
+            lows = [
+                float(r.get("low"))
+                for r in full_intraday_rows
+                if isinstance(r.get("low"), (int, float))
+            ]
+            if first_open is not None:
+                enriched["day_open"] = first_open
+            if highs and lows:
+                day_low = min(lows)
+                day_high = max(highs)
+                enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
+                enriched["day_range_compact"] = (
+                    f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+                )
+            elif intraday_series:
+                day_low = min(intraday_series)
+                day_high = max(intraday_series)
+                enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
+                enriched["day_range_compact"] = (
+                    f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+                )
+        elif intraday_series:
             day_low = min(intraday_series)
             day_high = max(intraday_series)
             enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
@@ -2507,11 +2603,11 @@ def dashboard():
                 enriched["day_range_compact"] = f"{day_high:.2f}"
             else:
                 enriched["day_range_compact"] = f"{day_low:.2f}-{day_high:.2f}"
-            enriched["day_open"] = float(intraday_series[0])
         else:
             enriched["day_range"] = "—"
             enriched["day_range_compact"] = "—"
-            enriched["day_open"] = None
+            if enriched.get("day_open") is None:
+                enriched["day_open"] = None
         reason = str(enriched.get("reason") or "").lower()
         provider = str(enriched.get("provider") or "").lower()
         if enriched.get("price") is None:

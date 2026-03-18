@@ -348,6 +348,151 @@ def test_dashboard_brief_shows_manual_state_and_can_reset(client):
     assert b"Auto-generated" in refreshed.data
 
 
+def test_dashboard_daily_brief_filters_stale_macro_events():
+    now_et = datetime(2026, 3, 17, 15, 0, tzinfo=core_service.app_runtime.TZ)
+    brief = core_service._dashboard_daily_brief_viewmodel(
+        now_et=now_et,
+        dashboard_spx={"price": 6725.0, "pct_change": 0.2, "day_open": 6718.0},
+        dashboard_vix={"price": 19.5},
+        gamma_snapshot={"gamma_flip": 6720.0, "call_wall": 6750.0, "put_wall": 6690.0},
+        news_snapshot={
+            "macro_events": [
+                {
+                    "headline": "Old CPI",
+                    "published_label": "Mon, Mar 9",
+                    "summary": "Old event",
+                    "starts_at": "2026-03-09T08:30:00-04:00",
+                },
+                {
+                    "headline": "FOMC",
+                    "published_label": "Tue, Mar 17",
+                    "summary": "Current-day afternoon event",
+                    "starts_at": "2026-03-17T16:00:00-04:00",
+                },
+                {
+                    "headline": "Fed Presser",
+                    "published_label": "Wed, Mar 18",
+                    "summary": "Next event",
+                    "starts_at": "2026-03-18T14:00:00-04:00",
+                },
+            ]
+        },
+        today_count=0,
+        today_net=0.0,
+    )
+    headlines = [row["headline"] for row in brief["macro_events"]]
+    assert "Old CPI" not in headlines
+    assert headlines == ["FOMC", "Fed Presser"]
+
+
+def test_dashboard_brief_uses_true_intraday_day_open(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
+
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "prices": {
+                "SPX": {
+                    "price": 6725.0,
+                    "pct_change": 0.2,
+                    "provider": "tradier",
+                    "reason": "tradier_stream_trade",
+                    "as_of": "2026-03-17T15:00:00-04:00",
+                },
+                "VIX": {
+                    "price": 19.5,
+                    "pct_change": -1.0,
+                    "provider": "tradier",
+                    "reason": "tradier_stream_trade",
+                    "as_of": "2026-03-17T15:00:00-04:00",
+                },
+            },
+            "series": {
+                "SPX": [6719.0 + float(i) for i in range(50)],
+                "VIX": [20.1 - (0.01 * float(i)) for i in range(50)],
+            },
+            "series_points": {
+                "SPX": [
+                    {"ts": f"2026-03-17T14:{30 + (i % 30):02d}:00+00:00", "v": 6719.0 + float(i)}
+                    for i in range(50)
+                ],
+                "VIX": [
+                    {"ts": f"2026-03-17T14:{30 + (i % 30):02d}:00+00:00", "v": 20.1 - (0.01 * float(i))}
+                    for i in range(50)
+                ],
+            },
+            "updated_at": "2026-03-17T15:00:00-04:00",
+        },
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_intraday",
+        lambda symbol: (
+            [
+                {
+                    "ts": "2026-03-17T13:30:00+00:00",
+                    "open": 6701.25,
+                    "high": 6704.0,
+                    "low": 6699.0,
+                    "close": 6702.0,
+                    "volume": 100.0,
+                },
+                {
+                    "ts": "2026-03-17T14:00:00+00:00",
+                    "open": 6702.0,
+                    "high": 6728.0,
+                    "low": 6700.5,
+                    "close": 6725.0,
+                    "volume": 100.0,
+                },
+            ]
+            if symbol == "SPX"
+            else [
+                {
+                    "ts": "2026-03-17T13:30:00+00:00",
+                    "open": 20.0,
+                    "high": 20.2,
+                    "low": 19.4,
+                    "close": 19.5,
+                    "volume": 100.0,
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        market_data_service, "get_prior_session_intraday", lambda _symbol, anchor_session_day=None: []
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist_tradier",
+        lambda _symbols: {},
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist",
+        lambda _symbols, allow_yf_fallback=False: {},
+    )
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {"gamma_flip": 6720.0, "call_wall": 6750.0, "put_wall": 6690.0},
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {"macro_events": []},
+    )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Day Open 6701" in body
+
+
 def test_dashboard_links_to_auto_debrief_draft_when_trades_exist(client):
     with db() as conn:
         created = now_iso()

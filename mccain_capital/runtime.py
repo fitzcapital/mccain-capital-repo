@@ -11,6 +11,8 @@ import re
 import secrets
 import shutil
 import sqlite3
+import threading
+import time
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -27,6 +29,9 @@ FIXED_LOSS_LIMIT_50K = 50375.0
 SQLITE_BUSY_TIMEOUT_MS = max(1000, int(os.environ.get("SQLITE_BUSY_TIMEOUT_MS", "10000") or 10000))
 SQLITE_SYNCHRONOUS = str(os.environ.get("SQLITE_SYNCHRONOUS", "NORMAL") or "NORMAL").upper()
 SQLITE_JOURNAL_MODE = str(os.environ.get("SQLITE_JOURNAL_MODE", "WAL") or "WAL").upper()
+SETTINGS_CACHE_TTL_SECONDS = max(
+    1.0, float(os.environ.get("SETTINGS_CACHE_TTL_SECONDS", "5") or 5)
+)
 _HEADER_HINTS = {
     "date",
     "entry",
@@ -39,6 +44,8 @@ _HEADER_HINTS = {
     "p/l",
     "balance",
 }
+_SETTINGS_CACHE_LOCK = threading.Lock()
+_SETTINGS_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def upload_root() -> str:
@@ -185,21 +192,40 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
 
 
 def get_setting_value(key: str, default: Any = None) -> Any:
-    with db() as conn:
-        if not _table_exists(conn, "settings"):
-            return default
-
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(settings)").fetchall()]
-        key_col = next((c for c in ("key", "name", "setting") if c in cols), None)
-        val_col = next((c for c in ("value", "val", "setting_value") if c in cols), None)
-        if not key_col or not val_col:
-            return default
-
-        row = conn.execute(
-            f'SELECT "{val_col}" FROM settings WHERE "{key_col}" = ? LIMIT 1',
-            (key,),
-        ).fetchone()
-        return row[0] if row else default
+    now_ts = time.time()
+    with _SETTINGS_CACHE_LOCK:
+        cached = _SETTINGS_CACHE.get(key) or {}
+        expires_at = cached.get("expires_at")
+        if isinstance(expires_at, (int, float)) and expires_at > now_ts:
+            return cached.get("value", default)
+    try:
+        with db() as conn:
+            if not _table_exists(conn, "settings"):
+                value = default
+            else:
+                cols = [r[1] for r in conn.execute("PRAGMA table_info(settings)").fetchall()]
+                key_col = next((c for c in ("key", "name", "setting") if c in cols), None)
+                val_col = next((c for c in ("value", "val", "setting_value") if c in cols), None)
+                if not key_col or not val_col:
+                    value = default
+                else:
+                    row = conn.execute(
+                        f'SELECT "{val_col}" FROM settings WHERE "{key_col}" = ? LIMIT 1',
+                        (key,),
+                    ).fetchone()
+                    value = row[0] if row else default
+    except sqlite3.DatabaseError:
+        with _SETTINGS_CACHE_LOCK:
+            cached = _SETTINGS_CACHE.get(key) or {}
+            if "value" in cached:
+                return cached["value"]
+        return default
+    with _SETTINGS_CACHE_LOCK:
+        _SETTINGS_CACHE[key] = {
+            "value": value,
+            "expires_at": now_ts + SETTINGS_CACHE_TTL_SECONDS,
+        }
+    return value
 
 
 def get_setting_float(key: str, default: float = 0.0) -> float:
@@ -227,6 +253,11 @@ def set_setting_value(key: str, value: Any) -> None:
             "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value),
         )
+    with _SETTINGS_CACHE_LOCK:
+        _SETTINGS_CACHE[key] = {
+            "value": value,
+            "expires_at": time.time() + SETTINGS_CACHE_TTL_SECONDS,
+        }
 
 
 def now_et() -> datetime:

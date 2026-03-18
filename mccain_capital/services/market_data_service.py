@@ -33,8 +33,12 @@ TRADIER_SYMBOL_ALIASES = {
 }
 
 MARKET_CURVE_CACHE_TTL_SECONDS = 45
+TRADIER_QUOTE_CACHE_TTL_SECONDS = max(
+    1.0, float(os.environ.get("TRADIER_QUOTE_CACHE_TTL_SECONDS", "2") or 2)
+)
 _INTRADAY_CURVE_CACHE: Dict[str, Dict[str, Any]] = {}
 _PRIOR_SESSION_CURVE_CACHE: Dict[str, Dict[str, Any]] = {}
+_TRADIER_QUOTE_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def _now_iso() -> str:
@@ -69,6 +73,36 @@ def _curve_cache_set(
         "rows": cloned,
     }
     return _clone_curve_rows(cloned)
+
+
+def _clone_quote_map(quotes: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    return {
+        str(symbol): dict(payload)
+        for symbol, payload in (quotes or {}).items()
+        if isinstance(payload, dict)
+    }
+
+
+def _quote_cache_get(key: str) -> Optional[Dict[str, Dict[str, Any]]]:
+    cached = _TRADIER_QUOTE_CACHE.get(key) or {}
+    stored_at = cached.get("stored_at")
+    payload = cached.get("payload")
+    if not isinstance(stored_at, datetime) or not isinstance(payload, dict):
+        return None
+    age = (datetime.now(timezone.utc) - stored_at).total_seconds()
+    if age >= TRADIER_QUOTE_CACHE_TTL_SECONDS:
+        _TRADIER_QUOTE_CACHE.pop(key, None)
+        return None
+    return _clone_quote_map(payload)
+
+
+def _quote_cache_set(key: str, payload: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    cloned = _clone_quote_map(payload)
+    _TRADIER_QUOTE_CACHE[key] = {
+        "stored_at": datetime.now(timezone.utc),
+        "payload": cloned,
+    }
+    return _clone_quote_map(cloned)
 
 
 def _safe_float(v: Any) -> Optional[float]:
@@ -229,6 +263,10 @@ def _tradier_quote_map(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     clean = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
     if not clean:
         return out
+    cache_key = ",".join(sorted(set(clean)))
+    cached = _quote_cache_get(cache_key)
+    if cached is not None:
+        return cached
     mapped = [_tradier_symbol(s) for s in clean]
     payload = _tradier_json("/v1/markets/quotes", {"symbols": ",".join(mapped), "greeks": "false"})
     quotes = ((payload or {}).get("quotes") or {}).get("quote")
@@ -266,7 +304,7 @@ def _tradier_quote_map(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
             "provider": "tradier",
             "reason": reason,
         }
-    return out
+    return _quote_cache_set(cache_key, out)
 
 
 def _tradier_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
