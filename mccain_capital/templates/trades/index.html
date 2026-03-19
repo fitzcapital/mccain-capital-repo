@@ -11,12 +11,18 @@
           </details>
         </div>
         <div class="summaryLead stack8">{{ hero_blurb }}</div>
-      </div>
-      <div class="actionRow">
-        <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
-        <a class="btn ctaLink" href="/trades/new">Add Trade</a>
-        <a class="btn ctaLink" href="/trades/open-positions">Open Positions</a>
-        <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
+        <div class="workspaceHeroActionBar">
+          <div class="workspaceHeroPriority">
+            <span class="workspaceHeroPriorityLabel">Priority</span>
+            <span class="workspaceHeroPriorityText">{{ next_action_msg }}</span>
+          </div>
+          <div class="actionRow workspaceHeroPrimaryActions">
+            <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
+            <a class="btn ctaLink" href="/trades/new">Add Trade</a>
+            <a class="btn ctaLink" href="/trades/open-positions">Open Positions</a>
+            <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -83,26 +89,32 @@
   </div>
 </div>
 
-<div class="statusBadgeStrip">
-  {% for badge in trades_status_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-  {% for badge in balance_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-  {% for badge in sync_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-</div>
+<details class="syncDetails workspaceStatusFold">
+  <summary>
+    <span>Execution Health</span>
+    <span class="tiny muted">{{ execution_msg }} · {{ balance_integrity.source_label }}</span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in trades_status_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+    {% for badge in balance_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+    {% for badge in sync_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+</details>
 
 <div class="metricStrip executionMetricStrip">
   <div class="metric">
@@ -135,22 +147,28 @@
         <a class="btn" href="/analytics">Analytics</a>
       </div>
     </div>
-    <form method="get" action="/trades" class="row">
-      <div class="fieldGrow2">
-        <label for="search">Search</label>
-        <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
-      </div>
-      <div class="fieldGrow1">
-        <label>Date</label>
-        <input class="tradeDateFilterInput" type="date" name="d" value="{{ d }}" />
-      </div>
-      <div class="actionRow">
-        <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">Prev</a>
-        <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next</a>
-        <button class="btn" type="submit">Filter</button>
-        <a class="btn" href="/trades">Reset</a>
-      </div>
-    </form>
+    <details class="syncDetails workspaceControlFold"{% if q or d %} open{% endif %}>
+      <summary>
+        <span>Filters and Routing</span>
+        <span class="tiny muted">{{ d or 'All dates' }}{% if q %} · {{ q }}{% endif %}</span>
+      </summary>
+      <form method="get" action="/trades" class="row">
+        <div class="fieldGrow2">
+          <label for="search">Search</label>
+          <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
+        </div>
+        <div class="fieldGrow1">
+          <label>Date</label>
+          <input class="tradeDateFilterInput" type="date" name="d" value="{{ d }}" />
+        </div>
+        <div class="actionRow">
+          <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">Prev</a>
+          <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next</a>
+          <button class="btn" type="submit">Filter</button>
+          <a class="btn" href="/trades">Reset</a>
+        </div>
+      </form>
+    </details>
 
     <div class="hr"></div>
     <details class="syncDetails stack10">

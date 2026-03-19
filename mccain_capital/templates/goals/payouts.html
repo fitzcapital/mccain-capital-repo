@@ -10,16 +10,22 @@
         <h2 class="pageTitle">{{ hero_title }}</h2>
       </div>
       <div class="summaryLead stack8">{{ hero_blurb }}</div>
-    </div>
-    <div class="actionRow">
-      {% if account_scope and account_scope.enabled %}
-        <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
-        <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
-        <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
-      {% else %}
-        <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
-      {% endif %}
-      <a class="btn ctaLink" href="/dashboard">Dashboard</a>
+      <div class="workspaceHeroActionBar">
+        <div class="workspaceHeroPriority">
+          <span class="workspaceHeroPriorityLabel">Priority</span>
+          <span class="workspaceHeroPriorityText">{% if can_take_biweekly_now %}Request only what the floor can defend, then protect the next cycle.{% elif ps.buffer_reached %}Use pacing, not pressure, to unlock the ask.{% else %}Build the buffer before modeling any withdrawal as available.{% endif %}</span>
+        </div>
+        <div class="actionRow workspaceHeroPrimaryActions">
+          {% if account_scope and account_scope.enabled %}
+            <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active</a>
+            <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All</a>
+            <a class="btn ctaLink" href="/ops/backups">Scope</a>
+          {% else %}
+            <a class="btn ctaLink" href="/ops/backups">Scope</a>
+          {% endif %}
+          <a class="btn ctaLink" href="/dashboard">Dashboard</a>
+        </div>
+      </div>
     </div>
   </div>
 </div></div>
@@ -55,20 +61,26 @@
   </div>
 </div>
 
-<div class="statusBadgeStrip">
-  {% for badge in payout_status_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-  {% for badge in balance_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-</div>
+<details class="syncDetails workspaceStatusFold">
+  <summary>
+    <span>Payout Signals</span>
+    <span class="tiny muted">Safe {{ money(ps.safe_request) }} · Buffer {{ money(buffer_gap) }} · Goal gap {{ money(payout_gap) }}</span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in payout_status_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+    {% for badge in balance_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+</details>
 
 <div class="dashboardSupportGrid payoutSupportGrid">
   <div class="card supportCard workflowPromptCard"><div class="toolbar">

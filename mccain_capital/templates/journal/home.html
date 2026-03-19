@@ -11,11 +11,17 @@
           </details>
         </div>
         <div class="summaryLead stack8">{{ hero_blurb }}</div>
-      </div>
-      <div class="actionRow">
-        <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
-        <a class="btn" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
-        <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+        <div class="workspaceHeroActionBar">
+          <div class="workspaceHeroPriority">
+            <span class="workspaceHeroPriorityLabel">Priority</span>
+            <span class="workspaceHeroPriorityText">{{ review_focus_body }}</span>
+          </div>
+          <div class="actionRow workspaceHeroPrimaryActions">
+            <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
+            <a class="btn ctaLink" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
+            <a class="btn ctaLink" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -37,35 +43,47 @@
   </div></div>
 </div>
 
-<div class="statusBadgeStrip">
-  {% for badge in journal_status_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-</div>
+<details class="syncDetails workspaceStatusFold">
+  <summary>
+    <span>Journal Signals</span>
+    <span class="tiny muted">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} · {{ review_focus_lead }}</span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in journal_status_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+</details>
 
 <div class="card controlPanel"><div class="toolbar">
-  <form method="get" action="/journal" class="row">
-    <div class="fieldGrow2">
-      <label for="search">Search</label>
-      <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
-    </div>
-    <div class="fieldGrow1">
-      <label>Date</label>
-      <input class="appDateInput" type="date" name="d" value="{{ d }}" />
-    </div>
-    <div class="actionRow">
-      <button class="btn" type="submit">Filter</button>
-      <a class="btn" href="/journal">Reset</a>
-      <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
-      <a class="btn" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
-      <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
-    </div>
-  </form>
-  <div class="hr"></div>
-  <div class="meta">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} found · Rules first · Journal what you saw → did → learned.</div>
+  <div class="pill">🧭 Capture Controls</div>
+  <div class="summaryLead stack8">Filter entries and move straight back into capture or review.</div>
+  <details class="syncDetails workspaceControlFold"{% if q or d %} open{% endif %}>
+    <summary>
+      <span>Filters and Routing</span>
+      <span class="tiny muted">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} · {{ d or 'All dates' }}{% if q %} · {{ q }}{% endif %}</span>
+    </summary>
+    <form method="get" action="/journal" class="row">
+      <div class="fieldGrow2">
+        <label for="search">Search</label>
+        <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
+      </div>
+      <div class="fieldGrow1">
+        <label>Date</label>
+        <input class="appDateInput" type="date" name="d" value="{{ d }}" />
+      </div>
+      <div class="actionRow">
+        <button class="btn" type="submit">Filter</button>
+        <a class="btn" href="/journal">Reset</a>
+        <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
+        <a class="btn" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
+        <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+      </div>
+    </form>
+  </details>
 </div></div>
 
 <div class="grid">

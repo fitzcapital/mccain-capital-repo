@@ -17,10 +17,18 @@ SCENARIOS = [
     ("desktop-market-pulse", "/market-pulse?refresh=1", {"width": 1600, "height": 1200}),
     ("desktop-trades", "/trades", {"width": 1600, "height": 1100}),
     ("desktop-analytics", "/analytics?tab=performance", {"width": 1600, "height": 1100}),
+    ("desktop-calendar", "/calendar", {"width": 1600, "height": 1200}),
+    ("desktop-planner", "/strategies", {"width": 1600, "height": 1100}),
+    ("desktop-payouts", "/payouts", {"width": 1600, "height": 1200}),
+    ("desktop-journal", "/journal", {"width": 1600, "height": 1100}),
     ("mobile-dashboard", "/dashboard", {"width": 430, "height": 932}),
     ("mobile-market-pulse", "/market-pulse?refresh=1", {"width": 430, "height": 932}),
     ("mobile-trades", "/trades", {"width": 430, "height": 932}),
     ("mobile-analytics", "/analytics?tab=performance", {"width": 430, "height": 932}),
+    ("mobile-calendar", "/calendar", {"width": 430, "height": 932}),
+    ("mobile-planner", "/strategies", {"width": 430, "height": 932}),
+    ("mobile-payouts", "/payouts", {"width": 430, "height": 932}),
+    ("mobile-journal", "/journal", {"width": 430, "height": 932}),
 ]
 
 
