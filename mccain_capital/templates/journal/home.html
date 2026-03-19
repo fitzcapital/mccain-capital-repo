@@ -11,11 +11,17 @@
           </details>
         </div>
         <div class="summaryLead stack8">{{ hero_blurb }}</div>
-      </div>
-      <div class="actionRow">
-        <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
-        <a class="btn" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
-        <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+        <div class="workspaceHeroActionBar">
+          <div class="workspaceHeroPriority">
+            <span class="workspaceHeroPriorityLabel">Priority</span>
+            <span class="workspaceHeroPriorityText">{{ review_focus_body }}</span>
+          </div>
+          <div class="actionRow workspaceHeroPrimaryActions">
+            <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
+            <a class="btn ctaLink" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
+            <a class="btn ctaLink" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -37,35 +43,47 @@
   </div></div>
 </div>
 
-<div class="statusBadgeStrip">
-  {% for badge in journal_status_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-</div>
+<details class="syncDetails workspaceStatusFold">
+  <summary>
+    <span>Journal Signals</span>
+    <span class="tiny muted">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} · {{ review_focus_lead }}</span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in journal_status_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+</details>
 
 <div class="card controlPanel"><div class="toolbar">
-  <form method="get" action="/journal" class="row">
-    <div class="fieldGrow2">
-      <label for="search">Search</label>
-      <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
-    </div>
-    <div class="fieldGrow1">
-      <label>Date</label>
-      <input class="appDateInput" type="date" name="d" value="{{ d }}" />
-    </div>
-    <div class="actionRow">
-      <button class="btn" type="submit">Filter</button>
-      <a class="btn" href="/journal">Reset</a>
-      <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
-      <a class="btn" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
-      <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
-    </div>
-  </form>
-  <div class="hr"></div>
-  <div class="meta">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} found · Rules first · Journal what you saw → did → learned.</div>
+  <div class="pill">🧭 Capture Controls</div>
+  <div class="summaryLead stack8">Filter entries and move straight back into capture or review.</div>
+  <details class="syncDetails workspaceControlFold"{% if q or d %} open{% endif %}>
+    <summary>
+      <span>Filters and Routing</span>
+      <span class="tiny muted">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} · {{ d or 'All dates' }}{% if q %} · {{ q }}{% endif %}</span>
+    </summary>
+    <form method="get" action="/journal" class="row">
+      <div class="fieldGrow2">
+        <label for="search">Search</label>
+        <input id="search" name="q" value="{{ q }}" placeholder="notes, setup, mood…" />
+      </div>
+      <div class="fieldGrow1">
+        <label>Date</label>
+        <input class="appDateInput" type="date" name="d" value="{{ d }}" />
+      </div>
+      <div class="actionRow">
+        <button class="btn" type="submit">Filter</button>
+        <a class="btn" href="/journal">Reset</a>
+        <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
+        <a class="btn" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
+        <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+      </div>
+    </form>
+  </details>
 </div></div>
 
 <div class="grid">
@@ -115,7 +133,54 @@
         </div>
       </div>
 
-      <div class="notes">{{ e['notes'] }}</div>
+      <div class="entryBodyGrid{% if e.get('capture_screenshot_href') %} hasEvidence{% endif %}">
+        {% if e.get('capture_screenshot_href') %}
+          <div class="entryEvidenceCard">
+            <button
+              class="entryEvidenceButton"
+              type="button"
+              data-journal-preview="{{ e.get('capture_screenshot_href') }}"
+              data-journal-preview-alt="Journal screenshot for {{ e.get('entry_date_display') or e['entry_date'] }}"
+            >
+              <img src="{{ e.get('capture_screenshot_href') }}" alt="Journal screenshot for {{ e.get('entry_date_display') or e['entry_date'] }}">
+            </button>
+            <div class="entryEvidenceMeta">
+              <div class="pill">Screenshot Evidence</div>
+              {% if e.get('capture_screenshot_note') %}
+                <div class="entryEvidenceCaption">{{ e.get('capture_screenshot_note') }}</div>
+              {% else %}
+                <div class="entryEvidenceCaption">Attached chart or execution evidence for this note.</div>
+              {% endif %}
+              <div class="entryEvidenceActions">
+                <button
+                  class="btn btnCompact"
+                  type="button"
+                  data-journal-preview="{{ e.get('capture_screenshot_href') }}"
+                  data-journal-preview-alt="Journal screenshot for {{ e.get('entry_date_display') or e['entry_date'] }}"
+                >
+                  Preview
+                </button>
+                <a class="btn btnCompact" href="{{ e.get('capture_screenshot_href') }}" target="_blank" rel="noopener">Open</a>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        <div class="entryNotesCard">
+          {% if e.get('note_sections') %}
+            <div class="entryNotesGrid">
+              {% for section in e.get('note_sections') %}
+                <div class="entryNoteSection">
+                  <div class="entryNoteHeading">{{ section.title }}</div>
+                  <div class="entryNoteBody">{{ section.body }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="notes">{{ e.get('note_plain') or e['notes'] }}</div>
+          {% endif %}
+        </div>
+      </div>
     </div>
   {% endfor %}
 
@@ -123,3 +188,43 @@
     <div class="card entry"><div class="meta">No journal entries in this view yet. Start with <b>New Entry</b> or <b>Quick Capture</b>.</div></div>
   {% endif %}
 </div>
+
+<div id="journalPreviewLightbox" class="journalPreviewLightbox" aria-hidden="true">
+  <button class="journalPreviewBackdrop" type="button" aria-label="Close screenshot preview"></button>
+  <div class="journalPreviewDialog" role="dialog" aria-modal="true" aria-label="Journal screenshot preview">
+    <button class="journalPreviewClose" type="button" aria-label="Close screenshot preview">✕</button>
+    <img id="journalPreviewImage" src="" alt="">
+  </div>
+</div>
+
+<script>
+  (function() {
+    const host = document.getElementById('journalPreviewLightbox');
+    const img = document.getElementById('journalPreviewImage');
+    if (!host || !img) return;
+    const close = () => {
+      host.classList.remove('open');
+      host.setAttribute('aria-hidden', 'true');
+      img.setAttribute('src', '');
+      img.setAttribute('alt', '');
+    };
+    const open = (src, alt) => {
+      if (!src) return;
+      img.setAttribute('src', src);
+      img.setAttribute('alt', alt || 'Journal screenshot preview');
+      host.classList.add('open');
+      host.setAttribute('aria-hidden', 'false');
+    };
+    document.querySelectorAll('[data-journal-preview]').forEach((node) => {
+      node.addEventListener('click', () => {
+        open(node.getAttribute('data-journal-preview'), node.getAttribute('data-journal-preview-alt'));
+      });
+    });
+    host.querySelectorAll('.journalPreviewBackdrop, .journalPreviewClose').forEach((node) => {
+      node.addEventListener('click', close);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && host.classList.contains('open')) close();
+    });
+  })();
+</script>

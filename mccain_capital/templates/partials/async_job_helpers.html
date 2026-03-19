@@ -1,5 +1,106 @@
 <script>
   window.McAsyncJobs = window.McAsyncJobs || (function() {
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function setSummaryMessage(summary, tone, message, title) {
+      if (!summary) return;
+      const safeTone = tone === 'danger' ? 'danger' : (tone === 'warning' ? 'warning' : 'info');
+      const safeMessage = escapeHtml(message || '');
+      const safeTitle = escapeHtml(title || (safeTone === 'danger' ? 'Needs Attention' : 'Update'));
+      summary.innerHTML = safeMessage
+        ? `<div class="card"><div class="toolbar"><div class="pill">${safeTitle}</div><div class="workspaceSectionLead stack8">${safeMessage}</div></div></div>`
+        : '';
+      summary.style.display = safeMessage ? 'block' : 'none';
+    }
+
+    function parseErrorResponse(response) {
+      return response.text().then((text) => {
+        let payload = null;
+        try {
+          payload = text ? JSON.parse(text) : null;
+        } catch (_err) {
+          payload = null;
+        }
+        const message = payload && payload.message
+          ? String(payload.message)
+          : (text || `Request failed (${response.status})`).trim();
+        const error = new Error(message || 'Request failed.');
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+      });
+    }
+
+    function observeJob(config) {
+      const runway = config.runway;
+      const summary = config.summary;
+      const button = config.button || null;
+      const jobId = String(config.jobId || '').trim();
+      if (!runway || !summary || !jobId) return;
+      const doneLabel = config.doneLabel || 'Run';
+      if (!config.skipInit) {
+        setRunwayState(runway, {
+          badge: config.badge || 'Running',
+          label: config.startMessage || 'Working...',
+          stepIndex: 0
+        });
+      }
+      const poll = function() {
+        fetch((config.pollBase || '/ops/jobs/') + jobId, { headers: { 'Accept': 'application/json' } })
+          .then(r => r.ok ? r.json() : Promise.reject(new Error('poll_failed')))
+          .then(statusPayload => {
+            if (!statusPayload || !statusPayload.ok || !statusPayload.job) {
+              throw new Error('poll_failed');
+            }
+            const job = statusPayload.job;
+            const stageIndex = (config.stageMap || {})[String(job.stage || '')] ?? 0;
+            const done = !['queued', 'running'].includes(String(job.status || ''));
+            const failed = String(job.status || '') === 'failed';
+            setRunwayState(runway, {
+              badge: failed ? 'Failed' : (String(job.status || '').toLowerCase() === 'success' ? 'Complete' : (config.badge || 'Running')),
+              label: job.message || config.startMessage || 'Working...',
+              stepIndex: done ? Math.max(stageIndex, runway.querySelectorAll('.syncStep').length - 1) : stageIndex,
+              complete: done,
+              failed: failed
+            });
+            if (!done) {
+              window.setTimeout(poll, Number(config.pollDelayMs || 700));
+              return;
+            }
+            if (button) {
+              button.disabled = false;
+              button.textContent = doneLabel;
+            }
+            summary.innerHTML = job.result_html || '';
+            summary.style.display = summary.innerHTML ? 'block' : 'none';
+            if (typeof config.onComplete === 'function') config.onComplete(job);
+          })
+          .catch(() => {
+            const pollMessage = config.pollErrorMessage || 'Live status refresh failed. Reload and check the last known job state.';
+            setRunwayState(runway, {
+              badge: 'Failed',
+              label: pollMessage,
+              stepIndex: 1,
+              complete: true,
+              failed: true
+            });
+            setSummaryMessage(summary, 'danger', pollMessage, config.errorTitle || 'Needs Attention');
+            if (button) {
+              button.disabled = false;
+              button.textContent = doneLabel;
+            }
+          });
+      };
+      window.setTimeout(poll, Number(config.startPollDelayMs || 300));
+    }
+
     function setTerminalTrack(trackBar, failed) {
       if (!trackBar) return;
       trackBar.style.animation = 'none';
@@ -67,61 +168,25 @@
           headers: { 'Accept': 'application/json' },
           body: new FormData(form)
         })
-          .then(r => r.ok ? r.json() : Promise.reject(new Error('start_failed')))
+          .then(r => r.ok ? r.json() : parseErrorResponse(r))
           .then(payload => {
             if (!payload || !payload.ok || !payload.job || !payload.job.id) {
-              throw new Error('start_failed');
+              throw new Error('Could not start the job.');
             }
-            const poll = function() {
-              fetch((config.pollBase || '/ops/jobs/') + payload.job.id, { headers: { 'Accept': 'application/json' } })
-                .then(r => r.ok ? r.json() : Promise.reject(new Error('poll_failed')))
-                .then(statusPayload => {
-                  if (!statusPayload || !statusPayload.ok || !statusPayload.job) {
-                    throw new Error('poll_failed');
-                  }
-                  const job = statusPayload.job;
-                  const stageIndex = (config.stageMap || {})[String(job.stage || '')] ?? 0;
-                  const done = !['queued', 'running'].includes(String(job.status || ''));
-                  const failed = String(job.status || '') === 'failed';
-                  setRunwayState(runway, {
-                    badge: failed ? 'Failed' : (String(job.status || '').toLowerCase() === 'success' ? 'Complete' : (config.badge || 'Running')),
-                    label: job.message || config.startMessage || 'Working...',
-                    stepIndex: done ? Math.max(stageIndex, runway.querySelectorAll('.syncStep').length - 1) : stageIndex,
-                    complete: done,
-                    failed: failed
-                  });
-                  if (!done) {
-                    window.setTimeout(poll, Number(config.pollDelayMs || 700));
-                    return;
-                  }
-                  button.disabled = false;
-                  button.textContent = doneLabel;
-                  summary.innerHTML = job.result_html || '';
-                  summary.style.display = summary.innerHTML ? 'block' : 'none';
-                  if (typeof config.onComplete === 'function') config.onComplete(job);
-                })
-                .catch(() => {
-                  setRunwayState(runway, {
-                    badge: 'Failed',
-                    label: 'Status polling failed.',
-                    stepIndex: 1,
-                    complete: true,
-                    failed: true
-                  });
-                  button.disabled = false;
-                  button.textContent = doneLabel;
-                });
-            };
-            window.setTimeout(poll, Number(config.startPollDelayMs || 300));
+            observeJob({ ...config, jobId: payload.job.id, skipInit: true });
           })
-          .catch(() => {
+          .catch((err) => {
+            const message = err && err.message
+              ? err.message
+              : (config.startErrorMessage || 'Could not start the job.');
             setRunwayState(runway, {
               badge: 'Failed',
-              label: 'Could not start the job.',
+              label: message,
               stepIndex: 1,
               complete: true,
               failed: true
             });
+            setSummaryMessage(summary, 'danger', message, config.errorTitle || 'Needs Attention');
             button.disabled = false;
             button.textContent = doneLabel;
           });
@@ -129,6 +194,7 @@
     }
 
     return {
+      observeJob,
       setTerminalTrack,
       resetTrack,
       setRunwayState,

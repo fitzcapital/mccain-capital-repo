@@ -58,7 +58,7 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(PERSISTENT_DATA_DIR, "upl
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_UPLOAD_EXTS = {".pdf", ".html", ".htm"}
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "250"))
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "1024"))
 APP_USERNAME = os.environ.get("APP_USERNAME", "owner")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "")
@@ -76,12 +76,19 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_request_entity_too_large(_e):
+    message = (
+        f"Upload too large. Max allowed is {MAX_UPLOAD_MB}MB. "
+        "Use Backup Center restore or increase MAX_UPLOAD_MB."
+    )
+    wants_json = (
+        "application/json" in str(request.headers.get("Accept") or "").lower()
+        or str(request.args.get("async") or "").strip() == "1"
+    )
+    if wants_json:
+        return jsonify({"ok": False, "error": "upload_too_large", "message": message}), 413
     return (
         render_page(
-            _simple_msg(
-                f"Upload too large. Max allowed is {MAX_UPLOAD_MB}MB. "
-                "Use Backup Center restore or increase MAX_UPLOAD_MB."
-            ),
+            _simple_msg(message),
             active="dashboard",
         ),
         413,

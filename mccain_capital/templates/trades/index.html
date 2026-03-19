@@ -11,12 +11,18 @@
           </details>
         </div>
         <div class="summaryLead stack8">{{ hero_blurb }}</div>
-      </div>
-      <div class="actionRow">
-        <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
-        <a class="btn ctaLink" href="/trades/new">Add Trade</a>
-        <a class="btn ctaLink" href="/trades/open-positions">Open Positions</a>
-        <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
+        <div class="workspaceHeroActionBar">
+          <div class="workspaceHeroPriority">
+            <span class="workspaceHeroPriorityLabel">Priority</span>
+            <span class="workspaceHeroPriorityText">{{ next_action_msg }}</span>
+          </div>
+          <div class="actionRow workspaceHeroPrimaryActions">
+            <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
+            <a class="btn ctaLink" href="/trades/new">Add Trade</a>
+            <a class="btn ctaLink" href="/trades/open-positions">Open Positions</a>
+            <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -60,42 +66,71 @@
   </div></div>
 </div>
 
-<div class="statusBadgeStrip">
-  {% for badge in trades_status_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-  {% for badge in balance_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-  {% for badge in sync_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
+<div class="executionSignalGrid">
+  <div class="executionSignalCard {% if guardrail.locked %}is-danger{% else %}is-healthy{% endif %}">
+    <span class="executionSignalLabel">Execution State</span>
+    <strong>{% if guardrail.locked %}Locked{% else %}Active{% endif %}</strong>
+    <span class="executionSignalMeta">Day net {{ money(guardrail.day_net) }} against max loss {{ money(guardrail.daily_max_loss) }}.</span>
+  </div>
+  <div class="executionSignalCard {% if day_net > 0 %}is-healthy{% elif day_net < 0 %}is-danger{% else %}is-neutral{% endif %}">
+    <span class="executionSignalLabel">{{ primary_net_label }}</span>
+    <strong>{{ money(day_net) }}</strong>
+    <span class="executionSignalMeta">{{ primary_net_sub }}</span>
+  </div>
+  <div class="executionSignalCard">
+    <span class="executionSignalLabel">Review State</span>
+    <strong>{{ execution_msg }}</strong>
+    <span class="executionSignalMeta">{{ next_action_msg }}</span>
+  </div>
+  <div class="executionSignalCard">
+    <span class="executionSignalLabel">Ledger Balance</span>
+    <strong>{{ money(running_balance) }}</strong>
+    <span class="executionSignalMeta" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</span>
+  </div>
 </div>
 
-<div class="metricStrip">
-  <div class="metric">
-    <div class="label">{{ primary_net_label }}</div>
-    <div class="value">{{ money(day_net) }}</div>
-    <div class="sub">{{ primary_net_sub }}</div>
+<details class="syncDetails workspaceStatusFold">
+  <summary>
+    <span>Execution Health</span>
+    <span class="tiny muted">{{ execution_msg }} · {{ balance_integrity.source_label }}</span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in trades_status_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+    {% for badge in balance_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+    {% for badge in sync_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
   </div>
+</details>
+
+<div class="metricStrip executionMetricStrip">
   <div class="metric">
     <div class="label">{{ secondary_total_label }}</div>
     <div class="value">{{ money(secondary_total_value) }}</div>
     <div class="sub">Context beyond the active day filter</div>
   </div>
   <div class="metric">
-    <div class="label">Current Balance</div>
-    <div class="value">{{ money(running_balance) }}</div>
-    <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
+    <div class="label">Scope Mode</div>
+    <div class="value">{% if account_scope.enabled %}{% if d %}Day Filter{% else %}{{ 'Active Account' if scope_mode == 'active' else 'All History' }}{% endif %}{% else %}All History{% endif %}</div>
+    <div class="sub">{% if account_scope.enabled and account_scope.start_date %}Start {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}{% else %}No account scope filter set{% endif %}</div>
+  </div>
+  <div class="metric">
+    <div class="label">Review Route</div>
+    <div class="value"><a class="btn primary btnCompact" href="/analytics">Open Analytics</a></div>
+    <div class="sub">{{ risk_msg }}</div>
   </div>
 </div>
 
@@ -105,28 +140,55 @@
         <div class="pill">🧭 Control Stack</div>
         <div class="summaryLead stack8 tradesControlLead">Filter the day, manage imports, and move straight from raw execution into review.</div>
       </div>
-    </div>
-    <form method="get" action="/trades" class="row">
-      <div class="fieldGrow2">
-        <label for="search">Search</label>
-        <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
-      </div>
-      <div class="fieldGrow1">
-        <label>Date</label>
-        <input class="tradeDateFilterInput" type="date" name="d" value="{{ d }}" />
-      </div>
-      <div class="actionRow">
-        <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">Prev</a>
-        <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next</a>
-        <button class="btn" type="submit">Filter</button>
-        <a class="btn" href="/trades">Reset</a>
+      <div class="actionRow tradesControlRail">
         <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
+        <a class="btn" href="/trades/new">Add Trade</a>
+        <a class="btn" href="/trades/open-positions">Open Positions</a>
+        <a class="btn" href="/analytics">Analytics</a>
       </div>
-    </form>
+    </div>
+    <details class="syncDetails workspaceControlFold"{% if q or d %} open{% endif %}>
+      <summary>
+        <span>Filters and Routing</span>
+        <span class="tiny muted">{{ d or 'All dates' }}{% if q %} · {{ q }}{% endif %}</span>
+      </summary>
+      <form method="get" action="/trades" class="row">
+        <div class="fieldGrow2">
+          <label for="search">Search</label>
+          <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
+        </div>
+        <div class="fieldGrow1">
+          <label>Date</label>
+          <input class="tradeDateFilterInput" type="date" name="d" value="{{ d }}" />
+        </div>
+        <div class="actionRow">
+          <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">Prev</a>
+          <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next</a>
+          <button class="btn" type="submit">Filter</button>
+          <a class="btn" href="/trades">Reset</a>
+        </div>
+      </form>
+    </details>
 
     <div class="hr"></div>
     <details class="syncDetails stack10">
-      <summary>Balance Bases (History + Active Account)</summary>
+      <summary>Execution Admin and Balance Bases</summary>
+      <div class="statRow executionQuickLinks">
+        <div class="stat {% if guardrail.locked %}glow-red{% else %}glow-green{% endif %}">
+          <div class="k">Guardrail Status</div>
+          <div class="v">{% if guardrail.locked %}LOCKED{% else %}ACTIVE{% endif %}</div>
+          <div class="tiny">Day Net {{ money(guardrail.day_net) }} / Max Loss {{ money(guardrail.daily_max_loss) }}</div>
+        </div>
+        <div class="stat">
+          <div class="k">Risk Controls</div>
+          <div class="v"><a class="btn primary btnCompact" href="/trades/risk-controls">Configure</a></div>
+        </div>
+        <div class="stat">
+          <div class="k">Playbook</div>
+          <div class="v"><a class="btn btnCompact" href="/trades/playbook">Open</a></div>
+        </div>
+      </div>
+      <div class="hr"></div>
       <div class="row">
         <form
           method="post"
@@ -210,26 +272,6 @@
         </form>
       </div>
     </details>
-
-    <div class="hr"></div>
-    <div class="statRow">
-      <div class="stat {% if guardrail.locked %}glow-red{% else %}glow-green{% endif %}">
-        <div class="k">Guardrail Status</div>
-        <div class="v">{% if guardrail.locked %}LOCKED{% else %}ACTIVE{% endif %}</div>
-        <div class="tiny">
-          Day Net {{ money(guardrail.day_net) }} / Max Loss {{ money(guardrail.daily_max_loss) }}
-        </div>
-        <div class="tiny">Guardrail uses current trading day only</div>
-      </div>
-      <div class="stat">
-        <div class="k">Risk Controls</div>
-        <div class="v"><a class="btn primary btnCompact" href="/trades/risk-controls">Configure</a></div>
-      </div>
-      <div class="stat">
-        <div class="k">Edge Analytics</div>
-        <div class="v"><a class="btn primary btnCompact" href="/analytics">Open</a></div>
-      </div>
-    </div>
 
     <div class="hr"></div>
     <details class="syncDetails desktopOnly">

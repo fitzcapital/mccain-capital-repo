@@ -206,6 +206,53 @@ def test_legacy_new_entry_route_still_works(client):
     assert resp.status_code == 200
 
 
+def test_plain_new_entry_skips_heavy_market_context(client, monkeypatch):
+    with db() as conn:
+        created = now_iso()
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-03-18",
+                "9:35 AM",
+                "9:50 AM",
+                "SPX",
+                "CALL",
+                5000.0,
+                1.0,
+                1.2,
+                1,
+                100.0,
+                1.0,
+                21.0,
+                20.0,
+                20.0,
+                50020.0,
+                "seed",
+                created,
+            ),
+        )
+
+    monkeypatch.setattr(
+        journal_service,
+        "_debrief_market_context",
+        lambda _entry_date: (_ for _ in ()).throw(AssertionError("plain new entry should not load market context")),
+    )
+
+    resp = client.get("/journal/new?d=2026-03-18", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Capture the Session Cleanly" in body
+    assert "Auto Debrief Draft" not in body
+    assert "Showing 1 trade for <b>2026-03-18</b>." in body
+
+
 def test_journal_trades_for_date_endpoint(client):
     with db() as conn:
         created = now_iso()

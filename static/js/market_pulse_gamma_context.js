@@ -537,8 +537,8 @@
     if (derived.noTradeCenter) {
       return {
         tone: "warn",
-        headline: "No trade in the center. Wait for the edge.",
-        subline: `Structure is compressed between ${formatNumber(putWall, 0)} and ${formatNumber(callWall, 0)} with gamma flip nearby.`,
+        headline: "No trade in the center.",
+        subline: `Compressed between ${formatNumber(putWall, 0)} and ${formatNumber(callWall, 0)} near gamma flip.`,
         location: "Inside the no-trade center",
         locationLine: "Price is too close to the flip/wall cluster to force an intraday read.",
         bias: "Neutral / responsive",
@@ -549,11 +549,11 @@
         targetLine: `Watch for movement toward ${formatNumber(putWall, 0)} or ${formatNumber(callWall, 0)} before building a path.`,
         invalidation: "No thesis yet",
         invalidationLine: "If you cannot define the edge first, there is no valid entry.",
-        plan: "Let price interact with a real level first. No mid-range entries.",
-        doThis: "Wait for an edge touch, then re-evaluate the side.",
-        doThisLine: "Only build a trade after price tags put wall, call wall, or cleanly accepts away from the flip.",
-        avoidThis: "Avoid all center-board entries.",
-        avoidThisLine: "No 5m trigger in the middle counts as an edge.",
+        plan: "Wait for wall interaction first.",
+        doThis: "Wait for a real edge first.",
+        doThisLine: "Reassess only after put wall or call wall interaction.",
+        avoidThis: "Do not trade the center.",
+        avoidThisLine: "Mid-range triggers do not count.",
       };
     }
 
@@ -795,9 +795,121 @@
   };
 
   const tapeCards = Array.from(document.querySelectorAll(".marketPulseTapeCard[data-symbol]"));
+  const mobilePulseQuery = window.matchMedia("(max-width: 640px)");
+  const scrollRoot = document.scrollingElement || document.documentElement;
+  const MOBILE_STREAM_FLUSH_MS = 900;
+  let pendingStreamPayload = null;
+  let pendingStreamTimer = null;
 
   const dispatchStreamStatus = (status, detail) => {
     window.dispatchEvent(new CustomEvent("market-pulse-stream-status", { detail: { status, detail } }));
+  };
+
+  const preserveMobileScroll = (beforeBottomGap) => {
+    if (!mobilePulseQuery.matches || beforeBottomGap === null) return;
+    window.requestAnimationFrame(() => {
+      const currentTop = scrollRoot.scrollTop;
+      const currentBottomGap = scrollRoot.scrollHeight - (currentTop + window.innerHeight);
+      if (beforeBottomGap > 140 && currentBottomGap > 140) return;
+      const nextTop = Math.max(0, scrollRoot.scrollHeight - window.innerHeight - Math.max(0, beforeBottomGap));
+      if (Math.abs(currentTop - nextTop) > 2) {
+        scrollRoot.scrollTop = nextTop;
+      }
+    });
+  };
+
+  const applyStreamPayload = (payload) => {
+    if (!payload || typeof payload !== "object") return;
+    const beforeBottomGap = mobilePulseQuery.matches
+      ? Math.max(0, scrollRoot.scrollHeight - (scrollRoot.scrollTop + window.innerHeight))
+      : null;
+
+    const prices = payload.prices || {};
+    const seriesPoints = payload.series_points || {};
+    const gamma = payload.gamma_map || {};
+    const spxTick = prices.SPX || prices["^GSPC"] || null;
+    const vixTick = prices.VIX || prices["^VIX"] || null;
+
+    const nextSpx = { ...(current.spx_quote || {}) };
+    if (spxTick && typeof spxTick === "object") {
+      const tickPrice = asNum(spxTick.price);
+      if (tickPrice !== null) nextSpx.price = tickPrice;
+      const tickPct = asNum(spxTick.pct_change);
+      if (tickPct !== null) nextSpx.change_pct = tickPct;
+      if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
+      if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
+      if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
+      if (typeof spxTick.reason === "string") {
+        nextSpx.reason = spxTick.reason;
+        nextSpx.data_reason = spxTick.reason;
+      }
+      nextSpx.data_state = deriveDataState(nextSpx);
+      nextSpx.data_status_label = dataStateLabel(nextSpx.data_state);
+      nextSpx.source_badge_label = sourceBadgeLabel(nextSpx);
+    }
+
+    const nextVix = { ...(current.vix_quote || {}) };
+    if (vixTick && typeof vixTick === "object") {
+      const vixPrice = asNum(vixTick.price);
+      if (vixPrice !== null) nextVix.price = vixPrice;
+      const vixPct = asNum(vixTick.pct_change);
+      if (vixPct !== null) nextVix.change_pct = vixPct;
+      if (typeof vixTick.provider === "string") nextVix.provider = vixTick.provider;
+      if (typeof vixTick.reason === "string") {
+        nextVix.reason = vixTick.reason;
+        nextVix.data_reason = vixTick.reason;
+      }
+      nextVix.data_state = deriveDataState(nextVix);
+      nextVix.data_status_label = dataStateLabel(nextVix.data_state);
+      nextVix.source_badge_label = sourceBadgeLabel(nextVix);
+    }
+
+    current = {
+      ...(current || {}),
+      spx_quote: nextSpx,
+      vix_quote: nextVix,
+      market_now_iso: new Date().toISOString(),
+      updated_at: payload.updated_at || (current || {}).updated_at || null,
+      server_ts: payload.server_ts || null,
+      series_points: {
+        ...((current || {}).series_points || {}),
+        ...(seriesPoints || {}),
+      },
+      gamma_snapshot: {
+        ...(current.gamma_snapshot || {}),
+        ...(gamma || {}),
+      },
+    };
+    render(current);
+    tapeCards.forEach((card) => {
+      const symbol = String(card.dataset.symbol || "").toUpperCase();
+      if (!symbol) return;
+      applyTapeCardUpdate(card, prices[symbol] || {}, seriesPoints[symbol] || []);
+    });
+    updateTapeSummary(prices);
+    dispatchStreamStatus(
+      "Live stream on",
+      buildTickPingLabel(
+        (spxTick || {}).as_of || payload.updated_at || payload.server_ts || new Date().toISOString(),
+        (spxTick || {}).provider || ""
+      )
+    );
+    preserveMobileScroll(beforeBottomGap);
+  };
+
+  const queueStreamPayload = (payload) => {
+    if (!mobilePulseQuery.matches) {
+      applyStreamPayload(payload);
+      return;
+    }
+    pendingStreamPayload = payload;
+    if (pendingStreamTimer !== null) return;
+    pendingStreamTimer = window.setTimeout(() => {
+      pendingStreamTimer = null;
+      const nextPayload = pendingStreamPayload;
+      pendingStreamPayload = null;
+      applyStreamPayload(nextPayload);
+    }, MOBILE_STREAM_FLUSH_MS);
   };
 
   const formatSigned = (value, digits = 2) => {
@@ -972,6 +1084,40 @@
     if (tone) node.classList.add(tone);
   };
 
+  const updateTradeReadState = (executionPlan) => {
+    const card = document.getElementById("marketPulseTradeReadCard");
+    const chip = document.getElementById("marketPulseTradeReadState");
+    const tone = String((executionPlan || {}).tone || "neutral");
+
+    let stateClass = "tradeRead-wait";
+    let chipClass = "tradeReadChip-wait";
+    let label = "Wait for Edge";
+
+    if (tone === "warn") {
+      stateClass = "tradeRead-stand-down";
+      chipClass = "tradeReadChip-stand-down";
+      label = "Stand Down";
+    } else if (tone === "positive") {
+      stateClass = "tradeRead-tradeable";
+      chipClass = "tradeReadChip-tradeable";
+      label = "Tradeable Long";
+    } else if (tone === "negative") {
+      stateClass = "tradeRead-tradeable";
+      chipClass = "tradeReadChip-tradeable";
+      label = "Tradeable Short";
+    }
+
+    if (card) {
+      card.classList.remove("tradeRead-stand-down", "tradeRead-wait", "tradeRead-tradeable");
+      card.classList.add(stateClass);
+    }
+    if (chip) {
+      chip.textContent = label;
+      chip.classList.remove("tradeReadChip-stand-down", "tradeReadChip-wait", "tradeReadChip-tradeable");
+      chip.classList.add(chipClass);
+    }
+  };
+
   const updateTapeSummary = (prices) => {
     const tracked = tapeCards
       .map((card) => String(card.dataset.symbol || "").toUpperCase())
@@ -1122,12 +1268,6 @@
     const spxAbsChange = inferAbsoluteChange(spxQuote.price, spxQuote.change_pct);
 
     setText("spxPrioritySpotValue", formatNumber(input.spot, 2));
-    setText(
-      "spxPrioritySpotLead",
-      input.spot === null
-        ? "SPX quote unavailable"
-        : `${formatNumber(input.spot, 2)} · ${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`
-    );
     setText("spxPriorityGammaFlipValue", formatNumber(input.gammaFlip, 0));
     setText("spxPriorityCallWallValue", formatNumber(input.callWall, 0));
     setText("spxPriorityPutWallValue", formatNumber(input.putWall, 0));
@@ -1190,14 +1330,11 @@
     );
     updateStateChip(document.getElementById("spxPriorityStateChip"), spxState);
     setText("spxPriorityFreshness", formatEtLabel(tickTimeRaw));
-    setText(
-      "spxPriorityFreshnessLine",
-      `${formatEtLabel(tickTimeRaw)}${spxQuote.provider ? ` · ${spxQuote.provider}` : ""}`
-    );
     setText("spxPrioritySourceBadge", sourceBadgeLabel(spxQuote));
     setText("marketPulseSourceMode", sourceBadgeLabel(spxQuote));
     setText("spxPriorityChangeLine", `${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`);
-    setText("spxPriorityRangeLine", `Range: ${formatRange(spxPoints)}`);
+    setText("spxPriorityStateLine", `${spxQuote.market_state || "Awaiting feed"} · ${formatRange(spxPoints)}`);
+    setText("spxPriorityRangeLine", formatRange(spxPoints));
     updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), spxPoints, sparkTone(spxQuote.change_pct));
     applyGlowState([shell, spotPanel], spxQuote.change_pct);
     setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
@@ -1220,12 +1357,11 @@
     setText("marketPulseSetupTargetLine", executionPlan.targetLine);
     setText("marketPulseSetupInvalidation", executionPlan.invalidation);
     setText("marketPulseSetupInvalidationLine", executionPlan.invalidationLine);
-    setText("marketPulseSetupPlan", executionPlan.plan);
     setText("marketPulseDoThis", executionPlan.doThis);
     setText("marketPulseDoThisLine", executionPlan.doThisLine);
     setText("marketPulseAvoidThis", executionPlan.avoidThis);
     setText("marketPulseAvoidThisLine", executionPlan.avoidThisLine);
-    setChipTone("marketPulseExecutionTone", executionPlan.tone === "positive" ? "Long-biased plan" : executionPlan.tone === "negative" ? "Short-biased plan" : executionPlan.tone === "warn" ? "Stand down" : "Responsive plan", executionPlan.tone);
+    updateTradeReadState(executionPlan);
 
     setBullets("spxPriorityNarrative", bullets);
     setBadges("spxPriorityWarningBadges", badges);
@@ -1259,77 +1395,7 @@
       } catch (_err) {
         return;
       }
-
-      const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
-      const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
-      const gamma = payload && typeof payload === "object" ? (payload.gamma_map || {}) : {};
-      const spxTick = prices.SPX || prices["^GSPC"] || null;
-      const vixTick = prices.VIX || prices["^VIX"] || null;
-
-      const nextSpx = { ...(current.spx_quote || {}) };
-      if (spxTick && typeof spxTick === "object") {
-        const tickPrice = asNum(spxTick.price);
-        if (tickPrice !== null) nextSpx.price = tickPrice;
-        const tickPct = asNum(spxTick.pct_change);
-        if (tickPct !== null) nextSpx.change_pct = tickPct;
-        if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
-        if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
-        if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
-        if (typeof spxTick.reason === "string") {
-          nextSpx.reason = spxTick.reason;
-          nextSpx.data_reason = spxTick.reason;
-        }
-        nextSpx.data_state = deriveDataState(nextSpx);
-        nextSpx.data_status_label = dataStateLabel(nextSpx.data_state);
-        nextSpx.source_badge_label = sourceBadgeLabel(nextSpx);
-      }
-
-      const nextVix = { ...(current.vix_quote || {}) };
-      if (vixTick && typeof vixTick === "object") {
-        const vixPrice = asNum(vixTick.price);
-        if (vixPrice !== null) nextVix.price = vixPrice;
-        const vixPct = asNum(vixTick.pct_change);
-        if (vixPct !== null) nextVix.change_pct = vixPct;
-        if (typeof vixTick.provider === "string") nextVix.provider = vixTick.provider;
-        if (typeof vixTick.reason === "string") {
-          nextVix.reason = vixTick.reason;
-          nextVix.data_reason = vixTick.reason;
-        }
-        nextVix.data_state = deriveDataState(nextVix);
-        nextVix.data_status_label = dataStateLabel(nextVix.data_state);
-        nextVix.source_badge_label = sourceBadgeLabel(nextVix);
-      }
-
-      current = {
-        ...(current || {}),
-        spx_quote: nextSpx,
-        vix_quote: nextVix,
-        market_now_iso: new Date().toISOString(),
-        updated_at: payload.updated_at || (current || {}).updated_at || null,
-        server_ts: payload.server_ts || null,
-        series_points: {
-          ...((current || {}).series_points || {}),
-          ...(seriesPoints || {}),
-        },
-        gamma_snapshot: {
-          ...(current.gamma_snapshot || {}),
-          ...(gamma || {}),
-        },
-      };
-      render(current);
-      tapeCards.forEach((card) => {
-        const symbol = String(card.dataset.symbol || "").toUpperCase();
-        if (!symbol) return;
-        applyTapeCardUpdate(card, prices[symbol] || {}, seriesPoints[symbol] || []);
-      });
-      updateTapeSummary(prices);
-      dispatchStreamStatus(
-        "Live stream on",
-        buildTickPingLabel(
-          (spxTick || {}).as_of || payload.updated_at || payload.server_ts || new Date().toISOString(),
-          (spxTick || {}).provider || ""
-        )
-      );
+      queueStreamPayload(payload);
     };
 
     stream.onerror = () => {

@@ -1,8 +1,9 @@
 """Core app behavior tests."""
 
+from datetime import datetime
 import json
 
-from mccain_capital.runtime import db, get_setting_value, now_iso, today_iso
+from mccain_capital.runtime import db, get_setting_value, now_iso, set_setting_value, today_iso
 from mccain_capital.services import core as core_service
 from werkzeug.security import generate_password_hash
 
@@ -269,6 +270,40 @@ def test_dashboard_renders_daily_brief_card(client):
     assert b"No-trade condition" in resp.data
 
 
+def test_dashboard_renders_accountability_checklist(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Command Tools" in body
+    assert "Daily accountability checklist" in body
+    assert "Brief locked" in body
+    assert "Session data" in body
+    assert "Journal today" in body
+    assert "No debrief or quick capture logged for today yet." in body
+
+
+def test_dashboard_accountability_checklist_reflects_today_journal_capture(client):
+    from mccain_capital.repositories import journal as journal_repo
+
+    journal_repo.create_entry(
+        {
+            "entry_date": today_iso(),
+            "market": "SPX",
+            "setup": "Opening drive",
+            "notes": "Logged while context was fresh.",
+            "template_payload": {
+                "capture_screenshot_path": "journal-captures/2026-03-17/test-shot.png",
+            },
+        }
+    )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "1 entry logged" in body
+    assert "1 capture attached." in body
+
+
 def test_dashboard_brief_update_saves_daily_plan(client):
     resp = client.post(
         "/dashboard/brief",
@@ -312,6 +347,151 @@ def test_dashboard_brief_shows_manual_state_and_can_reset(client):
     refreshed = client.get("/dashboard", follow_redirects=True)
     assert refreshed.status_code == 200
     assert b"Auto-generated" in refreshed.data
+
+
+def test_dashboard_daily_brief_filters_stale_macro_events():
+    now_et = datetime(2026, 3, 17, 15, 0, tzinfo=core_service.app_runtime.TZ)
+    brief = core_service._dashboard_daily_brief_viewmodel(
+        now_et=now_et,
+        dashboard_spx={"price": 6725.0, "pct_change": 0.2, "day_open": 6718.0},
+        dashboard_vix={"price": 19.5},
+        gamma_snapshot={"gamma_flip": 6720.0, "call_wall": 6750.0, "put_wall": 6690.0},
+        news_snapshot={
+            "macro_events": [
+                {
+                    "headline": "Old CPI",
+                    "published_label": "Mon, Mar 9",
+                    "summary": "Old event",
+                    "starts_at": "2026-03-09T08:30:00-04:00",
+                },
+                {
+                    "headline": "FOMC",
+                    "published_label": "Tue, Mar 17",
+                    "summary": "Current-day afternoon event",
+                    "starts_at": "2026-03-17T16:00:00-04:00",
+                },
+                {
+                    "headline": "Fed Presser",
+                    "published_label": "Wed, Mar 18",
+                    "summary": "Next event",
+                    "starts_at": "2026-03-18T14:00:00-04:00",
+                },
+            ]
+        },
+        today_count=0,
+        today_net=0.0,
+    )
+    headlines = [row["headline"] for row in brief["macro_events"]]
+    assert "Old CPI" not in headlines
+    assert headlines == ["FOMC", "Fed Presser"]
+
+
+def test_dashboard_brief_uses_true_intraday_day_open(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
+
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "prices": {
+                "SPX": {
+                    "price": 6725.0,
+                    "pct_change": 0.2,
+                    "provider": "tradier",
+                    "reason": "tradier_stream_trade",
+                    "as_of": "2026-03-17T15:00:00-04:00",
+                },
+                "VIX": {
+                    "price": 19.5,
+                    "pct_change": -1.0,
+                    "provider": "tradier",
+                    "reason": "tradier_stream_trade",
+                    "as_of": "2026-03-17T15:00:00-04:00",
+                },
+            },
+            "series": {
+                "SPX": [6719.0 + float(i) for i in range(50)],
+                "VIX": [20.1 - (0.01 * float(i)) for i in range(50)],
+            },
+            "series_points": {
+                "SPX": [
+                    {"ts": f"2026-03-17T14:{30 + (i % 30):02d}:00+00:00", "v": 6719.0 + float(i)}
+                    for i in range(50)
+                ],
+                "VIX": [
+                    {"ts": f"2026-03-17T14:{30 + (i % 30):02d}:00+00:00", "v": 20.1 - (0.01 * float(i))}
+                    for i in range(50)
+                ],
+            },
+            "updated_at": "2026-03-17T15:00:00-04:00",
+        },
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_intraday",
+        lambda symbol: (
+            [
+                {
+                    "ts": "2026-03-17T13:30:00+00:00",
+                    "open": 6701.25,
+                    "high": 6704.0,
+                    "low": 6699.0,
+                    "close": 6702.0,
+                    "volume": 100.0,
+                },
+                {
+                    "ts": "2026-03-17T14:00:00+00:00",
+                    "open": 6702.0,
+                    "high": 6728.0,
+                    "low": 6700.5,
+                    "close": 6725.0,
+                    "volume": 100.0,
+                },
+            ]
+            if symbol == "SPX"
+            else [
+                {
+                    "ts": "2026-03-17T13:30:00+00:00",
+                    "open": 20.0,
+                    "high": 20.2,
+                    "low": 19.4,
+                    "close": 19.5,
+                    "volume": 100.0,
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        market_data_service, "get_prior_session_intraday", lambda _symbol, anchor_session_day=None: []
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist_tradier",
+        lambda _symbols: {},
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist",
+        lambda _symbols, allow_yf_fallback=False: {},
+    )
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {"gamma_flip": 6720.0, "call_wall": 6750.0, "put_wall": 6690.0},
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {"macro_events": []},
+    )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Day Open 6701" in body
 
 
 def test_dashboard_links_to_auto_debrief_draft_when_trades_exist(client):
@@ -391,25 +571,65 @@ def test_vanquish_lock_state_endpoint(client):
     assert "unlock_label" in payload
 
 
-def test_dashboard_trading_window_status_pill_uses_test_mode_stop_state(client):
+def test_dashboard_trading_window_status_pill_hidden_after_done_by(client):
     from mccain_capital.runtime import set_setting_value
+    from mccain_capital.services import ui as ui_service
 
     set_setting_value("trading_window_enabled", "1")
     set_setting_value("trading_window_start_et", "09:30")
     set_setting_value("trading_window_done_by_et", "11:30")
-    set_setting_value("trading_window_hard_stop_et", "12:00")
     set_setting_value("trading_window_test_mode", "1")
     set_setting_value("trading_window_test_date", "2026-03-12")
     set_setting_value("trading_window_test_time_et", "12:45")
 
+    state = ui_service.get_trading_window_state()
+    assert state["state"] == "stop"
+    assert state["show_banner"] is False
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"tradingWindowPill" not in resp.data
+
+
+def test_dashboard_trading_window_status_pill_shows_only_when_open_is_soon(client):
+    from mccain_capital.runtime import set_setting_value
+    from mccain_capital.services import ui as ui_service
+
+    set_setting_value("trading_window_enabled", "1")
+    set_setting_value("trading_window_start_et", "09:30")
+    set_setting_value("trading_window_done_by_et", "11:30")
+    set_setting_value("trading_window_test_mode", "1")
+    set_setting_value("trading_window_test_date", "2026-03-12")
+    set_setting_value("trading_window_test_time_et", "08:50")
+
+    state = ui_service.get_trading_window_state()
+    assert state["state"] == "upcoming"
+    assert state["show_banner"] is True
+
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     assert b"tradingWindowPill" in resp.data
-    assert b"openTradingWindowSettings()" in resp.data
-    assert b">Trading Window</button>" in resp.data
-    assert b"Test Mode" in resp.data
-    assert b"Stop Trading" in resp.data
-    assert b"Hard Stop 12:00 ET" in resp.data
+    assert b"Starts 09:30 ET" in resp.data
+
+
+def test_dashboard_trading_window_status_pill_hidden_when_open_is_not_soon(client):
+    from mccain_capital.runtime import set_setting_value
+    from mccain_capital.services import ui as ui_service
+
+    set_setting_value("trading_window_enabled", "1")
+    set_setting_value("trading_window_start_et", "09:30")
+    set_setting_value("trading_window_done_by_et", "11:30")
+    set_setting_value("trading_window_test_mode", "1")
+    set_setting_value("trading_window_test_date", "2026-03-12")
+    set_setting_value("trading_window_test_time_et", "07:15")
+
+    state = ui_service.get_trading_window_state()
+    assert state["state"] == "pending"
+    assert state["show_banner"] is False
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"tradingWindowPill" not in resp.data
 
 
 def test_dashboard_trading_window_status_pill_hidden_on_weekend_without_test_mode(client):
@@ -418,7 +638,6 @@ def test_dashboard_trading_window_status_pill_hidden_on_weekend_without_test_mod
     set_setting_value("trading_window_enabled", "1")
     set_setting_value("trading_window_start_et", "09:30")
     set_setting_value("trading_window_done_by_et", "11:30")
-    set_setting_value("trading_window_hard_stop_et", "12:00")
     set_setting_value("trading_window_test_mode", "0")
 
     from mccain_capital.services import ui as ui_service
@@ -448,7 +667,7 @@ def test_trading_window_config_endpoint_saves_times(client):
             "tw_enabled": "1",
             "tw_start_et": "09:35",
             "tw_done_by_et": "11:20",
-            "tw_hard_stop_et": "11:45",
+            "tw_upcoming_notice_minutes": "45",
             "tw_test_mode": "1",
             "tw_test_date": "2026-03-12",
             "tw_test_time_et": "10:15",
@@ -457,12 +676,13 @@ def test_trading_window_config_endpoint_saves_times(client):
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers.get("Location", "").endswith("/dashboard?tw=settings")
+    assert resp.headers.get("Location", "").endswith("/dashboard")
 
     assert str(get_setting_value("trading_window_enabled", "")) == "1"
     assert str(get_setting_value("trading_window_start_et", "")) == "09:35"
     assert str(get_setting_value("trading_window_done_by_et", "")) == "11:20"
-    assert str(get_setting_value("trading_window_hard_stop_et", "")) == "11:45"
+    assert str(get_setting_value("trading_window_hard_stop_et", "")) == "11:20"
+    assert str(get_setting_value("trading_window_upcoming_notice_minutes", "")) == "45"
     assert str(get_setting_value("trading_window_test_mode", "")) == "1"
     assert str(get_setting_value("trading_window_test_date", "")) == "2026-03-12"
     assert str(get_setting_value("trading_window_test_time_et", "")) == "10:15"
@@ -475,14 +695,23 @@ def test_trading_window_config_follow_redirect_shows_success_feedback(client):
             "tw_enabled": "1",
             "tw_start_et": "09:40",
             "tw_done_by_et": "11:10",
-            "tw_hard_stop_et": "11:35",
-            "next": "/dashboard",
+            "tw_upcoming_notice_minutes": "30",
+            "next": "/ops/trading-window",
         },
         follow_redirects=True,
     )
     assert resp.status_code == 200
     assert b"Trading window saved." in resp.data
-    assert b"tradingWindowPill" in resp.data
+    assert b"Session Guardrail Settings" in resp.data
+    assert b"Upcoming Notice" in resp.data
+
+
+def test_trading_window_settings_page_renders_form(client):
+    resp = client.get("/ops/trading-window", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Session Guardrail Settings" in resp.data
+    assert b'input type="time" name="tw_done_by_et"' in resp.data
+    assert b'tw_hard_stop_et' not in resp.data
 
 
 def test_candle_opens_news_includes_placeholder_weeks(monkeypatch):
@@ -626,6 +855,54 @@ def test_market_pulse_includes_tesla_in_quotes_and_watchlist():
     assert "TSLA" in set(core_service.MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS)
 
 
+def test_market_news_item_marks_stale_headlines_and_uses_relative_labels():
+    now_et = datetime(2026, 3, 16, 10, 0, tzinfo=core_service.app_runtime.TZ)
+    fresh = core_service._market_news_item(
+        {
+            "headline": "Treasury yields cool into the open",
+            "summary": "Rates ease ahead of cash session.",
+            "source": "Finnhub",
+            "url": "https://example.com/fresh",
+            "datetime": int(
+                datetime(2026, 3, 16, 9, 15, tzinfo=core_service.app_runtime.TZ).timestamp()
+            ),
+            "related": "SPX",
+        },
+        now_et=now_et,
+    )
+    stale = core_service._market_news_item(
+        {
+            "headline": "Legacy index driver",
+            "summary": "Older market context.",
+            "source": "Yahoo Finance RSS",
+            "url": "https://example.com/stale",
+            "datetime": int(
+                datetime(2026, 3, 14, 12, 0, tzinfo=core_service.app_runtime.TZ).timestamp()
+            ),
+            "related": "SPY",
+        },
+        now_et=now_et,
+    )
+
+    assert fresh["stale"] is False
+    assert "ago" in fresh["published_label"] or "Today" in fresh["published_label"]
+    assert stale["stale"] is True
+    assert stale["absolute_label"]
+
+
+def test_market_news_recent_filter_drops_old_rows():
+    now_et = datetime(2026, 3, 16, 10, 0, tzinfo=core_service.app_runtime.TZ)
+    fresh_stamp = int(datetime(2026, 3, 16, 7, 0, tzinfo=core_service.app_runtime.TZ).timestamp())
+    old_stamp = int(datetime(2026, 3, 13, 7, 0, tzinfo=core_service.app_runtime.TZ).timestamp())
+
+    assert core_service._market_news_is_recent(
+        fresh_stamp, now_et, core_service.MARKET_NEWS_MAX_AGE_SECONDS
+    )
+    assert not core_service._market_news_is_recent(
+        old_stamp, now_et, core_service.MARKET_NEWS_MAX_AGE_SECONDS
+    )
+
+
 def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     monkeypatch.setattr(
         core_service,
@@ -689,11 +966,82 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"marketPulseStreamStatus" in resp.data
     assert b"Tradier Live Quote" in resp.data
     assert b"Yahoo Fallback" in resp.data
-    assert b"Trade Setup Now" in resp.data
+    assert b"Trade Read" in resp.data
+    assert b"Live Data Status" in resp.data
     assert b"marketPulseSetupHeadline" in resp.data
+    assert b"marketPulseTradeReadState" in resp.data
     assert b"marketPulseLoadingOverlay" in resp.data
     assert b"Loading Market Pulse" in resp.data
     assert b"autoRefreshToggle" not in resp.data
+
+
+def test_market_pulse_news_surface_keeps_tape_drivers_and_removes_watchlist_block(
+    client, monkeypatch
+):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 16, 2026 10:30 AM ET",
+            "source_label": "Massive market feed",
+            "source_note": "",
+            "quotes": [],
+            "integrity": {},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {
+            "available": True,
+            "source_note": "Fresh Finnhub drivers plus Forex Factory macro triggers.",
+            "macro_events": [
+                {
+                    "headline": "Core Retail Sales m/m",
+                    "summary": "High impact scheduled event.",
+                    "source": "Forex Factory",
+                    "url": "/candle-opens",
+                    "published_label": "Wed 8:30 AM ET",
+                    "tag": "Macro",
+                    "why": "Calendar event",
+                }
+            ],
+            "market_items": [
+                {
+                    "headline": "Treasury yields ease before open",
+                    "summary": "Rates cool into the session.",
+                    "source": "Finnhub",
+                    "url": "https://example.com/1",
+                    "published_label": "12m ago",
+                    "absolute_label": "Mar 16, 10:18 AM ET",
+                    "tag": "Rates",
+                    "why": "Rates / liquidity backdrop",
+                    "stale": False,
+                }
+            ],
+            "watchlist_items": [
+                {
+                    "headline": "Legacy TSLA headline",
+                    "summary": "Older single-name item.",
+                    "source": "Finnhub",
+                    "url": "https://example.com/tsla",
+                    "published_label": "Yesterday 3:10 PM ET",
+                    "absolute_label": "Mar 15, 3:10 PM ET",
+                    "tag": "TSLA",
+                    "symbol": "TSLA",
+                    "why": "Single-name context",
+                    "stale": True,
+                }
+            ],
+        },
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Tape Drivers" in resp.data
+    assert b"Watchlist Headlines" not in resp.data
+    assert b"Treasury yields ease before open" in resp.data
 
 
 def test_market_pulse_refresh_query_forces_snapshot_refresh(client, monkeypatch):
@@ -921,7 +1269,7 @@ def test_market_pulse_empty_state_uses_consistent_feed_copy(client, monkeypatch)
     body = resp.get_data(as_text=True)
     assert "Awaiting feed" in body
     assert "Awaiting first tick" in body
-    assert "Awaiting SPX quote" in body
+    assert "No trend" in body
     assert "Awaiting contract rows." in body
     assert "Fallback Snapshot" in body
 
@@ -1110,7 +1458,9 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"dashboardGapLine" in resp.data
     assert b"Gap O/N:" in resp.data
     assert b"Tradier Live Quote" in resp.data
-    assert b"-8.48 (-0.13%)" in resp.data
+    assert b"SPX cash" in resp.data
+    assert b"6775.80" in resp.data
+    assert b"-0.09%" in resp.data
     assert b"6773.42-6775.80" in resp.data
     assert b"VIX pulse" in resp.data
 
@@ -1315,8 +1665,28 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
     assert b"245.0 million" in resp.data
     assert b"198.0 million" in resp.data
     assert b"5064.25 - 5098.75" in resp.data
+    assert b"Next walls: Inferred from strike ladder" in resp.data
+    assert b"Expected move: Inferred from wall spacing" in resp.data
     assert b"Best Contracts" in resp.data
     assert b"SPXW 2026-03-06 5125C" in resp.data
+
+
+def test_market_pulse_gamma_quality_flags_stale_snapshots(client):
+    quotes = [
+        {
+            "label": "SPX",
+            "data_state": "live",
+            "data_reason": "tradier_live",
+        }
+    ]
+    gamma_snapshot = {
+        "asof": "2026-03-16T10:25:00-04:00",
+        "diagnostics": {"status": "ok", "contracts_used": 84},
+    }
+    now_et = datetime(2026, 3, 16, 10, 40, tzinfo=core_service.app_runtime.TZ)
+    quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
+    assert quality["tone"] == "warn"
+    assert quality["warning"] == "Gamma stale >5m"
 
 
 def test_market_pulse_renders_source_health_and_degraded_banner(client, monkeypatch):
@@ -1362,7 +1732,7 @@ def test_market_pulse_renders_source_health_and_degraded_banner(client, monkeypa
     resp = client.get("/market-pulse", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Source Health" in resp.data
-    assert b"Degraded Mode" in resp.data
+    assert b"Live Data Status" in resp.data
 
 
 def test_stream_options_panel_sse_emits_json_payload(client, monkeypatch):
@@ -1709,20 +2079,83 @@ def test_dashboard_renders_calendar_week_cards_and_preview_metadata(client):
     assert b'aria-label="Preview 2026-02-24"' in resp.data
 
 
-def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):
+def test_dashboard_active_scope_aligns_balance_card_and_calendar(client):
+    set_setting_value("starting_balance", "50000")
+    set_setting_value("active_account_start_date", "2026-02-20")
+    set_setting_value("active_account_start_balance", "52000")
     with db() as conn:
         conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            ("auth_username", "owner"),
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-18",
+                "9:35 AM",
+                "9:50 AM",
+                "SPX",
+                "CALL",
+                6900.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                4321.0,
+                4321.0,
+                4321.0,
+                54321.0,
+                "old scope trade",
+                now_iso(),
+            ),
         )
         conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            ("auth_password_hash", generate_password_hash("pass123")),
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "10:05 AM",
+                "10:20 AM",
+                "SPX",
+                "PUT",
+                6895.0,
+                1.5,
+                1.0,
+                1,
+                150.0,
+                1.0,
+                250.0,
+                250.0,
+                166.7,
+                54571.0,
+                "scoped trade",
+                now_iso(),
+            ),
         )
-        conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            ("starting_balance", "50000"),
-        )
+
+    resp = client.get("/dashboard?y=2026&m=2&scope=active", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Active Account Balance" in resp.data
+    assert b"Start $52,000.00" in resp.data
+    assert b"Scoped account balance with calendar context." in resp.data
+    assert b"Daily P/L calendar view for <strong>Active Account</strong>" in resp.data
+    assert b'data-balance="$52,250.00"' in resp.data
+    assert b'data-balance="$54,321.00"' not in resp.data
+
+
+def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("pass123"))
+    set_setting_value("starting_balance", "50000")
+    with db() as conn:
         conn.execute(
             """
             INSERT INTO trades (

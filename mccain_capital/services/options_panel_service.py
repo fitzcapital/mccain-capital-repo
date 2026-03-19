@@ -1,4 +1,4 @@
-"""SPX-focused live options panel service (Massive/Polygon)."""
+"""SPX-focused live options panel service (Tradier only)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ _CACHE: Dict[str, Any] = {
     "asof": "",
     "symbols": {
         "SPX": {
-            "underlying": {"price": None, "change_pct": None, "source": "massive"},
+            "underlying": {"price": None, "change_pct": None, "source": "tradier"},
             "gamma": {
                 "gamma_flip": 5110.0,
                 "call_wall": 5150.0,
@@ -218,50 +218,7 @@ def _extract_contract_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _fetch_spx_contracts() -> List[Dict[str, Any]]:
-    tradier = _fetch_spx_contracts_from_tradier()
-    if tradier:
-        return tradier
-
-    payload = _massive_json("/v3/snapshot/options/SPX", {"limit": 250})
-    rows = payload.get("results") if isinstance(payload, dict) else None
-    if not isinstance(rows, list):
-        rows = []
-
-    contracts: List[Dict[str, Any]] = []
-    for row in rows:
-        if isinstance(row, dict):
-            c = _extract_contract_row(row)
-            if c is not None and int(c.get("_dte") or 999) >= 0:
-                contracts.append(c)
-
-    if not contracts:
-        contracts = _fetch_spx_contracts_from_cboe()
-        if not contracts:
-            return []
-
-    # Prefer <=7 DTE, then SPXW root, then tight liquidity, then volume.
-    window = [c for c in contracts if int(c.get("_dte") or 999) <= 7]
-    work = window if window else contracts
-    work.sort(
-        key=lambda c: (
-            int(c.get("_root_rank") or 9),
-            int(c.get("_liq_rank") or 9),
-            -int(c.get("vol") or 0),
-            float(c.get("spread") or 9999.0),
-        )
-    )
-    return [
-        {
-            "label": c.get("label"),
-            "mid": c.get("mid"),
-            "delta": c.get("delta"),
-            "vol": c.get("vol"),
-            "oi": c.get("oi"),
-            "spread": c.get("spread"),
-            "liq": c.get("liq"),
-        }
-        for c in work[:MAX_CONTRACTS]
-    ]
+    return _fetch_spx_contracts_from_tradier()
 
 
 def _parse_cboe_option_symbol(symbol: str) -> Dict[str, Any]:
@@ -445,7 +402,7 @@ def _poll_once() -> None:
     under = market_data_service.get_watchlist(["SPX"]).get("SPX", {})
     price = _safe_float(under.get("price"))
     change_pct = _safe_float(under.get("pct_change"))
-    provider = str(under.get("provider") or "massive").strip().lower() or "massive"
+    provider = str(under.get("provider") or "tradier").strip().lower() or "tradier"
     contracts = _fetch_spx_contracts()
 
     snap = {

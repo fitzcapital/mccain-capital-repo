@@ -1,26 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+ROOT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
 IMAGE_NAME="${IMAGE_NAME:-localhost/mccain-capital-app:latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-mccain-capital-app}"
 HOST_PORT="${HOST_PORT:-5001}"
 DATA_DIR="${DATA_DIR:-$ROOT_DIR/persistent-data}"
+PODMAN_BIN="${PODMAN_BIN:-$(command -v podman || echo /opt/homebrew/bin/podman)}"
+RG_BIN="${RG_BIN:-$(command -v rg || echo /opt/homebrew/bin/rg)}"
+CURL_BIN="${CURL_BIN:-$(command -v curl || echo /usr/bin/curl)}"
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 mkdir -p "$DATA_DIR/uploads" "$DATA_DIR/books"
 
 cd "$ROOT_DIR"
 
-echo "[run_podman_app] building $IMAGE_NAME"
-podman build -t "$IMAGE_NAME" -f Containerfile .
+if ! "$PODMAN_BIN" info >/dev/null 2>&1; then
+  echo "[run_podman_app] starting podman machine"
+  "$PODMAN_BIN" machine start >/dev/null 2>&1 || true
+fi
 
-if podman ps -a --format '{{.Names}}' | rg -x "$CONTAINER_NAME" >/dev/null 2>&1; then
+echo "[run_podman_app] building $IMAGE_NAME"
+"$PODMAN_BIN" build -t "$IMAGE_NAME" -f Containerfile .
+
+if "$PODMAN_BIN" ps -a --format '{{.Names}}' | "$RG_BIN" -x "$CONTAINER_NAME" >/dev/null 2>&1; then
   echo "[run_podman_app] removing existing container $CONTAINER_NAME"
-  podman rm -f "$CONTAINER_NAME" >/dev/null
+  "$PODMAN_BIN" rm -f "$CONTAINER_NAME" >/dev/null
 fi
 
 echo "[run_podman_app] starting $CONTAINER_NAME on port $HOST_PORT"
-podman run -d \
+"$PODMAN_BIN" run -d \
   --name "$CONTAINER_NAME" \
   -p "$HOST_PORT:5001" \
   -v "$DATA_DIR:/data" \
@@ -28,13 +39,13 @@ podman run -d \
 
 echo "[run_podman_app] waiting for healthz"
 for _ in $(seq 1 30); do
-  if curl -sf "http://127.0.0.1:${HOST_PORT}/healthz" >/dev/null; then
+  if "$CURL_BIN" -sf "http://127.0.0.1:${HOST_PORT}/healthz" >/dev/null; then
     break
   fi
   sleep 1
 done
 
-curl -sf "http://127.0.0.1:${HOST_PORT}/healthz"
+"$CURL_BIN" -sf "http://127.0.0.1:${HOST_PORT}/healthz"
 echo
 echo "[run_podman_app] container is up"
 echo "[run_podman_app] local: http://127.0.0.1:${HOST_PORT}"

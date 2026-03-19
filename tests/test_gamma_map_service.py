@@ -1,5 +1,8 @@
+from datetime import datetime
+
 import pandas as pd
 
+from mccain_capital import runtime as app_runtime
 from mccain_capital.services import gamma_map_service as svc
 
 
@@ -103,3 +106,99 @@ def test_identify_levels_prefers_split_call_put_walls_around_spot():
     levels = svc.identify_levels(df, spot=5102.0)
     assert levels["call_wall"] == 5110.0
     assert levels["put_wall"] == 5100.0
+
+
+def test_identify_levels_keeps_put_wall_strength_in_sync_when_wall_is_reassigned():
+    df = pd.DataFrame(
+        [
+            {"strike": 5100.0, "gex": 20.0, "call_side_gex": 300.0, "put_side_gex": 280.0},
+            {"strike": 5095.0, "gex": -12.0, "call_side_gex": 40.0, "put_side_gex": 190.0},
+        ]
+    )
+
+    levels = svc.identify_levels(df, spot=5099.0)
+
+    assert levels["call_wall"] == 5100.0
+    assert levels["put_wall"] == 5095.0
+    assert levels["put_wall_gamma_per_point"] == 190.0
+
+
+def test_gamma_poll_seconds_is_faster_during_market_hours():
+    current = datetime(2026, 3, 16, 10, 0, tzinfo=app_runtime.TZ)
+    assert svc._gamma_poll_seconds(current) == svc.ACTIVE_POLL_SECONDS
+
+
+def test_gamma_poll_seconds_is_slower_on_weekends():
+    current = datetime(2026, 3, 14, 10, 0, tzinfo=app_runtime.TZ)
+    assert svc._gamma_poll_seconds(current) == svc.WEEKEND_POLL_SECONDS
+
+
+def test_fetch_spx_chain_for_expiries_does_not_fallback_when_tradier_is_empty(monkeypatch):
+    monkeypatch.setattr(svc, "_fetch_spx_chain_from_tradier", lambda expiries: pd.DataFrame())
+    monkeypatch.setattr(
+        svc,
+        "_massive_json",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("polygon fallback should not run")),
+    )
+    monkeypatch.setattr(
+        svc,
+        "_fetch_spx_chain_from_cboe",
+        lambda expiries: (_ for _ in ()).throw(AssertionError("cboe fallback should not run")),
+    )
+
+    out = svc.fetch_spx_chain_for_expiries(["2026-03-17"])
+
+    assert out.empty
+
+
+def test_eod_gamma_notification_context_opens_after_curb_close(monkeypatch):
+    monkeypatch.setattr(svc, "_load_gamma_notify_state", lambda: {})
+    snapshot = {"diagnostics": {"expirations": ["2026-03-17", "2026-03-18"]}}
+
+    current = datetime(2026, 3, 17, 17, 10, tzinfo=app_runtime.TZ)
+    context = svc._eod_gamma_notification_context(snapshot, now_et=current)
+
+    assert context is not None
+    assert context["target_expiry"] == "2026-03-18"
+
+
+def test_eod_gamma_notification_context_skips_before_window(monkeypatch):
+    monkeypatch.setattr(svc, "_load_gamma_notify_state", lambda: {})
+    snapshot = {"diagnostics": {"expirations": ["2026-03-17", "2026-03-18"]}}
+
+    current = datetime(2026, 3, 17, 16, 59, tzinfo=app_runtime.TZ)
+
+    assert svc._eod_gamma_notification_context(snapshot, now_et=current) is None
+
+
+def test_maybe_emit_eod_gamma_notification_sends_once_per_target(monkeypatch):
+    state = {}
+    sent: list[dict] = []
+
+    monkeypatch.setattr(svc, "_load_gamma_notify_state", lambda: dict(state))
+
+    def _save(payload):
+        state.clear()
+        state.update(payload)
+
+    monkeypatch.setattr(svc, "_save_gamma_notify_state", _save)
+    monkeypatch.setattr(
+        svc,
+        "_send_eod_gamma_notification",
+        lambda snapshot, context: sent.append({"snapshot": snapshot, "context": context}),
+    )
+    snapshot = {
+        "spot": 5662.25,
+        "gamma_flip": 5655.0,
+        "call_wall": 5700.0,
+        "put_wall": 5625.0,
+        "asof": "2026-03-17T21:10:00+00:00",
+        "diagnostics": {"expirations": ["2026-03-17", "2026-03-18"]},
+    }
+    current = datetime(2026, 3, 17, 17, 15, tzinfo=app_runtime.TZ)
+
+    svc._maybe_emit_eod_gamma_notification(snapshot, now_et=current)
+    svc._maybe_emit_eod_gamma_notification(snapshot, now_et=current)
+
+    assert len(sent) == 1
+    assert state["last_target_expiry"] == "2026-03-18"

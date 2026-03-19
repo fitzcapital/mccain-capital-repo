@@ -41,6 +41,7 @@ from flask import (
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital import runtime as app_runtime
 from mccain_capital.services.ui import (
+    get_trading_window_state,
     get_forex_factory_feed,
     get_forex_factory_month_feed,
     get_forex_factory_next_week_feed,
@@ -69,6 +70,9 @@ MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD = 2
 MARKET_NEWS_CACHE_TTL_SECONDS = 900
 MARKET_NEWS_RSS_TIMEOUT_SECONDS = 1.25
 MARKET_NEWS_RSS_SYMBOL_LIMIT = 5
+MARKET_NEWS_FRESH_SECONDS = 12 * 60 * 60
+MARKET_NEWS_MAX_AGE_SECONDS = 36 * 60 * 60
+WATCHLIST_NEWS_MAX_AGE_SECONDS = 48 * 60 * 60
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 FINNHUB_API_KEY = (os.environ.get("FINNHUB_API_KEY") or "").strip()
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
@@ -1162,9 +1166,12 @@ def _gamma_data_quality(
     spx_state = str(spx.get("data_state") or "").lower()
     spx_reason = str(spx.get("data_reason") or "").lower()
     spot_live = spx_state == "live" and spx_reason.startswith("tradier")
+    diagnostics = dict(gamma_snapshot.get("diagnostics") or {})
+    gamma_status = str(diagnostics.get("status") or "waiting").lower()
 
     asof_raw = str(gamma_snapshot.get("asof") or "").strip()
     oi_age = "unknown"
+    age_s = None
     if asof_raw:
         try:
             asof_dt = datetime.fromisoformat(asof_raw.replace("Z", "+00:00")).astimezone(
@@ -1181,13 +1188,35 @@ def _gamma_data_quality(
             oi_age = "unknown"
 
     contracts_used = int(((gamma_snapshot.get("diagnostics") or {}).get("contracts_used")) or 0)
-    tone = "ok" if spot_live and contracts_used >= 50 else "warn"
+    warning = ""
+    if gamma_status == "error":
+        tone = "critical"
+        warning = "Gamma refresh error"
+    elif age_s is None:
+        tone = "critical"
+        warning = "Gamma timestamp missing"
+    elif age_s > 900:
+        tone = "critical"
+        warning = "Gamma stale >15m"
+    elif age_s > 300:
+        tone = "warn"
+        warning = "Gamma stale >5m"
+    elif not spot_live:
+        tone = "warn"
+        warning = "Spot not live"
+    elif contracts_used < 50:
+        tone = "warn"
+        warning = "Thin contract coverage"
+    else:
+        tone = "ok"
+
     return {
         "tone": tone,
         "summary": (
             f"{'Live spot' if spot_live else 'Non-live spot'} · "
             f"OI age {oi_age} · {contracts_used} contracts"
         ),
+        "warning": warning,
     }
 
 
@@ -1388,6 +1417,46 @@ def _market_news_timestamp_label(stamp: Any) -> str:
     return datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ).strftime("%b %-d, %-I:%M %p ET")
 
 
+def _market_news_age_seconds(stamp: Any, now_et: datetime) -> int | None:
+    if not isinstance(stamp, (int, float)):
+        return None
+    try:
+        return max(0, int(now_et.timestamp()) - int(stamp))
+    except Exception:
+        return None
+
+
+def _market_news_age_label(stamp: Any, now_et: datetime) -> str:
+    age_s = _market_news_age_seconds(stamp, now_et)
+    if age_s is None:
+        return ""
+    if age_s < 3600:
+        mins = max(1, age_s // 60)
+        return f"{mins}m ago"
+    if age_s < 12 * 3600:
+        return f"{age_s // 3600}h ago"
+
+    published = datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ)
+    if published.date() == now_et.date():
+        return published.strftime("Today %-I:%M %p ET")
+    if published.date() == (now_et.date() - timedelta(days=1)):
+        return published.strftime("Yesterday %-I:%M %p ET")
+    return published.strftime("%b %-d, %-I:%M %p ET")
+
+
+def _market_news_is_recent(stamp: Any, now_et: datetime, max_age_seconds: int) -> bool:
+    age_s = _market_news_age_seconds(stamp, now_et)
+    return age_s is not None and age_s <= int(max_age_seconds)
+
+
+def _market_news_row_priority(row: Dict[str, Any], now_et: datetime) -> tuple[int, int, int]:
+    score = _market_news_score(row)
+    age_s = _market_news_age_seconds(row.get("datetime"), now_et)
+    freshness_bucket = 0 if age_s is not None and age_s <= MARKET_NEWS_FRESH_SECONDS else 1
+    recency_key = -(int(row.get("datetime") or 0))
+    return (freshness_bucket, -score, recency_key)
+
+
 def _market_news_theme(text: str) -> Tuple[str, str]:
     raw = text.lower()
     themes = [
@@ -1461,22 +1530,26 @@ def _market_news_score(row: Dict[str, Any]) -> int:
 
 
 def _market_news_item(
-    row: Dict[str, Any], *, symbol: str = "", forced_tag: str = ""
+    row: Dict[str, Any], *, now_et: datetime, symbol: str = "", forced_tag: str = ""
 ) -> Dict[str, Any]:
     headline = str(row.get("headline") or "").strip()
     summary = str(row.get("summary") or "").strip()
     source = str(row.get("source") or "Source").strip() or "Source"
     url = str(row.get("url") or "").strip()
     tag, why = _market_news_theme(f"{headline} {summary} {row.get('related') or ''}")
+    age_s = _market_news_age_seconds(row.get("datetime"), now_et)
+    stale = bool(age_s is not None and age_s > MARKET_NEWS_FRESH_SECONDS)
     return {
         "headline": headline or "Market headline",
         "summary": summary or why,
         "source": source,
         "url": url,
-        "published_label": _market_news_timestamp_label(row.get("datetime")),
+        "published_label": _market_news_age_label(row.get("datetime"), now_et),
+        "absolute_label": _market_news_timestamp_label(row.get("datetime")),
         "tag": forced_tag or tag,
         "why": why,
         "symbol": symbol,
+        "stale": stale,
     }
 
 
@@ -1573,6 +1646,9 @@ def _market_news_snapshot() -> Dict[str, Any]:
                 "source": "Forex Factory",
                 "url": str(event.get("jump_href") or "/candle-opens"),
                 "published_label": str(event.get("date_label") or ""),
+                "starts_at": str(event.get("starts_at") or ""),
+                "time_label": str(event.get("time_label") or ""),
+                "iso": str(event.get("iso") or ""),
                 "tag": "Macro",
                 "why": str(event.get("tooltip") or "Calendar event"),
             }
@@ -1580,7 +1656,7 @@ def _market_news_snapshot() -> Dict[str, Any]:
 
     market_items: List[Dict[str, Any]] = []
     watchlist_items: List[Dict[str, Any]] = []
-    source_note = "Yahoo Finance RSS watchlist headlines plus Forex Factory macro triggers."
+    source_note = "Fresh drivers from Yahoo Finance RSS plus Forex Factory macro triggers."
     if FINNHUB_API_KEY:
         general_payload = _market_pulse_json_request_any(
             FINNHUB_BASE_URL + "/news",
@@ -1589,13 +1665,14 @@ def _market_news_snapshot() -> Dict[str, Any]:
         )
         market_rows = general_payload if isinstance(general_payload, list) else []
         relevant_general = [
-            row for row in market_rows if isinstance(row, dict) and _market_news_score(row) >= 4
+            row
+            for row in market_rows
+            if isinstance(row, dict)
+            and _market_news_score(row) >= 4
+            and _market_news_is_recent(row.get("datetime"), now_et, MARKET_NEWS_MAX_AGE_SECONDS)
         ]
-        relevant_general.sort(
-            key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
-            reverse=True,
-        )
-        market_items = [_market_news_item(row) for row in relevant_general[:8]]
+        relevant_general.sort(key=lambda row: _market_news_row_priority(row, now_et))
+        market_items = [_market_news_item(row, now_et=now_et) for row in relevant_general[:8]]
 
         from_day = (now_et.date() - timedelta(days=5)).isoformat()
         to_day = now_et.date().isoformat()
@@ -1607,31 +1684,46 @@ def _market_news_snapshot() -> Dict[str, Any]:
             )
             if not isinstance(payload, list):
                 continue
-            best = next(
-                (
-                    row
-                    for row in payload
-                    if isinstance(row, dict) and str(row.get("headline") or "").strip()
-                ),
-                None,
-            )
+            rows = [
+                row
+                for row in payload
+                if isinstance(row, dict)
+                and str(row.get("headline") or "").strip()
+                and _market_news_is_recent(
+                    row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS
+                )
+            ]
+            rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
+            best = rows[0] if rows else None
             if best is None:
                 continue
-            watchlist_items.append(_market_news_item(best, symbol=symbol, forced_tag=symbol))
-        source_note = "Finnhub market news plus Forex Factory macro triggers."
+            watchlist_items.append(
+                _market_news_item(best, now_et=now_et, symbol=symbol, forced_tag=symbol)
+            )
+        source_note = "Fresh Finnhub drivers plus Forex Factory macro triggers."
     else:
         all_rows: List[Dict[str, Any]] = []
         for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS[:MARKET_NEWS_RSS_SYMBOL_LIMIT]:
             rows = _market_news_rss_rows(symbol, limit=4)
             if rows:
-                all_rows.extend(rows)
-                watchlist_items.append(_market_news_item(rows[0], symbol=symbol, forced_tag=symbol))
+                fresh_rows = [
+                    row
+                    for row in rows
+                    if _market_news_is_recent(
+                        row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS
+                    )
+                ]
+                all_rows.extend(fresh_rows)
+                if fresh_rows:
+                    fresh_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
+                    watchlist_items.append(
+                        _market_news_item(
+                            fresh_rows[0], now_et=now_et, symbol=symbol, forced_tag=symbol
+                        )
+                    )
         all_rows = [row for row in all_rows if isinstance(row, dict)]
-        all_rows.sort(
-            key=lambda row: (_market_news_score(row), int(row.get("datetime") or 0)),
-            reverse=True,
-        )
-        market_items = [_market_news_item(row) for row in all_rows[:8]]
+        all_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
+        market_items = [_market_news_item(row, now_et=now_et) for row in all_rows[:8]]
 
     result = {
         "available": bool(market_items or watchlist_items or macro_events),
@@ -1656,7 +1748,9 @@ def _market_news_snapshot() -> Dict[str, Any]:
             merged = True
         if merged:
             result["available"] = True
-            result["source_note"] = "Live + cached merge (restored missing news/macro sections)."
+            result["source_note"] = (
+                "Live + cached merge (restored missing fresh sections where possible)."
+            )
     if (
         (not result["available"])
         and isinstance(disk_payload, dict)
@@ -1667,7 +1761,9 @@ def _market_news_snapshot() -> Dict[str, Any]:
         )
     ):
         fallback = dict(disk_payload)
-        fallback["source_note"] = "Using cached news/macro snapshot (live fetch unavailable)."
+        fallback["source_note"] = (
+            "Using cached news/macro snapshot (live fetch unavailable). Headline freshness may be degraded."
+        )
         _market_news_cache["fetched_at"] = now_et
         _market_news_cache["payload"] = fallback
         return fallback
@@ -1788,6 +1884,18 @@ def _dashboard_daily_brief_viewmodel(
     put_wall = _num(gamma_snapshot.get("put_wall"))
     day_open = _num(dashboard_spx.get("day_open"))
 
+    def _macro_event_dt(row: Dict[str, Any]) -> Optional[datetime]:
+        raw = str(row.get("starts_at") or "").strip()
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=app_runtime.TZ)
+            return parsed.astimezone(app_runtime.TZ)
+        except Exception:
+            return None
+
     if (
         spot is not None
         and gamma_flip is not None
@@ -1820,14 +1928,26 @@ def _dashboard_daily_brief_viewmodel(
     else:
         volatility_label = "Vol unknown"
 
+    relevant_macro_rows: List[Dict[str, Any]] = []
+    stale_cutoff = now_et - timedelta(minutes=30)
+    for row in list(news_snapshot.get("macro_events") or []):
+        if not isinstance(row, dict):
+            continue
+        event_dt = _macro_event_dt(row)
+        if event_dt is None:
+            continue
+        if event_dt < stale_cutoff:
+            continue
+        relevant_macro_rows.append(dict(row))
+    relevant_macro_rows.sort(key=lambda row: _macro_event_dt(row) or now_et)
     macro_events = [
         {
             "headline": str(row.get("headline") or "Macro event"),
             "published_label": str(row.get("published_label") or ""),
             "summary": str(row.get("summary") or ""),
+            "starts_at": str(row.get("starts_at") or ""),
         }
-        for row in list(news_snapshot.get("macro_events") or [])[:3]
-        if isinstance(row, dict)
+        for row in relevant_macro_rows[:3]
     ]
     if not macro_events:
         macro_events = [
@@ -2096,6 +2216,7 @@ def dashboard():
     from mccain_capital.services import market_worker
     from mccain_capital.services import gamma_map_service
     from mccain_capital.repositories import analytics as analytics_repo
+    from mccain_capital.repositories import journal as journal_repo
     from mccain_capital.repositories import trades as trades_repo
 
     scope = trades_repo.account_scope_snapshot()
@@ -2108,7 +2229,12 @@ def dashboard():
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
 
-    heat = trades_repo.month_heatmap(year, month)
+    heat = trades_repo.month_heatmap(
+        year,
+        month,
+        start_date=scope_start if scope_active else "",
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
     prev_y, prev_m = (year, month - 1)
     next_y, next_m = (year, month + 1)
     if prev_m == 0:
@@ -2124,6 +2250,13 @@ def dashboard():
         starting_balance=scope_starting_balance if scope_active else None,
     )
     overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
+    trajectory_title = "Active Account Balance" if scope_active else "Capital Trajectory"
+    trajectory_caption = (
+        "Scoped account balance with calendar context."
+        if scope_active
+        else "Live account balance with calendar context."
+    )
+    calendar_scope_label = "Active Account" if scope_active else "All History"
     sync_status = get_system_status()
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
     balance_badges = balance_state_badges(balance_integrity)
@@ -2204,8 +2337,9 @@ def dashboard():
     ytd_wins = int(ytd_stats.get("wins", 0) or 0)
     ytd_losses = int(ytd_stats.get("losses", 0) or 0)
     ytd_win_rate = float(ytd_stats.get("win_rate", 0.0))
-    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=app_runtime.today_iso(), q="")]
-    if scope_active and scope_start and app_runtime.today_iso() < scope_start:
+    today_key = app_runtime.today_iso()
+    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="")]
+    if scope_active and scope_start and today_key < scope_start:
         today_rows = []
     today_stats = trades_repo.trade_day_stats(today_rows)
     today_net = float(today_stats.get("total", 0.0))
@@ -2285,17 +2419,36 @@ def dashboard():
     tape_prices = dict(tape_snapshot.get("prices") or {})
     dashboard_spx = dict(tape_prices.get("SPX") or {})
     dashboard_vix = dict(tape_prices.get("VIX") or {})
-    # Dashboard tape should prefer broker-native Tradier quotes over generic fallbacks.
-    try:
-        tradier_quotes = market_data_service.get_watchlist_tradier(["SPX", "VIX"])
-    except Exception:
-        tradier_quotes = {}
-    tradier_spx = dict(tradier_quotes.get("SPX") or {})
-    tradier_vix = dict(tradier_quotes.get("VIX") or {})
-    if tradier_spx.get("price") is not None:
-        dashboard_spx = tradier_spx
-    if tradier_vix.get("price") is not None:
-        dashboard_vix = tradier_vix
+    tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
+    tape_fresh = False
+    if tape_updated_raw:
+        try:
+            tape_updated_at = datetime.fromisoformat(tape_updated_raw)
+            if tape_updated_at.tzinfo is None:
+                tape_updated_at = tape_updated_at.replace(tzinfo=app_runtime.TZ)
+            tape_fresh = (app_runtime.now_et() - tape_updated_at.astimezone(app_runtime.TZ)).total_seconds() <= 5
+        except Exception:
+            tape_fresh = False
+    worker_quotes_ready = (
+        tape_fresh
+        and dashboard_spx.get("price") is not None
+        and dashboard_vix.get("price") is not None
+        and str(dashboard_spx.get("provider") or "").strip()
+        and str(dashboard_vix.get("provider") or "").strip()
+    )
+    # Prefer the market worker's live cache when it is fresh. Fall back to direct
+    # Tradier fetches only when the cache is cold or incomplete.
+    if not worker_quotes_ready:
+        try:
+            tradier_quotes = market_data_service.get_watchlist_tradier(["SPX", "VIX"])
+        except Exception:
+            tradier_quotes = {}
+        tradier_spx = dict(tradier_quotes.get("SPX") or {})
+        tradier_vix = dict(tradier_quotes.get("VIX") or {})
+        if tradier_spx.get("price") is not None:
+            dashboard_spx = tradier_spx
+        if tradier_vix.get("price") is not None:
+            dashboard_vix = tradier_vix
     if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
         try:
             fallback = market_data_service.get_watchlist(["SPX", "VIX"], allow_yf_fallback=False)
@@ -2308,6 +2461,23 @@ def dashboard():
 
     now_et = app_runtime.now_et()
     now_epoch = int(now_et.timestamp())
+
+    intraday_rows_cache: Dict[str, List[Dict[str, Any]]] = {}
+
+    def _dashboard_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
+        key = str(symbol or "").strip().upper()
+        if not key:
+            return []
+        cached = intraday_rows_cache.get(key)
+        if cached is not None:
+            return cached
+        try:
+            rows = market_data_service.get_intraday(key)
+        except Exception:
+            rows = []
+        cleaned = [dict(row) for row in rows if isinstance(row, dict)]
+        intraday_rows_cache[key] = cleaned
+        return cleaned
 
     def _dashboard_sparkline_svg(
         series: List[float], tone: str, prev_close: Optional[float] = None
@@ -2376,10 +2546,7 @@ def dashboard():
                 return deduped_raw[-40:]
 
         # If cached tape points are too sparse/flat, pull a clean intraday curve directly.
-        try:
-            rows = market_data_service.get_intraday(symbol)
-        except Exception:
-            rows = []
+        rows = _dashboard_intraday_rows(symbol)
         intraday = [
             float(r.get("close"))
             for r in rows[-120:]
@@ -2404,7 +2571,43 @@ def dashboard():
     def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
         enriched = dict(quote or {})
         intraday_series = _dashboard_mini_series(symbol)
-        if intraday_series:
+        full_intraday_rows = _dashboard_intraday_rows(symbol)
+        if full_intraday_rows:
+            first_open = next(
+                (
+                    float(r.get("open"))
+                    for r in full_intraday_rows
+                    if isinstance(r.get("open"), (int, float))
+                ),
+                None,
+            )
+            highs = [
+                float(r.get("high"))
+                for r in full_intraday_rows
+                if isinstance(r.get("high"), (int, float))
+            ]
+            lows = [
+                float(r.get("low"))
+                for r in full_intraday_rows
+                if isinstance(r.get("low"), (int, float))
+            ]
+            if first_open is not None:
+                enriched["day_open"] = first_open
+            if highs and lows:
+                day_low = min(lows)
+                day_high = max(highs)
+                enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
+                enriched["day_range_compact"] = (
+                    f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+                )
+            elif intraday_series:
+                day_low = min(intraday_series)
+                day_high = max(intraday_series)
+                enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
+                enriched["day_range_compact"] = (
+                    f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+                )
+        elif intraday_series:
             day_low = min(intraday_series)
             day_high = max(intraday_series)
             enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
@@ -2412,11 +2615,11 @@ def dashboard():
                 enriched["day_range_compact"] = f"{day_high:.2f}"
             else:
                 enriched["day_range_compact"] = f"{day_low:.2f}-{day_high:.2f}"
-            enriched["day_open"] = float(intraday_series[0])
         else:
             enriched["day_range"] = "—"
             enriched["day_range_compact"] = "—"
-            enriched["day_open"] = None
+            if enriched.get("day_open") is None:
+                enriched["day_open"] = None
         reason = str(enriched.get("reason") or "").lower()
         provider = str(enriched.get("provider") or "").lower()
         if enriched.get("price") is None:
@@ -2528,6 +2731,68 @@ def dashboard():
         today_count=today_count,
         today_net=today_net,
     )
+    journal_today_rows = [dict(r) for r in journal_repo.fetch_entries(d=today_key)]
+    journal_capture_count_today = 0
+    for row in journal_today_rows:
+        try:
+            payload = json.loads(row.get("template_payload") or "{}")
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        if str(payload.get("capture_screenshot_path") or "").strip():
+            journal_capture_count_today += 1
+    brief_ready = all(
+        str(daily_brief.get(field) or "").strip() for field in ("focus", "plan_a", "no_trade")
+    )
+    journal_count_today = len(journal_today_rows)
+    dashboard_checklist = [
+        {
+            "label": "Brief locked",
+            "status": "Ready" if brief_ready else "Needs tune",
+            "detail": (
+                "Focus, Plan A, and no-trade rule are set."
+                if brief_ready
+                else "Tighten the brief before adding risk."
+            ),
+            "done": brief_ready,
+            "href": "#daily-brief-card",
+            "action": "Review" if brief_ready else "Tune",
+        },
+        {
+            "label": "Session data",
+            "status": "Loaded" if today_count else "Missing",
+            "detail": (
+                f"{today_count} trade{'s' if today_count != 1 else ''} synced for today."
+                if today_count
+                else "No statement synced for today's session yet."
+            ),
+            "done": today_count > 0,
+            "href": "/trades" if today_count else "/trades/upload/statement",
+            "action": "Open" if today_count else "Upload",
+        },
+        {
+            "label": "Journal today",
+            "status": "Logged" if journal_count_today else "Missing",
+            "detail": (
+                f"{journal_count_today} entr{'y' if journal_count_today == 1 else 'ies'} logged"
+                + (
+                    f" · {journal_capture_count_today} capture{'s' if journal_capture_count_today != 1 else ''} attached."
+                    if journal_capture_count_today
+                    else "."
+                )
+                if journal_count_today
+                else "No debrief or quick capture logged for today yet."
+            ),
+            "done": journal_count_today > 0,
+            "href": (
+                f"/journal?d={today_key}"
+                if journal_count_today
+                else f"/journal/new?d={today_key}&entry_type=trade_debrief&link_all_day=1&auto_draft=1"
+            ),
+            "action": "Open" if journal_count_today else "Log",
+        },
+    ]
 
     dashboard_tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
     dashboard_tape_updated_label = _format_iso_et_label(dashboard_tape_updated_raw)
@@ -2546,6 +2811,9 @@ def dashboard():
         next_m=next_m,
         month_name=month_name,
         overall_balance=overall_balance,
+        trajectory_title=trajectory_title,
+        trajectory_caption=trajectory_caption,
+        calendar_scope_label=calendar_scope_label,
         balance_integrity=balance_integrity,
         balance_badges=balance_badges,
         sync_status=sync_status,
@@ -2581,6 +2849,7 @@ def dashboard():
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
         daily_brief=daily_brief,
+        dashboard_checklist=dashboard_checklist,
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),
@@ -3186,29 +3455,19 @@ def vanquish_lock_control():
 
 
 def trading_window_config():
-    if request.method != "POST":
-        return redirect(url_for("dashboard"))
-    raw_next = str(request.form.get("next") or "").strip()
-    if raw_next.startswith("/") and not raw_next.startswith("//"):
-        next_href = raw_next
-    else:
-        next_href = str(request.referrer or url_for("dashboard"))
-    state = save_trading_window_settings(request.form)
-    parsed_next = urllib.parse.urlsplit(next_href)
-    next_query = urllib.parse.parse_qsl(parsed_next.query, keep_blank_values=True)
-    next_query = [(key, value) for key, value in next_query if key != "tw"]
-    next_query.append(("tw", "settings"))
-    next_href = urllib.parse.urlunsplit(
-        (
-            parsed_next.scheme,
-            parsed_next.netloc,
-            parsed_next.path,
-            urllib.parse.urlencode(next_query),
-            parsed_next.fragment,
+    if request.method == "GET":
+        content = render_template(
+            "core/trading_window_settings.html",
+            trading_window=get_trading_window_state(),
         )
-    )
+        return render_page(content, active="ops")
+    raw_next = str(request.form.get("next") or "").strip()
+    next_href = url_for("trading_window_config")
+    if raw_next.startswith("/") and not raw_next.startswith("//") and raw_next != request.path:
+        next_href = raw_next
+    state = save_trading_window_settings(request.form)
     flash(
-        f"Trading window saved. {state.get('start_et')} → {state.get('done_by_et')} → {state.get('hard_stop_et')} ET.",
+        f"Trading window saved. {state.get('start_et')} → {state.get('done_by_et')} ET.",
         "success",
     )
     return redirect(next_href)
@@ -3270,82 +3529,78 @@ def backup_data():
 
 
 def restore_data():
-    if request.method == "GET":
+    from mccain_capital.services import trades as trades_svc
+    async_requested = (request.args.get("async") or "").strip() == "1"
+
+    def render_restore_page(
+        *,
+        message: str = "",
+        tone: str = "info",
+        restore_job_id: str = "",
+        restore_filename: str = "",
+    ):
+        max_upload_mb = int((current_app.config.get("MAX_CONTENT_LENGTH") or 0) / (1024 * 1024))
         content = render_template(
             "core/restore_backup.html",
             db_path=str(app_runtime.DB_PATH),
             upload_dir=str(app_runtime.UPLOAD_DIR),
+            max_upload_mb=max_upload_mb,
+            message=str(message or "").strip(),
+            tone=str(tone or "info").strip() or "info",
+            restore_job_id=str(restore_job_id or "").strip(),
+            restore_filename=str(restore_filename or "").strip(),
         )
         return render_page(content, active="dashboard")
 
+    if request.method == "GET":
+        return render_restore_page(
+            restore_job_id=(request.args.get("job") or "").strip(),
+            restore_filename=(request.args.get("file") or "").strip(),
+        )
+
     f = request.files.get("backup_zip")
     if not f or not f.filename:
-        return render_page(simple_msg("Please choose a backup zip file."), active="dashboard")
+        if async_requested:
+            return jsonify(
+                {"ok": False, "error": "missing_backup_zip", "message": "Please choose a backup zip file."}
+            ), 400
+        return render_restore_page(message="Please choose a backup zip file.", tone="warning")
 
+    filename = str(getattr(f, "filename", "") or "").strip()
+    actor = effective_username() if auth_enabled() else _legacy().APP_USERNAME
     try:
-        with zipfile.ZipFile(f.stream) as zf:
-            names = zf.namelist()
-            if not names:
-                return render_page(simple_msg("Backup zip is empty."), active="dashboard")
-
-            allowed_prefixes = ("data/journal.db", "data/uploads/", "data/meta.json")
-            for n in names:
-                if n.startswith("/") or ".." in n:
-                    return render_page(
-                        simple_msg("Backup zip contains unsafe paths."), active="dashboard"
-                    )
-                if not any(n == p or n.startswith(p) for p in allowed_prefixes):
-                    return render_page(
-                        simple_msg("Backup zip contains unsupported files."), active="dashboard"
-                    )
-
-            db_member = "data/journal.db"
-            if db_member in names:
-                db_path = str(app_runtime.DB_PATH)
-                os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-                db_dir = os.path.dirname(db_path) or "."
-                fd, tmp_db = tempfile.mkstemp(prefix="restore_db_", suffix=".tmp", dir=db_dir)
-                os.close(fd)
-                try:
-                    with zf.open(db_member) as src, open(tmp_db, "wb") as dst:
-                        shutil.copyfileobj(src, dst, length=1024 * 1024)
-                    os.replace(tmp_db, db_path)
-                finally:
-                    if os.path.exists(tmp_db):
-                        os.unlink(tmp_db)
-
-            upload_dir = str(app_runtime.UPLOAD_DIR)
-            os.makedirs(upload_dir, exist_ok=True)
-            for n in names:
-                if not n.startswith("data/uploads/") or n.endswith("/"):
-                    continue
-                rel = n[len("data/uploads/") :]
-                out_path = os.path.join(upload_dir, rel)
-                out_dir = os.path.dirname(out_path)
-                if out_dir:
-                    os.makedirs(out_dir, exist_ok=True)
-                with zf.open(n) as src, open(out_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst, length=1024 * 1024)
-    except zipfile.BadZipFile:
-        return render_page(simple_msg("Invalid zip file."), active="dashboard")
+        restore_path = trades_svc._save_uploaded_restore_archive(f)
+    except ValueError as e:
+        if async_requested:
+            return jsonify({"ok": False, "error": "invalid_backup_zip", "message": str(e)}), 400
+        return render_restore_page(message=str(e), tone="warning")
     except Exception as e:
-        return render_page(simple_msg(f"Restore failed: {e}"), active="dashboard")
+        if async_requested:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "restore_upload_failed",
+                        "message": f"Restore upload failed: {e}",
+                    }
+                ),
+                500,
+            )
+        return render_restore_page(message=f"Restore upload failed: {e}", tone="danger")
 
-    try:
-        from mccain_capital.services.trades import record_admin_audit
-
-        record_admin_audit(
-            "manual_backup_restored",
-            {"source_filename": f.filename if f else ""},
-            actor=(
-                _legacy()._effective_username()
-                if _legacy().auth_enabled()
-                else _legacy().APP_USERNAME
-            ),
-        )
-    except Exception:
-        pass
-    return render_page(simple_msg("Backup restore completed."), active="dashboard")
+    job = trades_svc._start_restore_job(
+        restore_path,
+        actor=actor,
+        cleanup_source=True,
+    )
+    if async_requested:
+        return jsonify({"ok": True, "job": trades_svc._job_response_payload(job)})
+    return render_restore_page(
+        message=f"Restore started for {filename or os.path.basename(restore_path)}.",
+        tone="info",
+        restore_job_id=str(job.get("id") or ""),
+        restore_filename=filename or os.path.basename(restore_path),
+    )
 
 
 def strat_page():

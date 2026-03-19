@@ -34,6 +34,7 @@ def create_app():
     runtime.DB_PATH = core.DB_PATH
     runtime.UPLOAD_DIR = core.UPLOAD_DIR
     runtime.BOOKS_DIR = core.BOOKS_DIR
+    runtime.clear_settings_cache()
     runtime.ensure_storage_dirs()
 
     app.config.from_object(select_config())
@@ -145,6 +146,7 @@ def create_app():
     if not getattr(app, "_auto_sync_worker_started", False):
         from mccain_capital.services import trades_sync as trades_service
 
+        trades_service.prepare_sync_runtime_state()
         trades_service.ensure_auto_sync_worker_started(app)
         app._auto_sync_worker_started = True
     return app

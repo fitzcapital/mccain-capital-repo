@@ -23,6 +23,14 @@
   {% set focus_href = "/trades/new" %}
   {% set focus_cta = daily_brief.cta_label %}
 {% endif %}
+{% set checklist_ns = namespace(done=0, total=0) %}
+{% for item in dashboard_checklist %}
+  {% set checklist_ns.total = checklist_ns.total + 1 %}
+  {% if item.done %}
+    {% set checklist_ns.done = checklist_ns.done + 1 %}
+  {% endif %}
+{% endfor %}
+{% set command_fold_open = checklist_ns.done < checklist_ns.total %}
 
 <div class="dashboardStage">
   <div class="dashboardStageLead">
@@ -39,23 +47,51 @@
               <span class="trendChip">{{ today_wins }}W / {{ today_losses }}L</span>
               <span class="trendChip" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</span>
             </div>
-          </div>
-          <div class="rightActions">
-            {% if account_scope and account_scope.enabled %}
-              <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
-              <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
-              <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
-            {% else %}
-              <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
-            {% endif %}
-            <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
+            <div class="dashboardHeroActionBar">
+              <div class="dashboardHeroPriority">
+                <span class="dashboardHeroPriorityLabel">Priority</span>
+                <span class="dashboardHeroPriorityText">{{ focus_body }}</span>
+              </div>
+              <div class="rightActions dashboardHeroPrimaryActions">
+                <a class="btn primary" href="{{ focus_href }}">{{ focus_cta }}</a>
+                <a class="btn ctaLink" href="/market-pulse?refresh=1">Pulse</a>
+              </div>
+            </div>
+            <details class="dashboardCommandFold"{% if command_fold_open %} open{% endif %}>
+              <summary aria-label="Command center controls">
+                <span>Command Tools</span>
+                <span class="tiny muted">{{ checklist_ns.done }}/{{ checklist_ns.total }} ready</span>
+              </summary>
+              <div class="dashboardCommandBody">
+                <div class="dashboardChecklist" aria-label="Daily accountability checklist">
+                  {% for item in dashboard_checklist %}
+                    <a class="dashboardChecklistItem {% if item.done %}is-done{% else %}is-missing{% endif %}" href="{{ item.href }}" title="{{ item.detail }}">
+                      <span class="dashboardChecklistEyebrow">{{ item.status }}</span>
+                      <span class="dashboardChecklistTitle">{{ item.label }}</span>
+                      <span class="dashboardChecklistDetail">{{ item.detail }}</span>
+                      <span class="dashboardChecklistAction">{{ item.action }}</span>
+                    </a>
+                  {% endfor %}
+                </div>
+                <div class="rightActions dashboardCommandActions">
+                  {% if account_scope and account_scope.enabled %}
+                    <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
+                    <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
+                    <a class="btn ctaLink" href="/ops/backups">Scope</a>
+                  {% else %}
+                    <a class="btn ctaLink" href="/ops/backups">Scope</a>
+                  {% endif %}
+                  <a class="btn primary" href="/trades/upload/statement">Import</a>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
       </div>
     </div>
 
     <div class="dashboardPriorityGrid">
-      <div class="card supportCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
+      <div id="daily-brief-card" class="card supportCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
         <div class="pillRow">
           <div class="pill">Daily Brief</div>
           <span class="trendChip {% if daily_brief.bias_tone %}{{ daily_brief.bias_tone }}{% endif %}">{{ daily_brief.bias_label }}</span>
@@ -64,27 +100,33 @@
         </div>
         <div class="supportLead">{{ daily_brief.headline }}</div>
         <div class="supportBody">{{ daily_brief.summary }}</div>
-        <div class="dashboardBriefFoldBody dashboardBriefDesktopBody">
-          <div class="dashboardBriefGrid">
-            <div class="dashboardBriefPanel">
-              <div class="tiny muted">Operator focus</div>
-              <div class="dashboardBriefCopy">{{ daily_brief.focus }}</div>
+          <div class="dashboardBriefFoldBody dashboardBriefDesktopBody">
+            <div class="dashboardBriefQuickGrid">
+              <div class="dashboardBriefQuickItem">
+                <div class="tiny muted">Operator focus</div>
+                <div class="dashboardBriefQuickText">{{ daily_brief.focus }}</div>
+              </div>
+              <div class="dashboardBriefQuickItem">
+                <div class="tiny muted">Plan A</div>
+                <div class="dashboardBriefQuickText">{{ daily_brief.plan_a }}</div>
+              </div>
             </div>
-            <div class="dashboardBriefPanel">
-              <div class="tiny muted">Plan A</div>
-              <div class="dashboardBriefCopy">{{ daily_brief.plan_a }}</div>
-            </div>
-            <div class="dashboardBriefPanel">
-              <div class="tiny muted">Plan B</div>
-              <div class="dashboardBriefCopy">{{ daily_brief.plan_b }}</div>
-            </div>
-            <div class="dashboardBriefPanel">
-              <div class="tiny muted">No-trade condition</div>
-              <div class="dashboardBriefCopy">{{ daily_brief.no_trade }}</div>
-            </div>
+          <div class="rightActions dashboardBriefPrimaryActions">
+            <a class="btn primary" href="/trades/new">{{ daily_brief.cta_label }}</a>
+            <a class="btn ctaLink" href="/market-pulse?refresh=1">Market Pulse</a>
           </div>
           <details class="dashboardBriefMoreInfo">
             <summary>More Info</summary>
+            <div class="dashboardBriefSecondaryGrid">
+              <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+                <div class="tiny muted">Plan B</div>
+                <div class="dashboardBriefCopy">{{ daily_brief.plan_b }}</div>
+              </div>
+              <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+                <div class="tiny muted">No-trade condition</div>
+                <div class="dashboardBriefCopy">{{ daily_brief.no_trade }}</div>
+              </div>
+            </div>
             <div class="dashboardBriefMeta">
               {% for level in daily_brief.key_levels %}
                 <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
@@ -99,12 +141,8 @@
               {% endfor %}
             </div>
           </details>
-          <div class="rightActions">
-            <a class="btn primary" href="/trades/new">{{ daily_brief.cta_label }}</a>
-            <a class="btn ctaLink" href="/market-pulse?refresh=1">Open Market Pulse</a>
-          </div>
           <details class="syncDetails stack10">
-            <summary>Tune Daily Brief</summary>
+            <summary>Tune Brief</summary>
             <form method="post" action="/dashboard/brief" class="stack10">
               <input type="hidden" name="brief_day" value="{{ daily_brief.day_key }}"/>
               <input type="hidden" name="y" value="{{ dashboard_year }}"/>
@@ -163,17 +201,19 @@
                 <div class="tiny muted">Plan A</div>
                 <div class="dashboardBriefCopy">{{ daily_brief.plan_a }}</div>
               </div>
-              <div class="dashboardBriefPanel">
-                <div class="tiny muted">Plan B</div>
-                <div class="dashboardBriefCopy">{{ daily_brief.plan_b }}</div>
-              </div>
-              <div class="dashboardBriefPanel">
-                <div class="tiny muted">No-trade condition</div>
-                <div class="dashboardBriefCopy">{{ daily_brief.no_trade }}</div>
-              </div>
             </div>
             <details class="dashboardBriefMoreInfo">
               <summary>More Info</summary>
+              <div class="dashboardBriefSecondaryGrid">
+                <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+                  <div class="tiny muted">Plan B</div>
+                  <div class="dashboardBriefCopy">{{ daily_brief.plan_b }}</div>
+                </div>
+                <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+                  <div class="tiny muted">No-trade condition</div>
+                  <div class="dashboardBriefCopy">{{ daily_brief.no_trade }}</div>
+                </div>
+              </div>
               <div class="dashboardBriefMeta">
                 {% for level in daily_brief.key_levels %}
                   <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
@@ -190,10 +230,10 @@
             </details>
             <div class="rightActions">
               <a class="btn primary" href="/trades/new">{{ daily_brief.cta_label }}</a>
-              <a class="btn ctaLink" href="/market-pulse?refresh=1">Open Market Pulse</a>
+              <a class="btn ctaLink" href="/market-pulse?refresh=1">Market Pulse</a>
             </div>
             <details class="syncDetails stack10">
-              <summary>Tune Daily Brief</summary>
+              <summary>Tune Brief</summary>
               <form method="post" action="/dashboard/brief" class="stack10">
                 <input type="hidden" name="brief_day" value="{{ daily_brief.day_key }}"/>
                 <input type="hidden" name="y" value="{{ dashboard_year }}"/>
@@ -226,15 +266,7 @@
       </div></div>
     </div>
 
-	    <div class="dashboardAssistGrid">
-	      <div class="card supportCard dashboardAssistCard dashboardFocusCard"><div class="toolbar">
-	        <div class="pill">Today Focus</div>
-	        <div class="supportLead">Do this next.</div>
-	        <div class="supportBody">{{ focus_body }}</div>
-	        <div class="rightActions"><a class="btn primary" href="{{ focus_href }}">{{ focus_cta }}</a></div>
-	      </div></div>
-	    </div>
-	  </div>
+  </div>
 
   <div class="dashboardStageSide">
 	    <div class="card stack12 dashboardCoreTapeCard"><div class="toolbar">
@@ -291,6 +323,15 @@
             </div>
           </div>
           <div class="tiny muted dashboardTapeMetaLine" data-role="source-badge">{{ dashboard_spx.get('source_badge_label') or dashboard_spx.get('source_label') or 'Awaiting feed' }}</div>
+          {% if spx_state != 'Live' %}
+            <div class="tiny muted dashboardTapeMetaLine dashboardTapeMetaStatus">
+              {% if spx_state == 'Delayed' %}
+                Using delayed quote data. Confirm timing before treating tape changes as actionable.
+              {% else %}
+                Waiting on a live Tradier quote. Tape values will fill when the feed recovers.
+              {% endif %}
+            </div>
+          {% endif %}
           <div class="dashboardTapeStatsRow">
             <div class="dashboardTapeStatCell">
               <div class="tiny muted">Gap</div>
@@ -363,6 +404,15 @@
             </div>
           </div>
           <div class="tiny muted dashboardTapeMetaLine" data-role="source-badge">{{ dashboard_vix.get('source_badge_label') or dashboard_vix.get('source_label') or 'Awaiting feed' }}</div>
+          {% if vix_state != 'Live' %}
+            <div class="tiny muted dashboardTapeMetaLine dashboardTapeMetaStatus">
+              {% if vix_state == 'Delayed' %}
+                Using delayed quote data. Treat VIX moves as context, not live tape confirmation.
+              {% else %}
+                Waiting on a live Tradier quote. VIX context will return when the feed recovers.
+              {% endif %}
+            </div>
+          {% endif %}
           <div class="dashboardTapeStatsRow">
             <div class="dashboardTapeStatCell">
               <div class="tiny muted">Gap</div>
@@ -479,29 +529,32 @@
 	          </details>
 	        </div></div>
 
-	        <div class="metricStrip dashboardMetricStrip dashboardMetricStripCompact">
-	          <div class="metric">
-	            <div class="label">Today Net</div>
-	            <div class="value">{{ money(today_net) }}</div>
-	            <div class="sub">Closed trades only</div>
+        <div class="metricStrip dashboardMetricStrip dashboardMetricStripCompact">
+          <div class="metric">
+            <div class="label">Today Net</div>
+            <div class="value">{{ money(today_net) }}</div>
+            <div class="sub">Closed trades only</div>
 	          </div>
 	          <div class="metric">
 	            <div class="label">Session Record</div>
 	            <div class="value">{{ today_wins }}W / {{ today_losses }}L</div>
 	            <div class="sub">{{ today_count }} trade{% if today_count != 1 %}s{% endif %} logged</div>
-	          </div>
-	          <div class="metric">
-	            <div class="label">Current Balance</div>
-	            <div class="value">{{ money(overall_balance) }}</div>
-	            <div class="sub" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</div>
-	            {% if account_scope and account_scope.enabled %}
-	              <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
-	            {% endif %}
-	          </div>
-	        </div>
+          </div>
+          <div class="metric">
+            <div class="label">Account Scope</div>
+            <div class="value">{% if account_scope and account_scope.enabled and scope_mode == 'active' %}Active{% else %}All{% endif %}</div>
+            <div class="sub">
+              {% if account_scope and account_scope.enabled and scope_mode == 'active' %}
+                {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}
+              {% else %}
+                Legacy + current trade history
+              {% endif %}
+            </div>
+          </div>
+        </div>
 
 	        <div class="dashboardSupportGrid dashboardStageSupportGrid">
-	          <div class="card supportCard subtleCard"><div class="toolbar">
+	          <div class="card supportCard subtleCard dashboardSignalCard"><div class="toolbar">
 	            <div class="pill">Payout Pace</div>
 	            <div class="supportLead">{{ payout_focus }}</div>
 	            <div class="supportBody">{{ payout_focus_detail }}</div>
@@ -511,14 +564,14 @@
 	            </div>
 	          </div></div>
 
-	          <div class="card supportCard subtleCard"><div class="toolbar">
+	          <div class="card supportCard subtleCard dashboardSignalCard"><div class="toolbar">
 	            <div class="pill">Risk Posture</div>
 	            <div class="supportLead">{{ risk_posture_title }}</div>
 	            <div class="supportBody">{{ risk_posture_detail }}</div>
 	            <div class="supportMeta">{{ setup_focus }}</div>
 	          </div></div>
 
-	          <div class="card supportCard subtleCard"><div class="toolbar">
+	          <div class="card supportCard subtleCard dashboardSignalCard"><div class="toolbar">
 	            <div class="pill">Pattern Watch</div>
 	            <div class="supportLead">{{ pattern_watch }}</div>
 	            {% if data_trust.badges %}
@@ -572,7 +625,7 @@
 	            <div class="showcaseHead">
 	              <div class="showcaseTitle">
 	                <svg class="mcIcon"><use href="#mc-crest"></use></svg>
-	                Capital Trajectory
+	                {{ trajectory_title }}
 	              </div>
 	              <span class="trendChip">MTD {{ money(mtd_net) }}</span>
 	            </div>
@@ -623,18 +676,12 @@
 	  </div>
 	</div>
 
-	<details class="syncDetails dashboardFoldSection summaryFold">
-  <summary>
-    <span>Performance Deck</span>
-    <span class="tiny muted">Open for balance, pressure, and consistency.</span>
-  </summary>
-  <div class="dashboardFoldBody">
-<div class="twoCol">
-  <div class="card summaryPanel"><div class="toolbar">
+<div class="dashboardAnalyticsCluster">
+  <div class="card summaryPanel dashboardAnalyticsPrimary"><div class="toolbar">
     <div class="calendarHead">
       <div>
         <div class="pill">📈 Performance Deck</div>
-        <div class="summaryLead stack8">Month snapshot with balance, week pressure, and consistency guardrails.</div>
+        <div class="summaryLead stack8">Scoped balance, week pressure, and consistency.</div>
       </div>
       <div class="calendarNav">
         <a class="btn" href="/dashboard?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
@@ -648,7 +695,7 @@
       <div class="summaryHeroMain">
         <div class="summaryMonth">{{ month_name }}</div>
         <div class="summaryBalance">{{ money(overall_balance) }}</div>
-        <div class="summaryCaption">Live account balance with calendar context.</div>
+        <div class="summaryCaption">{{ trajectory_caption }}</div>
       </div>
       <div class="summaryHeroSide">
         <div class="summaryChip {% if this_week_total > 0 %}summaryChipGain{% elif this_week_total < 0 %}summaryChipLoss{% endif %}">
@@ -728,29 +775,62 @@
       </div>
     </details>
   </div></div>
-</div>
-  </div>
-</details>
 
+  <div class="card dashboardProjectionCard dashboardAnalyticsSecondary"><div class="toolbar">
+    <div class="dashboardProjectionHead">
+      <div>
+        <div class="pill">📈 Projection Deck</div>
+        <div class="summaryLead stack8">Forward pacing only.</div>
+      </div>
+      <div class="dashboardProjectionMeta">Trading days only</div>
+    </div>
+    <div class="dashboardProjectionStrip">
+      <div class="stat dashboardProjectionStripCard"><div class="k">Daily Avg</div><div class="v">{{ money(proj.avg) }}</div></div>
+      <div class="stat dashboardProjectionStripCard"><div class="k">Base Balance</div><div class="v">{{ money(proj.base_balance) }}</div></div>
+    </div>
+    <div class="dashboardProjectionGrid">
+      <div class="stat dashboardProjectionScenario {% if proj.p5.est_pnl > 0 %}glow-green{% elif proj.p5.est_pnl < 0 %}glow-red{% endif %}">
+        <div class="k">5 Days</div><div class="v">{{ money(proj.p5.est_pnl) }}</div>
+        <div class="tiny">Est Bal: {{ money(proj.p5.est_balance) }}</div>
+      </div>
+      <div class="stat dashboardProjectionScenario {% if proj.p10.est_pnl > 0 %}glow-green{% elif proj.p10.est_pnl < 0 %}glow-red{% endif %}">
+        <div class="k">10 Days</div><div class="v">{{ money(proj.p10.est_pnl) }}</div>
+        <div class="tiny">Est Bal: {{ money(proj.p10.est_balance) }}</div>
+      </div>
+      <div class="stat dashboardProjectionScenario {% if proj.p20.est_pnl > 0 %}glow-green{% elif proj.p20.est_pnl < 0 %}glow-red{% endif %}">
+        <div class="k">20 Days</div><div class="v">{{ money(proj.p20.est_pnl) }}</div>
+        <div class="tiny">Est Bal: {{ money(proj.p20.est_balance) }}</div>
+      </div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Projection Notes</summary>
+      <div class="tiny line15">Based on recent weekday daily totals, up to 20 sessions. Use this to pace risk and payout planning, not to assume linear returns.</div>
+    </details>
+  </div></div>
+</div>
+
+{% set cal = namespace(traded_days=0, green_days=0, red_days=0, flat_days=0) %}
+{% for wk in heat.weeks %}
+  {% for day in wk.days %}
+    {% if day.daynum is not none and day.wd is not none and day.wd < 5 %}
+      {% set cal.traded_days = cal.traded_days + 1 %}
+      {% if day.net > 0 %}
+        {% set cal.green_days = cal.green_days + 1 %}
+      {% elif day.net < 0 %}
+        {% set cal.red_days = cal.red_days + 1 %}
+      {% else %}
+        {% set cal.flat_days = cal.flat_days + 1 %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
 <details class="syncDetails dashboardFoldSection analyticsFold" id="advancedDashboardWidgets">
-    <summary>Daily P/L Calendar</summary>
-    <div class="tiny stack8 line15">Daily P/L calendar view. Open when you want date-level context after core workflow steps.</div>
+    <summary>
+      <span>Daily P/L Calendar</span>
+      <span class="tiny muted">{{ calendar_scope_label }} · {{ cal.green_days }} green · {{ cal.red_days }} red · {{ cal.flat_days }} flat</span>
+    </summary>
+    <div class="tiny stack8 line15">Daily P/L calendar view for <strong>{{ calendar_scope_label }}</strong>.</div>
     <div class="hr"></div>
-    {% set cal = namespace(traded_days=0, green_days=0, red_days=0, flat_days=0) %}
-    {% for wk in heat.weeks %}
-      {% for day in wk.days %}
-        {% if day.daynum is not none and day.wd is not none and day.wd < 5 %}
-          {% set cal.traded_days = cal.traded_days + 1 %}
-          {% if day.net > 0 %}
-            {% set cal.green_days = cal.green_days + 1 %}
-          {% elif day.net < 0 %}
-            {% set cal.red_days = cal.red_days + 1 %}
-          {% else %}
-            {% set cal.flat_days = cal.flat_days + 1 %}
-          {% endif %}
-        {% endif %}
-      {% endfor %}
-    {% endfor %}
     <div class="calendarLegend stack10" aria-label="Calendar legend and monthly summary">
       <div class="legendStats" aria-label="Month trading day summary">
         <span class="legendStat legendStatWeekdays"><strong>{{ cal.traded_days }}</strong> weekdays</span>
@@ -916,37 +996,6 @@
       })();
     </script>
 </details>
-
-<div class="card stack12"><div class="toolbar">
-  <details class="syncDetails" id="advancedProjectionWidget">
-    <summary>Balance Projection (Advanced)</summary>
-    <div class="pill stack10">📈 Projections (Trading Days: Mon–Fri)</div>
-    <div class="tiny stack10 line15">
-      Based on recent weekday daily totals (up to 20 days). Planning tool — not a promise.
-    </div>
-
-    <div class="hr"></div>
-    <div class="statRow">
-      <div class="stat"><div class="k">📊 Daily Avg (recent)</div><div class="v">{{ money(proj.avg) }}</div></div>
-      <div class="stat"><div class="k">🏦 Base Balance</div><div class="v">{{ money(proj.base_balance) }}</div></div>
-
-      <div class="stat {% if proj.p5.est_pnl > 0 %}glow-green{% elif proj.p5.est_pnl < 0 %}glow-red{% endif %}">
-        <div class="k">5 Trading Days</div><div class="v">{{ money(proj.p5.est_pnl) }}</div>
-        <div class="tiny">Est Bal: {{ money(proj.p5.est_balance) }}</div>
-      </div>
-
-      <div class="stat {% if proj.p10.est_pnl > 0 %}glow-green{% elif proj.p10.est_pnl < 0 %}glow-red{% endif %}">
-        <div class="k">10 Trading Days</div><div class="v">{{ money(proj.p10.est_pnl) }}</div>
-        <div class="tiny">Est Bal: {{ money(proj.p10.est_balance) }}</div>
-      </div>
-
-      <div class="stat {% if proj.p20.est_pnl > 0 %}glow-green{% elif proj.p20.est_pnl < 0 %}glow-red{% endif %}">
-        <div class="k">20 Trading Days</div><div class="v">{{ money(proj.p20.est_pnl) }}</div>
-        <div class="tiny">Est Bal: {{ money(proj.p20.est_balance) }}</div>
-      </div>
-    </div>
-  </details>
-</div></div>
 
 <script>
   (() => {

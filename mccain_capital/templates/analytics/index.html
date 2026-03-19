@@ -25,18 +25,48 @@
           </details>
         </div>
         <div class="summaryLead stack8">{{ analytics_mode_blurb }}</div>
-      </div>
-      <div class="actionRow">
-        {% if account_scope and account_scope.enabled %}
-          <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
-          <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
-        {% else %}
-          <a class="btn ctaLink" href="/ops/backups">Set Account Scope</a>
-        {% endif %}
-        <a class="btn primary" href="/analytics/replay">Session Replay</a>
-        <a class="btn ctaLink" href="/trades">Trades</a>
+        <div class="workspaceHeroActionBar">
+          <div class="workspaceHeroPriority">
+            <span class="workspaceHeroPriorityLabel">Priority</span>
+            <span class="workspaceHeroPriorityText">{{ insights.next_action }}</span>
+          </div>
+          <div class="actionRow workspaceHeroPrimaryActions">
+            {% if account_scope and account_scope.enabled %}
+              <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active</a>
+              <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All</a>
+            {% else %}
+              <a class="btn ctaLink" href="/ops/backups">Scope</a>
+            {% endif %}
+            <a class="btn primary" href="/analytics/replay">Replay</a>
+            <a class="btn ctaLink" href="/trades">Trades</a>
+            <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
+          </div>
+        </div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="analyticsSignalGrid">
+  <div class="analyticsSignalCard {% if perf.total_net > 0 %}is-healthy{% elif perf.total_net < 0 %}is-danger{% else %}is-neutral{% endif %}">
+    <span class="analyticsSignalLabel">Net Read</span>
+    <strong>{{ money(perf.total_net) }}</strong>
+    <span class="analyticsSignalMeta">Win rate {{ '%.1f'|format(perf.win_rate) }}% · {{ perf.total_trades }} trades in scope.</span>
+  </div>
+  <div class="analyticsSignalCard">
+    <span class="analyticsSignalLabel">Expectancy</span>
+    <strong>{{ money(perf.expectancy) }}</strong>
+    <span class="analyticsSignalMeta">Average trade outcome with current filters applied.</span>
+  </div>
+  <div class="analyticsSignalCard {% if dd.current_drawdown > 0 %}is-danger{% else %}is-healthy{% endif %}">
+    <span class="analyticsSignalLabel">Live Drawdown</span>
+    <strong>{{ money(dd.current_drawdown) }}</strong>
+    <span class="analyticsSignalMeta">Max drawdown {{ money(dd.max_drawdown) }} · streak {{ dd.current_drawdown_streak }}.</span>
+  </div>
+  <div class="analyticsSignalCard">
+    <span class="analyticsSignalLabel">Decision</span>
+    <strong>{{ sizing.action }}</strong>
+    <span class="analyticsSignalMeta">Regime {{ sizing.regime }} · {{ insights.next_action }}</span>
   </div>
 </div>
 
@@ -92,10 +122,13 @@
         <span>Fix stale or missing data before review.</span>
       </a>
     </div>
-    <div class="analyticsShortcutRow">
-      <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
-      <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
-      <a class="btn ctaLink" href="/ops/backups">Scope Settings</a>
+    <div class="analyticsModeSummary">
+      <div class="supportLead">{{ analytics_mode_label }}</div>
+      <div class="supportBody">{{ insights.changed }}</div>
+      <div class="analyticsModeSummaryMeta">
+        <span class="trendChip {% if perf.total_net > 0 %}positive{% elif perf.total_net < 0 %}negative{% endif %}">Net {{ money(perf.total_net) }}</span>
+        <span class="trendChip">Risk {{ insights.risk_now }}</span>
+      </div>
     </div>
     <details class="syncDetails analyticsControlFold">
       <summary>

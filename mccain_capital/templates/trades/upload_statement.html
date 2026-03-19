@@ -121,52 +121,133 @@
 {% set job = sync_job or {} %}
 {% set rel = sync_reliability or {} %}
 {% set auto = auto_sync_cfg or {} %}
-<div class="workspaceShell">
+{% set summary = job.get('summary') or {} %}
+{% set sync_active = (job.get('status') or '') in ['queued', 'running'] %}
+{% set compact_job_card = ((job.get('status') or '')|lower) in ['success', 'debug_only'] and not sync_active %}
+{% set effective_status = (job.get('status') or last.get('status') or 'idle')|lower %}
+{% set effective_stage = job.get('stage') or last.get('stage') or 'standby' %}
+{% set effective_message = job.get('message') or last.get('message') or 'No active sync job. Use the live form to start a broker statement import.' %}
+{% set effective_help = (sync_stage_help or {}).get(effective_stage) or last.get('stage_help') or '' %}
+{% set effective_updated = job.get('updated_at_human') or last.get('updated_at_human') or job.get('updated_at') or last.get('updated_at') or 'No recent sync run' %}
+{% set effective_artifacts = (summary.get('artifacts_rel') or last.get('artifacts_rel') or []) %}
+<div class="workspaceShell syncWorkspaceLive">
   <div class="workspacePrimary">
-    {% if job %}
-    <div class="card stack12" id="sync-job-card" data-job-id="{{ job.get('id') }}">
+    <div class="card stack12 syncControlDeck">
       <div class="toolbar">
-        <div class="pill">Sync Job Status</div>
-        <div class="workspaceSectionLead">Current run progress and artifacts stay here so the primary lane always answers “what is happening now?”</div>
-        <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
-        {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
-        <div class="statRow">
-          <div class="stat">
-            <div class="k">Status</div>
-            <div class="v" id="sync-job-status">{{ (job.get('status') or 'queued')|replace('_', ' ')|title }}</div>
+        <div class="pillRow">
+          <div class="pill">Operator Deck</div>
+          <div class="trendChip {% if effective_status == 'success' %}positive{% elif effective_status in ['failed', 'stale'] %}negative{% endif %}">
+            {{ effective_status|replace('_', ' ')|title }}
           </div>
-          <div class="stat">
-            <div class="k">Stage</div>
-            <div class="v" id="sync-job-stage">{{ (job.get('stage') or 'start')|replace('_', ' ')|title }}</div>
-          </div>
-          <div class="stat">
-            <div class="k">Duration</div>
-            <div class="v" id="sync-job-duration">{% if job.get('duration_sec') is not none %}{{ '%.1f'|format(job.get('duration_sec')) }}s{% else %}—{% endif %}</div>
-          </div>
-          <div class="stat">
-            <div class="k">Inserted</div>
-            <div class="v" id="sync-job-inserted">{{ ((job.get('summary') or {}).get('inserted')) or 0 }}</div>
-          </div>
+          <div class="trendChip">{{ effective_stage|replace('_', ' ')|title }}</div>
+          <div class="trendChip">{{ effective_updated }}</div>
         </div>
-        <div class="tiny stack8 line16" id="sync-job-summary">
-          {% set summary = job.get('summary') or {} %}
-          {% if summary %}
-          Result: {{ summary.get('message') or job.get('message') or 'In progress.' }}
-          {% if summary.get('warn_count') %} · Warnings: {{ summary.get('warn_count') }}{% endif %}
-          {% if summary.get('error_count') %} · Errors: {{ summary.get('error_count') }}{% endif %}
-          {% endif %}
-        </div>
-        <div class="stack10" id="sync-job-artifacts">
-          {% for rel_path in (summary.get('artifacts_rel') or [])[:6] %}
-          <div><a class="btn" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">{{ rel_path }}</a></div>
-          {% endfor %}
-        </div>
-        <div id="sync-job-result-html">
-          {{ job.get('result_html', '')|safe }}
+        <div class="workspaceSectionLead">Use this deck to decide whether to run, retry, or inspect artifacts before touching the detailed controls.</div>
+        <div class="syncControlGrid">
+          <div class="syncControlPanel">
+            <div class="k">Current Focus</div>
+            <div class="syncControlValue">{{ effective_message }}</div>
+            {% if effective_help %}
+            <div class="tiny line16">{{ effective_help }}</div>
+            {% endif %}
+          </div>
+          <div class="syncControlPanel">
+            <div class="k">Best Next Action</div>
+            <div class="syncControlValue">
+              {% if sync_active %}
+              Let the current run finish or cancel it deliberately. Do not start a second browser sync.
+              {% elif effective_status in ['failed', 'stale'] %}
+              Retry with the recovery profile, then open diagnostics if the same stage fails twice.
+              {% elif effective_status in ['success', 'debug_only'] %}
+              Review the imported trades or inspect the artifacts before the next run.
+              {% else %}
+              Stage a clean run with today&apos;s dates and save diagnostics on until the lane is stable.
+              {% endif %}
+            </div>
+            <div class="syncGuideList">
+              <span>1. Confirm account and date window.</span>
+              <span>2. Use the correct sync profile.</span>
+              <span>3. Check artifacts only if the lane fails.</span>
+            </div>
+          </div>
+          <div class="syncControlPanel">
+            <div class="k">Quick Tools</div>
+            <div class="syncQuickActions">
+              <button class="btn" type="button" id="quick-retry-btn-deck" {% if not last %}disabled{% endif %}>Reuse Last Request</button>
+              <a class="btn" href="/ops/alerts">Open Ops</a>
+              {% if effective_artifacts %}
+              <a class="btn" href="/trades/sync/debug/{{ effective_artifacts[0] }}" target="_blank" rel="noopener">Latest Artifact</a>
+              {% else %}
+              <span class="tiny muted">No artifacts yet</span>
+              {% endif %}
+            </div>
+          </div>
         </div>
       </div>
     </div>
-    {% endif %}
+
+    <div class="card stack12 syncJobCard{% if compact_job_card %} is-compact{% endif %}" id="sync-job-card" data-job-id="{{ job.get('id', '') }}" {% if not job %}hidden{% endif %}>
+      <div class="toolbar">
+        <div class="pill">Sync Job Status</div>
+        <div class="workspaceSectionLead">Current run progress and artifacts stay here so the primary lane always answers “what is happening now?”</div>
+        <div class="syncHealthStrip" id="sync-health-strip">
+          <div class="syncHealthChip syncHealthChipStatus" id="sync-health-status">{{ (job.get('status') or 'idle')|replace('_', ' ')|title }}</div>
+          <div class="syncHealthChip" id="sync-health-stage">{{ (job.get('stage') or 'standby')|replace('_', ' ')|title }}</div>
+          <div class="syncHealthChip" id="sync-health-updated">
+            {% if job.get('updated_at_human') %}Updated {{ job.get('updated_at_human') }}{% elif job.get('updated_at') %}Updated {{ job.get('updated_at') }}{% else %}Waiting for next sync{% endif %}
+          </div>
+          <div class="syncHealthChip syncHealthChipMuted" id="sync-health-id">{% if job.get('id') %}Job {{ job.get('id')[:8] }}{% else %}No active job{% endif %}</div>
+        </div>
+        <div class="syncLockBanner{% if not sync_active %} syncLockBannerHidden{% endif %}" id="sync-lock-banner">
+          <strong>Sync lane locked.</strong> One broker sync is already active. Cancel it or wait for completion before starting another run.
+        </div>
+        <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
+        <div class="row" id="sync-job-actions" {% if (job.get('status') or '') not in ['queued', 'running'] %}hidden{% endif %}>
+          <form method="post" id="sync-job-cancel-form" action="/trades/sync/job/{{ job.get('id', '') }}/cancel" onsubmit="return window.confirm('Cancel this sync job? Any late output from this run will be ignored.');">
+            <button class="btn danger" type="submit" id="sync-job-cancel-btn">Cancel Sync</button>
+          </form>
+        </div>
+        <details class="syncJobDetails" id="sync-job-details" {% if not compact_job_card %}open{% endif %}>
+          <summary class="syncJobSummaryToggle" id="sync-job-toggle">
+            {% if compact_job_card %}Open Full Run Details{% else %}Collapse Run Details{% endif %}
+          </summary>
+          {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
+          <div class="statRow">
+            <div class="stat">
+              <div class="k">Status</div>
+              <div class="v" id="sync-job-status">{{ (job.get('status') or 'queued')|replace('_', ' ')|title }}</div>
+            </div>
+            <div class="stat">
+              <div class="k">Stage</div>
+              <div class="v" id="sync-job-stage">{{ (job.get('stage') or 'start')|replace('_', ' ')|title }}</div>
+            </div>
+            <div class="stat">
+              <div class="k">Duration</div>
+              <div class="v" id="sync-job-duration">{% if job.get('duration_sec') is not none %}{{ '%.1f'|format(job.get('duration_sec')) }}s{% else %}—{% endif %}</div>
+            </div>
+            <div class="stat">
+              <div class="k">Inserted</div>
+              <div class="v" id="sync-job-inserted">{{ ((job.get('summary') or {}).get('inserted')) or 0 }}</div>
+            </div>
+          </div>
+          <div class="tiny stack8 line16" id="sync-job-summary">
+            {% if summary %}
+            Result: {{ summary.get('message') or job.get('message') or 'In progress.' }}
+            {% if summary.get('warn_count') %} · Warnings: {{ summary.get('warn_count') }}{% endif %}
+            {% if summary.get('error_count') %} · Errors: {{ summary.get('error_count') }}{% endif %}
+            {% endif %}
+          </div>
+          <div class="stack10" id="sync-job-artifacts">
+            {% for rel_path in (summary.get('artifacts_rel') or [])[:6] %}
+            <div><a class="btn" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">{{ rel_path }}</a></div>
+            {% endfor %}
+          </div>
+          <div id="sync-job-result-html">
+            {{ job.get('result_html', '')|safe }}
+          </div>
+        </details>
+      </div>
+    </div>
 
     <div class="card stack12">
       <div class="toolbar">
@@ -178,6 +259,12 @@
           </details>
         </div>
         <div class="workspaceSectionLead">Primary lane: log in, generate the statement, and import without leaving this screen.</div>
+        <div class="syncProfileRail">
+          <button class="btn syncProfileBtn" type="button" data-sync-profile="balanced">Balanced Run</button>
+          <button class="btn syncProfileBtn" type="button" data-sync-profile="recovery">Recovery Run</button>
+          <button class="btn syncProfileBtn" type="button" data-sync-profile="fast">Fast Run</button>
+          <div class="tiny syncProfileNote" id="sync-profile-note">Balanced keeps debug capture on and performs a full import.</div>
+        </div>
         <div class="hr"></div>
         <form method="post" action="/trades/sync/live" id="live-sync-form">
           <div class="row">
@@ -258,7 +345,7 @@
 
           <div class="hr"></div>
           <div class="rightActions">
-            <button class="btn primary" type="submit" id="live-sync-submit">Run Live Sync</button>
+            <button class="btn primary" type="submit" id="live-sync-submit" {% if sync_active %}disabled{% endif %}>Run Live Sync</button>
             <a class="btn" href="/trades/upload/statement">Reset</a>
           </div>
           <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">
@@ -271,6 +358,42 @@
   </div>
 
   <aside class="workspaceSecondary">
+    <div class="card stack12">
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Failure Guide</div>
+          <details class="inlineHelp">
+            <summary aria-label="Failure guide help">?</summary>
+            <div class="helpPopover">This narrows the likely cause before you jump into raw logs or artifacts.</div>
+          </details>
+        </div>
+        <div class="workspaceSectionLead">Keep diagnosis short: identify the stage, decide the next move, then retry deliberately.</div>
+        <div class="syncGuidePanel">
+          <div class="syncGuideHeadline">{{ effective_stage|replace('_', ' ')|title }}</div>
+          <div class="syncControlValue">{{ effective_help or 'No active failure guide. The lane is ready for the next controlled run.' }}</div>
+          <div class="syncGuideList">
+            {% if effective_stage in ['system_resource', 'queue_dispatch', 'browser_boot'] %}
+            <span>Lower system pressure and retry once before changing credentials or account settings.</span>
+            <span>Keep debug capture on so the next failure produces artifacts.</span>
+            <span>If the same stage repeats, escalate to container/browser diagnostics.</span>
+            {% elif effective_stage in ['submit_login', 'locate_username', 'locate_password'] %}
+            <span>Re-check username, password, and broker login flow changes.</span>
+            <span>Run Recovery with debug capture on.</span>
+            <span>Expect login DOM artifacts to be the truth source.</span>
+            {% elif effective_stage in ['storage_io', 'capture_statement_html'] %}
+            <span>Inspect mounted upload/debug storage first.</span>
+            <span>Open the latest artifact bundle before retrying.</span>
+            <span>Do not trust the sync until artifacts and write paths are healthy.</span>
+            {% else %}
+            <span>Use Balanced for normal runs.</span>
+            <span>Use Recovery when the last run failed or the broker UI changed.</span>
+            <span>Use Fast only when the lane is already healthy.</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
     {% if last %}
     <div class="card stack12">
       <div class="toolbar">
@@ -282,50 +405,80 @@
           </details>
         </div>
         <div class="workspaceSectionLead">Support lane: confirm the last run state before retrying or changing automation.</div>
-        <div class="hr"></div>
-        <div class="statRow">
-          <div class="stat">
-            <div class="k">Status</div>
-            <div class="v">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}</div>
-            <div class="tiny">Updated: {{ last.get('updated_at_human') or last.get('updated_at') or '—' }}</div>
-          </div>
-          <div class="stat">
-            <div class="k">{% if (last.get('status') or '')|lower == 'failed' %}Failure Stage{% else %}Stage{% endif %}</div>
-            <div class="v syncStageCode">{{ (last.get('stage') or '—')|replace('_', ' ')|title }}</div>
-            {% if last.get('stage_help') %}
-              <div class="tiny">{{ last.get('stage_help') }}</div>
-            {% endif %}
-          </div>
-          <div class="stat">
-            <div class="k">Message</div>
-            <div class="tiny line16 syncMessageClamp" title="{{ last.get('message') or 'No message' }}">{{ last.get('message') or 'No message' }}</div>
-          </div>
-        </div>
-        {% if last.get('artifacts_rel') %}
+        <details class="syncAsideFold">
+          <summary>
+            <span>Open Diagnostics Snapshot</span>
+            <span class="syncAsideMeta">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }} · {{ (last.get('stage') or '—')|replace('_', ' ')|title }}</span>
+          </summary>
           <div class="hr"></div>
-          <details class="syncDetails">
-            <summary>Debug Artifacts ({{ last.get('artifacts_rel')|length }})</summary>
-            <div class="syncArtifactList stack10">
-              {% for rel_path in last.get('artifacts_rel')[:8] %}
-                {% set label = rel_path.rsplit('/', 1)[-1] if '/' in rel_path else rel_path %}
-                <div class="syncArtifactRow">
-                  <span class="syncArtifactName" title="{{ rel_path }}">{{ label }}</span>
-                  <a class="btn btnCompact" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">Open</a>
-                </div>
-              {% endfor %}
+          <div class="statRow">
+            <div class="stat">
+              <div class="k">Status</div>
+              <div class="v">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}</div>
+              <div class="tiny">Updated: {{ last.get('updated_at_human') or last.get('updated_at') or '—' }}</div>
             </div>
-          </details>
-        {% endif %}
-        <div class="hr"></div>
-        <div class="rightActions">
-          <button class="btn" type="button" id="quick-retry-btn">Quick Retry</button>
-          <a class="btn" href="/trades/upload/statement">Reset</a>
-          <details class="inlineHelp">
-            <summary aria-label="Quick retry help">?</summary>
-            <div class="helpPopover">Quick retry reuses the last sync settings and moves focus to the password field.</div>
-          </details>
-        </div>
-        <div class="tiny stack8" id="quick-retry-note" aria-live="polite"></div>
+            <div class="stat">
+              <div class="k">{% if (last.get('status') or '')|lower == 'failed' %}Failure Stage{% else %}Stage{% endif %}</div>
+              <div class="v syncStageCode">{{ (last.get('stage') or '—')|replace('_', ' ')|title }}</div>
+              {% if last.get('stage_help') %}
+                <div class="tiny">{{ last.get('stage_help') }}</div>
+              {% endif %}
+            </div>
+            <div class="stat">
+              <div class="k">Message</div>
+              <div class="tiny line16 syncMessageClamp" title="{{ last.get('message') or 'No message' }}">{{ last.get('message') or 'No message' }}</div>
+            </div>
+          </div>
+          {% if last.get('artifacts_rel') %}
+            <div class="hr"></div>
+            <details class="syncDetails">
+              <summary>Debug Artifacts ({{ last.get('artifacts_rel')|length }})</summary>
+              <div class="syncArtifactList stack10">
+                {% for rel_path in last.get('artifacts_rel')[:8] %}
+                  {% set label = rel_path.rsplit('/', 1)[-1] if '/' in rel_path else rel_path %}
+                  <div class="syncArtifactRow">
+                    <span class="syncArtifactName" title="{{ rel_path }}">{{ label }}</span>
+                    <a class="btn btnCompact" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">Open</a>
+                  </div>
+                {% endfor %}
+              </div>
+            </details>
+          {% endif %}
+          <div class="hr"></div>
+          <div class="rightActions">
+            <button class="btn" type="button" id="quick-retry-btn">Quick Retry</button>
+            <a class="btn" href="/trades/upload/statement">Reset</a>
+            <details class="inlineHelp">
+              <summary aria-label="Quick retry help">?</summary>
+              <div class="helpPopover">Quick retry reuses the last sync settings and moves focus to the password field.</div>
+            </details>
+          </div>
+          <div class="tiny stack8" id="quick-retry-note" aria-live="polite"></div>
+        </details>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if effective_artifacts %}
+    <div class="card stack12">
+      <div class="toolbar">
+        <div class="pill">Latest Artifacts</div>
+        <div class="workspaceSectionLead">Open the smallest useful artifact first instead of downloading the whole bundle blindly.</div>
+        <details class="syncAsideFold">
+          <summary>
+            <span>Open Latest Artifacts</span>
+            <span class="syncAsideMeta">{{ effective_artifacts|length }} file{{ '' if effective_artifacts|length == 1 else 's' }}</span>
+          </summary>
+          <div class="syncArtifactGrid">
+            {% for rel_path in effective_artifacts[:4] %}
+              {% set label = rel_path.rsplit('/', 1)[-1] if '/' in rel_path else rel_path %}
+              <a class="syncArtifactTile" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">
+                <strong>{{ label }}</strong>
+                <span>{{ rel_path }}</span>
+              </a>
+            {% endfor %}
+          </div>
+        </details>
       </div>
     </div>
     {% endif %}
@@ -340,72 +493,78 @@
           </details>
         </div>
         <div class="workspaceSectionLead">Reliability should tell you whether the system is healthy without opening logs.</div>
-        <div class="hr"></div>
-        <div class="statRow">
-          <div class="stat">
-            <div class="k">Attempts</div>
-            <div class="v">{{ rel.get('attempts', 0) }}</div>
-          </div>
-          <div class="stat">
-            <div class="k">Success Rate</div>
-            <div class="v">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}%</div>
-          </div>
-          <div class="stat">
-            <div class="k">Success / Failed</div>
-            <div class="v">{{ rel.get('success', 0) }} / {{ rel.get('failed', 0) }}</div>
-          </div>
-          <div class="stat">
-            <div class="k">Avg Runtime</div>
-            <div class="v">
-              {% if rel.get('avg_duration_sec') is not none %}
-                {{ '%.1f'|format(rel.get('avg_duration_sec')) }}s
-              {% else %}
-                —
-              {% endif %}
-            </div>
-          </div>
-          <div class="stat">
-            <div class="k">Top Failure Stage</div>
-            <div class="v syncStageCode">
-              {% if rel.get('top_failure_stage') %}
-                {{ rel.get('top_failure_stage')|replace('_', ' ')|title }}{% if rel.get('top_failure_count') %} ({{ rel.get('top_failure_count') }}){% endif %}
-              {% else %}
-                —
-              {% endif %}
-            </div>
-          </div>
-        </div>
-        {% if rel.get('by_source') %}
+        <details class="syncAsideFold">
+          <summary>
+            <span>Open Reliability Metrics</span>
+            <span class="syncAsideMeta">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}% success · {{ rel.get('attempts', 0) }} runs</span>
+          </summary>
           <div class="hr"></div>
-          <details class="syncDetails">
-            <summary>Source Mix</summary>
-            <div class="tiny stack8 line16">
-              {% for src, bucket in rel.get('by_source', {}).items() %}
-                • {{ src }}: {{ bucket.get('success', 0) }}/{{ bucket.get('attempts', 0) }} success<br>
-              {% endfor %}
+          <div class="statRow">
+            <div class="stat">
+              <div class="k">Attempts</div>
+              <div class="v">{{ rel.get('attempts', 0) }}</div>
             </div>
-          </details>
-        {% endif %}
-        {% if rel.get('recent') %}
-          <div class="hr"></div>
-          <details class="syncDetails">
-            <summary>🕓 Recent Runs ({{ rel.get('recent')|length }})</summary>
-            <table>
-              <thead><tr><th>Time</th><th>Source</th><th>Status</th><th>Stage</th><th>Runtime</th></tr></thead>
-              <tbody>
-              {% for r in rel.get('recent', []) %}
-                <tr>
-                  <td>{{ r.get('updated_at', '—') }}</td>
-                  <td>{{ r.get('source', '—') }}</td>
-                  <td>{{ (r.get('status') or '—')|upper }}</td>
-                  <td>{{ r.get('stage', '—') }}</td>
-                  <td>{% if r.get('duration_sec') is not none %}{{ '%.1f'|format(r.get('duration_sec')) }}s{% else %}—{% endif %}</td>
-                </tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </details>
-        {% endif %}
+            <div class="stat">
+              <div class="k">Success Rate</div>
+              <div class="v">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}%</div>
+            </div>
+            <div class="stat">
+              <div class="k">Success / Failed</div>
+              <div class="v">{{ rel.get('success', 0) }} / {{ rel.get('failed', 0) }}</div>
+            </div>
+            <div class="stat">
+              <div class="k">Avg Runtime</div>
+              <div class="v">
+                {% if rel.get('avg_duration_sec') is not none %}
+                  {{ '%.1f'|format(rel.get('avg_duration_sec')) }}s
+                {% else %}
+                  —
+                {% endif %}
+              </div>
+            </div>
+            <div class="stat">
+              <div class="k">Top Failure Stage</div>
+              <div class="v syncStageCode">
+                {% if rel.get('top_failure_stage') %}
+                  {{ rel.get('top_failure_stage')|replace('_', ' ')|title }}{% if rel.get('top_failure_count') %} ({{ rel.get('top_failure_count') }}){% endif %}
+                {% else %}
+                  —
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% if rel.get('by_source') %}
+            <div class="hr"></div>
+            <details class="syncDetails">
+              <summary>Source Mix</summary>
+              <div class="tiny stack8 line16">
+                {% for src, bucket in rel.get('by_source', {}).items() %}
+                  • {{ src }}: {{ bucket.get('success', 0) }}/{{ bucket.get('attempts', 0) }} success<br>
+                {% endfor %}
+              </div>
+            </details>
+          {% endif %}
+          {% if rel.get('recent') %}
+            <div class="hr"></div>
+            <details class="syncDetails">
+              <summary>🕓 Recent Runs ({{ rel.get('recent')|length }})</summary>
+              <table>
+                <thead><tr><th>Time</th><th>Source</th><th>Status</th><th>Stage</th><th>Runtime</th></tr></thead>
+                <tbody>
+                {% for r in rel.get('recent', []) %}
+                  <tr>
+                    <td>{{ r.get('updated_at', '—') }}</td>
+                    <td>{{ r.get('source', '—') }}</td>
+                    <td>{{ (r.get('status') or '—')|upper }}</td>
+                    <td>{{ r.get('stage', '—') }}</td>
+                    <td>{% if r.get('duration_sec') is not none %}{{ '%.1f'|format(r.get('duration_sec')) }}s{% else %}—{% endif %}</td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </details>
+          {% endif %}
+        </details>
       </div>
     </div>
 
@@ -503,7 +662,7 @@
           <div class="hr"></div>
           <div class="rightActions">
             <button class="btn primary" type="submit" id="auto-sync-config-submit">Save Auto Sync</button>
-            <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if not auto.get('password_stored') %}disabled title="Save Auto Sync first so credentials are stored"{% endif %}>Run Now</button>
+            <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if sync_active or not auto.get('password_stored') %}disabled{% endif %} title="{% if sync_active %}Another sync is already running{% elif not auto.get('password_stored') %}Save Auto Sync first so credentials are stored{% endif %}">Run Now</button>
             <details class="inlineHelp">
               <summary aria-label="Auto sync security help">?</summary>
               <div class="helpPopover">
@@ -670,6 +829,8 @@
     function updateJobCard(job) {
       const card = document.getElementById('sync-job-card');
       if (!card || !job) return;
+      card.hidden = false;
+      if (job.id) card.setAttribute('data-job-id', String(job.id));
       const statusText = String(job.status || 'queued').replaceAll('_', ' ');
       const stageText = String(job.stage || 'start').replaceAll('_', ' ');
       const terminal = !['queued', 'running'].includes(String(job.status || ''));
@@ -684,11 +845,27 @@
       const summaryEl = document.getElementById('sync-job-summary');
       const artifactsEl = document.getElementById('sync-job-artifacts');
       const resultHtmlEl = document.getElementById('sync-job-result-html');
+      const actionsEl = document.getElementById('sync-job-actions');
+      const cancelBtn = document.getElementById('sync-job-cancel-btn');
+      const cancelForm = document.getElementById('sync-job-cancel-form');
+      const healthStatusEl = document.getElementById('sync-health-status');
+      const healthStageEl = document.getElementById('sync-health-stage');
+      const updatedEl = document.getElementById('sync-health-updated');
+      const healthIdEl = document.getElementById('sync-health-id');
+      if (cancelForm && job.id) cancelForm.action = `/trades/sync/job/${encodeURIComponent(String(job.id))}/cancel`;
       if (statusEl) statusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
       if (badgeEl) badgeEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
       if (stageEl) stageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
+      if (healthStatusEl) healthStatusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
+      if (healthStageEl) healthStageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
+      if (updatedEl) updatedEl.textContent = job.updated_at_human ? `Updated ${job.updated_at_human}` : (job.updated_at ? `Updated ${job.updated_at}` : 'Waiting for next sync');
+      if (healthIdEl) healthIdEl.textContent = job.id ? `Job ${String(job.id).slice(0, 8)}` : 'No active job';
       if (stageLabelEl) stageLabelEl.textContent = job.message || stageText;
       if (messageEl) messageEl.textContent = job.message || 'Working...';
+      if (actionsEl) actionsEl.hidden = terminal;
+      if (cancelBtn) cancelBtn.disabled = terminal;
+      applySyncLockState(!terminal);
+      applySyncJobCardMode(String(job.status || ''));
       if (durationEl) durationEl.textContent = (job.duration_sec !== null && job.duration_sec !== undefined) ? `${Number(job.duration_sec).toFixed(1)}s` : '—';
       if (insertedEl) insertedEl.textContent = String(summary.inserted || 0);
       if (summaryEl) {
@@ -740,21 +917,152 @@
       }
     }
 
-    function pollJobCard() {
+    let syncJobPollToken = 0;
+
+    function applySyncLockState(isLocked) {
+      const lockBanner = document.getElementById('sync-lock-banner');
+      const liveSubmit = document.getElementById('live-sync-submit');
+      const autoRun = document.getElementById('auto-sync-run-submit');
+      if (lockBanner) {
+        lockBanner.classList.toggle('syncLockBannerHidden', !isLocked);
+      }
+      if (liveSubmit) {
+        liveSubmit.disabled = !!isLocked;
+      }
+      if (autoRun) {
+        autoRun.disabled = !!isLocked || !autoPasswordStored;
+        autoRun.title = isLocked
+          ? 'Another sync is already running'
+          : (autoPasswordStored ? '' : 'Save Auto Sync first so credentials are stored');
+      }
+    }
+
+    function applySyncJobCardMode(status) {
+      const card = document.getElementById('sync-job-card');
+      const details = document.getElementById('sync-job-details');
+      const toggle = document.getElementById('sync-job-toggle');
+      if (!card || !details || !toggle) return;
+      const normalized = String(status || '').toLowerCase();
+      const compact = normalized === 'success' || normalized === 'debug_only';
+      card.classList.toggle('is-compact', compact);
+      details.open = !compact;
+      toggle.textContent = compact ? 'Open Full Run Details' : 'Collapse Run Details';
+    }
+
+    function setSyncSubmitState(button, loading, busy, busyText, idleText) {
+      if (button) {
+        button.disabled = !!busy;
+        button.textContent = busy ? busyText : idleText;
+      }
+      if (loading) {
+        loading.style.display = busy ? 'block' : 'none';
+      }
+    }
+
+    function resetSyncControls() {
+      setSyncSubmitState(document.getElementById('live-sync-submit'), document.getElementById('live-sync-loading'), false, '⏳ Syncing...', 'Run Live Sync');
+      setSyncSubmitState(document.getElementById('auto-sync-run-submit'), document.getElementById('auto-sync-run-loading'), false, '⏳ Running...', 'Run Now');
+      applySyncLockState(false);
+      updateAutoSyncIntentState();
+    }
+
+    function parseAsyncJson(response) {
+      return response.text().then((text) => {
+        let payload = null;
+        try {
+          payload = text ? JSON.parse(text) : null;
+        } catch (_err) {
+          payload = null;
+        }
+        if (response.ok) return payload;
+        const message = payload && payload.message
+          ? String(payload.message)
+          : (text || `Request failed (${response.status})`).trim();
+        const error = new Error(message || 'Request failed.');
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+      });
+    }
+
+    function startAsyncSync(formId, submitId, loadingId, busyText, idleText) {
+      const form = document.getElementById(formId);
+      const button = document.getElementById(submitId);
+      const loading = document.getElementById(loadingId);
+      if (!form || !button || !loading) return;
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        setSyncSubmitState(button, loading, true, busyText, idleText);
+        fetch(form.action + '?async=1', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' },
+          body: new FormData(form)
+        })
+          .then(parseAsyncJson)
+          .then((payload) => {
+            if (!payload || !payload.ok || !payload.job || !payload.job.id) {
+              throw new Error('Could not start the sync job.');
+            }
+            updateJobCard(payload.job);
+            const nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set('ws', 'live');
+            nextUrl.searchParams.set('job', String(payload.job.id));
+            window.history.replaceState({}, '', nextUrl.toString());
+            pollJobCard(String(payload.job.id));
+          })
+          .catch((err) => {
+            const message = err && err.message ? String(err.message) : 'Could not start the sync job.';
+            const hasActiveJob = !!(err && err.payload && err.payload.job && err.payload.job.id);
+            if (err && err.payload && err.payload.job && err.payload.job.id) {
+              updateJobCard(err.payload.job);
+              const nextUrl = new URL(window.location.href);
+              nextUrl.searchParams.set('ws', 'live');
+              nextUrl.searchParams.set('job', String(err.payload.job.id));
+              window.history.replaceState({}, '', nextUrl.toString());
+              pollJobCard(String(err.payload.job.id));
+            }
+            if (jobs && !hasActiveJob) {
+              const runwayId = formId === 'live-sync-form' ? 'live-sync-runway' : 'auto-sync-runway';
+              jobs.setRunwayState(document.getElementById(runwayId), {
+                badge: 'Failed',
+                label: message,
+                stepIndex: 1,
+                complete: true,
+                failed: true
+              });
+            }
+            setSyncSubmitState(button, loading, false, busyText, idleText);
+            if (loading) {
+              loading.style.display = 'block';
+              loading.textContent = message;
+            }
+          });
+      });
+    }
+
+    function pollJobCard(jobIdOverride) {
       const card = document.getElementById('sync-job-card');
       if (!card) return;
-      const jobId = card.getAttribute('data-job-id');
+      const jobId = String(jobIdOverride || card.getAttribute('data-job-id') || '').trim();
       if (!jobId) return;
+      card.hidden = false;
+      card.setAttribute('data-job-id', jobId);
+      const pollToken = ++syncJobPollToken;
       const tick = function() {
         fetch(`/trades/sync/job/${jobId}`, { headers: { 'Accept': 'application/json' } })
           .then(r => r.ok ? r.json() : Promise.reject(new Error('poll_failed')))
           .then(payload => {
+            if (pollToken !== syncJobPollToken) return;
             if (!payload || !payload.ok || !payload.job) return;
             updateJobCard(payload.job);
-            if (!['queued', 'running'].includes(String(payload.job.status || ''))) return;
+            if (!['queued', 'running'].includes(String(payload.job.status || ''))) {
+              resetSyncControls();
+              return;
+            }
             window.setTimeout(tick, 1200);
           })
           .catch(() => {
+            if (pollToken !== syncJobPollToken) return;
             window.setTimeout(tick, 2000);
           });
       };
@@ -778,20 +1086,27 @@
       ['Preparing sync run...', 'Logging into broker...', 'Generating statement...', 'Importing fills and checks...']
     );
 
+    startAsyncSync('live-sync-form', 'live-sync-submit', 'live-sync-loading', '⏳ Syncing...', 'Run Live Sync');
+    startAsyncSync('auto-sync-run-form', 'auto-sync-run-submit', 'auto-sync-run-loading', '⏳ Running...', 'Run Now');
+
     const quickRetryBtn = document.getElementById('quick-retry-btn');
+    const quickRetryDeckBtn = document.getElementById('quick-retry-btn-deck');
     const quickRetryNote = document.getElementById('quick-retry-note');
     const liveForm = document.getElementById('live-sync-form');
     const autoPwd = document.querySelector('#auto-sync-config-form [name="auto_password"]');
     const autoStatus = document.getElementById('auto-sync-credential-status');
     const autoRunBtn = document.getElementById('auto-sync-run-submit');
     const autoPasswordStored = {{ (((auto_sync_cfg or {}) if auto_sync_cfg is defined else {}).get('password_stored', false)) | tojson }};
+    const syncProfileNote = document.getElementById('sync-profile-note');
 
     function updateAutoSyncIntentState() {
       if (!autoPwd || !autoStatus || !autoRunBtn) return;
       const hasTypedPassword = Boolean((autoPwd.value || '').trim());
       if (autoPasswordStored) {
-        autoRunBtn.disabled = false;
-        autoRunBtn.title = '';
+        if (!document.getElementById('sync-lock-banner') || document.getElementById('sync-lock-banner').classList.contains('syncLockBannerHidden')) {
+          autoRunBtn.disabled = false;
+          autoRunBtn.title = '';
+        }
         autoStatus.innerHTML = 'Credential status: <b>ready</b> for scheduled runs.';
         return;
       }
@@ -804,14 +1119,48 @@
       }
     }
 
+    function applySyncProfile(profileName) {
+      if (!liveForm) return;
+      const headless = liveForm.querySelector('[name="headless"]');
+      const debugCapture = liveForm.querySelector('[name="debug_capture"]');
+      const debugOnly = liveForm.querySelector('[name="debug_only"]');
+      const rememberConnection = liveForm.querySelector('[name="remember_connection"]');
+      const noteMap = {
+        balanced: 'Balanced keeps debug capture on and performs a full import.',
+        recovery: 'Recovery keeps diagnostics on and switches to debug-only so you can inspect the broker flow before importing again.',
+        fast: 'Fast minimizes artifact capture for a clean lane when reliability is already stable.'
+      };
+      if (headless) headless.checked = true;
+      if (profileName === 'recovery') {
+        if (debugCapture) debugCapture.checked = true;
+        if (debugOnly) debugOnly.checked = true;
+        if (rememberConnection) rememberConnection.checked = true;
+      } else if (profileName === 'fast') {
+        if (debugCapture) debugCapture.checked = false;
+        if (debugOnly) debugOnly.checked = false;
+      } else {
+        if (debugCapture) debugCapture.checked = true;
+        if (debugOnly) debugOnly.checked = false;
+      }
+      if (syncProfileNote) {
+        syncProfileNote.textContent = noteMap[profileName] || noteMap.balanced;
+      }
+    }
+
     if (autoPwd) {
       autoPwd.addEventListener('input', updateAutoSyncIntentState);
       updateAutoSyncIntentState();
     }
 
-    if (quickRetryBtn && liveForm) {
+    document.querySelectorAll('[data-sync-profile]').forEach((btn) => {
+      btn.addEventListener('click', function() {
+        applySyncProfile(String(btn.getAttribute('data-sync-profile') || 'balanced'));
+      });
+    });
+
+    if ((quickRetryBtn || quickRetryDeckBtn) && liveForm) {
       const requested = {{ (last.get('requested') or {}) | tojson }};
-      quickRetryBtn.addEventListener('click', function() {
+      const handleQuickRetry = function() {
         if (!requested || Object.keys(requested).length === 0) {
           if (quickRetryNote) quickRetryNote.textContent = 'No previous sync request found.';
           return;
@@ -833,9 +1182,13 @@
         if (quickRetryNote) {
           quickRetryNote.textContent = 'Last settings loaded. Enter password if needed, then run sync.';
         }
-      });
+      };
+      if (quickRetryBtn) quickRetryBtn.addEventListener('click', handleQuickRetry);
+      if (quickRetryDeckBtn) quickRetryDeckBtn.addEventListener('click', handleQuickRetry);
     }
 
+    applySyncLockState({{ ((sync_active if sync_active is defined else false)) | tojson }});
+    applySyncJobCardMode({{ (((job.get('status') if job is defined and job else '')) if ws == 'live' else '') | tojson }});
     pollJobCard();
   })();
 </script>

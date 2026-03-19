@@ -17,26 +17,40 @@ SCENARIOS = [
     ("desktop-market-pulse", "/market-pulse?refresh=1", {"width": 1600, "height": 1200}),
     ("desktop-trades", "/trades", {"width": 1600, "height": 1100}),
     ("desktop-analytics", "/analytics?tab=performance", {"width": 1600, "height": 1100}),
+    ("desktop-calendar", "/calendar", {"width": 1600, "height": 1200}),
+    ("desktop-planner", "/strategies", {"width": 1600, "height": 1100}),
+    ("desktop-payouts", "/payouts", {"width": 1600, "height": 1200}),
+    ("desktop-journal", "/journal", {"width": 1600, "height": 1100}),
     ("mobile-dashboard", "/dashboard", {"width": 430, "height": 932}),
     ("mobile-market-pulse", "/market-pulse?refresh=1", {"width": 430, "height": 932}),
     ("mobile-trades", "/trades", {"width": 430, "height": 932}),
     ("mobile-analytics", "/analytics?tab=performance", {"width": 430, "height": 932}),
+    ("mobile-calendar", "/calendar", {"width": 430, "height": 932}),
+    ("mobile-planner", "/strategies", {"width": 430, "height": 932}),
+    ("mobile-payouts", "/payouts", {"width": 430, "height": 932}),
+    ("mobile-journal", "/journal", {"width": 430, "height": 932}),
 ]
 
 
 def _login(ctx: BrowserContext) -> None:
     page = ctx.new_page()
-    page.goto(f"{BASE_URL}/login", wait_until="networkidle", timeout=45000)
+    page.goto(f"{BASE_URL}/login", wait_until="domcontentloaded", timeout=45000)
     page.fill("input[name='username']", USERNAME)
     page.fill("input[name='password']", PASSWORD)
     page.click("button[type='submit']")
     page.wait_for_url(f"{BASE_URL}/**", timeout=45000)
+    page.wait_for_timeout(1000)
     page.close()
 
 
 def _capture(ctx: BrowserContext, name: str, route: str) -> None:
     page = ctx.new_page()
-    page.goto(f"{BASE_URL}{route}", wait_until="networkidle", timeout=45000)
+    page.goto(f"{BASE_URL}{route}", wait_until="domcontentloaded", timeout=45000)
+    try:
+        page.wait_for_load_state("networkidle", timeout=2500)
+    except Exception:
+        pass
+    page.wait_for_timeout(1200)
     page.screenshot(path=str(OUT_DIR / f"{name}.png"), full_page=True)
     page.close()
 

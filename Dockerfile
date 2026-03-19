@@ -36,6 +36,7 @@ RUN python -m playwright install chromium
 COPY . .
 
 ENV PORT=5001
+ENV MAX_UPLOAD_MB=1024
 ENV PERSISTENT_DATA_DIR=/data
 ENV DB_PATH=/data/journal.db
 ENV UPLOAD_DIR=/data/uploads
@@ -45,7 +46,6 @@ ENV AUTO_SYNC_PASSWORD_FALLBACK=1
 
 RUN mkdir -p /data/uploads /data/books
 
-VOLUME ["/data"]
 EXPOSE 5001
 
-CMD ["sh", "-lc", "gunicorn --workers 2 --timeout 180 --graceful-timeout 30 -b 0.0.0.0:${PORT:-5001} mccain_capital.wsgi:app"]
+CMD ["sh", "-lc", "gunicorn --worker-class gthread --workers ${WEB_CONCURRENCY:-4} --threads ${GUNICORN_THREADS:-4} --timeout 180 --graceful-timeout 30 -b 0.0.0.0:${PORT:-5001} mccain_capital.wsgi:app"]

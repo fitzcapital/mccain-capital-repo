@@ -102,6 +102,12 @@ def register(app):
         methods=["GET"],
     )
     app.add_url_rule(
+        "/trades/sync/job/<job_id>/cancel",
+        endpoint="trades_sync_job_cancel",
+        view_func=h.trades_sync_job_cancel,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/trades/sync/debug/<path:name>",
         endpoint="trades_sync_debug_file",
         view_func=h.trades_sync_debug_file,

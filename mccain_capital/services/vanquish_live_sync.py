@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.parse
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -144,6 +145,73 @@ def _stage_error(stage: str, msg: str) -> RuntimeError:
     return RuntimeError(f"[stage:{stage}] {msg}")
 
 
+def _safe_close(obj: Any) -> None:
+    if obj is None:
+        return
+    try:
+        obj.close()
+    except Exception:
+        pass
+
+
+def _bootstrap_browser_session(
+    *,
+    playwright,
+    headless: bool,
+    timeout_ms: int,
+    debug_dir: Optional[str],
+    warnings: List[str],
+    mark: Callable[[str, str], None],
+):
+    launch_args = [
+        "--start-maximized",
+        "--window-size=1920,1080",
+        "--disable-dev-shm-usage",
+        "--no-first-run",
+    ]
+    last_error = ""
+    for attempt in range(1, 3):
+        browser = None
+        context = None
+        page = None
+        tracing_enabled = False
+        try:
+            mark(
+                "browser_boot",
+                "Starting Chromium session." if attempt == 1 else "Retrying Chromium session bootstrap.",
+            )
+            browser = playwright.chromium.launch(headless=headless, args=launch_args)
+            context = browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                screen={"width": 1920, "height": 1080},
+            )
+            if debug_dir:
+                try:
+                    os.makedirs(debug_dir, exist_ok=True)
+                    context.tracing.start(screenshots=True, snapshots=True, sources=True)
+                    tracing_enabled = True
+                except OSError:
+                    warnings.append("Debug capture disabled: cannot write to debug directory.")
+                    debug_dir = None
+            page = context.new_page()
+            page.set_default_timeout(timeout_ms)
+            return browser, context, page, tracing_enabled, debug_dir
+        except Exception as e:
+            last_error = str(e).strip() or e.__class__.__name__
+            warnings.append(
+                f"Browser bootstrap attempt {attempt} failed: {last_error}."
+            )
+            _safe_close(context)
+            _safe_close(browser)
+            if attempt < 2:
+                time.sleep(0.5)
+                continue
+    raise _stage_error(
+        "browser_boot",
+        f"Chromium session could not be created. {last_error}",
+    )
+
+
 def _set_statement_period_fields(page, from_date: str, to_date: str) -> bool:
     js = """
     (payload) => {
@@ -244,23 +312,14 @@ def fetch_statement_html_via_login(
                 pass
 
     with sync_playwright() as p:
-        launch_args = ["--start-maximized", "--window-size=1920,1080"]
-        browser = p.chromium.launch(headless=headless, args=launch_args)
-        context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            screen={"width": 1920, "height": 1080},
+        browser, context, page, tracing_enabled, debug_dir = _bootstrap_browser_session(
+            playwright=p,
+            headless=headless,
+            timeout_ms=timeout_ms,
+            debug_dir=debug_dir,
+            warnings=warnings,
+            mark=mark,
         )
-        tracing_enabled = False
-        if debug_dir:
-            try:
-                os.makedirs(debug_dir, exist_ok=True)
-                context.tracing.start(screenshots=True, snapshots=True, sources=True)
-                tracing_enabled = True
-            except OSError:
-                warnings.append("Debug capture disabled: cannot write to debug directory.")
-                debug_dir = None
-        page = context.new_page()
-        page.set_default_timeout(timeout_ms)
         mark("open_login", "Opening broker login page.")
         page.goto(login_url, wait_until="domcontentloaded")
         # Vanquish login UI can finish client-side hydration after initial paint.
@@ -277,8 +336,8 @@ def fetch_statement_html_via_login(
         user_input = _first_visible(page, SELECTOR_PROFILES["login_user"])
         if not user_input:
             _debug_write(debug_dir, "01_login_dom.html", page.content())
-            context.close()
-            browser.close()
+            _safe_close(context)
+            _safe_close(browser)
             raise _stage_error("locate_username", "Could not locate username/email field.")
 
         mark("fill_username", "Entering username.")
@@ -309,8 +368,8 @@ def fetch_statement_html_via_login(
             pass_input = _first_visible(page, SELECTOR_PROFILES["login_password"])
         if not pass_input:
             _debug_write(debug_dir, "02_username_step_dom.html", page.content())
-            context.close()
-            browser.close()
+            _safe_close(context)
+            _safe_close(browser)
             raise _stage_error("locate_password", "Could not locate password field.")
 
         mark("submit_login", "Submitting broker login.")
@@ -366,8 +425,8 @@ def fetch_statement_html_via_login(
 
         if "login" in page.url.lower():
             _debug_write(debug_dir, "03_post_login_dom.html", page.content())
-            context.close()
-            browser.close()
+            _safe_close(context)
+            _safe_close(browser)
             raise _stage_error(
                 "submit_login",
                 "Still on login page after submit. Credentials may be invalid or MFA/CAPTCHA is required.",
@@ -480,8 +539,8 @@ def fetch_statement_html_via_login(
                 artifacts.append(trace_path)
             except OSError:
                 warnings.append("Trace artifact skipped: debug directory is not writable.")
-        context.close()
-        browser.close()
+        _safe_close(context)
+        _safe_close(browser)
 
     lowered = html_text.lower()
     if "<table" not in lowered:

@@ -1,17 +1,99 @@
-<div class="card"><div class="toolbar">
-  <div class="pill">♻️ Restore Backup</div>
-  <div class="tiny" style="margin-top:10px;line-height:1.6">
-    Upload a backup zip created from <b>/admin/backup</b>.<br>
-    This will replace <b>{{ db_path }}</b> and merge files into <b>{{ upload_dir }}</b>.
-  </div>
-  <div class="hr"></div>
-  <form method="post" enctype="multipart/form-data">
-    <label>Backup ZIP</label>
-    <input type="file" name="backup_zip" accept=".zip,application/zip" required />
-    <div class="hr"></div>
-    <div class="rightActions">
-      <button class="btn danger" type="submit">Restore</button>
-      <a class="btn" href="/dashboard">Cancel</a>
+{% from "partials/async_job_macros.html" import runway %}
+<div class="card pageHero"><div class="toolbar">
+  <div class="pageHeroHead">
+    <div>
+      <div class="pill">Restore Backup</div>
+      <div class="pageTitleRow">
+        <h2 class="pageTitle">Upload Restore Archive</h2>
+      </div>
+      <div class="dashboardLead stack8">Upload a backup ZIP from <code>/admin/backup</code> or the backup center. Railway restores run in the background so large archives do not leave the page looking dead.</div>
     </div>
-  </form>
+    <div class="actionRow">
+      <a class="btn" href="/ops/backups">Open Backup Center</a>
+      <a class="btn" href="/dashboard">Back to Dashboard</a>
+    </div>
+  </div>
 </div></div>
+
+<div class="opsShell">
+  <div class="opsPrimary">
+    <div class="card"><div class="toolbar">
+      <div class="pill">Restore Target</div>
+      <div class="workspaceSectionLead">This replaces <code>{{ db_path }}</code> and merges files into <code>{{ upload_dir }}</code>.</div>
+      <div class="tiny stack8 line15">Use the backup center when you want dry-run, clear-first restore, or saved-archive selection. This page is for direct ZIP upload.</div>
+      <div class="tiny stack8 line15">Current upload limit: <b>{{ max_upload_mb }}MB</b>. Large restores can take a minute after upload before the summary appears.</div>
+      {% if message %}
+      <div class="hr"></div>
+      <div class="pill">
+        {% if tone == 'danger' %}
+          Restore Failed
+        {% elif tone == 'warning' %}
+          Restore Needs Attention
+        {% else %}
+          Restore Update
+        {% endif %}
+      </div>
+      <div class="workspaceSectionLead stack8">{{ message }}</div>
+      {% endif %}
+      <form method="post" enctype="multipart/form-data" id="restore-upload-form">
+        <label>Backup ZIP</label>
+        <input type="file" name="backup_zip" accept=".zip,application/zip" required />
+        <div class="tiny stack8 line15">After upload finishes, the archive is validated and applied in the background. Stay on this page until the restore summary appears.</div>
+        <div class="hr"></div>
+        <div class="rightActions">
+          <button class="btn danger" type="submit" id="restore-upload-submit">Upload + Restore</button>
+          <a class="btn" href="/ops/backups">Backup Center</a>
+        </div>
+      </form>
+      <div class="hr"></div>
+      {{ runway('restore-upload-runway', ['Upload', 'Validate', 'Apply', 'Complete'], badge='Restore', label='Waiting for archive upload...') }}
+      <div id="restore-upload-summary" {% if not restore_job_id %}style="display:none;"{% endif %}></div>
+    </div></div>
+  </div>
+</div>
+
+{% include "partials/async_job_helpers.html" %}
+<script>
+  (function() {
+    const jobs = window.McAsyncJobs;
+    if (!jobs) return;
+
+    const form = document.getElementById('restore-upload-form');
+    const button = document.getElementById('restore-upload-submit');
+    const runwayEl = document.getElementById('restore-upload-runway');
+    const summaryEl = document.getElementById('restore-upload-summary');
+    const uploadedName = {{ restore_filename|tojson }};
+    const restoreJobId = {{ restore_job_id|tojson }};
+
+    jobs.bindAsyncJob({
+      form: form,
+      button: button,
+      runway: runwayEl,
+      summary: summaryEl,
+      startLabel: 'Uploading...',
+      doneLabel: 'Upload + Restore',
+      badge: 'Restore',
+      startMessage: 'Uploading backup archive to the server.',
+      stageMap: { validate_archive: 1, apply_restore: 2, complete: 3, failed: 3 },
+      startErrorMessage: 'Restore could not start. Check archive size, session auth, and retry.',
+      pollErrorMessage: 'Restore status refresh failed. Reload this page before retrying the restore.',
+      errorTitle: 'Restore Needs Attention',
+      startPollDelayMs: 500
+    });
+
+    if (restoreJobId) {
+      jobs.observeJob({
+        jobId: restoreJobId,
+        runway: runwayEl,
+        summary: summaryEl,
+        badge: 'Restore',
+        startMessage: uploadedName
+          ? ('Restore queued for ' + uploadedName + '.')
+          : 'Restore queued. Validating backup archive.',
+        stageMap: { validate_archive: 1, apply_restore: 2, complete: 3, failed: 3 },
+        pollErrorMessage: 'Restore status refresh failed. Reload this page before retrying the restore.',
+        errorTitle: 'Restore Needs Attention'
+      });
+    }
+  })();
+</script>

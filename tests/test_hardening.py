@@ -40,7 +40,6 @@ def test_csrf_rejects_missing_token(client):
             "tw_enabled": "1",
             "tw_start_et": "09:30",
             "tw_done_by_et": "11:30",
-            "tw_hard_stop_et": "12:00",
             "next": "/dashboard",
         },
         follow_redirects=False,
@@ -64,13 +63,12 @@ def test_csrf_accepts_valid_token(client):
             "tw_enabled": "1",
             "tw_start_et": "09:30",
             "tw_done_by_et": "11:30",
-            "tw_hard_stop_et": "12:00",
             "next": "/dashboard",
         },
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers.get("Location", "").endswith("/dashboard?tw=settings")
+    assert resp.headers.get("Location", "").endswith("/dashboard")
 
 
 def test_sqlite_connection_uses_wal_mode():

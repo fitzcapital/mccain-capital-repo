@@ -34,6 +34,15 @@
 
   let previousDrawerFocus = null;
 
+  function focusWithoutScroll(target) {
+    if (!target || typeof target.focus !== "function") return;
+    try {
+      target.focus({ preventScroll: true });
+    } catch (_err) {
+      target.focus();
+    }
+  }
+
   function closeMoreMenu() {
     const menu = doc.getElementById("moreMenu");
     if (menu) menu.classList.remove("open");
@@ -94,7 +103,7 @@
     const target = focusable.find((el) => el.classList.contains("drawerClose"))
       || focusable.find((el) => el.closest(".drawerQuickGrid"))
       || focusable[0];
-    if (target) target.focus();
+    focusWithoutScroll(target);
   }
 
   function openDrawer() {
@@ -113,35 +122,6 @@
     window.requestAnimationFrame(focusDrawerPrimary);
   }
 
-  function openTradingWindowSettings() {
-    openDrawer();
-    window.requestAnimationFrame(() => {
-      const section = doc.getElementById("drawerTradingWindow");
-      const editor = doc.getElementById("tradingWindowDrawerEditor");
-      if (!section || !editor) return;
-      editor.open = true;
-      section.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      const target = editor.querySelector("input, select, textarea, button");
-      if (target) target.focus();
-    });
-  }
-
-  function initTradingWindowIntent() {
-    const params = new URLSearchParams(window.location.search || "");
-    if (params.get("tw") !== "settings") return;
-    openTradingWindowSettings();
-    params.delete("tw");
-    const nextQuery = params.toString();
-    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash || ""}`;
-    window.requestAnimationFrame(() => {
-      try {
-        window.history.replaceState({}, "", nextUrl);
-      } catch (_err) {
-        // Ignore environments that block history updates.
-      }
-    });
-  }
-
   function closeDrawer() {
     const drawer = doc.getElementById("drawer");
     const overlay = doc.getElementById("drawerOverlay");
@@ -152,7 +132,7 @@
     syncDrawerScrollLock();
     doc.removeEventListener("keydown", handleDrawerKeydown, true);
     if (previousDrawerFocus && doc.contains(previousDrawerFocus)) {
-      previousDrawerFocus.focus();
+      focusWithoutScroll(previousDrawerFocus);
     }
     previousDrawerFocus = null;
   }
@@ -203,7 +183,6 @@
     window.toggleMoreMenu = toggleMoreMenu;
     window.toggleQuickPanel = toggleQuickPanel;
     window.openDrawer = openDrawer;
-    window.openTradingWindowSettings = openTradingWindowSettings;
     window.closeDrawer = closeDrawer;
 
     window.addEventListener("click", (event) => {
@@ -384,34 +363,41 @@
       const nyMinutes = (Number(hm[0] || 0) * 60) + Number(hm[1] || 0);
       const clock = doc.getElementById("etClock");
       const mode = doc.getElementById("modePill");
-      const market = doc.getElementById("marketState");
+      const modeLabel = doc.getElementById("sessionStateLabel");
       if (clock) clock.textContent = `${timeStr} ET`;
       if (mode) {
         const isWeekend = weekday === "Sat" || weekday === "Sun";
-        mode.classList.remove("modeStateWeekend", "modeStateStudy", "modeStateTrading", "modeStateLoading");
+        mode.classList.remove(
+          "modeStateWeekend",
+          "modeStatePre",
+          "modeStateTrading",
+          "modeStatePost",
+          "modeStateLoading"
+        );
+        let modeText = "Weekend";
+        let modeTitle = "US market is closed for the weekend";
         if (isWeekend) {
-          mode.textContent = "Weekend";
+          modeText = "Weekend";
           mode.classList.add("modeStateWeekend");
         } else if (nyMinutes < 570) {
-          mode.textContent = "Pre-Market";
-          mode.classList.add("modeStateStudy");
+          modeText = "Pre-Market";
+          modeTitle = "US market is closed before the regular session opens at 9:30 AM ET";
+          mode.classList.add("modeStatePre");
         } else if (nyMinutes < 960) {
-          mode.textContent = "Market Session";
+          modeText = "Market Open";
+          modeTitle = "US market is open (9:30 AM - 4:00 PM ET)";
           mode.classList.add("modeStateTrading");
         } else {
-          mode.textContent = "After Close";
-          mode.classList.add("modeStateStudy");
+          modeText = "After Hours";
+          modeTitle = "US market is closed after the regular session ends at 4:00 PM ET";
+          mode.classList.add("modeStatePost");
         }
-      }
-      if (market) {
-        const isWeekend = weekday === "Sat" || weekday === "Sun";
-        const isOpen = !isWeekend && nyMinutes >= 570 && nyMinutes < 960;
-        market.textContent = isOpen ? "Open" : "Closed";
-        market.classList.toggle("marketOpen", isOpen);
-        market.classList.toggle("marketClosed", !isOpen);
-        market.title = isOpen
-          ? "US market is open (9:30 AM - 4:00 PM ET)"
-          : "US market is closed";
+        if (modeLabel) {
+          modeLabel.textContent = modeText;
+        } else {
+          mode.textContent = modeText;
+        }
+        mode.title = modeTitle;
       }
     } catch (err) {
       console.error(err);
@@ -419,12 +405,13 @@
   }
 
   function initThemeAndGuided() {
-    const themeMigrationKey = "mc_theme_v2";
+    const themeMigrationKey = "mc_theme_v3";
     const themeOrder = ["obsidian", "galaxy", "black", "steel", "red", "green", "default", "white"];
     const themeLabels = {
       obsidian: "Theme: True Dark",
       black: "Theme: Midnight",
       default: "Theme: Classic",
+      white: "Theme: Classic White",
       galaxy: "Theme: Midnight Galaxy",
       red: "Theme: Red",
       green: "Theme: Green",
@@ -438,7 +425,7 @@
     };
 
     const applyTheme = (theme) => {
-      const normalized = themeOrder.includes(theme) ? theme : "black";
+      const normalized = themeOrder.includes(theme) ? theme : "galaxy";
       body.setAttribute("data-theme", normalized);
       syncThemeButtons(normalized);
     };
@@ -474,7 +461,7 @@
     };
 
     window.toggleTheme = () => {
-      const current = body.getAttribute("data-theme") || "obsidian";
+      const current = body.getAttribute("data-theme") || "galaxy";
       const idx = themeOrder.indexOf(current);
       const next = themeOrder[(idx + 1) % themeOrder.length];
       storageSet("mc_theme", next);
@@ -487,13 +474,13 @@
 
     if (storageGet(themeMigrationKey) !== "1") {
       const savedTheme = storageGet("mc_theme");
-      if (!savedTheme || savedTheme === "galaxy" || savedTheme === "black") {
-        storageSet("mc_theme", "obsidian");
+      if (!savedTheme) {
+        storageSet("mc_theme", "galaxy");
       }
       storageSet(themeMigrationKey, "1");
     }
 
-    applyTheme(storageGet("mc_theme") || "obsidian");
+    applyTheme(storageGet("mc_theme") || "galaxy");
     const savedGuide = storageGet("mc_guided_mode");
     const firstRunSeen = storageGet("mc_guided_seen");
     if (savedGuide === "1") setGuidedMode(true);
@@ -626,7 +613,6 @@
     setupMobileDensityCompaction();
     initShortcutHelp();
     initCardStagger();
-    initTradingWindowIntent();
     window.setInterval(updateETClock, 1000);
     updateETClock();
   }

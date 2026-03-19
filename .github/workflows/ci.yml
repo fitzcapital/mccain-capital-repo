@@ -78,9 +78,21 @@ jobs:
           docker run -d --name mccain-capital-smoke -p 5001:5001 mccain-capital-app:ci
           sleep 3
           curl -fsS http://127.0.0.1:5001/healthz
-          curl -fsS http://127.0.0.1:5001/dashboard >/dev/null
-          curl -fsS http://127.0.0.1:5001/journal >/dev/null
-          curl -fsS http://127.0.0.1:5001/analytics >/dev/null
+          for path in /dashboard /journal /analytics; do
+            ok=0
+            for i in 1 2 3 4 5; do
+              if curl -fsS "http://127.0.0.1:5001${path}" >/dev/null; then
+                ok=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Smoke endpoint failed: ${path}"
+              docker logs --tail 120 mccain-capital-smoke
+              exit 1
+            fi
+          done
           docker logs --tail 80 mccain-capital-smoke
           docker rm -f mccain-capital-smoke
 

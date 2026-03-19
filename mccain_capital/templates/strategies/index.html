@@ -11,23 +11,36 @@
           </details>
         </div>
         <div class="summaryLead stack8">{{ hero_blurb }}</div>
-      </div>
-      <div class="actionRow">
-        <a class="btn primary" href="/strategies/new">New Strategy</a>
-        <a class="btn" href="/analytics/replay">Open Replay</a>
+        <div class="workspaceHeroActionBar">
+          <div class="workspaceHeroPriority">
+            <span class="workspaceHeroPriorityLabel">Priority</span>
+            <span class="workspaceHeroPriorityText">{% if headline %}Keep the top seat honest and cut anything that no longer earns risk.{% else %}Build one executable strategy card before tracking more setups.{% endif %}</span>
+          </div>
+          <div class="actionRow workspaceHeroPrimaryActions">
+            <a class="btn primary" href="/strategies/new">New Strategy</a>
+            <a class="btn ctaLink" href="/analytics/replay">Open Replay</a>
+            <a class="btn ctaLink" href="/trades/playbook">Playbook</a>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="statusBadgeStrip">
-  {% for badge in strategy_status_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-      <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
-    </div>
-  {% endfor %}
-</div>
+<details class="syncDetails workspaceStatusFold">
+  <summary>
+    <span>Strategy Signals</span>
+    <span class="tiny muted">{% if headline %}Top seat {{ headline.title }} · {{ headline.status }}{% else %}No strategy tracked yet{% endif %}</span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in strategy_status_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+</details>
 
 <div class="dashboardSupportGrid">
   <div class="card supportCard workflowPromptCard"><div class="toolbar">
