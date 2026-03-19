@@ -241,7 +241,7 @@ def test_upload_statement_live_workspace_injects_csrf_into_all_sync_forms(client
 def test_trades_balance_bases_section_renders(client):
     resp = client.get("/trades", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Balance Bases (History + Active Account)" in resp.data
+    assert b"Execution Admin and Balance Bases" in resp.data
     assert b"History Ledger Basis" in resp.data
     assert b"Active Account Basis" in resp.data
 
@@ -931,15 +931,14 @@ def test_ops_backups_config_warns_when_no_persist_path(client, monkeypatch, tmp_
     monkeypatch.setattr(
         trades_svc, "_auto_backup_config_paths", lambda for_read=True: [str(bad_path)]
     )
+    real_safe_write_json = trades_svc._safe_write_json
 
-    real_open = open
-
-    def _fake_open(path, mode="r", *args, **kwargs):
-        if os.path.abspath(str(path)) == os.path.abspath(str(bad_path)) and "w" in mode:
+    def _fake_safe_write_json(path, payload):
+        if os.path.abspath(str(path)) == os.path.abspath(str(bad_path)):
             raise PermissionError("permission denied (test)")
-        return real_open(path, mode, *args, **kwargs)
+        return real_safe_write_json(path, payload)
 
-    monkeypatch.setattr("builtins.open", _fake_open)
+    monkeypatch.setattr(trades_svc, "_safe_write_json", _fake_safe_write_json)
 
     with db() as conn:
         conn.execute(
@@ -1378,6 +1377,82 @@ def test_live_sync_async_start_returns_job_json(client, monkeypatch):
     assert payload["ok"] is True
     assert payload["job"]["id"] == "job-123"
     assert payload["job"]["status"] == "queued"
+
+
+def test_load_last_sync_status_reclassifies_thread_error(tmp_path, monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    status_path = tmp_path / ".vanquish_sync_last_run.json"
+    monkeypatch.setattr(trades_svc, "BROKER_SYNC_STATUS_PATH", str(status_path))
+    status_path.write_text(
+        json.dumps(
+            {
+                "status": "failed",
+                "stage": "unknown",
+                "message": "can't start new thread",
+                "updated_at": now_iso(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = trades_svc._load_last_sync_status()
+
+    assert status["stage"] == "system_resource"
+    assert status["stage_help"] == trades_svc.SYNC_STAGE_HELP["system_resource"]
+
+
+def test_live_sync_async_start_returns_failure_when_dispatcher_boot_fails(
+    client, monkeypatch, tmp_path
+):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(tmp_path / ".bg_jobs"))
+    monkeypatch.setattr(
+        trades_svc,
+        "BROKER_SYNC_STATUS_PATH",
+        str(tmp_path / ".vanquish_sync_last_run.json"),
+    )
+    monkeypatch.setattr(trades_svc, "trade_lockout_state", lambda _day: {"locked": False})
+    monkeypatch.setattr(
+        trades_svc,
+        "_load_broker_sync_config",
+        lambda: {
+            "base_url": "https://trade.vanquishtrader.com",
+            "account": "default:OEXXXXXXXX",
+            "wl": "vanquishtrader",
+            "time_zone": "America/New_York",
+            "date_locale": "en-US",
+            "report_locale": "en",
+        },
+    )
+    monkeypatch.setattr(
+        trades_svc,
+        "ensure_sync_dispatcher_started",
+        lambda _app: (_ for _ in ()).throw(RuntimeError("can't start new thread")),
+    )
+
+    resp = client.post(
+        "/trades/sync/live?async=1",
+        data={
+            "mode": "broker",
+            "from_date": "2026-03-18",
+            "to_date": "2026-03-18",
+            "username": "demo-user",
+            "password": "demo-pass",
+            "base_url": "https://trade.vanquishtrader.com",
+            "account": "default:OEXXXXXXXX",
+        },
+        headers={"Accept": "application/json"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 503
+    payload = resp.get_json()
+    assert payload["ok"] is False
+    assert payload["message"] == "can't start new thread"
+    assert payload["job"]["status"] == "failed"
+    assert payload["job"]["stage"] == "system_resource"
 
 
 def test_stale_sync_job_is_reconciled_when_polled(client, monkeypatch, tmp_path):

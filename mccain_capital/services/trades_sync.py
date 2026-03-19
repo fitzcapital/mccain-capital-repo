@@ -167,13 +167,15 @@ def trades_sync_live():
         debug_only=debug_only,
         requested=requested,
     )
+    job_payload = job_response_payload(job, humanize_timestamp=legacy._humanize_et_timestamp)
+    if str(job.get("status") or "").strip().lower() == "failed":
+        message = str(job.get("message") or "Live sync could not start.")
+        if _wants_async_json():
+            return jsonify({"ok": False, "message": message, "job": job_payload}), 503
+        flash(message, "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
     if _wants_async_json():
-        return jsonify(
-            {
-                "ok": True,
-                "job": job_response_payload(job, humanize_timestamp=legacy._humanize_et_timestamp),
-            }
-        )
+        return jsonify({"ok": True, "job": job_payload})
     flash("Live sync started. Progress and result will update below.", "success")
     return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
 
@@ -320,13 +322,15 @@ def trades_sync_auto_run_now():
         debug_only=False,
         requested=requested,
     )
+    job_payload = job_response_payload(job, humanize_timestamp=legacy._humanize_et_timestamp)
+    if str(job.get("status") or "").strip().lower() == "failed":
+        message = str(job.get("message") or "Auto sync could not start.")
+        if _wants_async_json():
+            return jsonify({"ok": False, "message": message, "job": job_payload}), 503
+        flash(message, "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
     if _wants_async_json():
-        return jsonify(
-            {
-                "ok": True,
-                "job": job_response_payload(job, humanize_timestamp=legacy._humanize_et_timestamp),
-            }
-        )
+        return jsonify({"ok": True, "job": job_payload})
     flash("Auto sync started. Live status will update below.", "success")
     return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
 

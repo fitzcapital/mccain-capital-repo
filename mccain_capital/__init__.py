@@ -34,6 +34,7 @@ def create_app():
     runtime.DB_PATH = core.DB_PATH
     runtime.UPLOAD_DIR = core.UPLOAD_DIR
     runtime.BOOKS_DIR = core.BOOKS_DIR
+    runtime.clear_settings_cache()
     runtime.ensure_storage_dirs()
 
     app.config.from_object(select_config())

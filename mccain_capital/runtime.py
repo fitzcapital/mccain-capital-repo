@@ -238,6 +238,11 @@ def get_setting_float(key: str, default: float = 0.0) -> float:
         return float(default)
 
 
+def clear_settings_cache() -> None:
+    with _SETTINGS_CACHE_LOCK:
+        _SETTINGS_CACHE.clear()
+
+
 def set_setting_value(key: str, value: Any) -> None:
     """Insert or update a setting in DB."""
     with db() as conn:

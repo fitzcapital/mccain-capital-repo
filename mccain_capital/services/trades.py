@@ -1119,6 +1119,18 @@ def _load_last_sync_status() -> Dict[str, Any]:
     parsed = _read_last_sync_status()
     if not parsed:
         return {}
+    raw_stage = str(parsed.get("stage") or "").strip().lower()
+    if raw_stage in {"", "unknown"}:
+        normalized_stage = _classify_sync_stage(
+            str(parsed.get("message") or ""),
+            raw_stage or "unknown",
+        )
+        if normalized_stage != (raw_stage or "unknown"):
+            parsed["stage"] = normalized_stage
+            parsed["stage_help"] = SYNC_STAGE_HELP.get(
+                normalized_stage,
+                str(parsed.get("stage_help") or ""),
+            )
     status = str(parsed.get("status") or "").strip().lower()
     updated_epoch = _parse_iso_epoch(str(parsed.get("updated_at") or ""))
     if status in {"queued", "running"} and updated_epoch is not None:
@@ -1276,9 +1288,7 @@ def _save_admin_audit(rows: List[Dict[str, Any]]) -> bool:
     errors: List[str] = []
     for path in _admin_audit_paths(for_read=False):
         try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(rows, f, indent=2)
+            _safe_write_json(path, rows)
             return True
         except OSError as exc:
             errors.append(f"{path}: {exc}")
@@ -1413,9 +1423,7 @@ def _save_auto_backup_config(cfg: Dict[str, Any]) -> bool:
     errors: List[str] = []
     for path in _auto_backup_config_paths(for_read=False):
         try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, indent=2)
+            _safe_write_json(path, cfg)
             return True
         except OSError as exc:
             errors.append(f"{path}: {exc}")
@@ -1935,21 +1943,24 @@ def rollback_import_batch() -> Any:
             return redirect(url_for("trades_upload_pdf", ws="reconcile"))
         marks = ",".join(["?"] * len(trade_ids))
         conn.execute(f"DELETE FROM trade_reviews WHERE trade_id IN ({marks})", trade_ids)
-        conn.execute("DELETE FROM trades WHERE import_batch_id = ?", (batch_id,))
+        deleted_trades = int(
+            conn.execute("DELETE FROM trades WHERE import_batch_id = ?", (batch_id,)).rowcount or 0
+        )
+        conn.commit()
     starting = float(get_setting_float("starting_balance", 50000.0))
     repo.recompute_balances(starting_balance=starting)
     _mark_import_batch_rolled_back(batch_id)
     _emit_notification(
         "batch_rollback",
         "Import batch rolled back",
-        f"Rolled back batch {batch_id} and deleted {len(trade_ids)} trade(s).",
-        {"batch_id": batch_id, "deleted_trades": len(trade_ids)},
+        f"Rolled back batch {batch_id} and deleted {deleted_trades} trade(s).",
+        {"batch_id": batch_id, "deleted_trades": deleted_trades},
     )
     record_admin_audit(
         "rollback_import_batch",
-        {"batch_id": batch_id, "deleted_trades": len(trade_ids)},
+        {"batch_id": batch_id, "deleted_trades": deleted_trades},
     )
-    flash(f"Rolled back batch {batch_id} ({len(trade_ids)} trades).", "success")
+    flash(f"Rolled back batch {batch_id} ({deleted_trades} trades).", "success")
     return redirect(url_for("trades_upload_pdf", ws="reconcile"))
 
 
@@ -2039,7 +2050,12 @@ def _debug_relative(path: str) -> str:
 
 def _classify_sync_stage(raw_error: str, fallback_stage: str = "unknown") -> str:
     text = str(raw_error or "").strip().lower()
-    if "resource temporarily unavailable" in text or "[errno 11]" in text:
+    if (
+        "resource temporarily unavailable" in text
+        or "[errno 11]" in text
+        or "can't start new thread" in text
+        or "cannot start new thread" in text
+    ):
         return "system_resource"
     if "permission denied" in text or "[errno 13]" in text:
         return "storage_io"
@@ -3614,10 +3630,10 @@ def _start_sync_job(
     requested: Dict[str, Any],
 ) -> Dict[str, Any]:
     app = current_app._get_current_object()
-    ensure_sync_dispatcher_started(app)
     job = _create_bg_job("sync", title, requested)
     cancel_event = _sync_cancel_event(job["id"])
     try:
+        ensure_sync_dispatcher_started(app)
         _SYNC_JOB_QUEUE.put_nowait(
             {
                 "job": job,
@@ -3677,6 +3693,7 @@ def _start_sync_job(
             ),
         )
         _clear_sync_cancel_event(job["id"])
+        return _get_bg_job(job["id"])
     return job
 
 
