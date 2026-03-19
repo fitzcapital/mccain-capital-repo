@@ -3,7 +3,7 @@
 from datetime import datetime
 import json
 
-from mccain_capital.runtime import db, get_setting_value, now_iso, today_iso
+from mccain_capital.runtime import db, get_setting_value, now_iso, set_setting_value, today_iso
 from mccain_capital.services import core as core_service
 from werkzeug.security import generate_password_hash
 
@@ -274,6 +274,7 @@ def test_dashboard_renders_accountability_checklist(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
+    assert "Command Tools" in body
     assert "Daily accountability checklist" in body
     assert "Brief locked" in body
     assert "Session data" in body
@@ -1457,7 +1458,9 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"dashboardGapLine" in resp.data
     assert b"Gap O/N:" in resp.data
     assert b"Tradier Live Quote" in resp.data
-    assert b"-8.48 (-0.13%)" in resp.data
+    assert b"SPX cash" in resp.data
+    assert b"6775.80" in resp.data
+    assert b"-0.09%" in resp.data
     assert b"6773.42-6775.80" in resp.data
     assert b"VIX pulse" in resp.data
 
@@ -2076,20 +2079,83 @@ def test_dashboard_renders_calendar_week_cards_and_preview_metadata(client):
     assert b'aria-label="Preview 2026-02-24"' in resp.data
 
 
-def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):
+def test_dashboard_active_scope_aligns_balance_card_and_calendar(client):
+    set_setting_value("starting_balance", "50000")
+    set_setting_value("active_account_start_date", "2026-02-20")
+    set_setting_value("active_account_start_balance", "52000")
     with db() as conn:
         conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            ("auth_username", "owner"),
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-18",
+                "9:35 AM",
+                "9:50 AM",
+                "SPX",
+                "CALL",
+                6900.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                4321.0,
+                4321.0,
+                4321.0,
+                54321.0,
+                "old scope trade",
+                now_iso(),
+            ),
         )
         conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            ("auth_password_hash", generate_password_hash("pass123")),
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "10:05 AM",
+                "10:20 AM",
+                "SPX",
+                "PUT",
+                6895.0,
+                1.5,
+                1.0,
+                1,
+                150.0,
+                1.0,
+                250.0,
+                250.0,
+                166.7,
+                54571.0,
+                "scoped trade",
+                now_iso(),
+            ),
         )
-        conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            ("starting_balance", "50000"),
-        )
+
+    resp = client.get("/dashboard?y=2026&m=2&scope=active", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Active Account Balance" in resp.data
+    assert b"Start $52,000.00" in resp.data
+    assert b"Scoped account balance with calendar context." in resp.data
+    assert b"Daily P/L calendar view for <strong>Active Account</strong>" in resp.data
+    assert b'data-balance="$52,250.00"' in resp.data
+    assert b'data-balance="$54,321.00"' not in resp.data
+
+
+def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("pass123"))
+    set_setting_value("starting_balance", "50000")
+    with db() as conn:
         conn.execute(
             """
             INSERT INTO trades (

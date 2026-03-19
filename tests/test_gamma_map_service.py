@@ -149,3 +149,56 @@ def test_fetch_spx_chain_for_expiries_does_not_fallback_when_tradier_is_empty(mo
     out = svc.fetch_spx_chain_for_expiries(["2026-03-17"])
 
     assert out.empty
+
+
+def test_eod_gamma_notification_context_opens_after_curb_close(monkeypatch):
+    monkeypatch.setattr(svc, "_load_gamma_notify_state", lambda: {})
+    snapshot = {"diagnostics": {"expirations": ["2026-03-17", "2026-03-18"]}}
+
+    current = datetime(2026, 3, 17, 17, 10, tzinfo=app_runtime.TZ)
+    context = svc._eod_gamma_notification_context(snapshot, now_et=current)
+
+    assert context is not None
+    assert context["target_expiry"] == "2026-03-18"
+
+
+def test_eod_gamma_notification_context_skips_before_window(monkeypatch):
+    monkeypatch.setattr(svc, "_load_gamma_notify_state", lambda: {})
+    snapshot = {"diagnostics": {"expirations": ["2026-03-17", "2026-03-18"]}}
+
+    current = datetime(2026, 3, 17, 16, 59, tzinfo=app_runtime.TZ)
+
+    assert svc._eod_gamma_notification_context(snapshot, now_et=current) is None
+
+
+def test_maybe_emit_eod_gamma_notification_sends_once_per_target(monkeypatch):
+    state = {}
+    sent: list[dict] = []
+
+    monkeypatch.setattr(svc, "_load_gamma_notify_state", lambda: dict(state))
+
+    def _save(payload):
+        state.clear()
+        state.update(payload)
+
+    monkeypatch.setattr(svc, "_save_gamma_notify_state", _save)
+    monkeypatch.setattr(
+        svc,
+        "_send_eod_gamma_notification",
+        lambda snapshot, context: sent.append({"snapshot": snapshot, "context": context}),
+    )
+    snapshot = {
+        "spot": 5662.25,
+        "gamma_flip": 5655.0,
+        "call_wall": 5700.0,
+        "put_wall": 5625.0,
+        "asof": "2026-03-17T21:10:00+00:00",
+        "diagnostics": {"expirations": ["2026-03-17", "2026-03-18"]},
+    }
+    current = datetime(2026, 3, 17, 17, 15, tzinfo=app_runtime.TZ)
+
+    svc._maybe_emit_eod_gamma_notification(snapshot, now_et=current)
+    svc._maybe_emit_eod_gamma_notification(snapshot, now_et=current)
+
+    assert len(sent) == 1
+    assert state["last_target_expiry"] == "2026-03-18"

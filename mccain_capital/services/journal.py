@@ -240,12 +240,16 @@ def new_entry():
 
     prefill_date = (request.args.get("d") or "").strip()
     entry_date = prefill_date or _default_entry_date_for_journal()
+    auto_draft = (request.args.get("auto_draft") or "0").strip() == "1"
+    link_all_arg = (request.args.get("link_all_day") or "").strip()
+    link_all_day = "1" if link_all_arg == "1" or (not link_all_arg and auto_draft) else "0"
+    hydrate_trade_context = link_all_day == "1" or auto_draft
     initial_values = {
         "entry_date": entry_date,
         "entry_type": (request.args.get("entry_type") or "post_market").strip() or "post_market",
-        "auto_draft": "1" if (request.args.get("auto_draft") or "0").strip() == "1" else "0",
+        "auto_draft": "1" if auto_draft else "0",
         "quick_capture": "1" if (request.args.get("quick_capture") or "0").strip() == "1" else "0",
-        "link_all_day": "1" if (request.args.get("link_all_day") or "1").strip() == "1" else "0",
+        "link_all_day": link_all_day,
         "market": (request.args.get("market") or "").strip(),
         "setup": (request.args.get("setup") or "").strip(),
         "grade": (request.args.get("grade") or "").strip(),
@@ -256,12 +260,14 @@ def new_entry():
         "capture_screenshot_path": (request.args.get("capture_screenshot_path") or "").strip(),
         "capture_screenshot_note": (request.args.get("capture_screenshot_note") or "").strip(),
     }
-    selected_ids = _trade_ids_for_date(entry_date) if initial_values["link_all_day"] == "1" else []
+    selected_ids = _trade_ids_for_date(entry_date) if link_all_day == "1" else []
     scaffold = _build_debrief_scaffold(
         entry_date,
         initial_values["entry_type"],
         selected_ids,
-        auto_draft=initial_values["auto_draft"] == "1",
+        auto_draft=auto_draft,
+        hydrate_from_trades=hydrate_trade_context,
+        include_market_context=hydrate_trade_context,
     )
     if not initial_values["template_notes"]:
         initial_values["template_notes"] = scaffold["template_notes"]
@@ -639,10 +645,10 @@ def _default_entry_date_for_journal() -> str:
     if _trade_ids_for_date(today):
         return today
 
-    all_trades = trades_repo.fetch_trades(d="", q="")
-    if not all_trades:
+    latest_trade_day = trades_repo.fetch_latest_trade_date()
+    if not latest_trade_day:
         return today
-    return str(dict(all_trades[0]).get("trade_date") or today)
+    return latest_trade_day
 
 
 def _format_entry_date(value: Any) -> str:
@@ -678,7 +684,13 @@ def _linked_trade_ids_from_form(entry_date: str, form: Any) -> List[int]:
 
 
 def _build_debrief_scaffold(
-    entry_date: str, entry_type: str, linked_trade_ids: List[int], *, auto_draft: bool = False
+    entry_date: str,
+    entry_type: str,
+    linked_trade_ids: List[int],
+    *,
+    auto_draft: bool = False,
+    hydrate_from_trades: bool = True,
+    include_market_context: bool = True,
 ) -> Dict[str, str]:
     entry_kind = (entry_type or "").strip() or "post_market"
     if entry_kind == "pre_market":
@@ -686,6 +698,31 @@ def _build_debrief_scaffold(
             "template_notes": "Planned levels, catalysts, invalidation, and risk limits for the session.",
             "notes": "",
             "pnl": None,
+        }
+
+    if not hydrate_from_trades:
+        return {
+            "template_notes": "",
+            "notes": "\n".join(
+                [
+                    "What I saw:",
+                    "- Day context / market behavior:",
+                    "- Best setup or read:",
+                    "",
+                    "What I did:",
+                    "- Risk and execution summary:",
+                    "- Rule adherence / mistakes:",
+                    "",
+                    "What I learned:",
+                    "- Keep doing:",
+                    "- Stop doing:",
+                    "- Next session adjustment:",
+                ]
+            ),
+            "pnl": None,
+            "market": "",
+            "setup": "",
+            "mood": "",
         }
 
     trades = _trade_options_for_date(entry_date)
@@ -738,7 +775,7 @@ def _build_debrief_scaffold(
     )
     best_trade = sorted_trades[0] if sorted_trades else None
     worst_trade = sorted_trades[-1] if sorted_trades else None
-    market_context = _debrief_market_context(entry_date)
+    market_context = _debrief_market_context(entry_date) if include_market_context else {}
     template_lines = [
         f"Session date: {entry_date}",
         f"Trades linked: {len(trades)}",

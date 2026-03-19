@@ -31,6 +31,9 @@ WEEKEND_POLL_SECONDS = 1800
 MAX_SNAPSHOT_PAGES = 8
 CSV_FILENAME = "gamma_data.csv"
 PNG_FILENAME = "gamma_map.png"
+EOD_GAMMA_NOTIFY_ENABLED = os.environ.get("EOD_GAMMA_NOTIFY_ENABLED", "1") == "1"
+EOD_GAMMA_NOTIFY_TIME_ET = (os.environ.get("EOD_GAMMA_NOTIFY_TIME_ET") or "17:10").strip()
+EOD_GAMMA_NOTIFY_END_ET = (os.environ.get("EOD_GAMMA_NOTIFY_END_ET") or "19:30").strip()
 
 _LOCK = threading.Lock()
 _STARTED = False
@@ -91,6 +94,39 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _gamma_notify_state_path() -> str:
+    return app_runtime.upload_path(".gamma_notify_state.json")
+
+
+def _load_gamma_notify_state() -> Dict[str, Any]:
+    try:
+        with open(_gamma_notify_state_path(), "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+            return payload if isinstance(payload, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_gamma_notify_state(payload: Dict[str, Any]) -> None:
+    try:
+        with open(_gamma_notify_state_path(), "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2, sort_keys=True)
+    except OSError:
+        return
+
+
+def _parse_hhmm(raw: str, *, default: str) -> int:
+    text = str(raw or "").strip() or default
+    try:
+        hour_text, minute_text = text.split(":", 1)
+        hour = max(0, min(23, int(hour_text)))
+        minute = max(0, min(59, int(minute_text)))
+        return (hour * 60) + minute
+    except Exception:
+        hour_text, minute_text = default.split(":", 1)
+        return (int(hour_text) * 60) + int(minute_text)
+
+
 def _gamma_poll_seconds(now_et: Optional[datetime] = None) -> int:
     current = now_et.astimezone(app_runtime.TZ) if now_et else app_runtime.now_et()
     if current.weekday() >= 5:
@@ -118,6 +154,13 @@ def _safe_int(v: Any) -> int:
         return int(float(v or 0))
     except Exception:
         return 0
+
+
+def _fmt_level(value: Any) -> str:
+    level = _safe_float(value)
+    if level is None:
+        return "n/a"
+    return f"{level:,.0f}"
 
 
 def _massive_api_key() -> str:
@@ -610,6 +653,85 @@ def _abbrev_billions(value: float) -> str:
     return f"{value:.0f}"
 
 
+def _eod_gamma_notification_context(
+    snapshot: Dict[str, Any], now_et: Optional[datetime] = None
+) -> Dict[str, Any] | None:
+    if not EOD_GAMMA_NOTIFY_ENABLED:
+        return None
+    current = now_et.astimezone(app_runtime.TZ) if now_et else app_runtime.now_et()
+    if current.weekday() >= 5:
+        return None
+    minutes = current.hour * 60 + current.minute
+    start_minutes = _parse_hhmm(EOD_GAMMA_NOTIFY_TIME_ET, default="17:10")
+    end_minutes = _parse_hhmm(EOD_GAMMA_NOTIFY_END_ET, default="19:30")
+    if minutes < start_minutes or minutes > end_minutes:
+        return None
+
+    diagnostics = snapshot.get("diagnostics") if isinstance(snapshot, dict) else {}
+    expirations = diagnostics.get("expirations") if isinstance(diagnostics, dict) else []
+    if not isinstance(expirations, list) or len(expirations) < 2:
+        return None
+    target_expiry = str(expirations[1] or "").strip()
+    if not target_expiry:
+        return None
+
+    state = _load_gamma_notify_state()
+    if str(state.get("last_target_expiry") or "") == target_expiry:
+        return None
+
+    return {
+        "trade_date": current.date().isoformat(),
+        "target_expiry": target_expiry,
+        "window_start_et": EOD_GAMMA_NOTIFY_TIME_ET,
+        "window_end_et": EOD_GAMMA_NOTIFY_END_ET,
+    }
+
+
+def _send_eod_gamma_notification(snapshot: Dict[str, Any], context: Dict[str, Any]) -> None:
+    from mccain_capital.services import trades as trades_service
+
+    target_expiry = str(context.get("target_expiry") or "").strip()
+    flip = _fmt_level(snapshot.get("gamma_flip"))
+    call_wall = _fmt_level(snapshot.get("call_wall"))
+    put_wall = _fmt_level(snapshot.get("put_wall"))
+    spot = _safe_float(snapshot.get("spot"))
+    spot_text = f"{spot:,.2f}" if spot is not None else "n/a"
+    message = (
+        f"Preliminary SPX gamma levels for {target_expiry} are ready for charting after the "
+        f"5:00 PM ET curb close. Spot {spot_text} · flip {flip} · call wall {call_wall} · "
+        f"put wall {put_wall}. Recheck pre-open for the final open-interest-backed view."
+    )
+    trades_service._emit_notification(
+        "gamma_levels_ready",
+        "Next-Day SPX Gamma Ready",
+        message,
+        extra={
+            "target_expiry": target_expiry,
+            "asof": str(snapshot.get("asof") or ""),
+            "spot": spot,
+            "gamma_flip": _safe_float(snapshot.get("gamma_flip")),
+            "call_wall": _safe_float(snapshot.get("call_wall")),
+            "put_wall": _safe_float(snapshot.get("put_wall")),
+        },
+    )
+
+
+def _maybe_emit_eod_gamma_notification(
+    snapshot: Dict[str, Any], now_et: Optional[datetime] = None
+) -> None:
+    context = _eod_gamma_notification_context(snapshot, now_et=now_et)
+    if not context:
+        return
+    _send_eod_gamma_notification(snapshot, context)
+    _save_gamma_notify_state(
+        {
+            "last_trade_date": str(context.get("trade_date") or ""),
+            "last_target_expiry": str(context.get("target_expiry") or ""),
+            "last_notified_at": app_runtime.now_iso(),
+        }
+    )
+
+
 def run_gamma_refresh_once() -> Dict[str, Any]:
     started = time.time()
     today = app_runtime.today_iso()
@@ -681,6 +803,7 @@ def run_gamma_refresh_once() -> Dict[str, Any]:
     with _LOCK:
         _CACHE.clear()
         _CACHE.update(snapshot)
+    _maybe_emit_eod_gamma_notification(snapshot)
     return json.loads(json.dumps(snapshot))
 
 

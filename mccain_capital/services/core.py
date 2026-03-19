@@ -2229,7 +2229,12 @@ def dashboard():
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
 
-    heat = trades_repo.month_heatmap(year, month)
+    heat = trades_repo.month_heatmap(
+        year,
+        month,
+        start_date=scope_start if scope_active else "",
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
     prev_y, prev_m = (year, month - 1)
     next_y, next_m = (year, month + 1)
     if prev_m == 0:
@@ -2245,6 +2250,13 @@ def dashboard():
         starting_balance=scope_starting_balance if scope_active else None,
     )
     overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
+    trajectory_title = "Active Account Balance" if scope_active else "Capital Trajectory"
+    trajectory_caption = (
+        "Scoped account balance with calendar context."
+        if scope_active
+        else "Live account balance with calendar context."
+    )
+    calendar_scope_label = "Active Account" if scope_active else "All History"
     sync_status = get_system_status()
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
     balance_badges = balance_state_badges(balance_integrity)
@@ -2799,6 +2811,9 @@ def dashboard():
         next_m=next_m,
         month_name=month_name,
         overall_balance=overall_balance,
+        trajectory_title=trajectory_title,
+        trajectory_caption=trajectory_caption,
+        calendar_scope_label=calendar_scope_label,
         balance_integrity=balance_integrity,
         balance_badges=balance_badges,
         sync_status=sync_status,

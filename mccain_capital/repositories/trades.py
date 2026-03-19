@@ -41,6 +41,20 @@ def fetch_trades(d: str = "", q: str = ""):
         return list(conn.execute(sql, params).fetchall())
 
 
+def fetch_latest_trade_date() -> str:
+    with db() as conn:
+        row = conn.execute(
+            """
+            SELECT trade_date
+            FROM trades
+            WHERE COALESCE(trade_date, '') <> ''
+            ORDER BY trade_date DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    return str(row["trade_date"] or "").strip() if row else ""
+
+
 def fetch_trades_range(start_iso: str, end_iso: str):
     with db() as conn:
         return list(
@@ -626,13 +640,35 @@ def balance_integrity_snapshot(
     return out
 
 
-def month_heatmap(year: int, month: int) -> Dict[str, Any]:
+def month_heatmap(
+    year: int,
+    month: int,
+    *,
+    start_date: str = "",
+    starting_balance: float | None = None,
+) -> Dict[str, Any]:
     first = date(year, month, 1)
     nxt = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
     days_in_month = (nxt - first).days
     with db() as conn:
+        where = ["trade_date >= ?", "trade_date < ?"]
+        params: list[Any] = [first.isoformat(), nxt.isoformat()]
+        bal_where = ["trade_date >= ?", "trade_date < ?", "balance IS NOT NULL"]
+        bal_params: list[Any] = [first.isoformat(), nxt.isoformat()]
+        if start_date:
+            where.append("trade_date >= ?")
+            params.append(str(start_date))
+            bal_where.append("trade_date >= ?")
+            bal_params.append(str(start_date))
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+        except Exception:
+            cols = []
+        if "ticker" in cols:
+            where.append("COALESCE(ticker, '') <> 'ACCT'")
+            bal_where.append("COALESCE(ticker, '') <> 'ACCT'")
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 trade_date,
                 COALESCE(SUM(net_pl), 0) AS net,
@@ -640,20 +676,41 @@ def month_heatmap(year: int, month: int) -> Dict[str, Any]:
                 SUM(CASE WHEN COALESCE(net_pl, 0) > 0 THEN 1 ELSE 0 END) AS wins,
                 SUM(CASE WHEN COALESCE(net_pl, 0) < 0 THEN 1 ELSE 0 END) AS losses
             FROM trades
-            WHERE trade_date >= ? AND trade_date < ?
+            WHERE {' AND '.join(where)}
             GROUP BY trade_date
             """,
-            (first.isoformat(), nxt.isoformat()),
+            params,
         ).fetchall()
         bal_rows = conn.execute(
-            """
+            f"""
             SELECT trade_date, balance, id
             FROM trades
-            WHERE trade_date >= ? AND trade_date < ? AND balance IS NOT NULL
+            WHERE {' AND '.join(bal_where)}
             ORDER BY trade_date ASC, id ASC
             """,
-            (first.isoformat(), nxt.isoformat()),
+            bal_params,
         ).fetchall()
+        pre_balance = None
+        if start_date:
+            pre_where = ["trade_date < ?", "balance IS NOT NULL"]
+            pre_params: list[Any] = [str(start_date)]
+            if "ticker" in cols:
+                pre_where.append("COALESCE(ticker, '') <> 'ACCT'")
+            pre_row = conn.execute(
+                f"""
+                SELECT balance
+                FROM trades
+                WHERE {' AND '.join(pre_where)}
+                ORDER BY trade_date DESC, id DESC
+                LIMIT 1
+                """,
+                pre_params,
+            ).fetchone()
+            if pre_row and pre_row["balance"] is not None:
+                try:
+                    pre_balance = float(pre_row["balance"])
+                except Exception:
+                    pre_balance = None
     daily_stats = {
         r["trade_date"]: {
             "net": float(r["net"] or 0.0),
@@ -664,9 +721,20 @@ def month_heatmap(year: int, month: int) -> Dict[str, Any]:
         for r in rows
     }
     daily_balance: Dict[str, float] = {}
+    scoped_start = (
+        float(starting_balance)
+        if starting_balance is not None
+        else float(get_setting_float("starting_balance", 50000.0))
+    )
+    global_start = float(get_setting_float("starting_balance", 50000.0))
     for r in bal_rows:
         try:
-            daily_balance[r["trade_date"]] = float(r["balance"])
+            raw_balance = float(r["balance"])
+            if start_date:
+                baseline = pre_balance if pre_balance is not None else global_start
+                daily_balance[r["trade_date"]] = scoped_start + (raw_balance - baseline)
+            else:
+                daily_balance[r["trade_date"]] = raw_balance
         except Exception:
             pass
     start_weekday = (first.weekday() + 1) % 7
