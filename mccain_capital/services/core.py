@@ -74,6 +74,8 @@ MARKET_NEWS_FRESH_SECONDS = 12 * 60 * 60
 MARKET_NEWS_MAX_AGE_SECONDS = 36 * 60 * 60
 WATCHLIST_NEWS_MAX_AGE_SECONDS = 48 * 60 * 60
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
+GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
+GAMMA_SPOT_TIMESTAMP_DRIFT_SECONDS = 120
 FINNHUB_API_KEY = (os.environ.get("FINNHUB_API_KEY") or "").strip()
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 MARKET_PULSE_QUOTES_URLS: Tuple[str, ...] = (
@@ -266,6 +268,19 @@ def _format_iso_et_label(value: Any) -> str:
         return dt.astimezone(app_runtime.TZ).strftime("%b %d, %Y %I:%M:%S %p ET")
     except Exception:
         return text
+
+
+def _parse_iso_et(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=app_runtime.TZ)
+        return dt.astimezone(app_runtime.TZ)
+    except Exception:
+        return None
 
 
 def _market_pulse_json_request_any(url: str, params: Dict[str, Any], timeout: int = 4) -> Any:
@@ -1188,10 +1203,45 @@ def _gamma_data_quality(
             oi_age = "unknown"
 
     contracts_used = int(((gamma_snapshot.get("diagnostics") or {}).get("contracts_used")) or 0)
+    gamma_spot = gamma_snapshot.get("spot_price_used", gamma_snapshot.get("spot"))
+    gamma_spot_value = None
+    try:
+        gamma_spot_value = float(gamma_spot) if gamma_spot is not None else None
+    except Exception:
+        gamma_spot_value = None
+    spot_value = spx.get("price")
+    live_spot_ts = _parse_iso_et(spx.get("asof") or spx.get("as_of"))
+    gamma_spot_ts = _parse_iso_et(gamma_snapshot.get("spot_source_timestamp"))
+    spot_mismatch = (
+        isinstance(spot_value, (int, float))
+        and gamma_spot_value is not None
+        and abs(float(spot_value) - float(gamma_spot_value)) > GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD
+    )
+    timestamp_mismatch = (
+        live_spot_ts is not None
+        and gamma_spot_ts is not None
+        and abs(int((live_spot_ts - gamma_spot_ts).total_seconds())) > GAMMA_SPOT_TIMESTAMP_DRIFT_SECONDS
+    )
+    stale_flags = {str(flag) for flag in (gamma_snapshot.get("stale_flags") or [])}
     warning = ""
     if gamma_status == "error":
         tone = "critical"
         warning = "Gamma refresh error"
+    elif spot_mismatch:
+        tone = "critical"
+        warning = "Spot source mismatch"
+    elif timestamp_mismatch:
+        tone = "warn"
+        warning = "Spot timestamp drift"
+    elif "stale_gamma_source" in stale_flags:
+        tone = "critical"
+        warning = "Gamma source stale"
+    elif "missing_expiries" in stale_flags:
+        tone = "warn"
+        warning = "Next expiry missing"
+    elif "no_valid_gamma_flip" in stale_flags:
+        tone = "warn"
+        warning = "No valid gamma flip"
     elif age_s is None:
         tone = "critical"
         warning = "Gamma timestamp missing"
@@ -3017,7 +3067,14 @@ def market_pulse_page():
         except Exception:
             options_contracts = []
     news_snapshot = _market_news_snapshot()
-    gamma_updated_label = _format_iso_et_label(gamma_snapshot.get("asof")) or "—"
+    gamma_updated_label = (
+        _format_iso_et_label(
+            gamma_snapshot.get("last_successful_compute")
+            or gamma_snapshot.get("computed_at")
+            or gamma_snapshot.get("asof")
+        )
+        or "—"
+    )
     quotes = _market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
     if not current_app.config.get("TESTING"):
         try:
@@ -3033,6 +3090,46 @@ def market_pulse_page():
             pass
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
+    try:
+        page_spot = float(spx_quote.get("price")) if spx_quote.get("price") is not None else None
+        gamma_spot = (
+            float(gamma_snapshot.get("spot_price_used"))
+            if gamma_snapshot.get("spot_price_used") is not None
+            else None
+        )
+    except Exception:
+        page_spot = None
+        gamma_spot = None
+    page_spot_ts = _parse_iso_et(spx_quote.get("asof") or spx_quote.get("as_of"))
+    gamma_spot_ts = _parse_iso_et(gamma_snapshot.get("spot_source_timestamp"))
+    if (
+        page_spot is not None
+        and gamma_spot is not None
+        and abs(page_spot - gamma_spot) > GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD
+    ):
+        stale_flags = list(gamma_snapshot.get("stale_flags") or [])
+        if "spot_source_mismatch" not in stale_flags:
+            stale_flags.append("spot_source_mismatch")
+        gamma_snapshot["stale_flags"] = stale_flags
+        warnings = list(gamma_snapshot.get("warnings") or [])
+        warning_text = "SPX quote and gamma compute spot are materially different."
+        if warning_text not in warnings:
+            warnings.append(warning_text)
+        gamma_snapshot["warnings"] = warnings
+    if (
+        page_spot_ts is not None
+        and gamma_spot_ts is not None
+        and abs(int((page_spot_ts - gamma_spot_ts).total_seconds())) > GAMMA_SPOT_TIMESTAMP_DRIFT_SECONDS
+    ):
+        stale_flags = list(gamma_snapshot.get("stale_flags") or [])
+        if "spot_timestamp_drift" not in stale_flags:
+            stale_flags.append("spot_timestamp_drift")
+        gamma_snapshot["stale_flags"] = stale_flags
+        warnings = list(gamma_snapshot.get("warnings") or [])
+        warning_text = "SPX quote and gamma compute spot timestamps are materially different."
+        if warning_text not in warnings:
+            warnings.append(warning_text)
+        gamma_snapshot["warnings"] = warnings
     quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
     series_points = {
         str(q.get("label") or q.get("symbol") or ""): list(q.get("series") or [])

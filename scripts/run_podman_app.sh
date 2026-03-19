@@ -10,10 +10,22 @@ DATA_DIR="${DATA_DIR:-$ROOT_DIR/persistent-data}"
 PODMAN_BIN="${PODMAN_BIN:-$(command -v podman || echo /opt/homebrew/bin/podman)}"
 RG_BIN="${RG_BIN:-$(command -v rg || echo /opt/homebrew/bin/rg)}"
 CURL_BIN="${CURL_BIN:-$(command -v curl || echo /usr/bin/curl)}"
+REPAIR_DB_SCRIPT="${REPAIR_DB_SCRIPT:-$ROOT_DIR/scripts/repair_sqlite_mount_db.sh}"
+STAMP_SCRIPT="${STAMP_SCRIPT:-$ROOT_DIR/scripts/current_repo_stamp.sh}"
+STAMP_FILE="${STAMP_FILE:-$DATA_DIR/.podman-image-repo-stamp}"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 mkdir -p "$DATA_DIR/uploads" "$DATA_DIR/books"
+
+if [[ -x "$REPAIR_DB_SCRIPT" ]]; then
+  "$REPAIR_DB_SCRIPT" "$DATA_DIR" || true
+fi
+
+current_stamp=""
+if [[ -x "$STAMP_SCRIPT" ]]; then
+  current_stamp="$("$STAMP_SCRIPT")"
+fi
 
 cd "$ROOT_DIR"
 
@@ -47,5 +59,8 @@ done
 
 "$CURL_BIN" -sf "http://127.0.0.1:${HOST_PORT}/healthz"
 echo
+if [[ -n "$current_stamp" ]]; then
+  printf '%s\n' "$current_stamp" > "$STAMP_FILE"
+fi
 echo "[run_podman_app] container is up"
 echo "[run_podman_app] local: http://127.0.0.1:${HOST_PORT}"

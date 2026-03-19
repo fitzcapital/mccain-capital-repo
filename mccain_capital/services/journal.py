@@ -64,9 +64,12 @@ def journal_home():
         entry["entry_date_display"] = _format_entry_date(entry.get("entry_date"))
         entry["updated_at_display"] = _format_updated_timestamp(entry.get("updated_at"))
         payload = _safe_template_payload(entry.get("template_payload"))
-        screenshot_path = str(payload.get("capture_screenshot_path") or "").strip()
+        capture_paths = _capture_paths_from_payload(payload)
+        screenshot_path = str(capture_paths[0] if capture_paths else "").strip()
         entry["capture_screenshot_path"] = screenshot_path
         entry["capture_screenshot_href"] = _capture_href(screenshot_path)
+        entry["capture_screenshot_paths"] = capture_paths
+        entry["capture_screenshot_hrefs"] = [_capture_href(path) for path in capture_paths]
         entry["capture_screenshot_note"] = str(payload.get("capture_screenshot_note") or "").strip()
         note_view = _render_note_sections(str(entry.get("notes") or "").strip())
         entry["note_sections"] = note_view["sections"]
@@ -199,15 +202,19 @@ def new_entry():
         linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
-        screenshot_path = _save_capture_upload(request.files.get("capture_screenshot"), entry_date)
-        if not screenshot_path:
-            screenshot_path = (f.get("existing_capture_screenshot_path") or "").strip()
+        screenshot_paths = _merge_capture_paths(
+            _existing_capture_paths_from_form(f),
+            _save_capture_uploads(request.files.getlist("capture_screenshot"), entry_date),
+        )
+        screenshot_path = str(screenshot_paths[0] if screenshot_paths else "").strip()
         screenshot_note = (f.get("capture_screenshot_note") or "").strip()
         if not notes:
             values = dict(f)
             values["entry_date"] = entry_date
             values["capture_screenshot_path"] = screenshot_path
             values["capture_screenshot_href"] = _capture_href(screenshot_path)
+            values["capture_screenshot_paths"] = screenshot_paths
+            values["capture_screenshot_hrefs"] = [_capture_href(path) for path in screenshot_paths]
             return render_page(
                 _entry_form(
                     "new",
@@ -230,7 +237,7 @@ def new_entry():
                 "notes": notes,
                 "entry_type": entry_type,
                 "template_payload": _entry_template_payload(
-                    template_notes, screenshot_path, screenshot_note
+                    template_notes, screenshot_paths, screenshot_note
                 ),
             }
         )
@@ -284,6 +291,16 @@ def new_entry():
     initial_values["capture_screenshot_href"] = _capture_href(
         initial_values["capture_screenshot_path"]
     )
+    initial_values["capture_screenshot_paths"] = (
+        [initial_values["capture_screenshot_path"]]
+        if initial_values["capture_screenshot_path"]
+        else []
+    )
+    initial_values["capture_screenshot_hrefs"] = (
+        [initial_values["capture_screenshot_href"]]
+        if initial_values["capture_screenshot_href"]
+        else []
+    )
     return render_page(
         _entry_form(
             "new",
@@ -309,15 +326,19 @@ def edit_entry(entry_id: int):
         linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
-        screenshot_path = _save_capture_upload(request.files.get("capture_screenshot"), entry_date)
-        if not screenshot_path:
-            screenshot_path = (f.get("existing_capture_screenshot_path") or "").strip()
+        screenshot_paths = _merge_capture_paths(
+            _existing_capture_paths_from_form(f),
+            _save_capture_uploads(request.files.getlist("capture_screenshot"), entry_date),
+        )
+        screenshot_path = str(screenshot_paths[0] if screenshot_paths else "").strip()
         screenshot_note = (f.get("capture_screenshot_note") or "").strip()
         if not notes:
             values = dict(f)
             values["entry_date"] = entry_date
             values["capture_screenshot_path"] = screenshot_path
             values["capture_screenshot_href"] = _capture_href(screenshot_path)
+            values["capture_screenshot_paths"] = screenshot_paths
+            values["capture_screenshot_hrefs"] = [_capture_href(path) for path in screenshot_paths]
             return render_page(
                 _entry_form(
                     "edit",
@@ -342,7 +363,7 @@ def edit_entry(entry_id: int):
                 "notes": notes,
                 "entry_type": entry_type,
                 "template_payload": _entry_template_payload(
-                    template_notes, screenshot_path, screenshot_note
+                    template_notes, screenshot_paths, screenshot_note
                 ),
             },
         )
@@ -355,8 +376,11 @@ def edit_entry(entry_id: int):
         values["pnl"] = ""
     payload = _safe_template_payload(values.get("template_payload"))
     values["template_notes"] = payload.get("template_notes", "")
-    values["capture_screenshot_path"] = str(payload.get("capture_screenshot_path") or "").strip()
+    capture_paths = _capture_paths_from_payload(payload)
+    values["capture_screenshot_path"] = str(capture_paths[0] if capture_paths else "").strip()
     values["capture_screenshot_href"] = _capture_href(values["capture_screenshot_path"])
+    values["capture_screenshot_paths"] = capture_paths
+    values["capture_screenshot_hrefs"] = [_capture_href(path) for path in capture_paths]
     values["capture_screenshot_note"] = str(payload.get("capture_screenshot_note") or "").strip()
     linked_ids = repo.fetch_entry_trade_ids(entry_id)
     values["linked_trade_ids"] = ",".join(str(i) for i in linked_ids)
@@ -399,11 +423,13 @@ def journal_capture_asset(name: str):
 
 
 def _entry_template_payload(
-    template_notes: str, screenshot_path: str, screenshot_note: str = ""
+    template_notes: str, screenshot_paths: List[str], screenshot_note: str = ""
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"template_notes": template_notes}
-    if screenshot_path:
-        payload["capture_screenshot_path"] = screenshot_path
+    clean_paths = _merge_capture_paths([], screenshot_paths)
+    if clean_paths:
+        payload["capture_screenshot_path"] = clean_paths[0]
+        payload["capture_screenshots"] = clean_paths
     if screenshot_note:
         payload["capture_screenshot_note"] = screenshot_note
     return payload
@@ -482,6 +508,54 @@ def _save_capture_upload(upload: Any, entry_date: str) -> str:
     abs_path = app_runtime.upload_path(rel_dir, stored)
     upload.save(abs_path)
     return os.path.join(rel_dir, stored).replace("\\", "/")
+
+
+def _save_capture_uploads(uploads: List[Any], entry_date: str) -> List[str]:
+    saved: List[str] = []
+    for upload in uploads or []:
+        saved_path = _save_capture_upload(upload, entry_date)
+        if saved_path:
+            saved.append(saved_path)
+    return saved
+
+
+def _merge_capture_paths(existing: List[str], uploaded: List[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for raw in list(existing or []) + list(uploaded or []):
+        path = str(raw or "").strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        out.append(path)
+    return out
+
+
+def _capture_paths_from_payload(payload: Dict[str, Any]) -> List[str]:
+    paths: List[str] = []
+    raw_many = payload.get("capture_screenshots")
+    if isinstance(raw_many, list):
+        for item in raw_many:
+            path = str(item or "").strip()
+            if path:
+                paths.append(path)
+    legacy = str(payload.get("capture_screenshot_path") or "").strip()
+    if legacy and legacy not in paths:
+        paths.insert(0, legacy)
+    return _merge_capture_paths([], paths)
+
+
+def _existing_capture_paths_from_form(form: Any) -> List[str]:
+    raw_many = str(form.get("existing_capture_screenshot_paths") or "").strip()
+    if raw_many:
+        try:
+            parsed = json.loads(raw_many)
+            if isinstance(parsed, list):
+                return _merge_capture_paths([], [str(item or "").strip() for item in parsed])
+        except Exception:
+            pass
+    legacy = str(form.get("existing_capture_screenshot_path") or "").strip()
+    return [legacy] if legacy else []
 
 
 def _weekly_coach_rule(top_break: str, strongest_setup: str, strongest_session: str) -> str:

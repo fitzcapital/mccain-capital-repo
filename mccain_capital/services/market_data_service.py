@@ -674,8 +674,27 @@ def _yf_watch_quote(symbol: str) -> Dict[str, Any]:
 
 
 def get_price(symbol: str) -> Optional[float]:
-    tq = _tradier_quote_map([symbol]).get(str(symbol or "").strip().upper(), {})
-    return _safe_float(tq.get("price"))
+    snapshot = get_price_snapshot(symbol)
+    return _safe_float(snapshot.get("value"))
+
+
+def get_price_snapshot(symbol: str) -> Dict[str, Any]:
+    """Return a point-in-time spot snapshot with provenance.
+
+    Gamma and Market Pulse trust checks need both the observed value and the
+    source timing metadata so snapshot consumers can reason about value drift
+    and timestamp drift separately.
+    """
+
+    normalized = str(symbol or "").strip().upper()
+    tq = _tradier_quote_map([normalized]).get(normalized, {})
+    return {
+        "symbol": normalized,
+        "value": _safe_float(tq.get("price")),
+        "source_name": str(tq.get("provider") or "tradier"),
+        "source_timestamp": str(tq.get("as_of") or _now_iso()),
+        "raw": dict(tq or {}),
+    }
 
 
 def get_intraday(symbol: str) -> List[Dict[str, Any]]:

@@ -11890,6 +11890,36 @@ textarea:focus-visible{
     border-radius:12px;
   }
 
+  .page-dashboard .dashboardHeroActionBar{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .page-dashboard .dashboardHeroPriority{
+    width:100%;
+    gap:4px;
+  }
+
+  .page-dashboard .dashboardHeroPriorityText{
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+  }
+
+  .page-dashboard .dashboardHeroPrimaryActions{
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr;
+    align-items:stretch;
+    justify-content:stretch;
+    flex-shrink:1;
+  }
+
+  .page-dashboard .dashboardHeroPrimaryActions .btn{
+    width:100%;
+    min-width:0;
+  }
+
   .page-dashboard .dashboardCommandBody{
     grid-template-columns:1fr;
     gap:10px;

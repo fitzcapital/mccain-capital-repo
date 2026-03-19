@@ -2,6 +2,8 @@
 
 from io import BytesIO
 
+from werkzeug.datastructures import MultiDict
+
 from mccain_capital.repositories import journal as repo
 from mccain_capital.runtime import db, now_iso
 from mccain_capital.services import journal as journal_service
@@ -466,3 +468,44 @@ def test_quick_capture_upload_saves_screenshot_and_serves_asset(client):
 
     asset = client.get(f"/journal/captures/{screenshot_path}", follow_redirects=True)
     assert asset.status_code == 200
+
+
+def test_quick_capture_upload_saves_multiple_images(client):
+    payload = MultiDict(
+        [
+            ("entry_date", "2026-02-26"),
+            ("market", "SPX"),
+            ("setup", "Quick Capture"),
+            ("grade", "B"),
+            ("mood", "Focused"),
+            ("pnl", ""),
+            ("entry_type", "trade_debrief"),
+            ("quick_capture", "1"),
+            ("template_notes", ""),
+            ("notes", "Two-image note."),
+            ("capture_screenshot", (BytesIO(b"\x89PNG\r\n\x1a\nfake-a"), "capture-a.png")),
+            ("capture_screenshot", (BytesIO(b"\x89PNG\r\n\x1a\nfake-b"), "capture-b.png")),
+        ]
+    )
+    resp = client.post(
+        "/journal/new",
+        data=payload,
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+
+    entries = repo.fetch_entries(d="2026-02-26")
+    assert len(entries) == 1
+    row = repo.get_entry(int(entries[0]["id"]))
+    payload = journal_service._safe_template_payload(row["template_payload"])
+    screenshot_paths = list(payload.get("capture_screenshots") or [])
+    assert len(screenshot_paths) == 2
+    assert screenshot_paths[0].startswith("journal-captures/2026-02-26/")
+    assert screenshot_paths[1].startswith("journal-captures/2026-02-26/")
+    assert payload.get("capture_screenshot_path") == screenshot_paths[0]
+
+    first_asset = client.get(f"/journal/captures/{screenshot_paths[0]}", follow_redirects=True)
+    second_asset = client.get(f"/journal/captures/{screenshot_paths[1]}", follow_redirects=True)
+    assert first_asset.status_code == 200
+    assert second_asset.status_code == 200

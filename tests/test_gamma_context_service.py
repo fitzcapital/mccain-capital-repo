@@ -84,6 +84,20 @@ def test_build_spx_priority_context_uses_chart_levels_for_next_walls():
     assert context["metrics"]["next_put_wall_below"] == 4980
 
 
+def test_build_spx_priority_context_labels_gamma_range_estimate_source():
+    context = svc.build_spx_priority_context(
+        spx_quote={"price": 5008},
+        gamma_snapshot={
+            "gamma_flip": 5000,
+            "call_wall": 5010,
+            "put_wall": 4990,
+            "net_gex": 1234,
+            "gamma_range_estimate": 12,
+        },
+    )
+    assert context["expected_move_source_label"] == "Wall-based gamma range"
+
+
 def test_compute_distance_metrics_infers_missing_expected_move_and_next_walls():
     metrics = svc.computeDistanceMetrics(
         {
