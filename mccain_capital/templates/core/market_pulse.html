@@ -10,7 +10,7 @@
             <div class="candleInlineNoteBody">Live market context for SPX-first trading: macro triggers, broad tape drivers, and SPX structure that can shift the session.</div>
           </details>
         </div>
-        <div class="pageSub">Macro triggers, tape drivers, and SPX structure in one decision deck.</div>
+        <div class="pageSub">Raw market state, computed gamma analytics, and rule-based SPX guidance in one decision deck.</div>
       </div>
       <div class="actionRow">
         <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
@@ -50,18 +50,18 @@
         </div>
       </div>
       <div class="marketPulseTrustCell">
-        <div class="tiny muted">Gamma snapshot</div>
+        <div class="tiny muted">Gamma model output</div>
         <div class="marketPulseTrustInline">
           <span class="trendChip marketPulseTrustChip {{ gamma_quality_tone }}">{{ gamma_quality.get('warning') or 'Gamma aligned' }}</span>
           <span class="tiny">{{ gamma_updated_label }}</span>
         </div>
-        <div class="tiny muted">{{ gamma_quality.get('summary') }}</div>
+        <div class="tiny muted">{{ gamma_quality.get('summary') }}{% if gamma_snapshot.get('warnings') %} · {{ gamma_snapshot.get('warnings')|length }} warning(s){% endif %}</div>
       </div>
       <div class="marketPulseTrustCell">
         <div class="tiny muted">Level sources</div>
         <div class="marketPulseTrustStack">
           <span class="tiny">Next walls: {{ spx_priority_context.get('next_levels_source_label') }}</span>
-          <span class="tiny">Expected move: {{ spx_priority_context.get('expected_move_source_label') }}</span>
+          <span class="tiny">Gamma range estimate: {{ spx_priority_context.get('expected_move_source_label') }}</span>
         </div>
       </div>
     </div>
@@ -149,7 +149,7 @@
   <summary class="marketPulseMobileSummary">
     <span class="pill">SPX Priority</span>
     <span class="marketPulseMobileSummaryTitle">Spot + Gamma Walls</span>
-    <span class="tiny muted">Cash index, regime, key levels</span>
+    <span class="tiny muted">Raw spot, computed gamma, interpreted read</span>
   </summary>
   <div class="toolbar" id="spxPriorityCard">
   <div class="pill">SPX Priority</div>
@@ -159,6 +159,7 @@
       <span class="tiny muted" id="spxPriorityFreshness">{{ spx_quote.get('freshness_label') or (spx_quote.get('asof') or fetched_at) }}</span>
     </div>
     <div class="k">SPX</div>
+    <div class="tiny muted">Raw market data</div>
     <div class="marketMiniSparkWrap">{{ spx_quote.get('sparkline_svg')|safe if spx_quote else '<div class="marketMiniSparkEmpty">No trend</div>' }}</div>
     <div class="v" id="spxPrioritySpotValue">
       {% if spx_quote and spx_quote.get('price') is not none %}
@@ -177,7 +178,7 @@
   <div class="tiny stack8">
     Tick Ping: <span id="spxPriorityTickPing">—</span>
   </div>
-  <div class="tiny muted">Market State</div>
+  <div class="tiny muted">Interpreted market state</div>
   <div class="optionsGammaGrid">
     <div class="optionsGammaCell">
       <div class="tiny">Dealer Regime</div>
@@ -202,21 +203,21 @@
     </div>
   </div>
 
-  <div class="tiny muted">Key Levels</div>
+  <div class="tiny muted">Computed gamma analytics</div>
   <div class="optionsGammaGrid">
     <div class="optionsGammaCell">
-      <div class="tiny">Call Wall</div>
+      <div class="tiny">Call Wall (aggregated strike gamma)</div>
       <strong id="spxPriorityCallWallValue">{% if gamma_snapshot.get('call_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Strength: <span id="spxPriorityCallWallStrength">—</span></div>
       <div class="tiny muted">Ceiling: <span id="spxPriorityResistanceQuality">—</span></div>
     </div>
     <div class="optionsGammaCell">
-      <div class="tiny">Gamma Flip</div>
+      <div class="tiny">Gamma Flip (combined basket)</div>
       <strong id="spxPriorityGammaFlipValue">{% if gamma_snapshot.get('gamma_flip') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Distance: <span id="spxPriorityDistanceFlip">—</span></div>
     </div>
     <div class="optionsGammaCell">
-      <div class="tiny">Put Wall</div>
+      <div class="tiny">Put Wall (aggregated strike gamma)</div>
       <strong id="spxPriorityPutWallValue">{% if gamma_snapshot.get('put_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Strength: <span id="spxPriorityPutWallStrength">—</span></div>
       <div class="tiny muted">Support: <span id="spxPrioritySupportQuality">—</span></div>
@@ -232,13 +233,13 @@
       <div class="tiny muted">Distance: <span id="spxPriorityDistancePut">—</span></div>
     </div>
     <div class="optionsGammaCell">
-      <div class="tiny">Expected Move</div>
+      <div class="tiny">Gamma Range Estimate</div>
       <strong id="spxPriorityExpectedMoveRange">—</strong>
       <div class="tiny muted">Data Quality: <span id="spxPriorityDataQuality">—</span></div>
     </div>
   </div>
 
-  <div class="tiny muted">Auto Read</div>
+  <div class="tiny muted">Interpreted commentary</div>
   <ul class="spxPriorityNarrative" id="spxPriorityNarrative"></ul>
 
   <div class="tiny muted">Warnings</div>
@@ -254,8 +255,25 @@
       {% set spx_metrics = spx_priority_context.get('metrics') or {} %}
       <div class="optionsGammaGrid">
         <div class="optionsGammaCell">
-          <div class="tiny">Net Gamma (raw)</div>
+          <div class="tiny">Net GEX (selected basket)</div>
           <strong id="spxPriorityNetGammaValue">{{ spx_priority_context.get('net_gamma_text') or '—' }}</strong>
+        </div>
+        <div class="optionsGammaCell">
+          <div class="tiny">Included Expiries</div>
+          <strong>{{ gamma_snapshot.get('included_expiries')|join(', ') if gamma_snapshot.get('included_expiries') else '—' }}</strong>
+        </div>
+        <div class="optionsGammaCell">
+          <div class="tiny">Last Successful Gamma Compute</div>
+          <strong>{{ gamma_updated_label }}</strong>
+        </div>
+        <div class="optionsGammaCell">
+          <div class="tiny">Cache Status</div>
+          <strong>{{ gamma_snapshot.get('cache_status') or '—' }}</strong>
+        </div>
+        <div class="optionsGammaCell">
+          <div class="tiny">Warnings</div>
+          <strong>{{ gamma_snapshot.get('warnings')|length if gamma_snapshot.get('warnings') else 0 }}</strong>
+          <div class="tiny muted">{{ (gamma_snapshot.get('warnings') or ['No active warnings'])[0] }}</div>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Call Wall Gamma/pt</div>
@@ -270,7 +288,7 @@
           <strong id="spxPriorityWallSpread">—</strong>
         </div>
         <div class="optionsGammaCell">
-          <div class="tiny">Expected Move High Dist</div>
+          <div class="tiny">Gamma Range High Dist</div>
           <strong id="spxPriorityExpectedMoveHighDist">
             {% if spx_metrics.get('expected_move_up') is not none and spx_input.get('spot') is not none %}
               {{ '%.1f pts'|format(spx_metrics.get('expected_move_up') - spx_input.get('spot')) }}
@@ -280,7 +298,7 @@
           </strong>
         </div>
         <div class="optionsGammaCell">
-          <div class="tiny">Expected Move Low Dist</div>
+          <div class="tiny">Gamma Range Low Dist</div>
           <strong id="spxPriorityExpectedMoveLowDist">
             {% if spx_metrics.get('expected_move_down') is not none and spx_input.get('spot') is not none %}
               {{ '%.1f pts'|format(spx_input.get('spot') - spx_metrics.get('expected_move_down')) }}
@@ -350,7 +368,7 @@
       </div>
       <div class="tiny muted stack8">
         Next walls: {{ spx_priority_context.get('next_levels_source_label') or '—' }}
-        · Expected move: {{ spx_priority_context.get('expected_move_source_label') or '—' }}
+        · Gamma range estimate: {{ spx_priority_context.get('expected_move_source_label') or '—' }}
       </div>
     </div>
   </details>

@@ -1235,9 +1235,9 @@
       netGamma: asNum(gamma.net_gex),
       callWallGammaPerPoint: asNum(gamma.call_wall_gamma_per_point), // TODO(api): wire gamma/point from backend.
       putWallGammaPerPoint: asNum(gamma.put_wall_gamma_per_point), // TODO(api): wire gamma/point from backend.
-      expectedMove: asNum(gamma.expected_move), // TODO(api): backend should provide explicit expected_move_up/down when available.
-      expectedMoveUp: asNum(gamma.expected_move_up ?? gamma.expected_move_high),
-      expectedMoveDown: asNum(gamma.expected_move_down ?? gamma.expected_move_low),
+      expectedMove: asNum(gamma.gamma_range_estimate ?? gamma.expected_move),
+      expectedMoveUp: asNum(gamma.gamma_range_high ?? gamma.expected_move_up ?? gamma.expected_move_high),
+      expectedMoveDown: asNum(gamma.gamma_range_low ?? gamma.expected_move_down ?? gamma.expected_move_low),
 
       regime: String(gamma.regime || ""),
       bias: String(gamma.bias || ""),
@@ -1255,8 +1255,13 @@
     const derived = computeDistanceMetrics(input);
     const executionPlan = buildExecutionPlan(input, derived);
     const triggerState = buildTriggerState(executionPlan.trigger, executionPlan.tone);
-    const bullets = buildAutoRead(input, derived);
-    const badges = buildWarningBadges(input, derived);
+    const snapshotNarrative = (((base || {}).gamma_snapshot || {}).narrative) || {};
+    const bullets = Array.isArray(snapshotNarrative.auto_read) && snapshotNarrative.auto_read.length
+      ? snapshotNarrative.auto_read
+      : buildAutoRead(input, derived);
+    const badges = Array.isArray(snapshotNarrative.warning_badges) && snapshotNarrative.warning_badges.length
+      ? snapshotNarrative.warning_badges
+      : buildWarningBadges(input, derived);
     const spxQuote = (base && base.spx_quote) || {};
     const spxPoints = pickBestSeries(
       (((base || {}).series_points || {}).SPX),
@@ -1343,8 +1348,11 @@
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
     setText("spxPriorityTrap", String(derived.trapZoneState || "unavailable").replace(/_/g, " "));
 
-    setText("marketPulseSetupHeadline", executionPlan.headline);
-    setText("marketPulseSetupSubline", executionPlan.subline);
+    setText("marketPulseSetupHeadline", snapshotNarrative.what_matters || executionPlan.headline);
+    setText(
+      "marketPulseSetupSubline",
+      snapshotNarrative.trade_bias || snapshotNarrative.trader_live_quote || executionPlan.subline
+    );
     setText("marketPulseSetupLocation", executionPlan.location);
     setText("marketPulseSetupLocationLine", executionPlan.locationLine);
     setText("marketPulseSetupBias", executionPlan.bias);

@@ -24,7 +24,7 @@
   <div class="card supportCard subtleCard"><div class="toolbar">
     <div class="pill">Next Move</div>
     <div class="supportLead">Start with the main lesson, not the longest story.</div>
-    <div class="supportBody">Link the relevant trades, add one mood tag, and attach one screenshot when it materially improves recall.</div>
+    <div class="supportBody">Link the relevant trades, add one mood tag, and attach image evidence when it materially improves recall.</div>
   </div></div>
 </div>
 
@@ -37,10 +37,11 @@
 
   <form method="post" action="{{ action }}" enctype="multipart/form-data">
     <input type="hidden" name="existing_capture_screenshot_path" value="{{ values.get('capture_screenshot_path','') }}">
+    <input type="hidden" name="existing_capture_screenshot_paths" value="{{ (values.get('capture_screenshot_paths') or [])|tojson }}">
     <input type="hidden" name="quick_capture" value="{{ values.get('quick_capture','0') }}">
     {% set grade_value = values.get('grade','') %}
     {% set et = values.get('entry_type','post_market') %}
-    {% set quick_capture_open = values.get('quick_capture') == '1' or values.get('capture_screenshot_href') %}
+    {% set quick_capture_open = values.get('quick_capture') == '1' or values.get('capture_screenshot_hrefs') or values.get('capture_screenshot_href') %}
     {% set trade_links_open = values.get('link_all_day') == '1' or selected_trade_ids_set|length > 0 %}
     {% set template_notes_open = values.get('template_notes','') %}
 
@@ -180,12 +181,14 @@
       <summary>
         <span>Quick Capture</span>
         <span class="tiny muted">
-          {% if values.get('capture_screenshot_href') %}
-            Screenshot attached
+          {% if values.get('capture_screenshot_hrefs') %}
+            {{ values.get('capture_screenshot_hrefs')|length }} image{% if values.get('capture_screenshot_hrefs')|length != 1 %}s{% endif %} attached
+          {% elif values.get('capture_screenshot_href') %}
+            1 image attached
           {% elif values.get('quick_capture') == '1' %}
             Phone-first mode
           {% else %}
-            Mood shortcuts and screenshot
+            Mood shortcuts and image uploads
           {% endif %}
         </span>
       </summary>
@@ -198,7 +201,7 @@
                 <span class="trendChip positive">Phone-first</span>
               {% endif %}
             </div>
-            <div class="tiny stack8 line16">Fast note, emotion tag, and screenshot capture for in-session use.</div>
+            <div class="tiny stack8 line16">Fast note, emotion tag, and image capture for in-session use.</div>
             <div class="journalQuickCaptureGrid">
               <div class="stack10">
                 <label>Emotion shortcuts</label>
@@ -209,21 +212,32 @@
                 </div>
               </div>
               <div class="stack10">
-                <label>Screenshot</label>
-                <input type="file" name="capture_screenshot" accept="image/png,image/jpeg,image/webp" capture="environment">
-                <div class="tiny stack8">Phone camera or screenshot picker. Images stay in your persistent journal capture storage.</div>
-                <label>Screenshot note</label>
+                <label>Images</label>
+                <input type="file" name="capture_screenshot" accept="image/png,image/jpeg,image/webp" capture="environment" multiple>
+                <div class="tiny stack8">Phone camera or screenshot picker. You can attach multiple images and they stay in your persistent journal capture storage.</div>
+                <label>Capture note</label>
                 <input
                   name="capture_screenshot_note"
                   value="{{ values.get('capture_screenshot_note','') }}"
-                  placeholder="Why this screenshot matters..."
+                  placeholder="Why these images matter..."
                 >
-                {% if values.get('capture_screenshot_href') %}
+                {% if values.get('capture_screenshot_hrefs') %}
+                  <a class="btn btnCompact" href="{{ values.get('capture_screenshot_hrefs')[0] }}" target="_blank" rel="noopener">Open First Image</a>
+                {% elif values.get('capture_screenshot_href') %}
                   <a class="btn btnCompact" href="{{ values.get('capture_screenshot_href') }}" target="_blank" rel="noopener">Open Current Screenshot</a>
                 {% endif %}
               </div>
             </div>
-            {% if values.get('capture_screenshot_href') %}
+            {% if values.get('capture_screenshot_hrefs') %}
+              <div class="journalCapturePreview">
+                {% for href in values.get('capture_screenshot_hrefs') %}
+                  <img src="{{ href }}" alt="Journal capture preview {{ loop.index }}">
+                {% endfor %}
+              </div>
+              {% if values.get('capture_screenshot_note') %}
+                <div class="tiny stack8 line16">{{ values.get('capture_screenshot_note') }}</div>
+              {% endif %}
+            {% elif values.get('capture_screenshot_href') %}
               <div class="journalCapturePreview">
                 <img src="{{ values.get('capture_screenshot_href') }}" alt="Journal capture preview">
               </div>

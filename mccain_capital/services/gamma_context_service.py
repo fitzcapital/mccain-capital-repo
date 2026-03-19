@@ -462,7 +462,9 @@ def build_spx_priority_context(
     net_gamma = _safe_float(gamma_snapshot.get("net_gex"))
     call_wall_gamma_per_point = _safe_float(gamma_snapshot.get("call_wall_gamma_per_point"))
     put_wall_gamma_per_point = _safe_float(gamma_snapshot.get("put_wall_gamma_per_point"))
-    expected_move = _safe_float(gamma_snapshot.get("expected_move"))
+    gamma_range_estimate = _safe_float(
+        gamma_snapshot.get("gamma_range_estimate", gamma_snapshot.get("expected_move"))
+    )
 
     # TODO(api): wire backend payload for next_call_wall_above and next_put_wall_below.
     next_call_from_backend = _safe_float(gamma_snapshot.get("next_call_wall_above"))
@@ -477,10 +479,12 @@ def build_spx_priority_context(
     else:
         next_levels_source_label = "Inferred from strike ladder"
     expected_move_source_label = (
-        "Provider-backed" if expected_move is not None else "Inferred from wall spacing"
+        "Wall-based gamma range"
+        if gamma_range_estimate is not None
+        else "Inferred from aggregated wall spacing"
     )
 
-    # TODO(api): wire backend expected_move payload when provider is available.
+    # The backend field is a wall-based gamma range estimate, not an options-implied move.
     data: GammaContextInput = {
         "spot": spot,
         "gammaFlip": gamma_flip,
@@ -491,7 +495,7 @@ def build_spx_priority_context(
         "netGamma": net_gamma,
         "regime": str(gamma_snapshot.get("regime") or ""),
         "bias": str(gamma_snapshot.get("bias") or ""),
-        "expectedMove": expected_move,
+        "expectedMove": gamma_range_estimate,
         "updatedAt": gamma_snapshot.get("asof"),
     }
 
@@ -528,7 +532,9 @@ def build_spx_priority_context(
         "expected_move_source_label": expected_move_source_label,
         "next_levels_source_label": next_levels_source_label,
         "trap_zone_label": str(metrics.get("trap_zone_state") or "unavailable").replace("_", " "),
-        "missing_expected_move": expected_move is None and metrics.get("expected_move_up") is None,
+        "missing_expected_move": (
+            gamma_range_estimate is None and metrics.get("expected_move_up") is None
+        ),
         "missing_next_levels": (
             next_call_from_backend is None
             and next_put_from_backend is None

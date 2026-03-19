@@ -133,34 +133,49 @@
         </div>
       </div>
 
-      <div class="entryBodyGrid{% if e.get('capture_screenshot_href') %} hasEvidence{% endif %}">
-        {% if e.get('capture_screenshot_href') %}
+      <div class="entryBodyGrid{% if e.get('capture_screenshot_hrefs') or e.get('capture_screenshot_href') %} hasEvidence{% endif %}">
+        {% if e.get('capture_screenshot_hrefs') or e.get('capture_screenshot_href') %}
           <div class="entryEvidenceCard">
+            {% set capture_hrefs = e.get('capture_screenshot_hrefs') or ([e.get('capture_screenshot_href')] if e.get('capture_screenshot_href') else []) %}
             <button
               class="entryEvidenceButton"
               type="button"
-              data-journal-preview="{{ e.get('capture_screenshot_href') }}"
+              data-journal-preview="{{ capture_hrefs[0] }}"
               data-journal-preview-alt="Journal screenshot for {{ e.get('entry_date_display') or e['entry_date'] }}"
             >
-              <img src="{{ e.get('capture_screenshot_href') }}" alt="Journal screenshot for {{ e.get('entry_date_display') or e['entry_date'] }}">
+              <img src="{{ capture_hrefs[0] }}" alt="Journal screenshot for {{ e.get('entry_date_display') or e['entry_date'] }}">
             </button>
             <div class="entryEvidenceMeta">
-              <div class="pill">Screenshot Evidence</div>
+              <div class="pill">Image Evidence{% if capture_hrefs|length > 1 %} · {{ capture_hrefs|length }}{% endif %}</div>
               {% if e.get('capture_screenshot_note') %}
                 <div class="entryEvidenceCaption">{{ e.get('capture_screenshot_note') }}</div>
               {% else %}
                 <div class="entryEvidenceCaption">Attached chart or execution evidence for this note.</div>
               {% endif %}
+              {% if capture_hrefs|length > 1 %}
+                <div class="journalCapturePreview">
+                  {% for href in capture_hrefs %}
+                    <button
+                      class="entryEvidenceButton"
+                      type="button"
+                      data-journal-preview="{{ href }}"
+                      data-journal-preview-alt="Journal screenshot {{ loop.index }} for {{ e.get('entry_date_display') or e['entry_date'] }}"
+                    >
+                      <img src="{{ href }}" alt="Journal screenshot {{ loop.index }} for {{ e.get('entry_date_display') or e['entry_date'] }}">
+                    </button>
+                  {% endfor %}
+                </div>
+              {% endif %}
               <div class="entryEvidenceActions">
                 <button
                   class="btn btnCompact"
                   type="button"
-                  data-journal-preview="{{ e.get('capture_screenshot_href') }}"
+                  data-journal-preview="{{ capture_hrefs[0] }}"
                   data-journal-preview-alt="Journal screenshot for {{ e.get('entry_date_display') or e['entry_date'] }}"
                 >
                   Preview
                 </button>
-                <a class="btn btnCompact" href="{{ e.get('capture_screenshot_href') }}" target="_blank" rel="noopener">Open</a>
+                <a class="btn btnCompact" href="{{ capture_hrefs[0] }}" target="_blank" rel="noopener">Open</a>
               </div>
             </div>
           </div>

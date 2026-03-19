@@ -1636,12 +1636,18 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
         lambda: {
             "asof": "2026-03-05T12:00:00-05:00",
             "spot": 5120.35,
+            "spot_price_used": 5120.35,
+            "spot_source_name": "tradier",
+            "spot_source_timestamp": "2026-03-05T12:00:00-05:00",
             "regime": "positive",
             "net_gex": 2100000000.0,
             "net_gamma_label": "+2.10B",
             "gamma_flip": 5110.0,
             "call_wall": 5150.0,
             "put_wall": 5050.0,
+            "gamma_range_estimate": 70.0,
+            "gamma_range_high": 5190.35,
+            "gamma_range_low": 5050.35,
             "call_wall_gamma_per_point": 245000000.0,
             "put_wall_gamma_per_point": 198000000.0,
             "gamma_walls_top3": [5150.0, 5125.0, 5100.0],
@@ -1666,7 +1672,7 @@ def test_market_pulse_renders_spx_gamma_details(client, monkeypatch):
     assert b"198.0 million" in resp.data
     assert b"5064.25 - 5098.75" in resp.data
     assert b"Next walls: Inferred from strike ladder" in resp.data
-    assert b"Expected move: Inferred from wall spacing" in resp.data
+    assert b"Gamma range estimate: Wall-based gamma range" in resp.data
     assert b"Best Contracts" in resp.data
     assert b"SPXW 2026-03-06 5125C" in resp.data
 
@@ -1687,6 +1693,50 @@ def test_market_pulse_gamma_quality_flags_stale_snapshots(client):
     quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
     assert quality["tone"] == "warn"
     assert quality["warning"] == "Gamma stale >5m"
+
+
+def test_market_pulse_gamma_quality_flags_spot_value_mismatch():
+    quotes = [
+        {
+            "label": "SPX",
+            "price": 5125.0,
+            "asof": "2026-03-16T10:39:00-04:00",
+            "data_state": "live",
+            "data_reason": "tradier_live",
+        }
+    ]
+    gamma_snapshot = {
+        "asof": "2026-03-16T10:39:00-04:00",
+        "spot_price_used": 5110.0,
+        "spot_source_timestamp": "2026-03-16T10:39:00-04:00",
+        "diagnostics": {"status": "ok", "contracts_used": 84},
+    }
+    now_et = datetime(2026, 3, 16, 10, 40, tzinfo=core_service.app_runtime.TZ)
+    quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
+    assert quality["tone"] == "critical"
+    assert quality["warning"] == "Spot source mismatch"
+
+
+def test_market_pulse_gamma_quality_flags_spot_timestamp_drift():
+    quotes = [
+        {
+            "label": "SPX",
+            "price": 5125.0,
+            "asof": "2026-03-16T10:40:00-04:00",
+            "data_state": "live",
+            "data_reason": "tradier_live",
+        }
+    ]
+    gamma_snapshot = {
+        "asof": "2026-03-16T10:40:00-04:00",
+        "spot_price_used": 5125.0,
+        "spot_source_timestamp": "2026-03-16T10:35:00-04:00",
+        "diagnostics": {"status": "ok", "contracts_used": 84},
+    }
+    now_et = datetime(2026, 3, 16, 10, 40, tzinfo=core_service.app_runtime.TZ)
+    quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
+    assert quality["tone"] == "warn"
+    assert quality["warning"] == "Spot timestamp drift"
 
 
 def test_market_pulse_renders_source_health_and_degraded_banner(client, monkeypatch):
