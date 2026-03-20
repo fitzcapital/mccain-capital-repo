@@ -307,6 +307,43 @@ def test_new_entry_prefill_query_params_render(client):
     assert "trade_debrief" in body
 
 
+def test_debrief_market_context_falls_back_to_vix_quote(monkeypatch):
+    from mccain_capital.services import core as core_service
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_data_service
+
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda: {
+            "quotes": [
+                {"label": "SPX", "price": 6123.45},
+                {"label": "VIX", "price": None},
+            ]
+        },
+    )
+    monkeypatch.setattr(core_service, "_market_pulse_enrich_quotes", lambda quotes, _now: quotes)
+    monkeypatch.setattr(core_service, "_market_pulse_context", lambda _quotes: {"structure": "Responsive"})
+    monkeypatch.setattr(core_service, "_market_news_snapshot", lambda: {"macro_events": []})
+    monkeypatch.setattr(gamma_map_service, "get_gamma_snapshot", lambda: {})
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist_with_fallback",
+        lambda symbols: {
+            "VIX": {
+                "price": 19.40,
+                "provider": "yfinance",
+                "reason": "yfinance_fallback",
+            }
+        },
+    )
+
+    payload = journal_service._debrief_market_context("2026-03-20")
+
+    assert "VIX 19.40" in payload["headline"]
+    assert payload["market"] == "SPX / VIX 19.40"
+
+
 def test_new_entry_auto_debrief_draft_prefills_richer_context(client, monkeypatch):
     repo.ensure_journal_schema()
     monkeypatch.setattr(
