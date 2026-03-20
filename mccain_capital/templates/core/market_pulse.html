@@ -22,9 +22,11 @@
 </div>
 
 {% set gamma_quality_tone = 'marketPulseTrustChip-critical' if gamma_quality.get('tone') == 'critical' else 'marketPulseTrustChip-warn' if gamma_quality.get('tone') == 'warn' else 'marketPulseTrustChip-ok' %}
+{% set gamma_snapshot_status = gamma_snapshot.get('snapshot_status') or 'invalid' %}
+{% set gamma_snapshot_status_tone = 'positive' if gamma_snapshot_status == 'healthy' else 'warn' if gamma_snapshot_status in ['degraded', 'stale'] else 'negative' %}
 {% set trust_summary_bits = [] %}
 {% set _ = trust_summary_bits.append(spx_quote.get('source_badge_label') or 'Awaiting feed') %}
-{% set _ = trust_summary_bits.append(gamma_quality.get('warning') or 'Gamma aligned') %}
+{% set _ = trust_summary_bits.append(gamma_snapshot.get('snapshot_status_label') or gamma_quality.get('warning') or 'Gamma aligned') %}
 {% set _ = trust_summary_bits.append('Next walls: ' ~ (spx_priority_context.get('next_levels_source_label') or '—')) %}
 <details class="card stack12 marketPulseSection marketPulseTrustRow marketPulseOpsFold">
   <summary class="marketPulseOpsSummary">
@@ -52,10 +54,10 @@
       <div class="marketPulseTrustCell">
         <div class="tiny muted">Gamma model output</div>
         <div class="marketPulseTrustInline">
-          <span class="trendChip marketPulseTrustChip {{ gamma_quality_tone }}">{{ gamma_quality.get('warning') or 'Gamma aligned' }}</span>
+          <span class="trendChip marketPulseTrustChip {{ gamma_quality_tone }}">{{ gamma_snapshot.get('snapshot_status_label') or gamma_quality.get('warning') or 'Gamma aligned' }}</span>
           <span class="tiny">{{ gamma_updated_label }}</span>
         </div>
-        <div class="tiny muted">{{ gamma_quality.get('summary') }}{% if gamma_snapshot.get('warnings') %} · {{ gamma_snapshot.get('warnings')|length }} warning(s){% endif %}</div>
+        <div class="tiny muted">{{ gamma_snapshot.get('snapshot_status_detail') or gamma_quality.get('summary') }}{% if gamma_snapshot.get('warnings') %} · {{ gamma_snapshot.get('warnings')|length }} warning(s){% endif %}</div>
       </div>
       <div class="marketPulseTrustCell">
         <div class="tiny muted">Level sources</div>
@@ -67,6 +69,19 @@
     </div>
   </div>
  </details>
+
+<div class="card stack12 marketPulseSection">
+  <div class="toolbar">
+    <div class="pill">Gamma Snapshot Status</div>
+    <div class="supportLead">{{ gamma_snapshot.get('snapshot_status_label') or 'Invalid Snapshot: gamma levels unavailable' }}</div>
+    <div class="supportBody">{{ gamma_snapshot.get('snapshot_status_detail') or 'No trustworthy gamma calculation is available.' }}</div>
+    <div class="pillRow">
+      <span class="trendChip {{ gamma_snapshot_status_tone }}">{{ gamma_snapshot_status|replace('_', ' ')|title }}</span>
+      <span class="trendChip">Included {{ gamma_snapshot.get('included_expiries')|length if gamma_snapshot.get('included_expiries') else 0 }}/{{ gamma_snapshot.get('requested_expiries')|length if gamma_snapshot.get('requested_expiries') else 0 }}</span>
+      <span class="trendChip">{% if gamma_snapshot.get('exchange_timestamp_available') %}Exchange-native freshness{% else %}Fetch-time freshness proxy{% endif %}</span>
+    </div>
+  </div>
+</div>
 
 <details id="marketPulseTradeReadCard" class="card stack12 marketPulseSection marketPulseSetupCard marketPulseActionableCard marketPulseMobileFold tradeRead-wait" data-mobile-default="closed" open>
   <summary class="marketPulseMobileSummary">
@@ -207,18 +222,18 @@
   <div class="optionsGammaGrid">
     <div class="optionsGammaCell">
       <div class="tiny">Call Wall (aggregated strike gamma)</div>
-      <strong id="spxPriorityCallWallValue">{% if gamma_snapshot.get('call_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall')) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityCallWallValue">{% if gamma_snapshot.get('call_wall_aggregated_gamma') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall_aggregated_gamma')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Strength: <span id="spxPriorityCallWallStrength">—</span></div>
       <div class="tiny muted">Ceiling: <span id="spxPriorityResistanceQuality">—</span></div>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Gamma Flip (combined basket)</div>
-      <strong id="spxPriorityGammaFlipValue">{% if gamma_snapshot.get('gamma_flip') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip')) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityGammaFlipValue">{% if gamma_snapshot.get('gamma_flip_combined_basket') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip_combined_basket')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Distance: <span id="spxPriorityDistanceFlip">—</span></div>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Put Wall (aggregated strike gamma)</div>
-      <strong id="spxPriorityPutWallValue">{% if gamma_snapshot.get('put_wall') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall')) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityPutWallValue">{% if gamma_snapshot.get('put_wall_aggregated_gamma') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall_aggregated_gamma')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Strength: <span id="spxPriorityPutWallStrength">—</span></div>
       <div class="tiny muted">Support: <span id="spxPrioritySupportQuality">—</span></div>
     </div>
@@ -263,6 +278,11 @@
           <strong>{{ gamma_snapshot.get('included_expiries')|join(', ') if gamma_snapshot.get('included_expiries') else '—' }}</strong>
         </div>
         <div class="optionsGammaCell">
+          <div class="tiny">Snapshot Status</div>
+          <strong>{{ gamma_snapshot.get('snapshot_status_label') or '—' }}</strong>
+          <div class="tiny muted">{{ gamma_snapshot.get('snapshot_status_detail') or '—' }}</div>
+        </div>
+        <div class="optionsGammaCell">
           <div class="tiny">Last Successful Gamma Compute</div>
           <strong>{{ gamma_updated_label }}</strong>
         </div>
@@ -274,6 +294,15 @@
           <div class="tiny">Warnings</div>
           <strong>{{ gamma_snapshot.get('warnings')|length if gamma_snapshot.get('warnings') else 0 }}</strong>
           <div class="tiny muted">{{ (gamma_snapshot.get('warnings') or ['No active warnings'])[0] }}</div>
+        </div>
+        <div class="optionsGammaCell">
+          <div class="tiny">Source Fetch Timestamp</div>
+          <strong>{{ gamma_snapshot.get('source_fetch_timestamp') or '—' }}</strong>
+        </div>
+        <div class="optionsGammaCell">
+          <div class="tiny">Source Effective Timestamp</div>
+          <strong>{{ gamma_snapshot.get('source_effective_timestamp') or '—' }}</strong>
+          <div class="tiny muted">{{ gamma_snapshot.get('source_effective_timestamp_note') or '—' }}</div>
         </div>
         <div class="optionsGammaCell">
           <div class="tiny">Call Wall Gamma/pt</div>

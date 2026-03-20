@@ -1693,6 +1693,7 @@ def test_market_pulse_gamma_quality_flags_stale_snapshots(client):
     quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
     assert quality["tone"] == "warn"
     assert quality["warning"] == "Gamma stale >5m"
+    assert "fetch-time proxy" in quality["summary"]
 
 
 def test_market_pulse_gamma_quality_flags_spot_value_mismatch():
@@ -1737,6 +1738,260 @@ def test_market_pulse_gamma_quality_flags_spot_timestamp_drift():
     quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
     assert quality["tone"] == "warn"
     assert quality["warning"] == "Spot timestamp drift"
+
+
+def test_market_pulse_gamma_quality_flags_degraded_snapshot_state():
+    quotes = [
+        {
+            "label": "SPX",
+            "price": 5125.0,
+            "asof": "2026-03-16T10:40:00-04:00",
+            "data_state": "live",
+            "data_reason": "tradier_live",
+        }
+    ]
+    gamma_snapshot = {
+        "snapshot_status": "degraded",
+        "source_effective_timestamp": "2026-03-16T10:40:00-04:00",
+        "exchange_timestamp_available": False,
+        "spot_price_used": 5125.0,
+        "spot_source_timestamp": "2026-03-16T10:40:00-04:00",
+        "diagnostics": {"status": "ok", "contracts_used": 84},
+    }
+    now_et = datetime(2026, 3, 16, 10, 40, tzinfo=core_service.app_runtime.TZ)
+    quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
+    assert quality["tone"] == "warn"
+    assert quality["warning"] == "Degraded gamma basket"
+
+
+def test_market_pulse_gamma_quality_flags_invalid_snapshot_state():
+    quotes = [{"label": "SPX", "data_state": "live", "data_reason": "tradier_live"}]
+    gamma_snapshot = {
+        "snapshot_status": "invalid",
+        "source_effective_timestamp": "2026-03-16T10:40:00-04:00",
+        "exchange_timestamp_available": False,
+        "diagnostics": {"status": "invalid", "contracts_used": 0},
+    }
+    now_et = datetime(2026, 3, 16, 10, 40, tzinfo=core_service.app_runtime.TZ)
+    quality = core_service._gamma_data_quality(gamma_snapshot, quotes, now_et)
+    assert quality["tone"] == "critical"
+    assert quality["warning"] == "Invalid snapshot"
+
+
+def test_market_pulse_renders_degraded_snapshot_banner(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 20, 2026 09:30 AM ET",
+            "source_label": "Tradier market feed",
+            "source_note": "",
+            "quotes": [],
+            "integrity": {"live_count": 2, "delayed_count": 0, "missing_count": 0},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {
+            "available": True,
+            "source_note": "",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
+    )
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {
+            "asof": "2026-03-20T09:30:00-04:00",
+            "snapshot_status": "degraded",
+            "snapshot_status_label": "Degraded Gamma Basket: 1 of 2 expiries available",
+            "snapshot_status_detail": "One expiry is missing, so levels are computed from a partial combined basket.",
+            "requested_expiries": ["2026-03-20", "2026-03-23"],
+            "included_expiries": ["2026-03-20"],
+            "exchange_timestamp_available": False,
+            "source_fetch_timestamp": "2026-03-20T09:30:00-04:00",
+            "source_effective_timestamp": "2026-03-20T09:30:00-04:00",
+            "source_effective_timestamp_note": "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+            "spot": 5120.0,
+            "spot_price_used": 5120.0,
+            "spot_source_name": "tradier",
+            "spot_source_timestamp": "2026-03-20T09:30:00-04:00",
+            "regime": "negative",
+            "net_gex": -120000000.0,
+            "net_gamma_label": "-120.00M",
+            "gamma_flip": 5140.0,
+            "call_wall": 5160.0,
+            "put_wall": 5090.0,
+            "gamma_range_estimate": 40.0,
+            "gamma_range_high": 5160.0,
+            "gamma_range_low": 5080.0,
+            "call_wall_gamma_per_point": 125000000.0,
+            "put_wall_gamma_per_point": 114000000.0,
+            "gamma_walls_top3": [5160.0],
+            "warnings": ["Missing expiry data for 2026-03-23."],
+            "stale_flags": ["missing_expiries"],
+            "void_zone": {"start": None, "end": None},
+            "bias": "sell_rips_below_flip",
+            "diagnostics": {"status": "ok", "contracts_used": 42},
+            "narrative": {"warning_badges": ["Missing next expiry"]},
+        },
+    )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {"asof": "2026-03-20T09:30:00-04:00", "symbols": {"SPX": {"contracts": []}}},
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert b"Degraded Gamma Basket: 1 of 2 expiries available" in resp.data
+    assert b"Fetch-time freshness proxy" in resp.data
+
+
+def test_market_pulse_renders_invalid_snapshot_banner(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 20, 2026 09:30 AM ET",
+            "source_label": "Tradier market feed",
+            "source_note": "",
+            "quotes": [],
+            "integrity": {"live_count": 2, "delayed_count": 0, "missing_count": 0},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {
+            "available": True,
+            "source_note": "",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
+    )
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {
+            "asof": "2026-03-20T09:30:00-04:00",
+            "snapshot_status": "invalid",
+            "snapshot_status_label": "Invalid Snapshot: gamma levels unavailable",
+            "snapshot_status_detail": "No trustworthy gamma calculation is available.",
+            "requested_expiries": ["2026-03-20", "2026-03-23"],
+            "included_expiries": [],
+            "exchange_timestamp_available": False,
+            "source_fetch_timestamp": "2026-03-20T09:30:00-04:00",
+            "source_effective_timestamp": "2026-03-20T09:30:00-04:00",
+            "source_effective_timestamp_note": "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+            "warnings": ["No gamma source rows were loaded."],
+            "stale_flags": ["empty_source"],
+            "regime": "unavailable",
+            "net_gex": 0.0,
+            "diagnostics": {"status": "invalid", "contracts_used": 0},
+            "narrative": {"warning_badges": ["Invalid Snapshot"]},
+        },
+    )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {"asof": "2026-03-20T09:30:00-04:00", "symbols": {"SPX": {"contracts": []}}},
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert b"Invalid Snapshot: gamma levels unavailable" in resp.data
+
+
+def test_market_pulse_renders_stale_snapshot_banner(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Mar 20, 2026 09:30 AM ET",
+            "source_label": "Tradier market feed",
+            "source_note": "",
+            "quotes": [],
+            "integrity": {"live_count": 2, "delayed_count": 0, "missing_count": 0},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda: {
+            "available": True,
+            "source_note": "",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+        },
+    )
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {
+            "asof": "2026-03-20T09:15:00-04:00",
+            "snapshot_status": "stale",
+            "snapshot_status_label": "Stale Snapshot: showing last known good values",
+            "snapshot_status_detail": "A fresh trusted basket is unavailable, so the last validated snapshot is being served.",
+            "requested_expiries": ["2026-03-20", "2026-03-23"],
+            "included_expiries": ["2026-03-20", "2026-03-23"],
+            "exchange_timestamp_available": False,
+            "source_fetch_timestamp": "2026-03-20T09:15:00-04:00",
+            "source_effective_timestamp": "2026-03-20T09:15:00-04:00",
+            "source_effective_timestamp_note": "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+            "spot": 5120.0,
+            "spot_price_used": 5120.0,
+            "spot_source_name": "tradier",
+            "spot_source_timestamp": "2026-03-20T09:15:00-04:00",
+            "regime": "positive",
+            "net_gex": 120000000.0,
+            "net_gamma_label": "+120.00M",
+            "gamma_flip": 5110.0,
+            "call_wall": 5150.0,
+            "put_wall": 5090.0,
+            "gamma_range_estimate": 30.0,
+            "gamma_range_high": 5150.0,
+            "gamma_range_low": 5090.0,
+            "call_wall_gamma_per_point": 125000000.0,
+            "put_wall_gamma_per_point": 114000000.0,
+            "gamma_walls_top3": [5150.0],
+            "warnings": ["Stale Snapshot: showing last known good values because the latest refresh failed."],
+            "stale_flags": ["stale_snapshot"],
+            "void_zone": {"start": None, "end": None},
+            "bias": "buy_dips_above_flip",
+            "diagnostics": {"status": "stale", "contracts_used": 84},
+            "narrative": {"warning_badges": ["Stale Snapshot"]},
+        },
+    )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {"asof": "2026-03-20T09:30:00-04:00", "symbols": {"SPX": {"contracts": []}}},
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert b"Stale Snapshot: showing last known good values" in resp.data
 
 
 def test_market_pulse_renders_source_health_and_degraded_banner(client, monkeypatch):

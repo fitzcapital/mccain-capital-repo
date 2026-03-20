@@ -456,15 +456,13 @@ def build_spx_priority_context(
     spx_quote: Dict[str, Any], gamma_snapshot: Dict[str, Any]
 ) -> Dict[str, Any]:
     spot = _safe_float(spx_quote.get("price"))
-    gamma_flip = _safe_float(gamma_snapshot.get("gamma_flip"))
-    call_wall = _safe_float(gamma_snapshot.get("call_wall"))
-    put_wall = _safe_float(gamma_snapshot.get("put_wall"))
-    net_gamma = _safe_float(gamma_snapshot.get("net_gex"))
+    gamma_flip = _safe_float(gamma_snapshot.get("gamma_flip_combined_basket"))
+    call_wall = _safe_float(gamma_snapshot.get("call_wall_aggregated_gamma"))
+    put_wall = _safe_float(gamma_snapshot.get("put_wall_aggregated_gamma"))
+    net_gamma = _safe_float(gamma_snapshot.get("net_gex_total"))
     call_wall_gamma_per_point = _safe_float(gamma_snapshot.get("call_wall_gamma_per_point"))
     put_wall_gamma_per_point = _safe_float(gamma_snapshot.get("put_wall_gamma_per_point"))
-    gamma_range_estimate = _safe_float(
-        gamma_snapshot.get("gamma_range_estimate", gamma_snapshot.get("expected_move"))
-    )
+    gamma_range_estimate = _safe_float(gamma_snapshot.get("gamma_range_estimate"))
 
     # TODO(api): wire backend payload for next_call_wall_above and next_put_wall_below.
     next_call_from_backend = _safe_float(gamma_snapshot.get("next_call_wall_above"))
@@ -484,7 +482,9 @@ def build_spx_priority_context(
         else "Inferred from aggregated wall spacing"
     )
 
-    # The backend field is a wall-based gamma range estimate, not an options-implied move.
+    # Compatibility note: computeDistanceMetrics still uses the historical
+    # expectedMove field name, but the backend source of truth is now
+    # gamma_range_estimate.
     data: GammaContextInput = {
         "spot": spot,
         "gammaFlip": gamma_flip,

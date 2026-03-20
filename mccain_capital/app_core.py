@@ -31,6 +31,7 @@ from werkzeug.security import generate_password_hash
 from werkzeug.exceptions import RequestEntityTooLarge
 from zoneinfo import ZoneInfo
 from mccain_capital.services.ui import get_system_status
+from mccain_capital import runtime as _rt
 
 BUILD_MARKER = "BUILD_2026-02-21_GOALS"
 
@@ -213,15 +214,15 @@ def set_setting_value(key: str, value: str) -> None:
 
 
 def now_et() -> datetime:
-    return datetime.now(TZ)
+    return _rt.now_et()
 
 
 def now_iso() -> str:
-    return now_et().isoformat(timespec="seconds")
+    return _rt.now_iso()
 
 
 def today_iso() -> str:
-    return now_et().date().isoformat()
+    return _rt.today_iso()
 
 
 def init_db() -> None:
@@ -231,47 +232,30 @@ def init_db() -> None:
 
 
 def prev_day_iso(d_iso: str) -> str:
-    d = datetime.strptime(d_iso, "%Y-%m-%d").date()
-    return (d - timedelta(days=1)).isoformat()
+    return _rt.prev_day_iso(d_iso)
 
 
 def next_day_iso(d_iso: str) -> str:
-    d = datetime.strptime(d_iso, "%Y-%m-%d").date()
-    return (d + timedelta(days=1)).isoformat()
+    return _rt.next_day_iso(d_iso)
 
 
 def prev_trading_day_iso(d_iso: str) -> str:
-    d = datetime.strptime(d_iso, "%Y-%m-%d").date() - timedelta(days=1)
-    while d.weekday() >= 5:  # Sat/Sun
-        d -= timedelta(days=1)
-    return d.isoformat()
+    return _rt.prev_trading_day_iso(d_iso)
 
 
 def next_trading_day_iso(d_iso: str) -> str:
-    d = datetime.strptime(d_iso, "%Y-%m-%d").date() + timedelta(days=1)
-    while d.weekday() >= 5:  # Sat/Sun
-        d += timedelta(days=1)
-    return d.isoformat()
+    return _rt.next_trading_day_iso(d_iso)
 
 
 # ============================================================
 # Formatting helpers ✅ ($400.00 everywhere)
 # ============================================================
 def money(val: Any) -> str:
-    if val is None or val == "":
-        return ""
-    try:
-        n = float(val)
-    except Exception:
-        return ""
-    sign = "-" if n < 0 else ""
-    return f"{sign}${abs(n):,.2f}"
+    return _rt.money(val)
 
 
 def default_starting_balance() -> float:
-    from mccain_capital import runtime as app_runtime
-
-    return app_runtime.default_starting_balance()
+    return _rt.default_starting_balance()
 
 
 def money_compact(val: Any) -> str:
@@ -293,97 +277,34 @@ def money_compact(val: Any) -> str:
 
 
 def pct(val: Any) -> str:
-    if val is None or val == "":
-        return ""
-    try:
-        n = float(val)
-    except Exception:
-        return ""
-    return f"{n:.2f}%"
+    return _rt.pct(val)
 
 
 # ============================================================
 # Parse helpers
 # ============================================================
-_HEADER_HINTS = {
-    "date",
-    "entry",
-    "exit",
-    "ticker",
-    "type",
-    "strike",
-    "contracts",
-    "net",
-    "p/l",
-    "balance",
-}
-
-
 def parse_float(s: str) -> Optional[float]:
-    s = (s or "").strip()
-    if not s:
-        return None
-    s2 = s.replace("$", "").replace(",", "").replace("%", "").strip()
-    try:
-        return float(s2)
-    except ValueError:
-        return None
+    return _rt.parse_float(s)
 
 
 def parse_int(s: str) -> Optional[int]:
-    s = (s or "").strip().replace(",", "")
-    if not s:
-        return None
-    try:
-        return int(float(s))
-    except ValueError:
-        return None
+    return _rt.parse_int(s)
 
 
 def parse_date_any(s: str) -> Optional[str]:
-    s = (s or "").strip()
-    if not s:
-        return None
-
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
-        try:
-            return datetime.strptime(s, fmt).date().isoformat()
-        except ValueError:
-            pass
-
-    # allow "1/29" (assume current year)
-    parts = re.split(r"[/-]", s)
-    parts = [p for p in parts if p]
-    if len(parts) == 2:
-        try:
-            m = int(parts[0])
-            d = int(parts[1])
-            y = now_et().year
-            return date(y, m, d).isoformat()
-        except Exception:
-            return None
-    return None
+    return _rt.parse_date_any(s)
 
 
 def looks_like_header(line: str) -> bool:
-    low = (line or "").lower()
-    hits = sum(1 for h in _HEADER_HINTS if h in low)
-    return hits >= 3
+    return _rt.looks_like_header(line)
 
 
 def split_row(line: str) -> List[str]:
-    if "\t" in line:
-        return [c.strip() for c in line.split("\t")]
-    return [c.strip() for c in re.split(r"\s{2,}", line.strip())]
+    return _rt.split_row(line)
 
 
 def normalize_opt_type(s: str) -> str:
-    s = (s or "").strip().upper()
-    if s in ("CALL", "C"):
-        return "CALL"
-    if s in ("PUT", "P"):
-        return "PUT"
-    return s
+    return _rt.normalize_opt_type(s)
 
 
 # ============================================================
