@@ -6,16 +6,12 @@ import os
 import sqlite3
 import json
 import base64
-import hmac
 import hashlib
 import shutil
 import tempfile
-import urllib.request
-import urllib.error
 import threading
 import time
 import queue
-import zipfile
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
@@ -30,7 +26,6 @@ from flask import (
     render_template,
     render_template_string,
     request,
-    session,
     send_file,
     url_for,
 )
@@ -59,18 +54,12 @@ from mccain_capital.services import trades_importing as importing
 from mccain_capital.services import vanquish_live_sync
 from mccain_capital.services.trades_backup import (
     _auto_backup_config_path,
-    _auto_backup_config_paths,
     _auto_backup_dir,
-    _auto_backup_lock_path,
     _auto_backup_worker,
-    _backup_verification,
-    _count_db_rows,
-    _create_backup_archive,
     _integrity_health_snapshot,
     _list_saved_backups,
     _load_auto_backup_config,
     _normalize_backup_times,
-    _prune_auto_backups,
     _restore_dry_run,
     _restore_from_backup_path,
     _run_backup_once,
@@ -78,19 +67,12 @@ from mccain_capital.services.trades_backup import (
 )
 from mccain_capital.services.trades_notifications import (
     _alerts_actor,
-    _append_notification_history,
     _bulk_update_alert_status,
     _emit_notification,
-    _entry_minutes,
     _load_notify_history,
-    _notification_fingerprint,
-    _notify_dedupe_window_seconds,
-    _notify_history_paths,
     _parse_iso_epoch,
-    _record_alert_event,
     _save_notify_history,
     _scan_anomaly_watch,
-    _signed_headers,
     _sorted_alerts,
     _update_alert_status,
 )

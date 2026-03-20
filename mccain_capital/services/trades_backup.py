@@ -16,7 +16,6 @@ from zoneinfo import ZoneInfo
 
 from flask import current_app
 from werkzeug.utils import secure_filename
-from uuid import uuid4
 
 from mccain_capital import runtime as app_runtime
 from mccain_capital.repositories import analytics as analytics_repo

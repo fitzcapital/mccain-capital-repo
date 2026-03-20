@@ -13,7 +13,6 @@ from datetime import timedelta
 from email.utils import parsedate_to_datetime
 import json
 import os
-import shutil
 import tempfile
 import time
 import urllib.error
@@ -48,7 +47,6 @@ from mccain_capital.services.ui import (
     get_system_status,
     render_page,
     save_trading_window_settings,
-    simple_msg,
 )
 from mccain_capital.services.viewmodels import (
     balance_state_badges,
