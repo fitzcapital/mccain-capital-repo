@@ -406,16 +406,12 @@
 
   function initThemeAndGuided() {
     const themeMigrationKey = "mc_theme_v3";
-    const themeOrder = ["obsidian", "galaxy", "black", "steel", "red", "green", "default", "white"];
+    const themeOrder = ["galaxy", "obsidian", "black", "nebula"];
     const themeLabels = {
+      galaxy: "Theme: Midnight Galaxy",
       obsidian: "Theme: True Dark",
       black: "Theme: Midnight",
-      default: "Theme: Classic",
-      white: "Theme: Classic White",
-      galaxy: "Theme: Midnight Galaxy",
-      red: "Theme: Red",
-      green: "Theme: Green",
-      steel: "Theme: Steel",
+      nebula: "Theme: Nebula",
     };
 
     const syncThemeButtons = (theme) => {
