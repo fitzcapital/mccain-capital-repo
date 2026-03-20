@@ -64,10 +64,10 @@ def test_build_spx_priority_context_uses_chart_levels_for_next_walls():
     context = svc.build_spx_priority_context(
         spx_quote={"price": 5008},
         gamma_snapshot={
-            "gamma_flip": 5000,
-            "call_wall": 5010,
-            "put_wall": 4990,
-            "net_gex": 1234,
+            "gamma_flip_combined_basket": 5000,
+            "call_wall_aggregated_gamma": 5010,
+            "put_wall_aggregated_gamma": 4990,
+            "net_gex_total": 1234,
             "chart_json": {
                 "gex": {
                     "data": [
@@ -88,10 +88,10 @@ def test_build_spx_priority_context_labels_gamma_range_estimate_source():
     context = svc.build_spx_priority_context(
         spx_quote={"price": 5008},
         gamma_snapshot={
-            "gamma_flip": 5000,
-            "call_wall": 5010,
-            "put_wall": 4990,
-            "net_gex": 1234,
+            "gamma_flip_combined_basket": 5000,
+            "call_wall_aggregated_gamma": 5010,
+            "put_wall_aggregated_gamma": 4990,
+            "net_gex_total": 1234,
             "gamma_range_estimate": 12,
         },
     )

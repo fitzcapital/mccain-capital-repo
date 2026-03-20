@@ -222,18 +222,18 @@
   <div class="optionsGammaGrid">
     <div class="optionsGammaCell">
       <div class="tiny">Call Wall (aggregated strike gamma)</div>
-      <strong id="spxPriorityCallWallValue">{% if gamma_snapshot.get('call_wall_aggregated_gamma', gamma_snapshot.get('call_wall')) is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall_aggregated_gamma', gamma_snapshot.get('call_wall'))) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityCallWallValue">{% if gamma_snapshot.get('call_wall_aggregated_gamma') is not none %}{{ '%.0f'|format(gamma_snapshot.get('call_wall_aggregated_gamma')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Strength: <span id="spxPriorityCallWallStrength">—</span></div>
       <div class="tiny muted">Ceiling: <span id="spxPriorityResistanceQuality">—</span></div>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Gamma Flip (combined basket)</div>
-      <strong id="spxPriorityGammaFlipValue">{% if gamma_snapshot.get('gamma_flip_combined_basket', gamma_snapshot.get('gamma_flip')) is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip_combined_basket', gamma_snapshot.get('gamma_flip'))) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityGammaFlipValue">{% if gamma_snapshot.get('gamma_flip_combined_basket') is not none %}{{ '%.0f'|format(gamma_snapshot.get('gamma_flip_combined_basket')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Distance: <span id="spxPriorityDistanceFlip">—</span></div>
     </div>
     <div class="optionsGammaCell">
       <div class="tiny">Put Wall (aggregated strike gamma)</div>
-      <strong id="spxPriorityPutWallValue">{% if gamma_snapshot.get('put_wall_aggregated_gamma', gamma_snapshot.get('put_wall')) is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall_aggregated_gamma', gamma_snapshot.get('put_wall'))) }}{% else %}—{% endif %}</strong>
+      <strong id="spxPriorityPutWallValue">{% if gamma_snapshot.get('put_wall_aggregated_gamma') is not none %}{{ '%.0f'|format(gamma_snapshot.get('put_wall_aggregated_gamma')) }}{% else %}—{% endif %}</strong>
       <div class="tiny muted">Strength: <span id="spxPriorityPutWallStrength">—</span></div>
       <div class="tiny muted">Support: <span id="spxPrioritySupportQuality">—</span></div>
     </div>

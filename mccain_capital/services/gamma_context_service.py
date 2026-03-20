@@ -456,16 +456,10 @@ def build_spx_priority_context(
     spx_quote: Dict[str, Any], gamma_snapshot: Dict[str, Any]
 ) -> Dict[str, Any]:
     spot = _safe_float(spx_quote.get("price"))
-    gamma_flip = _safe_float(
-        gamma_snapshot.get("gamma_flip_combined_basket", gamma_snapshot.get("gamma_flip"))
-    )
-    call_wall = _safe_float(
-        gamma_snapshot.get("call_wall_aggregated_gamma", gamma_snapshot.get("call_wall"))
-    )
-    put_wall = _safe_float(
-        gamma_snapshot.get("put_wall_aggregated_gamma", gamma_snapshot.get("put_wall"))
-    )
-    net_gamma = _safe_float(gamma_snapshot.get("net_gex_total", gamma_snapshot.get("net_gex")))
+    gamma_flip = _safe_float(gamma_snapshot.get("gamma_flip_combined_basket"))
+    call_wall = _safe_float(gamma_snapshot.get("call_wall_aggregated_gamma"))
+    put_wall = _safe_float(gamma_snapshot.get("put_wall_aggregated_gamma"))
+    net_gamma = _safe_float(gamma_snapshot.get("net_gex_total"))
     call_wall_gamma_per_point = _safe_float(gamma_snapshot.get("call_wall_gamma_per_point"))
     put_wall_gamma_per_point = _safe_float(gamma_snapshot.get("put_wall_gamma_per_point"))
     gamma_range_estimate = _safe_float(gamma_snapshot.get("gamma_range_estimate"))

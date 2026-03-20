@@ -1227,18 +1227,17 @@
       vix: asNum(vixQuote.price),
       vixDirection,
 
-      gammaFlip: asNum(gamma.gamma_flip_combined_basket ?? gamma.gamma_flip),
-      callWall: asNum(gamma.call_wall_aggregated_gamma ?? gamma.call_wall),
-      putWall: asNum(gamma.put_wall_aggregated_gamma ?? gamma.put_wall),
+      gammaFlip: asNum(gamma.gamma_flip_combined_basket),
+      callWall: asNum(gamma.call_wall_aggregated_gamma),
+      putWall: asNum(gamma.put_wall_aggregated_gamma),
       nextCallWall: asNum(gamma.next_call_wall_above), // TODO(api): preferred backend field for next call wall.
       nextPutWall: asNum(gamma.next_put_wall_below), // TODO(api): preferred backend field for next put wall.
       netGamma: asNum(gamma.net_gex),
       callWallGammaPerPoint: asNum(gamma.call_wall_gamma_per_point), // TODO(api): wire gamma/point from backend.
       putWallGammaPerPoint: asNum(gamma.put_wall_gamma_per_point), // TODO(api): wire gamma/point from backend.
-      // Deprecated expected_move aliases are tolerated only for older payloads.
-      expectedMove: asNum(gamma.gamma_range_estimate ?? gamma.expected_move),
-      expectedMoveUp: asNum(gamma.gamma_range_high ?? gamma.expected_move_up ?? gamma.expected_move_high),
-      expectedMoveDown: asNum(gamma.gamma_range_low ?? gamma.expected_move_down ?? gamma.expected_move_low),
+      expectedMove: asNum(gamma.gamma_range_estimate),
+      expectedMoveUp: asNum(gamma.gamma_range_high),
+      expectedMoveDown: asNum(gamma.gamma_range_low),
 
       regime: String(gamma.regime || ""),
       bias: String(gamma.bias || ""),

@@ -974,15 +974,9 @@ def _debrief_market_context(entry_date: str) -> Dict[str, str]:
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
     spot = float(spx_quote.get("price") or 0.0) if spx_quote.get("price") is not None else None
     vix = float(vix_quote.get("price") or 0.0) if vix_quote.get("price") is not None else None
-    gamma_flip = gamma_snapshot.get(
-        "gamma_flip_combined_basket", gamma_snapshot.get("gamma_flip")
-    )
-    call_wall = gamma_snapshot.get(
-        "call_wall_aggregated_gamma", gamma_snapshot.get("call_wall")
-    )
-    put_wall = gamma_snapshot.get(
-        "put_wall_aggregated_gamma", gamma_snapshot.get("put_wall")
-    )
+    gamma_flip = gamma_snapshot.get("gamma_flip_combined_basket")
+    call_wall = gamma_snapshot.get("call_wall_aggregated_gamma")
+    put_wall = gamma_snapshot.get("put_wall_aggregated_gamma")
 
     structure = str(context.get("structure") or context.get("market_posture") or "").strip()
     if spot is not None:
