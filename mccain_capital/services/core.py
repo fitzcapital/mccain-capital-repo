@@ -1183,8 +1183,17 @@ def _gamma_data_quality(
     spot_live = spx_state == "live" and spx_reason.startswith("tradier")
     diagnostics = dict(gamma_snapshot.get("diagnostics") or {})
     gamma_status = str(diagnostics.get("status") or "waiting").lower()
-
-    asof_raw = str(gamma_snapshot.get("asof") or "").strip()
+    snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
+    freshness_basis = (
+        "exchange-native"
+        if bool(gamma_snapshot.get("exchange_timestamp_available"))
+        else "fetch-time proxy"
+    )
+    asof_raw = str(
+        gamma_snapshot.get("source_effective_timestamp")
+        or gamma_snapshot.get("asof")
+        or ""
+    ).strip()
     oi_age = "unknown"
     age_s = None
     if asof_raw:
@@ -1224,7 +1233,16 @@ def _gamma_data_quality(
     )
     stale_flags = {str(flag) for flag in (gamma_snapshot.get("stale_flags") or [])}
     warning = ""
-    if gamma_status == "error":
+    if snapshot_status == "invalid":
+        tone = "critical"
+        warning = "Invalid snapshot"
+    elif snapshot_status == "stale":
+        tone = "warn"
+        warning = "Stale snapshot"
+    elif snapshot_status == "degraded":
+        tone = "warn"
+        warning = "Degraded gamma basket"
+    elif gamma_status == "error":
         tone = "critical"
         warning = "Gamma refresh error"
     elif spot_mismatch:
@@ -1263,8 +1281,9 @@ def _gamma_data_quality(
     return {
         "tone": tone,
         "summary": (
+            f"{snapshot_status.title() if snapshot_status else 'Unknown'} snapshot · "
             f"{'Live spot' if spot_live else 'Non-live spot'} · "
-            f"OI age {oi_age} · {contracts_used} contracts"
+            f"Gamma source age {oi_age} ({freshness_basis}) · {contracts_used} contracts"
         ),
         "warning": warning,
     }
@@ -2917,20 +2936,21 @@ def dashboard():
 
 def stream_market():
     from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_pulse_runtime
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
 
     is_testing = bool(current_app.config.get("TESTING"))
     gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     if not is_testing:
-        market_worker.start_market_worker_once()
-        options_panel_service.start_options_worker_once()
-        gamma_map_service.start_gamma_worker_once()
+        market_pulse_runtime.ensure_market_pulse_runtime_started()
         if not gamma_snapshot.get("asof"):
-            try:
-                gamma_snapshot = gamma_map_service.run_gamma_refresh_once()
-            except Exception:
-                gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+            gamma_snapshot = dict(
+                (market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True) or {}).get(
+                    "gamma_snapshot"
+                )
+                or gamma_map_service.get_gamma_snapshot()
+            )
 
     @stream_with_context
     def generate():
@@ -2974,6 +2994,7 @@ def stream_market():
 
 def stream_market_ws():
     from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_pulse_runtime
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
 
@@ -2985,9 +3006,7 @@ def stream_market_ws():
 
     is_testing = bool(current_app.config.get("TESTING"))
     if not is_testing:
-        market_worker.start_market_worker_once()
-        options_panel_service.start_options_worker_once()
-        gamma_map_service.start_gamma_worker_once()
+        market_pulse_runtime.ensure_market_pulse_runtime_started()
 
     try:
         ws = Server.accept(request.environ)
@@ -3011,11 +3030,12 @@ def stream_market_ws():
 
 
 def stream_options_panel():
+    from mccain_capital.services import market_pulse_runtime
     from mccain_capital.services import options_panel_service
 
     is_testing = bool(current_app.config.get("TESTING"))
     if not is_testing:
-        options_panel_service.start_options_worker_once()
+        market_pulse_runtime.ensure_market_pulse_runtime_started()
 
     @stream_with_context
     def generate():
@@ -3038,6 +3058,7 @@ def stream_options_panel():
 
 def market_pulse_page():
     from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_pulse_runtime
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
 
@@ -3046,17 +3067,14 @@ def market_pulse_page():
     force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     now_et = app_runtime.now_et()
     if not current_app.config.get("TESTING"):
-        market_worker.start_market_worker_once()
-        options_panel_service.start_options_worker_once()
-        gamma_map_service.start_gamma_worker_once()
+        market_pulse_runtime.ensure_market_pulse_runtime_started()
     snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
     gamma_snapshot = gamma_map_service.get_gamma_snapshot()
-    if force_refresh or not gamma_snapshot.get("asof"):
-        try:
-            gamma_snapshot = gamma_map_service.run_gamma_refresh_once()
-        except Exception:
-            gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     options_snapshot = options_panel_service.get_options_snapshot()
+    if (force_refresh or not gamma_snapshot.get("asof")) and not current_app.config.get("TESTING"):
+        runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
+        gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
+        options_snapshot = dict(runtime_payload.get("options_snapshot") or options_snapshot)
     options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
     options_contracts = list(options_spx.get("contracts") or [])
     if not options_contracts:

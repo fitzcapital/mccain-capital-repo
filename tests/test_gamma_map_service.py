@@ -5,6 +5,9 @@ import pytest
 
 from mccain_capital import runtime as app_runtime
 from mccain_capital.services import gamma_map_service as svc
+from mccain_capital.services.gamma_snapshot_models import SnapshotStatus
+from mccain_capital.services.gamma_snapshot_models import ValidationError
+from mccain_capital.services.gamma_snapshot_models import validate_market_pulse_snapshot
 
 
 def _raw_basket_df() -> pd.DataFrame:
@@ -266,21 +269,127 @@ def test_empty_dataset_returns_safe_warning_state(monkeypatch):
         contracts_seen=0,
     )
 
-    assert snapshot["gamma_flip"] is None
-    assert snapshot["call_wall"] is None
-    assert snapshot["put_wall"] is None
-    assert "empty_source" in snapshot["stale_flags"]
-    assert snapshot["warnings"]
+    assert snapshot["gamma_flip_combined_basket"] is None
+    assert snapshot["call_wall_aggregated_gamma"] is None
+    assert snapshot["put_wall_aggregated_gamma"] is None
+    assert snapshot["warning_state"]["snapshot_status"] == SnapshotStatus.INVALID.value
+    assert "empty_source" in snapshot["warning_state"]["stale_flags"]
+    assert snapshot["warning_state"]["warnings"]
+
+
+def test_complete_basket_snapshot_is_healthy(monkeypatch):
+    _stub_snapshot_io(monkeypatch)
+
+    snapshot = svc.assemble_market_pulse_snapshot(
+        raw=_raw_basket_df(),
+        requested_expiries=["2026-03-19", "2026-03-20"],
+        source_timestamp="2026-03-19T12:00:00+00:00",
+        source_file_path="",
+        spot_price=5120.0,
+        spot_source_name="tradier",
+        spot_source_timestamp="2026-03-19T12:00:00+00:00",
+        contracts_seen=5,
+    )
+
+    assert snapshot["warning_state"]["snapshot_status"] == SnapshotStatus.HEALTHY.value
+    assert snapshot["source_metadata"]["included_expiries"] == ["2026-03-19", "2026-03-20"]
+
+
+def test_single_expiry_snapshot_is_degraded(monkeypatch):
+    _stub_snapshot_io(monkeypatch)
+
+    degraded_raw = _raw_basket_df()[_raw_basket_df()["expiration"] == "2026-03-19"].copy()
+    snapshot = svc.assemble_market_pulse_snapshot(
+        raw=degraded_raw,
+        requested_expiries=["2026-03-19", "2026-03-20"],
+        source_timestamp="2026-03-19T12:00:00+00:00",
+        source_file_path="",
+        spot_price=5120.0,
+        spot_source_name="tradier",
+        spot_source_timestamp="2026-03-19T12:00:00+00:00",
+        contracts_seen=3,
+    )
+
+    assert snapshot["warning_state"]["snapshot_status"] == SnapshotStatus.DEGRADED.value
+    assert snapshot["source_metadata"]["included_expiries"] == ["2026-03-19"]
+    assert "missing_expiries" in snapshot["warning_state"]["stale_flags"]
 
 
 def test_snapshot_atomicity_keeps_last_good_snapshot_on_bad_recompute(monkeypatch):
     _stub_snapshot_io(monkeypatch)
-    monkeypatch.setattr(svc, "_CACHE", svc._json_clone(svc._CACHE))
+    monkeypatch.setattr(svc, "_CACHE", {})
+    monkeypatch.setattr(
+        svc.app_runtime,
+        "now_et",
+        lambda: datetime(2026, 3, 19, 12, 1, tzinfo=app_runtime.TZ),
+    )
     monkeypatch.setattr(
         svc,
         "_RUNTIME_STATE",
         {"last_attempted_at": "", "last_error": "", "last_refresh_ms": 0, "status": "waiting", "cache_status": "cold"},
     )
+    monkeypatch.setattr(
+        svc.market_data_service,
+        "get_price_snapshot",
+        lambda symbol: {
+            "symbol": "SPX",
+            "value": 5120.0,
+            "source_name": "tradier",
+            "source_timestamp": "2026-03-19T16:00:00+00:00",
+            "raw": {},
+        },
+    )
+    monkeypatch.setattr(
+        svc,
+        "load_gamma_source",
+        lambda expiries=None: {
+            "raw": _raw_basket_df(),
+            "requested_expiries": ["2026-03-19", "2026-03-20"],
+            "source_timestamp": "2026-03-19T16:00:00+00:00",
+            "source_fetch_timestamp": "2026-03-19T16:00:00+00:00",
+            "source_effective_timestamp": "2026-03-19T16:00:00+00:00",
+            "source_effective_timestamp_source": "fetch_fallback",
+            "source_effective_timestamp_note": "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+            "exchange_timestamp_available": False,
+            "contracts_seen": 5,
+            "source_file_path": "",
+        },
+    )
+
+    good = svc.run_gamma_refresh_once()
+    assert good["total_unique_strikes"] > 0
+    assert good["snapshot_status"] == SnapshotStatus.HEALTHY.value
+
+    monkeypatch.setattr(
+        svc,
+        "load_gamma_source",
+        lambda expiries=None: {
+            "raw": pd.DataFrame(),
+            "requested_expiries": ["2026-03-19", "2026-03-20"],
+            "source_timestamp": "2026-03-19T12:05:00+00:00",
+            "source_fetch_timestamp": "2026-03-19T12:05:00+00:00",
+            "source_effective_timestamp": "2026-03-19T12:05:00+00:00",
+            "source_effective_timestamp_source": "fetch_fallback",
+            "source_effective_timestamp_note": "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+            "exchange_timestamp_available": False,
+            "contracts_seen": 0,
+            "source_file_path": "",
+        },
+    )
+
+    stale = svc.run_gamma_refresh_once()
+
+    after = svc.get_gamma_snapshot()
+    assert stale["snapshot_status"] == SnapshotStatus.STALE.value
+    assert after["snapshot_status"] == SnapshotStatus.STALE.value
+    assert after["gamma_flip"] == good["gamma_flip"]
+    assert after["call_wall"] == good["call_wall"]
+    assert after["put_wall"] == good["put_wall"]
+
+
+def test_stale_source_without_last_good_returns_invalid_snapshot(monkeypatch):
+    _stub_snapshot_io(monkeypatch)
+    monkeypatch.setattr(svc, "_CACHE", {})
     monkeypatch.setattr(
         svc.market_data_service,
         "get_price_snapshot",
@@ -299,33 +408,122 @@ def test_snapshot_atomicity_keeps_last_good_snapshot_on_bad_recompute(monkeypatc
             "raw": _raw_basket_df(),
             "requested_expiries": ["2026-03-19", "2026-03-20"],
             "source_timestamp": "2026-03-19T12:00:00+00:00",
+            "source_fetch_timestamp": "2026-03-19T12:00:00+00:00",
+            "source_effective_timestamp": "2026-03-19T12:00:00+00:00",
+            "source_effective_timestamp_source": "fetch_fallback",
+            "source_effective_timestamp_note": "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+            "exchange_timestamp_available": False,
             "contracts_seen": 5,
             "source_file_path": "",
         },
     )
-
-    good = svc.run_gamma_refresh_once()
-    assert good["total_unique_strikes"] > 0
-
     monkeypatch.setattr(
-        svc,
-        "load_gamma_source",
-        lambda expiries=None: {
-            "raw": pd.DataFrame(),
-            "requested_expiries": ["2026-03-19", "2026-03-20"],
-            "source_timestamp": "2026-03-19T12:05:00+00:00",
-            "contracts_seen": 0,
-            "source_file_path": "",
-        },
+        svc.app_runtime,
+        "now_et",
+        lambda: datetime(2026, 3, 19, 12, 30, tzinfo=app_runtime.TZ),
     )
 
-    with pytest.raises(RuntimeError):
-        svc.run_gamma_refresh_once()
+    snapshot = svc.run_gamma_refresh_once()
 
-    after = svc.get_gamma_snapshot()
-    assert after["gamma_flip"] == good["gamma_flip"]
-    assert after["call_wall"] == good["call_wall"]
-    assert after["put_wall"] == good["put_wall"]
+    assert snapshot["snapshot_status"] == SnapshotStatus.INVALID.value
+    assert snapshot["gamma_flip"] is None
+    assert "stale" in snapshot["snapshot_status_label"].lower() or "invalid" in snapshot["snapshot_status_label"].lower()
+
+
+def test_pydantic_validation_rejects_missing_required_timestamp():
+    with pytest.raises(ValidationError):
+        validate_market_pulse_snapshot(
+            {
+                "asof": "2026-03-19T12:00:00+00:00",
+                "computed_at": "2026-03-19T12:00:00+00:00",
+                "last_successful_compute": "",
+                "source_metadata": {
+                    "requested_expiries": ["2026-03-19", "2026-03-20"],
+                    "included_expiries": ["2026-03-19", "2026-03-20"],
+                    "missing_expiries": [],
+                    "source_file_path": "",
+                    "source_fetch_timestamp": "2026-03-19T12:00:00+00:00",
+                    "source_effective_timestamp": "2026-03-19T12:00:00+00:00",
+                    "source_effective_timestamp_source": "fetch_fallback",
+                    "source_effective_timestamp_note": "",
+                    "exchange_timestamp_available": False,
+                },
+                "warning_state": {
+                    "warnings": [],
+                    "stale_flags": [],
+                    "snapshot_status": "healthy",
+                    "snapshot_status_label": "Healthy Gamma Basket: 2 of 2 expiries available",
+                    "snapshot_status_detail": "ok",
+                },
+                "spot": 5120.0,
+                "spot_price_used": 5120.0,
+                "spot_source_name": "tradier",
+                "spot_source_timestamp": "2026-03-19T12:00:00+00:00",
+                "contract_multiplier": 100,
+                "total_rows_before_filter": 1,
+                "total_rows_after_filter": 1,
+                "total_unique_strikes": 1,
+                "regime": "positive",
+                "net_gex": 1.0,
+                "net_gex_total": 1.0,
+                "net_gamma_label": "+1",
+                "gamma_flip_combined_basket": 5120.0,
+                "call_wall_aggregated_gamma": 5130.0,
+                "put_wall_aggregated_gamma": 5110.0,
+                "call_wall_gamma_per_point": 1.0,
+                "put_wall_gamma_per_point": 1.0,
+                "gamma_walls_top3": [5130.0],
+                "top_positive_strikes": [5130.0],
+                "top_negative_strikes": [5110.0],
+                "top_3_positive_gamma_strikes": [5130.0],
+                "top_3_negative_gamma_strikes": [5110.0],
+                "nearest_positive_gamma_above_spot": 5130.0,
+                "nearest_negative_gamma_below_spot": 5110.0,
+                "gamma_range_estimate": 10.0,
+                "gamma_range_high": 5130.0,
+                "gamma_range_low": 5110.0,
+                "next_call_wall_above": 5130.0,
+                "next_put_wall_below": 5110.0,
+                "void_zone": {"start": None, "end": None},
+                "bias": "buy_dips_above_flip",
+                "cache_status": "fresh",
+                "refresh_mode": "in_process",
+                "field_labels": {},
+                "paths": {"csv": "", "png": ""},
+                "diagnostics": {
+                    "status": "ok",
+                    "contracts_seen": 1,
+                    "contracts_used": 1,
+                    "duplicate_raw_records": 0,
+                    "nan_gamma_rows": 0,
+                    "zero_open_interest_rows": 0,
+                    "rows_dropped": 0,
+                    "expirations": ["2026-03-19", "2026-03-20"],
+                    "refresh_ms": 0,
+                    "error": "",
+                },
+                "narrative": {
+                    "what_matters": "",
+                    "trader_live_quote": "",
+                    "trade_bias": "",
+                    "environment_note": "",
+                    "auto_read": [],
+                    "warning_badges": [],
+                },
+                "chart_json": {"gex": None, "vex": None},
+                "grouped_strike_rows": [],
+                "validation_result": {
+                    "total_rows_before_filter": 1,
+                    "rows_dropped": 0,
+                    "duplicate_raw_records": 0,
+                    "nan_gamma_rows": 0,
+                    "zero_open_interest_rows": 0,
+                    "available_expiries": ["2026-03-19", "2026-03-20"],
+                    "warnings": [],
+                    "stale_flags": [],
+                },
+            }
+        )
 
 
 def test_gamma_poll_seconds_is_faster_during_market_hours():

@@ -15,6 +15,14 @@ import urllib.request
 
 from mccain_capital import runtime as app_runtime
 from mccain_capital.services import market_data_service
+from mccain_capital.services.gamma_snapshot_models import GammaSourceMetadata
+from mccain_capital.services.gamma_snapshot_models import GammaValidationResult
+from mccain_capital.services.gamma_snapshot_models import GammaWarningState
+from mccain_capital.services.gamma_snapshot_models import GroupedStrikeRow
+from mccain_capital.services.gamma_snapshot_models import RefreshMode
+from mccain_capital.services.gamma_snapshot_models import SnapshotStatus
+from mccain_capital.services.gamma_snapshot_models import ValidationError
+from mccain_capital.services.gamma_snapshot_models import coerce_validated_snapshot
 
 import numpy as np
 import pandas as pd
@@ -38,87 +46,23 @@ DEFAULT_GAMMA_REGIME_NEGATIVE_THRESHOLD = -50_000_000.0
 SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
 SPOT_TIMESTAMP_DRIFT_SECONDS = 120
 GAMMA_RANGE_LABEL = "Gamma Range Estimate (wall-based)"
+GAMMA_STATUS_INVALID_LABEL = "Invalid Snapshot: gamma levels unavailable"
+GAMMA_REFRESH_MODE = str(os.environ.get("MARKET_PULSE_REFRESH_MODE") or "in_process").strip().lower()
 EOD_GAMMA_NOTIFY_ENABLED = os.environ.get("EOD_GAMMA_NOTIFY_ENABLED", "1") == "1"
 EOD_GAMMA_NOTIFY_TIME_ET = (os.environ.get("EOD_GAMMA_NOTIFY_TIME_ET") or "17:10").strip()
 EOD_GAMMA_NOTIFY_END_ET = (os.environ.get("EOD_GAMMA_NOTIFY_END_ET") or "19:30").strip()
 
 _LOCK = threading.Lock()
 _STARTED = False
-_CACHE: Dict[str, Any] = {
-    "asof": "",
-    "spot": None,
-    "spot_price_used": None,
-    "spot_source_name": "",
-    "spot_source_timestamp": "",
-    "source_timestamp": "",
-    "computed_at": "",
-    "last_successful_compute": "",
-    "included_expiries": [],
-    "requested_expiries": [],
-    "contract_multiplier": DEFAULT_CONTRACT_MULTIPLIER,
-    "total_rows_before_filter": 0,
-    "total_rows_after_filter": 0,
-    "total_unique_strikes": 0,
-    "regime": "unavailable",
-    "net_gex": 0.0,
-    "net_gex_total": 0.0,
-    "gamma_flip": None,
-    "call_wall": None,
-    "put_wall": None,
-    "top_positive_strikes": [],
-    "top_negative_strikes": [],
-    "top_3_positive_gamma_strikes": [],
-    "top_3_negative_gamma_strikes": [],
-    "nearest_positive_gamma_above_spot": None,
-    "nearest_negative_gamma_below_spot": None,
-    "expected_move": None,
-    "expected_move_high": None,
-    "expected_move_low": None,
-    "gamma_range_estimate": None,
-    "gamma_range_high": None,
-    "gamma_range_low": None,
-    "next_call_wall_above": None,
-    "next_put_wall_below": None,
-    "call_wall_gamma_per_point": None,
-    "put_wall_gamma_per_point": None,
-    "gamma_walls_top3": [],
-    "void_zone": {"start": None, "end": None},
-    "bias": "insufficient_data",
-    "warnings": [],
-    "stale_flags": [],
-    "cache_status": "cold",
-    "source_file_path": "",
-    "field_labels": {
-        "spot": "Spot (raw market data)",
-        "gamma_flip": "Gamma Flip (combined basket)",
-        "call_wall": "Call Wall (aggregated strike gamma)",
-        "put_wall": "Put Wall (aggregated strike gamma)",
-        "net_gex": "Net GEX (selected basket)",
-        "gamma_range_estimate": GAMMA_RANGE_LABEL,
-    },
-    "narrative": {
-        "what_matters": "",
-        "trader_live_quote": "",
-        "trade_bias": "",
-        "environment_note": "",
-        "auto_read": [],
-        "warning_badges": [],
-    },
-    "paths": {"csv": "", "png": ""},
-    "diagnostics": {
-        "status": "waiting",
-        "contracts_seen": 0,
-        "contracts_used": 0,
-        "duplicate_raw_records": 0,
-        "nan_gamma_rows": 0,
-        "zero_open_interest_rows": 0,
-        "rows_dropped": 0,
-        "expirations": [],
-        "refresh_ms": 0,
-        "error": "",
-    },
-    "chart_json": {"gex": None, "vex": None},
+_DEFAULT_FIELD_LABELS: Dict[str, str] = {
+    "spot": "Spot (raw market data)",
+    "gamma_flip_combined_basket": "Gamma Flip (combined basket)",
+    "call_wall_aggregated_gamma": "Call Wall (aggregated strike gamma)",
+    "put_wall_aggregated_gamma": "Put Wall (aggregated strike gamma)",
+    "net_gex_total": "Net GEX (selected basket)",
+    "gamma_range_estimate": GAMMA_RANGE_LABEL,
 }
+_CACHE: Dict[str, Any] = {}
 _RUNTIME_STATE: Dict[str, Any] = {
     "last_attempted_at": "",
     "last_error": "",
@@ -274,6 +218,265 @@ def _fmt_level(value: Any) -> str:
     if level is None:
         return "n/a"
     return f"{level:,.0f}"
+
+
+def _refresh_mode() -> RefreshMode:
+    if GAMMA_REFRESH_MODE == RefreshMode.EXTERNAL.value:
+        return RefreshMode.EXTERNAL
+    return RefreshMode.IN_PROCESS
+
+
+def _source_metadata_payload(
+    *,
+    requested_expiries: List[str],
+    included_expiries: List[str],
+    missing_expiries: List[str],
+    source_file_path: str,
+    source_fetch_timestamp: str,
+    source_effective_timestamp: str,
+    source_effective_timestamp_source: str,
+    exchange_timestamp_available: bool,
+    source_effective_timestamp_note: str,
+) -> Dict[str, Any]:
+    return GammaSourceMetadata.model_validate(
+        {
+            "requested_expiries": list(requested_expiries or []),
+            "included_expiries": list(included_expiries or []),
+            "missing_expiries": list(missing_expiries or []),
+            "source_file_path": str(source_file_path or ""),
+            "source_fetch_timestamp": str(source_fetch_timestamp or _now_iso()),
+            "source_effective_timestamp": str(
+                source_effective_timestamp or source_fetch_timestamp or _now_iso()
+            ),
+            "source_effective_timestamp_source": str(source_effective_timestamp_source or "unknown"),
+            "source_effective_timestamp_note": str(source_effective_timestamp_note or ""),
+            "exchange_timestamp_available": bool(exchange_timestamp_available),
+        }
+    ).model_dump(mode="json")
+
+
+def _warning_state_payload(
+    *,
+    status: SnapshotStatus,
+    warnings: List[str],
+    stale_flags: List[str],
+    requested_expiries: List[str],
+    included_expiries: List[str],
+    stale_reason: str = "",
+) -> Dict[str, Any]:
+    requested_count = len(list(requested_expiries or []))
+    included_count = len(list(included_expiries or []))
+    if status == SnapshotStatus.HEALTHY:
+        label = f"Healthy Gamma Basket: {included_count} of {requested_count} expiries available"
+        detail = "Combined near-dated basket is complete and current enough to trust."
+    elif status == SnapshotStatus.DEGRADED:
+        label = f"Degraded Gamma Basket: {included_count} of {requested_count} expiries available"
+        detail = "One expiry is missing, so levels are computed from a partial combined basket."
+    elif status == SnapshotStatus.STALE:
+        label = "Stale Snapshot: showing last known good values"
+        detail = stale_reason or "A fresh trusted basket is unavailable, so the last validated snapshot is being served."
+    else:
+        label = GAMMA_STATUS_INVALID_LABEL
+        detail = stale_reason or "No trustworthy gamma calculation is available."
+    return GammaWarningState.model_validate(
+        {
+        "warnings": list(dict.fromkeys(str(item) for item in warnings if str(item).strip())),
+        "stale_flags": list(dict.fromkeys(str(item) for item in stale_flags if str(item).strip())),
+        "snapshot_status": status.value,
+        "snapshot_status_label": label,
+        "snapshot_status_detail": detail,
+        }
+    ).model_dump(mode="json")
+
+
+def _boundary_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    payload = _json_clone(snapshot)
+    source_meta = dict(payload.get("source_metadata") or {})
+    warning_state = dict(payload.get("warning_state") or {})
+    payload["requested_expiries"] = list(source_meta.get("requested_expiries") or [])
+    payload["included_expiries"] = list(source_meta.get("included_expiries") or [])
+    payload["missing_expiries"] = list(source_meta.get("missing_expiries") or [])
+    payload["source_file_path"] = str(source_meta.get("source_file_path") or "")
+    payload["source_fetch_timestamp"] = str(source_meta.get("source_fetch_timestamp") or "")
+    payload["source_effective_timestamp"] = str(source_meta.get("source_effective_timestamp") or "")
+    payload["source_effective_timestamp_source"] = str(
+        source_meta.get("source_effective_timestamp_source") or "unknown"
+    )
+    payload["source_effective_timestamp_note"] = str(
+        source_meta.get("source_effective_timestamp_note") or ""
+    )
+    payload["exchange_timestamp_available"] = bool(source_meta.get("exchange_timestamp_available"))
+    payload["source_timestamp"] = payload["source_effective_timestamp"]
+    payload["warnings"] = list(warning_state.get("warnings") or [])
+    payload["stale_flags"] = list(warning_state.get("stale_flags") or [])
+    payload["snapshot_status"] = str(
+        warning_state.get("snapshot_status") or SnapshotStatus.INVALID.value
+    )
+    payload["snapshot_status_label"] = str(
+        warning_state.get("snapshot_status_label") or GAMMA_STATUS_INVALID_LABEL
+    )
+    payload["snapshot_status_detail"] = str(
+        warning_state.get("snapshot_status_detail") or "No trustworthy gamma calculation is available."
+    )
+    payload["gamma_flip"] = payload.get("gamma_flip_combined_basket")
+    payload["call_wall"] = payload.get("call_wall_aggregated_gamma")
+    payload["put_wall"] = payload.get("put_wall_aggregated_gamma")
+    # Deprecated compatibility shim for legacy context helpers and client code.
+    payload["expected_move"] = payload.get("gamma_range_estimate")
+    payload["expected_move_high"] = payload.get("gamma_range_high")
+    payload["expected_move_low"] = payload.get("gamma_range_low")
+    payload["expected_move_up"] = payload.get("gamma_range_high")
+    payload["expected_move_down"] = payload.get("gamma_range_low")
+    return payload
+
+
+def _snapshot_is_trustworthy(snapshot: Dict[str, Any]) -> bool:
+    if not snapshot:
+        return False
+    warning_state = dict(snapshot.get("warning_state") or {})
+    status = str(warning_state.get("snapshot_status") or "")
+    return status in {
+        SnapshotStatus.HEALTHY.value,
+        SnapshotStatus.DEGRADED.value,
+        SnapshotStatus.STALE.value,
+    }
+
+
+def _internal_invalid_snapshot(
+    *,
+    reason: str,
+    source_metadata: Optional[Dict[str, Any]] = None,
+    current_snapshot: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    now_iso = _now_iso()
+    prior = _json_clone(current_snapshot or {})
+    source_meta = dict(source_metadata or prior.get("source_metadata") or {})
+    requested_expiries = list(source_meta.get("requested_expiries") or [app_runtime.today_iso(), _next_trading_day_iso(app_runtime.today_iso())])
+    source_meta.setdefault("requested_expiries", requested_expiries)
+    source_meta.setdefault("included_expiries", [])
+    source_meta.setdefault("missing_expiries", list(requested_expiries))
+    source_meta.setdefault("source_file_path", "")
+    source_meta.setdefault("source_fetch_timestamp", now_iso)
+    source_meta.setdefault("source_effective_timestamp", now_iso)
+    source_meta.setdefault("source_effective_timestamp_source", "unknown")
+    source_meta.setdefault("source_effective_timestamp_note", "Exchange-native options chain timestamp unavailable.")
+    source_meta.setdefault("exchange_timestamp_available", False)
+    payload = {
+        "asof": now_iso,
+        "computed_at": now_iso,
+        "last_successful_compute": str(prior.get("last_successful_compute") or now_iso),
+        "source_metadata": source_meta,
+        "warning_state": _warning_state_payload(
+            status=SnapshotStatus.INVALID,
+            warnings=[reason],
+            stale_flags=["invalid_snapshot"],
+            requested_expiries=requested_expiries,
+            included_expiries=[],
+            stale_reason=reason,
+        ),
+        "spot": None,
+        "spot_price_used": None,
+        "spot_source_name": "",
+        "spot_source_timestamp": now_iso,
+        "contract_multiplier": DEFAULT_CONTRACT_MULTIPLIER,
+        "total_rows_before_filter": 0,
+        "total_rows_after_filter": 0,
+        "total_unique_strikes": 0,
+        "regime": "unavailable",
+        "net_gex": 0.0,
+        "net_gex_total": 0.0,
+        "net_gamma_label": "0",
+        "gamma_flip_combined_basket": None,
+        "call_wall_aggregated_gamma": None,
+        "put_wall_aggregated_gamma": None,
+        "call_wall_gamma_per_point": None,
+        "put_wall_gamma_per_point": None,
+        "gamma_walls_top3": [],
+        "top_positive_strikes": [],
+        "top_negative_strikes": [],
+        "top_3_positive_gamma_strikes": [],
+        "top_3_negative_gamma_strikes": [],
+        "nearest_positive_gamma_above_spot": None,
+        "nearest_negative_gamma_below_spot": None,
+        "gamma_range_estimate": None,
+        "gamma_range_high": None,
+        "gamma_range_low": None,
+        "next_call_wall_above": None,
+        "next_put_wall_below": None,
+        "void_zone": {"start": None, "end": None},
+        "bias": "insufficient_data",
+        "cache_status": "invalid",
+        "refresh_mode": _refresh_mode().value,
+        "field_labels": dict(_DEFAULT_FIELD_LABELS),
+        "paths": {"csv": "", "png": ""},
+        "diagnostics": {
+            "status": "invalid",
+            "contracts_seen": 0,
+            "contracts_used": 0,
+            "duplicate_raw_records": 0,
+            "nan_gamma_rows": 0,
+            "zero_open_interest_rows": 0,
+            "rows_dropped": 0,
+            "expirations": [],
+            "refresh_ms": 0,
+            "error": reason,
+        },
+        "narrative": {
+            "what_matters": "Invalid Snapshot: gamma levels unavailable",
+            "trader_live_quote": "No trustworthy combined-basket gamma snapshot is available right now.",
+            "trade_bias": "Do not lean on gamma levels until the snapshot returns to healthy or degraded.",
+            "environment_note": reason,
+            "auto_read": [reason],
+            "warning_badges": ["Invalid Snapshot"],
+        },
+        "chart_json": {"gex": None, "vex": None},
+        "grouped_strike_rows": [],
+        "validation_result": {
+            "total_rows_before_filter": 0,
+            "rows_dropped": 0,
+            "duplicate_raw_records": 0,
+            "nan_gamma_rows": 0,
+            "zero_open_interest_rows": 0,
+            "available_expiries": [],
+            "warnings": [reason],
+            "stale_flags": ["invalid_snapshot"],
+        },
+    }
+    return coerce_validated_snapshot(payload)
+
+
+def _stale_snapshot_from_last_good(
+    current_snapshot: Dict[str, Any],
+    *,
+    reason: str,
+) -> Dict[str, Any]:
+    stale_snapshot = _json_clone(current_snapshot)
+    source_meta = dict(stale_snapshot.get("source_metadata") or {})
+    requested_expiries = list(source_meta.get("requested_expiries") or [])
+    included_expiries = list(source_meta.get("included_expiries") or [])
+    warnings = list(((stale_snapshot.get("warning_state") or {}).get("warnings")) or [])
+    warnings.append(reason)
+    stale_flags = list(((stale_snapshot.get("warning_state") or {}).get("stale_flags")) or [])
+    stale_flags.append("stale_snapshot")
+    stale_snapshot["warning_state"] = _warning_state_payload(
+        status=SnapshotStatus.STALE,
+        warnings=warnings,
+        stale_flags=stale_flags,
+        requested_expiries=requested_expiries,
+        included_expiries=included_expiries,
+        stale_reason=reason,
+    )
+    stale_snapshot["cache_status"] = "last_good"
+    diagnostics = dict(stale_snapshot.get("diagnostics") or {})
+    diagnostics["status"] = "stale"
+    diagnostics["error"] = reason
+    stale_snapshot["diagnostics"] = diagnostics
+    narrative = dict(stale_snapshot.get("narrative") or {})
+    badges = list(narrative.get("warning_badges") or [])
+    badges.append("Stale Snapshot")
+    narrative["warning_badges"] = list(dict.fromkeys(badges))
+    stale_snapshot["narrative"] = narrative
+    return coerce_validated_snapshot(stale_snapshot)
 
 
 def _massive_api_key() -> str:
@@ -506,10 +709,18 @@ def load_gamma_source(expiries: Optional[List[str]] = None) -> Dict[str, Any]:
         today = app_runtime.today_iso()
         basket = [today, _next_trading_day_iso(today)]
     raw = fetch_spx_chain_for_expiries(basket)
+    fetch_timestamp = _now_iso()
     return {
         "raw": raw.copy(),
         "requested_expiries": basket,
-        "source_timestamp": _now_iso(),
+        # Tradier chain payloads do not expose a trustworthy exchange-native chain
+        # timestamp here, so effective freshness explicitly falls back to fetch time.
+        "source_fetch_timestamp": fetch_timestamp,
+        "source_effective_timestamp": fetch_timestamp,
+        "source_effective_timestamp_source": "fetch_fallback",
+        "source_effective_timestamp_note": "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+        "exchange_timestamp_available": False,
+        "source_timestamp": fetch_timestamp,
         "contracts_seen": int(raw.attrs.get("contracts_seen") or 0),
         "source_file_path": "",
     }
@@ -1058,27 +1269,31 @@ def _derive_gamma_range_estimate(
 
 
 def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
-    warnings = [str(item) for item in snapshot.get("warnings") or []]
+    warning_state = dict(snapshot.get("warning_state") or {})
+    warnings = [str(item) for item in warning_state.get("warnings") or []]
     spot = _safe_float(snapshot.get("spot_price_used"))
     regime = str(snapshot.get("regime") or "unavailable")
-    gamma_flip = _safe_float(snapshot.get("gamma_flip"))
-    call_wall = _safe_float(snapshot.get("call_wall"))
-    put_wall = _safe_float(snapshot.get("put_wall"))
+    gamma_flip = _safe_float(snapshot.get("gamma_flip_combined_basket"))
+    call_wall = _safe_float(snapshot.get("call_wall_aggregated_gamma"))
+    put_wall = _safe_float(snapshot.get("put_wall_aggregated_gamma"))
     top_positive = list(snapshot.get("top_3_positive_gamma_strikes") or [])
     top_negative = list(snapshot.get("top_3_negative_gamma_strikes") or [])
     auto_read: List[str] = []
     warning_badges: List[str] = []
 
-    if snapshot.get("stale_flags"):
+    stale_flags = list(warning_state.get("stale_flags") or [])
+    if stale_flags:
         warning_badges.append("Warnings")
-    if "missing_expiries" in (snapshot.get("stale_flags") or []):
+    if "missing_expiries" in stale_flags:
         warning_badges.append("Missing next expiry")
     if gamma_flip is None:
         warning_badges.append("No valid gamma flip")
-    if "stale_gamma_source" in (snapshot.get("stale_flags") or []):
+    if "stale_gamma_source" in stale_flags or str(warning_state.get("snapshot_status") or "") == SnapshotStatus.STALE.value:
         warning_badges.append("Source stale")
-    if "spot_source_mismatch" in (snapshot.get("stale_flags") or []):
+    if "spot_source_mismatch" in stale_flags:
         warning_badges.append("Spot mismatch")
+    if str(warning_state.get("snapshot_status") or "") == SnapshotStatus.INVALID.value:
+        warning_badges.append("Invalid Snapshot")
 
     if warnings:
         what_matters = "Gamma model is degraded. Use level interaction cautiously until warnings clear."
@@ -1164,13 +1379,16 @@ def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     gamma_range_estimate = _safe_float(
-        snapshot.get("gamma_range_estimate", snapshot.get("expected_move"))
+        snapshot.get("gamma_range_estimate")
     )
+    source_meta = dict(snapshot.get("source_metadata") or {})
     environment_bits = [
-        f"Included expiries: {', '.join(str(exp) for exp in snapshot.get('included_expiries') or []) or 'none'}."
+        f"Included expiries: {', '.join(str(exp) for exp in source_meta.get('included_expiries') or []) or 'none'}."
     ]
     if gamma_range_estimate is not None:
         environment_bits.append(f"{GAMMA_RANGE_LABEL}: +/- {gamma_range_estimate:.1f} points.")
+    if not bool(source_meta.get("exchange_timestamp_available")):
+        environment_bits.append("Freshness basis: fetch-time proxy.")
     environment_note = " ".join(environment_bits)
     return {
         "what_matters": what_matters,
@@ -1187,6 +1405,11 @@ def assemble_market_pulse_snapshot(
     raw: pd.DataFrame,
     requested_expiries: List[str],
     source_timestamp: str,
+    source_fetch_timestamp: Optional[str] = None,
+    source_effective_timestamp: Optional[str] = None,
+    source_effective_timestamp_source: str = "unknown",
+    source_effective_timestamp_note: str = "",
+    exchange_timestamp_available: bool = False,
     source_file_path: str,
     spot_price: float,
     spot_source_name: str,
@@ -1194,7 +1417,13 @@ def assemble_market_pulse_snapshot(
     contracts_seen: int,
     contract_multiplier: int = DEFAULT_CONTRACT_MULTIPLIER,
 ) -> Dict[str, Any]:
-    validated = validate_gamma_source(raw, source_timestamp=source_timestamp, spot_price=spot_price)
+    effective_timestamp = str(source_effective_timestamp or source_timestamp or _now_iso())
+    fetch_timestamp = str(source_fetch_timestamp or effective_timestamp or _now_iso())
+    validated = validate_gamma_source(
+        raw,
+        source_timestamp=effective_timestamp,
+        spot_price=spot_price,
+    )
     selected = select_expiry_basket(
         validated["rows"],
         requested_expiries=requested_expiries,
@@ -1228,22 +1457,60 @@ def assemble_market_pulse_snapshot(
         _safe_float(levels.get("put_wall")),
     )
     computed_at = _now_iso()
+    included_expiries = list(selected.get("included_expiries") or [])
+    missing_expiries = list(selected.get("missing_expiries") or [])
+    if grouped.empty or not included_expiries:
+        snapshot_status = SnapshotStatus.INVALID
+    elif len(included_expiries) == len(list(requested_expiries or [])):
+        snapshot_status = SnapshotStatus.HEALTHY
+    else:
+        snapshot_status = SnapshotStatus.DEGRADED
     gex_fig = render_gex_chart(grouped, levels, float(spot_price))
     vex_fig = render_vex_chart(grouped, float(spot_price))
     paths = export_outputs(expo, gex_fig, vex_fig, app_runtime.UPLOAD_DIR)
-
+    validation_result = GammaValidationResult.model_validate(
+        {
+            "total_rows_before_filter": int(validated["total_rows_before_filter"]),
+            "rows_dropped": int(validated["rows_dropped"]),
+            "duplicate_raw_records": int(validated["duplicate_raw_records"]),
+            "nan_gamma_rows": int(validated["nan_gamma_rows"]),
+            "zero_open_interest_rows": int(validated["zero_open_interest_rows"]),
+            "available_expiries": list(validated.get("available_expiries") or []),
+            "warnings": warnings,
+            "stale_flags": stale_flags,
+        }
+    ).model_dump(mode="json")
+    grouped_rows = [
+        GroupedStrikeRow.model_validate(row).model_dump(mode="json")
+        for row in grouped.to_dict("records")
+    ]
     snapshot = {
         "asof": computed_at,
         "computed_at": computed_at,
         "last_successful_compute": computed_at,
-        "source_timestamp": source_timestamp,
-        "source_file_path": source_file_path or str(paths.get("csv") or ""),
+        "source_metadata": _source_metadata_payload(
+            requested_expiries=list(requested_expiries or []),
+            included_expiries=included_expiries,
+            missing_expiries=missing_expiries,
+            source_file_path=source_file_path or str(paths.get("csv") or ""),
+            source_fetch_timestamp=fetch_timestamp,
+            source_effective_timestamp=effective_timestamp,
+            source_effective_timestamp_source=source_effective_timestamp_source,
+            exchange_timestamp_available=exchange_timestamp_available,
+            source_effective_timestamp_note=source_effective_timestamp_note
+            or "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+        ),
+        "warning_state": _warning_state_payload(
+            status=snapshot_status,
+            warnings=warnings,
+            stale_flags=stale_flags,
+            requested_expiries=list(requested_expiries or []),
+            included_expiries=included_expiries,
+        ),
         "spot": float(spot_price),
         "spot_price_used": float(spot_price),
         "spot_source_name": str(spot_source_name or ""),
-        "spot_source_timestamp": str(spot_source_timestamp or ""),
-        "requested_expiries": list(requested_expiries),
-        "included_expiries": list(selected.get("included_expiries") or []),
+        "spot_source_timestamp": str(spot_source_timestamp or computed_at),
         "contract_multiplier": int(contract_multiplier),
         "total_rows_before_filter": int(validated["total_rows_before_filter"]),
         "total_rows_after_filter": int(len(selected_rows.index)),
@@ -1252,9 +1519,9 @@ def assemble_market_pulse_snapshot(
         "net_gex": float(net_gex_total),
         "net_gex_total": float(net_gex_total),
         "net_gamma_label": _abbrev_billions(float(net_gex_total)),
-        "gamma_flip": levels.get("gamma_flip"),
-        "call_wall": levels.get("call_wall"),
-        "put_wall": levels.get("put_wall"),
+        "gamma_flip_combined_basket": levels.get("gamma_flip"),
+        "call_wall_aggregated_gamma": levels.get("call_wall"),
+        "put_wall_aggregated_gamma": levels.get("put_wall"),
         "call_wall_gamma_per_point": levels.get("call_wall_gamma_per_point"),
         "put_wall_gamma_per_point": levels.get("put_wall_gamma_per_point"),
         "gamma_walls_top3": list(levels.get("top_3_positive_gamma_strikes") or []),
@@ -1267,29 +1534,23 @@ def assemble_market_pulse_snapshot(
         "gamma_range_estimate": gamma_range_estimate,
         "gamma_range_high": (float(spot_price) + gamma_range_estimate) if gamma_range_estimate is not None else None,
         "gamma_range_low": (float(spot_price) - gamma_range_estimate) if gamma_range_estimate is not None else None,
-        "expected_move": gamma_range_estimate,
-        "expected_move_high": (float(spot_price) + gamma_range_estimate) if gamma_range_estimate is not None else None,
-        "expected_move_low": (float(spot_price) - gamma_range_estimate) if gamma_range_estimate is not None else None,
-        "expected_move_up": (float(spot_price) + gamma_range_estimate) if gamma_range_estimate is not None else None,
-        "expected_move_down": (float(spot_price) - gamma_range_estimate) if gamma_range_estimate is not None else None,
         "next_call_wall_above": levels.get("next_call_wall_above"),
         "next_put_wall_below": levels.get("next_put_wall_below"),
         "void_zone": levels.get("void_zone") or {"start": None, "end": None},
         "bias": summary.get("bias"),
-        "warnings": list(dict.fromkeys(str(item) for item in warnings if str(item).strip())),
-        "stale_flags": list(dict.fromkeys(str(item) for item in stale_flags if str(item).strip())),
         "cache_status": "fresh",
-        "field_labels": _json_clone(_CACHE["field_labels"]),
+        "refresh_mode": _refresh_mode().value,
+        "field_labels": dict(_DEFAULT_FIELD_LABELS),
         "paths": paths,
         "diagnostics": {
-            "status": "ok",
+            "status": ("invalid" if snapshot_status == SnapshotStatus.INVALID else "ok"),
             "contracts_seen": int(contracts_seen),
             "contracts_used": int(len(expo.index)),
             "duplicate_raw_records": int(validated["duplicate_raw_records"]),
             "nan_gamma_rows": int(validated["nan_gamma_rows"]),
             "zero_open_interest_rows": int(validated["zero_open_interest_rows"]),
             "rows_dropped": int(validated["rows_dropped"]),
-            "expirations": list(selected.get("included_expiries") or []),
+            "expirations": included_expiries,
             "refresh_ms": 0,
             "error": "",
         },
@@ -1297,9 +1558,11 @@ def assemble_market_pulse_snapshot(
             "gex": gex_fig.to_plotly_json(),
             "vex": vex_fig.to_plotly_json(),
         },
+        "grouped_strike_rows": grouped_rows,
+        "validation_result": validation_result,
     }
     snapshot["narrative"] = _build_narrative(snapshot)
-    return snapshot
+    return coerce_validated_snapshot(snapshot)
 
 
 def should_refresh_snapshot(
@@ -1326,24 +1589,59 @@ def get_or_build_market_pulse_snapshot(force_refresh: bool = False) -> Dict[str,
     with _LOCK:
         current_snapshot = _json_clone(_CACHE)
     if not should_refresh_snapshot(current_snapshot, force_refresh=force_refresh):
-        snapshot = _json_clone(current_snapshot)
+        if not current_snapshot:
+            return _internal_invalid_snapshot(reason="Gamma snapshot has not been built yet.")
+        snapshot = coerce_validated_snapshot(current_snapshot)
         snapshot["cache_status"] = "cache_hit"
         snapshot["diagnostics"] = dict(snapshot.get("diagnostics") or {})
-        snapshot["diagnostics"]["status"] = str(_RUNTIME_STATE.get("status") or snapshot["diagnostics"].get("status") or "ok")
+        snapshot["diagnostics"]["status"] = str(
+            _RUNTIME_STATE.get("status") or snapshot["diagnostics"].get("status") or "ok"
+        )
         snapshot["diagnostics"]["error"] = str(_RUNTIME_STATE.get("last_error") or "")
-        return snapshot
+        return coerce_validated_snapshot(snapshot)
 
     started = time.time()
     source = load_gamma_source()
+    source_metadata = _source_metadata_payload(
+        requested_expiries=list(source.get("requested_expiries") or []),
+        included_expiries=[],
+        missing_expiries=list(source.get("requested_expiries") or []),
+        source_file_path=str(source.get("source_file_path") or ""),
+        source_fetch_timestamp=str(source.get("source_fetch_timestamp") or source.get("source_timestamp") or _now_iso()),
+        source_effective_timestamp=str(source.get("source_effective_timestamp") or source.get("source_timestamp") or _now_iso()),
+        source_effective_timestamp_source=str(source.get("source_effective_timestamp_source") or "unknown"),
+        exchange_timestamp_available=bool(source.get("exchange_timestamp_available")),
+        source_effective_timestamp_note=str(
+            source.get("source_effective_timestamp_note")
+            or "Exchange-native chain timestamp unavailable; using fetch timestamp."
+        ),
+    )
     spot_snapshot = market_data_service.get_price_snapshot("SPX")
     spot = _safe_float(spot_snapshot.get("value"))
     if spot is None:
-        raise RuntimeError("SPX spot unavailable")
+        if _snapshot_is_trustworthy(current_snapshot):
+            return _stale_snapshot_from_last_good(
+                current_snapshot,
+                reason="Stale Snapshot: showing last known good values because SPX spot was unavailable for refresh.",
+            )
+        return _internal_invalid_snapshot(
+            reason="Invalid Snapshot: SPX spot unavailable for gamma build.",
+            source_metadata=source_metadata,
+            current_snapshot=current_snapshot,
+        )
 
     candidate = assemble_market_pulse_snapshot(
         raw=source["raw"],
         requested_expiries=list(source["requested_expiries"] or []),
         source_timestamp=str(source["source_timestamp"] or _now_iso()),
+        source_fetch_timestamp=str(source.get("source_fetch_timestamp") or source.get("source_timestamp") or _now_iso()),
+        source_effective_timestamp=str(source.get("source_effective_timestamp") or source.get("source_timestamp") or _now_iso()),
+        source_effective_timestamp_source=str(source.get("source_effective_timestamp_source") or "unknown"),
+        source_effective_timestamp_note=str(
+            source.get("source_effective_timestamp_note")
+            or "Exchange-native chain timestamp unavailable; using fetch timestamp."
+        ),
+        exchange_timestamp_available=bool(source.get("exchange_timestamp_available")),
         source_file_path=str(source.get("source_file_path") or ""),
         spot_price=float(spot),
         spot_source_name=str(spot_snapshot.get("source_name") or ""),
@@ -1351,16 +1649,38 @@ def get_or_build_market_pulse_snapshot(force_refresh: bool = False) -> Dict[str,
         contracts_seen=int(source.get("contracts_seen") or 0),
         contract_multiplier=DEFAULT_CONTRACT_MULTIPLIER,
     )
-    if candidate.get("total_rows_after_filter", 0) <= 0:
-        raise RuntimeError("Gamma snapshot build produced no selected rows")
-    if candidate.get("total_unique_strikes", 0) <= 0:
-        raise RuntimeError("Gamma snapshot build produced no grouped strikes")
-    if not list(candidate.get("included_expiries") or []):
-        raise RuntimeError("Gamma snapshot build produced no included expiries")
+    warning_state = dict(candidate.get("warning_state") or {})
+    candidate_stale_flags = set((warning_state.get("stale_flags") or []))
+    candidate_status = str(warning_state.get("snapshot_status") or SnapshotStatus.INVALID.value)
+    if "stale_gamma_source" in candidate_stale_flags:
+        if _snapshot_is_trustworthy(current_snapshot):
+            return _stale_snapshot_from_last_good(
+                current_snapshot,
+                reason="Stale Snapshot: showing last known good values because the current gamma source is too old.",
+            )
+        return _internal_invalid_snapshot(
+            reason="Invalid Snapshot: gamma source is stale and no last known good snapshot is available.",
+            source_metadata=dict(candidate.get("source_metadata") or source_metadata),
+            current_snapshot=current_snapshot,
+        )
+    if candidate_status == SnapshotStatus.INVALID.value:
+        if _snapshot_is_trustworthy(current_snapshot):
+            return _stale_snapshot_from_last_good(
+                current_snapshot,
+                reason="Stale Snapshot: showing last known good values because the latest gamma build was invalid.",
+            )
+        return _internal_invalid_snapshot(
+            reason=str(
+                (warning_state.get("snapshot_status_detail") or "").strip()
+                or "Invalid Snapshot: latest gamma build was not trustworthy."
+            ),
+            source_metadata=dict(candidate.get("source_metadata") or source_metadata),
+            current_snapshot=current_snapshot,
+        )
     candidate["diagnostics"] = dict(candidate.get("diagnostics") or {})
     candidate["diagnostics"]["refresh_ms"] = int((time.time() - started) * 1000)
     candidate["cache_status"] = "fresh"
-    return candidate
+    return coerce_validated_snapshot(candidate)
 
 
 def render_gex_chart(expo_df: pd.DataFrame, levels: Dict[str, Any], spot: float) -> go.Figure:
@@ -1544,16 +1864,27 @@ def _maybe_emit_eod_gamma_notification(
 
 def run_gamma_refresh_once() -> Dict[str, Any]:
     snapshot = get_or_build_market_pulse_snapshot(force_refresh=True)
+    warning_state = dict(snapshot.get("warning_state") or {})
+    snapshot_status = str(warning_state.get("snapshot_status") or SnapshotStatus.INVALID.value)
+    runtime_status = (
+        "stale"
+        if snapshot_status == SnapshotStatus.STALE.value
+        else ("invalid" if snapshot_status == SnapshotStatus.INVALID.value else "ok")
+    )
+    cache_status = "last_good" if snapshot_status == SnapshotStatus.STALE.value else str(
+        snapshot.get("cache_status") or ("invalid" if snapshot_status == SnapshotStatus.INVALID.value else "fresh")
+    )
     with _LOCK:
         _CACHE.clear()
         _CACHE.update(_json_clone(snapshot))
         _RUNTIME_STATE["last_attempted_at"] = str(snapshot.get("computed_at") or snapshot.get("asof") or "")
-        _RUNTIME_STATE["last_error"] = ""
+        _RUNTIME_STATE["last_error"] = str((snapshot.get("diagnostics") or {}).get("error") or "")
         _RUNTIME_STATE["last_refresh_ms"] = int(((snapshot.get("diagnostics") or {}).get("refresh_ms")) or 0)
-        _RUNTIME_STATE["status"] = "ok"
-        _RUNTIME_STATE["cache_status"] = str(snapshot.get("cache_status") or "fresh")
-    _maybe_emit_eod_gamma_notification(snapshot)
-    return _json_clone(snapshot)
+        _RUNTIME_STATE["status"] = runtime_status
+        _RUNTIME_STATE["cache_status"] = cache_status
+    if snapshot_status in {SnapshotStatus.HEALTHY.value, SnapshotStatus.DEGRADED.value}:
+        _maybe_emit_eod_gamma_notification(_boundary_snapshot(snapshot))
+    return _boundary_snapshot(snapshot)
 
 
 def _worker_loop() -> None:
@@ -1584,19 +1915,41 @@ def get_gamma_snapshot() -> Dict[str, Any]:
     with _LOCK:
         snapshot = _json_clone(_CACHE)
         runtime_state = dict(_RUNTIME_STATE)
+    if not snapshot:
+        snapshot = _internal_invalid_snapshot(
+            reason="Invalid Snapshot: gamma levels unavailable until the first successful refresh."
+        )
+    else:
+        try:
+            snapshot = coerce_validated_snapshot(snapshot)
+        except ValidationError:
+            snapshot = _internal_invalid_snapshot(
+                reason="Invalid Snapshot: cached gamma payload failed schema validation.",
+                current_snapshot=snapshot,
+            )
+
     snapshot["cache_status"] = str(runtime_state.get("cache_status") or snapshot.get("cache_status") or "cold")
     snapshot["diagnostics"] = dict(snapshot.get("diagnostics") or {})
-    snapshot["diagnostics"]["status"] = str(runtime_state.get("status") or snapshot["diagnostics"].get("status") or "waiting")
-    snapshot["diagnostics"]["error"] = str(runtime_state.get("last_error") or snapshot["diagnostics"].get("error") or "")
+    snapshot["diagnostics"]["status"] = str(
+        runtime_state.get("status") or snapshot["diagnostics"].get("status") or "waiting"
+    )
+    snapshot["diagnostics"]["error"] = str(
+        runtime_state.get("last_error") or snapshot["diagnostics"].get("error") or ""
+    )
     if runtime_state.get("last_refresh_ms"):
         snapshot["diagnostics"]["refresh_ms"] = int(runtime_state.get("last_refresh_ms") or 0)
-    if snapshot["diagnostics"].get("status") == "error" and runtime_state.get("last_error"):
-        warnings = list(snapshot.get("warnings") or [])
-        if "Last refresh failed; serving last good gamma snapshot." not in warnings:
-            warnings.append("Last refresh failed; serving last good gamma snapshot.")
-        snapshot["warnings"] = warnings
-        stale_flags = list(snapshot.get("stale_flags") or [])
-        if "last_refresh_failed" not in stale_flags:
-            stale_flags.append("last_refresh_failed")
-        snapshot["stale_flags"] = stale_flags
-    return snapshot
+    if (
+        snapshot["diagnostics"].get("status") == "error"
+        and runtime_state.get("last_error")
+        and _snapshot_is_trustworthy(snapshot)
+    ):
+        snapshot = _stale_snapshot_from_last_good(
+            snapshot,
+            reason="Stale Snapshot: showing last known good values because the latest refresh failed.",
+        )
+    elif snapshot["diagnostics"].get("status") == "invalid" and not _snapshot_is_trustworthy(snapshot):
+        snapshot = _internal_invalid_snapshot(
+            reason=str(snapshot["diagnostics"].get("error") or "Invalid Snapshot: gamma levels unavailable."),
+            current_snapshot=snapshot,
+        )
+    return _boundary_snapshot(snapshot)

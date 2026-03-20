@@ -17,16 +17,19 @@ dependencies = [
   "Pillow==10.4.0",
   "pandas",
   "lxml",
+  "psutil",
+  "pydantic>=2.12,<3",
 ]
 
 [project.scripts]
+fitz = "fitz_cli:main"
 mccain-capital = "mccain_capital.cli:main"
 
 [tool.setuptools]
-py-modules = ["app"]
+py-modules = ["app", "fitz_cli"]
 
 [tool.setuptools.packages.find]
-include = ["mccain_capital*"]
+include = ["mccain_capital*", "scripts*"]
 
 [tool.black]
 line-length = 100
