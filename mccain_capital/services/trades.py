@@ -57,6 +57,43 @@ from mccain_capital.runtime import (
 )
 from mccain_capital.services import trades_importing as importing
 from mccain_capital.services import vanquish_live_sync
+from mccain_capital.services.trades_backup import (
+    _auto_backup_config_path,
+    _auto_backup_config_paths,
+    _auto_backup_dir,
+    _auto_backup_lock_path,
+    _auto_backup_worker,
+    _backup_verification,
+    _count_db_rows,
+    _create_backup_archive,
+    _integrity_health_snapshot,
+    _list_saved_backups,
+    _load_auto_backup_config,
+    _normalize_backup_times,
+    _prune_auto_backups,
+    _restore_dry_run,
+    _restore_from_backup_path,
+    _run_backup_once,
+    _save_auto_backup_config,
+)
+from mccain_capital.services.trades_notifications import (
+    _alerts_actor,
+    _append_notification_history,
+    _bulk_update_alert_status,
+    _emit_notification,
+    _entry_minutes,
+    _load_notify_history,
+    _notification_fingerprint,
+    _notify_dedupe_window_seconds,
+    _notify_history_paths,
+    _parse_iso_epoch,
+    _record_alert_event,
+    _save_notify_history,
+    _scan_anomaly_watch,
+    _signed_headers,
+    _sorted_alerts,
+    _update_alert_status,
+)
 from mccain_capital.services.background_jobs import BackgroundJobStore
 from mccain_capital.services.ui import render_page, simple_msg
 from mccain_capital.services.viewmodels import (
@@ -172,18 +209,6 @@ def _broker_auto_sync_config_path() -> str:
 
 def _broker_auto_sync_lock_path() -> str:
     return str(BROKER_AUTO_SYNC_LOCK_PATH or _upload_file(".vanquish_auto_sync.lock"))
-
-
-def _auto_backup_config_path() -> str:
-    return str(AUTO_BACKUP_CONFIG_PATH or _upload_file(".auto_backup_config.json"))
-
-
-def _auto_backup_dir() -> str:
-    return str(AUTO_BACKUP_DIR or _upload_file("backups"))
-
-
-def _auto_backup_lock_path() -> str:
-    return str(AUTO_BACKUP_LOCK_PATH or _upload_file(".auto_backup.lock"))
 
 
 def _bg_job_store() -> BackgroundJobStore:
@@ -1217,42 +1242,6 @@ def _load_sync_history() -> List[Dict[str, Any]]:
         return []
 
 
-def _load_notify_history() -> Dict[str, Any]:
-    for path in _notify_history_paths(for_read=True):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                parsed = json.load(f)
-                return parsed if isinstance(parsed, dict) else {}
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            continue
-    return {}
-
-
-def _save_notify_history(state: Dict[str, Any]) -> None:
-    errors: List[str] = []
-    for path in _notify_history_paths(for_read=False):
-        try:
-            _safe_write_json(path, state)
-            return
-        except OSError as exc:
-            errors.append(f"{path}: {exc}")
-    if errors:
-        raise OSError("Notify history write failed: " + " | ".join(errors))
-
-
-def _notify_history_paths(for_read: bool = True) -> List[str]:
-    fallback = os.path.join(tempfile.gettempdir(), "mccain-capital", ".vanquish_notify_history.json")
-    ordered = (_broker_notify_history_path(), fallback)
-    if for_read and os.path.isfile(fallback):
-        ordered = (fallback, _broker_notify_history_path())
-    paths: List[str] = []
-    for path in ordered:
-        p = os.path.abspath(str(path))
-        if p and p not in paths:
-            paths.append(p)
-    return paths
-
-
 def _load_admin_audit() -> List[Dict[str, Any]]:
     for path in _admin_audit_paths(for_read=True):
         try:
@@ -1378,344 +1367,6 @@ def _load_system_activity(limit: int, category: str = "all") -> List[Dict[str, A
     return out
 
 
-def _load_auto_backup_config() -> Dict[str, Any]:
-    cfg: Dict[str, Any] = {
-        "enabled": False,
-        "frequency_hours": 24,
-        "run_times_et": ["16:30"],
-        "run_weekends": False,
-        "last_run_slot_key": "",
-        "keep_count": 21,
-        "last_run_at": "",
-        "last_status": "",
-        "last_message": "",
-    }
-    parsed: Any = None
-    for path in _auto_backup_config_paths(for_read=True):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                parsed = json.load(f)
-            break
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            continue
-    if parsed is None:
-        return cfg
-    if isinstance(parsed, dict):
-        cfg["enabled"] = bool(parsed.get("enabled"))
-        cfg["frequency_hours"] = max(1, min(168, int(parsed.get("frequency_hours") or 24)))
-        times = parsed.get("run_times_et")
-        if isinstance(times, list):
-            cfg["run_times_et"] = [str(x).strip() for x in times if str(x).strip()]
-        elif isinstance(times, str):
-            cfg["run_times_et"] = [x.strip() for x in times.split(",") if x.strip()]
-        cfg["run_weekends"] = bool(parsed.get("run_weekends"))
-        cfg["last_run_slot_key"] = str(parsed.get("last_run_slot_key") or "")
-        cfg["keep_count"] = max(3, min(120, int(parsed.get("keep_count") or 21)))
-        cfg["last_run_at"] = str(parsed.get("last_run_at") or "")
-        cfg["last_status"] = str(parsed.get("last_status") or "")
-        cfg["last_message"] = str(parsed.get("last_message") or "")
-    if not cfg["run_times_et"]:
-        cfg["run_times_et"] = ["16:30"]
-    return cfg
-
-
-def _save_auto_backup_config(cfg: Dict[str, Any]) -> bool:
-    errors: List[str] = []
-    for path in _auto_backup_config_paths(for_read=False):
-        try:
-            _safe_write_json(path, cfg)
-            return True
-        except OSError as exc:
-            errors.append(f"{path}: {exc}")
-    if errors:
-        current_app.logger.error("Auto backup config write failed: %s", " | ".join(errors))
-    return False
-
-
-def _auto_backup_config_paths(for_read: bool = True) -> List[str]:
-    fallback = os.path.join(tempfile.gettempdir(), "mccain-capital", ".auto_backup_config.json")
-    ordered = (_auto_backup_config_path(), fallback)
-    if for_read and os.path.isfile(fallback):
-        ordered = (fallback, _auto_backup_config_path())
-    paths: List[str] = []
-    for path in ordered:
-        p = os.path.abspath(str(path))
-        if p and p not in paths:
-            paths.append(p)
-    return paths
-
-
-def _create_backup_archive(reason: str, actor: str) -> Dict[str, Any]:
-    stamp = datetime.now(ZoneInfo("America/New_York")).strftime("%Y%m%d_%H%M%S")
-    os.makedirs(_auto_backup_dir(), exist_ok=True)
-    name = f"mccain_backup_{stamp}_{secure_filename(reason or 'manual')}.zip"
-    out_path = os.path.join(_auto_backup_dir(), name)
-    db_path = str(app_runtime.DB_PATH)
-    upload_root = str(app_runtime.UPLOAD_DIR)
-    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        if os.path.exists(db_path):
-            zf.write(db_path, arcname="data/journal.db")
-        if os.path.isdir(upload_root):
-            for root, _, files in os.walk(upload_root):
-                for fn in files:
-                    full = os.path.join(root, fn)
-                    if os.path.abspath(full).startswith(
-                        os.path.abspath(_auto_backup_dir()) + os.sep
-                    ):
-                        continue
-                    rel = os.path.relpath(full, upload_root)
-                    zf.write(full, arcname=f"data/uploads/{rel}")
-        zf.writestr(
-            "data/meta.json",
-            json.dumps(
-                {
-                    "exported_at": now_iso(),
-                    "reason": reason,
-                    "actor": actor,
-                    "db_path": db_path,
-                    "upload_dir": upload_root,
-                    "app": "mccain-capital",
-                },
-                indent=2,
-            ),
-        )
-    return {"path": out_path, "name": name, "size_bytes": os.path.getsize(out_path)}
-
-
-def _prune_auto_backups(keep_count: int) -> None:
-    if not os.path.isdir(_auto_backup_dir()):
-        return
-    files = [
-        os.path.join(_auto_backup_dir(), n)
-        for n in os.listdir(_auto_backup_dir())
-        if n.endswith(".zip") and os.path.isfile(os.path.join(_auto_backup_dir(), n))
-    ]
-    files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-    for p in files[max(3, keep_count) :]:
-        try:
-            os.unlink(p)
-        except OSError:
-            pass
-
-
-def _normalize_backup_times(raw: str) -> List[str]:
-    out: List[str] = []
-    for token in [x.strip() for x in (raw or "").split(",") if x.strip()]:
-        try:
-            dt = datetime.strptime(token, "%H:%M")
-            out.append(dt.strftime("%H:%M"))
-            continue
-        except ValueError:
-            pass
-        try:
-            dt = datetime.strptime(token, "%I:%M %p")
-            out.append(dt.strftime("%H:%M"))
-        except ValueError:
-            continue
-    dedup = sorted(set(out))
-    return dedup or ["16:30"]
-
-
-def _notify_dedupe_window_seconds(event_type: str) -> int:
-    return max(0, int(NOTIFY_DEDUPE_BY_EVENT.get(event_type, NOTIFY_DEFAULT_DEDUPE_SECONDS)))
-
-
-def _notification_fingerprint(
-    event_type: str, title: str, message: str, extra: Optional[Dict[str, Any]]
-) -> str:
-    obj = {
-        "event_type": event_type,
-        "title": title,
-        "message": message,
-        "extra": extra or {},
-    }
-    raw = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
-
-
-def _append_notification_history(state: Dict[str, Any], payload: Dict[str, Any]) -> None:
-    sent = state.get("sent", [])
-    if not isinstance(sent, list):
-        sent = []
-    sent.append(payload)
-    if len(sent) > 200:
-        sent = sent[-200:]
-    state["sent"] = sent
-    _save_notify_history(state)
-
-
-def _parse_iso_epoch(raw: str) -> Optional[float]:
-    if not raw:
-        return None
-    try:
-        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-    except Exception:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=ZoneInfo("America/New_York"))
-    return float(dt.timestamp())
-
-
-def _record_alert_event(state: Dict[str, Any], payload: Dict[str, Any]) -> None:
-    alerts = state.get("alerts", [])
-    if not isinstance(alerts, list):
-        alerts = []
-    fingerprint = _notification_fingerprint(
-        str(payload.get("event_type") or ""),
-        str(payload.get("title") or ""),
-        str(payload.get("message") or ""),
-        payload.get("extra") if isinstance(payload.get("extra"), dict) else None,
-    )
-    now = str(payload.get("ts") or now_iso())
-    delivery = payload.get("delivery") if isinstance(payload.get("delivery"), dict) else {}
-    existing = None
-    for a in alerts:
-        if (
-            isinstance(a, dict)
-            and str(a.get("fingerprint") or "") == fingerprint
-            and str(a.get("status") or "open") != "resolved"
-        ):
-            existing = a
-            break
-    if existing is None:
-        alert = {
-            "id": f"al_{int(time.time())}_{fingerprint[:8]}",
-            "fingerprint": fingerprint,
-            "event_type": str(payload.get("event_type") or ""),
-            "title": str(payload.get("title") or ""),
-            "message": str(payload.get("message") or ""),
-            "extra": payload.get("extra") if isinstance(payload.get("extra"), dict) else {},
-            "status": "muted" if str(delivery.get("status") or "") == "muted" else "open",
-            "count": 1,
-            "first_seen_at": now,
-            "last_seen_at": now,
-            "last_delivery": delivery,
-            "ack_by": "",
-            "ack_at": "",
-            "resolved_by": "",
-            "resolved_at": "",
-        }
-        alerts.append(alert)
-    else:
-        existing["count"] = int(existing.get("count") or 0) + 1
-        existing["last_seen_at"] = now
-        existing["last_delivery"] = delivery
-        if str(existing.get("status") or "") in {"acknowledged", "muted"} and str(
-            delivery.get("status") or ""
-        ) not in {"skipped_dedupe"}:
-            existing["status"] = "open"
-            existing["ack_by"] = ""
-            existing["ack_at"] = ""
-    if len(alerts) > 300:
-        alerts = alerts[-300:]
-    state["alerts"] = alerts
-
-
-def _signed_headers(body: bytes, event_type: str, ts: str) -> Dict[str, str]:
-    headers = {
-        "Content-Type": "application/json",
-        "X-McCain-Event": event_type,
-        "X-McCain-Timestamp": ts,
-    }
-    if NOTIFY_WEBHOOK_SECRET:
-        digest = hmac.new(NOTIFY_WEBHOOK_SECRET.encode("utf-8"), body, hashlib.sha256).hexdigest()
-        headers["X-McCain-Signature"] = f"sha256={digest}"
-    return headers
-
-
-def _emit_notification(
-    event_type: str, title: str, message: str, extra: Optional[Dict[str, Any]] = None
-):
-    state = _load_notify_history()
-    now_epoch = time.time()
-    fp = _notification_fingerprint(event_type, title, message, extra)
-    window = _notify_dedupe_window_seconds(event_type)
-    dedupe = state.get("dedupe", {})
-    if not isinstance(dedupe, dict):
-        dedupe = {}
-    last_ts = dedupe.get(fp)
-    if window > 0 and isinstance(last_ts, (int, float)) and (now_epoch - float(last_ts)) < window:
-        dedupe_payload = {
-            "event_type": event_type,
-            "title": title,
-            "message": message,
-            "ts": now_iso(),
-            "extra": extra or {},
-            "delivery": {"status": "skipped_dedupe", "window_sec": window},
-        }
-        _record_alert_event(state, dedupe_payload)
-        _append_notification_history(state, dedupe_payload)
-        _save_notify_history(state)
-        return
-
-    payload: Dict[str, Any] = {
-        "event_type": event_type,
-        "title": title,
-        "message": message,
-        "ts": now_iso(),
-    }
-    if extra:
-        payload["extra"] = extra
-    dedupe[fp] = now_epoch
-    if len(dedupe) > 600:
-        keep = sorted(
-            ((k, v) for k, v in dedupe.items() if isinstance(v, (int, float))),
-            key=lambda kv: float(kv[1]),
-            reverse=True,
-        )[:500]
-        dedupe = {k: v for k, v in keep}
-    state["dedupe"] = dedupe
-    muted = state.get("muted_by_event", {})
-    if not isinstance(muted, dict):
-        muted = {}
-    muted_until = str(muted.get(event_type) or "")
-    muted_until_epoch = _parse_iso_epoch(muted_until)
-    if muted_until_epoch is not None and muted_until_epoch > now_epoch:
-        payload["delivery"] = {"status": "muted", "muted_until": muted_until}
-        _record_alert_event(state, payload)
-        _append_notification_history(state, payload)
-        _save_notify_history(state)
-        return
-    if not NOTIFY_WEBHOOK_URL:
-        payload["delivery"] = {"status": "local_only"}
-        _record_alert_event(state, payload)
-        _append_notification_history(state, payload)
-        _save_notify_history(state)
-        return
-    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    attempts = max(1, int(NOTIFY_RETRY_ATTEMPTS))
-    wait = max(0.0, float(NOTIFY_RETRY_BACKOFF_SEC))
-    scale = max(1.0, float(NOTIFY_RETRY_BACKOFF_MULTIPLIER))
-    last_error = ""
-    for attempt in range(1, attempts + 1):
-        try:
-            req = urllib.request.Request(
-                NOTIFY_WEBHOOK_URL,
-                data=body,
-                headers=_signed_headers(body, event_type=event_type, ts=str(payload["ts"])),
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=4).read()
-            payload["delivery"] = {"status": "delivered", "attempt": attempt}
-            _record_alert_event(state, payload)
-            _append_notification_history(state, payload)
-            _save_notify_history(state)
-            return
-        except urllib.error.HTTPError as e:
-            last_error = f"http_{e.code}"
-            retryable = int(e.code) >= 500
-        except (urllib.error.URLError, TimeoutError, ValueError):
-            last_error = "transport_error"
-            retryable = True
-        if attempt >= attempts or not retryable:
-            break
-        if wait > 0:
-            time.sleep(wait)
-            wait *= scale
-    payload["delivery"] = {"status": "failed", "attempts": attempts, "error": last_error}
-    _record_alert_event(state, payload)
-    _append_notification_history(state, payload)
-    _save_notify_history(state)
 
 
 def _new_import_batch_id(prefix: str = "imp") -> str:
@@ -4080,50 +3731,6 @@ def _auto_sync_worker(app) -> None:
             time.sleep(60)
 
 
-def _auto_backup_worker(app) -> None:
-    while True:
-        try:
-            cfg = _load_auto_backup_config()
-            if not cfg.get("enabled"):
-                time.sleep(30)
-                continue
-            now_local = datetime.now(ZoneInfo("America/New_York"))
-            if (not cfg.get("run_weekends")) and now_local.weekday() >= 5:
-                time.sleep(30)
-                continue
-            times = [str(x).strip() for x in (cfg.get("run_times_et") or []) if str(x).strip()]
-            if not times:
-                times = ["16:30"]
-            now_slot = now_local.strftime("%H:%M")
-            if now_slot not in times:
-                time.sleep(30)
-                continue
-            slot_key = f"{now_local.date().isoformat()}@{now_slot}"
-            if str(cfg.get("last_run_slot_key") or "") == slot_key:
-                time.sleep(35)
-                continue
-            try:
-                fd = os.open(_auto_backup_lock_path(), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.close(fd)
-            except FileExistsError:
-                time.sleep(20)
-                continue
-            try:
-                with app.app_context():
-                    _run_backup_once(reason="scheduled_auto", actor="auto-backup-worker")
-                    cfg = _load_auto_backup_config()
-                    cfg["last_run_slot_key"] = slot_key
-                    _save_auto_backup_config(cfg)
-            finally:
-                try:
-                    os.unlink(_auto_backup_lock_path())
-                except OSError:
-                    pass
-            time.sleep(20)
-        except Exception:
-            time.sleep(45)
-
-
 def trades_sync_debug_file(name: str):
     try:
         path = _debug_safe_path(name)
@@ -4132,111 +3739,6 @@ def trades_sync_debug_file(name: str):
     if not os.path.isfile(path):
         abort(404)
     return send_file(path, as_attachment=False)
-
-
-def _entry_minutes(raw: str) -> Optional[int]:
-    value = (raw or "").strip()
-    if not value:
-        return None
-    for fmt in ("%I:%M %p", "%H:%M"):
-        try:
-            dt = datetime.strptime(value, fmt)
-            return int(dt.hour) * 60 + int(dt.minute)
-        except ValueError:
-            continue
-    return None
-
-
-def _scan_anomaly_watch() -> None:
-    rows = analytics_repo.fetch_analytics_rows()
-    if not rows:
-        return
-    rows = sorted(rows, key=lambda r: int(r.get("id") or 0))
-    recent = rows[-48:]
-
-    # Size spike: recent average spend is meaningfully above prior baseline.
-    spends_recent = [
-        float(r.get("total_spent") or 0.0)
-        for r in recent[-6:]
-        if float(r.get("total_spent") or 0.0) > 0
-    ]
-    spends_base = [
-        float(r.get("total_spent") or 0.0)
-        for r in recent[:-6]
-        if float(r.get("total_spent") or 0.0) > 0
-    ]
-    if len(spends_recent) >= 4 and len(spends_base) >= 8:
-        avg_recent = sum(spends_recent) / len(spends_recent)
-        avg_base = sum(spends_base) / len(spends_base)
-        if avg_base > 0 and avg_recent >= (avg_base * 1.7):
-            _emit_notification(
-                "anomaly_size_spike",
-                "Anomaly Watch: size spike",
-                f"Recent avg size {money(avg_recent)} is {avg_recent/avg_base:.2f}x baseline {money(avg_base)}.",
-                {"avg_recent": round(avg_recent, 2), "avg_baseline": round(avg_base, 2)},
-            )
-
-    # Revenge pattern: loss followed by larger quick re-entry on same day.
-    revenge_hits = 0
-    for prev, curr in zip(recent[-18:-1], recent[-17:]):
-        if str(prev.get("trade_date") or "") != str(curr.get("trade_date") or ""):
-            continue
-        if float(prev.get("net_pl") or 0.0) >= 0:
-            continue
-        prev_spend = float(prev.get("total_spent") or 0.0)
-        curr_spend = float(curr.get("total_spent") or 0.0)
-        if prev_spend <= 0 or curr_spend < (prev_spend * 1.3):
-            continue
-        prev_m = _entry_minutes(str(prev.get("entry_time") or ""))
-        curr_m = _entry_minutes(str(curr.get("entry_time") or ""))
-        if prev_m is None or curr_m is None:
-            continue
-        if 0 <= (curr_m - prev_m) <= 35:
-            revenge_hits += 1
-    if revenge_hits >= 2:
-        _emit_notification(
-            "anomaly_revenge_pattern",
-            "Anomaly Watch: revenge-trade pattern",
-            f"Detected {revenge_hits} quick size-up re-entries after losses in recent trades.",
-            {"hits": revenge_hits},
-        )
-
-    # Setup underperformance: recent setup expectancy dropped versus historical baseline.
-    by_setup_all: Dict[str, List[float]] = {}
-    by_setup_recent: Dict[str, List[float]] = {}
-    for r in rows:
-        setup = str(r.get("setup_tag") or "").strip() or "Unlabeled"
-        by_setup_all.setdefault(setup, []).append(float(r.get("net_pl") or 0.0))
-    for r in recent[-12:]:
-        setup = str(r.get("setup_tag") or "").strip() or "Unlabeled"
-        by_setup_recent.setdefault(setup, []).append(float(r.get("net_pl") or 0.0))
-    for setup, vals in by_setup_recent.items():
-        all_vals = by_setup_all.get(setup) or []
-        if len(vals) < 3 or len(all_vals) < 8:
-            continue
-        recent_exp = sum(vals) / len(vals)
-        base_exp = sum(all_vals[: -len(vals)] or all_vals) / max(
-            1, len(all_vals[: -len(vals)] or all_vals)
-        )
-        if base_exp >= 40.0 and recent_exp <= -40.0:
-            _emit_notification(
-                "anomaly_setup_underperformance",
-                "Anomaly Watch: setup underperformance",
-                f"{setup} shifted from {money(base_exp)} baseline expectancy to {money(recent_exp)} recently.",
-                {
-                    "setup": setup,
-                    "recent_expectancy": round(recent_exp, 2),
-                    "baseline_expectancy": round(base_exp, 2),
-                },
-            )
-            break
-
-
-def _alerts_actor() -> str:
-    user = str(session.get("auth_user") or "").strip()
-    if user:
-        return user
-    return str(auth.effective_username() or "local")
 
 
 def _require_ops_mutation_auth() -> None:
@@ -4255,32 +3757,6 @@ def _normalize_scope_start_date(raw: str) -> str:
     compact = text.replace(" ", "")
     parsed = parse_date_any(compact)
     return parsed or ""
-
-
-def _sorted_alerts(
-    state: Dict[str, Any], status_filter: str, event_filter: str
-) -> List[Dict[str, Any]]:
-    alerts = state.get("alerts", [])
-    if not isinstance(alerts, list):
-        alerts = []
-    out: List[Dict[str, Any]] = []
-    for a in alerts:
-        if not isinstance(a, dict):
-            continue
-        status = str(a.get("status") or "open")
-        event_type = str(a.get("event_type") or "")
-        if status_filter == "active" and status == "resolved":
-            continue
-        if (
-            status_filter in {"open", "acknowledged", "resolved", "muted"}
-            and status != status_filter
-        ):
-            continue
-        if event_filter and event_type != event_filter:
-            continue
-        out.append(a)
-    out.sort(key=lambda x: _parse_iso_epoch(str(x.get("last_seen_at") or "")) or 0.0, reverse=True)
-    return out
 
 
 def ops_alerts_page():
@@ -4320,68 +3796,6 @@ def ops_alerts_page():
         resolved_count=len([a for a in _sorted_alerts(state, "resolved", "")]),
     )
     return render_page(content, active="ops")
-
-
-def _update_alert_status(alert_id: str, status: str) -> bool:
-    state = _load_notify_history()
-    alerts = state.get("alerts", [])
-    if not isinstance(alerts, list):
-        return False
-    actor = _alerts_actor()
-    updated = False
-    for a in alerts:
-        if not isinstance(a, dict):
-            continue
-        if str(a.get("id") or "") != alert_id:
-            continue
-        a["status"] = status
-        if status == "acknowledged":
-            a["ack_by"] = actor
-            a["ack_at"] = now_iso()
-        if status == "resolved":
-            a["resolved_by"] = actor
-            a["resolved_at"] = now_iso()
-        updated = True
-        break
-    if updated:
-        state["alerts"] = alerts
-        _save_notify_history(state)
-    return updated
-
-
-def _bulk_update_alert_status(status_filter: str, event_filter: str, status: str) -> int:
-    state = _load_notify_history()
-    alerts = state.get("alerts", [])
-    if not isinstance(alerts, list):
-        return 0
-    targets = _sorted_alerts(state, status_filter=status_filter, event_filter=event_filter)
-    target_ids = {
-        str(a.get("id") or "")
-        for a in targets
-        if isinstance(a, dict) and str(a.get("status") or "open") != status
-    }
-    if not target_ids:
-        return 0
-    actor = _alerts_actor()
-    stamp = now_iso()
-    updated = 0
-    for a in alerts:
-        if not isinstance(a, dict):
-            continue
-        if str(a.get("id") or "") not in target_ids:
-            continue
-        a["status"] = status
-        if status == "acknowledged":
-            a["ack_by"] = actor
-            a["ack_at"] = stamp
-        if status == "resolved":
-            a["resolved_by"] = actor
-            a["resolved_at"] = stamp
-        updated += 1
-    if updated:
-        state["alerts"] = alerts
-        _save_notify_history(state)
-    return updated
 
 
 def ops_alert_ack():
@@ -4503,39 +3917,6 @@ def ops_backups_config():
     return redirect(url_for("ops_backups_page"))
 
 
-def _run_backup_once(reason: str, actor: str) -> Dict[str, Any]:
-    cfg = _load_auto_backup_config()
-    try:
-        made = _create_backup_archive(reason=reason, actor=actor)
-        _prune_auto_backups(int(cfg.get("keep_count") or 21))
-        cfg["last_run_at"] = now_iso()
-        cfg["last_status"] = "success"
-        cfg["last_message"] = f"{made['name']} ({made['size_bytes']} bytes)"
-        _save_auto_backup_config(cfg)
-        record_admin_audit(
-            "backup_created",
-            {
-                "reason": reason,
-                "file": made["name"],
-                "size_bytes": made["size_bytes"],
-            },
-            actor=actor,
-        )
-        return {"ok": True, **made}
-    except Exception as e:
-        cfg["last_run_at"] = now_iso()
-        cfg["last_status"] = "failed"
-        cfg["last_message"] = str(e)
-        _save_auto_backup_config(cfg)
-        _emit_notification("backup_failed", "Auto backup failed", str(e), {"reason": reason})
-        record_admin_audit(
-            "backup_failed",
-            {"reason": reason, "error": str(e)},
-            actor=actor,
-        )
-        return {"ok": False, "error": str(e)}
-
-
 def _start_backup_job(reason: str, actor: str) -> Dict[str, Any]:
     app = current_app._get_current_object()
     job = _create_bg_job("backup", "Backup Snapshot", {"reason": reason})
@@ -4623,168 +4004,6 @@ def _save_uploaded_restore_archive(upload: Any) -> str:
     return out_path
 
 
-def _count_db_rows(db_path: str) -> Dict[str, int]:
-    out = {"trades": 0, "entries": 0, "trade_reviews": 0}
-    try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        for key in list(out.keys()):
-            try:
-                row = conn.execute(f"SELECT COUNT(*) AS c FROM {key}").fetchone()
-                out[key] = int(row["c"] if row else 0)
-            except Exception:
-                out[key] = 0
-    except Exception:
-        return out
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    return out
-
-
-def _backup_verification(path: str) -> Dict[str, Any]:
-    score = 0
-    issues: List[str] = []
-    try:
-        with zipfile.ZipFile(path, "r") as zf:
-            names = zf.namelist()
-            score += 30
-            db_member = "data/journal.db"
-            if db_member not in names:
-                issues.append("missing data/journal.db")
-                return {
-                    "score": score,
-                    "ok": False,
-                    "label": "Missing DB",
-                    "issues": issues,
-                }
-            score += 20
-            fd, tmp_path = tempfile.mkstemp(prefix="backup_verify_", suffix=".db")
-            os.close(fd)
-            try:
-                with zf.open(db_member) as src, open(tmp_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst, length=1024 * 1024)
-                conn = sqlite3.connect(tmp_path)
-                conn.row_factory = sqlite3.Row
-                tables = {
-                    str(r["name"] or "")
-                    for r in conn.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table'"
-                    ).fetchall()
-                }
-                if "trades" in tables and "entries" in tables:
-                    score += 25
-                else:
-                    issues.append("expected tables missing")
-                # sample reads to verify DB can be queried
-                conn.execute("SELECT COUNT(*) FROM trades").fetchone()
-                conn.execute("SELECT COUNT(*) FROM entries").fetchone()
-                score += 25
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-    except Exception as e:
-        issues.append(str(e))
-    ok = score >= 80 and not issues
-    label = "Verified" if ok else ("Partial" if score >= 50 else "Failed")
-    return {
-        "score": score,
-        "ok": ok,
-        "label": label,
-        "issues": issues[:2],
-    }
-
-
-def _restore_dry_run(path: str) -> Dict[str, Any]:
-    now_counts = _count_db_rows(str(app_runtime.DB_PATH))
-    backup_counts = {"trades": 0, "entries": 0, "trade_reviews": 0}
-    upload_new = 0
-    upload_overwrite = 0
-    upload_bytes = 0
-    upload_root = str(app_runtime.UPLOAD_DIR)
-    existing_files: set[str] = set()
-    for root, _, files in os.walk(upload_root):
-        for name in files:
-            rel = os.path.relpath(os.path.join(root, name), upload_root)
-            existing_files.add(rel.replace("\\", "/"))
-
-    with zipfile.ZipFile(path, "r") as zf:
-        names = zf.namelist()
-        db_member = "data/journal.db"
-        if db_member in names:
-            fd, tmp_path = tempfile.mkstemp(prefix="backup_dryrun_", suffix=".db")
-            os.close(fd)
-            try:
-                with zf.open(db_member) as src, open(tmp_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst, length=1024 * 1024)
-                backup_counts = _count_db_rows(tmp_path)
-            finally:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-        for n in names:
-            if not n.startswith("data/uploads/") or n.endswith("/"):
-                continue
-            rel = n[len("data/uploads/") :].replace("\\", "/")
-            try:
-                info = zf.getinfo(n)
-                upload_bytes += int(info.file_size or 0)
-            except Exception:
-                pass
-            if rel in existing_files:
-                upload_overwrite += 1
-            else:
-                upload_new += 1
-
-    return {
-        "current_counts": now_counts,
-        "backup_counts": backup_counts,
-        "delta": {
-            "trades": int(backup_counts["trades"] - now_counts["trades"]),
-            "entries": int(backup_counts["entries"] - now_counts["entries"]),
-            "trade_reviews": int(backup_counts["trade_reviews"] - now_counts["trade_reviews"]),
-        },
-        "uploads": {
-            "new_files": upload_new,
-            "overwritten_files": upload_overwrite,
-            "payload_bytes": upload_bytes,
-        },
-    }
-
-
-def _list_saved_backups() -> List[Dict[str, Any]]:
-    if not os.path.isdir(_auto_backup_dir()):
-        return []
-    out: List[Dict[str, Any]] = []
-    for n in os.listdir(_auto_backup_dir()):
-        if not n.endswith(".zip"):
-            continue
-        p = os.path.join(_auto_backup_dir(), n)
-        if not os.path.isfile(p):
-            continue
-        verify = _backup_verification(p)
-        out.append(
-            {
-                "name": n,
-                "size_bytes": os.path.getsize(p),
-                "modified_at": datetime.fromtimestamp(os.path.getmtime(p)).isoformat(
-                    timespec="seconds"
-                ),
-                "verify_score": int(verify.get("score") or 0),
-                "verify_ok": bool(verify.get("ok")),
-                "verify_label": str(verify.get("label") or "Unknown"),
-                "verify_issues": verify.get("issues") or [],
-            }
-        )
-    out.sort(key=lambda x: str(x.get("modified_at") or ""), reverse=True)
-    return out
-
-
 def ops_backups_page():
     cfg = _load_auto_backup_config()
     backups = _list_saved_backups()
@@ -4841,45 +4060,6 @@ def ops_backups_download(name: str):
     if not os.path.isfile(path):
         abort(404)
     return send_file(path, as_attachment=True, download_name=os.path.basename(path))
-
-
-def _restore_from_backup_path(path: str) -> None:
-    with zipfile.ZipFile(path, "r") as zf:
-        names = zf.namelist()
-        if not names:
-            raise ValueError("Backup zip is empty.")
-        allowed_prefixes = ("data/journal.db", "data/uploads/", "data/meta.json")
-        for n in names:
-            if n.startswith("/") or ".." in n:
-                raise ValueError("Backup zip contains unsafe paths.")
-            if not any(n == p or n.startswith(p) for p in allowed_prefixes):
-                raise ValueError("Backup zip contains unsupported files.")
-        db_member = "data/journal.db"
-        if db_member in names:
-            db_path = str(app_runtime.DB_PATH)
-            os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-            db_dir = os.path.dirname(db_path) or "."
-            fd, tmp_db = tempfile.mkstemp(prefix="restore_db_", suffix=".tmp", dir=db_dir)
-            os.close(fd)
-            try:
-                with zf.open(db_member) as src, open(tmp_db, "wb") as dst:
-                    shutil.copyfileobj(src, dst, length=1024 * 1024)
-                os.replace(tmp_db, db_path)
-            finally:
-                if os.path.exists(tmp_db):
-                    os.unlink(tmp_db)
-        upload_root = str(app_runtime.UPLOAD_DIR)
-        os.makedirs(upload_root, exist_ok=True)
-        for n in names:
-            if not n.startswith("data/uploads/") or n.endswith("/"):
-                continue
-            rel = n[len("data/uploads/") :]
-            out_path = os.path.join(upload_root, rel)
-            out_dir = os.path.dirname(out_path)
-            if out_dir:
-                os.makedirs(out_dir, exist_ok=True)
-            with zf.open(n) as src, open(out_path, "wb") as dst:
-                shutil.copyfileobj(src, dst, length=1024 * 1024)
 
 
 def _clear_live_app_data(*, preserve_backups: bool = True) -> Dict[str, Any]:
@@ -5109,46 +4289,6 @@ def ops_backups_delete():
     except OSError as e:
         flash(f"Delete failed: {e}", "warn")
     return redirect(url_for("ops_backups_page"))
-
-
-def _integrity_health_snapshot() -> Dict[str, Any]:
-    rows = analytics_repo.fetch_analytics_rows()
-    diag = analytics_repo.integrity_diagnostics(rows)
-    with db() as conn:
-        orphan_reviews = int(
-            (
-                conn.execute(
-                    """
-                    SELECT COUNT(*) AS c
-                    FROM trade_reviews r
-                    LEFT JOIN trades t ON t.id = r.trade_id
-                    WHERE t.id IS NULL
-                    """
-                ).fetchone()
-                or {"c": 0}
-            )["c"]
-        )
-        missing_balance = int(
-            (
-                conn.execute("SELECT COUNT(*) AS c FROM trades WHERE balance IS NULL").fetchone()
-                or {"c": 0}
-            )["c"]
-        )
-    issues = int(
-        diag.get("stale_balance_rows", 0)
-        + diag.get("missing_setup", 0)
-        + diag.get("missing_session", 0)
-        + diag.get("missing_score", 0)
-        + diag.get("duplicate_candidates", 0)
-        + orphan_reviews
-        + missing_balance
-    )
-    return {
-        "issues": issues,
-        "diag": diag,
-        "orphan_reviews": orphan_reviews,
-        "missing_balance": missing_balance,
-    }
 
 
 def _start_integrity_job() -> Dict[str, Any]:

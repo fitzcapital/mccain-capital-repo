@@ -277,6 +277,16 @@ def today_iso() -> str:
     return now_et().date().isoformat()
 
 
+def prev_day_iso(d_iso: str) -> str:
+    d = datetime.strptime(d_iso, "%Y-%m-%d").date()
+    return (d - timedelta(days=1)).isoformat()
+
+
+def next_day_iso(d_iso: str) -> str:
+    d = datetime.strptime(d_iso, "%Y-%m-%d").date()
+    return (d + timedelta(days=1)).isoformat()
+
+
 def prev_trading_day_iso(d_iso: str) -> str:
     d = datetime.strptime(d_iso, "%Y-%m-%d").date() - timedelta(days=1)
     while d.weekday() >= 5:
