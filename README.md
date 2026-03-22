@@ -99,6 +99,15 @@ The repo now exposes an installable `fitz` command for terminal tools.
 cd /mccain-capital-repo
 python -m pip install .
 fitz status
+fitz clean
+```
+
+`fitz clean` is a safety wrapper around Mole cleanup:
+
+```bash
+fitz clean                  # preview via mo clean --dry-run
+fitz clean --apply         # execute cleanup
+fitz clean --apply --debug
 ```
 
 If you want isolated install semantics, use `pipx install .` instead. That gives you the same
