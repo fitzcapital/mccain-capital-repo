@@ -4,11 +4,12 @@
 {% set workspace_title = 'Live Sync Lane' if ws == 'live' else 'Upload Lane' if ws == 'upload' else 'Reconcile Lane' %}
 {% set workspace_lead = 'Run broker login sync first, then use diagnostics and reliability trends to keep the import system healthy.' if ws == 'live' else 'Manual statement upload is the fastest recovery lane when you already have the file in hand.' if ws == 'upload' else 'Audit import batches before they distort balances, analytics, or review coverage.' %}
 {% if sync_badges %}
-<div class="statusBadgeStrip">
+<div class="statusBadgeStrip" {% if ws == 'live' %}id="sync-status-badges"{% endif %}>
   {% for badge in sync_badges %}
-    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+    <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}"
+      {% if ws == 'live' and loop.index0 == 0 %}id="sync-top-status-badge"{% elif ws == 'live' and loop.index0 == 1 %}id="sync-top-stage-badge"{% elif ws == 'live' and loop.index0 == 2 %}id="sync-top-updated-badge"{% endif %}>
       <span class="statusBadgeLabel">{{ badge.label }}</span>
-      <strong>{{ badge.value }}</strong>
+      <strong {% if ws == 'live' and loop.index0 == 0 %}id="sync-top-status-value"{% elif ws == 'live' and loop.index0 == 1 %}id="sync-top-stage-value"{% elif ws == 'live' and loop.index0 == 2 %}id="sync-top-updated-value"{% endif %}>{{ badge.value }}</strong>
     </div>
   {% endfor %}
 </div>
@@ -30,10 +31,12 @@
         <div class="workspaceHeroMetaRow">
           <span class="trendChip">{{ ws|replace('_', ' ')|title }}</span>
           {% if ws == 'live' %}
-            <span class="trendChip {% if (last.get('status') or '')|lower == 'failed' %}negative{% elif (last.get('status') or '')|lower == 'success' %}positive{% endif %}">
+            <span class="trendChip {% if (last.get('status') or '')|lower == 'failed' %}negative{% elif (last.get('status') or '')|lower == 'success' %}positive{% endif %}" id="sync-hero-status-chip">
+              <span id="sync-hero-status-value">
               Last {{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}
+              </span>
             </span>
-            <span class="trendChip">{{ last.get('updated_at_human') or last.get('updated_at') or 'No recent run' }}</span>
+            <span class="trendChip" id="sync-hero-updated-chip"><span id="sync-hero-updated-value">{{ last.get('updated_at_human') or last.get('updated_at') or 'No recent run' }}</span></span>
           {% elif ws == 'upload' %}
             <span class="trendChip">Manual file import</span>
             <span class="trendChip">HTML preferred</span>
@@ -136,24 +139,26 @@
       <div class="toolbar">
         <div class="pillRow">
           <div class="pill">Operator Deck</div>
-          <div class="trendChip {% if effective_status == 'success' %}positive{% elif effective_status in ['failed', 'stale'] %}negative{% endif %}">
-            {{ effective_status|replace('_', ' ')|title }}
+          <div class="trendChip {% if effective_status == 'success' %}positive{% elif effective_status in ['failed', 'stale'] %}negative{% endif %}" id="sync-control-status-chip">
+            <span id="sync-control-status-value">{{ effective_status|replace('_', ' ')|title }}</span>
           </div>
-          <div class="trendChip">{{ effective_stage|replace('_', ' ')|title }}</div>
-          <div class="trendChip">{{ effective_updated }}</div>
+          <div class="trendChip"><span id="sync-control-stage-value">{{ effective_stage|replace('_', ' ')|title }}</span></div>
+          <div class="trendChip"><span id="sync-control-updated-value">{{ effective_updated }}</span></div>
         </div>
         <div class="workspaceSectionLead">Use this deck to decide whether to run, retry, or inspect artifacts before touching the detailed controls.</div>
         <div class="syncControlGrid">
           <div class="syncControlPanel">
             <div class="k">Current Focus</div>
-            <div class="syncControlValue">{{ effective_message }}</div>
+            <div class="syncControlValue" id="sync-control-message">{{ effective_message }}</div>
             {% if effective_help %}
-            <div class="tiny line16">{{ effective_help }}</div>
+            <div class="tiny line16" id="sync-control-help">{{ effective_help }}</div>
+            {% else %}
+            <div class="tiny line16" id="sync-control-help"></div>
             {% endif %}
           </div>
           <div class="syncControlPanel">
             <div class="k">Best Next Action</div>
-            <div class="syncControlValue">
+            <div class="syncControlValue" id="sync-control-next-action">
               {% if sync_active %}
               Let the current run finish or cancel it deliberately. Do not start a second browser sync.
               {% elif effective_status in ['failed', 'stale'] %}
@@ -369,9 +374,9 @@
         </div>
         <div class="workspaceSectionLead">Keep diagnosis short: identify the stage, decide the next move, then retry deliberately.</div>
         <div class="syncGuidePanel">
-          <div class="syncGuideHeadline">{{ effective_stage|replace('_', ' ')|title }}</div>
-          <div class="syncControlValue">{{ effective_help or 'No active failure guide. The lane is ready for the next controlled run.' }}</div>
-          <div class="syncGuideList">
+          <div class="syncGuideHeadline" id="sync-guide-headline">{{ effective_stage|replace('_', ' ')|title }}</div>
+          <div class="syncControlValue" id="sync-guide-message">{{ effective_help or 'No active failure guide. The lane is ready for the next controlled run.' }}</div>
+          <div class="syncGuideList" id="sync-guide-list">
             {% if effective_stage in ['system_resource', 'queue_dispatch', 'browser_boot'] %}
             <span>Lower system pressure and retry once before changing credentials or account settings.</span>
             <span>Keep debug capture on so the next failure produces artifacts.</span>
@@ -408,25 +413,27 @@
         <details class="syncAsideFold">
           <summary>
             <span>Open Diagnostics Snapshot</span>
-            <span class="syncAsideMeta">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }} · {{ (last.get('stage') or '—')|replace('_', ' ')|title }}</span>
+            <span class="syncAsideMeta" id="sync-diagnostics-meta">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }} · {{ (last.get('stage') or '—')|replace('_', ' ')|title }}</span>
           </summary>
           <div class="hr"></div>
           <div class="statRow">
             <div class="stat">
               <div class="k">Status</div>
-              <div class="v">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}</div>
-              <div class="tiny">Updated: {{ last.get('updated_at_human') or last.get('updated_at') or '—' }}</div>
+              <div class="v" id="sync-diagnostics-status">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }}</div>
+              <div class="tiny" id="sync-diagnostics-updated">Updated: {{ last.get('updated_at_human') or last.get('updated_at') or '—' }}</div>
             </div>
             <div class="stat">
               <div class="k">{% if (last.get('status') or '')|lower == 'failed' %}Failure Stage{% else %}Stage{% endif %}</div>
-              <div class="v syncStageCode">{{ (last.get('stage') or '—')|replace('_', ' ')|title }}</div>
+              <div class="v syncStageCode" id="sync-diagnostics-stage">{{ (last.get('stage') or '—')|replace('_', ' ')|title }}</div>
               {% if last.get('stage_help') %}
-                <div class="tiny">{{ last.get('stage_help') }}</div>
+                <div class="tiny" id="sync-diagnostics-help">{{ last.get('stage_help') }}</div>
+              {% else %}
+                <div class="tiny" id="sync-diagnostics-help"></div>
               {% endif %}
             </div>
             <div class="stat">
               <div class="k">Message</div>
-              <div class="tiny line16 syncMessageClamp" title="{{ last.get('message') or 'No message' }}">{{ last.get('message') or 'No message' }}</div>
+              <div class="tiny line16 syncMessageClamp" id="sync-diagnostics-message" title="{{ last.get('message') or 'No message' }}">{{ last.get('message') or 'No message' }}</div>
             </div>
           </div>
           {% if last.get('artifacts_rel') %}
@@ -467,9 +474,9 @@
         <details class="syncAsideFold">
           <summary>
             <span>Open Latest Artifacts</span>
-            <span class="syncAsideMeta">{{ effective_artifacts|length }} file{{ '' if effective_artifacts|length == 1 else 's' }}</span>
+            <span class="syncAsideMeta" id="sync-latest-artifacts-meta">{{ effective_artifacts|length }} file{{ '' if effective_artifacts|length == 1 else 's' }}</span>
           </summary>
-          <div class="syncArtifactGrid">
+          <div class="syncArtifactGrid" id="sync-latest-artifacts-grid">
             {% for rel_path in effective_artifacts[:4] %}
               {% set label = rel_path.rsplit('/', 1)[-1] if '/' in rel_path else rel_path %}
               <a class="syncArtifactTile" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">
@@ -768,6 +775,212 @@
 <script>
   (function() {
     const jobs = window.McAsyncJobs;
+    const syncStageHelp = {{ (sync_stage_help or {}) | tojson }};
+    const syncRunwayTimers = Object.create(null);
+
+    function titleizeSyncText(value, fallback) {
+      const raw = String(value || fallback || '').trim();
+      if (!raw) return '';
+      return raw
+        .replaceAll('_', ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function syncTone(status) {
+      const normalized = String(status || '').toLowerCase();
+      if (normalized === 'success' || normalized === 'debug_only') return 'positive';
+      if (normalized === 'failed' || normalized === 'stale' || normalized === 'error' || normalized === 'blocked') return 'negative';
+      return '';
+    }
+
+    function clearSyncRunwayTimer(runwayId) {
+      const timerId = syncRunwayTimers[runwayId];
+      if (timerId) {
+        window.clearInterval(timerId);
+        delete syncRunwayTimers[runwayId];
+      }
+    }
+
+    function syncUpdatedLabel(job) {
+      return job.updated_at_human || job.updated_at || 'No recent run';
+    }
+
+    function syncNextAction(status, active) {
+      const normalized = String(status || '').toLowerCase();
+      if (active) return 'Let the current run finish or cancel it deliberately. Do not start a second browser sync.';
+      if (normalized === 'failed' || normalized === 'stale' || normalized === 'error' || normalized === 'blocked') {
+        return 'Retry with the recovery profile, then open diagnostics if the same stage fails twice.';
+      }
+      if (normalized === 'success' || normalized === 'debug_only') {
+        return 'Review the imported trades or inspect the artifacts before the next run.';
+      }
+      return "Stage a clean run with today's dates and save diagnostics on until the lane is stable.";
+    }
+
+    function syncGuideLines(stage) {
+      const normalized = String(stage || '').toLowerCase();
+      if (['system_resource', 'queue_dispatch', 'browser_boot'].includes(normalized)) {
+        return [
+          'Lower system pressure and retry once before changing credentials or account settings.',
+          'Keep debug capture on so the next failure produces artifacts.',
+          'If the same stage repeats, escalate to container/browser diagnostics.'
+        ];
+      }
+      if (['submit_login', 'locate_username', 'locate_password'].includes(normalized)) {
+        return [
+          'Re-check username, password, and broker login flow changes.',
+          'Run Recovery with debug capture on.',
+          'Expect login DOM artifacts to be the truth source.'
+        ];
+      }
+      if (['storage_io', 'capture_statement_html'].includes(normalized)) {
+        return [
+          'Inspect mounted upload/debug storage first.',
+          'Open the latest artifact bundle before retrying.',
+          'Do not trust the sync until artifacts and write paths are healthy.'
+        ];
+      }
+      return [
+        'Use Balanced for normal runs.',
+        'Use Recovery when the last run failed or the broker UI changed.',
+        'Use Fast only when the lane is already healthy.'
+      ];
+    }
+
+    function setToneClass(el, tone, baseClass) {
+      if (!el) return;
+      el.classList.remove('positive', 'negative');
+      if (baseClass) {
+        el.classList.add(baseClass);
+      }
+      if (tone) {
+        el.classList.add(tone);
+      }
+    }
+
+    function updateSyncSummary(job) {
+      if (!job) return;
+      const status = String(job.status || 'idle').toLowerCase();
+      const stage = String(job.stage || 'standby');
+      const stageLabel = titleizeSyncText(stage, 'Standby');
+      const statusLabel = titleizeSyncText(status, 'Idle');
+      const updated = syncUpdatedLabel(job);
+      const stageHelp = String(job.stage_help || syncStageHelp[stage] || '').trim();
+      const message = String(job.message || 'No active sync job. Use the live form to start a broker statement import.');
+      const terminal = !['queued', 'running'].includes(status);
+      const tone = syncTone(status);
+      const artifacts = Array.isArray((job.summary || {}).artifacts_rel) ? (job.summary || {}).artifacts_rel.slice(0, 4) : [];
+
+      const topStatusBadge = document.getElementById('sync-top-status-badge');
+      const topStageBadge = document.getElementById('sync-top-stage-badge');
+      const topUpdatedBadge = document.getElementById('sync-top-updated-badge');
+      const topStatusValue = document.getElementById('sync-top-status-value');
+      const topStageValue = document.getElementById('sync-top-stage-value');
+      const topUpdatedValue = document.getElementById('sync-top-updated-value');
+      setToneClass(topStatusBadge, tone, 'statusBadge');
+      if (topStatusValue) topStatusValue.textContent = statusLabel;
+      if (topStageValue) topStageValue.textContent = stageLabel;
+      if (topUpdatedValue) topUpdatedValue.textContent = updated;
+      if (topStatusBadge) topStatusBadge.title = message;
+      if (topStageBadge) topStageBadge.title = stageHelp || stageLabel;
+      if (topUpdatedBadge) topUpdatedBadge.title = updated;
+
+      const heroStatusChip = document.getElementById('sync-hero-status-chip');
+      const heroStatusValue = document.getElementById('sync-hero-status-value');
+      const heroUpdatedValue = document.getElementById('sync-hero-updated-value');
+      setToneClass(heroStatusChip, tone, 'trendChip');
+      if (heroStatusValue) heroStatusValue.textContent = `Last ${statusLabel}`;
+      if (heroUpdatedValue) heroUpdatedValue.textContent = updated;
+
+      const controlStatusChip = document.getElementById('sync-control-status-chip');
+      const controlStatusValue = document.getElementById('sync-control-status-value');
+      const controlStageValue = document.getElementById('sync-control-stage-value');
+      const controlUpdatedValue = document.getElementById('sync-control-updated-value');
+      const controlMessage = document.getElementById('sync-control-message');
+      const controlHelp = document.getElementById('sync-control-help');
+      const controlNextAction = document.getElementById('sync-control-next-action');
+      setToneClass(controlStatusChip, tone, 'trendChip');
+      if (controlStatusValue) controlStatusValue.textContent = statusLabel;
+      if (controlStageValue) controlStageValue.textContent = stageLabel;
+      if (controlUpdatedValue) controlUpdatedValue.textContent = updated;
+      if (controlMessage) controlMessage.textContent = message;
+      if (controlHelp) controlHelp.textContent = stageHelp;
+      if (controlNextAction) controlNextAction.textContent = syncNextAction(status, !terminal);
+
+      const guideHeadline = document.getElementById('sync-guide-headline');
+      const guideMessage = document.getElementById('sync-guide-message');
+      const guideList = document.getElementById('sync-guide-list');
+      if (guideHeadline) guideHeadline.textContent = stageLabel;
+      if (guideMessage) guideMessage.textContent = stageHelp || 'No active failure guide. The lane is ready for the next controlled run.';
+      if (guideList) {
+        guideList.innerHTML = syncGuideLines(stage).map((line) => `<span>${line}</span>`).join('');
+      }
+
+      const diagnosticsMeta = document.getElementById('sync-diagnostics-meta');
+      const diagnosticsStatus = document.getElementById('sync-diagnostics-status');
+      const diagnosticsUpdated = document.getElementById('sync-diagnostics-updated');
+      const diagnosticsStage = document.getElementById('sync-diagnostics-stage');
+      const diagnosticsHelp = document.getElementById('sync-diagnostics-help');
+      const diagnosticsMessage = document.getElementById('sync-diagnostics-message');
+      if (diagnosticsMeta) diagnosticsMeta.textContent = `${statusLabel} · ${stageLabel}`;
+      if (diagnosticsStatus) diagnosticsStatus.textContent = statusLabel;
+      if (diagnosticsUpdated) diagnosticsUpdated.textContent = `Updated: ${updated}`;
+      if (diagnosticsStage) diagnosticsStage.textContent = stageLabel;
+      if (diagnosticsHelp) diagnosticsHelp.textContent = stageHelp;
+      if (diagnosticsMessage) {
+        diagnosticsMessage.textContent = message;
+        diagnosticsMessage.title = message;
+      }
+
+      const latestArtifactsMeta = document.getElementById('sync-latest-artifacts-meta');
+      const latestArtifactsGrid = document.getElementById('sync-latest-artifacts-grid');
+      const latestArtifactBtn = Array.from(document.querySelectorAll('a.btn')).find((el) => el.textContent.trim() === 'Latest Artifact');
+      if (latestArtifactsMeta) {
+        latestArtifactsMeta.textContent = `${artifacts.length} file${artifacts.length === 1 ? '' : 's'}`;
+      }
+      if (latestArtifactsGrid) {
+        latestArtifactsGrid.innerHTML = artifacts.map((relPath) => {
+          const parts = String(relPath).split('/');
+          const label = parts[parts.length - 1] || relPath;
+          return `<a class="syncArtifactTile" href="/trades/sync/debug/${relPath}" target="_blank" rel="noopener"><strong>${label}</strong><span>${relPath}</span></a>`;
+        }).join('');
+      }
+      if (latestArtifactBtn) {
+        if (artifacts.length) {
+          latestArtifactBtn.href = `/trades/sync/debug/${artifacts[0]}`;
+          latestArtifactBtn.hidden = false;
+        } else {
+          latestArtifactBtn.hidden = true;
+        }
+      }
+    }
+
+    function syncRunwayIdForJob(job) {
+      const source = String(((job && job.requested) || {}).source || '').toLowerCase();
+      if (source === 'manual_auto_run') return 'auto-sync-runway';
+      return 'live-sync-runway';
+    }
+
+    function updatePrimaryRunway(job) {
+      if (!jobs || !job) return;
+      const runwayId = syncRunwayIdForJob(job);
+      const runway = document.getElementById(runwayId);
+      if (!runway) return;
+      const status = String(job.status || '').toLowerCase();
+      const stage = String(job.stage || 'start');
+      const terminal = !['queued', 'running'].includes(status);
+      const failed = ['failed', 'stale', 'error', 'blocked'].includes(status);
+      const stageLabel = titleizeSyncText(stage, 'Start');
+      clearSyncRunwayTimer(runwayId);
+      jobs.setRunwayState(runway, {
+        badge: failed ? 'Failed' : (terminal ? 'Success' : 'Live'),
+        label: job.message || stageLabel,
+        stepIndex: terminal ? 3 : syncStepIndex(stage),
+        complete: terminal,
+        failed: failed
+      });
+    }
+
     function bindLoading(formId, submitId, loadingId, busyText) {
       const form = document.getElementById(formId);
       const submitBtn = document.getElementById(submitId);
@@ -787,6 +1000,7 @@
       if (!form || !runway || !label || !Array.isArray(stageLabels) || stageLabels.length === 0) return;
       const steps = Array.from(runway.querySelectorAll('.syncStep'));
       form.addEventListener('submit', function() {
+        clearSyncRunwayTimer(runwayId);
         let idx = 0;
         if (jobs) {
           jobs.setRunwayState(runway, { badge: runway.querySelector('.syncBadge')?.textContent || 'Running', label: stageLabels[0], stepIndex: 0 });
@@ -811,8 +1025,10 @@
           }
           if (idx >= stageLabels.length - 1) {
             window.clearInterval(tick);
+            delete syncRunwayTimers[runwayId];
           }
         }, 1400);
+        syncRunwayTimers[runwayId] = tick;
       });
     }
 
@@ -881,6 +1097,8 @@
       if (resultHtmlEl) {
         resultHtmlEl.innerHTML = job.result_html || '';
       }
+      updatePrimaryRunway(job);
+      updateSyncSummary(job);
       const steps = Array.from(card.querySelectorAll('.syncStep'));
       const trackBar = card.querySelector('.syncTrackBar');
       const idx = syncStepIndex(String(job.stage || 'start'));
