@@ -15,30 +15,176 @@ from mccain_capital.runtime import (
 )
 
 
-def fetch_trades(d: str = "", q: str = ""):
+def _trade_clock_to_minutes(value: Any) -> Optional[int]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%I:%M %p", "%I:%M:%S %p", "%H:%M"):
+        try:
+            parsed = datetime.strptime(text.upper(), fmt)
+            return (parsed.hour * 60) + parsed.minute
+        except ValueError:
+            continue
+    return None
+
+
+def classify_time_block(value: Any) -> str:
+    minute = _trade_clock_to_minutes(value)
+    if minute is None:
+        return "Unknown"
+    if minute < (11 * 60):
+        return "Open"
+    if minute < (14 * 60):
+        return "Midday"
+    return "Power Hour"
+
+
+def compute_hold_minutes(entry_time: Any, exit_time: Any) -> Optional[int]:
+    entry_min = _trade_clock_to_minutes(entry_time)
+    exit_min = _trade_clock_to_minutes(exit_time)
+    if entry_min is None or exit_min is None or exit_min < entry_min:
+        return None
+    return exit_min - entry_min
+
+
+def _normalize_filter_value(raw: Any) -> str:
+    return str(raw or "").strip()
+
+
+def normalize_trade_filters(raw_filters: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    raw_filters = raw_filters or {}
+    return {
+        "setup": _normalize_filter_value(raw_filters.get("setup")),
+        "session": _normalize_filter_value(raw_filters.get("session")),
+        "outcome": _normalize_filter_value(raw_filters.get("outcome")).lower(),
+        "time_block": _normalize_filter_value(raw_filters.get("time_block")),
+        "mistake_tag": _normalize_filter_value(raw_filters.get("mistake_tag")),
+    }
+
+
+def _row_matches_trade_filters(row: Dict[str, Any], filters: Dict[str, str]) -> bool:
+    outcome = filters.get("outcome", "")
+    net = row.get("net_pl")
+    if outcome == "winner" and not (net is not None and float(net) > 0):
+        return False
+    if outcome == "loser" and not (net is not None and float(net) < 0):
+        return False
+    if outcome == "breakeven" and not (net is not None and float(net) == 0):
+        return False
+
+    time_block = filters.get("time_block", "")
+    if time_block and str(row.get("time_block") or "") != time_block:
+        return False
+
+    mistake_tag = filters.get("mistake_tag", "").lower()
+    if mistake_tag:
+        tag_pool = ",".join(
+            [
+                str(row.get("mistake_tags") or ""),
+                str(row.get("rule_break_tags") or ""),
+            ]
+        ).lower()
+        if mistake_tag not in tag_pool:
+            return False
+    return True
+
+
+def _enrich_trade_review_fields(row: Dict[str, Any]) -> Dict[str, Any]:
+    enriched = dict(row)
+    enriched["setup_tag"] = (
+        str(
+            row.get("setup_tag")
+            or row.get("strategy_label")
+            or row.get("resolved_setup_tag")
+            or ""
+        ).strip()
+    )
+    enriched["time_block"] = classify_time_block(row.get("entry_time"))
+    enriched["hold_minutes"] = compute_hold_minutes(row.get("entry_time"), row.get("exit_time"))
+    planned_risk = row.get("planned_risk_dollars")
+    net = row.get("net_pl")
+    r_multiple = None
+    try:
+        planned_risk_float = float(planned_risk) if planned_risk not in (None, "") else None
+        net_float = float(net) if net not in (None, "") else None
+        if planned_risk_float and planned_risk_float > 0 and net_float is not None:
+            r_multiple = net_float / planned_risk_float
+    except (TypeError, ValueError):
+        r_multiple = None
+    enriched["r_multiple"] = r_multiple
+    review_items = [
+        enriched.get("setup_tag"),
+        enriched.get("session_tag"),
+        enriched.get("checklist_score"),
+        enriched.get("mistake_tags"),
+        enriched.get("planned_risk_dollars"),
+        enriched.get("review_note"),
+    ]
+    completed = sum(1 for item in review_items if item not in (None, "", []))
+    enriched["review_completion_pct"] = int(round((completed / len(review_items)) * 100.0))
+    return enriched
+
+
+def fetch_trades(d: str = "", q: str = "", filters: Optional[Dict[str, Any]] = None):
     d = (d or "").strip()
     q = (q or "").strip()
+    normalized = normalize_trade_filters(filters)
 
-    sql = "SELECT * FROM trades"
+    sql = """
+        SELECT
+            t.*,
+            r.strategy_id,
+            r.strategy_label,
+            COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '') AS resolved_setup_tag,
+            r.session_tag,
+            r.checklist_score,
+            r.rule_break_tags,
+            r.review_note,
+            r.thesis_note,
+            r.execution_grade,
+            r.risk_grade,
+            r.plan_grade,
+            r.mistake_tags,
+            r.planned_risk_dollars,
+            r.size_rule_note,
+            r.entry_quality_note,
+            r.exit_quality_note,
+            r.improvement_note
+        FROM trades t
+        LEFT JOIN trade_reviews r ON r.trade_id = t.id
+        LEFT JOIN strategies s ON s.id = r.strategy_id
+    """
     where = []
     params: List[Any] = []
 
     if d:
-        where.append("trade_date = ?")
+        where.append("t.trade_date = ?")
         params.append(d)
 
     if q:
-        where.append("(ticker LIKE ? OR opt_type LIKE ? OR raw_line LIKE ?)")
+        where.append("(t.ticker LIKE ? OR t.opt_type LIKE ? OR t.raw_line LIKE ?)")
         like = f"%{q}%"
         params.extend([like, like, like])
+
+    if normalized["setup"]:
+        where.append(
+            "LOWER(COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '')) = LOWER(?)"
+        )
+        params.append(normalized["setup"])
+
+    if normalized["session"]:
+        where.append("LOWER(COALESCE(r.session_tag, '')) = LOWER(?)")
+        params.append(normalized["session"])
 
     if where:
         sql += " WHERE " + " AND ".join(where)
 
-    sql += " ORDER BY trade_date DESC, id DESC"
+    sql += " ORDER BY t.trade_date DESC, t.id DESC"
 
     with db() as conn:
-        return list(conn.execute(sql, params).fetchall())
+        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+    enriched_rows = [_enrich_trade_review_fields(row) for row in rows]
+    return [row for row in enriched_rows if _row_matches_trade_filters(row, normalized)]
 
 
 def fetch_latest_trade_date() -> str:
@@ -127,7 +273,25 @@ def get_trade_review(trade_id: int) -> Optional[Dict[str, Any]]:
     with db() as conn:
         row = conn.execute(
             """
-            SELECT trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score, rule_break_tags, review_note
+            SELECT
+              trade_id,
+              strategy_id,
+              strategy_label,
+              setup_tag,
+              session_tag,
+              checklist_score,
+              rule_break_tags,
+              review_note,
+              thesis_note,
+              execution_grade,
+              risk_grade,
+              plan_grade,
+              mistake_tags,
+              planned_risk_dollars,
+              size_rule_note,
+              entry_quality_note,
+              exit_quality_note,
+              improvement_note
             FROM trade_reviews
             WHERE trade_id = ?
             """,
@@ -182,9 +346,25 @@ def upsert_trade_review(
     checklist_score: Optional[int] = None,
     rule_break_tags: str = "",
     review_note: str = "",
+    thesis_note: str = "",
+    execution_grade: Optional[int] = None,
+    risk_grade: Optional[int] = None,
+    plan_grade: Optional[int] = None,
+    mistake_tags: str = "",
+    planned_risk_dollars: Optional[float] = None,
+    size_rule_note: str = "",
+    entry_quality_note: str = "",
+    exit_quality_note: str = "",
+    improvement_note: str = "",
 ) -> None:
     now = now_iso()
     score_val = None if checklist_score is None else max(0, min(100, int(checklist_score)))
+    execution_val = None if execution_grade is None else max(0, min(100, int(execution_grade)))
+    risk_val = None if risk_grade is None else max(0, min(100, int(risk_grade)))
+    plan_val = None if plan_grade is None else max(0, min(100, int(plan_grade)))
+    risk_dollars_val = None
+    if planned_risk_dollars not in (None, ""):
+        risk_dollars_val = abs(float(planned_risk_dollars))
     with db() as conn:
         resolved_strategy_id, resolved_strategy_label = _resolve_strategy_link(
             conn,
@@ -195,8 +375,13 @@ def upsert_trade_review(
         conn.execute(
             """
             INSERT INTO trade_reviews
-              (trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (
+                trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score,
+                rule_break_tags, review_note, thesis_note, execution_grade, risk_grade, plan_grade,
+                mistake_tags, planned_risk_dollars, size_rule_note, entry_quality_note,
+                exit_quality_note, improvement_note, created_at, updated_at
+              )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(trade_id) DO UPDATE SET
               strategy_id=excluded.strategy_id,
               strategy_label=excluded.strategy_label,
@@ -205,6 +390,16 @@ def upsert_trade_review(
               checklist_score=excluded.checklist_score,
               rule_break_tags=excluded.rule_break_tags,
               review_note=excluded.review_note,
+              thesis_note=excluded.thesis_note,
+              execution_grade=excluded.execution_grade,
+              risk_grade=excluded.risk_grade,
+              plan_grade=excluded.plan_grade,
+              mistake_tags=excluded.mistake_tags,
+              planned_risk_dollars=excluded.planned_risk_dollars,
+              size_rule_note=excluded.size_rule_note,
+              entry_quality_note=excluded.entry_quality_note,
+              exit_quality_note=excluded.exit_quality_note,
+              improvement_note=excluded.improvement_note,
               updated_at=excluded.updated_at
             """,
             (
@@ -216,6 +411,16 @@ def upsert_trade_review(
                 score_val,
                 (rule_break_tags or "").strip(),
                 (review_note or "").strip(),
+                (thesis_note or "").strip(),
+                execution_val,
+                risk_val,
+                plan_val,
+                (mistake_tags or "").strip(),
+                risk_dollars_val,
+                (size_rule_note or "").strip(),
+                (entry_quality_note or "").strip(),
+                (exit_quality_note or "").strip(),
+                (improvement_note or "").strip(),
                 now,
                 now,
             ),
@@ -232,7 +437,25 @@ def fetch_trade_reviews_map(trade_ids: List[int]) -> Dict[int, Dict[str, Any]]:
     with db() as conn:
         rows = conn.execute(
             f"""
-            SELECT trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score, rule_break_tags, review_note
+            SELECT
+              trade_id,
+              strategy_id,
+              strategy_label,
+              setup_tag,
+              session_tag,
+              checklist_score,
+              rule_break_tags,
+              review_note,
+              thesis_note,
+              execution_grade,
+              risk_grade,
+              plan_grade,
+              mistake_tags,
+              planned_risk_dollars,
+              size_rule_note,
+              entry_quality_note,
+              exit_quality_note,
+              improvement_note
             FROM trade_reviews
             WHERE trade_id IN ({marks})
             """,

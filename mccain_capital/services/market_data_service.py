@@ -779,3 +779,29 @@ def get_watchlist_tradier(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
 
 def get_watchlist_massive(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     return get_watchlist_tradier(symbols)
+
+
+def get_watchlist_with_fallback(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Return quotes with fallback providers for symbols missing Tradier data.
+
+    This keeps strict broker-grade paths separate from looser context-only
+    consumers such as journal market notes, where a missing VIX reading is
+    worse than using a clearly-labeled fallback source.
+    """
+
+    snapshot = get_watchlist_tradier(symbols)
+    for raw in symbols:
+        symbol = str(raw or "").strip().upper()
+        if not symbol:
+            continue
+        quote = dict(snapshot.get(symbol) or {})
+        if _safe_float(quote.get("price")) is not None:
+            continue
+        massive_quote = _massive_watch_quote(symbol)
+        if _safe_float(massive_quote.get("price")) is not None:
+            snapshot[symbol] = massive_quote
+            continue
+        yf_quote = _yf_watch_quote(symbol)
+        if _safe_float(yf_quote.get("price")) is not None:
+            snapshot[symbol] = yf_quote
+    return snapshot

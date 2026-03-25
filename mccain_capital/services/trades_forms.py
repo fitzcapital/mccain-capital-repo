@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
+from mccain_capital.repositories import analytics as analytics_repo
 from mccain_capital.services import trades as legacy
 
 
@@ -12,6 +15,22 @@ def trades_edit(trade_id: int):
 
     d = legacy.request.args.get("d", "")
     q = legacy.request.args.get("q", "")
+    review_filters = analytics_repo.normalize_trade_filters(
+        {
+            "setup": legacy.request.args.get("setup", ""),
+            "session": legacy.request.args.get("session", ""),
+            "outcome": legacy.request.args.get("outcome", ""),
+            "time_block": legacy.request.args.get("time_block", ""),
+            "mistake_tag": legacy.request.args.get("mistake_tag", ""),
+        }
+    )
+    back_query = urlencode(
+        {
+            "d": d,
+            "q": q,
+            **{key: value for key, value in review_filters.items() if value},
+        }
+    )
 
     if legacy.request.method == "POST":
         f = legacy.request.form
@@ -76,11 +95,9 @@ def trades_edit(trade_id: int):
 
         legacy.repo.recompute_balances()
         legacy.flash("Trade updated.", "success")
-        return legacy.redirect(
-            legacy.url_for("trades_page", d=d, q=q)
-            if (d or q)
-            else legacy.url_for("trades_page", d=trade_date)
-        )
+        if back_query:
+            return legacy.redirect(f"/trades?{back_query}")
+        return legacy.redirect(legacy.url_for("trades_page", d=trade_date))
 
     t = dict(row)
     content = legacy.render_template_string(
@@ -89,7 +106,7 @@ def trades_edit(trade_id: int):
           <div class="pill">✏️ Edit Trade #{{ t.id }}</div>
           <div class="hr"></div>
 
-          <form method="post" action="/trades/edit/{{ t.id }}?d={{ d }}&q={{ q }}">
+          <form method="post" action="/trades/edit/{{ t.id }}?{{ back_query }}">
             <div class="row">
               <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ t.trade_date }}"/></div>
               <div><label>⏱️ Entry Time</label><input name="entry_time" value="{{ t.entry_time or '' }}"/></div>
@@ -121,7 +138,7 @@ def trades_edit(trade_id: int):
             <div class="hr"></div>
             <div class="rightActions">
               <button class="btn primary" type="submit">💾 Save</button>
-              <a class="btn" href="/trades?d={{ d }}&q={{ q }}">← Back</a>
+              <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}">← Back</a>
             </div>
           </form>
         </div></div>
@@ -129,6 +146,7 @@ def trades_edit(trade_id: int):
         t=t,
         d=d,
         q=q,
+        back_query=back_query,
     )
     return legacy.render_page(content, active="trades")
 
@@ -140,7 +158,36 @@ def trades_review(trade_id: int):
 
     d = legacy.request.args.get("d", "")
     q = legacy.request.args.get("q", "")
+    review_filters = analytics_repo.normalize_trade_filters(
+        {
+            "setup": legacy.request.args.get("setup", ""),
+            "session": legacy.request.args.get("session", ""),
+            "outcome": legacy.request.args.get("outcome", ""),
+            "time_block": legacy.request.args.get("time_block", ""),
+            "mistake_tag": legacy.request.args.get("mistake_tag", ""),
+        }
+    )
+    back_query = urlencode(
+        {
+            "d": d,
+            "q": q,
+            **{key: value for key, value in review_filters.items() if value},
+        }
+    )
     rv = legacy.repo.get_trade_review(trade_id) or {}
+    trade_row = dict(row)
+    trade_metrics = {
+        "net_pl": float(row["net_pl"] or 0.0) if row["net_pl"] is not None else 0.0,
+        "hold_minutes": legacy.repo.compute_hold_minutes(
+            trade_row.get("entry_time"), trade_row.get("exit_time")
+        ),
+    }
+    planned_risk_existing = legacy.parse_float(str(rv.get("planned_risk_dollars") or ""))
+    trade_metrics["r_multiple"] = (
+        (trade_metrics["net_pl"] / planned_risk_existing)
+        if planned_risk_existing and planned_risk_existing > 0
+        else None
+    )
 
     if legacy.request.method == "POST":
         f = legacy.request.form
@@ -148,6 +195,9 @@ def trades_review(trade_id: int):
         session_tag = (f.get("session_tag") or "").strip()
         score_raw = (f.get("checklist_score") or "").strip()
         checklist_score = legacy.parse_int(score_raw) if score_raw else None
+        execution_grade = legacy.parse_int((f.get("execution_grade") or "").strip() or "")
+        risk_grade = legacy.parse_int((f.get("risk_grade") or "").strip() or "")
+        plan_grade = legacy.parse_int((f.get("plan_grade") or "").strip() or "")
         rule_break_tags = (f.get("rule_break_tags") or "").strip()
         rule_break_tags = legacy._merge_auto_rule_break_tags(
             entry_price=legacy.parse_float(
@@ -158,7 +208,14 @@ def trades_review(trade_id: int):
             ),
             existing_tags=rule_break_tags,
         )
+        thesis_note = (f.get("thesis_note") or "").strip()
+        mistake_tags = (f.get("mistake_tags") or "").strip()
+        planned_risk_dollars = legacy.parse_float((f.get("planned_risk_dollars") or "").strip())
+        size_rule_note = (f.get("size_rule_note") or "").strip()
+        entry_quality_note = (f.get("entry_quality_note") or "").strip()
+        exit_quality_note = (f.get("exit_quality_note") or "").strip()
         review_note = (f.get("review_note") or "").strip()
+        improvement_note = (f.get("improvement_note") or "").strip()
         legacy.repo.upsert_trade_review(
             trade_id=trade_id,
             strategy_id=rv.get("strategy_id"),
@@ -168,11 +225,19 @@ def trades_review(trade_id: int):
             checklist_score=checklist_score,
             rule_break_tags=rule_break_tags,
             review_note=review_note,
+            thesis_note=thesis_note,
+            execution_grade=execution_grade,
+            risk_grade=risk_grade,
+            plan_grade=plan_grade,
+            mistake_tags=mistake_tags,
+            planned_risk_dollars=planned_risk_dollars,
+            size_rule_note=size_rule_note,
+            entry_quality_note=entry_quality_note,
+            exit_quality_note=exit_quality_note,
+            improvement_note=improvement_note,
         )
         legacy.flash("Trade review saved.", "success")
-        return legacy.redirect(
-            legacy.url_for("trades_page", d=d, q=q) if (d or q) else legacy.url_for("trades_page")
-        )
+        return legacy.redirect(f"/trades?{back_query}" if back_query else legacy.url_for("trades_page"))
 
     strategy_options = [dict(r) for r in legacy.strategies_repo.fetch_strategies()]
     content = legacy.render_template_string(
@@ -180,8 +245,15 @@ def trades_review(trade_id: int):
         <div class="card"><div class="toolbar">
           <div class="pill">🧠 Trade Review #{{ t.id }}</div>
           <div class="tiny stack8">{{ t.trade_date }} · {{ t.ticker }} {{ t.opt_type }}</div>
+          <div class="trendChips">
+            <span class="trendChip {% if metrics.net_pl > 0 %}positive{% elif metrics.net_pl < 0 %}negative{% endif %}">Net {{ money(metrics.net_pl) }}</span>
+            <span class="trendChip">Hold {{ metrics.hold_minutes if metrics.hold_minutes is not none else '—' }} min</span>
+            <span class="trendChip">Time Block {{ repo.classify_time_block(t.entry_time) }}</span>
+            <span class="trendChip">R {% if metrics.r_multiple is not none %}{{ '%.2f'|format(metrics.r_multiple) }}R{% else %}—{% endif %}</span>
+          </div>
           <div class="hr"></div>
-          <form method="post" action="/trades/review/{{ t.id }}?d={{ d }}&q={{ q }}">
+          <form method="post" action="/trades/review/{{ t.id }}?{{ back_query }}">
+            <div class="pill">Setup</div>
             <div class="row">
               <div>
                 <label>Strategy</label>
@@ -200,6 +272,36 @@ def trades_review(trade_id: int):
               </div>
               <div><label>Checklist Score (0-100)</label><input name="checklist_score" inputmode="numeric" value="{{ '' if rv.get('checklist_score') is none else rv.get('checklist_score') }}"></div>
             </div>
+            <div class="stack10">
+              <label>Thesis Note</label>
+              <textarea name="thesis_note" placeholder="What was the read before entry?">{{ rv.get('thesis_note','') }}</textarea>
+            </div>
+            <div class="hr"></div>
+            <div class="pill">Risk</div>
+            <div class="row">
+              <div><label>Planned Risk ($)</label><input name="planned_risk_dollars" inputmode="decimal" value="{{ '' if rv.get('planned_risk_dollars') is none else rv.get('planned_risk_dollars') }}"></div>
+              <div><label>Risk Grade (0-100)</label><input name="risk_grade" inputmode="numeric" value="{{ '' if rv.get('risk_grade') is none else rv.get('risk_grade') }}"></div>
+              <div><label>Plan Grade (0-100)</label><input name="plan_grade" inputmode="numeric" value="{{ '' if rv.get('plan_grade') is none else rv.get('plan_grade') }}"></div>
+            </div>
+            <div class="stack10">
+              <label>Size Rule Note</label>
+              <textarea name="size_rule_note" placeholder="Was size aligned with the plan?">{{ rv.get('size_rule_note','') }}</textarea>
+            </div>
+            <div class="hr"></div>
+            <div class="pill">Execution</div>
+            <div class="row">
+              <div><label>Execution Grade (0-100)</label><input name="execution_grade" inputmode="numeric" value="{{ '' if rv.get('execution_grade') is none else rv.get('execution_grade') }}"></div>
+              <div><label>Entry Quality Note</label><input name="entry_quality_note" value="{{ rv.get('entry_quality_note','') }}" placeholder="Patience, location, confirmation"></div>
+              <div><label>Exit Quality Note</label><input name="exit_quality_note" value="{{ rv.get('exit_quality_note','') }}" placeholder="Scale, target, stop management"></div>
+            </div>
+            <div class="hr"></div>
+            <div class="pill">Mistakes</div>
+            <div class="row stack10">
+              <div>
+                <label>Mistake Tags (comma separated)</label>
+                <input name="mistake_tags" value="{{ rv.get('mistake_tags','') }}" placeholder="late entry, overtrade, size creep">
+              </div>
+            </div>
             <div class="row stack10">
               <div>
                 <label>Rule-Break Tags (comma separated)</label>
@@ -211,23 +313,35 @@ def trades_review(trade_id: int):
                 <option value="{{ strategy['title'] }}"></option>
               {% endfor %}
             </datalist>
+            <div class="hr"></div>
+            <div class="pill">Lesson</div>
             <div class="stack10">
               <label>Review Note</label>
               <textarea name="review_note" placeholder="What to repeat, what to remove next session">{{ rv.get('review_note','') }}</textarea>
             </div>
+            <div class="stack10">
+              <label>Improvement Note</label>
+              <textarea name="improvement_note" placeholder="What changes on the next clean rep?">{{ rv.get('improvement_note','') }}</textarea>
+            </div>
             <div class="hr"></div>
             <div class="rightActions">
               <button class="btn primary" type="submit">💾 Save Review</button>
-              <a class="btn" href="/trades?d={{ d }}&q={{ q }}">← Back</a>
+              <a class="btn" href="/analytics?tab=edge&setup={{ (rv.get('strategy_label','') or rv.get('setup_tag',''))|urlencode }}">Setup Analytics</a>
+              <a class="btn" href="/journal/new?d={{ t.trade_date }}&entry_type=trade_debrief">Journal Draft</a>
+              <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}">← Back</a>
             </div>
           </form>
         </div></div>
         """,
-        t=dict(row),
+        t=trade_row,
         rv=rv,
         d=d,
         q=q,
+        back_query=back_query,
         strategy_options=strategy_options,
+        metrics=trade_metrics,
+        money=legacy.money,
+        repo=legacy.repo,
     )
     return legacy.render_page(content, active="trades")
 

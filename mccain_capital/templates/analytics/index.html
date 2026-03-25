@@ -70,6 +70,51 @@
   </div>
 </div>
 
+<div class="dashboardSupportGrid">
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Best Setup</div>
+    <div class="supportLead">
+      {% if best_setup_card %}
+        {{ best_setup_card.setup }} · {{ money(best_setup_card.expectancy) }} expectancy
+      {% else %}
+        Need labeled setup sample
+      {% endif %}
+    </div>
+    <div class="supportBody">
+      {% if best_setup_card %}
+        {{ best_setup_card.count }} trades · {{ '%.1f'|format(best_setup_card.win_rate) }}% win rate · avg winner {{ money(best_setup_card.avg_winner) }}.
+      {% else %}
+        Add setup tags on reviewed trades so edge detection has enough signal.
+      {% endif %}
+    </div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Biggest Leak</div>
+    <div class="supportLead">
+      {% if biggest_leak_card %}
+        {{ biggest_leak_card.tag|replace('-', ' ')|title }} · {{ money(biggest_leak_card.loss_cost) }} cost
+      {% else %}
+        No behavior leak isolated
+      {% endif %}
+    </div>
+    <div class="supportBody">
+      {% if biggest_leak_card %}
+        {{ biggest_leak_card.count }} tagged trades · average impact {{ money(biggest_leak_card.avg_impact) }}.
+      {% else %}
+        Tag mistakes during reviews so the behavior layer can rank what is actually expensive.
+      {% endif %}
+    </div>
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Review Coverage</div>
+    <div class="supportLead">{{ '%.0f'|format(review_coverage.completion_pct) }}% complete</div>
+    <div class="supportBody">
+      {{ review_coverage.fully_reviewed }} of {{ review_coverage.total }} trades fully reviewed.
+      Missing setup {{ review_coverage.missing_setup }}, mistakes {{ review_coverage.missing_mistake }}, planned risk {{ review_coverage.missing_risk }}.
+    </div>
+  </div></div>
+</div>
+
 <div class="card analyticsToplineCard analyticsCommandDeck">
   <div class="toolbar">
     <div class="analyticsTopline">
@@ -101,22 +146,22 @@
     </div>
     <div class="hr"></div>
     <div class="analyticsModeRail">
-      <a class="analyticsModeCard{% if tab == 'performance' %} is-active{% endif %}" href="/analytics?tab=performance&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">
+      <a class="analyticsModeCard{% if tab == 'performance' %} is-active{% endif %}" href="/analytics?tab=performance&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">
         <span class="analyticsModeKicker">Performance</span>
         <strong>Outcome and curves</strong>
         <span>Read P/L, drawdown, and sizing context.</span>
       </a>
-      <a class="analyticsModeCard{% if tab == 'behavior' %} is-active{% endif %}" href="/analytics?tab=behavior&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">
+      <a class="analyticsModeCard{% if tab == 'behavior' %} is-active{% endif %}" href="/analytics?tab=behavior&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">
         <span class="analyticsModeKicker">Behavior</span>
         <strong>Sessions and mistakes</strong>
         <span>Review session quality and rule-break drift.</span>
       </a>
-      <a class="analyticsModeCard{% if tab == 'edge' %} is-active{% endif %}" href="/analytics?tab=edge&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">
+      <a class="analyticsModeCard{% if tab == 'edge' %} is-active{% endif %}" href="/analytics?tab=edge&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">
         <span class="analyticsModeKicker">Edge</span>
         <strong>Setup and time edge</strong>
         <span>Find where the edge actually compounds.</span>
       </a>
-      <a class="analyticsModeCard{% if tab == 'diagnostics' %} is-active{% endif %}" href="/analytics?tab=diagnostics&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}">
+      <a class="analyticsModeCard{% if tab == 'diagnostics' %} is-active{% endif %}" href="/analytics?tab=diagnostics&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">
         <span class="analyticsModeKicker">Diagnostics</span>
         <strong>Trust the input</strong>
         <span>Fix stale or missing data before review.</span>
@@ -128,6 +173,11 @@
       <div class="analyticsModeSummaryMeta">
         <span class="trendChip {% if perf.total_net > 0 %}positive{% elif perf.total_net < 0 %}negative{% endif %}">Net {{ money(perf.total_net) }}</span>
         <span class="trendChip">Risk {{ insights.risk_now }}</span>
+        {% if review_filters.setup %}<span class="trendChip">Setup {{ review_filters.setup }}</span>{% endif %}
+        {% if review_filters.session %}<span class="trendChip">Session {{ review_filters.session }}</span>{% endif %}
+        {% if review_filters.outcome %}<span class="trendChip">{{ review_filters.outcome|title }}</span>{% endif %}
+        {% if review_filters.time_block %}<span class="trendChip">{{ review_filters.time_block }}</span>{% endif %}
+        {% if review_filters.mistake_tag %}<span class="trendChip">Mistake {{ review_filters.mistake_tag }}</span>{% endif %}
       </div>
     </div>
     <details class="syncDetails analyticsControlFold">
@@ -152,6 +202,42 @@
             <option value="monthly" {% if expectancy_granularity == 'monthly' %}selected{% endif %}>Monthly</option>
             <option value="weekly" {% if expectancy_granularity == 'weekly' %}selected{% endif %}>Weekly</option>
           </select>
+        </div>
+        <div>
+          <label>Setup</label>
+          <input name="setup" value="{{ review_filters.setup }}" placeholder="ORB, Fade" />
+        </div>
+        <div>
+          <label>Session</label>
+          <select name="session">
+            <option value="" {% if not review_filters.session %}selected{% endif %}>All</option>
+            <option value="Open" {% if review_filters.session == 'Open' %}selected{% endif %}>Open</option>
+            <option value="Midday" {% if review_filters.session == 'Midday' %}selected{% endif %}>Midday</option>
+            <option value="Power Hour" {% if review_filters.session == 'Power Hour' %}selected{% endif %}>Power Hour</option>
+            <option value="After Hours" {% if review_filters.session == 'After Hours' %}selected{% endif %}>After Hours</option>
+          </select>
+        </div>
+        <div>
+          <label>Outcome</label>
+          <select name="outcome">
+            <option value="" {% if not review_filters.outcome %}selected{% endif %}>All</option>
+            <option value="winner" {% if review_filters.outcome == 'winner' %}selected{% endif %}>Winner</option>
+            <option value="loser" {% if review_filters.outcome == 'loser' %}selected{% endif %}>Loser</option>
+            <option value="breakeven" {% if review_filters.outcome == 'breakeven' %}selected{% endif %}>Breakeven</option>
+          </select>
+        </div>
+        <div>
+          <label>Time Block</label>
+          <select name="time_block">
+            <option value="" {% if not review_filters.time_block %}selected{% endif %}>All</option>
+            <option value="Open" {% if review_filters.time_block == 'Open' %}selected{% endif %}>Open</option>
+            <option value="Midday" {% if review_filters.time_block == 'Midday' %}selected{% endif %}>Midday</option>
+            <option value="Power Hour" {% if review_filters.time_block == 'Power Hour' %}selected{% endif %}>Power Hour</option>
+          </select>
+        </div>
+        <div>
+          <label>Mistake Tag</label>
+          <input name="mistake_tag" value="{{ review_filters.mistake_tag }}" placeholder="late entry" />
         </div>
         <div class="actionRow">
           <button class="btn" type="submit">Apply</button>
@@ -607,6 +693,41 @@
     </div>
   {% endif %}
 </div></div>
+<div class="twoCol stack12">
+  <div class="card"><div class="toolbar">
+    <div class="pill">Mistake Cost Ranking</div>
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Largest Leak</div><div class="v">{% if biggest_leak_card %}{{ biggest_leak_card.tag|replace('-', ' ')|title }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Loss Cost</div><div class="v">{% if biggest_leak_card %}{{ money(biggest_leak_card.loss_cost) }}{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="k">Tagged Trades</div><div class="v">{% if biggest_leak_card %}{{ biggest_leak_card.count }}{% else %}0{% endif %}</div></div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Open mistake-cost table</summary>
+      <div class="hr"></div>
+      <div class="tableWrap desktopOnly"><table class="tableDense">
+        <thead><tr><th>Mistake</th><th>Trades</th><th>Loss Cost</th><th>Net</th><th>Avg Impact</th></tr></thead>
+        <tbody>
+        {% for r in mistake_cost_rows %}
+          <tr><td>{{ r.tag|replace('-', ' ')|title }}</td><td>{{ r.count }}</td><td>{{ money(r.loss_cost) }}</td><td>{{ money(r.net) }}</td><td>{{ money(r.avg_impact) }}</td></tr>
+        {% endfor %}
+        {% if mistake_cost_rows|length == 0 %}
+          <tr><td colspan="5">No mistake tags in this range yet.</td></tr>
+        {% endif %}
+        </tbody>
+      </table></div>
+    </details>
+  </div></div>
+  <div class="card"><div class="toolbar">
+    <div class="pill">Review Completeness</div>
+    <div class="statRow stack10">
+      <div class="stat"><div class="k">Coverage</div><div class="v">{{ '%.0f'|format(review_coverage.completion_pct) }}%</div></div>
+      <div class="stat"><div class="k">Fully Reviewed</div><div class="v">{{ review_coverage.fully_reviewed }}</div></div>
+      <div class="stat"><div class="k">Missing Mistakes</div><div class="v">{{ review_coverage.missing_mistake }}</div></div>
+      <div class="stat"><div class="k">Missing Risk</div><div class="v">{{ review_coverage.missing_risk }}</div></div>
+    </div>
+    <div class="tiny stack8 line16">Use this to spot whether weak analytics are coming from weak behavior or weak review hygiene.</div>
+  </div></div>
+</div>
 {% elif tab == 'diagnostics' %}
 <div class="card stack12"><div class="toolbar">
   <div class="pillRow">
@@ -720,6 +841,33 @@
     </details>
   </div></div>
 </div>
+
+<div class="card stack12"><div class="toolbar">
+  <div class="pill">Setup Scorecards</div>
+  <div class="tiny stack8 line15">Sample size, expectancy, winner/loser shape, and R-multiple read in one table.</div>
+  <div class="hr"></div>
+  <div class="tableWrap desktopOnly"><table class="tableDense">
+    <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Expectancy</th><th>Net</th><th>Avg Winner</th><th>Avg Loser</th><th>Avg Score</th><th>Avg R</th></tr></thead>
+    <tbody>
+      {% for r in setup_scorecards %}
+        <tr>
+          <td>{{ r.setup }}</td>
+          <td>{{ r.count }}</td>
+          <td>{{ '%.1f'|format(r.win_rate) }}%</td>
+          <td>{{ money(r.expectancy) }}</td>
+          <td>{{ money(r.net) }}</td>
+          <td>{{ money(r.avg_winner) }}</td>
+          <td>{{ money(r.avg_loser) }}</td>
+          <td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td>
+          <td>{% if r.avg_r_multiple is not none %}{{ '%.2f'|format(r.avg_r_multiple) }}R{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      {% if setup_scorecards|length == 0 %}
+        <tr><td colspan="9">No setup scorecards available in this range.</td></tr>
+      {% endif %}
+    </tbody>
+  </table></div>
+</div></div>
 
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">

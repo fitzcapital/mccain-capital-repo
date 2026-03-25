@@ -587,6 +587,15 @@ def analytics_page():
     start_date = (request.args.get("start") or "").strip()
     end_date = (request.args.get("end") or "").strip()
     explain_day = (request.args.get("explain_day") or "").strip()
+    review_filters = repo.normalize_trade_filters(
+        {
+            "setup": request.args.get("setup", ""),
+            "session": request.args.get("session", ""),
+            "outcome": request.args.get("outcome", ""),
+            "time_block": request.args.get("time_block", ""),
+            "mistake_tag": request.args.get("mistake_tag", ""),
+        }
+    )
     expectancy_granularity = (
         (request.args.get("expectancy_granularity") or "monthly").strip().lower()
     )
@@ -606,7 +615,9 @@ def analytics_page():
         if not start_date or start_date < scope_start:
             start_date = scope_start
 
-    rows = repo.fetch_analytics_rows(start_date=start_date, end_date=end_date)
+    rows = repo.fetch_analytics_rows(
+        start_date=start_date, end_date=end_date, filters=review_filters
+    )
     perf = repo.performance_metrics(
         rows, starting_balance=scope_starting_balance if scope_active else None
     )
@@ -616,6 +627,19 @@ def analytics_page():
     corr = repo.score_pnl_correlation(rows)
     setup_rows = repo.group_table(rows, "setup_tag")
     session_rows = repo.group_table(rows, "session_tag")
+    setup_scorecards = repo.setup_scorecards(rows)
+    mistake_cost_rows = repo.mistake_costs(rows)
+    review_coverage = repo.review_coverage(rows)
+    best_setup_card = next(
+        (
+            row
+            for row in setup_scorecards
+            if str(row.get("setup") or "").strip()
+            and str(row.get("setup") or "").strip() != "Unlabeled"
+        ),
+        None,
+    )
+    biggest_leak_card = mistake_cost_rows[0] if mistake_cost_rows else None
     setup_trend_rows = repo.edge_over_time(rows, "setup_tag", top_n=3)
     session_trend_rows = repo.edge_over_time(rows, "session_tag", top_n=3)
     hour_rows = repo.hour_bucket_table(rows)
@@ -718,6 +742,11 @@ def analytics_page():
         insights=insights,
         setup_rows=setup_rows,
         session_rows=session_rows,
+        setup_scorecards=setup_scorecards,
+        mistake_cost_rows=mistake_cost_rows,
+        review_coverage=review_coverage,
+        best_setup_card=best_setup_card,
+        biggest_leak_card=biggest_leak_card,
         setup_trend_rows=setup_trend_rows,
         session_trend_rows=session_trend_rows,
         hour_rows=hour_rows,
@@ -744,6 +773,7 @@ def analytics_page():
         start_date=start_date,
         end_date=end_date,
         explain_day=explain_day,
+        review_filters=review_filters,
         expectancy_granularity=expectancy_granularity,
         expectancy_auto_switched=expectancy_auto_switched,
         tab=tab,
@@ -758,6 +788,11 @@ def analytics_page():
                     "end": end_date,
                     "explain_day": explain_day,
                     "expectancy_granularity": expectancy_granularity,
+                    "setup": review_filters["setup"],
+                    "session": review_filters["session"],
+                    "outcome": review_filters["outcome"],
+                    "time_block": review_filters["time_block"],
+                    "mistake_tag": review_filters["mistake_tag"],
                     "scope": "active",
                 }
             )
@@ -771,6 +806,11 @@ def analytics_page():
                     "end": end_date,
                     "explain_day": explain_day,
                     "expectancy_granularity": expectancy_granularity,
+                    "setup": review_filters["setup"],
+                    "session": review_filters["session"],
+                    "outcome": review_filters["outcome"],
+                    "time_block": review_filters["time_block"],
+                    "mistake_tag": review_filters["mistake_tag"],
                     "scope": "all",
                 }
             )

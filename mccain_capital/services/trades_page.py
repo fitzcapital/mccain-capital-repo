@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
+from mccain_capital.repositories import analytics as analytics_repo
 from mccain_capital.services import trades as legacy
 from mccain_capital.services import trades_balance as trades_balance_svc
 from mccain_capital.services.viewmodels import (
@@ -29,23 +32,23 @@ def trades_page():
     next_day = next_trading_day_iso(active_day)
 
     q = legacy.request.args.get("q", "")
+    review_filters = analytics_repo.normalize_trade_filters(
+        {
+            "setup": legacy.request.args.get("setup", ""),
+            "session": legacy.request.args.get("session", ""),
+            "outcome": legacy.request.args.get("outcome", ""),
+            "time_block": legacy.request.args.get("time_block", ""),
+            "mistake_tag": legacy.request.args.get("mistake_tag", ""),
+        }
+    )
     page = max(1, parse_int(legacy.request.args.get("page") or "1") or 1)
     per = parse_int(legacy.request.args.get("per") or "50") or 50
     per = max(25, min(200, per))
     scope_state = trades_balance_svc.scope_state_for_day(active_day)
     account_scope = scope_state["account_scope"]
 
-    raw_trades = legacy.fetch_trades(d=d, q=q)
+    raw_trades = legacy.fetch_trades(d=d, q=q, filters=review_filters)
     trades = [dict(r) for r in raw_trades]
-    review_map = legacy.fetch_trade_reviews_map(
-        [int(t["id"]) for t in trades if t.get("id") is not None]
-    )
-    for t in trades:
-        rv = review_map.get(int(t["id"]), {})
-        t["setup_tag"] = rv.get("strategy_label", "") or rv.get("setup_tag", "")
-        t["session_tag"] = rv.get("session_tag", "")
-        t["checklist_score"] = rv.get("checklist_score", None)
-        t["rule_break_tags"] = rv.get("rule_break_tags", "")
     derived_balances = trades_balance_svc.derived_balance_map(
         as_of=active_day,
         start_date=scope_state["scope_start"] if scope_state["scope_active"] else "",
@@ -96,6 +99,16 @@ def trades_page():
     )
     trades_count = len(trades)
     avg_net = (day_net / trades_count) if trades_count else 0.0
+    review_coverage = analytics_repo.review_coverage(trades)
+    setup_scorecards = analytics_repo.setup_scorecards(trades)
+    setup_scorecards = [
+        card
+        for card in setup_scorecards
+        if str(card.get("setup") or "").strip() and str(card.get("setup") or "") != "Unlabeled"
+    ]
+    mistake_costs = analytics_repo.mistake_costs(trades)
+    best_setup = setup_scorecards[0] if setup_scorecards else None
+    biggest_leak = mistake_costs[0] if mistake_costs else None
     if trades_count == 0:
         execution_msg = (
             "No trades logged for the current filter. Start with one clean, rules-based setup."
@@ -117,11 +130,18 @@ def trades_page():
             "Current risk posture is tradable."
         )
 
-    next_action_msg = (
-        "Tag every trade with setup/session and complete missing review scores before day end."
-        if trades_count
-        else "Import statement or add first trade, then complete setup/session review tags."
-    )
+    if trades_count == 0:
+        next_action_msg = "Import statement or add first trade, then complete setup/session review tags."
+    elif review_coverage["fully_reviewed"] < trades_count:
+        next_action_msg = (
+            f"Complete structured reviews on {trades_count - review_coverage['fully_reviewed']} trade(s) so the analytics layer stays decision-grade."
+        )
+    elif biggest_leak:
+        next_action_msg = (
+            f"Review {biggest_leak['tag']} first. It has logged {legacy.money(biggest_leak['loss_cost'])} in preventable loss cost."
+        )
+    else:
+        next_action_msg = "Review is current. Use Analytics to validate the strongest setup before adding more size."
     if guardrail.get("locked"):
         hero_title = "Protect Capital and Review"
         hero_blurb = "The session is in protection mode. Audit the tape, lock in lessons, and avoid new risk."
@@ -153,8 +173,12 @@ def trades_page():
         ),
         StateBadgeViewModel(
             label="Review Tags",
-            value=("Required" if trades_count else "Stand by"),
-            tone=("caution" if trades_count else "neutral"),
+            value=(
+                f"{review_coverage['completion_pct']:.0f}% complete"
+                if trades_count
+                else "Stand by"
+            ),
+            tone=("healthy" if trades_count and review_coverage["fully_reviewed"] == trades_count else "caution" if trades_count else "neutral"),
             title="Trade review tags should be completed before day end.",
         ),
     ]
@@ -169,6 +193,10 @@ def trades_page():
     )
     secondary_total_label = "📅 Week Total" if is_day_view else "🏁 All-Time Net"
     secondary_total_value = week_total if is_day_view else all_time_net
+    base_query = {"d": d, "q": q}
+    base_query.update({k: v for k, v in review_filters.items() if v})
+    filter_query = urlencode(base_query)
+    pagination_query_prefix = (filter_query + "&") if filter_query else ""
 
     content = legacy.render_template(
         "trades/index.html",
@@ -198,6 +226,10 @@ def trades_page():
         execution_msg=execution_msg,
         risk_msg=risk_msg,
         next_action_msg=next_action_msg,
+        review_filters=review_filters,
+        review_coverage=review_coverage,
+        best_setup=best_setup,
+        biggest_leak=biggest_leak,
         guardrail=guardrail,
         data_trust=data_trust,
         trades_status_badges=trades_status_badges,
@@ -212,6 +244,8 @@ def trades_page():
         secondary_total_value=secondary_total_value,
         hero_title=hero_title,
         hero_blurb=hero_blurb,
+        filter_query=filter_query,
+        pagination_query_prefix=pagination_query_prefix,
     )
 
     return legacy.render_page(content, active="trades")

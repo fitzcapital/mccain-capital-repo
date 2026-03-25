@@ -7,9 +7,75 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from mccain_capital.runtime import db, get_setting_float
+from mccain_capital.repositories import trades as trades_repo
 
 
-def fetch_analytics_rows(start_date: str = "", end_date: str = "") -> List[Dict[str, Any]]:
+def _normalize_filter_value(raw: Any) -> str:
+    return str(raw or "").strip()
+
+
+def normalize_trade_filters(raw_filters: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    raw_filters = raw_filters or {}
+    return {
+        "setup": _normalize_filter_value(raw_filters.get("setup")),
+        "session": _normalize_filter_value(raw_filters.get("session")),
+        "outcome": _normalize_filter_value(raw_filters.get("outcome")).lower(),
+        "time_block": _normalize_filter_value(raw_filters.get("time_block")),
+        "mistake_tag": _normalize_filter_value(raw_filters.get("mistake_tag")),
+    }
+
+
+def _row_matches_filters(row: Dict[str, Any], filters: Dict[str, str]) -> bool:
+    outcome = filters.get("outcome", "")
+    net = _safe_float(row.get("net_pl"))
+    if outcome == "winner" and not (net is not None and net > 0):
+        return False
+    if outcome == "loser" and not (net is not None and net < 0):
+        return False
+    if outcome == "breakeven" and not (net is not None and net == 0):
+        return False
+    time_block = filters.get("time_block", "")
+    if time_block and str(row.get("time_block") or "") != time_block:
+        return False
+    mistake_tag = filters.get("mistake_tag", "").lower()
+    if mistake_tag:
+        tags = ",".join(
+            [str(row.get("mistake_tags") or ""), str(row.get("rule_break_tags") or "")]
+        ).lower()
+        if mistake_tag not in tags:
+            return False
+    return True
+
+
+def _enrich_analytics_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    enriched = dict(row)
+    enriched["setup_tag"] = str(
+        row.get("setup_tag") or row.get("strategy_label") or row.get("resolved_setup_tag") or ""
+    ).strip()
+    enriched["time_block"] = trades_repo.classify_time_block(row.get("entry_time"))
+    enriched["hold_minutes"] = trades_repo.compute_hold_minutes(
+        row.get("entry_time"), row.get("exit_time")
+    )
+    planned_risk = _safe_float(row.get("planned_risk_dollars"))
+    net = _safe_float(row.get("net_pl"))
+    enriched["r_multiple"] = (net / planned_risk) if planned_risk and net is not None else None
+    completeness_parts = [
+        enriched.get("setup_tag"),
+        enriched.get("session_tag"),
+        enriched.get("checklist_score"),
+        enriched.get("mistake_tags"),
+        enriched.get("planned_risk_dollars"),
+        enriched.get("review_note"),
+    ]
+    complete_count = sum(1 for part in completeness_parts if part not in (None, "", []))
+    enriched["review_completion_pct"] = int(round((complete_count / len(completeness_parts)) * 100.0))
+    return enriched
+
+
+def fetch_analytics_rows(
+    start_date: str = "", end_date: str = "", filters: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    normalized = normalize_trade_filters(filters)
     where: List[str] = []
     params: List[Any] = []
     if start_date:
@@ -24,24 +90,47 @@ def fetch_analytics_rows(start_date: str = "", end_date: str = "") -> List[Dict[
           t.id,
           t.trade_date,
           t.entry_time,
+          t.exit_time,
           t.ticker,
           t.net_pl,
           t.balance,
+          r.strategy_label,
           COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '') AS setup_tag,
+          COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '') AS resolved_setup_tag,
           r.session_tag,
           r.checklist_score,
-          r.rule_break_tags
+          r.rule_break_tags,
+          r.review_note,
+          r.thesis_note,
+          r.execution_grade,
+          r.risk_grade,
+          r.plan_grade,
+          r.mistake_tags,
+          r.planned_risk_dollars,
+          r.size_rule_note,
+          r.entry_quality_note,
+          r.exit_quality_note,
+          r.improvement_note
         FROM trades t
         LEFT JOIN trade_reviews r ON r.trade_id = t.id
         LEFT JOIN strategies s ON s.id = r.strategy_id
     """
+    if normalized["setup"]:
+        where.append(
+            "LOWER(COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '')) = LOWER(?)"
+        )
+        params.append(normalized["setup"])
+    if normalized["session"]:
+        where.append("LOWER(COALESCE(r.session_tag, '')) = LOWER(?)")
+        params.append(normalized["session"])
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY t.trade_date ASC, t.id ASC"
 
     with db() as conn:
         rows = conn.execute(sql, params).fetchall()
-    return [dict(r) for r in rows]
+    enriched_rows = [_enrich_analytics_row(dict(r)) for r in rows]
+    return [row for row in enriched_rows if _row_matches_filters(row, normalized)]
 
 
 def _safe_float(v: Any) -> Optional[float]:
@@ -208,6 +297,169 @@ def rule_break_counts(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 continue
             c[tag] += 1
     return [{"tag": k, "count": v} for k, v in c.most_common(12)]
+
+
+def mistake_costs(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        raw_tags = str(r.get("mistake_tags") or r.get("rule_break_tags") or "").strip()
+        if not raw_tags:
+            continue
+        net = _safe_float(r.get("net_pl")) or 0.0
+        for tag in [t.strip().lower() for t in raw_tags.split(",") if t.strip()]:
+            bucket = buckets.setdefault(
+                tag,
+                {
+                    "tag": tag,
+                    "count": 0,
+                    "net": 0.0,
+                    "loss_cost": 0.0,
+                    "wins": 0,
+                    "losses": 0,
+                },
+            )
+            bucket["count"] += 1
+            bucket["net"] += net
+            if net < 0:
+                bucket["loss_cost"] += abs(net)
+                bucket["losses"] += 1
+            elif net > 0:
+                bucket["wins"] += 1
+    out: List[Dict[str, Any]] = []
+    for bucket in buckets.values():
+        count = int(bucket["count"] or 0)
+        out.append(
+            {
+                "tag": bucket["tag"],
+                "count": count,
+                "net": float(bucket["net"] or 0.0),
+                "loss_cost": float(bucket["loss_cost"] or 0.0),
+                "avg_impact": (float(bucket["net"] or 0.0) / count) if count else 0.0,
+                "win_rate": ((int(bucket["wins"] or 0) / count) * 100.0) if count else 0.0,
+            }
+        )
+    out.sort(key=lambda row: (row["loss_cost"], -row["net"], row["count"]), reverse=True)
+    return out
+
+
+def setup_scorecards(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        setup = str(r.get("setup_tag") or "").strip() or "Unlabeled"
+        net = _safe_float(r.get("net_pl")) or 0.0
+        bucket = buckets.setdefault(
+            setup,
+            {
+                "setup": setup,
+                "count": 0,
+                "net": 0.0,
+                "wins": 0,
+                "win_values": [],
+                "loss_values": [],
+                "scores": [],
+                "r_values": [],
+            },
+        )
+        bucket["count"] += 1
+        bucket["net"] += net
+        if net > 0:
+            bucket["wins"] += 1
+            bucket["win_values"].append(net)
+        elif net < 0:
+            bucket["loss_values"].append(abs(net))
+        score = _safe_float(r.get("checklist_score"))
+        if score is not None:
+            bucket["scores"].append(score)
+        r_mult = _safe_float(r.get("r_multiple"))
+        if r_mult is not None:
+            bucket["r_values"].append(r_mult)
+
+    out: List[Dict[str, Any]] = []
+    for bucket in buckets.values():
+        count = int(bucket["count"] or 0)
+        out.append(
+            {
+                "setup": bucket["setup"],
+                "count": count,
+                "net": float(bucket["net"] or 0.0),
+                "expectancy": (float(bucket["net"] or 0.0) / count) if count else 0.0,
+                "win_rate": ((int(bucket["wins"] or 0) / count) * 100.0) if count else 0.0,
+                "avg_winner": (
+                    sum(bucket["win_values"]) / len(bucket["win_values"])
+                    if bucket["win_values"]
+                    else 0.0
+                ),
+                "avg_loser": (
+                    sum(bucket["loss_values"]) / len(bucket["loss_values"])
+                    if bucket["loss_values"]
+                    else 0.0
+                ),
+                "avg_score": (
+                    sum(bucket["scores"]) / len(bucket["scores"]) if bucket["scores"] else None
+                ),
+                "avg_r_multiple": (
+                    sum(bucket["r_values"]) / len(bucket["r_values"])
+                    if bucket["r_values"]
+                    else None
+                ),
+            }
+        )
+    out.sort(key=lambda row: (row["net"], row["expectancy"], row["count"]), reverse=True)
+    return out
+
+
+def review_coverage(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    total = len(rows)
+    if total == 0:
+        return {
+            "total": 0,
+            "missing_setup": 0,
+            "missing_session": 0,
+            "missing_score": 0,
+            "missing_mistake": 0,
+            "missing_risk": 0,
+            "fully_reviewed": 0,
+            "completion_pct": 0.0,
+        }
+    missing_setup = 0
+    missing_session = 0
+    missing_score = 0
+    missing_mistake = 0
+    missing_risk = 0
+    fully_reviewed = 0
+    for r in rows:
+        row_missing = 0
+        if not str(r.get("setup_tag") or "").strip():
+            missing_setup += 1
+            row_missing += 1
+        if not str(r.get("session_tag") or "").strip():
+            missing_session += 1
+            row_missing += 1
+        if r.get("checklist_score") in (None, ""):
+            missing_score += 1
+            row_missing += 1
+        if not str(r.get("mistake_tags") or "").strip():
+            missing_mistake += 1
+            row_missing += 1
+        if r.get("planned_risk_dollars") in (None, ""):
+            missing_risk += 1
+            row_missing += 1
+        if row_missing == 0:
+            fully_reviewed += 1
+    total_checks = total * 5
+    completed_checks = total_checks - (
+        missing_setup + missing_session + missing_score + missing_mistake + missing_risk
+    )
+    return {
+        "total": total,
+        "missing_setup": missing_setup,
+        "missing_session": missing_session,
+        "missing_score": missing_score,
+        "missing_mistake": missing_mistake,
+        "missing_risk": missing_risk,
+        "fully_reviewed": fully_reviewed,
+        "completion_pct": (completed_checks / total_checks * 100.0) if total_checks else 0.0,
+    }
 
 
 def drawdown_diagnostics(

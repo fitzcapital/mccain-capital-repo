@@ -950,6 +950,7 @@ def _debrief_market_context(entry_date: str) -> Dict[str, str]:
     try:
         from mccain_capital.services import core as core_svc
         from mccain_capital.services import gamma_map_service
+        from mccain_capital.services import market_data_service
     except Exception:
         return {"headline": "", "levels": "", "macro": "", "market": ""}
 
@@ -974,6 +975,15 @@ def _debrief_market_context(entry_date: str) -> Dict[str, str]:
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
     spot = float(spx_quote.get("price") or 0.0) if spx_quote.get("price") is not None else None
     vix = float(vix_quote.get("price") or 0.0) if vix_quote.get("price") is not None else None
+    if vix is None:
+        try:
+            fallback_vix_quote = dict(
+                (market_data_service.get_watchlist_with_fallback(["VIX"]) or {}).get("VIX") or {}
+            )
+            if fallback_vix_quote.get("price") is not None:
+                vix = float(fallback_vix_quote.get("price") or 0.0)
+        except Exception:
+            pass
     gamma_flip = gamma_snapshot.get("gamma_flip_combined_basket")
     call_wall = gamma_snapshot.get("call_wall_aggregated_gamma")
     put_wall = gamma_snapshot.get("put_wall_aggregated_gamma")

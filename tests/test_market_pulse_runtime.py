@@ -1,5 +1,3 @@
-import os
-
 from mccain_capital.services import market_pulse_runtime as runtime
 
 
