@@ -89,6 +89,64 @@
   </div>
 </div>
 
+<div class="dashboardSupportGrid">
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Best Setup</div>
+    <div class="supportLead">
+      {% if best_setup %}
+        {{ best_setup.setup }} · {{ money(best_setup.expectancy) }} expectancy
+      {% else %}
+        Need labeled setup data
+      {% endif %}
+    </div>
+    <div class="supportBody">
+      {% if best_setup %}
+        {{ best_setup.count }} trades · {{ '%.1f'|format(best_setup.win_rate) }}% win rate · net {{ money(best_setup.net) }}.
+      {% else %}
+        Tag more trades with setup labels to surface the highest-conviction pattern.
+      {% endif %}
+    </div>
+    {% if best_setup %}
+      <div class="rightActions">
+        <a class="btn primary" href="/analytics?tab=edge&setup={{ best_setup.setup|urlencode }}">Open Setup Edge</a>
+      </div>
+    {% endif %}
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Biggest Leak</div>
+    <div class="supportLead">
+      {% if biggest_leak %}
+        {{ biggest_leak.tag|replace('-', ' ')|title }} · {{ money(biggest_leak.loss_cost) }} loss cost
+      {% else %}
+        No mistake-cost read yet
+      {% endif %}
+    </div>
+    <div class="supportBody">
+      {% if biggest_leak %}
+        {{ biggest_leak.count }} tagged trades · average impact {{ money(biggest_leak.avg_impact) }}.
+      {% else %}
+        Add mistake tags during reviews so behavior drift becomes measurable.
+      {% endif %}
+    </div>
+    {% if biggest_leak %}
+      <div class="rightActions">
+        <a class="btn primary" href="/analytics?tab=behavior&mistake_tag={{ biggest_leak.tag|urlencode }}">Review Leak</a>
+      </div>
+    {% endif %}
+  </div></div>
+  <div class="card supportCard subtleCard"><div class="toolbar">
+    <div class="pill">Review Coverage</div>
+    <div class="supportLead">{{ '%.0f'|format(review_coverage.completion_pct) }}% structured coverage</div>
+    <div class="supportBody">
+      {{ review_coverage.fully_reviewed }} of {{ review_coverage.total }} trades fully reviewed.
+      Missing setup {{ review_coverage.missing_setup }}, mistakes {{ review_coverage.missing_mistake }}, planned risk {{ review_coverage.missing_risk }}.
+    </div>
+    <div class="rightActions">
+      <a class="btn primary" href="/analytics?tab=diagnostics">Open Diagnostics</a>
+    </div>
+  </div></div>
+</div>
+
 <details class="syncDetails workspaceStatusFold">
   <summary>
     <span>Execution Health</span>
@@ -147,10 +205,18 @@
         <a class="btn" href="/analytics">Analytics</a>
       </div>
     </div>
-    <details class="syncDetails workspaceControlFold"{% if q or d %} open{% endif %}>
+    <details class="syncDetails workspaceControlFold"{% if q or d or review_filters.setup or review_filters.session or review_filters.outcome or review_filters.time_block or review_filters.mistake_tag %} open{% endif %}>
       <summary>
         <span>Filters and Routing</span>
-        <span class="tiny muted">{{ d or 'All dates' }}{% if q %} · {{ q }}{% endif %}</span>
+        <span class="tiny muted">
+          {{ d or 'All dates' }}
+          {% if q %} · {{ q }}{% endif %}
+          {% if review_filters.setup %} · Setup {{ review_filters.setup }}{% endif %}
+          {% if review_filters.session %} · Session {{ review_filters.session }}{% endif %}
+          {% if review_filters.outcome %} · {{ review_filters.outcome|title }}{% endif %}
+          {% if review_filters.time_block %} · {{ review_filters.time_block }}{% endif %}
+          {% if review_filters.mistake_tag %} · Mistake {{ review_filters.mistake_tag }}{% endif %}
+        </span>
       </summary>
       <form method="get" action="/trades" class="row">
         <div class="fieldGrow2">
@@ -161,9 +227,45 @@
           <label>Date</label>
           <input class="tradeDateFilterInput" type="date" name="d" value="{{ d }}" />
         </div>
+        <div class="fieldGrow1">
+          <label>Setup</label>
+          <input name="setup" value="{{ review_filters.setup }}" placeholder="ORB, Fade" />
+        </div>
+        <div class="fieldGrow1">
+          <label>Session</label>
+          <select name="session">
+            <option value="" {% if not review_filters.session %}selected{% endif %}>All</option>
+            <option value="Open" {% if review_filters.session == 'Open' %}selected{% endif %}>Open</option>
+            <option value="Midday" {% if review_filters.session == 'Midday' %}selected{% endif %}>Midday</option>
+            <option value="Power Hour" {% if review_filters.session == 'Power Hour' %}selected{% endif %}>Power Hour</option>
+            <option value="After Hours" {% if review_filters.session == 'After Hours' %}selected{% endif %}>After Hours</option>
+          </select>
+        </div>
+        <div class="fieldGrow1">
+          <label>Outcome</label>
+          <select name="outcome">
+            <option value="" {% if not review_filters.outcome %}selected{% endif %}>All</option>
+            <option value="winner" {% if review_filters.outcome == 'winner' %}selected{% endif %}>Winner</option>
+            <option value="loser" {% if review_filters.outcome == 'loser' %}selected{% endif %}>Loser</option>
+            <option value="breakeven" {% if review_filters.outcome == 'breakeven' %}selected{% endif %}>Breakeven</option>
+          </select>
+        </div>
+        <div class="fieldGrow1">
+          <label>Time Block</label>
+          <select name="time_block">
+            <option value="" {% if not review_filters.time_block %}selected{% endif %}>All</option>
+            <option value="Open" {% if review_filters.time_block == 'Open' %}selected{% endif %}>Open</option>
+            <option value="Midday" {% if review_filters.time_block == 'Midday' %}selected{% endif %}>Midday</option>
+            <option value="Power Hour" {% if review_filters.time_block == 'Power Hour' %}selected{% endif %}>Power Hour</option>
+          </select>
+        </div>
+        <div class="fieldGrow1">
+          <label>Mistake Tag</label>
+          <input name="mistake_tag" value="{{ review_filters.mistake_tag }}" placeholder="late entry" />
+        </div>
         <div class="actionRow">
-          <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}">Prev</a>
-          <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}">Next</a>
+          <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">Prev</a>
+          <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">Next</a>
           <button class="btn" type="submit">Filter</button>
           <a class="btn" href="/trades">Reset</a>
         </div>
@@ -370,13 +472,13 @@
       </div>
       <div class="actionRow stack8">
         {% if page > 1 %}
-          <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per={{ per }}&page={{ page - 1 }}">Prev Page</a>
+          <a class="btn" href="/trades?{{ pagination_query_prefix }}per={{ per }}&page={{ page - 1 }}">Prev Page</a>
         {% endif %}
         {% if page < page_count %}
-          <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per={{ per }}&page={{ page + 1 }}">Next Page</a>
+          <a class="btn" href="/trades?{{ pagination_query_prefix }}per={{ per }}&page={{ page + 1 }}">Next Page</a>
         {% endif %}
-        <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per=50&page=1">50 / page</a>
-        <a class="btn" href="/trades?d={{ d }}&q={{ q|urlencode }}&per=100&page=1">100 / page</a>
+        <a class="btn" href="/trades?{{ pagination_query_prefix }}per=50&page=1">50 / page</a>
+        <a class="btn" href="/trades?{{ pagination_query_prefix }}per=100&page=1">100 / page</a>
       </div>
       <div class="hr"></div>
 
@@ -460,6 +562,9 @@
           </td>
           <td>
             <span class="tradeSetupPill">{{ setup_label }}</span>
+            {% if t.get('session_tag') %}
+              <div class="tiny muted">{{ t.get('session_tag') }} · {{ t.get('time_block') }}</div>
+            {% endif %}
           </td>
           <td>
             {% if t.get('checklist_score') is not none %}
@@ -506,8 +611,8 @@
             <div class="rowActions" id="rowActions-{{ t['id'] }}">
               <button type="button" class="rowMoreBtn" onclick="toggleRowMenu('{{ t['id'] }}', event)" aria-label="Trade actions">▾</button>
               <div class="rowMoreMenu" id="rowMenu-{{ t['id'] }}">
-                <a class="rowMenuItem" href="/trades/edit/{{ t['id'] }}?d={{ d }}&q={{ q }}">✏️ Edit</a>
-                <a class="rowMenuItem" href="/trades/review/{{ t['id'] }}?d={{ d }}&q={{ q }}">🧠 Review</a>
+                <a class="rowMenuItem" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}">✏️ Edit</a>
+                <a class="rowMenuItem" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">🧠 Review</a>
                 <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}">
   <button class="rowMenuItem" type="submit">📄 Duplicate</button>
 </form>
@@ -553,6 +658,9 @@
           {% if t.get('session_tag') %}
             <span class="tradeSessionPill">{{ t.get('session_tag') }}</span>
           {% endif %}
+          {% if t.get('time_block') %}
+            <span class="tradeSessionPill">{{ t.get('time_block') }}</span>
+          {% endif %}
           {% if t.get('checklist_score') is not none %}
             <span class="tradeScoreCell">{{ t.get('checklist_score') }}</span>
           {% endif %}
@@ -587,8 +695,8 @@
           </div>
         </div>
         <div class="mobileActionGrid stack10">
-          <a class="btn" href="/trades/edit/{{ t['id'] }}?d={{ d }}&q={{ q }}">✏️ Edit</a>
-          <a class="btn" href="/trades/review/{{ t['id'] }}?d={{ d }}&q={{ q }}">🧠 Review</a>
+          <a class="btn" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}">✏️ Edit</a>
+          <a class="btn" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">🧠 Review</a>
           <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}" class="inlineForm">
             <button class="btn" type="submit">📄 Duplicate</button>
           </form>

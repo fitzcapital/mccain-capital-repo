@@ -249,12 +249,44 @@ def _migration_0005_market_alerts(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0006_trade_review_rich_fields(conn: sqlite3.Connection) -> None:
+    review_cols = [r["name"] for r in conn.execute("PRAGMA table_info(trade_reviews)").fetchall()]
+    if "thesis_note" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN thesis_note TEXT DEFAULT ''")
+    if "execution_grade" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN execution_grade INTEGER DEFAULT NULL")
+    if "risk_grade" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN risk_grade INTEGER DEFAULT NULL")
+    if "plan_grade" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN plan_grade INTEGER DEFAULT NULL")
+    if "mistake_tags" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN mistake_tags TEXT DEFAULT ''")
+    if "planned_risk_dollars" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN planned_risk_dollars REAL DEFAULT NULL")
+    if "size_rule_note" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN size_rule_note TEXT DEFAULT ''")
+    if "entry_quality_note" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN entry_quality_note TEXT DEFAULT ''")
+    if "exit_quality_note" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN exit_quality_note TEXT DEFAULT ''")
+    if "improvement_note" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN improvement_note TEXT DEFAULT ''")
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trade_reviews_session ON trade_reviews(session_tag)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trade_reviews_mistake_tags ON trade_reviews(mistake_tags)"
+    )
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
     ("0003_import_batches", _migration_0003_import_batches),
     ("0004_strategy_links", _migration_0004_strategy_links),
     ("0005_market_alerts", _migration_0005_market_alerts),
+    ("0006_trade_review_rich_fields", _migration_0006_trade_review_rich_fields),
 ]
 
 

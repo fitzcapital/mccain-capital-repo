@@ -7,11 +7,11 @@ from mccain_capital.runtime import db, now_iso
 
 def _seed_trades():
     rows = [
-        ("2026-01-02", "9:35 AM", 100.0, 50100.0, "ORB", "Open", 88, ""),
-        ("2026-01-02", "10:20 AM", -50.0, 50050.0, "Fade", "Open", 62, "late-entry"),
-        ("2026-01-03", "11:10 AM", 200.0, 50250.0, "ORB", "Midday", 91, ""),
-        ("2026-01-03", "2:40 PM", -25.0, 50225.0, "Scalp", "Power Hour", 55, "oversized"),
-        ("2026-01-04", "3:05 PM", 0.0, 50225.0, "ORB", "Power Hour", 70, ""),
+        ("2026-01-02", "9:35 AM", 100.0, 50100.0, "ORB", "Open", 88, "", "", 100.0),
+        ("2026-01-02", "10:20 AM", -50.0, 50050.0, "Fade", "Open", 62, "late-entry", "late-entry", 50.0),
+        ("2026-01-03", "11:10 AM", 200.0, 50250.0, "ORB", "Midday", 91, "", "", 100.0),
+        ("2026-01-03", "2:40 PM", -25.0, 50225.0, "Scalp", "Power Hour", 55, "oversized", "oversized", 25.0),
+        ("2026-01-04", "3:05 PM", 0.0, 50225.0, "ORB", "Power Hour", 70, "", "", None),
     ]
     with db() as conn:
         for i, r in enumerate(rows, start=1):
@@ -47,10 +47,11 @@ def _seed_trades():
             conn.execute(
                 """
                 INSERT INTO trade_reviews (
-                    trade_id, setup_tag, session_tag, checklist_score, rule_break_tags, review_note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    trade_id, setup_tag, session_tag, checklist_score, rule_break_tags,
+                    review_note, mistake_tags, planned_risk_dollars, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (i, r[4], r[5], r[6], r[7], "seed", created, created),
+                (i, r[4], r[5], r[6], r[7], "seed", r[8], r[9], created, created),
             )
 
 
@@ -104,6 +105,29 @@ def test_correlation_drawdown_and_edge_over_time(app):
     session_trend = repo.edge_over_time(rows, "session_tag", top_n=2)
     assert len(setup_trend) > 0
     assert len(session_trend) > 0
+
+
+def test_shared_filters_scorecards_and_review_coverage(app):
+    _seed_trades()
+    filtered = repo.fetch_analytics_rows(filters={"setup": "ORB", "time_block": "Open"})
+    assert len(filtered) == 1
+    assert filtered[0]["setup_tag"] == "ORB"
+    assert filtered[0]["time_block"] == "Open"
+
+    losers = repo.fetch_analytics_rows(filters={"outcome": "loser"})
+    assert len(losers) == 2
+
+    scorecards = repo.setup_scorecards(repo.fetch_analytics_rows())
+    orb = next(row for row in scorecards if row["setup"] == "ORB")
+    assert orb["count"] == 3
+    assert orb["avg_r_multiple"] is not None
+
+    mistake_costs = repo.mistake_costs(repo.fetch_analytics_rows())
+    assert mistake_costs[0]["tag"] in {"late-entry", "oversized"}
+
+    coverage = repo.review_coverage(repo.fetch_analytics_rows())
+    assert coverage["total"] == 5
+    assert coverage["missing_risk"] == 1
 
 
 def test_chart_series_builders(app):
