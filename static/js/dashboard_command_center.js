@@ -45,6 +45,8 @@
   const cards = Array.from(document.querySelectorAll(".dashboardCoreTapeStat[data-symbol]"));
   const statusNode = document.getElementById("dashboardTapeStreamStatus");
   const updatedNode = document.getElementById("dashboardTapeUpdatedAt");
+  const gammaStrip = document.getElementById("dashboardGammaStrip");
+  const gammaMeta = document.getElementById("dashboardGammaMeta");
   if (!cards.length || !statusNode || !updatedNode) return;
   let freshTimer = null;
 
@@ -240,6 +242,42 @@
     updatedNode.textContent = detail;
   };
 
+  const gammaCardByKey = (key) => document.getElementById(`dashboardGammaChip-${key}`);
+  const gammaValueByKey = (key) => document.getElementById(`dashboardGammaValue-${key}`);
+
+  const applyGammaTone = (node, tone, glow) => {
+    if (!node) return;
+    node.classList.remove("is-positive", "is-negative", "is-info", "has-glow");
+    if (tone === "positive") node.classList.add("is-positive");
+    if (tone === "negative") node.classList.add("is-negative");
+    if (tone === "info") node.classList.add("is-info");
+    if (glow) node.classList.add("has-glow");
+  };
+
+  const updateGammaStrip = (payload) => {
+    if (!gammaStrip || !payload || typeof payload !== "object") return;
+    const state = String(payload.state || "live");
+    gammaStrip.dataset.gammaState = state;
+    gammaStrip.classList.remove("is-live", "is-stale", "is-loading", "is-unavailable");
+    gammaStrip.classList.add(`is-${state}`);
+    if (gammaMeta) {
+      gammaMeta.textContent = String(payload.status_text || "Gamma context unavailable");
+      gammaMeta.classList.remove("is-stale", "is-loading", "is-unavailable");
+      if (state === "stale" || state === "loading" || state === "unavailable") {
+        gammaMeta.classList.add(`is-${state}`);
+      }
+    }
+    const entries = Array.isArray(payload.entries) ? payload.entries : [];
+    entries.forEach((entry) => {
+      const key = String(entry && entry.key || "");
+      if (!key) return;
+      const card = gammaCardByKey(key);
+      const valueNode = gammaValueByKey(key);
+      if (valueNode) valueNode.textContent = String(entry.value || "--");
+      applyGammaTone(card, String(entry.tone || ""), Boolean(entry.glow));
+    });
+  };
+
   const connect = () => {
     const stream = new EventSource("/stream/market");
     stream.onopen = () => {
@@ -255,6 +293,7 @@
       }
       const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
       const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
+      updateGammaStrip(payload && typeof payload === "object" ? payload.dashboard_gamma : null);
       cards.forEach((card) => {
         const symbol = String(card.dataset.symbol || "").toUpperCase();
         updateCard(card, prices[symbol] || {}, seriesPoints[symbol] || []);

@@ -2221,6 +2221,7 @@ def _dashboard_decision_viewmodel(
     data_trust: Dict[str, Any],
     readiness: Dict[str, Any],
     dashboard_vix: Dict[str, Any],
+    gamma_strip: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     def _trust_value(field: str, default: Any = "") -> Any:
         if isinstance(data_trust, dict):
@@ -2258,6 +2259,167 @@ def _dashboard_decision_viewmodel(
         "trade_gate": str(daily_brief.get("no_trade") or ""),
         "risk_posture_title": risk_posture_title,
         "risk_posture_detail": risk_posture_detail,
+        "gamma_strip": gamma_strip or {"entries": [], "headline": "Structure unavailable"},
+    }
+
+
+def _dashboard_gamma_strip_viewmodel(
+    *,
+    gamma_snapshot: Dict[str, Any],
+    dashboard_spx: Dict[str, Any],
+    dashboard_vix: Dict[str, Any],
+) -> Dict[str, Any]:
+    gamma_priority = build_spx_priority_context(dashboard_spx, gamma_snapshot)
+
+    def _num(*values: Any) -> Optional[float]:
+        for value in values:
+            try:
+                if value is None or str(value).strip() == "":
+                    continue
+                return float(value)
+            except Exception:
+                continue
+        return None
+
+    def _fmt_level(value: Optional[float]) -> str:
+        return f"{value:.0f}" if value is not None else "--"
+
+    spot = _num((dashboard_spx or {}).get("price"), ((gamma_priority.get("input") or {}).get("spot")))
+    main_flip = _num(
+        gamma_snapshot.get("gamma_flip_combined_basket"),
+        gamma_snapshot.get("gamma_flip"),
+        ((gamma_priority.get("input") or {}).get("gammaFlip")),
+    )
+    call_wall = _num(
+        gamma_snapshot.get("call_wall_aggregated_gamma"),
+        gamma_snapshot.get("call_wall"),
+        ((gamma_priority.get("input") or {}).get("callWall")),
+    )
+    put_wall = _num(
+        gamma_snapshot.get("put_wall_aggregated_gamma"),
+        gamma_snapshot.get("put_wall"),
+        ((gamma_priority.get("input") or {}).get("putWall")),
+    )
+    next_call = _num(
+        gamma_snapshot.get("next_call_wall_above"),
+        ((gamma_priority.get("metrics") or {}).get("next_call_wall_above")),
+    )
+    next_put = _num(
+        gamma_snapshot.get("next_put_wall_below"),
+        ((gamma_priority.get("metrics") or {}).get("next_put_wall_below")),
+    )
+    local_flip = None
+    if spot is not None and (next_call is not None or next_put is not None):
+        candidates = []
+        if next_call is not None:
+            candidates.append((abs(next_call - spot), next_call))
+        if next_put is not None:
+            candidates.append((abs(next_put - spot), next_put))
+        if candidates:
+            local_flip = sorted(candidates, key=lambda item: item[0])[0][1]
+
+    net_gamma = _num(gamma_snapshot.get("net_gex_total"), ((gamma_priority.get("input") or {}).get("netGamma")))
+    regime_raw = str(gamma_snapshot.get("regime") or ((gamma_priority.get("input") or {}).get("regime")) or "").strip()
+    regime_tone = "info"
+    if regime_raw:
+        regime_label = regime_raw.replace("_", " ").title()
+        lowered = regime_raw.lower()
+        if "positive" in lowered:
+            regime_tone = "positive"
+        elif "negative" in lowered:
+            regime_tone = "negative"
+    elif net_gamma is not None:
+        regime_label = "Positive gamma" if net_gamma >= 0 else "Negative gamma"
+        regime_tone = "positive" if net_gamma >= 0 else "negative"
+    else:
+        vix_value = _num(dashboard_vix.get("price"))
+        if vix_value is not None and vix_value < 16:
+            regime_label = "Contained vol"
+        elif vix_value is not None and vix_value < 21:
+            regime_label = "Balanced"
+        elif vix_value is not None:
+            regime_label = "Expansion"
+        else:
+            regime_label = "--"
+
+    snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
+    snapshot_label = str(gamma_snapshot.get("snapshot_status_label") or "").strip()
+    snapshot_detail = str(gamma_snapshot.get("snapshot_status_detail") or "").strip()
+    updated_raw = (
+        gamma_snapshot.get("last_successful_compute")
+        or gamma_snapshot.get("computed_at")
+        or gamma_snapshot.get("asof")
+    )
+    updated_label = _format_iso_et_label(updated_raw)
+    has_levels = any(
+        value is not None for value in (main_flip, local_flip, call_wall, put_wall)
+    ) or regime_label not in {"", "--"}
+
+    state = "live"
+    status_text = snapshot_label or "Live gamma snapshot"
+    if not has_levels and not str(updated_raw or "").strip():
+        state = "loading"
+        status_text = "Loading gamma context..."
+    elif snapshot_status in {"stale", "degraded"}:
+        state = "stale"
+        status_text = snapshot_label or "Stale gamma snapshot"
+    elif snapshot_status == "invalid" and not has_levels:
+        state = "unavailable"
+        status_text = snapshot_label or "Gamma unavailable"
+
+    if updated_label and state in {"live", "stale"}:
+        status_text = f"{status_text} · {updated_label}"
+    elif snapshot_detail and state in {"loading", "unavailable"}:
+        status_text = snapshot_detail
+
+    items = [
+        {
+            "key": "regime",
+            "label": "Gamma Regime",
+            "value": regime_label,
+            "emphasis": "strong",
+            "tone": regime_tone,
+            "glow": regime_tone in {"positive", "negative"},
+        },
+        {
+            "key": "main_flip",
+            "label": "Main Flip",
+            "value": _fmt_level(main_flip),
+            "emphasis": "strong",
+            "tone": "info",
+            "glow": False,
+        },
+        {
+            "key": "local_flip",
+            "label": "Local Flip",
+            "value": _fmt_level(local_flip),
+            "emphasis": "quiet",
+            "tone": "",
+            "glow": False,
+        },
+        {
+            "key": "call_wall",
+            "label": "Call Wall",
+            "value": _fmt_level(call_wall),
+            "emphasis": "medium",
+            "tone": "negative",
+            "glow": False,
+        },
+        {
+            "key": "put_wall",
+            "label": "Put Wall",
+            "value": _fmt_level(put_wall),
+            "emphasis": "medium",
+            "tone": "positive",
+            "glow": False,
+        },
+    ]
+    return {
+        "headline": "Gamma structure",
+        "entries": items,
+        "state": state,
+        "status_text": status_text or "Gamma context unavailable",
+        "updated_label": updated_label,
     }
 
 
@@ -3199,6 +3361,11 @@ def dashboard():
         today_count=today_count,
         data_trust=data_trust,
     )
+    gamma_strip = _dashboard_gamma_strip_viewmodel(
+        gamma_snapshot=gamma_snapshot,
+        dashboard_spx=dashboard_spx,
+        dashboard_vix=dashboard_vix,
+    )
     decision_panel = _dashboard_decision_viewmodel(
         daily_brief=daily_brief,
         risk_posture_title=risk_posture_title,
@@ -3206,6 +3373,7 @@ def dashboard():
         data_trust=data_trust,
         readiness=readiness,
         dashboard_vix=dashboard_vix,
+        gamma_strip=gamma_strip,
     )
     pace_card = _dashboard_pace_viewmodel(
         proj,
@@ -3315,8 +3483,14 @@ def stream_market():
         while True:
             payload = market_worker.get_market_snapshot()
             payload["options"] = options_panel_service.get_options_snapshot()
-            payload["gamma_map"] = (
+            current_gamma_snapshot = (
                 gamma_snapshot if is_testing else gamma_map_service.get_gamma_snapshot()
+            )
+            payload["gamma_map"] = current_gamma_snapshot
+            payload["dashboard_gamma"] = _dashboard_gamma_strip_viewmodel(
+                gamma_snapshot=current_gamma_snapshot,
+                dashboard_spx=((payload.get("prices") or {}).get("SPX") or {}),
+                dashboard_vix=((payload.get("prices") or {}).get("VIX") or {}),
             )
             payload["server_ts"] = app_runtime.now_iso()
             yield f"data: {json.dumps(payload)}\\n\\n"

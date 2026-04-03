@@ -151,6 +151,27 @@
             <div class="supportBody">{{ decision_panel.trade_gate }}</div>
           </div>
         </div>
+        <div
+          class="dashboardGammaStrip is-{{ decision_panel.gamma_strip.state }}"
+          id="dashboardGammaStrip"
+          aria-label="Gamma structure context"
+          data-gamma-state="{{ decision_panel.gamma_strip.state }}"
+        >
+          {% for item in decision_panel.gamma_strip.entries %}
+            <div
+              class="dashboardGammaChip dashboardGammaChip-{{ item.emphasis }}{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.glow %} has-glow{% endif %}"
+              id="dashboardGammaChip-{{ item.key }}"
+              data-gamma-key="{{ item.key }}"
+              data-gamma-tone="{{ item.tone }}"
+            >
+              <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ item.label }}</span>
+              <strong class="dashboardGammaChipValue" id="dashboardGammaValue-{{ item.key }}">{{ item.value }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="dashboardGammaMeta{% if decision_panel.gamma_strip.state == 'stale' %} is-stale{% elif decision_panel.gamma_strip.state == 'loading' %} is-loading{% elif decision_panel.gamma_strip.state == 'unavailable' %} is-unavailable{% endif %}" id="dashboardGammaMeta">
+          {{ decision_panel.gamma_strip.status_text }}
+        </div>
         <div class="dashboardDecisionFooter">
           <span class="dashboardDecisionFooterLabel">{{ decision_panel.risk_posture_title }}</span>
           <span class="dashboardDecisionFooterText">{{ decision_panel.risk_posture_detail }}</span>
@@ -175,7 +196,7 @@
                 <div class="dashboardBriefQuickText">{{ daily_brief.focus }}</div>
               </div>
               <div class="dashboardBriefQuickItem">
-                <div class="dashboardBriefStructuredLabel">Primary Trigger</div>
+                <div class="dashboardBriefStructuredLabel">Plan A</div>
                 <div class="dashboardBriefQuickText">{{ daily_brief.plan_a }}</div>
               </div>
             </div>
@@ -185,7 +206,7 @@
                 <div class="dashboardBriefQuickText">{{ daily_brief.no_trade }}</div>
               </div>
               <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
-                <div class="dashboardBriefStructuredLabel">Open Risk Note</div>
+                <div class="dashboardBriefStructuredLabel">Risk Note</div>
                 <div class="dashboardBriefQuickText">{{ decision_panel.risk_posture_detail }}</div>
               </div>
             </div>
@@ -987,28 +1008,40 @@
       <div class="dashboardProjectionHeroValue">{{ pace_card.headline }}<small>{{ pace_card.headline_suffix }}</small></div>
       <div class="dashboardProjectionHeroCopy">{{ pace_card.mode_detail }} Base {{ pace_card.base_balance }}.</div>
     </div>
-    <form method="post" action="/dashboard/pace" class="dashboardProjectionForm">
-      <input type="hidden" name="y" value="{{ dashboard_year }}"/>
-      <input type="hidden" name="m" value="{{ dashboard_month }}"/>
-      <input type="hidden" name="scope" value="{{ scope_mode }}"/>
-      <div class="dashboardProjectionFormGrid">
-        <div class="dashboardProjectionField">
-          <label for="dashboardPaceDaily">Set pace / day</label>
-          <input
-            id="dashboardPaceDaily"
-            name="dashboard_pace_daily"
-            inputmode="decimal"
-            placeholder="{{ pace_card.live_headline|replace('$', '') }}"
-            value="{{ pace_card.custom_input }}"
-          />
-          <div class="dashboardProjectionHint tiny">{{ pace_card.trading_day_label }}</div>
+    <details class="dashboardProjectionFold"{% if pace_card.custom_enabled %} open{% endif %}>
+      <summary>
+        <span class="dashboardProjectionFoldTitle">Set pace / day</span>
+        <span class="dashboardProjectionFoldMeta tiny">
+          {% if pace_card.custom_enabled %}
+            Custom {{ pace_card.headline }}/day
+          {% else %}
+            {{ pace_card.trading_day_label }}
+          {% endif %}
+        </span>
+      </summary>
+      <form method="post" action="/dashboard/pace" class="dashboardProjectionForm">
+        <input type="hidden" name="y" value="{{ dashboard_year }}"/>
+        <input type="hidden" name="m" value="{{ dashboard_month }}"/>
+        <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+        <div class="dashboardProjectionFormGrid">
+          <div class="dashboardProjectionField">
+            <label for="dashboardPaceDaily">Set pace / day</label>
+            <input
+              id="dashboardPaceDaily"
+              name="dashboard_pace_daily"
+              inputmode="decimal"
+              placeholder="{{ pace_card.live_headline|replace('$', '') }}"
+              value="{{ pace_card.custom_input }}"
+            />
+            <div class="dashboardProjectionHint tiny">{{ pace_card.trading_day_label }}</div>
+          </div>
+          <div class="dashboardProjectionActions">
+            <button class="btn primary" type="submit">Project Pace</button>
+            <button class="btn" type="submit" name="pace_reset" value="1">Use Live Pace</button>
+          </div>
         </div>
-        <div class="dashboardProjectionActions">
-          <button class="btn primary" type="submit">Project Pace</button>
-          <button class="btn" type="submit" name="pace_reset" value="1">Use Live Pace</button>
-        </div>
-      </div>
-    </form>
+      </form>
+    </details>
     {% if pace_card.nodes %}
       <div class="dashboardProjectionTimeline">
         {% for node in pace_card.nodes %}

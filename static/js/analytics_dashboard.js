@@ -14,7 +14,6 @@
   };
 
   const CHART_FONT = '"Space Grotesk", "Sora", "Segoe UI", system-ui, sans-serif';
-  const ACCENT_CHART_FONT = '"Architects Daughter", "Space Grotesk", "Sora", "Segoe UI", system-ui, sans-serif';
 
   const destroyAllCharts = () => {
     Array.from(state.charts.keys()).forEach((key) => destroyChart(key));
@@ -760,11 +759,11 @@
           dataLabels: {
             name: {
               show: true,
-              offsetY: 58,
-              color: "#86a0ba",
-              fontSize: "9px",
+              offsetY: 56,
+              color: "#8ea6bf",
+              fontSize: "10px",
               fontWeight: 700,
-              fontFamily: ACCENT_CHART_FONT,
+              fontFamily: CHART_FONT,
             },
             value: {
               show: true,
@@ -772,7 +771,7 @@
               fontSize: valueFontSize,
               fontWeight: 800,
               color: "#f5fbff",
-              fontFamily: ACCENT_CHART_FONT,
+              fontFamily: CHART_FONT,
               formatter: () => payload.center,
             },
           },
