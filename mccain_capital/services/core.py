@@ -1894,6 +1894,14 @@ def _load_dashboard_milestone_settings() -> Dict[str, Any]:
     }
 
 
+def _load_dashboard_pace_settings() -> Dict[str, Any]:
+    custom_daily = float(app_runtime.get_setting_float("dashboard_pace_daily", 0.0) or 0.0)
+    return {
+        "custom_daily": max(0.0, custom_daily),
+        "custom_enabled": custom_daily > 0.0,
+    }
+
+
 def _dashboard_brief_setting_key(day: str) -> str:
     return f"dashboard_daily_brief::{str(day or '').strip()}"
 
@@ -2094,6 +2102,284 @@ def _dashboard_daily_brief_viewmodel(
     }
 
 
+def _dashboard_snapshot_viewmodel(
+    *,
+    today_net: float,
+    today_count: int,
+    today_wins: int,
+    today_losses: int,
+    scope_label: str,
+    data_trust: Dict[str, Any],
+    balance_integrity: Dict[str, Any],
+    sync_badges: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    def _badge_value(badge: Any, field: str) -> Any:
+        if isinstance(badge, dict):
+            return badge.get(field)
+        return getattr(badge, field, None)
+
+    def _trust_value(field: str, default: Any = "") -> Any:
+        if isinstance(data_trust, dict):
+            return data_trust.get(field, default)
+        return getattr(data_trust, field, default)
+
+    sync_value = "Unknown"
+    updated_value = "—"
+    for badge in sync_badges:
+        label = str(_badge_value(badge, "label") or "").strip().lower()
+        if label == "sync":
+            sync_value = str(_badge_value(badge, "value") or "Unknown")
+        elif label == "updated":
+            updated_value = str(_badge_value(badge, "value") or "—")
+    source_label = str(balance_integrity.get("source_label") or balance_integrity.get("source_short") or "Derived ledger")
+    drift_value = float(balance_integrity.get("delta") or 0.0)
+    has_drift = bool(balance_integrity.get("has_drift"))
+    items = [
+        {
+            "label": "Today P/L",
+            "value": app_runtime.money(today_net),
+            "detail": "Closed session result",
+            "tone": "positive" if today_net > 0 else "negative" if today_net < 0 else "neutral",
+        },
+        {
+            "label": "Trades",
+            "value": str(today_count),
+            "detail": "In current session",
+            "tone": "neutral",
+        },
+        {
+            "label": "Record",
+            "value": f"{today_wins}W / {today_losses}L",
+            "detail": "Closed trades only",
+            "tone": "neutral",
+        },
+        {
+            "label": "Account",
+            "value": scope_label,
+            "detail": source_label,
+            "tone": "neutral",
+        },
+        {
+            "label": "Sync Health",
+            "value": sync_value,
+            "detail": updated_value,
+            "tone": "positive" if str(sync_value).lower() == "success" else "negative" if str(sync_value).lower() in {"stalled", "failed", "error"} else "neutral",
+        },
+        {
+            "label": "Ledger State",
+            "value": "Drift flagged" if has_drift else "Aligned",
+            "detail": app_runtime.money(drift_value) if has_drift else str(_trust_value("message") or "Data aligned"),
+            "tone": "negative" if has_drift else "positive",
+        },
+    ]
+    return {"entries": items}
+
+
+def _dashboard_readiness_viewmodel(
+    checklist: List[Dict[str, Any]],
+    *,
+    brief_ready: bool,
+    today_count: int,
+    data_trust: Dict[str, Any],
+) -> Dict[str, Any]:
+    total = len(checklist)
+    done = sum(1 for item in checklist if bool(item.get("done")))
+    pct = (100.0 * done / total) if total else 0.0
+    blockers = [str(item.get("label") or "").strip() for item in checklist if not bool(item.get("done"))]
+    if not blockers and str(data_trust.get("tone") or "").strip() == "critical":
+        blockers.append("Data trust")
+    if pct >= 100.0 and brief_ready and str(data_trust.get("tone") or "").strip() != "critical":
+        state_label = "Ready to trade"
+        state_tone = "positive"
+    elif done >= max(1, total - 1):
+        state_label = "Almost ready"
+        state_tone = "warning"
+    else:
+        state_label = "Needs attention"
+        state_tone = "negative"
+    return {
+        "done": done,
+        "total": total,
+        "pct": pct,
+        "state_label": state_label,
+        "state_tone": state_tone,
+        "blockers": blockers[:3],
+        "summary": (
+            "All core checks are locked."
+            if not blockers
+            else "Clear the missing blockers before adding risk."
+        ),
+        "session_loaded": today_count > 0,
+    }
+
+
+def _dashboard_decision_viewmodel(
+    *,
+    daily_brief: Dict[str, Any],
+    risk_posture_title: str,
+    risk_posture_detail: str,
+    data_trust: Dict[str, Any],
+    readiness: Dict[str, Any],
+    dashboard_vix: Dict[str, Any],
+) -> Dict[str, Any]:
+    def _trust_value(field: str, default: Any = "") -> Any:
+        if isinstance(data_trust, dict):
+            return data_trust.get(field, default)
+        return getattr(data_trust, field, default)
+
+    vix = None
+    try:
+        raw_vix = dashboard_vix.get("price")
+        vix = float(raw_vix) if raw_vix is not None else None
+    except Exception:
+        vix = None
+    if str(_trust_value("tone") or "").strip() == "critical":
+        risk_size = "Stand down"
+        status = "Blocked until sync / ledger trust clears"
+        tone = "negative"
+    elif vix is not None and vix >= 22:
+        risk_size = "Reduced size"
+        status = "Ready only if structure confirms cleanly"
+        tone = "warning"
+    elif readiness.get("pct", 0.0) >= 100.0:
+        risk_size = "Normal size"
+        status = "Ready if acceptance confirms"
+        tone = "positive"
+    else:
+        risk_size = "Probe size"
+        status = "Wait for missing prep to clear"
+        tone = "warning"
+    return {
+        "bias": str(daily_brief.get("bias_label") or "Mixed bias"),
+        "plan": str(daily_brief.get("plan_a") or "Trade only the clearest structure."),
+        "risk_size": risk_size,
+        "status": status,
+        "status_tone": tone,
+        "trade_gate": str(daily_brief.get("no_trade") or ""),
+        "risk_posture_title": risk_posture_title,
+        "risk_posture_detail": risk_posture_detail,
+    }
+
+
+def _advance_market_sessions(start_day: date, sessions: int) -> date:
+    cursor = start_day
+    remaining = max(0, int(sessions))
+    if remaining <= 0:
+        while not _is_market_session(cursor):
+            cursor += timedelta(days=1)
+        return cursor
+    while remaining > 0:
+        cursor += timedelta(days=1)
+        if _is_market_session(cursor):
+            remaining -= 1
+    return cursor
+
+
+def _dashboard_pace_viewmodel(
+    proj: Dict[str, Any],
+    milestone: Dict[str, Any],
+    pace_settings: Dict[str, Any],
+    *,
+    anchor_day: date,
+) -> Dict[str, Any]:
+    live_avg = float(proj.get("avg") or 0.0)
+    custom_daily = float(pace_settings.get("custom_daily") or 0.0)
+    custom_enabled = bool(pace_settings.get("custom_enabled")) and custom_daily > 0.0
+    applied_avg = custom_daily if custom_enabled else live_avg
+    base_balance = float(proj.get("base_balance") or 0.0)
+    nodes: List[Dict[str, Any]] = []
+    for key, label in (("p5", "5D"), ("p10", "10D"), ("p20", "20D")):
+        row = dict(proj.get(key) or {})
+        sessions = int(row.get("days") or 0)
+        est_pnl = float(applied_avg * sessions)
+        est_balance = base_balance + est_pnl
+        target_day = _advance_market_sessions(anchor_day, sessions)
+        nodes.append(
+            {
+                "label": label,
+                "sessions": sessions,
+                "est_pnl": app_runtime.money(est_pnl),
+                "est_balance": app_runtime.money(est_balance),
+                "target_date_label": target_day.strftime("%b %d"),
+                "target_date_full": target_day.strftime("%a, %b %d, %Y"),
+                "tone": "positive" if est_pnl > 0 else "negative" if est_pnl < 0 else "neutral",
+            }
+        )
+    note = "Use for pacing, not certainty."
+    milestone_eta = ""
+    if applied_avg > 0.0:
+        projected_days_profit = None
+        projected_days_balance = None
+        profit_goal = float(milestone.get("profit_goal") or 0.0)
+        profit_current = float(milestone.get("profit_current") or 0.0)
+        target_balance = float(milestone.get("target_balance") or 0.0)
+        current_balance = base_balance
+        if profit_goal > 0.0:
+            projected_days_profit = int((max(0.0, profit_goal - profit_current) / applied_avg) + 0.9999)
+        if target_balance > 0.0:
+            projected_days_balance = int((max(0.0, target_balance - current_balance) / applied_avg) + 0.9999)
+        projected_days_overall: Optional[int] = None
+        if projected_days_profit is not None and projected_days_balance is not None:
+            projected_days_overall = max(projected_days_profit, projected_days_balance)
+        elif projected_days_profit is not None:
+            projected_days_overall = projected_days_profit
+        elif projected_days_balance is not None:
+            projected_days_overall = projected_days_balance
+        if projected_days_overall is not None:
+            eta_day = _advance_market_sessions(anchor_day, projected_days_overall)
+            milestone_eta = eta_day.strftime("%a, %b %d, %Y")
+    if milestone_eta:
+        note = f"Milestone tracks to {milestone_eta} at this trading-day pace."
+    elif custom_enabled:
+        note = "Custom pace is active. Dates use trading days only."
+    elif live_avg > 0.0:
+        note = "Live pace is based on recent trading sessions only."
+    return {
+        "headline": app_runtime.money(applied_avg),
+        "headline_suffix": "/day",
+        "base_balance": app_runtime.money(base_balance),
+        "live_headline": app_runtime.money(live_avg),
+        "custom_enabled": custom_enabled,
+        "custom_daily": custom_daily,
+        "custom_input": f"{custom_daily:.2f}" if custom_enabled else "",
+        "mode_label": "Custom pace" if custom_enabled else "Live pace",
+        "mode_detail": (
+            f"Using your manual pace of {app_runtime.money(custom_daily)}/day."
+            if custom_enabled
+            else "Using your recent trading-day average."
+        ),
+        "trading_day_label": "Trading-day projections only",
+        "note": note,
+        "nodes": nodes,
+    }
+
+
+def _dashboard_calendar_state_viewmodel(heat: Dict[str, Any], scope_label: str) -> Dict[str, Any]:
+    traded_days = 0
+    green_days = 0
+    red_days = 0
+    flat_days = 0
+    for week in list(heat.get("weeks") or []):
+        for day in list((week or {}).get("days") or []):
+            if day.get("daynum") is None or day.get("wd") is None or int(day.get("wd")) >= 5:
+                continue
+            traded_days += 1
+            net = float(day.get("net") or 0.0)
+            if net > 0:
+                green_days += 1
+            elif net < 0:
+                red_days += 1
+            else:
+                flat_days += 1
+    return {
+        "scope_label": scope_label,
+        "traded_days": traded_days,
+        "green_days": green_days,
+        "red_days": red_days,
+        "flat_days": flat_days,
+    }
+
+
 def _milestone_profit_value(
     source: str, *, today_net: float, this_week_total: float, mtd_net: float, ytd_net: float
 ) -> float:
@@ -2264,6 +2550,29 @@ def dashboard_brief_update():
         },
     )
     flash("Daily brief saved.", "success")
+
+    y = str(request.form.get("y") or "").strip()
+    m = str(request.form.get("m") or "").strip()
+    scope = str(request.form.get("scope") or "").strip().lower()
+    params: Dict[str, str] = {}
+    if y:
+        params["y"] = y
+    if m:
+        params["m"] = m
+    if scope in {"active", "all"}:
+        params["scope"] = scope
+    return redirect(url_for("dashboard", **params))
+
+
+def dashboard_pace_update():
+    pace_reset = str(request.form.get("pace_reset") or "").strip() == "1"
+    custom_daily = app_runtime.parse_float(request.form.get("dashboard_pace_daily") or "") or 0.0
+    if pace_reset or custom_daily <= 0.0:
+        app_runtime.set_setting_value("dashboard_pace_daily", "")
+        flash("Forward pace reset to live trading pace.", "success")
+    else:
+        app_runtime.set_setting_value("dashboard_pace_daily", f"{max(0.0, custom_daily):.2f}")
+        flash("Forward pace updated.", "success")
 
     y = str(request.form.get("y") or "").strip()
     m = str(request.form.get("m") or "").strip()
@@ -2463,6 +2772,12 @@ def dashboard():
         if top_setup
         else "No dominant labeled setup yet."
     )
+    pace_settings = _load_dashboard_pace_settings()
+    selected_pace = (
+        float(pace_settings.get("custom_daily") or 0.0)
+        if bool(pace_settings.get("custom_enabled"))
+        else float(proj.get("avg") or 0.0)
+    )
     milestone_settings = _load_dashboard_milestone_settings()
     milestone = _dashboard_milestone_viewmodel(
         milestone_settings,
@@ -2472,7 +2787,7 @@ def dashboard():
         ytd_net=ytd_net,
         overall_balance=overall_balance,
         starting_balance=float(balance_integrity.get("starting_balance") or 50000.0),
-        avg_daily_profit=float(proj.get("avg") or 0.0),
+        avg_daily_profit=selected_pace,
     )
     from mccain_capital.services.ui import get_vanquish_profit_lock_state
 
@@ -2861,6 +3176,45 @@ def dashboard():
         },
     ]
 
+    scope_label = (
+        str(scope.get("label") or "").strip()
+        if scope_enabled and scope_active and str(scope.get("label") or "").strip()
+        else "Active Account"
+        if scope_enabled and scope_active
+        else "All History"
+    )
+    snapshot_bar = _dashboard_snapshot_viewmodel(
+        today_net=today_net,
+        today_count=today_count,
+        today_wins=today_wins,
+        today_losses=today_losses,
+        scope_label=scope_label,
+        data_trust=data_trust,
+        balance_integrity=balance_integrity,
+        sync_badges=sync_badges,
+    )
+    readiness = _dashboard_readiness_viewmodel(
+        dashboard_checklist,
+        brief_ready=brief_ready,
+        today_count=today_count,
+        data_trust=data_trust,
+    )
+    decision_panel = _dashboard_decision_viewmodel(
+        daily_brief=daily_brief,
+        risk_posture_title=risk_posture_title,
+        risk_posture_detail=risk_posture_detail,
+        data_trust=data_trust,
+        readiness=readiness,
+        dashboard_vix=dashboard_vix,
+    )
+    pace_card = _dashboard_pace_viewmodel(
+        proj,
+        milestone,
+        pace_settings,
+        anchor_day=app_runtime.now_et().date(),
+    )
+    calendar_state = _dashboard_calendar_state_viewmodel(heat, calendar_scope_label)
+
     dashboard_tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
     dashboard_tape_updated_label = _format_iso_et_label(dashboard_tape_updated_raw)
     if dashboard_tape_updated_label:
@@ -2917,6 +3271,11 @@ def dashboard():
         dashboard_tape_updated_label=dashboard_tape_updated_label,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
+        snapshot_bar=snapshot_bar,
+        readiness=readiness,
+        decision_panel=decision_panel,
+        pace_card=pace_card,
+        calendar_state=calendar_state,
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),
@@ -3488,6 +3847,12 @@ def analytics_page():
     from mccain_capital.services import analytics as analytics_svc
 
     return analytics_svc.analytics_page()
+
+
+def analytics_dashboard_api():
+    from mccain_capital.services import analytics as analytics_svc
+
+    return analytics_svc.analytics_dashboard_api()
 
 
 def session_replay_page():

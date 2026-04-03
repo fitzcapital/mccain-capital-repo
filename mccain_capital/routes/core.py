@@ -80,8 +80,20 @@ def register(app):
         view_func=h.dashboard_brief_update,
         methods=["POST"],
     )
+    app.add_url_rule(
+        "/dashboard/pace",
+        endpoint="dashboard_pace_update",
+        view_func=h.dashboard_pace_update,
+        methods=["POST"],
+    )
     app.add_url_rule("/candle-opens", endpoint="candle_opens_page", view_func=h.candle_opens_page)
     app.add_url_rule("/analytics", endpoint="analytics_page", view_func=h.analytics_page)
+    app.add_url_rule(
+        "/api/analytics/dashboard",
+        endpoint="analytics_dashboard_api",
+        view_func=h.analytics_dashboard_api,
+        methods=["GET"],
+    )
     app.add_url_rule(
         "/analytics/replay", endpoint="session_replay_page", view_func=h.session_replay_page
     )
