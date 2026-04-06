@@ -36,6 +36,18 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/trades/setup/<int:trade_id>",
+        endpoint="trades_set_setup",
+        view_func=h.trades_set_setup,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/trades/setup_many",
+        endpoint="trades_set_setup_many",
+        view_func=h.trades_set_setup_many,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/trades/edit/<int:trade_id>",
         endpoint="trades_edit",
         view_func=h.trades_edit,
@@ -46,6 +58,12 @@ def register(app):
         endpoint="trades_review",
         view_func=h.trades_review,
         methods=["GET", "POST"],
+    )
+    app.add_url_rule(
+        "/trades/<int:trade_id>/replay",
+        endpoint="trades_replay",
+        view_func=h.trades_replay,
+        methods=["GET"],
     )
     app.add_url_rule(
         "/trades/clear", endpoint="trades_clear", view_func=h.trades_clear, methods=["POST"]

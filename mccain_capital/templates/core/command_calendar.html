@@ -3,17 +3,11 @@
     <div>
       <div class="pill">🗓️ P/L Command Calendar</div>
       <h2 class="pageTitle">Month signal map</h2>
-      <div class="pageSub">Trading, debriefs, and outside projects in one scan.</div>
-      <div class="workspaceHeroActionBar">
-        <div class="workspaceHeroPriority">
-          <span class="workspaceHeroPriorityLabel">Priority</span>
-          <span class="workspaceHeroPriorityText">Scan the month, then open the exact day that needs review or follow-through.</span>
-        </div>
-        <div class="actionRow workspaceHeroPrimaryActions">
-          <a class="btn" href="/dashboard">Dashboard</a>
-          <a class="btn primary" href="/trades">Trades</a>
-          <a class="btn ctaLink" href="/journal">Journal</a>
-        </div>
+      <div class="pageSub">Monthly review map for trades, debriefs, and projects.</div>
+      <div class="actionRow workspaceHeroPrimaryActions commandCalendarHeroActions">
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <a class="btn primary" href="/trades">Trades</a>
+        <a class="btn ctaLink" href="/journal">Journal</a>
       </div>
     </div>
   </div>
@@ -39,7 +33,7 @@
   <div class="calendarHead">
     <div>
       <div class="pill">📡 {{ month_name }}</div>
-      <div class="summaryLead stack8">Scan the month, then open the exact day that matters.</div>
+      <div class="summaryLead stack8 commandCalendarLead">Monthly review command page.</div>
     </div>
     <div class="calendarNav">
       <a class="btn" href="/calendar?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
@@ -74,10 +68,20 @@
     </div>
   </div>
 
+  <div class="commandCalendarInsightStrip" aria-label="Monthly insights">
+    {% for insight in month_insights %}
+      <div class="commandCalendarInsight">
+        <span>{{ insight.label }}</span>
+        <strong>{{ insight.value }}</strong>
+        <small title="{{ insight.meta }}">{{ insight.meta }}</small>
+      </div>
+    {% endfor %}
+  </div>
+
   <details class="syncDetails workspaceStatusFold">
     <summary>
       <span>Calendar Signals</span>
-      <span class="tiny muted">{{ cal.green_days }} green · {{ cal.red_days }} red · {{ cal.flat_days }} flat</span>
+      <span class="tiny muted">{{ cal.green_days }} green · {{ cal.red_days }} red · {{ review_needed_days }} need review</span>
     </summary>
     <div class="calendarLegend stack10">
       <div class="legendStats" aria-label="Month trading day summary">
@@ -100,9 +104,9 @@
 
     <div class="commandCalendarSignals">
       <span class="tradeValueBubble tradeValueBubbleGain">Clean {{ state_rollup.get('clean_win', 0) }}</span>
-      <span class="tradeValueBubble tradeValueBubbleWarm">Review {{ state_rollup.get('sloppy_win', 0) }}</span>
-      <span class="tradeValueBubble tradeValueBubbleLoss">Impulsive {{ state_rollup.get('impulsive_loss', 0) }}</span>
-      <span class="tradeValueBubble tradeValueBubbleFlat">Controlled loss {{ state_rollup.get('controlled_loss', 0) }}</span>
+      <span class="tradeValueBubble tradeValueBubbleWarm">Bad win {{ state_rollup.get('sloppy_win', 0) }}</span>
+      <span class="tradeValueBubble tradeValueBubbleLoss">Bad loss {{ state_rollup.get('impulsive_loss', 0) }}</span>
+      <span class="tradeValueBubble tradeValueBubbleFlat">Good loss {{ state_rollup.get('controlled_loss', 0) }}</span>
       {% if top_mistake %}
         <span class="tradeValueBubble tradeValueBubbleRisk">Top mistake: {{ top_mistake|replace('-', ' ')|title }}</span>
       {% endif %}
@@ -129,6 +133,13 @@
           </div>
           <div class="weekCardMeta">
             <span class="weekMetaPill">{{ wk.trade_count }} trades</span>
+            <span class="weekMetaPill">{{ wk.wins }}W / {{ wk.losses }}L</span>
+            {% if wk.avg_grade_letter %}
+              <span class="weekMetaPill">Avg {{ wk.avg_grade_letter }} · {{ wk.avg_grade_score }}</span>
+            {% endif %}
+            {% if wk.review_needed %}
+              <span class="weekMetaPill weekMetaPillAlert">{{ wk.review_needed }} need review</span>
+            {% endif %}
             <span class="weekNetPill {% if wk.net > 0 %}isGain{% elif wk.net < 0 %}isLoss{% else %}isFlat{% endif %}">{{ money_compact(wk.net) }}</span>
           </div>
         </div>
@@ -137,17 +148,7 @@
             {% if day.daynum is none %}
               <div class="dayCard dayCardEmpty" aria-hidden="true"></div>
             {% else %}
-              {% set max_abs = heat.max_abs if heat.max_abs else 1 %}
-              {% set intensity = ((day.net|abs) / max_abs) %}
-              {% set alpha = 0.10 + (0.45 * intensity) %}
-              {% if day.net > 0 %}
-                {% set bg = 'rgba(46, 204, 113, ' ~ alpha ~ ')' %}
-              {% elif day.net < 0 %}
-                {% set bg = 'rgba(231, 76, 60, ' ~ alpha ~ ')' %}
-              {% else %}
-                {% set bg = 'rgba(255,255,255,.03)' %}
-              {% endif %}
-              <article class="dayCard dayCard-{{ day.outcome }} {% if not day.has_trades %}dayCard-muted{% endif %} commandDayCard" style="background: {{ bg }};">
+              <article class="dayCard dayCard-{{ day.outcome }} dayCard-tone-{{ day.visual_tone }} {% if not day.has_trades %}dayCard-muted{% endif %} commandDayCard">
                 <button
                   type="button"
                   class="dayPreviewButton"
@@ -162,7 +163,12 @@
                   data-balance="{% if day.balance is not none %}{{ money(day.balance) }}{% else %}—{% endif %}"
                   data-status="{{ day.focus_label }}"
                   data-state="{{ day.day_state_label }}"
+                  data-quality="{{ day.quality_label }}"
                   data-mistake="{{ day.mistake_summary|replace('-', ' ')|title if day.mistake_summary else 'No repeated mistake tag' }}"
+                  data-setup="{{ day.dominant_setup or 'None tagged' }}"
+                  data-session="{{ day.dominant_session or 'None tagged' }}"
+                  data-review="{{ day.review_state_label or '—' }}"
+                  data-review-pct="{{ day.review_completion_pct }}"
                   data-journal-count="{{ day.journal.entry_count if day.journal else 0 }}"
                   data-journal-pnl="{% if day.journal %}{{ money_compact(day.journal.pnl_total) }}{% else %}—{% endif %}"
                   data-journal-summary="{{ (day.journal_summary|join(' · ')) if day.journal_summary else 'No debrief logged' }}"
@@ -173,15 +179,20 @@
                   aria-label="Preview {{ day.iso }}"
                 >
                   <div class="daymeta">
-                    <div class="dayweekday">{{ day.weekday_label }}</div>
-                    <div class="daynum">{{ day.daynum }}</div>
+                    <div class="daymetaDate">
+                      <div class="dayweekday">{{ day.weekday_label }}</div>
+                      <div class="daynum">{{ day.daynum }}</div>
+                    </div>
                   </div>
                   <div class="dayBadges">
+                    {% if day.trade_count > 0 or day.has_projects or day.journal %}
+                      <span class="dayBadge badgeState badgeState-{{ day.quality_key }}">{{ day.quality_label }}</span>
+                    {% endif %}
                     {% if day.trade_count > 0 %}
                       <span class="dayBadge">{{ day.trade_count }}T</span>
                     {% endif %}
-                    {% if day.day_state_label and day.trade_count > 0 %}
-                      <span class="dayBadge badgeState badgeState-{{ day.day_state }}">{{ day.day_state_label }}</span>
+                    {% if day.review_state_label %}
+                      <span class="dayBadge badgeReview badgeReview-{{ day.review_state }}">{{ day.review_state_label }}</span>
                     {% endif %}
                     {% if day.journal %}
                       <span class="dayBadge badgeInfo">✍️ {{ day.journal.entry_count }}</span>
@@ -190,11 +201,19 @@
                       <span class="dayBadge badgeInfo">🧱 {{ day.goal_signal_count }}</span>
                     {% endif %}
                   </div>
-                  {% if day.net %}
+                  {% if day.trade_count > 0 %}
                     <div class="daypnl">{{ money_compact(day.net) }}</div>
                   {% else %}
                     <div class="daypnl daypnlMuted">{% if day.is_weekend %}Closed{% endif %}</div>
                   {% endif %}
+                  <div class="commandDayMeta">
+                    <div class="commandDayLine" title="{{ day.summary_signal or day.focus_label }}">{{ day.summary_signal or day.focus_label }}</div>
+                    {% if day.trade_count > 0 %}
+                      <div class="commandDaySubline">{{ day.wins }}W / {{ day.losses }}L{% if day.dominant_session %} · {{ day.dominant_session }}{% endif %}</div>
+                    {% else %}
+                      <div class="commandDaySubline">{{ day.focus_label }}</div>
+                    {% endif %}
+                  </div>
                 </button>
               </article>
             {% endif %}
@@ -204,8 +223,8 @@
     {% endfor %}
   </div>
 
-  <div class="calendarPreview commandCalendarPreview" id="calendarPreview" hidden>
-    <div class="calendarPreviewCard">
+  <div class="calendarPreview commandCalendarPreview commandCalendarDock" id="calendarPreview" hidden>
+    <div class="calendarPreviewCard commandCalendarModalCard" role="dialog" aria-modal="true" aria-labelledby="calendarPreviewTitle">
       <div class="calendarPreviewHead">
         <div>
           <div class="calendarPreviewTitle" id="calendarPreviewTitle">Day preview</div>
@@ -235,13 +254,25 @@
           <div class="v" id="previewState">—</div>
         </div>
       </div>
-      <div class="previewNarrative">
+      <div class="previewNarrative commandCalendarPreviewSummary">
+        <div class="previewNarrativeBlock">
+          <div class="k">Quality</div>
+          <div class="tiny line16" id="previewQuality">—</div>
+        </div>
+        <div class="previewNarrativeBlock">
+          <div class="k">Review</div>
+          <div class="tiny line16" id="previewReview">—</div>
+        </div>
+        <div class="previewNarrativeBlock">
+          <div class="k">Setup / Session</div>
+          <div class="tiny line16" id="previewSetup">No setup tagged</div>
+        </div>
         <div class="previewNarrativeBlock">
           <div class="k">Journal</div>
           <div class="tiny line16" id="previewJournal">No debrief logged</div>
         </div>
         <div class="previewNarrativeBlock">
-          <div class="k">Mistake Engine</div>
+          <div class="k">Projects / Mistakes</div>
           <div class="tiny line16" id="previewProjects">No repeated mistake tag</div>
         </div>
       </div>
@@ -263,13 +294,20 @@
       const record = document.getElementById("previewRecord");
       const balance = document.getElementById("previewBalance");
       const state = document.getElementById("previewState");
+      const quality = document.getElementById("previewQuality");
+      const review = document.getElementById("previewReview");
+      const setup = document.getElementById("previewSetup");
       const journal = document.getElementById("previewJournal");
       const projects = document.getElementById("previewProjects");
       const open = document.getElementById("calendarPreviewOpen");
       const journalLink = document.getElementById("calendarPreviewJournal");
       const goalsLink = document.getElementById("calendarPreviewGoals");
       const close = document.getElementById("calendarPreviewClose");
-      if (!preview || !title || !status || !net || !trades || !record || !balance || !state || !journal || !projects || !open || !journalLink || !goalsLink || !close) return;
+      if (!preview || !title || !status || !net || !trades || !record || !balance || !state || !quality || !review || !setup || !journal || !projects || !open || !journalLink || !goalsLink || !close) return;
+
+      const hidePreview = () => {
+        preview.hidden = true;
+      };
 
       document.querySelectorAll(".dayPreviewButton").forEach((button) => {
         button.addEventListener("click", () => {
@@ -281,8 +319,11 @@
           record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L • ${d.winRate || "0"}%`;
           balance.textContent = d.balance || "—";
           state.textContent = d.state || "—";
+          quality.textContent = d.quality || "—";
+          review.textContent = d.review ? `${d.review} · ${d.reviewPct || "0"}%` : "—";
+          setup.textContent = `${d.setup || "None tagged"}${d.session ? ` · ${d.session}` : ""}`;
           journal.textContent = d.journalSummary || "No debrief logged";
-          projects.textContent = d.mistake || "No repeated mistake tag";
+          projects.textContent = [d.projectSummary, d.mistake].filter(Boolean).join(" · ") || "No repeated mistake tag";
           open.href = d.openUrl || "/trades";
           journalLink.href = d.journalUrl || "/journal";
           goalsLink.href = d.goalsUrl || "/goals";
@@ -290,8 +331,9 @@
         });
       });
 
-      close.addEventListener("click", () => {
-        preview.hidden = true;
+      close.addEventListener("click", hidePreview);
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !preview.hidden) hidePreview();
       });
     })();
   </script>

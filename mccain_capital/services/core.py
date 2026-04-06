@@ -11,8 +11,10 @@ from datetime import date
 from datetime import datetime
 from datetime import timedelta
 from email.utils import parsedate_to_datetime
+import html
 import json
 import os
+import re
 import tempfile
 import time
 import urllib.error
@@ -55,6 +57,7 @@ from mccain_capital.services.viewmodels import (
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
 from mccain_capital.services.gamma_context_service import build_spx_priority_context
+from mccain_capital.services.market_feed_service import build_market_feed_snapshot
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -65,17 +68,49 @@ WEEK_OPEN_INTERVALS = (2, 3, 4, 5, 6)
 MONTH_OPEN_INTERVALS = (2,)
 MARKET_PULSE_CACHE_TTL_SECONDS = 300
 MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD = 2
-MARKET_NEWS_CACHE_TTL_SECONDS = 900
+MARKET_NEWS_CACHE_TTL_SECONDS = 60
 MARKET_NEWS_RSS_TIMEOUT_SECONDS = 1.25
 MARKET_NEWS_RSS_SYMBOL_LIMIT = 5
 MARKET_NEWS_FRESH_SECONDS = 12 * 60 * 60
 MARKET_NEWS_MAX_AGE_SECONDS = 36 * 60 * 60
 WATCHLIST_NEWS_MAX_AGE_SECONDS = 48 * 60 * 60
+MARKET_NEWS_FEED_LIMIT = 8
+MARKET_PULSE_X_FEED_LIMIT = 8
+MARKET_PULSE_X_MIN_RELEVANCE = 6
+MARKET_PULSE_X_PER_ACCOUNT_LIMIT = 2
+MARKET_PULSE_X_API_PER_ACCOUNT_LIMIT = 4
+MARKET_PULSE_X_RSS_URLS: Tuple[str, ...] = (
+    "https://rsshub.app/twitter/user/{handle}",
+    "https://nitter.poast.org/{handle}/rss",
+    "https://nitter.privacydev.net/{handle}/rss",
+)
+MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
+    {"handle": "KobeissiLetter", "label": "Kobeissi", "lane": "Macro"},
+    {"handle": "unusual_whales", "label": "Unusual Whales", "lane": "Options Flow"},
+    {"handle": "DeItaone", "label": "DeItaone", "lane": "Breaking"},
+    {"handle": "realDonaldTrump", "label": "Trump", "lane": "Policy"},
+    {"handle": "WhiteHouse", "label": "White House", "lane": "Policy"},
+    {"handle": "POTUS", "label": "POTUS", "lane": "Policy"},
+    {"handle": "Reuters", "label": "Reuters", "lane": "Breaking"},
+    {"handle": "Bloomberg", "label": "Bloomberg", "lane": "Macro"},
+    {"handle": "WSJ", "label": "WSJ", "lane": "Macro"},
+    {"handle": "politico", "label": "Politico", "lane": "Policy"},
+)
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
 GAMMA_SPOT_TIMESTAMP_DRIFT_SECONDS = 120
 FINNHUB_API_KEY = (os.environ.get("FINNHUB_API_KEY") or "").strip()
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
+X_BEARER_TOKEN = urllib.parse.unquote(
+    (
+        os.environ.get("X_BEARER_TOKEN")
+        or os.environ.get("X_API_BEARER_TOKEN")
+        or os.environ.get("TWITTER_BEARER_TOKEN")
+        or ""
+    ).strip()
+)
+X_API_BASE_URL = (os.environ.get("X_API_BASE_URL") or "https://api.x.com/2").strip().rstrip("/")
+X_API_TIMEOUT_SECONDS = 4.0
 MARKET_PULSE_QUOTES_URLS: Tuple[str, ...] = (
     "https://query2.finance.yahoo.com/v7/finance/quote",
     "https://query1.finance.yahoo.com/v7/finance/quote",
@@ -175,8 +210,13 @@ MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS: Tuple[str, ...] = tuple(
     )
 )
 YAHOO_RSS_SYMBOL_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
+INVESTING_RSS_URLS: Tuple[str, ...] = (
+    "https://www.investing.com/rss/news_25.rss",
+    "https://www.investing.com/rss/market_overview.rss",
+)
 _market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
+_market_pulse_x_user_cache: Dict[str, Any] = {"fetched_at": None, "payload": {}}
 USD_CALENDAR_FALLBACK_EVENTS: Tuple[Tuple[str, str, str], ...] = (
     ("2026-03-11T08:30:00-04:00", "High", "Core CPI m/m"),
     ("2026-03-11T08:30:00-04:00", "High", "CPI m/m"),
@@ -211,6 +251,10 @@ def _market_pulse_cache_file() -> str:
     return app_runtime.upload_path(".market_pulse_cache.json")
 
 
+def _market_pulse_replay_cache_file() -> str:
+    return app_runtime.upload_path(".market_pulse_replay_cache.json")
+
+
 def _market_news_cache_file() -> str:
     return app_runtime.upload_path(".market_news_cache.json")
 
@@ -224,6 +268,15 @@ def _load_market_pulse_disk_cache() -> Dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _load_market_pulse_replay_cache() -> Dict[str, Any] | None:
+    try:
+        with open(_market_pulse_replay_cache_file(), "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _save_market_pulse_disk_cache(payload: Dict[str, Any]) -> None:
     try:
         os.makedirs(app_runtime.upload_root(), exist_ok=True)
@@ -231,6 +284,377 @@ def _save_market_pulse_disk_cache(payload: Dict[str, Any]) -> None:
             json.dump(payload, f, indent=2)
     except OSError:
         return
+
+
+def _save_market_pulse_replay_cache(payload: Dict[str, Any]) -> None:
+    try:
+        os.makedirs(app_runtime.upload_root(), exist_ok=True)
+        with open(_market_pulse_replay_cache_file(), "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except OSError:
+        return
+
+
+def _market_pulse_cached_replay_series(symbol: str) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    def _valid_replay_points(points: List[Dict[str, Any]]) -> bool:
+        prices = [
+            float((row or {}).get("v"))
+            for row in points
+            if isinstance((row or {}).get("v"), (int, float))
+        ]
+        if len(prices) < 8:
+            return False
+        positive = [v for v in prices if v > 0]
+        if len(positive) < max(4, int(len(prices) * 0.8)):
+            return False
+        peak = max(positive) if positive else 0.0
+        trough = min(positive) if positive else 0.0
+        return 10.0 <= trough <= peak <= 100000.0
+
+    def _normalize_cached_points(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        points: List[Dict[str, Any]] = []
+        seen_ts: set[str] = set()
+        for row in rows[-420:]:
+            if not isinstance(row, dict):
+                continue
+            ts_value = str(row.get("ts") or "").strip()
+            if not ts_value:
+                stamp = row.get("stamp")
+                if isinstance(stamp, (int, float)):
+                    try:
+                        ts_value = datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ).isoformat()
+                    except Exception:
+                        ts_value = ""
+            price = row.get("close")
+            if not isinstance(price, (int, float)):
+                price = row.get("c")
+            if not isinstance(price, (int, float)):
+                price = row.get("price")
+            if not isinstance(price, (int, float)) and "ts" in row:
+                price = row.get("v")
+            if not ts_value or not isinstance(price, (int, float)) or ts_value in seen_ts:
+                continue
+            seen_ts.add(ts_value)
+            points.append(
+                {
+                    "ts": ts_value,
+                    "label": str(row.get("label") or ""),
+                    "v": float(price),
+                    "close": float(price),
+                    "volume": int(row.get("volume") or 0)
+                    if isinstance(row.get("volume"), (int, float))
+                    else 0,
+                }
+            )
+        return points
+
+    payload = _load_market_pulse_replay_cache() or {}
+    symbols = payload.get("symbols") or {}
+    entry = symbols.get(str(symbol or "").strip().upper()) if isinstance(symbols, dict) else None
+    if isinstance(entry, dict):
+        points = _normalize_cached_points(list(entry.get("points") or []))
+        session_day = str(entry.get("session_day") or "").strip() or None
+        if _valid_replay_points(points):
+            return (points, session_day)
+
+    symbol_key = str(symbol or "").strip().upper()
+    candidate_files = [_market_pulse_cache_file()]
+    legacy_cache = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "uploads", ".market_pulse_cache.json")
+    )
+    candidate_files.append(legacy_cache)
+
+    best_points: List[Dict[str, Any]] = []
+    best_session_day: Optional[str] = None
+    best_session_key = ""
+    seen: set[str] = set()
+    for path in candidate_files:
+        normalized = os.path.abspath(path)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        try:
+            with open(normalized, "r", encoding="utf-8") as f:
+                parsed = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        quotes = list(parsed.get("quotes") or [])
+        row = next(
+            (
+                q
+                for q in quotes
+                if symbol_key
+                in {
+                    str((q or {}).get("symbol") or "").strip().upper(),
+                    str((q or {}).get("label") or "").strip().upper(),
+                }
+            ),
+            {},
+        )
+        if not isinstance(row, dict):
+            continue
+        points = _normalize_cached_points(list(row.get("series") or []))
+        if not _valid_replay_points(points):
+            continue
+        session_day_obj = _market_pulse_points_session_day(points)
+        session_day = session_day_obj.isoformat() if session_day_obj else ""
+        session_key = session_day or str(row.get("asof") or "")
+        if session_key <= best_session_key:
+            continue
+        best_points = points
+        best_session_day = session_day or None
+        best_session_key = session_key
+
+    if len(best_points) >= 8 and best_session_day:
+        try:
+            _store_market_pulse_replay_series(
+                symbol_key,
+                session_day=date.fromisoformat(best_session_day),
+                points=best_points,
+            )
+        except Exception:
+            pass
+    return (best_points, best_session_day)
+
+
+def _store_market_pulse_replay_series(
+    symbol: str,
+    *,
+    session_day: date,
+    points: List[Dict[str, Any]],
+) -> None:
+    symbol_key = str(symbol or "").strip().upper()
+    if not symbol_key or len(points) < 8:
+        return
+    payload = _load_market_pulse_replay_cache() or {}
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, dict):
+        symbols = {}
+        payload["symbols"] = symbols
+    session_day_iso = session_day.isoformat()
+    existing = symbols.get(symbol_key)
+    if (
+        isinstance(existing, dict)
+        and str(existing.get("session_day") or "").strip() == session_day_iso
+        and list(existing.get("points") or []) == list(points)
+    ):
+        return
+    symbols[symbol_key] = {
+        "session_day": session_day_iso,
+        "points": list(points)[-240:],
+        "saved_at": app_runtime.now_et().isoformat(),
+    }
+    _save_market_pulse_replay_cache(payload)
+
+
+def _market_pulse_attach_replay_cache(payload: Dict[str, Any] | None) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    quotes_out: List[Dict[str, Any]] = []
+    for row in list(normalized.get("quotes") or []):
+        if not isinstance(row, dict):
+            continue
+        q = dict(row)
+        symbol = str(q.get("symbol") or q.get("label") or "").strip().upper()
+        series = list(q.get("series") or [])
+        session_day = _market_pulse_points_session_day(series)
+        if session_day is not None and len(series) >= 8:
+            try:
+                _store_market_pulse_replay_series(symbol, session_day=session_day, points=series)
+            except Exception:
+                pass
+        if not list(q.get("prior_session_series") or []):
+            replay_points, replay_day = _market_pulse_cached_replay_series(symbol)
+            if len(replay_points) >= 2:
+                q["prior_session_series"] = replay_points
+                if replay_day:
+                    q["prior_session_day"] = replay_day
+        quotes_out.append(q)
+    normalized["quotes"] = quotes_out
+    return normalized
+
+
+def _market_pulse_rows_session_day(rows: List[Dict[str, Any]]) -> Optional[date]:
+    for row in reversed(rows):
+        if not isinstance(row, dict):
+            continue
+        ts_raw = str(row.get("ts") or "").strip()
+        if not ts_raw:
+            continue
+        try:
+            parsed = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=app_runtime.TZ)
+            return parsed.astimezone(app_runtime.TZ).date()
+        except Exception:
+            continue
+    return None
+
+
+def _market_pulse_rows_to_points(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    points: List[Dict[str, Any]] = []
+    for row in rows[-240:]:
+        if not isinstance(row, dict) or row.get("close") is None:
+            continue
+        ts_raw = str(row.get("ts") or "").strip()
+        if not ts_raw:
+            continue
+        try:
+            label = (
+                datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                .astimezone(app_runtime.TZ)
+                .strftime("%-I:%M")
+            )
+        except Exception:
+            label = ""
+        points.append(
+            {
+                "ts": ts_raw,
+                "label": label,
+                "v": float(row.get("close")),
+                "open": float(row.get("open")) if isinstance(row.get("open"), (int, float)) else None,
+                "high": float(row.get("high")) if isinstance(row.get("high"), (int, float)) else None,
+                "low": float(row.get("low")) if isinstance(row.get("low"), (int, float)) else None,
+                "close": float(row.get("close")) if isinstance(row.get("close"), (int, float)) else None,
+                "volume": int(row.get("volume")) if isinstance(row.get("volume"), (int, float)) else 0,
+            }
+        )
+    return points
+
+
+def _market_pulse_iter_market_sessions_backward(
+    start_day: Optional[date],
+    *,
+    limit: int = 12,
+) -> List[date]:
+    if start_day is None:
+        return []
+    out: List[date] = []
+    cursor = start_day
+    while len(out) < max(1, int(limit)):
+        if _is_market_session(cursor):
+            out.append(cursor)
+        cursor -= timedelta(days=1)
+    return out
+
+
+def _market_pulse_fetch_session_points_for_day(
+    symbol: str,
+    session_day: date,
+) -> List[Dict[str, Any]]:
+    anchor_day = session_day + timedelta(days=1)
+    try:
+        rows = market_data_service.get_prior_session_intraday(
+            symbol,
+            anchor_session_day=anchor_day,
+        )
+    except Exception:
+        rows = []
+    if _market_pulse_rows_session_day(rows) != session_day:
+        return []
+    return _market_pulse_rows_to_points(rows)
+
+
+def _market_pulse_resolve_replay_session(
+    *,
+    symbol: str,
+    phase: str,
+    now_et: datetime,
+    current_points: List[Dict[str, Any]],
+    replay_points: List[Dict[str, Any]],
+    replay_session_day: Optional[date],
+) -> Dict[str, Any]:
+    today = now_et.date()
+    current_day = _market_pulse_points_session_day(current_points)
+    last_valid_day = _market_pulse_expected_replay_session_day(phase=phase, now_et=now_et)
+    stored_replay_day = replay_session_day or _market_pulse_points_session_day(replay_points)
+    stored_points = list(replay_points or [])
+
+    if phase == "open" and current_points and current_day == today:
+        return {
+            "mode": "live_session",
+            "points": current_points,
+            "session_day": current_day,
+            "last_valid_day": last_valid_day,
+            "stored_replay_day": stored_replay_day,
+            "replay_source": "live",
+        }
+
+    if phase == "afterhours" and current_points and current_day == today:
+        return {
+            "mode": "last_session_replay",
+            "points": current_points,
+            "session_day": current_day,
+            "last_valid_day": today,
+            "stored_replay_day": stored_replay_day,
+            "replay_source": "live_close",
+        }
+
+    if isinstance(last_valid_day, date):
+        if stored_points and stored_replay_day == last_valid_day:
+            return {
+                "mode": "last_session_replay",
+                "points": stored_points,
+                "session_day": last_valid_day,
+                "last_valid_day": last_valid_day,
+                "stored_replay_day": stored_replay_day,
+                "replay_source": "stored",
+            }
+        fetched_points = _market_pulse_fetch_session_points_for_day(symbol, last_valid_day)
+        if len(fetched_points) >= 2:
+            return {
+                "mode": "last_session_replay",
+                "points": fetched_points,
+                "session_day": last_valid_day,
+                "last_valid_day": last_valid_day,
+                "stored_replay_day": stored_replay_day,
+                "replay_source": "provider",
+            }
+
+    return {
+        "mode": "unavailable",
+        "points": [],
+        "session_day": None,
+        "last_valid_day": last_valid_day,
+        "stored_replay_day": stored_replay_day,
+        "replay_source": "missing",
+    }
+
+
+def _market_pulse_replay_archive_rows(
+    *,
+    symbol: str,
+    last_valid_day: Optional[date],
+    stored_replay_day: Optional[date],
+    stored_points: List[Dict[str, Any]],
+    limit: int = 8,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    if not isinstance(last_valid_day, date):
+        return rows
+    for session_day in _market_pulse_iter_market_sessions_backward(last_valid_day, limit=limit):
+        available = False
+        source = "missing"
+        if stored_points and stored_replay_day == session_day:
+            available = True
+            source = "stored"
+        else:
+            fetched_points = _market_pulse_fetch_session_points_for_day(symbol, session_day)
+            if len(fetched_points) >= 2:
+                available = True
+                source = "provider"
+        rows.append(
+            {
+                "session_day": session_day.isoformat(),
+                "label": session_day.strftime("%a %b %-d"),
+                "available": available,
+                "source": source,
+                "is_latest_valid": session_day == last_valid_day,
+                "status": "Replay stored" if available else "Replay not stored",
+            }
+        )
+    return rows
 
 
 def _load_market_news_disk_cache() -> Dict[str, Any] | None:
@@ -821,7 +1245,9 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         and isinstance(cached_payload, dict)
         and (now_et - fetched_at).total_seconds() < MARKET_PULSE_CACHE_TTL_SECONDS
     ):
-        normalized_cache = _market_pulse_force_symbol_set(cached_payload)
+        normalized_cache = _market_pulse_attach_replay_cache(
+            _market_pulse_force_symbol_set(cached_payload)
+        )
         normalized_cache["source_label"] = "Massive market feed (cached snapshot)"
         normalized_cache["source_note"] = "Using recent cached Massive snapshot within refresh TTL."
         return normalized_cache
@@ -831,7 +1257,9 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
     if not quotes_by_symbol:
         disk_payload = _load_market_pulse_disk_cache()
         if isinstance(cached_payload, dict):
-            fallback = _market_pulse_force_symbol_set(cached_payload)
+            fallback = _market_pulse_attach_replay_cache(
+                _market_pulse_force_symbol_set(cached_payload)
+            )
             fallback["source_label"] = "Massive market feed (cached fallback)"
             fallback["source_note"] = (
                 "Massive live quote request returned no data. Showing last cached snapshot."
@@ -839,7 +1267,9 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
             return fallback
         if isinstance(disk_payload, dict):
             _market_pulse_cache["payload"] = disk_payload
-            fallback = _market_pulse_force_symbol_set(disk_payload)
+            fallback = _market_pulse_attach_replay_cache(
+                _market_pulse_force_symbol_set(disk_payload)
+            )
             fallback["source_label"] = "Massive market feed (cached fallback)"
             fallback["source_note"] = (
                 "Massive live quote request returned no data. Showing last cached snapshot."
@@ -946,22 +1376,6 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
             }
         )
 
-    def _rows_session_day(rows: List[Dict[str, Any]]) -> Optional[date]:
-        for row in reversed(rows):
-            if not isinstance(row, dict):
-                continue
-            ts_raw = str(row.get("ts") or "").strip()
-            if not ts_raw:
-                continue
-            try:
-                parsed = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-                if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=app_runtime.TZ)
-                return parsed.astimezone(app_runtime.TZ).date()
-            except Exception:
-                continue
-        return None
-
     # Build richer refresh-time curves so cards feel like Yahoo-style micro charts.
     for q in quotes:
         symbol = str(q.get("symbol") or "").strip().upper()
@@ -974,10 +1388,28 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         try:
             prior_rows = market_data_service.get_prior_session_intraday(
                 symbol,
-                anchor_session_day=_rows_session_day(rows),
+                anchor_session_day=_market_pulse_rows_session_day(rows),
             )
         except Exception:
             prior_rows = []
+        prior_points = _market_pulse_rows_to_points(prior_rows)
+        cached_replay_points: List[Dict[str, Any]] = []
+        cached_replay_day: Optional[str] = None
+        if len(prior_points) < 2:
+            cached_replay_points, cached_replay_day = _market_pulse_cached_replay_series(symbol)
+            today_iso = now_et.date().isoformat()
+            if cached_replay_day == today_iso:
+                cached_replay_points = []
+                cached_replay_day = None
+        if len(prior_points) >= 2:
+            q["prior_session_series"] = prior_points
+            prior_session_day = _market_pulse_rows_session_day(prior_rows)
+            if prior_session_day is not None:
+                q["prior_session_day"] = prior_session_day.isoformat()
+        elif len(cached_replay_points) >= 2:
+            q["prior_session_series"] = list(cached_replay_points)
+            if cached_replay_day:
+                q["prior_session_day"] = cached_replay_day
         if prior_rows:
             prior_highs = [
                 float(r.get("high"))
@@ -994,15 +1426,18 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 q["prior_day_low"] = min(prior_lows)
         if not rows:
             continue
-        points = [
-            {"ts": str(r.get("ts") or ""), "v": float(r.get("close"))}
-            for r in rows[-240:]
-            if isinstance(r, dict) and r.get("close") is not None
-        ]
+        points = _market_pulse_rows_to_points(rows)
         curve = [float(p["v"]) for p in points]
         if len(curve) >= 8:
             q["mini_series"] = curve
             q["series"] = points
+            current_session_day = _market_pulse_rows_session_day(rows)
+            if current_session_day is not None:
+                _store_market_pulse_replay_series(
+                    symbol,
+                    session_day=current_session_day,
+                    points=points,
+                )
             first_open = None
             for r in rows:
                 if isinstance(r, dict) and isinstance(r.get("open"), (int, float)):
@@ -1045,7 +1480,9 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
     if counts["live"] == 0:
         disk_payload = _load_market_pulse_disk_cache()
         if isinstance(cached_payload, dict):
-            fallback = _market_pulse_force_symbol_set(cached_payload)
+            fallback = _market_pulse_attach_replay_cache(
+                _market_pulse_force_symbol_set(cached_payload)
+            )
             fallback["source_label"] = "Massive market feed (cached fallback)"
             fallback["source_note"] = (
                 "Massive returned symbols but no usable live prices. Showing last cached snapshot."
@@ -1053,7 +1490,9 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
             return fallback
         if isinstance(disk_payload, dict):
             _market_pulse_cache["payload"] = disk_payload
-            fallback = _market_pulse_force_symbol_set(disk_payload)
+            fallback = _market_pulse_attach_replay_cache(
+                _market_pulse_force_symbol_set(disk_payload)
+            )
             fallback["source_label"] = "Massive market feed (cached fallback)"
             fallback["source_note"] = (
                 "Massive returned symbols but no usable live prices. Showing last cached snapshot."
@@ -1098,6 +1537,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
             "tracked_count": len(quotes),
         },
     }
+    result = _market_pulse_attach_replay_cache(result)
     _market_pulse_cache["fetched_at"] = now_et
     _market_pulse_cache["payload"] = result
     _save_market_pulse_disk_cache(result)
@@ -1478,10 +1918,1220 @@ def _market_pulse_market_hours(now_et: datetime) -> bool:
     return (9 * 60 + 30) <= minute_of_day < (16 * 60)
 
 
+def _market_pulse_session_phase(now_et: datetime) -> str:
+    if int(now_et.weekday()) >= 5:
+        return "closed"
+    minute_of_day = (int(now_et.hour) * 60) + int(now_et.minute)
+    if (9 * 60 + 30) <= minute_of_day < (16 * 60):
+        return "open"
+    if (4 * 60) <= minute_of_day < (9 * 60 + 30):
+        return "premarket"
+    if (16 * 60) <= minute_of_day < (20 * 60):
+        return "afterhours"
+    return "closed"
+
+
+def _market_pulse_points_session_day(points: List[Dict[str, Any]]) -> Optional[date]:
+    for row in reversed(points):
+        if not isinstance(row, dict):
+            continue
+        ts = str(row.get("ts") or "").strip()
+        if not ts:
+            continue
+        try:
+            parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=app_runtime.TZ)
+            return parsed.astimezone(app_runtime.TZ).date()
+        except Exception:
+            continue
+    return None
+
+
+def _market_pulse_last_completed_trading_session(anchor_day: date) -> Optional[date]:
+    cursor = anchor_day
+    for _ in range(14):
+        if _is_market_session(cursor):
+            return cursor
+        cursor -= timedelta(days=1)
+    return None
+
+
+def _market_pulse_expected_replay_session_day(*, phase: str, now_et: datetime) -> Optional[date]:
+    anchor = now_et.date()
+    if phase != "afterhours":
+        anchor -= timedelta(days=1)
+    return _market_pulse_last_completed_trading_session(anchor)
+
+
+def _market_pulse_resolved_session_day(
+    *,
+    mode: str,
+    phase: str,
+    points: List[Dict[str, Any]],
+    now_et: datetime,
+) -> Optional[date]:
+    point_day = _market_pulse_points_session_day(points)
+    if point_day is not None:
+        return point_day
+    if mode == "live_session":
+        return now_et.date()
+    if mode == "last_session_replay":
+        return _market_pulse_expected_replay_session_day(phase=phase, now_et=now_et)
+    return None
+
+
+def _market_pulse_resolve_execution_series(
+    *,
+    symbol: str,
+    phase: str,
+    now_et: datetime,
+    current_points: List[Dict[str, Any]],
+    replay_points: List[Dict[str, Any]],
+    replay_session_day: Optional[date],
+) -> Dict[str, Any]:
+    return _market_pulse_resolve_replay_session(
+        symbol=symbol,
+        phase=phase,
+        now_et=now_et,
+        current_points=current_points,
+        replay_points=replay_points,
+        replay_session_day=replay_session_day,
+    )
+
+
+def _market_pulse_execution_session_label(
+    points: List[Dict[str, Any]], now_et: datetime, session_day: Optional[date] = None
+) -> str:
+    effective_day = session_day or _market_pulse_points_session_day(points)
+    if effective_day is None:
+        return ""
+    return effective_day.strftime("%a %b %-d")
+
+
+def _market_pulse_execution_replay_summary(
+    *,
+    points: List[Dict[str, Any]],
+    levels: Dict[str, Any],
+    regime_positive: bool,
+) -> str:
+    def _num(value: Any) -> Optional[float]:
+        try:
+            return float(value) if value is not None else None
+        except Exception:
+            return None
+
+    if len(points) < 2:
+        return "Review the loaded replay session against gamma structure."
+
+    open_price = _num(points[0].get("price"))
+    last_price = _num(points[-1].get("price"))
+    price_values = [_num(point.get("price")) for point in points]
+    price_values = [value for value in price_values if value is not None]
+    if not price_values:
+        return "Review the loaded replay session against gamma structure."
+    high_price = max(price_values)
+    low_price = min(price_values)
+    flip = _num(levels.get("gamma_flip"))
+    call_wall = _num(levels.get("call_wall"))
+    put_wall = _num(levels.get("put_wall"))
+
+    opener = "Opened"
+    if flip is not None and open_price is not None:
+        if open_price >= flip:
+            opener = "Opened above flip"
+        else:
+            opener = "Opened below flip"
+
+    bias = "mean reversion stayed intact" if regime_positive else "expansion stayed active"
+    if flip is not None and low_price <= flip <= high_price:
+        if last_price is not None and last_price >= flip:
+            bias = "reclaimed flip and closed back above"
+        elif last_price is not None and last_price < flip:
+            bias = "failed reclaim and closed below flip"
+
+    wall_note = ""
+    if call_wall is not None and high_price >= call_wall:
+        wall_note = "tested call wall"
+    elif put_wall is not None and low_price <= put_wall:
+        wall_note = "tested put wall"
+    elif flip is not None:
+        flip_distance = abs((last_price or open_price or flip) - flip)
+        wall_note = "held near flip" if flip_distance <= 8 else "stayed away from extremes"
+
+    summary_parts = [opener]
+    if regime_positive:
+        summary_parts.append("positive gamma held")
+    else:
+        summary_parts.append("negative gamma stayed active")
+    if wall_note:
+        summary_parts.append(wall_note)
+    if bias:
+        summary_parts.append(bias)
+    return ", ".join(summary_parts[:3]) + "."
+
+
+def _market_pulse_execution_chart_viewmodel(
+    *,
+    spx_quote: Dict[str, Any],
+    gamma_snapshot: Dict[str, Any],
+    macro_events: List[Dict[str, Any]],
+    now_et: datetime,
+) -> Dict[str, Any]:
+    raw_points = list(spx_quote.get("series") or [])
+    raw_replay_points = list(spx_quote.get("prior_session_series") or [])
+
+    def _normalize_chart_points(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        points: List[Dict[str, Any]] = []
+        seen_ts: set[str] = set()
+        for row in rows[-420:]:
+            if not isinstance(row, dict):
+                continue
+            ts = str(row.get("ts") or "").strip()
+            price = row.get("v", row.get("close"))
+            if not ts or not isinstance(price, (int, float)) or ts in seen_ts:
+                continue
+            seen_ts.add(ts)
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(app_runtime.TZ)
+            except Exception:
+                continue
+            points.append(
+                {
+                    "ts": ts,
+                    "label": dt.strftime("%-I:%M"),
+                    "price": float(price),
+                    "volume": (
+                        int(row.get("volume"))
+                        if isinstance(row.get("volume"), (int, float))
+                        else int(row.get("vol"))
+                        if isinstance(row.get("vol"), (int, float))
+                        else 0
+                    ),
+                }
+            )
+        points.sort(key=lambda row: str(row.get("ts") or ""))
+        return points
+
+    current_points = _normalize_chart_points(raw_points)
+    replay_points = _normalize_chart_points(raw_replay_points)
+    replay_session_day = None
+    replay_day_raw = str(spx_quote.get("prior_session_day") or "").strip()
+    if replay_day_raw:
+        try:
+            replay_session_day = date.fromisoformat(replay_day_raw)
+        except Exception:
+            replay_session_day = None
+    resolved = _market_pulse_resolve_execution_series(
+        symbol=str(spx_quote.get("symbol") or spx_quote.get("label") or "SPX"),
+        phase=_market_pulse_session_phase(now_et),
+        now_et=now_et,
+        current_points=current_points,
+        replay_points=replay_points,
+        replay_session_day=replay_session_day,
+    )
+    mode = str(resolved.get("mode") or "unavailable")
+    points = list(resolved.get("points") or [])
+    resolved_session_day = resolved.get("session_day")
+    if not isinstance(resolved_session_day, date):
+        resolved_session_day = None
+    last_valid_day = resolved.get("last_valid_day")
+    if not isinstance(last_valid_day, date):
+        last_valid_day = _market_pulse_expected_replay_session_day(
+            phase=_market_pulse_session_phase(now_et),
+            now_et=now_et,
+        )
+    stored_replay_day = resolved.get("stored_replay_day")
+    if not isinstance(stored_replay_day, date):
+        stored_replay_day = replay_session_day
+    archive_rows = _market_pulse_replay_archive_rows(
+        symbol=str(spx_quote.get("symbol") or spx_quote.get("label") or "SPX"),
+        last_valid_day=last_valid_day,
+        stored_replay_day=stored_replay_day,
+        stored_points=replay_points,
+    )
+    latest_archive_row = archive_rows[0] if archive_rows else {}
+    latest_replay_available = bool(latest_archive_row.get("available"))
+
+    # Keep local reference to the active session phase for labels and client handoff.
+    phase = _market_pulse_session_phase(now_et)
+
+    levels = {
+        "gamma_flip": gamma_snapshot.get("gamma_flip_combined_basket"),
+        "local_flip": spx_quote.get("vwap"),
+        "call_wall": gamma_snapshot.get("call_wall_aggregated_gamma"),
+        "put_wall": gamma_snapshot.get("put_wall_aggregated_gamma"),
+        "pdh": spx_quote.get("prior_day_high"),
+        "pdl": spx_quote.get("prior_day_low"),
+    }
+    level_rows = []
+    for key, label in (
+        ("gamma_flip", "Gamma Flip"),
+        ("local_flip", "Local Flip"),
+        ("call_wall", "Call Wall"),
+        ("put_wall", "Put Wall"),
+        ("pdh", "PDH"),
+        ("pdl", "PDL"),
+    ):
+        value = levels.get(key)
+        if isinstance(value, (int, float)):
+            level_rows.append({"key": key, "label": label, "value": float(value)})
+
+    session_day = resolved_session_day or _market_pulse_resolved_session_day(
+        mode=mode,
+        phase=phase,
+        points=points,
+        now_et=now_et,
+    )
+    event_rows: List[Dict[str, Any]] = []
+    for row in list(macro_events or [])[:5]:
+        if not isinstance(row, dict):
+            continue
+        starts_at = str(row.get("starts_at") or row.get("iso") or "").strip()
+        if not starts_at:
+            continue
+        try:
+            dt = datetime.fromisoformat(starts_at.replace("Z", "+00:00")).astimezone(app_runtime.TZ)
+        except Exception:
+            continue
+        if session_day is not None and dt.date() != session_day:
+            continue
+        event_rows.append(
+            {
+                "ts": dt.isoformat(),
+                "label": str(row.get("time_label") or dt.strftime("%-I:%M %p")),
+                "headline": str(row.get("headline") or "Macro"),
+            }
+        )
+
+    latest_price = None
+    if points:
+        latest_price = points[-1]["price"]
+    elif isinstance(spx_quote.get("price"), (int, float)):
+        latest_price = float(spx_quote.get("price"))
+
+    regime_text = str(gamma_snapshot.get("regime") or "").strip()
+    net_gamma = gamma_snapshot.get("net_gex")
+    regime_positive = False
+    if regime_text:
+        regime_positive = "positive" in regime_text.lower()
+    elif isinstance(net_gamma, (int, float)):
+        regime_positive = float(net_gamma) >= 0
+    environment = "Mean Reversion" if regime_positive else "Expansion"
+    regime_label = regime_text or ("Positive Gamma" if regime_positive else "Negative Gamma")
+    session_label = _market_pulse_execution_session_label(points, now_et, session_day)
+    session_date_iso = session_day.isoformat() if session_day is not None else ""
+    replay_caption = f"Replay • {session_label}" if session_label else "Replay"
+    last_valid_label = (
+        last_valid_day.strftime("%a %b %-d")
+        if isinstance(last_valid_day, date)
+        else ""
+    )
+    last_stored_replay_label = (
+        stored_replay_day.strftime("%a %b %-d")
+        if isinstance(stored_replay_day, date)
+        else ""
+    )
+    replay_gap_note = ""
+    replay_status_label = (
+        "Replay stored"
+        if mode == "last_session_replay" and session_label and last_valid_label == session_label
+        else "Replay not stored"
+    )
+    if last_valid_label and mode != "last_session_replay":
+        replay_gap_note = f"Replay not stored for {last_valid_label}."
+    distance_to_flip = None
+    flip_value = levels.get("gamma_flip")
+    if isinstance(latest_price, (int, float)) and isinstance(flip_value, (int, float)):
+        distance_to_flip = float(latest_price) - float(flip_value)
+    if mode == "live_session":
+        status_label = f"Live Session • {str(spx_quote.get('freshness_label') or 'Updated just now')}"
+        summary = "Current intraday SPX execution map with live gamma reaction levels."
+        price_label = "Live Price"
+        context_label = "Live Structure"
+    elif mode == "last_session_replay":
+        prefix = "Awaiting Open • Last Valid Session" if phase == "premarket" else "Last Valid Session"
+        primary_label = last_valid_label or session_label
+        status_label = f"{prefix} • {primary_label}" if primary_label else prefix
+        summary = _market_pulse_execution_replay_summary(
+            points=points,
+            levels=levels,
+            regime_positive=regime_positive,
+        )
+        price_label = "Last Session Close"
+        context_label = "Last Known Structure"
+    else:
+        unavailable_label = last_valid_label or session_label or _market_pulse_execution_session_label(
+            [],
+            now_et,
+            _market_pulse_expected_replay_session_day(phase=phase, now_et=now_et),
+        )
+        status_label = (
+            f"No Session Data Available • {unavailable_label}"
+            if unavailable_label
+            else "No Session Data Available"
+        )
+        summary = (
+            f"Replay not stored for {unavailable_label}. Live structure remains available."
+            if unavailable_label
+            else "No valid intraday SPX session data is available yet."
+        )
+        price_label = "Reference Price"
+        context_label = "Unavailable"
+        replay_caption = (
+            f"Replay unavailable • {unavailable_label}"
+            if unavailable_label
+            else "Replay unavailable"
+        )
+
+    return {
+        "symbol": "SPX",
+        "phase": phase,
+        "mode": mode,
+        "session_date": session_date_iso,
+        "session_label": session_label,
+        "primary_session_label": last_valid_label or session_label,
+        "last_valid_session_date": last_valid_day.isoformat() if isinstance(last_valid_day, date) else "",
+        "last_valid_session_label": last_valid_label,
+        "last_stored_replay_date": stored_replay_day.isoformat() if isinstance(stored_replay_day, date) else "",
+        "last_stored_replay_label": last_stored_replay_label,
+        "replay_gap_note": replay_gap_note,
+        "replay_status_label": replay_status_label,
+        "latest_replay_available": latest_replay_available,
+        "replay_source": str(resolved.get("replay_source") or ""),
+        "archive_rows": archive_rows,
+        "status_label": status_label,
+        "summary": summary,
+        "replay_caption": replay_caption,
+        "archive_summary": (
+            f"Last valid {last_valid_label} • replay stored"
+            if latest_replay_available and last_valid_label
+            else f"Last valid {last_valid_label} • replay not stored"
+            if last_valid_label
+            else "Replay archive unavailable"
+        ),
+        "price_label": price_label,
+        "context_label": context_label,
+        "points": points,
+        "levels": level_rows,
+        "events": event_rows,
+        "latest_price": latest_price,
+        "distance_to_flip": distance_to_flip,
+        "freshness_label": str(spx_quote.get("freshness_label") or ""),
+        "regime": regime_label,
+        "environment": environment,
+    }
+
+
 def _market_news_timestamp_label(stamp: Any) -> str:
     if not isinstance(stamp, (int, float)):
         return ""
     return datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ).strftime("%b %-d, %-I:%M %p ET")
+
+
+def _market_pulse_level_value(rows: List[Dict[str, Any]], key: str) -> Optional[float]:
+    for row in rows:
+        if str(row.get("key") or "") != key:
+            continue
+        value = row.get("value")
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
+
+
+def _market_pulse_clamp(value: float, minimum: float, maximum: float) -> float:
+    return min(maximum, max(minimum, float(value)))
+
+
+def _market_pulse_score_grade(score: int) -> str:
+    if score >= 93:
+        return "A"
+    if score >= 88:
+        return "A-"
+    if score >= 80:
+        return "B"
+    if score >= 72:
+        return "B-"
+    if score >= 64:
+        return "C"
+    if score >= 56:
+        return "C-"
+    if score >= 48:
+        return "D"
+    return "F"
+
+
+def _market_pulse_score_status(score: int) -> str:
+    if score >= 80:
+        return "GO"
+    if score >= 60:
+        return "WATCH"
+    if score >= 40:
+        return "CAUTION"
+    return "NO TRADE"
+
+
+def _market_pulse_tone_for_status(status: str) -> str:
+    if status == "GO":
+        return "positive"
+    if status == "WATCH":
+        return "warn"
+    if status == "CAUTION":
+        return "warn"
+    return "negative"
+
+
+def _market_pulse_execution_model(
+    *,
+    spx_quote: Dict[str, Any],
+    gamma_snapshot: Dict[str, Any],
+    execution_chart: Dict[str, Any],
+    spx_priority_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    spot = (
+        float(spx_quote.get("price"))
+        if isinstance(spx_quote.get("price"), (int, float))
+        else float(execution_chart.get("latest_price"))
+        if isinstance(execution_chart.get("latest_price"), (int, float))
+        else None
+    )
+    main_flip = _market_pulse_level_value(list(execution_chart.get("levels") or []), "gamma_flip")
+    local_flip = _market_pulse_level_value(list(execution_chart.get("levels") or []), "local_flip")
+    call_wall = _market_pulse_level_value(list(execution_chart.get("levels") or []), "call_wall")
+    put_wall = _market_pulse_level_value(list(execution_chart.get("levels") or []), "put_wall")
+    raw_net_gamma = (
+        float(gamma_snapshot.get("net_gex"))
+        if isinstance(gamma_snapshot.get("net_gex"), (int, float))
+        else float(gamma_snapshot.get("net_gex_total"))
+        if isinstance(gamma_snapshot.get("net_gex_total"), (int, float))
+        else None
+    )
+    metrics = dict(spx_priority_context.get("metrics") or {})
+    structure_range_state = str(metrics.get("trap_zone_state") or "").strip() or "unavailable"
+    values = [
+        value
+        for value in (spot, main_flip, local_flip, call_wall, put_wall)
+        if isinstance(value, (int, float))
+    ]
+    structure_span = (max(values) - min(values)) if len(values) >= 2 else 0.0
+    wall_span = (
+        abs(float(call_wall) - float(put_wall))
+        if isinstance(call_wall, (int, float)) and isinstance(put_wall, (int, float))
+        else structure_span
+    )
+    neutral_band_main = _market_pulse_clamp(max(5.0, wall_span * 0.08), 5.0, 18.0)
+    neutral_band_local = _market_pulse_clamp(max(2.5, wall_span * 0.025), 2.5, 6.0)
+
+    if spot is not None and main_flip is not None:
+        if spot > (main_flip + neutral_band_main):
+            macro_state = "positive"
+            macro_title = "POSITIVE GAMMA"
+            macro_subtitle = "MEAN REVERSION ACTIVE"
+            macro_band_state = "above_main_flip"
+        elif spot < (main_flip - neutral_band_main):
+            macro_state = "negative"
+            macro_title = "NEGATIVE GAMMA"
+            macro_subtitle = "TREND / MOMENTUM ACTIVE"
+            macro_band_state = "below_main_flip"
+        else:
+            macro_state = "neutral"
+            macro_title = "FLIP ZONE"
+            macro_subtitle = "NO CLEAR EDGE"
+            macro_band_state = "at_main_flip"
+    else:
+        macro_state = "unknown"
+        macro_title = "REGIME UNKNOWN"
+        macro_subtitle = "LEVELS UNAVAILABLE"
+        macro_band_state = "unknown"
+
+    if spot is not None and local_flip is not None:
+        if spot > (local_flip + neutral_band_local):
+            local_state = "above_local"
+            local_title = "ABOVE LOCAL FLIP"
+            local_action = "BUY DIPS / HOLD ABOVE LOCAL PIVOT"
+            local_short = "BUY DIPS"
+            local_context = "ABOVE LOCAL FLIP"
+        elif spot < (local_flip - neutral_band_local):
+            local_state = "below_local"
+            local_title = "BELOW LOCAL FLIP"
+            local_action = "SELL RIPS / REJECT POPS"
+            local_short = "SELL RIPS"
+            local_context = "BELOW LOCAL FLIP"
+        else:
+            local_state = "at_local"
+            local_title = "AT LOCAL FLIP"
+            local_action = "WAIT FOR RESOLUTION"
+            local_short = "WAIT"
+            local_context = "AT LOCAL FLIP"
+    else:
+        local_state = "unknown"
+        local_title = "LOCAL FLIP UNKNOWN"
+        local_action = "WAIT FOR LOCAL PIVOT"
+        local_short = "WAIT"
+        local_context = "LOCAL FLIP UNKNOWN"
+
+    distances = {
+        "to_main_flip": (spot - main_flip) if spot is not None and main_flip is not None else None,
+        "to_local_flip": (spot - local_flip) if spot is not None and local_flip is not None else None,
+        "to_call_wall": (spot - call_wall) if spot is not None and call_wall is not None else None,
+        "to_put_wall": (spot - put_wall) if spot is not None and put_wall is not None else None,
+    }
+
+    levels_for_nearest = [
+        ("Main Flip", main_flip),
+        ("Local Flip", local_flip),
+        ("Call Wall", call_wall),
+        ("Put Wall", put_wall),
+    ]
+    nearest_name = ""
+    nearest_value = None
+    nearest_distance = None
+    if spot is not None:
+        for label, value in levels_for_nearest:
+            if not isinstance(value, (int, float)):
+                continue
+            distance = abs(float(spot) - float(value))
+            if nearest_distance is None or distance < nearest_distance:
+                nearest_name = label
+                nearest_value = float(value)
+                nearest_distance = distance
+
+    inside_walls = (
+        spot is not None
+        and call_wall is not None
+        and put_wall is not None
+        and put_wall <= spot <= call_wall
+    )
+    near_main_flip = nearest_distance is not None and nearest_name == "Main Flip" and nearest_distance <= neutral_band_main
+    near_local_flip = nearest_distance is not None and nearest_name == "Local Flip" and nearest_distance <= neutral_band_local
+    near_call_wall = nearest_distance is not None and nearest_name == "Call Wall" and nearest_distance <= 14.0
+    near_put_wall = nearest_distance is not None and nearest_name == "Put Wall" and nearest_distance <= 14.0
+    midrange = (
+        inside_walls
+        and nearest_distance is not None
+        and nearest_distance > max(neutral_band_local * 1.5, 22.0)
+    )
+
+    if spot is None:
+        location_summary = "STRUCTURE UNKNOWN"
+        zone_label = "Unknown"
+        status_line = "Awaiting price"
+        action_read = "Wait for live structure"
+    elif put_wall is not None and spot < put_wall:
+        location_summary = "BELOW PUT WALL"
+        zone_label = "Below Put Wall"
+        status_line = "Support nearby"
+        action_read = "Wait for support reclaim"
+    elif call_wall is not None and spot > call_wall:
+        location_summary = "ABOVE CALL WALL"
+        zone_label = "Above Call Wall"
+        status_line = "Resistance failed"
+        action_read = "Avoid chasing extension"
+    elif near_local_flip:
+        location_summary = "AT LOCAL FLIP"
+        zone_label = "Flip Decision Zone"
+        status_line = "Decision zone"
+        action_read = "Wait for local flip resolution"
+    elif near_call_wall:
+        location_summary = "NEAR CALL WALL"
+        zone_label = "Near Call Wall"
+        status_line = "Resistance nearby"
+        action_read = "Sell rips near resistance"
+    elif near_put_wall:
+        location_summary = "NEAR PUT WALL"
+        zone_label = "Near Put Wall"
+        status_line = "Support nearby"
+        action_read = "Buy dips near support"
+    elif inside_walls and macro_band_state == "below_main_flip":
+        location_summary = "BELOW MAIN FLIP INSIDE RANGE"
+        zone_label = "Inside Range / Below Main Flip"
+        status_line = "Range with overhead pressure"
+        action_read = "Sell rips below main flip"
+    elif inside_walls and macro_band_state == "above_main_flip":
+        location_summary = "ABOVE MAIN FLIP INSIDE RANGE"
+        zone_label = "Inside Range / Above Main Flip"
+        status_line = "Supportive range"
+        action_read = "Buy dips above main flip"
+    elif inside_walls:
+        location_summary = "INSIDE RANGE"
+        zone_label = "Inside Range"
+        status_line = "Neutral range"
+        action_read = "Avoid mid-range entries"
+    else:
+        location_summary = "BETWEEN LEVELS"
+        zone_label = "Between Levels"
+        status_line = "Mixed location"
+        action_read = "Wait for cleaner location"
+
+    macro_local_conflict = bool(
+        (macro_state == "positive" and local_state == "below_local")
+        or (macro_state == "negative" and local_state == "above_local")
+    )
+    net_gamma_sign_conflict = bool(
+        raw_net_gamma is not None
+        and macro_state in {"positive", "negative"}
+        and ((raw_net_gamma >= 0 and macro_state == "negative") or (raw_net_gamma < 0 and macro_state == "positive"))
+    )
+
+    score = 50
+    if macro_state in {"positive", "negative"}:
+        score += 20
+    elif macro_state == "neutral":
+        score -= 25
+    else:
+        score -= 15
+
+    if local_state in {"above_local", "below_local"}:
+        score += 25
+    elif local_state == "at_local":
+        score -= 18
+    else:
+        score -= 18
+
+    if macro_local_conflict:
+        score -= 22
+    elif macro_state == "positive" and local_state == "above_local":
+        score += 12
+    elif macro_state == "negative" and local_state == "below_local":
+        score += 12
+
+    if midrange:
+        score -= 20
+    if near_main_flip:
+        score -= 12
+    if near_local_flip:
+        score += 8
+    if near_call_wall or near_put_wall:
+        score += 12
+    if macro_local_conflict and inside_walls:
+        score -= 10
+    if nearest_distance is not None and nearest_distance > 140:
+        score -= 10
+    if structure_range_state in {"knife_edge_structure", "compressed_trap_zone"}:
+        score -= 10
+    if execution_chart.get("mode") == "unavailable":
+        score -= 6
+    if local_state == "unknown":
+        score = min(score, 55)
+
+    score = max(0, min(100, int(round(score))))
+    readiness_status = _market_pulse_score_status(score)
+    readiness_tone = _market_pulse_tone_for_status(readiness_status)
+    grade = _market_pulse_score_grade(score)
+
+    if readiness_status == "NO TRADE":
+        if local_state == "unknown":
+            best_look = "Wait for local flip to print"
+            avoid = "Trading without a tactical pivot"
+            need = "Live local flip or usable intraday anchor"
+            why = "Macro context exists, but the intraday local flip is unavailable."
+        elif local_state == "at_local" or macro_state == "neutral":
+            best_look = "Wait for local flip resolution"
+            avoid = "Do not trade the flip zone"
+            need = "Clear break or reclaim"
+            why = "Macro and tactical context are not resolved."
+        elif midrange:
+            best_look = "Wait for wall interaction"
+            avoid = "Midrange guessing inside structure"
+            need = "Touch or rejection at a real level"
+            why = "Price is too far from a clean trigger level."
+        else:
+            best_look = "Wait for better alignment"
+            avoid = "Forcing entries without alignment"
+            need = "Macro and local bias to agree"
+            why = "Context is conflicted or not close enough to a usable level."
+    elif readiness_status == "CAUTION":
+        if local_state == "unknown":
+            best_look = "Wait for local pivot or wall test"
+            avoid = "Committing before tactical structure appears"
+            need = "Local flip or clear wall reaction"
+            why = "Macro context is present, but tactical intraday bias is still unknown."
+        elif macro_local_conflict:
+            best_look = "Wait for local flip reclaim or rejection"
+            avoid = "Trading against the local pivot"
+            need = "Tactical bias to align with regime"
+            why = "Macro and tactical reads still conflict."
+        else:
+            best_look = action_read
+            avoid = "Late entries away from levels"
+            need = "Tighter proximity to key structure"
+            why = "There is context, but not enough location quality yet."
+    elif readiness_status == "WATCH":
+        if macro_state == "positive" and local_state == "above_local":
+            best_look = "Buy dip above local flip"
+            avoid = "Chasing extension into resistance"
+            need = "Hold above local flip or support"
+            why = "Macro and local structure are supportive, but trigger quality still matters."
+        elif macro_state == "negative" and local_state == "below_local":
+            best_look = "Sell rip below local flip"
+            avoid = "Shorting directly into put wall"
+            need = "Failed reclaim or rejection"
+            why = "Macro and local weakness align, but location still matters."
+        elif macro_state == "positive" and local_state == "below_local":
+            best_look = "Wait for local flip reclaim"
+            avoid = "Buying weak structure below local pivot"
+            need = "Reclaim and hold above local flip"
+            why = "Macro is supportive, but tactical bias remains weak."
+        else:
+            best_look = action_read
+            avoid = "Low-quality midrange entries"
+            need = "Confirmation at the nearest level"
+            why = "Usable context exists, but it is not a clean go yet."
+    else:
+        if macro_state == "negative" and local_state == "below_local":
+            best_look = "Sell rip into failed local reclaim"
+            avoid = "Shorting into put wall support"
+            need = "Rejection candle or lower high"
+            why = "Negative macro and bearish tactical bias are aligned."
+        elif macro_state == "positive" and local_state == "above_local":
+            best_look = "Buy dip above local flip"
+            avoid = "Buying straight into call wall"
+            need = "Pullback hold or reclaim"
+            why = "Positive macro and bullish tactical bias are aligned."
+        else:
+            best_look = action_read
+            avoid = "Trading before confirmation"
+            need = "Execution trigger at the nearest level"
+            why = "The board is aligned enough to act once the trigger prints."
+
+    posture_parts = []
+    if macro_state == "positive":
+        posture_parts.append("Macro positive")
+    elif macro_state == "negative":
+        posture_parts.append("Macro negative")
+    elif macro_state == "neutral":
+        posture_parts.append("Flip zone")
+    if local_state == "above_local":
+        posture_parts.append("local bullish")
+    elif local_state == "below_local":
+        posture_parts.append("local bearish")
+    elif local_state == "at_local":
+        posture_parts.append("local undecided")
+    elif local_state == "unknown":
+        posture_parts.append("local pivot unavailable")
+    if inside_walls:
+        posture_parts.append("inside range")
+    if readiness_status == "NO TRADE":
+        posture_parts.append("no clean trigger")
+    elif readiness_status == "WATCH":
+        posture_parts.append(best_look.lower())
+
+    ladder_rows = [
+        {
+            "key": "call_wall",
+            "label": "Call Wall",
+            "short_label": "CW",
+            "value": call_wall,
+            "distance_points": distances["to_call_wall"],
+            "tone": "call",
+        },
+        {
+            "key": "main_flip",
+            "label": "Main Flip",
+            "short_label": "Main Flip",
+            "value": main_flip,
+            "distance_points": distances["to_main_flip"],
+            "tone": "flip",
+        },
+        {
+            "key": "local_flip",
+            "label": "Local Flip",
+            "short_label": "Local Flip",
+            "value": local_flip,
+            "distance_points": distances["to_local_flip"],
+            "tone": "local",
+        },
+        {
+            "key": "price",
+            "label": "Price",
+            "short_label": "Price",
+            "value": spot,
+            "distance_points": None,
+            "tone": "price",
+        },
+        {
+            "key": "put_wall",
+            "label": "Put Wall",
+            "short_label": "PW",
+            "value": put_wall,
+            "distance_points": distances["to_put_wall"],
+            "tone": "put",
+        },
+    ]
+    ladder_rows = [row for row in ladder_rows if isinstance(row.get("value"), (int, float))]
+    ladder_rows.sort(key=lambda row: float(row.get("value") or 0.0), reverse=True)
+
+    structure_bar_rows = [
+        row for row in (
+            {"key": "put_wall", "label": "PW", "value": put_wall, "tone": "put"},
+            {"key": "main_flip", "label": "Main Flip", "value": main_flip, "tone": "flip"},
+            {"key": "local_flip", "label": "Local Flip", "value": local_flip, "tone": "local"},
+            {"key": "call_wall", "label": "CW", "value": call_wall, "tone": "call"},
+            {"key": "price", "label": "Price", "value": spot, "tone": "price"},
+        )
+        if isinstance(row.get("value"), (int, float))
+    ]
+
+    return {
+        "levels": {
+            "spot": spot,
+            "main_flip": main_flip,
+            "local_flip": local_flip,
+            "call_wall": call_wall,
+            "put_wall": put_wall,
+        },
+        "neutral_band_main": neutral_band_main,
+        "neutral_band_local": neutral_band_local,
+        "raw_net_gamma": raw_net_gamma,
+        "structure_range_state": structure_range_state,
+        "macro_regime": {
+            "state": macro_state,
+            "title": macro_title,
+            "subtitle": macro_subtitle,
+            "band_state": macro_band_state,
+        },
+        "local_bias": {
+            "state": local_state,
+            "title": local_title,
+            "action": local_action,
+            "label": local_short,
+            "context": local_context,
+        },
+        "location": {
+            "summary": location_summary,
+            "zone": zone_label,
+            "nearest_level_name": nearest_name,
+            "nearest_level_value": nearest_value,
+            "distance_points": nearest_distance,
+            "inside_range": inside_walls,
+            "midrange": midrange,
+            "status": status_line,
+            "read": action_read,
+            "bar_rows": structure_bar_rows,
+        },
+        "playbook": {
+            "status": readiness_status,
+            "tone": readiness_tone,
+            "grade": grade,
+            "score": score,
+            "score_pct": score,
+            "best_look": best_look,
+            "avoid": avoid,
+            "need": need,
+            "why": why,
+        },
+        "distances": {
+            "to_main_flip": distances["to_main_flip"],
+            "to_local_flip": distances["to_local_flip"],
+            "to_call_wall": distances["to_call_wall"],
+            "to_put_wall": distances["to_put_wall"],
+        },
+        "distance_rows": [
+            {
+                "key": "main_flip",
+                "label": "Main Flip",
+                "value": abs(float(distances["to_main_flip"])) if isinstance(distances["to_main_flip"], (int, float)) else None,
+                "signed_value": distances["to_main_flip"],
+                "pct": min(100.0, (abs(float(distances["to_main_flip"])) / max(20.0, wall_span)) * 100.0) if isinstance(distances["to_main_flip"], (int, float)) else 0.0,
+                "direction": "up" if isinstance(distances["to_main_flip"], (int, float)) and float(distances["to_main_flip"]) > 0 else "down" if isinstance(distances["to_main_flip"], (int, float)) and float(distances["to_main_flip"]) < 0 else "flat",
+            },
+            {
+                "key": "local_flip",
+                "label": "Local Flip",
+                "value": abs(float(distances["to_local_flip"])) if isinstance(distances["to_local_flip"], (int, float)) else None,
+                "signed_value": distances["to_local_flip"],
+                "pct": min(100.0, (abs(float(distances["to_local_flip"])) / max(20.0, wall_span)) * 100.0) if isinstance(distances["to_local_flip"], (int, float)) else 0.0,
+                "direction": "up" if isinstance(distances["to_local_flip"], (int, float)) and float(distances["to_local_flip"]) > 0 else "down" if isinstance(distances["to_local_flip"], (int, float)) and float(distances["to_local_flip"]) < 0 else "flat",
+            },
+            {
+                "key": "call_wall",
+                "label": "Call Wall",
+                "value": abs(float(distances["to_call_wall"])) if isinstance(distances["to_call_wall"], (int, float)) else None,
+                "signed_value": distances["to_call_wall"],
+                "pct": min(100.0, (abs(float(distances["to_call_wall"])) / max(20.0, wall_span)) * 100.0) if isinstance(distances["to_call_wall"], (int, float)) else 0.0,
+                "direction": "up" if isinstance(distances["to_call_wall"], (int, float)) and float(distances["to_call_wall"]) > 0 else "down" if isinstance(distances["to_call_wall"], (int, float)) and float(distances["to_call_wall"]) < 0 else "flat",
+            },
+            {
+                "key": "put_wall",
+                "label": "Put Wall",
+                "value": abs(float(distances["to_put_wall"])) if isinstance(distances["to_put_wall"], (int, float)) else None,
+                "signed_value": distances["to_put_wall"],
+                "pct": min(100.0, (abs(float(distances["to_put_wall"])) / max(20.0, wall_span)) * 100.0) if isinstance(distances["to_put_wall"], (int, float)) else 0.0,
+                "direction": "up" if isinstance(distances["to_put_wall"], (int, float)) and float(distances["to_put_wall"]) > 0 else "down" if isinstance(distances["to_put_wall"], (int, float)) and float(distances["to_put_wall"]) < 0 else "flat",
+            },
+        ],
+        "conflicts": {
+            "net_gamma_sign_conflict": net_gamma_sign_conflict,
+            "macro_local_conflict": macro_local_conflict,
+        },
+        "posture_summary": " — ".join([part for part in posture_parts if part]),
+        "ladder_rows": ladder_rows,
+    }
+
+
+def _market_pulse_regime_strip_viewmodel(
+    *,
+    spx_quote: Dict[str, Any],
+    gamma_snapshot: Dict[str, Any],
+    execution_chart: Dict[str, Any],
+    spx_priority_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    spot = spx_quote.get("price")
+    spot_label = (
+        f"{float(spot):.2f}"
+        if isinstance(spot, (int, float))
+        else "—"
+    )
+    metrics = dict(spx_priority_context.get("metrics") or {})
+    trap_state = str(metrics.get("trap_zone_state") or "unavailable").replace("_", " ")
+    distance_to_flip = metrics.get("distance_to_flip")
+    if not isinstance(distance_to_flip, (int, float)):
+        distance_to_flip = None
+    if trap_state in {"knife edge structure", "compressed trap zone"}:
+        bias = "WAIT INSIDE RANGE"
+    elif distance_to_flip is not None and distance_to_flip > 12:
+        bias = "BUY DIPS ABOVE FLIP"
+    elif distance_to_flip is not None and distance_to_flip < -12:
+        bias = "SELL RIPS BELOW FLIP"
+    else:
+        bias = "WAIT FOR LEVEL TEST"
+    return {
+        "gamma_regime": str(execution_chart.get("regime") or gamma_snapshot.get("regime") or "—"),
+        "behavior": str(execution_chart.get("environment") or "—"),
+        "last_valid_session": str(execution_chart.get("last_valid_session_label") or "—"),
+        "spot": spot_label,
+        "bias": bias,
+    }
+
+
+def _market_pulse_structure_location_viewmodel(
+    *,
+    spot: Any,
+    gamma_flip: Any,
+    call_wall: Any,
+    put_wall: Any,
+) -> Dict[str, Any]:
+    numeric_levels = [
+        ("put_wall", "Put Wall", put_wall),
+        ("gamma_flip", "Gamma Flip", gamma_flip),
+        ("call_wall", "Call Wall", call_wall),
+        ("spot", "Price", spot),
+    ]
+    parsed = [(key, label, float(value)) for key, label, value in numeric_levels if isinstance(value, (int, float))]
+    if len(parsed) < 2:
+        return {"available": False, "markers": [], "summary": "Structure range unavailable."}
+    values = [row[2] for row in parsed]
+    lo = min(values)
+    hi = max(values)
+    spread = max(1.0, hi - lo)
+    pad = max(6.0, spread * 0.12)
+    domain_min = lo - pad
+    domain_max = hi + pad
+    markers = []
+    for key, label, value in parsed:
+        pct = ((value - domain_min) / max(1.0, domain_max - domain_min)) * 100.0
+        markers.append(
+            {
+                "key": key,
+                "label": label,
+                "value": value,
+                "pct": max(2.0, min(98.0, pct)),
+            }
+        )
+    markers.sort(key=lambda row: row["pct"])
+    summary = "Price inside the structure range."
+    flip_value = float(gamma_flip) if isinstance(gamma_flip, (int, float)) else None
+    spot_value = float(spot) if isinstance(spot, (int, float)) else None
+    if spot_value is not None and flip_value is not None:
+        summary = (
+            "Price above gamma flip inside the current wall range."
+            if spot_value >= flip_value
+            else "Price below gamma flip inside the current wall range."
+        )
+    return {
+        "available": True,
+        "markers": markers,
+        "summary": summary,
+        "left_label": f"PW {put_wall:.0f}" if isinstance(put_wall, (int, float)) else "PW —",
+        "right_label": f"CW {call_wall:.0f}" if isinstance(call_wall, (int, float)) else "CW —",
+    }
+
+
+def _market_pulse_distances_viewmodel(
+    *,
+    spx_quote: Dict[str, Any],
+    spx_priority_context: Dict[str, Any],
+    gamma_snapshot: Dict[str, Any],
+) -> List[Dict[str, str]]:
+    metrics = dict(spx_priority_context.get("metrics") or {})
+    flip = gamma_snapshot.get("gamma_flip_combined_basket")
+    call_wall = gamma_snapshot.get("call_wall_aggregated_gamma")
+    put_wall = gamma_snapshot.get("put_wall_aggregated_gamma")
+    spot = spx_quote.get("price")
+    regime_text = str(gamma_snapshot.get("regime") or "").lower()
+    net_gamma = gamma_snapshot.get("net_gex")
+    regime_positive = "positive" in regime_text or (
+        not regime_text and isinstance(net_gamma, (int, float)) and float(net_gamma) >= 0
+    )
+    span_candidates = []
+    for value in (flip, call_wall, put_wall, spot):
+        if isinstance(value, (int, float)):
+            span_candidates.append(float(value))
+    span = max(span_candidates) - min(span_candidates) if len(span_candidates) >= 2 else 0.0
+    span = max(20.0, span)
+    rows = [
+        ("To Flip", metrics.get("distance_to_flip")),
+        ("To Call Wall", metrics.get("distance_to_call_wall")),
+        ("To Put Wall", metrics.get("distance_to_put_wall")),
+    ]
+    out: List[Dict[str, str]] = []
+    for label, value in rows:
+        if isinstance(value, (int, float)):
+            direction = "up" if float(value) > 0 else "down" if float(value) < 0 else "flat"
+            out.append(
+                {
+                    "label": label,
+                    "value": f"{abs(float(value)):.1f} pts",
+                    "tone": "positive" if regime_positive else "negative",
+                    "direction": direction,
+                    "pct": f"{min(100.0, max(0.0, abs(float(value)) / span * 100.0)):.1f}",
+                }
+            )
+        else:
+            out.append({"label": label, "value": "—", "tone": "positive" if regime_positive else "negative", "direction": "flat", "pct": "0.0"})
+    return out
+
+
+def _market_pulse_playbook_viewmodel(
+    *,
+    execution_chart: Dict[str, Any],
+    spx_priority_context: Dict[str, Any],
+) -> Dict[str, str]:
+    metrics = dict(spx_priority_context.get("metrics") or {})
+    distance_to_flip = metrics.get("distance_to_flip")
+    distance_to_call = metrics.get("distance_to_call_wall")
+    distance_to_put = metrics.get("distance_to_put_wall")
+    trap_state = str(metrics.get("trap_zone_state") or "")
+    regime = str(execution_chart.get("regime") or "—")
+    environment = str(execution_chart.get("environment") or "Mean Reversion")
+    gamma_positive = "positive" in regime.lower()
+    above_flip = isinstance(distance_to_flip, (int, float)) and float(distance_to_flip) >= 0
+    inside_walls = (
+        isinstance(distance_to_call, (int, float))
+        and isinstance(distance_to_put, (int, float))
+        and float(distance_to_call) <= 0
+        and float(distance_to_put) >= 0
+    )
+    nearest_level = min(
+        [
+            abs(float(value))
+            for value in (distance_to_flip, distance_to_call, distance_to_put)
+            if isinstance(value, (int, float))
+        ]
+        or [999.0]
+    )
+
+    if execution_chart.get("mode") == "unavailable":
+        score = 32
+    else:
+        score = 56
+        if gamma_positive:
+            score += 12
+        if isinstance(distance_to_flip, (int, float)) and abs(float(distance_to_flip)) >= 12:
+            score += 10
+        if inside_walls:
+            score += 8
+        if nearest_level <= 15:
+            score += 6
+        if trap_state in {"knife_edge_structure", "compressed_trap_zone"}:
+            score -= 18
+        if isinstance(distance_to_flip, (int, float)) and abs(float(distance_to_flip)) <= 5:
+            score -= 10
+        if not inside_walls:
+            score -= 6
+        score = max(8, min(95, int(round(score))))
+
+    if score >= 76:
+        state_badge = "TRADEABLE"
+        tone = "positive"
+    elif score >= 52:
+        state_badge = "CONDITIONAL"
+        tone = "warn"
+    else:
+        state_badge = "NO TRADE"
+        tone = "negative"
+
+    if score >= 90:
+        grade = "A"
+    elif score >= 82:
+        grade = "A-"
+    elif score >= 74:
+        grade = "B"
+    elif score >= 66:
+        grade = "B-"
+    elif score >= 58:
+        grade = "C"
+    elif score >= 48:
+        grade = "C-"
+    else:
+        grade = "D"
+
+    if execution_chart.get("mode") == "unavailable":
+        best_look = "Wait for live trigger"
+        avoid = "Do not guess inside structure"
+        need = "Live confirmation at flip or wall"
+    elif trap_state in {"knife_edge_structure", "compressed_trap_zone"}:
+        best_look = "Fade extremes only"
+        avoid = "No center trades"
+        need = "Price rejection at outer wall"
+    elif gamma_positive and above_flip:
+        best_look = "Buy dips above flip"
+        avoid = "Avoid fading accepted upside"
+        need = "Hold above flip on pullback"
+    elif gamma_positive and not above_flip:
+        best_look = "Sell rips below flip"
+        avoid = "Avoid buying weak reclaims"
+        need = "Rejection back under flip"
+    elif not gamma_positive and above_flip:
+        best_look = "Follow upside on pullbacks"
+        avoid = "Avoid late chase entries"
+        need = "Expansion hold above flip"
+    else:
+        best_look = "Sell breakdown retests"
+        avoid = "Avoid bottom-fishing momentum"
+        need = "Failed reclaim or wall rejection"
+
+    environment_line = " / ".join(
+        part for part in [
+            regime,
+            environment,
+            "Inside range" if inside_walls else "Outside range",
+            "Above flip" if above_flip else "Below flip",
+        ] if part and part != "—"
+    )
+
+    return {
+        "state": state_badge,
+        "tone": tone,
+        "grade": grade,
+        "score": str(score),
+        "score_pct": str(score),
+        "best_look": best_look,
+        "environment": environment_line,
+        "avoid": avoid,
+        "need": need,
+        "bias": environment,
+        "best_setups": best_look,
+        "avoids": avoid,
+        "state_note": environment_line,
+        "bias_note": environment,
+        "edge_note": need,
+        "avoid_note": avoid,
+        "below_flip": "Sell rips",
+        "below_flip_note": "Wait for rejection",
+        "above_flip": "Buy dips",
+        "above_flip_note": "Expect chop",
+    }
 
 
 def _market_news_age_seconds(stamp: Any, now_et: datetime) -> int | None:
@@ -1606,6 +3256,9 @@ def _market_news_item(
     tag, why = _market_news_theme(f"{headline} {summary} {row.get('related') or ''}")
     age_s = _market_news_age_seconds(row.get("datetime"), now_et)
     stale = bool(age_s is not None and age_s > MARKET_NEWS_FRESH_SECONDS)
+    impact_score = _market_news_score(row)
+    category = _market_news_category(headline, summary, row, forced_tag=forced_tag)
+    impact = _market_news_impact_label(category, impact_score)
     return {
         "headline": headline or "Market headline",
         "summary": summary or why,
@@ -1617,16 +3270,135 @@ def _market_news_item(
         "why": why,
         "symbol": symbol,
         "stale": stale,
+        "impact": impact,
+        "category": category,
+        "impact_score": _market_news_score_bucket(impact_score),
+        "datetime": int(row.get("datetime") or 0) if row.get("datetime") else 0,
     }
 
 
-def _market_news_rss_rows(symbol: str, *, limit: int = 8) -> List[Dict[str, Any]]:
-    params = {
-        "s": symbol,
-        "region": "US",
-        "lang": "en-US",
-    }
-    url = YAHOO_RSS_SYMBOL_URL + "?" + urllib.parse.urlencode(params)
+def _market_news_score_bucket(score: int) -> str:
+    if score >= 12:
+        return "High"
+    if score >= 6:
+        return "Medium"
+    return "Low"
+
+
+def _market_news_category(
+    headline: str, summary: str, row: Dict[str, Any], *, forced_tag: str = ""
+) -> str:
+    text = f"{headline} {summary} {row.get('related') or ''} {forced_tag}".lower()
+    if any(
+        term in text
+        for term in (
+            "fed",
+            "powell",
+            "cpi",
+            "pce",
+            "fomc",
+            "rates",
+            "payroll",
+            "inflation",
+            "jobs",
+            "treasury",
+            "yield",
+            "macro",
+            "ism",
+            "ppi",
+            "nfp",
+        )
+    ):
+        return "Macro"
+    if any(
+        term in text
+        for term in (
+            "earnings",
+            "guidance",
+            "results",
+            "eps",
+            "revenue",
+            "sector",
+            "semiconductor",
+            "chip",
+            "software",
+            "energy",
+            "oil",
+            "bank",
+            "financial",
+            "healthcare",
+            "biotech",
+            "retail",
+            "consumer",
+            "industrial",
+            "utilities",
+            "materials",
+            "real estate",
+            "xlf",
+            "xle",
+            "xlk",
+            "xli",
+            "xlv",
+            "xly",
+            "xlp",
+            "xlu",
+            "xlb",
+            "xlre",
+            "soxx",
+            "smh",
+            "nvidia",
+            "apple",
+            "microsoft",
+            "amazon",
+            "meta",
+            "tesla",
+        )
+    ):
+        return "Sector"
+    return "General"
+
+
+def _market_news_impact_label(category: str, score: int) -> str:
+    if category == "Macro" or score >= 12:
+        return "High"
+    if category == "Sector" or score >= 6:
+        return "Medium"
+    return "Low"
+
+
+def _market_news_rss_snapshot(now_et: datetime) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    rss_rows: List[Dict[str, Any]] = []
+    watchlist_items: List[Dict[str, Any]] = []
+    for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS[:MARKET_NEWS_RSS_SYMBOL_LIMIT]:
+        rows = _market_news_rss_rows(symbol, limit=4)
+        if not rows:
+            continue
+        fresh_rows = [
+            row
+            for row in rows
+            if _market_news_is_recent(row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS)
+        ]
+        if not fresh_rows:
+            continue
+        rss_rows.extend(fresh_rows)
+        fresh_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
+        watchlist_items.append(
+            _market_news_item(fresh_rows[0], now_et=now_et, symbol=symbol, forced_tag=symbol)
+        )
+    investing_rows = _market_news_investing_rows(limit=6)
+    rss_rows.extend(
+        [
+            row
+            for row in investing_rows
+            if _market_news_is_recent(row.get("datetime"), now_et, MARKET_NEWS_MAX_AGE_SECONDS)
+        ]
+    )
+    return _dedupe_market_news_rows(rss_rows), watchlist_items
+
+
+def _market_news_rss_rows_from_url(
+    url: str, *, source_label: str, related: str = "", limit: int = 8
+) -> List[Dict[str, Any]]:
     req = urllib.request.Request(
         url,
         headers={
@@ -1663,45 +3435,466 @@ def _market_news_rss_rows(symbol: str, *, limit: int = 8) -> List[Dict[str, Any]
             {
                 "headline": title,
                 "summary": summary,
-                "source": "Yahoo Finance RSS",
+                "source": source_label,
                 "url": link,
                 "datetime": stamp,
-                "related": symbol,
+                "related": related,
             }
         )
     return rows
 
 
-def _market_news_snapshot() -> Dict[str, Any]:
-    now_et = app_runtime.now_et()
-    fetched_at = _market_news_cache.get("fetched_at")
-    cached_payload = _market_news_cache.get("payload")
-    disk_payload = _load_market_news_disk_cache()
-    if (
-        isinstance(fetched_at, datetime)
-        and isinstance(cached_payload, dict)
-        and (now_et - fetched_at).total_seconds() < MARKET_NEWS_CACHE_TTL_SECONDS
-    ):
-        return cached_payload
+def _market_news_rss_rows(symbol: str, *, limit: int = 8) -> List[Dict[str, Any]]:
+    params = {
+        "s": symbol,
+        "region": "US",
+        "lang": "en-US",
+    }
+    url = YAHOO_RSS_SYMBOL_URL + "?" + urllib.parse.urlencode(params)
+    return _market_news_rss_rows_from_url(
+        url,
+        source_label="Yahoo Finance RSS",
+        related=symbol,
+        limit=limit,
+    )
 
-    # In environments without Finnhub, prefer cached market news over blocking on
-    # multiple RSS network calls every page load.
+
+def _market_news_investing_rows(*, limit: int = 8) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for url in INVESTING_RSS_URLS:
+        rows.extend(
+            _market_news_rss_rows_from_url(
+                url,
+                source_label="Investing.com RSS",
+                related="SPX",
+                limit=max(3, limit),
+            )
+        )
+    deduped: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row.get("headline") or "").strip().lower(), str(row.get("url") or "").strip())
+        if not key[0]:
+            continue
+        prior = deduped.get(key)
+        if prior is None or int(row.get("datetime") or 0) > int(prior.get("datetime") or 0):
+            deduped[key] = row
+    return list(deduped.values())[: max(1, int(limit))]
+
+
+def _market_pulse_feed_impact(value: Any) -> str:
+    raw = str(value or "").strip().upper()
+    if raw in {"HIGH", "MED", "FLOW", "LOW"}:
+        return raw
+    if raw == "HIGH":
+        return "HIGH"
+    if raw == "MEDIUM":
+        return "MED"
+    if raw == "LOW":
+        return "LOW"
+    return "LOW"
+
+
+def _market_pulse_feed_priority(item: Dict[str, Any]) -> Tuple[int, int, int]:
+    impact = _market_pulse_feed_impact(item.get("impact"))
+    impact_order = {"HIGH": 0, "MED": 1, "FLOW": 2, "LOW": 3}.get(impact, 4)
+    score_bucket = str(item.get("impact_score") or "").strip().lower()
+    score_order = {"high": 0, "medium": 1, "low": 2}.get(score_bucket, 3)
+    return (
+        impact_order,
+        score_order,
+        -int(item.get("datetime") or 0),
+    )
+
+
+def _market_pulse_feed_item(row: Dict[str, Any], *, fallback_source: str = "Market") -> Dict[str, Any]:
+    headline = str(row.get("headline") or "Market headline").strip() or "Market headline"
+    summary = str(row.get("summary") or row.get("why") or "").strip()
+    source = str(row.get("source_label") or row.get("source") or fallback_source).strip() or fallback_source
+    source_handle = str(row.get("source_handle") or source).strip() or source
+    category = str(row.get("category") or "General").strip() or "General"
+    impact = _market_pulse_feed_impact(row.get("impact"))
+    return {
+        "headline": headline,
+        "summary": summary,
+        "source": str(row.get("source") or fallback_source).strip() or fallback_source,
+        "source_label": source,
+        "source_handle": source_handle,
+        "url": str(row.get("url") or "").strip(),
+        "published_label": str(row.get("published_label") or "Just now").strip() or "Just now",
+        "absolute_label": str(row.get("absolute_label") or "").strip(),
+        "impact": impact,
+        "category": category,
+        "impact_score": str(row.get("impact_score") or "Low").strip() or "Low",
+        "datetime": int(row.get("datetime") or 0),
+        "tag": str(row.get("tag") or category).strip() or category,
+        "why": str(row.get("why") or category).strip() or category,
+    }
+
+
+def _market_news_compose_feed(
+    *,
+    market_items: List[Dict[str, Any]],
+    macro_events: List[Dict[str, Any]],
+    watchlist_items: List[Dict[str, Any]],
+    x_feed_items: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for item in list(market_items or [])[:MARKET_NEWS_FEED_LIMIT]:
+        if isinstance(item, dict):
+            rows.append(_market_pulse_feed_item(item, fallback_source="Market"))
+    for item in list(watchlist_items or [])[:4]:
+        if isinstance(item, dict):
+            rows.append(_market_pulse_feed_item(item, fallback_source="Watchlist"))
+    for item in list(macro_events or [])[:4]:
+        if isinstance(item, dict):
+            enriched = dict(item)
+            enriched.setdefault("impact", "HIGH")
+            enriched.setdefault("category", "Macro")
+            enriched.setdefault("impact_score", "High")
+            rows.append(_market_pulse_feed_item(enriched, fallback_source="Macro"))
+    for item in list(x_feed_items or [])[:4]:
+        if isinstance(item, dict):
+            rows.append(_market_pulse_feed_item(item, fallback_source="X"))
+    deduped = _dedupe_market_news_rows(rows)
+    deduped.sort(key=_market_pulse_feed_priority)
+    return deduped[:MARKET_NEWS_FEED_LIMIT]
+
+
+def _market_pulse_x_clean_text(value: Any) -> str:
+    text = html.unescape(str(value or ""))
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"https?://\S+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _x_api_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+    if not X_BEARER_TOKEN:
+        return None
+    query = urllib.parse.urlencode(params or {})
+    url = f"{X_API_BASE_URL}{path}"
+    if query:
+        url = f"{url}?{query}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {X_BEARER_TOKEN}",
+            "User-Agent": "McCainCapital/1.0",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=X_API_TIMEOUT_SECONDS) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, json.JSONDecodeError):
+        return None
+
+
+def _market_pulse_x_user_ids(handles: List[str]) -> Dict[str, str]:
+    normalized = [str(handle or "").lstrip("@").strip() for handle in handles if str(handle or "").strip()]
+    if not normalized or not X_BEARER_TOKEN:
+        return {}
+    now_et = app_runtime.now_et()
+    cached_at = _market_pulse_x_user_cache.get("fetched_at")
+    cached_payload = _market_pulse_x_user_cache.get("payload") or {}
     if (
-        not FINNHUB_API_KEY
-        and isinstance(disk_payload, dict)
-        and bool(
-            (disk_payload.get("market_items") or [])
-            or (disk_payload.get("watchlist_items") or [])
-            or (disk_payload.get("macro_events") or [])
-        )
+        isinstance(cached_at, datetime)
+        and isinstance(cached_payload, dict)
+        and (now_et - cached_at).total_seconds() < 12 * 60 * 60
+        and all(str(handle).lower() in cached_payload for handle in normalized)
     ):
-        cached = dict(disk_payload)
-        cached["source_note"] = str(
-            cached.get("source_note") or "Using cached news/macro snapshot (fast path)."
+        return {
+            str(handle).lower(): str(cached_payload.get(str(handle).lower()) or "")
+            for handle in normalized
+            if str(cached_payload.get(str(handle).lower()) or "").strip()
+        }
+
+    payload = _x_api_get(
+        "/users/by",
+        {
+            "usernames": ",".join(normalized),
+            "user.fields": "id,username,name",
+        },
+    )
+    rows = payload.get("data") if isinstance(payload, dict) else []
+    resolved = dict(cached_payload) if isinstance(cached_payload, dict) else {}
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        username = str(row.get("username") or "").strip().lower()
+        user_id = str(row.get("id") or "").strip()
+        if username and user_id:
+            resolved[username] = user_id
+    _market_pulse_x_user_cache["fetched_at"] = now_et
+    _market_pulse_x_user_cache["payload"] = resolved
+    return {
+        str(handle).lower(): str(resolved.get(str(handle).lower()) or "")
+        for handle in normalized
+        if str(resolved.get(str(handle).lower()) or "").strip()
+    }
+
+
+def _market_pulse_x_rows_from_api(account: Dict[str, str], *, user_id: str, limit: int = 4) -> List[Dict[str, Any]]:
+    handle = str(account.get("handle") or "").lstrip("@").strip()
+    if not handle or not user_id or not X_BEARER_TOKEN:
+        return []
+    payload = _x_api_get(
+        f"/users/{urllib.parse.quote(user_id, safe='')}/tweets",
+        {
+            "exclude": "retweets,replies",
+            "max_results": max(3, int(limit)),
+            "tweet.fields": "created_at,lang",
+        },
+    )
+    rows = payload.get("data") if isinstance(payload, dict) else []
+    items: List[Dict[str, Any]] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        created_at_raw = str(row.get("created_at") or "").strip()
+        stamp = 0
+        if created_at_raw:
+            try:
+                stamp = int(datetime.fromisoformat(created_at_raw.replace("Z", "+00:00")).timestamp())
+            except Exception:
+                stamp = 0
+        text = _market_pulse_x_clean_text(row.get("text") or "")
+        if not text:
+            continue
+        tweet_id = str(row.get("id") or "").strip()
+        items.append(
+            {
+                "headline": text,
+                "summary": text,
+                "source": "X API",
+                "url": f"https://x.com/{handle}/status/{tweet_id}" if tweet_id else f"https://x.com/{handle}",
+                "datetime": stamp,
+                "related": f"@{handle}",
+                "account_handle": f"@{handle}",
+                "account_label": str(account.get("label") or handle),
+                "account_lane": str(account.get("lane") or ""),
+            }
         )
-        _market_news_cache["fetched_at"] = now_et
-        _market_news_cache["payload"] = cached
-        return cached
+    return items
+
+
+def _market_pulse_x_relevance_score(text: str, handle: str = "") -> int:
+    raw = f"{text} {handle}".lower()
+    weighted = {
+        "fed": 6,
+        "powell": 6,
+        "fomc": 6,
+        "cpi": 6,
+        "pce": 6,
+        "jobs": 5,
+        "payroll": 5,
+        "nfp": 5,
+        "inflation": 5,
+        "rates": 5,
+        "yield": 5,
+        "treasury": 5,
+        "recession": 4,
+        "tariff": 5,
+        "sanction": 5,
+        "geopolit": 4,
+        "spx": 6,
+        "spy": 5,
+        "es ": 4,
+        "s&p": 6,
+        "options": 4,
+        "gamma": 5,
+        "vix": 5,
+        "put wall": 5,
+        "call wall": 5,
+        "dealer": 4,
+        "flow": 3,
+        "0dte": 4,
+        "white house": 3,
+        "potus": 3,
+        "trump": 3,
+        "breaking": 3,
+    }
+    score = 0
+    for term, value in weighted.items():
+        if term in raw:
+            score += value
+    if any(name in raw for name in ("reuters", "bloomberg", "wsj", "kobeissi", "unusual whales", "deitaone")):
+        score += 1
+    return score
+
+
+def _market_pulse_x_category(text: str, lane: str = "") -> str:
+    raw = f"{text} {lane}".lower()
+    if any(term in raw for term in ("fed", "powell", "fomc")):
+        return "Fed"
+    if any(term in raw for term in ("yield", "treasury", "rates", "2y", "10y")):
+        return "Rates"
+    if any(term in raw for term in ("cpi", "pce", "inflation", "jobs", "payroll", "nfp", "ism", "pmi", "gdp", "macro")):
+        return "Macro"
+    if any(term in raw for term in ("tariff", "sanction", "executive order", "white house", "potus", "trump", "administration", "policy")):
+        return "Policy"
+    if any(term in raw for term in ("war", "geopolit", "iran", "china", "russia", "taiwan", "israel", "opec")):
+        return "Geopolitics"
+    if any(term in raw for term in ("options", "gamma", "vix", "put wall", "call wall", "dealer", "flow", "0dte", "unusual whales")):
+        return "Options Flow"
+    if any(term in raw for term in ("earnings", "guidance", "eps", "revenue")):
+        return "Earnings"
+    return "Breaking"
+
+
+def _market_pulse_x_impact(category: str, score: int) -> str:
+    if category in {"Fed", "Macro", "Rates", "Policy", "Geopolitics"} or score >= 12:
+        return "HIGH"
+    if category in {"Earnings", "Breaking"} or score >= 8:
+        return "MED"
+    if category == "Options Flow" or score >= 6:
+        return "FLOW"
+    return "LOW"
+
+
+def _market_pulse_x_priority(impact: str) -> int:
+    order = {"HIGH": 0, "MED": 1, "FLOW": 2, "LOW": 3}
+    return order.get(str(impact or "").upper(), 4)
+
+
+def _market_pulse_x_canonical_url(handle: str, link: str) -> str:
+    text = str(link or "").strip()
+    match = re.search(r"/status/(\d+)", text)
+    if match:
+        return f"https://x.com/{handle}/status/{match.group(1)}"
+    if "x.com/" in text or "twitter.com/" in text:
+        return text
+    return f"https://x.com/{handle}"
+
+
+def _market_pulse_x_summary(text: str, *, limit: int = 168) -> str:
+    cleaned = _market_pulse_x_clean_text(text)
+    if len(cleaned) <= limit:
+        return cleaned
+    trimmed = cleaned[:limit].rsplit(" ", 1)[0].strip()
+    return f"{trimmed}…"
+
+
+def _market_pulse_x_rows_from_account(account: Dict[str, str], *, limit: int = 2) -> List[Dict[str, Any]]:
+    handle = str(account.get("handle") or "").lstrip("@").strip()
+    if not handle:
+        return []
+    for template in MARKET_PULSE_X_RSS_URLS:
+        url = template.format(handle=urllib.parse.quote(handle, safe=""))
+        rows = _market_news_rss_rows_from_url(
+            url,
+            source_label="X",
+            related=f"@{handle}",
+            limit=max(1, int(limit)),
+        )
+        if rows:
+            for row in rows:
+                row["account_handle"] = f"@{handle}"
+                row["account_label"] = str(account.get("label") or handle)
+                row["account_lane"] = str(account.get("lane") or "")
+                row["url"] = _market_pulse_x_canonical_url(handle, str(row.get("url") or ""))
+            return rows
+    return []
+
+
+def _market_pulse_x_item(row: Dict[str, Any], *, now_et: datetime) -> Dict[str, Any]:
+    handle = str(row.get("account_handle") or "@source").strip() or "@source"
+    lane = str(row.get("account_lane") or "").strip()
+    headline = _market_pulse_x_clean_text(row.get("headline") or row.get("summary") or "")
+    summary = _market_pulse_x_summary(row.get("summary") or headline)
+    score = _market_pulse_x_relevance_score(f"{headline} {summary}", handle=handle)
+    category = _market_pulse_x_category(f"{headline} {summary}", lane=lane)
+    impact = _market_pulse_x_impact(category, score)
+    return {
+        "headline": headline or "Market Pulse post",
+        "summary": summary,
+        "source": "X",
+        "source_handle": handle,
+        "source_label": str(row.get("account_label") or handle.lstrip("@")),
+        "source_lane": lane or category,
+        "url": str(row.get("url") or f"https://x.com/{handle.lstrip('@')}"),
+        "published_label": _market_news_age_label(row.get("datetime"), now_et),
+        "absolute_label": _market_news_timestamp_label(row.get("datetime")),
+        "impact": impact,
+        "category": category,
+        "impact_score": _market_news_score_bucket(score),
+        "relevance_score": score,
+        "datetime": int(row.get("datetime") or 0),
+        "tag": handle,
+        "why": lane or category,
+    }
+
+
+def _market_pulse_x_feed(now_et: datetime) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    if X_BEARER_TOKEN:
+        user_ids = _market_pulse_x_user_ids(
+            [str(account.get("handle") or "") for account in MARKET_PULSE_X_ACCOUNTS]
+        )
+        for account in MARKET_PULSE_X_ACCOUNTS:
+            handle = str(account.get("handle") or "").lstrip("@").strip().lower()
+            user_id = str(user_ids.get(handle) or "").strip()
+            if not user_id:
+                continue
+            rows.extend(
+                _market_pulse_x_rows_from_api(
+                    account,
+                    user_id=user_id,
+                    limit=MARKET_PULSE_X_API_PER_ACCOUNT_LIMIT,
+                )
+            )
+    if not rows:
+        for account in MARKET_PULSE_X_ACCOUNTS:
+            rows.extend(
+                _market_pulse_x_rows_from_account(
+                    account,
+                    limit=MARKET_PULSE_X_PER_ACCOUNT_LIMIT,
+                )
+            )
+    deduped = _dedupe_market_news_rows(rows)
+    items = [
+        _market_pulse_x_item(row, now_et=now_et)
+        for row in deduped
+        if _market_news_is_recent(row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS)
+    ]
+    relevant = [
+        item
+        for item in items
+        if int(item.get("relevance_score") or 0) >= MARKET_PULSE_X_MIN_RELEVANCE
+    ]
+    relevant.sort(
+        key=lambda item: (
+            _market_pulse_x_priority(str(item.get("impact") or "")),
+            -int(item.get("relevance_score") or 0),
+            -int(item.get("datetime") or 0),
+        )
+    )
+    return relevant[:MARKET_PULSE_X_FEED_LIMIT]
+
+
+def _dedupe_market_news_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduped: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for row in list(rows or []):
+        if not isinstance(row, dict):
+            continue
+        headline = str(row.get("headline") or "").strip().lower()
+        url = str(row.get("url") or "").strip()
+        if not headline:
+            continue
+        key = (headline, url)
+        prior = deduped.get(key)
+        if prior is None or int(row.get("datetime") or 0) > int(prior.get("datetime") or 0):
+            deduped[key] = row
+    return list(deduped.values())
+
+
+def _market_news_snapshot(
+    *,
+    now_et: Optional[datetime] = None,
+    quotes: Optional[List[Dict[str, Any]]] = None,
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    now_et = now_et or app_runtime.now_et()
 
     macro_overlay = _forex_factory_usd_week_events(now_et.date())
     macro_events = []
@@ -1721,123 +3914,22 @@ def _market_news_snapshot() -> Dict[str, Any]:
             }
         )
 
-    market_items: List[Dict[str, Any]] = []
-    watchlist_items: List[Dict[str, Any]] = []
-    source_note = "Fresh drivers from Yahoo Finance RSS plus Forex Factory macro triggers."
-    if FINNHUB_API_KEY:
-        general_payload = _market_pulse_json_request_any(
-            FINNHUB_BASE_URL + "/news",
-            {"category": "general", "token": FINNHUB_API_KEY},
-            timeout=8,
-        )
-        market_rows = general_payload if isinstance(general_payload, list) else []
-        relevant_general = [
-            row
-            for row in market_rows
-            if isinstance(row, dict)
-            and _market_news_score(row) >= 4
-            and _market_news_is_recent(row.get("datetime"), now_et, MARKET_NEWS_MAX_AGE_SECONDS)
-        ]
-        relevant_general.sort(key=lambda row: _market_news_row_priority(row, now_et))
-        market_items = [_market_news_item(row, now_et=now_et) for row in relevant_general[:8]]
-
-        from_day = (now_et.date() - timedelta(days=5)).isoformat()
-        to_day = now_et.date().isoformat()
-        for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS:
-            payload = _market_pulse_json_request_any(
-                FINNHUB_BASE_URL + "/company-news",
-                {"symbol": symbol, "from": from_day, "to": to_day, "token": FINNHUB_API_KEY},
-                timeout=8,
-            )
-            if not isinstance(payload, list):
-                continue
-            rows = [
-                row
-                for row in payload
-                if isinstance(row, dict)
-                and str(row.get("headline") or "").strip()
-                and _market_news_is_recent(
-                    row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS
-                )
-            ]
-            rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
-            best = rows[0] if rows else None
-            if best is None:
-                continue
-            watchlist_items.append(
-                _market_news_item(best, now_et=now_et, symbol=symbol, forced_tag=symbol)
-            )
-        source_note = "Fresh Finnhub drivers plus Forex Factory macro triggers."
-    else:
-        all_rows: List[Dict[str, Any]] = []
-        for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS[:MARKET_NEWS_RSS_SYMBOL_LIMIT]:
-            rows = _market_news_rss_rows(symbol, limit=4)
-            if rows:
-                fresh_rows = [
-                    row
-                    for row in rows
-                    if _market_news_is_recent(
-                        row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS
-                    )
-                ]
-                all_rows.extend(fresh_rows)
-                if fresh_rows:
-                    fresh_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
-                    watchlist_items.append(
-                        _market_news_item(
-                            fresh_rows[0], now_et=now_et, symbol=symbol, forced_tag=symbol
-                        )
-                    )
-        all_rows = [row for row in all_rows if isinstance(row, dict)]
-        all_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
-        market_items = [_market_news_item(row, now_et=now_et) for row in all_rows[:8]]
-
+    feed_snapshot = build_market_feed_snapshot(now_et=now_et, quotes=quotes, context=context)
     result = {
-        "available": bool(market_items or watchlist_items or macro_events),
-        "source_note": source_note,
+        "available": bool(feed_snapshot.get("top_items") or macro_events),
+        "source_note": str(feed_snapshot.get("source_note") or ""),
         "macro_events": macro_events,
-        "market_items": market_items,
-        "watchlist_items": watchlist_items,
+        "market_items": list(feed_snapshot.get("market_items") or []),
+        "watchlist_items": [],
+        "pulse_feed_available": bool(feed_snapshot.get("top_items")),
+        "pulse_feed_source_note": str(feed_snapshot.get("source_note") or ""),
+        "pulse_feed_accounts": list(feed_snapshot.get("sources_monitored") or []),
+        "pulse_feed_items": list(feed_snapshot.get("top_items") or []),
+        "fetched_at": str(feed_snapshot.get("updated_at") or now_et.isoformat()),
+        "market_feed_snapshot": feed_snapshot,
     }
-    if isinstance(disk_payload, dict):
-        cached_macro = list(disk_payload.get("macro_events") or [])
-        cached_market = list(disk_payload.get("market_items") or [])
-        cached_watch = list(disk_payload.get("watchlist_items") or [])
-        merged = False
-        if not result["macro_events"] and cached_macro:
-            result["macro_events"] = cached_macro[:6]
-            merged = True
-        if not result["market_items"] and cached_market:
-            result["market_items"] = cached_market[:8]
-            merged = True
-        if not result["watchlist_items"] and cached_watch:
-            result["watchlist_items"] = cached_watch
-            merged = True
-        if merged:
-            result["available"] = True
-            result["source_note"] = (
-                "Live + cached merge (restored missing fresh sections where possible)."
-            )
-    if (
-        (not result["available"])
-        and isinstance(disk_payload, dict)
-        and bool(
-            (disk_payload.get("market_items") or [])
-            or (disk_payload.get("watchlist_items") or [])
-            or (disk_payload.get("macro_events") or [])
-        )
-    ):
-        fallback = dict(disk_payload)
-        fallback["source_note"] = (
-            "Using cached news/macro snapshot (live fetch unavailable). Headline freshness may be degraded."
-        )
-        _market_news_cache["fetched_at"] = now_et
-        _market_news_cache["payload"] = fallback
-        return fallback
     _market_news_cache["fetched_at"] = now_et
     _market_news_cache["payload"] = result
-    if result["available"]:
-        _save_market_news_disk_cache(result)
     return result
 
 
@@ -1891,6 +3983,14 @@ def _load_dashboard_milestone_settings() -> Dict[str, Any]:
         "profit_goal": max(0.0, profit_goal),
         "target_balance": max(0.0, target_balance),
         "profit_source": profit_source,
+    }
+
+
+def _load_dashboard_pace_settings() -> Dict[str, Any]:
+    custom_daily = float(app_runtime.get_setting_float("dashboard_pace_daily", 0.0) or 0.0)
+    return {
+        "custom_daily": max(0.0, custom_daily),
+        "custom_enabled": custom_daily > 0.0,
     }
 
 
@@ -2094,6 +4194,427 @@ def _dashboard_daily_brief_viewmodel(
     }
 
 
+def _dashboard_snapshot_viewmodel(
+    *,
+    today_net: float,
+    today_count: int,
+    today_wins: int,
+    today_losses: int,
+    scope_label: str,
+    data_trust: Dict[str, Any],
+    balance_integrity: Dict[str, Any],
+    sync_badges: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    def _badge_value(badge: Any, field: str) -> Any:
+        if isinstance(badge, dict):
+            return badge.get(field)
+        return getattr(badge, field, None)
+
+    def _trust_value(field: str, default: Any = "") -> Any:
+        if isinstance(data_trust, dict):
+            return data_trust.get(field, default)
+        return getattr(data_trust, field, default)
+
+    sync_value = "Unknown"
+    updated_value = "—"
+    for badge in sync_badges:
+        label = str(_badge_value(badge, "label") or "").strip().lower()
+        if label == "sync":
+            sync_value = str(_badge_value(badge, "value") or "Unknown")
+        elif label == "updated":
+            updated_value = str(_badge_value(badge, "value") or "—")
+    source_label = str(balance_integrity.get("source_label") or balance_integrity.get("source_short") or "Derived ledger")
+    drift_value = float(balance_integrity.get("delta") or 0.0)
+    has_drift = bool(balance_integrity.get("has_drift"))
+    items = [
+        {
+            "label": "Today P/L",
+            "value": app_runtime.money(today_net),
+            "detail": "Closed session result",
+            "tone": "positive" if today_net > 0 else "negative" if today_net < 0 else "neutral",
+        },
+        {
+            "label": "Trades",
+            "value": str(today_count),
+            "detail": "In current session",
+            "tone": "neutral",
+        },
+        {
+            "label": "Record",
+            "value": f"{today_wins}W / {today_losses}L",
+            "detail": "Closed trades only",
+            "tone": "neutral",
+        },
+        {
+            "label": "Account",
+            "value": scope_label,
+            "detail": source_label,
+            "tone": "neutral",
+        },
+        {
+            "label": "Sync Health",
+            "value": sync_value,
+            "detail": updated_value,
+            "tone": "positive" if str(sync_value).lower() == "success" else "negative" if str(sync_value).lower() in {"stalled", "failed", "error"} else "neutral",
+        },
+        {
+            "label": "Ledger State",
+            "value": "Drift flagged" if has_drift else "Aligned",
+            "detail": app_runtime.money(drift_value) if has_drift else str(_trust_value("message") or "Data aligned"),
+            "tone": "negative" if has_drift else "positive",
+        },
+    ]
+    return {"entries": items}
+
+
+def _dashboard_readiness_viewmodel(
+    checklist: List[Dict[str, Any]],
+    *,
+    brief_ready: bool,
+    today_count: int,
+    data_trust: Dict[str, Any],
+) -> Dict[str, Any]:
+    total = len(checklist)
+    done = sum(1 for item in checklist if bool(item.get("done")))
+    pct = (100.0 * done / total) if total else 0.0
+    blockers = [str(item.get("label") or "").strip() for item in checklist if not bool(item.get("done"))]
+    if not blockers and str(data_trust.get("tone") or "").strip() == "critical":
+        blockers.append("Data trust")
+    if pct >= 100.0 and brief_ready and str(data_trust.get("tone") or "").strip() != "critical":
+        state_label = "Ready to trade"
+        state_tone = "positive"
+    elif done >= max(1, total - 1):
+        state_label = "Almost ready"
+        state_tone = "warning"
+    else:
+        state_label = "Needs attention"
+        state_tone = "negative"
+    return {
+        "done": done,
+        "total": total,
+        "pct": pct,
+        "state_label": state_label,
+        "state_tone": state_tone,
+        "blockers": blockers[:3],
+        "summary": (
+            "All core checks are locked."
+            if not blockers
+            else "Clear the missing blockers before adding risk."
+        ),
+        "session_loaded": today_count > 0,
+    }
+
+
+def _dashboard_decision_viewmodel(
+    *,
+    daily_brief: Dict[str, Any],
+    risk_posture_title: str,
+    risk_posture_detail: str,
+    data_trust: Dict[str, Any],
+    readiness: Dict[str, Any],
+    dashboard_vix: Dict[str, Any],
+    gamma_strip: Optional[Dict[str, Any]] = None,
+    execution_model: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    def _trust_value(field: str, default: Any = "") -> Any:
+        if isinstance(data_trust, dict):
+            return data_trust.get(field, default)
+        return getattr(data_trust, field, default)
+
+    model = dict(execution_model or {})
+    macro = dict(model.get("macro_regime") or {})
+    local = dict(model.get("local_bias") or {})
+    location = dict(model.get("location") or {})
+    playbook = dict(model.get("playbook") or {})
+    conflicts = dict(model.get("conflicts") or {})
+    posture_summary = str(model.get("posture_summary") or "").strip()
+    levels = dict(model.get("levels") or {})
+    gamma_state = str(macro.get("state") or "").strip()
+    local_state = str(local.get("state") or "").strip()
+    playbook_status = str(playbook.get("status") or "").strip()
+    playbook_tone = str(playbook.get("tone") or "").strip()
+    snapshot_unavailable = (
+        gamma_state in {"", "unknown"}
+        or not any(isinstance(levels.get(key), (int, float)) for key in ("main_flip", "call_wall", "put_wall"))
+    )
+
+    if snapshot_unavailable:
+        bias = "Unavailable"
+    elif gamma_state == "positive" and local_state == "above_local":
+        bias = "Buy dips bias"
+    elif gamma_state == "negative" and local_state == "below_local":
+        bias = "Sell rips bias"
+    elif gamma_state == "positive" and local_state == "unknown":
+        bias = "Positive / degraded local read"
+    elif gamma_state == "negative" and local_state == "unknown":
+        bias = "Negative / degraded local read"
+    elif (
+        gamma_state == "neutral"
+        or local_state == "at_local"
+        or bool(location.get("midrange"))
+        or bool(conflicts.get("macro_local_conflict"))
+    ):
+        bias = "Two-way / responsive"
+    else:
+        bias = "Two-way / responsive"
+
+    if str(_trust_value("tone") or "").strip() == "critical" or snapshot_unavailable:
+        risk_size = "No trade / stand down"
+        status = "Stand down until structure is valid"
+        tone = "negative"
+    elif playbook_status == "GO":
+        risk_size = "Normal size"
+        status = "Aligned if trigger confirms"
+        tone = "positive"
+    elif playbook_status in {"WATCH", "CAUTION"}:
+        risk_size = "Reduced size"
+        status = "Ready only if structure confirms cleanly"
+        tone = "warning"
+    else:
+        risk_size = "No trade / stand down"
+        status = "No clean trade right now"
+        tone = "negative"
+
+    plan = str(playbook.get("best_look") or "").strip() or str(daily_brief.get("plan_a") or "Wait")
+    trade_gate = (
+        str(playbook.get("need") or "").strip()
+        or str(playbook.get("avoid") or "").strip()
+        or str(daily_brief.get("no_trade") or "").strip()
+        or "Wait"
+    )
+    return {
+        "bias": bias,
+        "plan": plan,
+        "risk_size": risk_size,
+        "status": status,
+        "status_tone": tone,
+        "trade_gate": trade_gate,
+        "risk_posture_title": risk_posture_title,
+        "risk_posture_detail": risk_posture_detail,
+        "gamma_strip": gamma_strip or {"entries": [], "headline": "Structure unavailable"},
+        "posture_summary": posture_summary or str(daily_brief.get("headline") or ""),
+        "playbook_status": playbook_status or "NO TRADE",
+        "playbook_score": playbook.get("score"),
+        "playbook_grade": playbook.get("grade"),
+        "local_bias_state": local_state or "unknown",
+    }
+
+
+def _dashboard_gamma_strip_viewmodel(
+    *,
+    execution_model: Optional[Dict[str, Any]],
+    gamma_snapshot: Dict[str, Any],
+) -> Dict[str, Any]:
+    def _fmt_level(value: Any) -> str:
+        return f"{float(value):.0f}" if isinstance(value, (int, float)) else "--"
+
+    model = dict(execution_model or {})
+    macro = dict(model.get("macro_regime") or {})
+    levels = dict(model.get("levels") or {})
+    snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
+    snapshot_label = str(gamma_snapshot.get("snapshot_status_label") or "").strip()
+    snapshot_detail = str(gamma_snapshot.get("snapshot_status_detail") or "").strip()
+    updated_raw = (
+        gamma_snapshot.get("last_successful_compute")
+        or gamma_snapshot.get("computed_at")
+        or gamma_snapshot.get("asof")
+    )
+    updated_label = _format_iso_et_label(updated_raw)
+    regime_label = str(macro.get("title") or "Unavailable")
+    regime_state = str(macro.get("state") or "").strip()
+    regime_tone = "positive" if regime_state == "positive" else "negative" if regime_state == "negative" else "warning" if regime_state == "neutral" else "info"
+    has_levels = any(
+        isinstance(levels.get(key), (int, float))
+        for key in ("main_flip", "local_flip", "call_wall", "put_wall")
+    ) or regime_label not in {"", "--", "Unavailable", "REGIME UNKNOWN"}
+
+    state = "live"
+    status_text = snapshot_label or "Live gamma snapshot"
+    if not has_levels and not str(updated_raw or "").strip():
+        state = "loading"
+        status_text = "Loading gamma context..."
+    elif snapshot_status in {"stale", "degraded"}:
+        state = "stale"
+        status_text = snapshot_label or "Stale gamma snapshot"
+    elif snapshot_status == "invalid" and not has_levels:
+        state = "unavailable"
+        status_text = snapshot_label or "Gamma unavailable"
+
+    if updated_label and state in {"live", "stale"}:
+        status_text = f"{status_text} · {updated_label}"
+    elif snapshot_detail and state in {"loading", "unavailable"}:
+        status_text = snapshot_detail
+
+    items = [
+        {
+            "key": "regime",
+            "label": "Gamma Regime",
+            "value": regime_label,
+            "emphasis": "strong",
+            "tone": regime_tone,
+            "glow": regime_tone in {"positive", "negative"},
+        },
+        {
+            "key": "main_flip",
+            "label": "Main Flip",
+            "value": _fmt_level(levels.get("main_flip")),
+            "emphasis": "strong",
+            "tone": "info",
+            "glow": False,
+        },
+        {
+            "key": "local_flip",
+            "label": "Local Flip",
+            "value": _fmt_level(levels.get("local_flip")),
+            "emphasis": "quiet",
+            "tone": "",
+            "glow": False,
+        },
+        {
+            "key": "call_wall",
+            "label": "Call Wall",
+            "value": _fmt_level(levels.get("call_wall")),
+            "emphasis": "medium",
+            "tone": "negative",
+            "glow": False,
+        },
+        {
+            "key": "put_wall",
+            "label": "Put Wall",
+            "value": _fmt_level(levels.get("put_wall")),
+            "emphasis": "medium",
+            "tone": "positive",
+            "glow": False,
+        },
+    ]
+    return {
+        "headline": "Gamma structure",
+        "entries": items,
+        "state": state,
+        "status_text": status_text or "Gamma context unavailable",
+        "updated_label": updated_label,
+    }
+
+
+def _advance_market_sessions(start_day: date, sessions: int) -> date:
+    cursor = start_day
+    remaining = max(0, int(sessions))
+    if remaining <= 0:
+        while not _is_market_session(cursor):
+            cursor += timedelta(days=1)
+        return cursor
+    while remaining > 0:
+        cursor += timedelta(days=1)
+        if _is_market_session(cursor):
+            remaining -= 1
+    return cursor
+
+
+def _dashboard_pace_viewmodel(
+    proj: Dict[str, Any],
+    milestone: Dict[str, Any],
+    pace_settings: Dict[str, Any],
+    *,
+    anchor_day: date,
+) -> Dict[str, Any]:
+    live_avg = float(proj.get("avg") or 0.0)
+    custom_daily = float(pace_settings.get("custom_daily") or 0.0)
+    custom_enabled = bool(pace_settings.get("custom_enabled")) and custom_daily > 0.0
+    applied_avg = custom_daily if custom_enabled else live_avg
+    base_balance = float(proj.get("base_balance") or 0.0)
+    nodes: List[Dict[str, Any]] = []
+    for key, label in (("p5", "5D"), ("p10", "10D"), ("p20", "20D")):
+        row = dict(proj.get(key) or {})
+        sessions = int(row.get("days") or 0)
+        est_pnl = float(applied_avg * sessions)
+        est_balance = base_balance + est_pnl
+        target_day = _advance_market_sessions(anchor_day, sessions)
+        nodes.append(
+            {
+                "label": label,
+                "sessions": sessions,
+                "est_pnl": app_runtime.money(est_pnl),
+                "est_balance": app_runtime.money(est_balance),
+                "target_date_label": target_day.strftime("%b %d"),
+                "target_date_full": target_day.strftime("%a, %b %d, %Y"),
+                "tone": "positive" if est_pnl > 0 else "negative" if est_pnl < 0 else "neutral",
+            }
+        )
+    note = "Use for pacing, not certainty."
+    milestone_eta = ""
+    if applied_avg > 0.0:
+        projected_days_profit = None
+        projected_days_balance = None
+        profit_goal = float(milestone.get("profit_goal") or 0.0)
+        profit_current = float(milestone.get("profit_current") or 0.0)
+        target_balance = float(milestone.get("target_balance") or 0.0)
+        current_balance = base_balance
+        if profit_goal > 0.0:
+            projected_days_profit = int((max(0.0, profit_goal - profit_current) / applied_avg) + 0.9999)
+        if target_balance > 0.0:
+            projected_days_balance = int((max(0.0, target_balance - current_balance) / applied_avg) + 0.9999)
+        projected_days_overall: Optional[int] = None
+        if projected_days_profit is not None and projected_days_balance is not None:
+            projected_days_overall = max(projected_days_profit, projected_days_balance)
+        elif projected_days_profit is not None:
+            projected_days_overall = projected_days_profit
+        elif projected_days_balance is not None:
+            projected_days_overall = projected_days_balance
+        if projected_days_overall is not None:
+            eta_day = _advance_market_sessions(anchor_day, projected_days_overall)
+            milestone_eta = eta_day.strftime("%a, %b %d, %Y")
+    if milestone_eta:
+        note = f"Milestone tracks to {milestone_eta} at this trading-day pace."
+    elif custom_enabled:
+        note = "Custom pace is active. Dates use trading days only."
+    elif live_avg > 0.0:
+        note = "Live pace is based on recent trading sessions only."
+    return {
+        "headline": app_runtime.money(applied_avg),
+        "headline_suffix": "/day",
+        "base_balance": app_runtime.money(base_balance),
+        "live_headline": app_runtime.money(live_avg),
+        "custom_enabled": custom_enabled,
+        "custom_daily": custom_daily,
+        "custom_input": f"{custom_daily:.2f}" if custom_enabled else "",
+        "mode_label": "Custom pace" if custom_enabled else "Live pace",
+        "mode_detail": (
+            f"Using your manual pace of {app_runtime.money(custom_daily)}/day."
+            if custom_enabled
+            else "Using your recent trading-day average."
+        ),
+        "trading_day_label": "Trading-day projections only",
+        "note": note,
+        "nodes": nodes,
+    }
+
+
+def _dashboard_calendar_state_viewmodel(heat: Dict[str, Any], scope_label: str) -> Dict[str, Any]:
+    traded_days = 0
+    green_days = 0
+    red_days = 0
+    flat_days = 0
+    for week in list(heat.get("weeks") or []):
+        for day in list((week or {}).get("days") or []):
+            if day.get("daynum") is None or day.get("wd") is None or int(day.get("wd")) >= 5:
+                continue
+            traded_days += 1
+            net = float(day.get("net") or 0.0)
+            if net > 0:
+                green_days += 1
+            elif net < 0:
+                red_days += 1
+            else:
+                flat_days += 1
+    return {
+        "scope_label": scope_label,
+        "traded_days": traded_days,
+        "green_days": green_days,
+        "red_days": red_days,
+        "flat_days": flat_days,
+    }
+
+
 def _milestone_profit_value(
     source: str, *, today_net: float, this_week_total: float, mtd_net: float, ytd_net: float
 ) -> float:
@@ -2264,6 +4785,29 @@ def dashboard_brief_update():
         },
     )
     flash("Daily brief saved.", "success")
+
+    y = str(request.form.get("y") or "").strip()
+    m = str(request.form.get("m") or "").strip()
+    scope = str(request.form.get("scope") or "").strip().lower()
+    params: Dict[str, str] = {}
+    if y:
+        params["y"] = y
+    if m:
+        params["m"] = m
+    if scope in {"active", "all"}:
+        params["scope"] = scope
+    return redirect(url_for("dashboard", **params))
+
+
+def dashboard_pace_update():
+    pace_reset = str(request.form.get("pace_reset") or "").strip() == "1"
+    custom_daily = app_runtime.parse_float(request.form.get("dashboard_pace_daily") or "") or 0.0
+    if pace_reset or custom_daily <= 0.0:
+        app_runtime.set_setting_value("dashboard_pace_daily", "")
+        flash("Forward pace reset to live trading pace.", "success")
+    else:
+        app_runtime.set_setting_value("dashboard_pace_daily", f"{max(0.0, custom_daily):.2f}")
+        flash("Forward pace updated.", "success")
 
     y = str(request.form.get("y") or "").strip()
     m = str(request.form.get("m") or "").strip()
@@ -2463,6 +5007,12 @@ def dashboard():
         if top_setup
         else "No dominant labeled setup yet."
     )
+    pace_settings = _load_dashboard_pace_settings()
+    selected_pace = (
+        float(pace_settings.get("custom_daily") or 0.0)
+        if bool(pace_settings.get("custom_enabled"))
+        else float(proj.get("avg") or 0.0)
+    )
     milestone_settings = _load_dashboard_milestone_settings()
     milestone = _dashboard_milestone_viewmodel(
         milestone_settings,
@@ -2472,7 +5022,7 @@ def dashboard():
         ytd_net=ytd_net,
         overall_balance=overall_balance,
         starting_balance=float(balance_integrity.get("starting_balance") or 50000.0),
-        avg_daily_profit=float(proj.get("avg") or 0.0),
+        avg_daily_profit=selected_pace,
     )
     from mccain_capital.services.ui import get_vanquish_profit_lock_state
 
@@ -2667,13 +5217,22 @@ def dashboard():
                 enriched["day_range_compact"] = (
                     f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
                 )
-            elif intraday_series:
-                day_low = min(intraday_series)
-                day_high = max(intraday_series)
-                enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
-                enriched["day_range_compact"] = (
-                    f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
-                )
+            vwap_num = 0.0
+            vwap_den = 0.0
+            for r in full_intraday_rows:
+                if not isinstance(r, dict):
+                    continue
+                close_v = r.get("close")
+                vol_v = r.get("volume")
+                if (
+                    isinstance(close_v, (int, float))
+                    and isinstance(vol_v, (int, float))
+                    and float(vol_v) > 0
+                ):
+                    vwap_num += float(close_v) * float(vol_v)
+                    vwap_den += float(vol_v)
+            if vwap_den > 0:
+                enriched["vwap"] = vwap_num / vwap_den
         elif intraday_series:
             day_low = min(intraday_series)
             day_high = max(intraday_series)
@@ -2789,6 +5348,19 @@ def dashboard():
         news_snapshot = _market_news_snapshot()
     except Exception:
         news_snapshot = {"macro_events": []}
+    spx_priority_context = build_spx_priority_context(dashboard_spx, gamma_snapshot)
+    dashboard_execution_chart = _market_pulse_execution_chart_viewmodel(
+        spx_quote=dashboard_spx,
+        gamma_snapshot=gamma_snapshot,
+        macro_events=list(news_snapshot.get("macro_events") or []),
+        now_et=now_et,
+    )
+    dashboard_execution_model = _market_pulse_execution_model(
+        spx_quote=dashboard_spx,
+        gamma_snapshot=gamma_snapshot,
+        execution_chart=dashboard_execution_chart,
+        spx_priority_context=spx_priority_context,
+    )
     daily_brief = _dashboard_daily_brief_viewmodel(
         now_et=now_et,
         dashboard_spx=dashboard_spx,
@@ -2827,16 +5399,16 @@ def dashboard():
             "action": "Review" if brief_ready else "Tune",
         },
         {
-            "label": "Session data",
-            "status": "Loaded" if today_count else "Missing",
+            "label": "Post-session import",
+            "status": "Loaded" if today_count else "Pending",
             "detail": (
-                f"{today_count} trade{'s' if today_count != 1 else ''} synced for today."
+                f"{today_count} trade{'s' if today_count != 1 else ''} loaded for today."
                 if today_count
-                else "No statement synced for today's session yet."
+                else "No trades loaded yet. Import after the session if needed."
             ),
             "done": today_count > 0,
             "href": "/trades" if today_count else "/trades/upload/statement",
-            "action": "Open" if today_count else "Upload",
+            "action": "Open" if today_count else "Import",
         },
         {
             "label": "Journal today",
@@ -2860,6 +5432,51 @@ def dashboard():
             "action": "Open" if journal_count_today else "Log",
         },
     ]
+
+    scope_label = (
+        str(scope.get("label") or "").strip()
+        if scope_enabled and scope_active and str(scope.get("label") or "").strip()
+        else "Active Account"
+        if scope_enabled and scope_active
+        else "All History"
+    )
+    snapshot_bar = _dashboard_snapshot_viewmodel(
+        today_net=today_net,
+        today_count=today_count,
+        today_wins=today_wins,
+        today_losses=today_losses,
+        scope_label=scope_label,
+        data_trust=data_trust,
+        balance_integrity=balance_integrity,
+        sync_badges=sync_badges,
+    )
+    readiness = _dashboard_readiness_viewmodel(
+        dashboard_checklist,
+        brief_ready=brief_ready,
+        today_count=today_count,
+        data_trust=data_trust,
+    )
+    gamma_strip = _dashboard_gamma_strip_viewmodel(
+        execution_model=dashboard_execution_model,
+        gamma_snapshot=gamma_snapshot,
+    )
+    decision_panel = _dashboard_decision_viewmodel(
+        daily_brief=daily_brief,
+        risk_posture_title=risk_posture_title,
+        risk_posture_detail=risk_posture_detail,
+        data_trust=data_trust,
+        readiness=readiness,
+        dashboard_vix=dashboard_vix,
+        gamma_strip=gamma_strip,
+        execution_model=dashboard_execution_model,
+    )
+    pace_card = _dashboard_pace_viewmodel(
+        proj,
+        milestone,
+        pace_settings,
+        anchor_day=app_runtime.now_et().date(),
+    )
+    calendar_state = _dashboard_calendar_state_viewmodel(heat, calendar_scope_label)
 
     dashboard_tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
     dashboard_tape_updated_label = _format_iso_et_label(dashboard_tape_updated_raw)
@@ -2915,8 +5532,14 @@ def dashboard():
         dashboard_vix=dashboard_vix,
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
+        dashboard_execution_model=dashboard_execution_model,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
+        snapshot_bar=snapshot_bar,
+        readiness=readiness,
+        decision_panel=decision_panel,
+        pace_card=pace_card,
+        calendar_state=calendar_state,
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),
@@ -2956,8 +5579,14 @@ def stream_market():
         while True:
             payload = market_worker.get_market_snapshot()
             payload["options"] = options_panel_service.get_options_snapshot()
-            payload["gamma_map"] = (
+            current_gamma_snapshot = (
                 gamma_snapshot if is_testing else gamma_map_service.get_gamma_snapshot()
+            )
+            payload["gamma_map"] = current_gamma_snapshot
+            payload["dashboard_gamma"] = _dashboard_gamma_strip_viewmodel(
+                gamma_snapshot=current_gamma_snapshot,
+                dashboard_spx=((payload.get("prices") or {}).get("SPX") or {}),
+                dashboard_vix=((payload.get("prices") or {}).get("VIX") or {}),
             )
             payload["server_ts"] = app_runtime.now_iso()
             yield f"data: {json.dumps(payload)}\\n\\n"
@@ -3082,7 +5711,6 @@ def market_pulse_page():
             options_contracts = list(options_spx.get("contracts") or [])
         except Exception:
             options_contracts = []
-    news_snapshot = _market_news_snapshot()
     gamma_updated_label = (
         _format_iso_et_label(
             gamma_snapshot.get("last_successful_compute")
@@ -3152,12 +5780,26 @@ def market_pulse_page():
         for q in quotes
         if isinstance(q, dict) and str(q.get("label") or q.get("symbol") or "").strip()
     }
+    context = _market_pulse_context(quotes)
+    news_snapshot = _market_news_snapshot(now_et=now_et, quotes=quotes, context=context)
     spx_priority_context = build_spx_priority_context(
         spx_quote=spx_quote, gamma_snapshot=gamma_snapshot
     )
+    execution_chart = _market_pulse_execution_chart_viewmodel(
+        spx_quote=spx_quote,
+        gamma_snapshot=gamma_snapshot,
+        macro_events=list(news_snapshot.get("macro_events") or []),
+        now_et=now_et,
+    )
+    execution_model = _market_pulse_execution_model(
+        spx_quote=spx_quote,
+        gamma_snapshot=gamma_snapshot,
+        execution_chart=execution_chart,
+        spx_priority_context=spx_priority_context,
+    )
+    execution_chart_payload = {**execution_chart, "execution_model": execution_model}
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)
-    context = _market_pulse_context(quotes)
     gamma_quality = _gamma_data_quality(gamma_snapshot, quotes, now_et)
     source_health = build_market_source_health(snapshot, news_snapshot, gamma_snapshot, now_et)
     integrity = dict(snapshot.get("integrity") or {})
@@ -3201,14 +5843,24 @@ def market_pulse_page():
         gamma_updated_label=gamma_updated_label,
         market_now_iso=now_et.isoformat(),
         series_points=series_points,
+        execution_chart=execution_chart,
+        execution_chart_payload=execution_chart_payload,
+        execution_model=execution_model,
         gamma_csv_href=gamma_csv_href,
         gamma_png_href=gamma_png_href,
         options_contracts=options_contracts,
-        news_available=bool(news_snapshot.get("available")),
-        news_source_note=str(news_snapshot.get("source_note") or ""),
+        news_available=bool(news_snapshot.get("pulse_feed_available")),
+        news_source_note=str(
+            news_snapshot.get("pulse_feed_source_note")
+            or news_snapshot.get("source_note")
+            or ""
+        ),
         macro_events=list(news_snapshot.get("macro_events") or []),
         market_items=list(news_snapshot.get("market_items") or []),
+        pulse_feed_items=list(news_snapshot.get("pulse_feed_items") or []),
+        pulse_feed_accounts=list(news_snapshot.get("pulse_feed_accounts") or []),
         watchlist_items=list(news_snapshot.get("watchlist_items") or []),
+        market_feed_snapshot=dict(news_snapshot.get("market_feed_snapshot") or {}),
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -3218,6 +5870,31 @@ def market_pulse_page():
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+def market_pulse_news_feed_api():
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    news_snapshot = _market_news_snapshot()
+    items = list(news_snapshot.get("pulse_feed_items") or [])
+    feed_snapshot = dict(news_snapshot.get("market_feed_snapshot") or {})
+    return jsonify(
+        {
+            "ok": True,
+            "items": items[:MARKET_NEWS_FEED_LIMIT],
+            "status": str(feed_snapshot.get("status") or ("live" if news_snapshot.get("pulse_feed_available") else "quiet")),
+            "source_note": str(
+                news_snapshot.get("pulse_feed_source_note")
+                or news_snapshot.get("source_note")
+                or ""
+            ),
+            "available": bool(news_snapshot.get("pulse_feed_available")),
+            "fetched_at": str(news_snapshot.get("fetched_at") or ""),
+            "tracked_accounts": list(news_snapshot.get("pulse_feed_accounts") or []),
+            "sources_monitored": list(feed_snapshot.get("sources_monitored") or news_snapshot.get("pulse_feed_accounts") or []),
+            "now_summary": dict(feed_snapshot.get("now_summary") or {}),
+        }
+    )
 
 
 def system_check_page():
@@ -3365,8 +6042,13 @@ def command_calendar_page():
     project_days = 0
     project_signals = 0
     debrief_count = 0
+    review_needed_days = 0
+    full_review_days = 0
+    partial_review_days = 0
     state_rollup: Dict[str, int] = {}
     mistake_rollup: Dict[str, int] = {}
+    setup_rollup: Dict[str, float] = {}
+    session_rollup: Dict[str, float] = {}
 
     for week in heat["weeks"]:
         for day in week["days"]:
@@ -3402,11 +6084,67 @@ def command_calendar_page():
             day["mistake_summary"] = _day_mistake_summary(day_analytics)
             day["day_state"] = _day_state(day, journal, goals, day_analytics)
             day["day_state_label"] = _day_state_label(day["day_state"])
+            day["quality_key"], day["quality_label"], day["visual_tone"] = _calendar_day_quality(
+                day, journal, goals, day_analytics
+            )
+            review_model = _calendar_review_state(day, journal, day_analytics)
+            day.update(review_model)
+            day["dominant_setup"] = _calendar_dominant_value(day_analytics, "setup_display")
+            day["dominant_session"] = _calendar_dominant_value(day_analytics, "session_tag")
+            summary_signal = day["dominant_setup"] or day["dominant_session"]
+            if not summary_signal and day["journal_summary"]:
+                summary_signal = day["journal_summary"][0]
+            if not summary_signal and day["project_summary"]:
+                summary_signal = day["project_summary"][0]
+            if not summary_signal and not day.get("has_trades"):
+                summary_signal = day["focus_label"]
+            day["summary_signal"] = summary_signal
             state_rollup[day["day_state"]] = int(state_rollup.get(day["day_state"], 0)) + 1
             if day["mistake_summary"]:
                 mistake_rollup[day["mistake_summary"]] = (
                     int(mistake_rollup.get(day["mistake_summary"], 0)) + 1
                 )
+            if day.get("has_trades") and day["review_state"] != "fully_reviewed":
+                review_needed_days += 1
+            if day["review_state"] == "fully_reviewed":
+                full_review_days += 1
+            elif day["review_state"] == "partially_reviewed":
+                partial_review_days += 1
+            for row in day_analytics:
+                net_pl = float(row.get("net_pl") or 0.0)
+                setup_name = str(row.get("setup_display") or "").strip()
+                session_name = str(row.get("session_tag") or "").strip()
+                if setup_name and setup_name.lower() != "unknown":
+                    setup_rollup[setup_name] = float(setup_rollup.get(setup_name, 0.0)) + net_pl
+                if session_name:
+                    session_rollup[session_name] = float(session_rollup.get(session_name, 0.0)) + net_pl
+
+        week_days = [day for day in week["days"] if day.get("daynum") is not None]
+        week_rows = [row for day in week_days for row in (analytics_map.get(str(day.get("iso") or "")) or [])]
+        checklist_scores = [
+            float(row.get("checklist_score"))
+            for row in week_rows
+            if row.get("checklist_score") not in (None, "")
+        ]
+        avg_checklist = round(sum(checklist_scores) / len(checklist_scores)) if checklist_scores else None
+        week["wins"] = sum(int(day.get("wins") or 0) for day in week_days)
+        week["losses"] = sum(int(day.get("losses") or 0) for day in week_days)
+        week["review_needed"] = sum(
+            1
+            for day in week_days
+            if day.get("has_trades") and day.get("review_state") != "fully_reviewed"
+        )
+        week["fully_reviewed"] = sum(
+            1
+            for day in week_days
+            if day.get("has_trades") and day.get("review_state") == "fully_reviewed"
+        )
+        week["avg_review_pct"] = round(
+            sum(int(day.get("review_completion_pct") or 0) for day in week_days if day.get("has_trades"))
+            / max(1, sum(1 for day in week_days if day.get("has_trades")))
+        ) if any(day.get("has_trades") for day in week_days) else None
+        week["avg_grade_score"] = avg_checklist
+        week["avg_grade_letter"] = _calendar_grade_letter(avg_checklist)
 
     month_net = trades_repo.month_total_net(year, month)
     month_trade_count = trades_repo.month_trade_count(year, month)
@@ -3420,6 +6158,33 @@ def command_calendar_page():
     if next_m == 13:
         next_m = 1
         next_y += 1
+
+    month_insights = [
+        {
+            "label": "Best setup",
+            "value": max(setup_rollup.items(), key=lambda kv: kv[1])[0] if setup_rollup else "No setup edge",
+            "meta": _money_compact(max(setup_rollup.values())) if setup_rollup else "Month still thin",
+        },
+        {
+            "label": "Best session",
+            "value": max(session_rollup.items(), key=lambda kv: kv[1])[0] if session_rollup else "No session edge",
+            "meta": _money_compact(max(session_rollup.values())) if session_rollup else "No session bias yet",
+        },
+        {
+            "label": "Worst pattern",
+            "value": (top_mistake := (max(mistake_rollup.items(), key=lambda kv: kv[1])[0] if mistake_rollup else "")) and top_mistake.replace("-", " ").title() or "No repeated mistake",
+            "meta": (
+                f"{mistake_rollup.get(top_mistake, 0)} tagged trades"
+                if top_mistake
+                else "Keep tagging mistakes"
+            ),
+        },
+        {
+            "label": "Needs review",
+            "value": str(review_needed_days),
+            "meta": f"{partial_review_days} partial · {full_review_days} full",
+        },
+    ]
 
     content = render_template(
         "core/command_calendar.html",
@@ -3437,8 +6202,12 @@ def command_calendar_page():
         debrief_count=debrief_count,
         project_days=project_days,
         project_signals=project_signals,
+        review_needed_days=review_needed_days,
+        full_review_days=full_review_days,
+        partial_review_days=partial_review_days,
         state_rollup=state_rollup,
         top_mistake=max(mistake_rollup.items(), key=lambda kv: kv[1])[0] if mistake_rollup else "",
+        month_insights=month_insights,
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -3488,6 +6257,12 @@ def analytics_page():
     from mccain_capital.services import analytics as analytics_svc
 
     return analytics_svc.analytics_page()
+
+
+def analytics_dashboard_api():
+    from mccain_capital.services import analytics as analytics_svc
+
+    return analytics_svc.analytics_dashboard_api()
 
 
 def session_replay_page():
@@ -4451,6 +7226,93 @@ def _day_state_label(value: str) -> str:
         "quiet_day": "",
     }
     return labels.get(value, "Day state")
+
+
+def _calendar_grade_letter(score: Optional[float]) -> str:
+    if score is None:
+        return ""
+    if score >= 90:
+        return "A"
+    if score >= 75:
+        return "B"
+    if score >= 60:
+        return "C"
+    if score >= 40:
+        return "D"
+    return "F"
+
+
+def _calendar_dominant_value(rows: List[Dict[str, Any]], key: str) -> str:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        value = str(row.get(key) or "").strip()
+        if not value or value.lower() in {"unknown", "n/a", "none"}:
+            continue
+        counts[value] = int(counts.get(value, 0)) + 1
+    if not counts:
+        return ""
+    return max(counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+
+def _calendar_review_state(
+    day_row: Dict[str, Any], journal_row: Dict[str, Any], analytics_rows: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    if not day_row.get("has_trades"):
+        return {
+            "review_state": "none",
+            "review_state_label": "",
+            "review_completion_pct": 0,
+            "review_marker_label": "",
+        }
+
+    row_scores = [
+        int(row.get("review_completion_pct") or 0)
+        for row in analytics_rows
+        if row.get("review_completion_pct") is not None
+    ]
+    base_pct = round(sum(row_scores) / len(row_scores)) if row_scores else 0
+    if journal_row:
+        base_pct = max(base_pct, 45 if not row_scores else min(100, base_pct + 15))
+    if base_pct >= 85:
+        state = "fully_reviewed"
+        label = "Full"
+    elif base_pct >= 35:
+        state = "partially_reviewed"
+        label = "Partial"
+    else:
+        state = "not_reviewed"
+        label = "Open"
+    return {
+        "review_state": state,
+        "review_state_label": label,
+        "review_completion_pct": max(0, min(100, base_pct)),
+        "review_marker_label": f"{label} · {max(0, min(100, base_pct))}%",
+    }
+
+
+def _calendar_day_quality(
+    day_row: Dict[str, Any],
+    journal_row: Dict[str, Any],
+    goal_row: Dict[str, Any],
+    analytics_rows: List[Dict[str, Any]],
+) -> Tuple[str, str, str]:
+    if day_row.get("has_trades"):
+        net = float(day_row.get("net") or 0.0)
+        has_mistake = bool(_day_mistake_summary(analytics_rows))
+        if net > 0:
+            return ("bad_win", "Bad Win", "warn") if has_mistake else ("clean_win", "Clean Win", "gain")
+        if net < 0:
+            return ("bad_loss", "Bad Loss", "loss") if has_mistake else ("good_loss", "Good Loss", "info")
+        return ("scratch", "Scratch", "flat")
+    if journal_row and goal_row:
+        return ("review_build", "Review + Build", "project")
+    if journal_row:
+        return ("debrief_day", "Debrief", "neutral")
+    if goal_row:
+        return ("project_day", "Project", "project")
+    if day_row.get("is_weekend"):
+        return ("closed", "Weekend", "muted")
+    return ("quiet_day", "Quiet", "neutral")
 
 
 def _trading_day_index_map(year: int) -> Dict[date, int]:

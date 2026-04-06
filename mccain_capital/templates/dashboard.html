@@ -1,9 +1,9 @@
 {% if today_count == 0 %}
   {% set hero_title = "Prepare the Session" %}
   {% set hero_lead = "Plan the day, confirm the brief, and start with one clean record." %}
-  {% set focus_body = "Upload a statement to start the day." %}
-  {% set focus_href = "/trades/upload/statement" %}
-  {% set focus_cta = "Upload Statement" %}
+  {% set focus_body = "Confirm structure, lock the brief, and wait for a clean trigger." %}
+  {% set focus_href = "/market-pulse?refresh=1" %}
+  {% set focus_cta = "Open Playbook" %}
 {% elif today_net < 0 %}
   {% set hero_title = "Protect Capital and Review" %}
   {% set hero_lead = "Review first. Re-entry earns its place after the leak is named." %}
@@ -31,35 +31,76 @@
   {% endif %}
 {% endfor %}
 {% set command_fold_open = checklist_ns.done < checklist_ns.total %}
+{% set dashboard_spx_state = dashboard_spx.get('market_state') or 'Awaiting Feed' %}
+{% set dashboard_vix_state = dashboard_vix.get('market_state') or 'Awaiting Feed' %}
+{% set tape_live = dashboard_spx_state == 'Live' or dashboard_vix_state == 'Live' %}
+{% set tape_delayed = (dashboard_spx_state == 'Delayed' or dashboard_vix_state == 'Delayed') and not tape_live %}
+{% set tape_status_label = 'Live Feed' if tape_live else 'Delayed Feed' if tape_delayed else 'Feed Standby' %}
+{% set dashboard_default_mode = 'live' if tape_live else 'pre' %}
+
+<div
+  class="dashboardModeShell"
+  id="dashboardModeShell"
+  data-dashboard-mode="{{ dashboard_default_mode }}"
+  data-dashboard-default-mode="{{ dashboard_default_mode }}"
+>
+<div class="dashboardSnapshotBar">
+  {% for item in snapshot_bar.entries %}
+    <div class="dashboardSnapshotCard{% if item.tone %} is-{{ item.tone }}{% endif %}">
+      <span class="dashboardSnapshotLabel">{{ item.label }}</span>
+      <strong{% if item.tone == 'positive' %} class="metaGreen"{% elif item.tone == 'negative' %} class="metaRed"{% endif %}>{{ item.value }}</strong>
+      <small>{{ item.detail }}</small>
+    </div>
+  {% endfor %}
+</div>
 
 <div class="dashboardStage">
   <div class="dashboardStageLead">
-    <div class="dashboardHero card pageHero">
+    <div class="dashboardStepLabel">Prepare</div>
+    <div class="dashboardHero card pageHero heroCard">
       <div class="toolbar">
         <div class="dashboardHeroHead">
           <div>
             <div class="pill">🎛️ Command Center</div>
             <h2 class="pageTitle">{{ hero_title }}</h2>
             <div class="dashboardLead stack8">{{ hero_lead }}</div>
-            <div class="dashboardHeroMetaRow">
-              <span class="trendChip {% if today_net > 0 %}positive{% elif today_net < 0 %}negative{% endif %}">Today {{ money(today_net) }}</span>
-              <span class="trendChip">{{ today_count }} trade{% if today_count != 1 %}s{% endif %}</span>
-              <span class="trendChip">{{ today_wins }}W / {{ today_losses }}L</span>
-              <span class="trendChip" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</span>
+            <div class="dashboardReadinessBarCard">
+              <div class="dashboardReadinessTopline">
+                <span class="dashboardReadinessLabel">Session readiness</span>
+                <strong>{{ '%.0f'|format(readiness.pct) }}%</strong>
+              </div>
+              <div class="dashboardReadinessMeter" style="--readiness-pct: {{ '%.1f'|format(readiness.pct) }}%">
+                <span class="dashboardReadinessFill"></span>
+              </div>
+              <div class="dashboardReadinessMeta">
+                <span>{{ readiness.done }}/{{ readiness.total }} checks complete</span>
+                <span>{{ readiness.state_label }}</span>
+                <span>{{ daily_brief.status_label }}</span>
+              </div>
+              {% if readiness.blockers %}
+                <div class="dashboardReadinessBlockers">
+                  {% for blocker in readiness.blockers %}
+                    <span class="trendChip negative">{{ blocker }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
             </div>
             <div class="dashboardHeroActionBar">
               <div class="dashboardHeroPriority">
                 <span class="dashboardHeroPriorityLabel">Priority</span>
                 <span class="dashboardHeroPriorityText">{{ focus_body }}</span>
+                <div class="dashboardHeroPriorityMeta">
+                  <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% endif %}">{{ decision_panel.status }}</span>
+                </div>
               </div>
               <div class="rightActions dashboardHeroPrimaryActions">
                 <a class="btn primary" href="{{ focus_href }}">{{ focus_cta }}</a>
-                <a class="btn ctaLink" href="/market-pulse?refresh=1">Pulse</a>
+                <a class="btn" href="/market-pulse?refresh=1">Pulse</a>
               </div>
             </div>
             <details class="dashboardCommandFold"{% if command_fold_open %} open{% endif %}>
               <summary aria-label="Command center controls">
-                <span>Command Tools</span>
+                <span>Tools</span>
                 <span class="tiny muted">{{ checklist_ns.done }}/{{ checklist_ns.total }} ready</span>
               </summary>
               <div class="dashboardCommandBody">
@@ -75,13 +116,13 @@
                 </div>
                 <div class="rightActions dashboardCommandActions">
                   {% if account_scope and account_scope.enabled %}
-                    <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
-                    <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
+                    <a class="btn" href="{{ scope_active_href }}">Active Account</a>
+                    <a class="btn" href="{{ scope_all_href }}">All History</a>
                     <a class="btn ctaLink" href="/ops/backups">Scope</a>
                   {% else %}
                     <a class="btn ctaLink" href="/ops/backups">Scope</a>
                   {% endif %}
-                  <a class="btn primary" href="/trades/upload/statement">Import</a>
+                  <a class="btn ctaLink" href="/trades/upload/statement">Import</a>
                 </div>
               </div>
             </details>
@@ -91,46 +132,108 @@
     </div>
 
     <div class="dashboardPriorityGrid">
-      <div id="daily-brief-card" class="card supportCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
-        <div class="pillRow">
-          <div class="pill">Daily Brief</div>
-          <span class="trendChip {% if daily_brief.bias_tone %}{{ daily_brief.bias_tone }}{% endif %}">{{ daily_brief.bias_label }}</span>
-          <span class="trendChip">{{ daily_brief.status_label }}</span>
-          <span class="trendChip {% if daily_brief.is_tuned %}positive{% endif %}" title="{{ daily_brief.source_detail }}">{{ daily_brief.source_label }}</span>
+      <div class="dashboardStepLabel">Plan</div>
+      <div class="card primaryCard dashboardPriorityCard dashboardDecisionCard"><div class="toolbar">
+        <div class="dashboardDecisionHead">
+          <div>
+            <div class="pill">Today's Decision</div>
+          </div>
+          <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% endif %}">{{ decision_panel.status }}</span>
         </div>
-        <div class="supportLead">{{ daily_brief.headline }}</div>
-        <div class="supportBody">{{ daily_brief.summary }}</div>
+        <div class="dashboardDecisionGrid">
+          <div class="dashboardDecisionItem dashboardDecisionItem-bias">
+            <span class="dashboardDecisionLabel">Bias</span>
+            <strong>{{ decision_panel.bias }}</strong>
+          </div>
+          <div class="dashboardDecisionItem dashboardDecisionItem-risk">
+            <span class="dashboardDecisionLabel">Risk</span>
+            <strong>{{ decision_panel.risk_size }}</strong>
+          </div>
+          <div class="dashboardDecisionItem dashboardDecisionItem-wide dashboardDecisionItem-plan">
+            <span class="dashboardDecisionLabel">Plan</span>
+            <strong title="{{ decision_panel.plan }}">{{ decision_panel.plan|truncate(88, False, '…') }}</strong>
+          </div>
+          <div class="dashboardDecisionItem dashboardDecisionItem-wide dashboardDecisionItem-tradegate">
+            <span class="dashboardDecisionLabel">Trade Gate</span>
+            <div class="supportBody" title="{{ decision_panel.trade_gate }}">{{ decision_panel.trade_gate|truncate(74, False, '…') }}</div>
+          </div>
+        </div>
+        <div
+          class="dashboardGammaStrip is-{{ decision_panel.gamma_strip.state }}"
+          id="dashboardGammaStrip"
+          aria-label="Gamma structure context"
+          data-gamma-state="{{ decision_panel.gamma_strip.state }}"
+        >
+          {% for item in decision_panel.gamma_strip.entries %}
+            <div
+              class="dashboardGammaChip dashboardGammaChip-{{ item.emphasis }}{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.glow %} has-glow{% endif %}"
+              id="dashboardGammaChip-{{ item.key }}"
+              data-gamma-key="{{ item.key }}"
+              data-gamma-tone="{{ item.tone }}"
+            >
+              <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ item.label }}</span>
+              <strong class="dashboardGammaChipValue" id="dashboardGammaValue-{{ item.key }}">{{ item.value }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="dashboardGammaMeta{% if decision_panel.gamma_strip.state == 'stale' %} is-stale{% elif decision_panel.gamma_strip.state == 'loading' %} is-loading{% elif decision_panel.gamma_strip.state == 'unavailable' %} is-unavailable{% endif %}" id="dashboardGammaMeta">
+          {{ decision_panel.gamma_strip.status_text }}
+        </div>
+      </div></div>
+      <div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
+        <div class="pillRow dashboardBriefSignalRow">
+          <div class="pill">Daily Brief</div>
+          <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
+          <span class="dashboardBriefSignalText" title="{{ daily_brief.source_detail }}">{{ daily_brief.source_label }}</span>
+        </div>
+        <div class="supportLead dashboardBriefHeadlineCompact" title="{{ decision_panel.posture_summary or daily_brief.headline }}">{{ (decision_panel.posture_summary or daily_brief.headline)|truncate(92, False, '…') }}</div>
           <div class="dashboardBriefFoldBody dashboardBriefDesktopBody">
-            <div class="dashboardBriefQuickGrid">
-              <div class="dashboardBriefQuickItem">
-                <div class="tiny muted">Operator focus</div>
-                <div class="dashboardBriefQuickText">{{ daily_brief.focus }}</div>
+            <div class="dashboardBriefStructuredGrid">
+              <div class="dashboardBriefBiasPanel {% if decision_panel.status_tone == 'positive' %}is-positive{% elif decision_panel.status_tone == 'negative' %}is-negative{% else %}is-warning{% endif %}">
+                <div class="dashboardBriefStructuredLabel">Session Bias</div>
+                <div class="dashboardBriefBiasValue">{{ decision_panel.bias }}</div>
+                <div class="dashboardBriefBiasText" title="{{ decision_panel.posture_summary or daily_brief.summary }}">{{ (decision_panel.posture_summary or daily_brief.summary)|truncate(76, False, '…') }}</div>
               </div>
               <div class="dashboardBriefQuickItem">
-                <div class="tiny muted">Plan A</div>
-                <div class="dashboardBriefQuickText">{{ daily_brief.plan_a }}</div>
+                <div class="dashboardBriefStructuredLabel">Operator Focus</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.focus }}">{{ daily_brief.focus|truncate(72, False, '…') }}</div>
+              </div>
+              <div class="dashboardBriefQuickItem">
+                <div class="dashboardBriefStructuredLabel">Plan A</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.plan_a }}">{{ daily_brief.plan_a|truncate(72, False, '…') }}</div>
+              </div>
+            </div>
+            <div class="dashboardBriefQuickGrid dashboardBriefQuickGrid-secondary">
+              <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
+                <div class="dashboardBriefStructuredLabel">Invalidates</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.no_trade }}">{{ daily_brief.no_trade|truncate(72, False, '…') }}</div>
+              </div>
+              <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
+                <div class="dashboardBriefStructuredLabel">Risk Note</div>
+                <div class="dashboardBriefQuickText" title="{{ decision_panel.risk_posture_detail }}">{{ decision_panel.risk_posture_detail|truncate(70, False, '…') }}</div>
               </div>
             </div>
           <div class="rightActions dashboardBriefPrimaryActions">
-            <a class="btn primary" href="/trades/new">{{ daily_brief.cta_label }}</a>
-            <a class="btn ctaLink" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn primary" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn" href="/ops/trading-window">Trade Gate</a>
+              <a class="btn ctaLink" href="/calendar">Open Calendar</a>
           </div>
-          <details class="dashboardBriefMoreInfo">
+          <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more">
             <summary>More Info</summary>
+            <div class="dashboardBriefMeta dashboardBriefMetaStrong">
+              {% for level in daily_brief.key_levels %}
+                <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
+              {% endfor %}
+            </div>
             <div class="dashboardBriefSecondaryGrid">
               <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
                 <div class="tiny muted">Plan B</div>
                 <div class="dashboardBriefCopy">{{ daily_brief.plan_b }}</div>
               </div>
               <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
-                <div class="tiny muted">No-trade condition</div>
-                <div class="dashboardBriefCopy">{{ daily_brief.no_trade }}</div>
+                <div class="tiny muted">Risk posture</div>
+                <div class="dashboardBriefCopy">{{ decision_panel.risk_posture_title }} · {{ decision_panel.risk_posture_detail }}</div>
               </div>
-            </div>
-            <div class="dashboardBriefMeta">
-              {% for level in daily_brief.key_levels %}
-                <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
-              {% endfor %}
             </div>
             <div class="dashboardBriefMacroList">
               {% for event in daily_brief.macro_events %}
@@ -141,7 +244,7 @@
               {% endfor %}
             </div>
           </details>
-          <details class="syncDetails stack10">
+          <details class="syncDetails stack10" data-dashboard-optional="brief-tune">
             <summary>Tune Brief</summary>
             <form method="post" action="/dashboard/brief" class="stack10">
               <input type="hidden" name="brief_day" value="{{ daily_brief.day_key }}"/>
@@ -175,12 +278,12 @@
           <summary>
             <div class="dashboardBriefMobileSummary">
               <div class="dashboardBriefMobileTop">
-                <span class="trendChip {% if daily_brief.bias_tone %}{{ daily_brief.bias_tone }}{% endif %}">{{ daily_brief.bias_label }}</span>
-                <span class="trendChip">{{ daily_brief.status_label }}</span>
+                <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
+                <span class="trendChip">{{ decision_panel.status }}</span>
                 <span class="trendChip {% if daily_brief.is_tuned %}positive{% endif %}">{{ daily_brief.source_label }}</span>
                 <span class="dashboardBriefMobileChevron">▾</span>
               </div>
-              <div class="dashboardBriefMobileFocus">{{ daily_brief.focus }}</div>
+              <div class="dashboardBriefMobileFocus">{{ decision_panel.posture_summary or daily_brief.focus }}</div>
               <div class="dashboardBriefMobileMeta">
                 {% for level in daily_brief.key_levels[:2] %}
                   <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
@@ -202,7 +305,7 @@
                 <div class="dashboardBriefCopy">{{ daily_brief.plan_a }}</div>
               </div>
             </div>
-            <details class="dashboardBriefMoreInfo">
+            <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more-mobile">
               <summary>More Info</summary>
               <div class="dashboardBriefSecondaryGrid">
                 <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
@@ -229,10 +332,11 @@
               </div>
             </details>
             <div class="rightActions">
-              <a class="btn primary" href="/trades/new">{{ daily_brief.cta_label }}</a>
-              <a class="btn ctaLink" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn primary" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn" href="/ops/trading-window">Trade Gate</a>
+              <a class="btn ctaLink" href="/calendar">Open Calendar</a>
             </div>
-            <details class="syncDetails stack10">
+            <details class="syncDetails stack10" data-dashboard-optional="brief-tune-mobile">
               <summary>Tune Brief</summary>
               <form method="post" action="/dashboard/brief" class="stack10">
                 <input type="hidden" name="brief_day" value="{{ daily_brief.day_key }}"/>
@@ -269,7 +373,8 @@
   </div>
 
   <div class="dashboardStageSide">
-	    <div class="card stack12 dashboardCoreTapeCard"><div class="toolbar">
+    <div class="dashboardStepLabel">Monitor</div>
+	    <div class="card primaryCard stack12 dashboardCoreTapeCard"><div class="toolbar">
       <div class="dashboardTapeHeader">
         <div class="dashboardTapeHeaderBrand">
           <div class="pill">Live Tape</div>
@@ -298,18 +403,18 @@
         {% if spx_gap_points is none %}
           {% set spx_gap_points = dashboard_spx.get('overnight_gap_pct') %}
         {% endif %}
+        {% set spx_dir = '↑' if spx_change_points is not none and spx_change_points > 0 else '↓' if spx_change_points is not none and spx_change_points < 0 else '→' %}
         <article class="stat dashboardCoreTapeStat dashboardCoreTapeHero dashboardTapePremiumCard dashboardTapeSpx {% if spx_tone_value is not none and spx_tone_value > 0 %}glow-green{% elif spx_tone_value is not none and spx_tone_value < 0 %}glow-red{% endif %}" data-symbol="SPX">
           <div class="dashboardTapeTopline">
             <div class="dashboardTapeIdentity">
-              <span class="trendChip stateChip state-{{ spx_tone }}" data-role="state-chip">{{ spx_state }}</span>
-              <div class="k">SPX cash</div>
+              <div class="k">SPX</div>
             </div>
             <span class="tiny muted dashboardCoreTapeFreshness" title="{{ spx_fresh_full }}" data-role="freshness">{{ spx_fresh_compact }}</span>
           </div>
-          <div class="dashboardTapeSparkBand">
-            <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_spx.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
-          </div>
           <div class="dashboardTapePriceBlock">
+            <div class="dashboardTapeSparkBand">
+              <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_spx.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
+            </div>
             <div class="v" data-role="price">
               {% if dashboard_spx.get('price') is not none %}
                 {{ '%.2f'|format(dashboard_spx.get('price')) }}
@@ -318,45 +423,24 @@
               {% endif %}
             </div>
             <div class="tiny dashboardTapeDelta" data-role="change-line">
-              {{ '%+.2f'|format(dashboard_spx.get('change_points')) if dashboard_spx.get('change_points') is not none else '—' }}
-              · {{ '%+.2f'|format(dashboard_spx.get('pct_change')) if dashboard_spx.get('pct_change') is not none else '—' }}%
+              <span class="dashboardTapeDeltaValue{% if spx_change_points is not none and spx_change_points > 0 %} is-up{% elif spx_change_points is not none and spx_change_points < 0 %} is-down{% endif %}">
+                {{ '%+.2f'|format(dashboard_spx.get('change_points')) if dashboard_spx.get('change_points') is not none else '—' }}
+              </span>
+              <span class="dashboardTapeDeltaPct{% if dashboard_spx.get('pct_change') is not none and dashboard_spx.get('pct_change') > 0 %} is-up{% elif dashboard_spx.get('pct_change') is not none and dashboard_spx.get('pct_change') < 0 %} is-down{% endif %}">
+                {{ '%+.2f'|format(dashboard_spx.get('pct_change')) if dashboard_spx.get('pct_change') is not none else '—' }}%
+              </span>
+              <span class="dashboardTapeDeltaArrow{% if spx_change_points is not none and spx_change_points > 0 %} is-up{% elif spx_change_points is not none and spx_change_points < 0 %} is-down{% endif %}">{{ spx_dir }}</span>
             </div>
           </div>
-          <div class="tiny muted dashboardTapeMetaLine" data-role="source-badge">{{ dashboard_spx.get('source_badge_label') or dashboard_spx.get('source_label') or 'Awaiting feed' }}</div>
-          {% if spx_state != 'Live' %}
-            <div class="tiny muted dashboardTapeMetaLine dashboardTapeMetaStatus">
-              {% if spx_state == 'Delayed' %}
-                Using delayed quote data. Confirm timing before treating tape changes as actionable.
-              {% else %}
-                Waiting on a live Tradier quote. Tape values will fill when the feed recovers.
-              {% endif %}
+          <div class="dashboardTapeContextBlock">
+            <div class="tiny dashboardTapeContextLine" data-role="context-primary">
+              {% if spx_range_full and spx_range_full != '—' %}Inside Range{% else %}At Flip{% endif %}
             </div>
-          {% endif %}
-          <div class="dashboardTapeStatsRow">
-            <div class="dashboardTapeStatCell">
-              <div class="tiny muted">Gap</div>
-              <div class="tiny dashboardGapLine {% if spx_gap_points is not none and spx_gap_points > 0 %}is-positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ spx_gap_full }}" data-role="gap-line">
-                <span class="trendChip {% if spx_gap_points is not none and spx_gap_points > 0 %}positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}negative{% endif %}" data-role="gap-chip">
-                  {{ spx_gap_compact }}
-                </span>
-              </div>
-            </div>
-            <div class="dashboardTapeStatCell dashboardTapeStatCell--range">
-              <div class="tiny muted">Range</div>
-              <div class="tiny dashboardTapeRangeDesktop" title="Range {{ spx_range_full }}" data-role="range-line">{{ spx_range_compact }}</div>
-              {% if spx_range_parts|length == 2 %}
-                <div class="dashboardTapeRangeMobile" title="Range {{ spx_range_full }}">
-                  <div class="dashboardTapeRangeEdge" data-side="low">
-                    <span class="dashboardTapeRangeTag">Low</span>
-                    <span class="dashboardTapeRangeValue">{{ spx_range_parts[0] }}</span>
-                  </div>
-                  <span class="dashboardTapeRangeTrack" aria-hidden="true"></span>
-                  <div class="dashboardTapeRangeEdge" data-side="high">
-                    <span class="dashboardTapeRangeTag">High</span>
-                    <span class="dashboardTapeRangeValue">{{ spx_range_parts[1] }}</span>
-                  </div>
-                </div>
-              {% endif %}
+            <div class="tiny dashboardTapeContextSubline" data-role="context-secondary">Balanced tape</div>
+          </div>
+          <div class="dashboardTapeInfoRow">
+            <div class="tiny dashboardTapeInfoText" data-role="info-primary">
+              {% if spx_range_compact and spx_range_compact != '—' %}Range {{ spx_range_compact }} • Mid{% else %}Dist to Flip: 0 pts{% endif %}
             </div>
           </div>
         </article>
@@ -379,18 +463,18 @@
         {% if vix_gap_points is none %}
           {% set vix_gap_points = dashboard_vix.get('overnight_gap_pct') %}
         {% endif %}
+        {% set vix_dir = '↑' if vix_change_points is not none and vix_change_points > 0 else '↓' if vix_change_points is not none and vix_change_points < 0 else '→' %}
         <article class="stat dashboardCoreTapeStat dashboardCoreTapeHero dashboardTapePremiumCard dashboardTapeVix {% if vix_tone_value is not none and vix_tone_value > 0 %}glow-green{% elif vix_tone_value is not none and vix_tone_value < 0 %}glow-red{% endif %}" data-symbol="VIX">
           <div class="dashboardTapeTopline">
             <div class="dashboardTapeIdentity">
-              <span class="trendChip stateChip state-{{ vix_tone }}" data-role="state-chip">{{ vix_state }}</span>
-              <div class="k">VIX pulse</div>
+              <div class="k">VIX</div>
             </div>
             <span class="tiny muted dashboardCoreTapeFreshness" title="{{ vix_fresh_full }}" data-role="freshness">{{ vix_fresh_compact }}</span>
           </div>
-          <div class="dashboardTapeSparkBand">
-            <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_vix.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
-          </div>
           <div class="dashboardTapePriceBlock">
+            <div class="dashboardTapeSparkBand">
+              <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_vix.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
+            </div>
             <div class="v" data-role="price">
               {% if dashboard_vix.get('price') is not none %}
                 {{ '%.2f'|format(dashboard_vix.get('price')) }}
@@ -399,45 +483,26 @@
               {% endif %}
             </div>
             <div class="tiny dashboardTapeDelta" data-role="change-line">
-              {{ '%+.2f'|format(dashboard_vix.get('change_points')) if dashboard_vix.get('change_points') is not none else '—' }}
-              · {{ '%+.2f'|format(dashboard_vix.get('pct_change')) if dashboard_vix.get('pct_change') is not none else '—' }}%
+              <span class="dashboardTapeDeltaValue{% if vix_change_points is not none and vix_change_points > 0 %} is-up{% elif vix_change_points is not none and vix_change_points < 0 %} is-down{% endif %}">
+                {{ '%+.2f'|format(dashboard_vix.get('change_points')) if dashboard_vix.get('change_points') is not none else '—' }}
+              </span>
+              <span class="dashboardTapeDeltaPct{% if dashboard_vix.get('pct_change') is not none and dashboard_vix.get('pct_change') > 0 %} is-up{% elif dashboard_vix.get('pct_change') is not none and dashboard_vix.get('pct_change') < 0 %} is-down{% endif %}">
+                {{ '%+.2f'|format(dashboard_vix.get('pct_change')) if dashboard_vix.get('pct_change') is not none else '—' }}%
+              </span>
+              <span class="dashboardTapeDeltaArrow{% if vix_change_points is not none and vix_change_points > 0 %} is-up{% elif vix_change_points is not none and vix_change_points < 0 %} is-down{% endif %}">{{ vix_dir }}</span>
             </div>
           </div>
-          <div class="tiny muted dashboardTapeMetaLine" data-role="source-badge">{{ dashboard_vix.get('source_badge_label') or dashboard_vix.get('source_label') or 'Awaiting feed' }}</div>
-          {% if vix_state != 'Live' %}
-            <div class="tiny muted dashboardTapeMetaLine dashboardTapeMetaStatus">
-              {% if vix_state == 'Delayed' %}
-                Using delayed quote data. Treat VIX moves as context, not live tape confirmation.
-              {% else %}
-                Waiting on a live Tradier quote. VIX context will return when the feed recovers.
-              {% endif %}
+          <div class="dashboardTapeContextBlock">
+            <div class="tiny dashboardTapeContextLine" data-role="context-primary">
+              {% if vix_change_points is not none and vix_change_points > 0 %}Firming{% elif vix_change_points is not none and vix_change_points < 0 %}Falling{% else %}Compressed{% endif %}
             </div>
-          {% endif %}
-          <div class="dashboardTapeStatsRow">
-            <div class="dashboardTapeStatCell">
-              <div class="tiny muted">Gap</div>
-              <div class="tiny dashboardGapLine {% if vix_gap_points is not none and vix_gap_points > 0 %}is-positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ vix_gap_full }}" data-role="gap-line">
-                <span class="trendChip {% if vix_gap_points is not none and vix_gap_points > 0 %}positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}negative{% endif %}" data-role="gap-chip">
-                  {{ vix_gap_compact }}
-                </span>
-              </div>
+            <div class="tiny dashboardTapeContextSubline" data-role="context-secondary">
+              {% if vix_change_points is not none and vix_change_points > 0 %}Risk firming{% elif vix_change_points is not none and vix_change_points < 0 %}Risk easing{% else %}Stable{% endif %}
             </div>
-            <div class="dashboardTapeStatCell dashboardTapeStatCell--range">
-              <div class="tiny muted">Range</div>
-              <div class="tiny dashboardTapeRangeDesktop" title="Range {{ vix_range_full }}" data-role="range-line">{{ vix_range_compact }}</div>
-              {% if vix_range_parts|length == 2 %}
-                <div class="dashboardTapeRangeMobile" title="Range {{ vix_range_full }}">
-                  <div class="dashboardTapeRangeEdge" data-side="low">
-                    <span class="dashboardTapeRangeTag">Low</span>
-                    <span class="dashboardTapeRangeValue">{{ vix_range_parts[0] }}</span>
-                  </div>
-                  <span class="dashboardTapeRangeTrack" aria-hidden="true"></span>
-                  <div class="dashboardTapeRangeEdge" data-side="high">
-                    <span class="dashboardTapeRangeTag">High</span>
-                    <span class="dashboardTapeRangeValue">{{ vix_range_parts[1] }}</span>
-                  </div>
-                </div>
-              {% endif %}
+          </div>
+          <div class="dashboardTapeInfoRow">
+            <div class="tiny dashboardTapeInfoText" data-role="info-primary">
+              {% if vix_range_compact and vix_range_compact != '—' %}Range {{ vix_range_compact }}{% else %}Intraday tone: stable{% endif %}
             </div>
           </div>
         </article>
@@ -464,35 +529,77 @@
 	      {% endif %}
 	    {% endfor %}
 
-	    <details class="syncDetails dashboardFoldSection dashboardSupportFold"{% if badge_meta.critical %} open{% endif %}>
+	    <details class="syncDetails dashboardFoldSection dashboardSupportFold" data-dashboard-optional="support-fold"{% if badge_meta.critical %} open{% endif %}>
 	      <summary>
-	        <span>Session Support &amp; Health</span>
+	        <span class="dashboardStepLabel dashboardStepLabel-inline">Review</span>
+	        <span class="dashboardFoldTitle">Session Support &amp; Health</span>
 	        <span class="tiny muted">Open for milestone, pacing, balance, and data trust.</span>
 	      </summary>
 	      <div class="dashboardFoldBody">
-	        <div class="card supportCard milestoneCard mobileKeep dashboardMilestoneCard"><div class="toolbar">
-	          <div class="pill">Milestone</div>
-	          <div class="supportLead">{{ milestone.name }}</div>
-	          <div class="supportBody" style="display:block;">
-	            {{ '%.1f'|format(milestone.overall_progress_pct) }}% complete
-	            {% if milestone.has_profit_goal %}
-	              · {{ money(milestone.profit_remaining) }} left
-	            {% endif %}
-	            {% if milestone.has_balance_goal %}
-	              · Balance {{ money(overall_balance) }} / {{ money(milestone.target_balance) }}
-	            {% endif %}
+	        {% set milestone_pct = '%.1f'|format(milestone.overall_progress_pct) %}
+	        {% set milestone_balance_remaining = (milestone.target_balance|float - overall_balance|float) if milestone.has_balance_goal else 0 %}
+	        <div class="card primaryCard milestoneCard mobileKeep dashboardMilestoneCard"><div class="toolbar">
+	          <div class="dashboardMilestoneTop">
+	            <div class="dashboardMilestoneHead">
+	              <div class="pill">Profit Milestone</div>
+	              <div class="supportLead">{{ milestone.name }}</div>
+	            </div>
+	            <div class="dashboardMilestoneMission">
+	              <div class="dashboardMilestoneRing" style="--milestone-pct: {{ milestone_pct }}%">
+	                <div class="dashboardMilestoneRingInner">
+	                  <strong>{{ milestone_pct }}%</strong>
+	                  <span>Complete</span>
+	                </div>
+	              </div>
+	              <div class="dashboardMilestoneProgressBlock">
+	                <div class="dashboardMilestonePrimary">{{ milestone_pct }}% complete</div>
+	                <div class="dashboardMilestoneSecondary">
+	                  {% if milestone.has_profit_goal %}
+	                    {{ money(milestone.profit_remaining) }} remaining to the profit mark
+	                  {% elif milestone.has_balance_goal %}
+	                    {% if milestone_balance_remaining > 0 %}
+	                      {{ money(milestone_balance_remaining) }} remaining to target balance
+	                    {% else %}
+	                      Target balance cleared
+	                    {% endif %}
+	                  {% else %}
+	                    No active goal set
+	                  {% endif %}
+	                </div>
+	                <div class="milestoneProgress dashboardProgress dashboardProgress-primary dashboardMissionProgress" style="--milestone-pct: {{ milestone_pct }}%; --progress-pct: {{ milestone_pct }}%">
+	                  <div class="milestoneProgressFill"></div>
+	                  <div class="dashboardProgressBarCap dashboardMissionProgressCap" aria-hidden="true"></div>
+	                </div>
+	                <div class="dashboardMilestoneProgressMeta">
+	                  {% if milestone.has_balance_goal %}
+	                    <span>Balance {{ money(overall_balance) }} / {{ money(milestone.target_balance) }}</span>
+	                  {% else %}
+	                    <span>Balance {{ money(overall_balance) }}</span>
+	                  {% endif %}
+	                  {% if milestone.has_profit_goal %}
+	                    <span>Goal {{ money(milestone.profit_goal) }}</span>
+	                  {% endif %}
+	                </div>
+	              </div>
+	            </div>
 	          </div>
-	          <div class="milestoneProgress" style="display:block; --milestone-pct: {{ '%.1f'|format(milestone.overall_progress_pct) }}%">
-	            <div class="milestoneProgressFill"></div>
-	          </div>
-	          <div class="tiny stack8" style="display:block;">
-	            Pace {{ money(milestone.avg_daily_profit) }}/day
-	            {% if milestone.projected_completion_label %}
-	              · Est. {{ milestone.projected_completion_label }}
-	            {% endif %}
-	          </div>
-	          <details class="syncDetails stack10">
-	            <summary>Set Milestone</summary>
+	          <div class="dashboardMilestoneBottom">
+	            <div class="dashboardMilestoneMeta">
+	              <div class="dashboardMilestoneMetaItem">
+	                <span>Pace</span>
+	                <strong>{{ money(milestone.avg_daily_profit) }}/day</strong>
+	              </div>
+	              <div class="dashboardMilestoneMetaItem">
+	                <span>ETA</span>
+	                <strong>{{ milestone.projected_completion_label or 'Pending sample' }}</strong>
+	              </div>
+	              <div class="dashboardMilestoneMetaItem">
+	                <span>Status</span>
+	                <strong>{% if milestone.overall_progress_pct >= 100 %}On Target{% elif milestone.avg_daily_profit > 0 %}Advancing{% else %}Needs lift{% endif %}</strong>
+	              </div>
+	            </div>
+	            <details class="syncDetails stack10 dashboardMilestoneControls">
+	              <summary>Set Milestone</summary>
 	            <form method="post" action="/dashboard/milestone" class="stack10">
 	              <input type="hidden" name="y" value="{{ dashboard_year }}"/>
 	              <input type="hidden" name="m" value="{{ dashboard_month }}"/>
@@ -523,79 +630,187 @@
 	                </div>
 	              </div>
 	              <div class="rightActions">
-	                <button class="btn primary" type="submit">Save Milestone</button>
+	                <button class="btn" type="submit">Save Milestone</button>
 	              </div>
 	            </form>
 	          </details>
+	          </div>
 	        </div></div>
 
-        <div class="metricStrip dashboardMetricStrip dashboardMetricStripCompact">
-          <div class="metric">
-            <div class="label">Today Net</div>
-            <div class="value">{{ money(today_net) }}</div>
-            <div class="sub">Closed trades only</div>
-	          </div>
-	          <div class="metric">
-	            <div class="label">Session Record</div>
-	            <div class="value">{{ today_wins }}W / {{ today_losses }}L</div>
-	            <div class="sub">{{ today_count }} trade{% if today_count != 1 %}s{% endif %} logged</div>
-          </div>
-          <div class="metric">
-            <div class="label">Account Scope</div>
-            <div class="value">{% if account_scope and account_scope.enabled and scope_mode == 'active' %}Active{% else %}All{% endif %}</div>
-            <div class="sub">
-              {% if account_scope and account_scope.enabled and scope_mode == 'active' %}
-                {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}
-              {% else %}
-                Legacy + current trade history
-              {% endif %}
+        {% set scope_short = 'ACT' if account_scope and account_scope.enabled and scope_mode == 'active' else 'ALL' %}
+        {% set scope_context = (account_scope.start_date ~ (' · ' ~ account_scope.label if account_scope.label else '')) if account_scope and account_scope.enabled and scope_mode == 'active' else 'Full ledger' %}
+        {% set today_net_short = money_compact(today_net)|replace('.00','') %}
+        {% set today_net_tone = 'positive' if today_net > 0 else 'negative' if today_net < 0 else 'neutral' %}
+        {% set session_record_short = today_wins ~ '/' ~ today_losses %}
+        {% set payout_tone = 'positive' if 'projects' in payout_focus else 'warning' %}
+        {% set payout_ring_pct = 74 if 'projects' in payout_focus else 28 %}
+        {% set risk_tone = 'positive' if 'Attack' in risk_posture_title else 'negative' if 'Protect' in risk_posture_title else 'warning' %}
+        {% set risk_short = 'GO' if 'Attack' in risk_posture_title else 'CUT' if 'Protect' in risk_posture_title else 'WAIT' %}
+        {% set pattern_tone = 'warning' if 'Most common breach' in pattern_watch else 'info' %}
+        {% set pattern_short = 'TAG' if 'Most common breach' in pattern_watch else 'CLR' %}
+        {% set today_net_meta = 'Green' if today_net > 0 else 'Red' if today_net < 0 else 'Flat' %}
+        {% set record_meta = 'No trades' if today_count == 0 else today_wins ~ 'W / ' ~ today_losses ~ 'L' %}
+        {% set pace_meta = 'On track' if 'projects' in payout_focus else 'Need sample' %}
+        {% set risk_meta = 'Clean only' if 'Wait' in risk_posture_title else 'Reduce' if 'Protect' in risk_posture_title else 'Attack' %}
+        {% set pattern_meta = 'No breaks' if pattern_short == 'CLEAR' else 'Watch tag' %}
+        {% set pattern_detail_title = pattern_watch if 'Most common breach' in pattern_watch else 'No recurring rule-break tag' %}
+        <div class="dashboardStatusOrbitRow" role="tablist" aria-label="Session status indicators">
+          <button
+            type="button"
+            class="dashboardStatusOrb is-{{ today_net_tone }}"
+            id="dashboardStatusTab-net"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="net"
+            data-status-section="Session Net"
+            data-status-title="Today Net"
+            data-status-primary="{{ money(today_net) }}"
+            data-status-line1="Closed trades only"
+            data-status-line2="{{ today_count }} trades logged"
+            data-status-line3="Net session result {% if today_count %}{{ 'active' if today_net != 0 else 'not yet established' }}{% else %}not yet established{% endif %}"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ today_net_short }}</strong>
             </div>
-          </div>
+            <div class="dashboardStatusOrbLabel">Net</div>
+            <div class="dashboardStatusOrbMeta">{{ today_net_meta }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb is-{{ 'positive' if today_wins >= today_losses and today_count else 'negative' if today_losses > today_wins else 'neutral' }}"
+            id="dashboardStatusTab-record"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="record"
+            data-status-section="Session Record"
+            data-status-title="Record"
+            data-status-primary="{{ today_wins }}W / {{ today_losses }}L"
+            data-status-line1="{{ today_count }} trades logged"
+            data-status-line2="{{ '%.1f'|format(today_win_rate) }}% win rate"
+            data-status-line3="{% if today_count %}Closed execution sample in scope{% else %}No closed execution sample yet{% endif %}"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ session_record_short }}</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Record</div>
+            <div class="dashboardStatusOrbMeta">{{ record_meta }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb is-info"
+            id="dashboardStatusTab-scope"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="scope"
+            data-status-section="Account Scope"
+            data-status-title="{% if scope_short == 'ACT' %}Active Account{% else %}Account Scope{% endif %}"
+            data-status-primary="{% if scope_short == 'ACT' %}Active{% else %}All{% endif %}"
+            data-status-line1="{{ account_scope.start_date if account_scope and account_scope.enabled and scope_mode == 'active' else 'Legacy + current' }}"
+            data-status-line2="{{ account_scope.label if account_scope and account_scope.label and scope_mode == 'active' else 'Millions' if scope_short == 'ACT' else 'All history' }}"
+            data-status-line3="Current session scope loaded"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ scope_short }}</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Scope</div>
+            <div class="dashboardStatusOrbMeta">{{ account_scope.label if account_scope and account_scope.label and scope_mode == 'active' else 'Millions' if scope_short == 'ACT' else 'All history' }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb dashboardStatusOrb-payout is-{{ payout_tone }}"
+            id="dashboardStatusTab-pace"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="pace"
+            data-status-section="Payout Pace"
+            data-status-title="5-Day Pace"
+            data-status-primary="{{ payout_focus|replace('5-day pace projects ', '')|replace('5-day pace Projects ', '')|replace('5-day pace ', '') }}"
+            data-status-line1="{{ payout_focus_detail.split(' · ')[0] if ' · ' in payout_focus_detail else payout_focus_detail }}"
+            data-status-line2="{% if ' · Avg day ' in payout_focus_detail %}Avg day {{ payout_focus_detail.split(' · Avg day ')[1]|replace('.','') }}{% else %}Avg day {{ pace_card.live_headline }}{% endif %}"
+            data-status-line3="{% if 'projects' in payout_focus %}Payout pacing remains on track{% else %}Need more weekday history{% endif %}"
+            data-status-tags="Pace||{{ 'On Track' if 'projects' in payout_focus else 'Needs Sample' }}"
+          >
+            <div class="dashboardStatusOrbCircle dashboardStatusOrbCircle-ring" style="--orb-pct: {{ payout_ring_pct }}%">
+              <strong>5D</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Pace</div>
+            <div class="dashboardStatusOrbMeta">{{ pace_meta }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb dashboardStatusOrb-risk is-{{ risk_tone }} is-active"
+            id="dashboardStatusTab-risk"
+            role="tab"
+            aria-selected="true"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="0"
+            data-status-key="risk"
+            data-status-section="Risk Posture"
+            data-status-title="{{ risk_posture_title }}"
+            data-status-primary="Today {{ today_wins }}W / {{ today_losses }}L"
+            data-status-line1="Consistency {{ '%.1f'|format((ytd_cons.ratio or 0) * 100) if ytd_cons.ratio is not none else '—' }}%"
+            data-status-line2="{{ setup_focus|replace('Lead setup ','') }}"
+            data-status-line3="{{ today_count }} trades tracked"
+            data-status-tags="Risk||Guardrail Aware"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ risk_short }}</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Risk</div>
+            <div class="dashboardStatusOrbMeta">{{ risk_meta }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb is-{{ pattern_tone }}"
+            id="dashboardStatusTab-pattern"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="pattern"
+            data-status-section="Pattern Watch"
+            data-status-title="{{ pattern_detail_title }}"
+            data-status-primary="Confidence {% if data_trust.tone == 'critical' %}Low{% else %}High{% endif %}"
+            data-status-line1="Source {{ badge_meta.source }}"
+            data-status-line2="Mode {{ 'Sync review' if data_trust.tone == 'critical' else 'Normal workflow' }}"
+            data-status-line3="{{ 'Ledger and sync need attention' if data_trust.tone == 'critical' else 'Ledger and sync look healthy' }}"
+            data-status-tags="Pattern||{{ 'Needs Review' if data_trust.tone == 'critical' else 'Clean' }}||{{ 'Synced' if badge_meta.sync == 'Success' else badge_meta.sync }}"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ pattern_short }}</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Pattern</div>
+            <div class="dashboardStatusOrbMeta">{{ pattern_meta }}</div>
+          </button>
         </div>
 
-	        <div class="dashboardSupportGrid dashboardStageSupportGrid">
-	          <div class="card supportCard subtleCard dashboardSignalCard"><div class="toolbar">
-	            <div class="pill">Payout Pace</div>
-	            <div class="supportLead">{{ payout_focus }}</div>
-	            <div class="supportBody">{{ payout_focus_detail }}</div>
-	            <div class="rightActions stack8">
-	              <a class="btn primary" href="/payouts">Payouts</a>
-	              <a class="btn ctaLink" href="/calendar">Calendar</a>
-	            </div>
-	          </div></div>
-
-	          <div class="card supportCard subtleCard dashboardSignalCard"><div class="toolbar">
-	            <div class="pill">Risk Posture</div>
-	            <div class="supportLead">{{ risk_posture_title }}</div>
-	            <div class="supportBody">{{ risk_posture_detail }}</div>
-	            <div class="supportMeta">{{ setup_focus }}</div>
-	          </div></div>
-
-	          <div class="card supportCard subtleCard dashboardSignalCard"><div class="toolbar">
-	            <div class="pill">Pattern Watch</div>
-	            <div class="supportLead">{{ pattern_watch }}</div>
-	            {% if data_trust.badges %}
-	              <div class="trustBadgeRow">
-	                {% for badge in data_trust.badges %}
-	                  <span class="trustBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-	                    {{ badge.label }} <b>{{ badge.value }}</b>
-	                  </span>
-	                {% endfor %}
-	              </div>
-	            {% endif %}
-	            <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
-	              {{ data_trust.message }}
-	            </div>
-	            {% if data_trust.primary_href and data_trust.primary_label %}
-	              <div class="rightActions stack8">
-	                <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-	                {% if data_trust.secondary_href and data_trust.secondary_label %}
-	                  <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
-	                {% endif %}
-	              </div>
-	            {% endif %}
-	          </div></div>
-	        </div>
+        <div class="dashboardStatusDetailCard" id="dashboardStatusDetailCard" role="tabpanel" aria-labelledby="dashboardStatusTab-risk" tabindex="0" aria-live="polite">
+          <div class="dashboardStatusDetailSection" id="dashboardStatusDetailSection">Risk Posture</div>
+          <div class="dashboardStatusDetailTitle" id="dashboardStatusDetailTitle">{{ risk_posture_title }}</div>
+          <div class="dashboardStatusDetailPrimary" id="dashboardStatusDetailPrimary">Today {{ today_wins }}W / {{ today_losses }}L</div>
+          <div class="dashboardStatusDetailLines" id="dashboardStatusDetailLines">
+            <div class="dashboardStatusDetailLine">Consistency {{ '%.1f'|format((ytd_cons.ratio or 0) * 100) if ytd_cons.ratio is not none else '—' }}%</div>
+            <div class="dashboardStatusDetailLine">{{ setup_focus|replace('Lead setup ','') }}</div>
+            <div class="dashboardStatusDetailLine">{{ today_count }} trades tracked</div>
+          </div>
+          <div class="dashboardStatusDetailTags" id="dashboardStatusDetailTags">
+            <span class="trendChip">Risk</span>
+            <span class="trendChip">Guardrail Aware</span>
+          </div>
+        </div>
 
 	        <details class="syncDetails dataTrustDetails"{% if badge_meta.critical %} open{% endif %}>
 	          <summary>
@@ -665,9 +880,8 @@
 	            <div class="showcaseMeta">
 	              Today {{ today_count }} trades · Net {{ money(today_net) }} · Guardrail-aware flow
 	            </div>
-	            <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(discipline_pulse) }}%">
+	            <div class="showcasePulse dashboardProgress dashboardProgress-secondary" style="--progress-pct: {{ '%.1f'|format(discipline_pulse) }}%">
 	              <div class="showcasePulseFill"></div>
-	              <div class="showcaseWave"></div>
 	            </div>
 	          </div>
 	        </div>
@@ -676,8 +890,176 @@
 	  </div>
 	</div>
 
+{% set balance_spark = namespace(values=[], min=None, max=None, points='', last_y=15) %}
+{% set performance_chart = namespace(
+  days=[],
+  actuals=[],
+  targets=[],
+  min=None,
+  max=None,
+  actual_points='',
+  target_points='',
+  actual_last_x=98,
+  actual_last_y=26,
+  target_last=0,
+  actual_last=0,
+  status='neutral',
+  start_day_label='',
+  end_day_label='',
+  latest_day_label='',
+  target_daily=(pace_card.headline|replace('$', '')|replace(',', '')|float),
+  recent_days=[],
+  streak=0,
+  recent_wins=0,
+  recent_losses=0
+) %}
+{% for wk in heat.weeks %}
+  {% for day in wk.days %}
+    {% if day.daynum is not none and day.wd is not none and day.wd < 5 and day.balance is not none %}
+      {% set spark_value = day.balance|float %}
+      {% set balance_spark.values = balance_spark.values + [spark_value] %}
+      {% set performance_chart.days = performance_chart.days + [day.daynum|int] %}
+      {% set performance_chart.actuals = performance_chart.actuals + [spark_value] %}
+      {% set performance_chart.recent_days = performance_chart.recent_days + [day] %}
+      {% if balance_spark.min is none or spark_value < balance_spark.min %}
+        {% set balance_spark.min = spark_value %}
+      {% endif %}
+      {% if balance_spark.max is none or spark_value > balance_spark.max %}
+        {% set balance_spark.max = spark_value %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
+{% set balance_spark_range = (balance_spark.max - balance_spark.min) if balance_spark.max is not none and balance_spark.min is not none else 0 %}
+{% set performance_month_label = month_name.split(' ')[0][:3] if month_name else '' %}
+{% set balance_progress = namespace(pct=0) %}
+{% if balance_spark.values|length > 1 and balance_spark_range > 0 %}
+  {% set balance_progress.pct = (((balance_spark.values[-1] - balance_spark.min) / balance_spark_range) * 100) %}
+{% elif balance_spark.values|length == 1 %}
+  {% set balance_progress.pct = 100 %}
+{% endif %}
+{% if balance_progress.pct < 0 %}{% set balance_progress.pct = 0 %}{% endif %}
+{% if balance_progress.pct > 100 %}{% set balance_progress.pct = 100 %}{% endif %}
+{% if balance_spark.values|length > 1 %}
+  {% for spark_value in balance_spark.values %}
+    {% set spark_x = (loop.index0 * 100 / ((balance_spark.values|length) - 1)) %}
+    {% set spark_ratio = ((spark_value - balance_spark.min) / balance_spark_range) if balance_spark_range else 0.5 %}
+    {% set spark_y = 26 - (spark_ratio * 22) %}
+    {% set balance_spark.points = balance_spark.points ~ ('%.2f'|format(spark_x)) ~ ',' ~ ('%.2f'|format(spark_y)) ~ ' ' %}
+    {% if loop.last %}
+      {% set balance_spark.last_y = spark_y %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% if performance_chart.actuals %}
+  {% set performance_chart.start_day_label = performance_month_label ~ ' ' ~ performance_chart.days[0] %}
+  {% set performance_chart.end_day_label = performance_month_label ~ ' ' ~ performance_chart.days[-1] %}
+  {% set performance_chart.latest_day_label = performance_month_label ~ ' ' ~ performance_chart.days[-1] %}
+  {% for actual_value in performance_chart.actuals %}
+    {% set projected_value = performance_chart.actuals[0] + (performance_chart.target_daily * loop.index0) %}
+    {% set performance_chart.targets = performance_chart.targets + [projected_value] %}
+    {% if performance_chart.min is none or actual_value < performance_chart.min %}
+      {% set performance_chart.min = actual_value %}
+    {% endif %}
+    {% if performance_chart.min is none or projected_value < performance_chart.min %}
+      {% set performance_chart.min = projected_value %}
+    {% endif %}
+    {% if performance_chart.max is none or actual_value > performance_chart.max %}
+      {% set performance_chart.max = actual_value %}
+    {% endif %}
+    {% if performance_chart.max is none or projected_value > performance_chart.max %}
+      {% set performance_chart.max = projected_value %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% set performance_chart_range = (performance_chart.max - performance_chart.min) if performance_chart.max is not none and performance_chart.min is not none else 0 %}
+{% if performance_chart.actuals|length > 1 %}
+  {% set x_span = performance_chart.days[-1] - performance_chart.days[0] %}
+  {% for actual_value in performance_chart.actuals %}
+    {% set chart_x = ((performance_chart.days[loop.index0] - performance_chart.days[0]) * 94 / x_span) + 3 if x_span > 0 else (loop.index0 * 94 / ((performance_chart.actuals|length) - 1)) + 3 %}
+    {% set actual_ratio = ((actual_value - performance_chart.min) / performance_chart_range) if performance_chart_range else 0.5 %}
+    {% set target_ratio = ((performance_chart.targets[loop.index0] - performance_chart.min) / performance_chart_range) if performance_chart_range else 0.5 %}
+    {% set actual_y = 34 - (actual_ratio * 28) %}
+    {% set target_y = 34 - (target_ratio * 28) %}
+    {% set performance_chart.actual_points = performance_chart.actual_points ~ ('%.2f'|format(chart_x)) ~ ',' ~ ('%.2f'|format(actual_y)) ~ ' ' %}
+    {% set performance_chart.target_points = performance_chart.target_points ~ ('%.2f'|format(chart_x)) ~ ',' ~ ('%.2f'|format(target_y)) ~ ' ' %}
+    {% if loop.last %}
+      {% set performance_chart.actual_last_x = chart_x %}
+      {% set performance_chart.actual_last_y = actual_y %}
+      {% set performance_chart.actual_last = actual_value %}
+      {% set performance_chart.target_last = performance_chart.targets[loop.index0] %}
+    {% endif %}
+  {% endfor %}
+{% elif performance_chart.actuals|length == 1 %}
+  {% set performance_chart.actual_last = performance_chart.actuals[0] %}
+  {% set performance_chart.target_last = performance_chart.actuals[0] %}
+  {% set performance_chart.actual_points = '3.00,20.00 97.00,20.00' %}
+  {% set performance_chart.target_points = '3.00,20.00 97.00,20.00' %}
+  {% set performance_chart.actual_last_x = 97 %}
+  {% set performance_chart.actual_last_y = 20 %}
+{% else %}
+  {% set performance_chart.actual_points = '3.00,20.00 97.00,20.00' %}
+  {% set performance_chart.target_points = '3.00,20.00 97.00,20.00' %}
+  {% set performance_chart.start_day_label = performance_month_label ~ ' 1' %}
+  {% set performance_chart.end_day_label = performance_month_label ~ ' ' ~ last_dom %}
+{% endif %}
+{% if performance_chart.actual_last > performance_chart.target_last %}
+  {% set performance_chart.status = 'ahead' %}
+{% elif performance_chart.actual_last < performance_chart.target_last %}
+  {% set performance_chart.status = 'behind' %}
+{% endif %}
+{% set performance_delta = performance_chart.actual_last - performance_chart.target_last %}
+{% set performance_delta_abs = performance_delta if performance_delta >= 0 else (performance_delta * -1) %}
+{% if performance_chart.status == 'ahead' %}
+  {% set performance_status_label = 'Ahead of Target' %}
+  {% set performance_delta_label = '+' ~ money(performance_delta_abs) ~ ' ahead' %}
+{% elif performance_chart.status == 'behind' %}
+  {% set performance_status_label = 'Behind Pace' %}
+  {% set performance_delta_label = '-' ~ money(performance_delta_abs) ~ ' behind target' %}
+{% else %}
+  {% set performance_status_label = 'On Track' %}
+  {% set performance_delta_label = money(performance_chart.actual_last) ~ ' on pace' if performance_chart.actuals else 'Awaiting month sample' %}
+{% endif %}
+{% if performance_chart.recent_days|length > 15 %}
+  {% set performance_chart.recent_days = performance_chart.recent_days[-15:] %}
+{% endif %}
+{% if performance_chart.recent_days %}
+  {% set streak_state = namespace(mode='', count=0, wins=0, losses=0) %}
+  {% for day in performance_chart.recent_days|reverse %}
+    {% if day.net > 0 %}
+      {% set streak_state.wins = streak_state.wins + 1 %}
+      {% if streak_state.mode in ['', 'win'] %}
+        {% set streak_state.mode = 'win' %}
+        {% set streak_state.count = streak_state.count + 1 %}
+      {% endif %}
+    {% elif day.net < 0 %}
+      {% set streak_state.losses = streak_state.losses + 1 %}
+      {% if streak_state.mode in ['', 'loss'] %}
+        {% set streak_state.mode = 'loss' %}
+        {% set streak_state.count = streak_state.count + 1 %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+  {% set performance_chart.streak = streak_state.count %}
+  {% set performance_chart.recent_wins = streak_state.wins %}
+  {% set performance_chart.recent_losses = streak_state.losses %}
+{% endif %}
+{% set performance_reference_min = performance_chart.actuals[0] if performance_chart.actuals else 0 %}
+{% set performance_reference_max = performance_chart.actual_last %}
+{% if performance_chart.target_last > performance_reference_max %}{% set performance_reference_max = performance_chart.target_last %}{% endif %}
+{% if performance_reference_min > performance_chart.actual_last %}{% set performance_reference_min = performance_chart.actual_last %}{% endif %}
+{% if performance_reference_min > performance_chart.target_last %}{% set performance_reference_min = performance_chart.target_last %}{% endif %}
+{% set performance_reference_span = performance_reference_max - performance_reference_min %}
+{% set performance_target_pct = (((performance_chart.target_last - performance_reference_min) / performance_reference_span) * 100) if performance_reference_span > 0 else 50 %}
+{% set performance_actual_pct = (((performance_chart.actual_last - performance_reference_min) / performance_reference_span) * 100) if performance_reference_span > 0 else 50 %}
+{% if performance_target_pct < 0 %}{% set performance_target_pct = 0 %}{% endif %}
+{% if performance_target_pct > 100 %}{% set performance_target_pct = 100 %}{% endif %}
+{% if performance_actual_pct < 0 %}{% set performance_actual_pct = 0 %}{% endif %}
+{% if performance_actual_pct > 100 %}{% set performance_actual_pct = 100 %}{% endif %}
+
+<div class="dashboardStepLabel">Project</div>
 <div class="dashboardAnalyticsCluster">
-  <div class="card summaryPanel dashboardAnalyticsPrimary"><div class="toolbar">
+  <div class="card primaryCard summaryPanel dashboardAnalyticsPrimary"><div class="toolbar">
     <div class="calendarHead">
       <div>
         <div class="pill">📈 Performance Deck</div>
@@ -696,6 +1078,76 @@
         <div class="summaryMonth">{{ month_name }}</div>
         <div class="summaryBalance">{{ money(overall_balance) }}</div>
         <div class="summaryCaption">{{ trajectory_caption }}</div>
+        <div class="dashboardPerformanceBoard dashboardPerformanceBoard-{{ performance_chart.status }}">
+          <div class="dashboardPerformanceBoardHead">
+            <div class="dashboardPerformanceScore">
+              <span class="dashboardPerformanceStatus">{{ performance_status_label }}</span>
+              <strong class="dashboardPerformanceDelta">{{ performance_delta_label }}</strong>
+            </div>
+            <div class="dashboardPerformanceHeadMeta">
+              {% if performance_chart.recent_days and performance_chart.streak > 1 %}
+                <strong>{% if performance_chart.recent_days[-1].net > 0 %}Win Streak: {{ performance_chart.streak }} days{% else %}Loss Streak: {{ performance_chart.streak }} days{% endif %}</strong>
+              {% else %}
+                <strong>Choppy: {{ performance_chart.recent_wins }}W / {{ performance_chart.recent_losses }}L last {{ performance_chart.recent_days|length }}</strong>
+              {% endif %}
+            </div>
+          </div>
+          <div class="dashboardPerformanceTargetLabel">Target: {{ pace_card.live_headline }}/day</div>
+          <div class="dashboardPerformanceTiles">
+            {% if performance_chart.recent_days %}
+              {% for day in performance_chart.recent_days %}
+                {% set tile_tone = 'flat' %}
+                {% if day.trade_count <= 0 %}
+                  {% set tile_tone = 'flat' %}
+                {% elif day.net >= performance_chart.target_daily and performance_chart.target_daily > 0 %}
+                  {% set tile_tone = 'strong' %}
+                {% elif day.net > 0 %}
+                  {% set tile_tone = 'win' %}
+                {% elif day.net < 0 %}
+                  {% set tile_tone = 'loss' %}
+                {% endif %}
+                <div class="dashboardPerformanceTile dashboardPerformanceTile-{{ tile_tone }}" title="{{ day.iso }} · {{ money(day.net) }}">
+                  <span class="dashboardPerformanceTileDay">{{ day.daynum }}</span>
+                  <strong class="dashboardPerformanceTileValue">{{ money_compact(day.net) }}</strong>
+                </div>
+              {% endfor %}
+            {% else %}
+              {% for i in range(10) %}
+                <div class="dashboardPerformanceTile dashboardPerformanceTile-flat is-empty">
+                  <span class="dashboardPerformanceTileDay">—</span>
+                  <strong class="dashboardPerformanceTileValue">—</strong>
+                </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+          <div class="dashboardPerformancePaceRow">
+            <div class="dashboardPerformancePaceLabels">
+              <span>Target by today</span>
+              <span>Current</span>
+              <span>Gap</span>
+            </div>
+            <div class="dashboardPerformancePaceBar" style="--target-pct: {{ '%.1f'|format(performance_target_pct) }}%; --actual-pct: {{ '%.1f'|format(performance_actual_pct) }}%;">
+              <div class="dashboardPerformancePaceTrack"></div>
+              <div class="dashboardPerformancePaceTarget" aria-hidden="true"></div>
+              <div class="dashboardPerformancePaceActual" aria-hidden="true"></div>
+            </div>
+            <div class="dashboardPerformancePaceMeta">
+              <span>Target: {{ money(performance_chart.target_last) }}</span>
+              <span>Actual: {{ money(performance_chart.actual_last) }}</span>
+              <span>{{ performance_delta_label }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="dashboardBalanceProgressWrap">
+          <div class="dashboardBalanceProgressLabel">
+            <span>Active account balance</span>
+            <strong>{{ '%.0f'|format(balance_progress.pct) }}%</strong>
+          </div>
+          <div class="dashboardProgress dashboardProgress-primary dashboardBalanceProgress" style="--progress-pct: {{ '%.1f'|format(balance_progress.pct) }}%">
+            <div class="dashboardProgressBarFill"></div>
+            <div class="dashboardProgressBarCap" aria-hidden="true"></div>
+          </div>
+        </div>
       </div>
       <div class="summaryHeroSide">
         <div class="summaryChip {% if this_week_total > 0 %}summaryChipGain{% elif this_week_total < 0 %}summaryChipLoss{% endif %}">
@@ -718,7 +1170,7 @@
       </div>
     </div>
     <div class="summaryGrid">
-      <div class="summaryStat {{ ytd_cons.class }}">
+      <div class="summaryStat {{ ytd_cons.class }}{% if ytd_cons.ratio is not none and ytd_cons.ratio > cons_threshold %} dashboardConsistencyDanger{% elif ytd_cons.ratio is not none %} dashboardConsistencySafe{% endif %}">
         <div class="k">Consistency (YTD)</div>
         <div class="v">
           {% if ytd_cons.ratio is none %}
@@ -741,27 +1193,33 @@
           {% set line_pct = (cons_threshold * 100) %}
           {% if line_pct < 0 %}{% set line_pct = 0 %}{% endif %}
           {% if line_pct > 100 %}{% set line_pct = 100 %}{% endif %}
+          {% set overflow_pct = 0 %}
+          {% if ytd_cons.ratio > cons_threshold %}
+            {% set overflow_pct = bar_pct - line_pct %}
+            {% if overflow_pct < 0 %}{% set overflow_pct = 0 %}{% endif %}
+          {% endif %}
 
-          <div class="consistencyBar" style="--bar-pct: {{ bar_pct }}%; --line-pct: {{ line_pct }}%;">
-            <div class="consistencyFill"></div>
+          <div class="consistencyBar dashboardProgress dashboardProgress-primary" style="--bar-pct: {{ bar_pct }}%; --progress-pct: {{ bar_pct }}%; --line-pct: {{ line_pct }}%;">
+            <div class="consistencyFill dashboardProgressBarFill"></div>
             <div class="consistencyLine" title="Threshold"></div>
             {% if ytd_cons.ratio > cons_threshold %}
+              <div class="consistencyOverflow" style="--overflow-pct: {{ overflow_pct }}%; --line-pct: {{ line_pct }}%;"></div>
               <div class="consistencyAlert"></div>
             {% endif %}
           </div>
 
-          <div class="tiny stack8">
+          <div class="tiny stack8{% if ytd_cons.ratio > cons_threshold %} dashboardConsistencyStatus is-danger{% else %} dashboardConsistencyStatus is-safe{% endif %}">
             {% if ytd_cons.ratio <= cons_threshold %}
-              ✅ Within threshold
+              ✅ Within threshold · Stable execution
             {% else %}
-              ❌ Over threshold
+              ❌ Over threshold · Guardrail warning
             {% endif %}
           </div>
         {% endif %}
       </div>
     </div>
 
-    <details class="syncDetails stack10">
+    <details class="syncDetails stack10" data-dashboard-optional="performance-more">
       <summary>More Stats</summary>
       <div class="summaryGrid stack10">
         <div class="summaryStat"><div class="k">MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
@@ -776,67 +1234,92 @@
     </details>
   </div></div>
 
-  <div class="card dashboardProjectionCard dashboardAnalyticsSecondary"><div class="toolbar">
+  <div class="card supportCard dashboardProjectionCard dashboardAnalyticsSecondary"><div class="toolbar">
     <div class="dashboardProjectionHead">
       <div>
-        <div class="pill">📈 Projection Deck</div>
-        <div class="summaryLead stack8">Forward pacing only.</div>
-      </div>
-      <div class="dashboardProjectionMeta">Trading days only</div>
-    </div>
-    <div class="dashboardProjectionStrip">
-      <div class="stat dashboardProjectionStripCard"><div class="k">Daily Avg</div><div class="v">{{ money(proj.avg) }}</div></div>
-      <div class="stat dashboardProjectionStripCard"><div class="k">Base Balance</div><div class="v">{{ money(proj.base_balance) }}</div></div>
-    </div>
-    <div class="dashboardProjectionGrid">
-      <div class="stat dashboardProjectionScenario {% if proj.p5.est_pnl > 0 %}glow-green{% elif proj.p5.est_pnl < 0 %}glow-red{% endif %}">
-        <div class="k">5 Days</div><div class="v">{{ money(proj.p5.est_pnl) }}</div>
-        <div class="tiny">Est Bal: {{ money(proj.p5.est_balance) }}</div>
-      </div>
-      <div class="stat dashboardProjectionScenario {% if proj.p10.est_pnl > 0 %}glow-green{% elif proj.p10.est_pnl < 0 %}glow-red{% endif %}">
-        <div class="k">10 Days</div><div class="v">{{ money(proj.p10.est_pnl) }}</div>
-        <div class="tiny">Est Bal: {{ money(proj.p10.est_balance) }}</div>
-      </div>
-      <div class="stat dashboardProjectionScenario {% if proj.p20.est_pnl > 0 %}glow-green{% elif proj.p20.est_pnl < 0 %}glow-red{% endif %}">
-        <div class="k">20 Days</div><div class="v">{{ money(proj.p20.est_pnl) }}</div>
-        <div class="tiny">Est Bal: {{ money(proj.p20.est_balance) }}</div>
+        <div class="pill">Forward Pace</div>
+        <div class="summaryLead stack8">Project 5D / 10D / 20D balance paths using live or manual trading-day pace.</div>
       </div>
     </div>
-    <details class="syncDetails stack10">
-      <summary>Projection Notes</summary>
-      <div class="tiny line15">Based on recent weekday daily totals, up to 20 sessions. Use this to pace risk and payout planning, not to assume linear returns.</div>
+    <div class="dashboardProjectionHero">
+      <div class="dashboardProjectionHeroMeta">
+        <span class="dashboardProjectionModeBadge{% if pace_card.custom_enabled %} is-active{% endif %}">{{ pace_card.mode_label }}</span>
+        <span class="dashboardProjectionLivePace">Live {{ pace_card.live_headline }}/day</span>
+      </div>
+      <div class="dashboardProjectionHeroValue">{{ pace_card.headline }}<small>{{ pace_card.headline_suffix }}</small></div>
+      <div class="dashboardProjectionHeroCopy">{{ pace_card.mode_detail }} Base {{ pace_card.base_balance }}.</div>
+    </div>
+    <details class="dashboardProjectionFold" data-dashboard-optional="pace-fold"{% if pace_card.custom_enabled %} open{% endif %}>
+      <summary>
+        <span class="dashboardProjectionFoldTitle">Set pace / day</span>
+        <span class="dashboardProjectionFoldMeta tiny">
+          {% if pace_card.custom_enabled %}
+            Custom {{ pace_card.headline }}/day
+          {% else %}
+            {{ pace_card.trading_day_label }}
+          {% endif %}
+        </span>
+      </summary>
+      <form method="post" action="/dashboard/pace" class="dashboardProjectionForm">
+        <input type="hidden" name="y" value="{{ dashboard_year }}"/>
+        <input type="hidden" name="m" value="{{ dashboard_month }}"/>
+        <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+        <div class="dashboardProjectionFormGrid">
+          <div class="dashboardProjectionField">
+            <label for="dashboardPaceDaily">Set pace / day</label>
+            <input
+              id="dashboardPaceDaily"
+              name="dashboard_pace_daily"
+              inputmode="decimal"
+              placeholder="{{ pace_card.live_headline|replace('$', '') }}"
+              value="{{ pace_card.custom_input }}"
+            />
+            <div class="dashboardProjectionHint tiny">{{ pace_card.trading_day_label }}</div>
+          </div>
+          <div class="dashboardProjectionActions">
+            <button class="btn primary" type="submit">Project Pace</button>
+            <button class="btn" type="submit" name="pace_reset" value="1">Use Live Pace</button>
+          </div>
+        </div>
+      </form>
     </details>
+    {% if pace_card.nodes %}
+      <div class="dashboardProjectionTimeline">
+        {% for node in pace_card.nodes %}
+          <div class="dashboardProjectionNode {% if node.tone == 'positive' %}is-positive{% elif node.tone == 'negative' %}is-negative{% endif %}" title="{{ node.target_date_full }}">
+            <div class="dashboardProjectionNodeHead">
+              <span>{{ node.label }}</span>
+              <em>{{ node.target_date_label }}</em>
+            </div>
+            <strong>{{ node.est_pnl }}</strong>
+            <small>{{ node.est_balance }}</small>
+            <div class="dashboardProjectionNodeMeta tiny">{{ node.sessions }} trading days</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="dashboardProjectionEmpty">No recent weekday sample yet. Pace will appear once enough session history is in scope.</div>
+    {% endif %}
+    <div class="dashboardProjectionFootnote tiny line15">{{ pace_card.note }}</div>
   </div></div>
 </div>
 
-{% set cal = namespace(traded_days=0, green_days=0, red_days=0, flat_days=0) %}
-{% for wk in heat.weeks %}
-  {% for day in wk.days %}
-    {% if day.daynum is not none and day.wd is not none and day.wd < 5 %}
-      {% set cal.traded_days = cal.traded_days + 1 %}
-      {% if day.net > 0 %}
-        {% set cal.green_days = cal.green_days + 1 %}
-      {% elif day.net < 0 %}
-        {% set cal.red_days = cal.red_days + 1 %}
-      {% else %}
-        {% set cal.flat_days = cal.flat_days + 1 %}
-      {% endif %}
-    {% endif %}
-  {% endfor %}
-{% endfor %}
-<details class="syncDetails dashboardFoldSection analyticsFold" id="advancedDashboardWidgets">
+<details class="syncDetails dashboardFoldSection analyticsFold" id="advancedDashboardWidgets" data-dashboard-optional="calendar-fold">
     <summary>
-      <span>Daily P/L Calendar</span>
-      <span class="tiny muted">{{ calendar_scope_label }} · {{ cal.green_days }} green · {{ cal.red_days }} red · {{ cal.flat_days }} flat</span>
+      <span class="dashboardFoldTitle">Daily P/L Calendar</span>
+      <span class="dashboardCalendarSummary">{{ calendar_state.scope_label }} · {{ calendar_state.green_days }} green · {{ calendar_state.red_days }} red · {{ calendar_state.flat_days }} flat</span>
     </summary>
-    <div class="tiny stack8 line15">Daily P/L calendar view for <strong>{{ calendar_scope_label }}</strong>.</div>
+    <div class="tiny stack8 line15">Daily P/L calendar view for <strong>{{ calendar_state.scope_label }}</strong>.</div>
     <div class="hr"></div>
+    {% if calendar_state.traded_days == 0 %}
+      <div class="dashboardCalendarEmpty">No trading days are logged in this scope yet. Import or scope a session to populate the calendar.</div>
+    {% endif %}
     <div class="calendarLegend stack10" aria-label="Calendar legend and monthly summary">
       <div class="legendStats" aria-label="Month trading day summary">
-        <span class="legendStat legendStatWeekdays"><strong>{{ cal.traded_days }}</strong> weekdays</span>
-        <span class="legendStat legendStatGreen"><strong>{{ cal.green_days }}</strong> green</span>
-        <span class="legendStat legendStatRed"><strong>{{ cal.red_days }}</strong> red</span>
-        <span class="legendStat legendStatFlat"><strong>{{ cal.flat_days }}</strong> flat</span>
+        <span class="legendStat legendStatWeekdays"><strong>{{ calendar_state.traded_days }}</strong> weekdays</span>
+        <span class="legendStat legendStatGreen"><strong>{{ calendar_state.green_days }}</strong> green</span>
+        <span class="legendStat legendStatRed"><strong>{{ calendar_state.red_days }}</strong> red</span>
+        <span class="legendStat legendStatFlat"><strong>{{ calendar_state.flat_days }}</strong> flat</span>
         <details class="calendarLegendHelp">
           <summary aria-label="Calendar legend help">
             <span class="calendarLegendHelpIcon">i</span>
@@ -893,6 +1376,7 @@
                   <button
                     type="button"
                     class="dayPreviewButton"
+                    aria-pressed="false"
                     data-iso="{{ day.iso }}"
                     data-weekday="{{ day.weekday_label }}"
                     data-daynum="{{ day.daynum }}"
@@ -963,255 +1447,6 @@
         </div>
       </div>
     </div>
-    <script>
-      (() => {
-        const preview = document.getElementById("calendarPreview");
-        const title = document.getElementById("calendarPreviewTitle");
-        const status = document.getElementById("calendarPreviewStatus");
-        const net = document.getElementById("previewNet");
-        const trades = document.getElementById("previewTrades");
-        const record = document.getElementById("previewRecord");
-        const balance = document.getElementById("previewBalance");
-        const open = document.getElementById("calendarPreviewOpen");
-        const close = document.getElementById("calendarPreviewClose");
-        if (!preview || !title || !status || !net || !trades || !record || !balance || !open || !close) return;
-
-        document.querySelectorAll(".dayPreviewButton").forEach((button) => {
-          button.addEventListener("click", () => {
-            const d = button.dataset;
-            title.textContent = `${d.weekday} ${d.daynum} • ${d.iso}`;
-            status.textContent = d.status || "Session preview";
-            net.textContent = d.net || "—";
-            trades.textContent = d.tradeCount || "0";
-            record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L • ${d.winRate || "0"}%`;
-            balance.textContent = d.balance || "—";
-            open.href = d.openUrl || "/trades";
-            preview.hidden = false;
-          });
-        });
-
-        close.addEventListener("click", () => {
-          preview.hidden = true;
-        });
-      })();
-    </script>
 </details>
-
-<script>
-  (() => {
-    const cards = Array.from(document.querySelectorAll(".dashboardCoreTapeStat[data-symbol]"));
-    const statusNode = document.getElementById("dashboardTapeStreamStatus");
-    const updatedNode = document.getElementById("dashboardTapeUpdatedAt");
-    if (!cards.length || !statusNode || !updatedNode) return;
-
-    const asNum = (value) => {
-      if (value === null || value === undefined) return null;
-      const n = Number(value);
-      return Number.isFinite(n) ? n : null;
-    };
-
-    const formatSigned = (value, digits = 2) => {
-      const n = asNum(value);
-      if (n === null) return "—";
-      return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}`;
-    };
-
-    const inferAbsoluteChange = (price, pctChange) => {
-      const p = asNum(price);
-      const pct = asNum(pctChange);
-      if (p === null || pct === null) return null;
-      const prior = p / (1 + (pct / 100));
-      if (!Number.isFinite(prior)) return null;
-      return p - prior;
-    };
-
-    const formatClock = (iso) => {
-      const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
-      if (!Number.isFinite(ts)) return "—";
-      return new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      }).format(new Date(ts));
-    };
-
-    const formatFreshness = (iso, state) => {
-      const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
-      if (!Number.isFinite(ts)) return { full: `${state} · unavailable`, compact: state };
-      const ageS = Math.max(0, (Date.now() - ts) / 1000);
-      const compact = ageS >= 60 ? `${Math.floor(ageS / 60)}m` : `${Math.floor(ageS)}s`;
-      return {
-        full: `${state} · ${ageS.toFixed(1)}s old`,
-        compact,
-      };
-    };
-
-    const buildSparkline = (points, tone) => {
-      const values = (Array.isArray(points) ? points : [])
-        .map((row) => (row && typeof row === "object" ? asNum(row.v) : null))
-        .filter((value) => value !== null);
-      if (values.length < 2) {
-        return '<div class="marketMiniSparkEmpty">No trend</div>';
-      }
-      const width = 120;
-      const height = 28;
-      let minV = Math.min(...values);
-      let maxV = Math.max(...values);
-      if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
-      const step = width / Math.max(values.length - 1, 1);
-      const coords = values.map((value, index) => {
-        const x = index * step;
-        const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
-      });
-      return `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true"><polyline class="marketMiniSparkLine ${tone}" points="${coords.join(" ")}" /></svg>`;
-    };
-
-    const deriveState = (quote) => {
-      const price = asNum((quote || {}).price);
-      if (price === null) return "Unavailable";
-      const provider = String((quote || {}).provider || "").toLowerCase();
-      const reason = String((quote || {}).reason || "").toLowerCase();
-      if (provider === "tradier" && reason.startsWith("tradier_")) return "Live";
-      if (reason.includes("cached")) return "Cached";
-      if (reason.includes("fallback") || reason.includes("close") || reason.includes("snapshot") || reason.includes("intraday") || reason.includes("prev_close")) {
-        return "Delayed";
-      }
-      return provider === "tradier" ? "Live" : "Delayed";
-    };
-
-    const stateClass = (state) => {
-      if (state === "Live") return "live";
-      if (state === "Delayed") return "delayed";
-      return "missing";
-    };
-
-    const sourceBadgeLabel = (quote) => {
-      const provider = String((quote || {}).provider || "").toLowerCase();
-      const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
-      if (provider === "tradier" && reason.startsWith("tradier_stream_")) return "Tradier Stream";
-      if (provider === "tradier" && reason.startsWith("tradier_live")) return "Tradier Live Quote";
-      if (provider === "tradier" && reason.startsWith("tradier_close")) return "Tradier Close";
-      if (provider === "massive") return "Fallback Snapshot";
-      if (provider === "yfinance") return "Yahoo Fallback";
-      if (provider) return `${provider[0].toUpperCase()}${provider.slice(1)} Fallback`;
-      return "Feed unavailable";
-    };
-
-    const updateCard = (card, quote, points) => {
-      const price = asNum((quote || {}).price);
-      const pct = asNum((quote || {}).pct_change);
-      const tone = pct === null ? "flat" : pct > 0 ? "up" : pct < 0 ? "down" : "flat";
-      const state = deriveState(quote);
-      const stateChip = card.querySelector('[data-role="state-chip"]');
-      const freshnessNode = card.querySelector('[data-role="freshness"]');
-      const priceNode = card.querySelector('[data-role="price"]');
-      const changeNode = card.querySelector('[data-role="change-line"]');
-      const sparkNode = card.querySelector('[data-role="sparkline"]');
-      const sourceNode = card.querySelector('[data-role="source-badge"]');
-      const gapLine = card.querySelector('[data-role="gap-line"]');
-      const gapChip = card.querySelector('[data-role="gap-chip"]');
-      const rangeNode = card.querySelector('[data-role="range-line"]');
-      const asOf = String((quote || {}).as_of || "").trim();
-      const freshness = formatFreshness(asOf, state);
-
-      if (stateChip) {
-        stateChip.textContent = state;
-        stateChip.classList.remove("state-live", "state-delayed", "state-missing");
-        stateChip.classList.add(`state-${stateClass(state)}`);
-      }
-      if (freshnessNode) {
-        freshnessNode.textContent = freshness.compact;
-        freshnessNode.setAttribute("title", freshness.full);
-      }
-      if (priceNode) {
-        priceNode.textContent = price === null ? "—" : price.toFixed(2);
-      }
-      if (changeNode) {
-        changeNode.textContent = `${formatSigned(inferAbsoluteChange(price, pct), 2)} · ${formatSigned(pct, 2)}%`;
-      }
-      if (sourceNode) {
-        sourceNode.textContent = sourceBadgeLabel(quote);
-      }
-      if (sparkNode) {
-        sparkNode.innerHTML = buildSparkline(points, tone);
-      }
-      if (rangeNode) {
-        const values = (Array.isArray(points) ? points : [])
-          .map((row) => (row && typeof row === "object" ? asNum(row.v) : null))
-          .filter((value) => value !== null);
-        if (!values.length) {
-          rangeNode.textContent = "—";
-        } else {
-          const low = Math.min(...values);
-          const high = Math.max(...values);
-          rangeNode.textContent = Math.abs(high - low) < 0.01 ? high.toFixed(2) : `${low.toFixed(2)}-${high.toFixed(2)}`;
-        }
-      }
-
-      const dayOpen = Array.isArray(points) && points.length ? asNum(points[0].v) : null;
-      const prevClose = price !== null && pct !== null ? price / (1 + (pct / 100)) : null;
-      const gap = dayOpen !== null && prevClose !== null ? dayOpen - prevClose : null;
-      const gapPct = gap !== null && prevClose ? (gap / prevClose) * 100 : null;
-      const gapText = gap === null || gapPct === null ? "—" : `${formatSigned(gap, 2)} (${formatSigned(gapPct, 2)}%)`;
-      if (gapChip) {
-        gapChip.textContent = gapText;
-        gapChip.classList.remove("positive", "negative");
-        if ((gap || 0) > 0) gapChip.classList.add("positive");
-        if ((gap || 0) < 0) gapChip.classList.add("negative");
-      }
-      if (gapLine) {
-        gapLine.classList.remove("is-positive", "is-negative");
-        if ((gap || 0) > 0) gapLine.classList.add("is-positive");
-        if ((gap || 0) < 0) gapLine.classList.add("is-negative");
-        gapLine.setAttribute("title", `Gap O/N: ${gapText}`);
-      }
-
-      card.classList.toggle("glow-green", (pct || 0) > 0);
-      card.classList.toggle("glow-red", (pct || 0) < 0);
-    };
-
-    const setStreamStatus = (label, detail) => {
-      statusNode.textContent = label;
-      statusNode.dataset.tone = label.toLowerCase().includes("retry") ? "delayed" : label.toLowerCase().includes("connect") ? "off" : "live";
-      updatedNode.textContent = detail;
-    };
-
-    const connect = () => {
-      const stream = new EventSource("/stream/market");
-      stream.onopen = () => {
-        setStreamStatus("Live", "just now");
-      };
-      stream.onmessage = (event) => {
-        if (!event || !event.data) return;
-        let payload = null;
-        try {
-          payload = JSON.parse(event.data);
-        } catch (_err) {
-          return;
-        }
-        const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
-        const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
-        cards.forEach((card) => {
-          const symbol = String(card.dataset.symbol || "").toUpperCase();
-          updateCard(card, prices[symbol] || {}, seriesPoints[symbol] || []);
-        });
-        setStreamStatus("Live", formatClock(payload.updated_at || payload.server_ts || new Date().toISOString()));
-      };
-      stream.onerror = () => {
-        try {
-          stream.close();
-        } catch (_err) {
-          // no-op
-        }
-        setStreamStatus("Retrying", "reconnecting…");
-        window.setTimeout(connect, 3000);
-      };
-    };
-
-    setStreamStatus("Connecting", "waiting for first tick…");
-    connect();
-  })();
-</script>
+</div>
+<script src="{{ url_for('static', filename='js/dashboard_command_center.js') }}?v={{ static_v }}"></script>

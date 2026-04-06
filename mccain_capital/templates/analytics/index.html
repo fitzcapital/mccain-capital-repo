@@ -1,200 +1,129 @@
 {% if tab == 'performance' %}
   {% set analytics_mode_label = 'Performance Review' %}
-  {% set analytics_mode_blurb = 'Read the outcome, confirm the risk posture, then review the curves that explain it.' %}
+  {% set analytics_mode_blurb = 'Read the outcome, confirm the risk posture, then inspect the curves.' %}
 {% elif tab == 'behavior' %}
   {% set analytics_mode_label = 'Behavior Review' %}
-  {% set analytics_mode_blurb = 'Find the habits shaping results, then narrow the one behavior to reinforce or cut.' %}
+  {% set analytics_mode_blurb = 'Find the habits shaping results, then isolate the one behavior to reinforce or cut.' %}
 {% elif tab == 'edge' %}
   {% set analytics_mode_label = 'Edge Review' %}
-  {% set analytics_mode_blurb = 'Check where the edge actually lives before broadening size or frequency.' %}
+  {% set analytics_mode_blurb = 'Confirm where the edge compounds before broadening size or frequency.' %}
 {% else %}
   {% set analytics_mode_label = 'Integrity Review' %}
-  {% set analytics_mode_blurb = 'Fix broken inputs first so every downstream read is worth trusting.' %}
+  {% set analytics_mode_blurb = 'Validate the input first so every downstream read is worth trusting.' %}
 {% endif %}
 
-<div class="card pageHero">
-  <div class="toolbar">
-    <div class="pageHeroHead">
-      <div>
-        <div class="pill">Analytics Workspace</div>
-        <div class="pageTitleRow">
-          <h2 class="pageTitle">{{ analytics_mode_label }}</h2>
-          <details class="inlineHelp">
-            <summary aria-label="Analytics page help">?</summary>
-            <div class="helpPopover">Track expectancy, drawdown, behavior, and setup or session quality without keeping that guidance on-screen full time.</div>
-          </details>
-        </div>
-        <div class="summaryLead stack8">{{ analytics_mode_blurb }}</div>
-        <div class="workspaceHeroActionBar">
-          <div class="workspaceHeroPriority">
-            <span class="workspaceHeroPriorityLabel">Priority</span>
-            <span class="workspaceHeroPriorityText">{{ insights.next_action }}</span>
+<div
+  class="analyticsWorkspaceShell"
+  id="analyticsDashboardApp"
+  data-analytics-api="{{ analytics_api_url }}"
+>
+  <script id="analyticsDashboardInitial" type="application/json">{{ analytics_payload|tojson }}</script>
+
+  <div class="card pageHero heroCard analyticsHeroCard">
+    <div class="toolbar">
+      <div class="pageHeroHead">
+        <div>
+          <div class="pill">Analytics Workspace</div>
+          <div class="pageTitleRow">
+            <h2 class="pageTitle">{{ analytics_mode_label }}</h2>
+            <details class="inlineHelp">
+              <summary aria-label="Analytics page help">?</summary>
+              <div class="helpPopover">Equity, drawdown, benchmark, and execution quality in one workspace.</div>
+            </details>
           </div>
-          <div class="actionRow workspaceHeroPrimaryActions">
-            {% if account_scope and account_scope.enabled %}
-              <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active</a>
-              <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All</a>
-            {% else %}
-              <a class="btn ctaLink" href="/ops/backups">Scope</a>
-            {% endif %}
-            <a class="btn primary" href="/analytics/replay">Replay</a>
-            <a class="btn ctaLink" href="/trades">Trades</a>
-            <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
+          <div class="summaryLead stack8">{{ analytics_mode_blurb }}</div>
+          <div class="workspaceHeroActionBar">
+            <div class="workspaceHeroPriority">
+              <span class="workspaceHeroPriorityLabel">Priority</span>
+              <span class="workspaceHeroPriorityText" id="analyticsPriorityText">{{ analytics_payload.coach.next_action }}</span>
+            </div>
+            <div class="actionRow workspaceHeroPrimaryActions">
+              <a class="btn primary" href="/analytics/replay">Replay</a>
+              <a class="btn ctaLink" href="/trades">Trades</a>
+              <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<div class="analyticsSignalGrid">
-  <div class="analyticsSignalCard {% if perf.total_net > 0 %}is-healthy{% elif perf.total_net < 0 %}is-danger{% else %}is-neutral{% endif %}">
-    <span class="analyticsSignalLabel">Net Read</span>
-    <strong>{{ money(perf.total_net) }}</strong>
-    <span class="analyticsSignalMeta">Win rate {{ '%.1f'|format(perf.win_rate) }}% · {{ perf.total_trades }} trades in scope.</span>
-  </div>
-  <div class="analyticsSignalCard">
-    <span class="analyticsSignalLabel">Expectancy</span>
-    <strong>{{ money(perf.expectancy) }}</strong>
-    <span class="analyticsSignalMeta">Average trade outcome with current filters applied.</span>
-  </div>
-  <div class="analyticsSignalCard {% if dd.current_drawdown > 0 %}is-danger{% else %}is-healthy{% endif %}">
-    <span class="analyticsSignalLabel">Live Drawdown</span>
-    <strong>{{ money(dd.current_drawdown) }}</strong>
-    <span class="analyticsSignalMeta">Max drawdown {{ money(dd.max_drawdown) }} · streak {{ dd.current_drawdown_streak }}.</span>
-  </div>
-  <div class="analyticsSignalCard">
-    <span class="analyticsSignalLabel">Decision</span>
-    <strong>{{ sizing.action }}</strong>
-    <span class="analyticsSignalMeta">Regime {{ sizing.regime }} · {{ insights.next_action }}</span>
-  </div>
-</div>
-
-<div class="dashboardSupportGrid">
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Best Setup</div>
-    <div class="supportLead">
-      {% if best_setup_card %}
-        {{ best_setup_card.setup }} · {{ money(best_setup_card.expectancy) }} expectancy
-      {% else %}
-        Need labeled setup sample
-      {% endif %}
-    </div>
-    <div class="supportBody">
-      {% if best_setup_card %}
-        {{ best_setup_card.count }} trades · {{ '%.1f'|format(best_setup_card.win_rate) }}% win rate · avg winner {{ money(best_setup_card.avg_winner) }}.
-      {% else %}
-        Add setup tags on reviewed trades so edge detection has enough signal.
-      {% endif %}
-    </div>
-  </div></div>
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Biggest Leak</div>
-    <div class="supportLead">
-      {% if biggest_leak_card %}
-        {{ biggest_leak_card.tag|replace('-', ' ')|title }} · {{ money(biggest_leak_card.loss_cost) }} cost
-      {% else %}
-        No behavior leak isolated
-      {% endif %}
-    </div>
-    <div class="supportBody">
-      {% if biggest_leak_card %}
-        {{ biggest_leak_card.count }} tagged trades · average impact {{ money(biggest_leak_card.avg_impact) }}.
-      {% else %}
-        Tag mistakes during reviews so the behavior layer can rank what is actually expensive.
-      {% endif %}
-    </div>
-  </div></div>
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Review Coverage</div>
-    <div class="supportLead">{{ '%.0f'|format(review_coverage.completion_pct) }}% complete</div>
-    <div class="supportBody">
-      {{ review_coverage.fully_reviewed }} of {{ review_coverage.total }} trades fully reviewed.
-      Missing setup {{ review_coverage.missing_setup }}, mistakes {{ review_coverage.missing_mistake }}, planned risk {{ review_coverage.missing_risk }}.
-    </div>
-  </div></div>
-</div>
-
-<div class="card analyticsToplineCard analyticsCommandDeck">
-  <div class="toolbar">
-    <div class="analyticsTopline">
-      <div class="analyticsBalanceBlock">
-        <div class="summaryMonth">Analytics Balance</div>
-        <div class="summaryCaption analyticsBalanceCaption">Current account <strong>{{ money(balance_integrity.canonical_balance) }}</strong></div>
-        {% if account_scope and account_scope.enabled %}
-          <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
-        {% endif %}
-      </div>
-      <div class="analyticsTopStats">
-        <div class="analyticsTopStat {% if perf.total_net > 0 %}isGain{% elif perf.total_net < 0 %}isLoss{% endif %}">
-          <span>Net P/L</span>
-          <strong>{{ money(perf.total_net) }}</strong>
+  <div class="card primaryCard analyticsCommandDeck analyticsModernDeck">
+    <div class="toolbar">
+      <div class="analyticsDeckTopline">
+        <div class="analyticsBalanceBlock">
+          <div class="summaryMonth">Analytics Balance</div>
+          <div class="analyticsBalanceCaption">Current account</div>
+          <div class="analyticsBalanceValue" id="analyticsBalanceValue">{{ analytics_payload.summary.balance_display }}</div>
+          {% if analytics_payload.meta.scope_label %}
+            <div class="tiny stack6" id="analyticsScopeLabel">Scope: {{ analytics_payload.meta.scope_label }}</div>
+          {% endif %}
         </div>
-        <div class="analyticsTopStat">
-          <span>Win Rate</span>
-          <strong>{{ '%.1f'|format(perf.win_rate) }}%</strong>
-        </div>
-        <div class="analyticsTopStat">
-          <span>Expectancy</span>
-          <strong>{{ money(perf.expectancy) }}</strong>
-        </div>
-        <div class="analyticsTopStat {% if dd.current_drawdown > 0 %}isLoss{% endif %}">
-          <span>Live Drawdown</span>
-          <strong>{{ money(dd.current_drawdown) }}</strong>
+        <div class="analyticsDeckStats">
+          <div class="analyticsDeckStat analyticsDeckStat-{{ analytics_payload.summary.net_tone }}">
+            <span>Net P/L</span>
+            <strong id="analyticsNetStat">{{ analytics_payload.summary.net_display }}</strong>
+          </div>
+          <div class="analyticsDeckStat">
+            <span>Win Rate</span>
+            <strong id="analyticsWinRateStat">{{ analytics_payload.summary.win_rate_display }}</strong>
+          </div>
+          <div class="analyticsDeckStat">
+            <span>Expectancy</span>
+            <strong id="analyticsExpectancyStat">{{ analytics_payload.summary.expectancy_display }}</strong>
+          </div>
+          <div class="analyticsDeckStat analyticsDeckStat-{{ analytics_payload.summary.drawdown_tone }}">
+            <span>Live Drawdown</span>
+            <strong id="analyticsDrawdownStat">{{ analytics_payload.summary.drawdown_display }}</strong>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="hr"></div>
-    <div class="analyticsModeRail">
-      <a class="analyticsModeCard{% if tab == 'performance' %} is-active{% endif %}" href="/analytics?tab=performance&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">
-        <span class="analyticsModeKicker">Performance</span>
-        <strong>Outcome and curves</strong>
-        <span>Read P/L, drawdown, and sizing context.</span>
-      </a>
-      <a class="analyticsModeCard{% if tab == 'behavior' %} is-active{% endif %}" href="/analytics?tab=behavior&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">
-        <span class="analyticsModeKicker">Behavior</span>
-        <strong>Sessions and mistakes</strong>
-        <span>Review session quality and rule-break drift.</span>
-      </a>
-      <a class="analyticsModeCard{% if tab == 'edge' %} is-active{% endif %}" href="/analytics?tab=edge&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">
-        <span class="analyticsModeKicker">Edge</span>
-        <strong>Setup and time edge</strong>
-        <span>Find where the edge actually compounds.</span>
-      </a>
-      <a class="analyticsModeCard{% if tab == 'diagnostics' %} is-active{% endif %}" href="/analytics?tab=diagnostics&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">
-        <span class="analyticsModeKicker">Diagnostics</span>
-        <strong>Trust the input</strong>
-        <span>Fix stale or missing data before review.</span>
-      </a>
-    </div>
-    <div class="analyticsModeSummary">
-      <div class="supportLead">{{ analytics_mode_label }}</div>
-      <div class="supportBody">{{ insights.changed }}</div>
-      <div class="analyticsModeSummaryMeta">
-        <span class="trendChip {% if perf.total_net > 0 %}positive{% elif perf.total_net < 0 %}negative{% endif %}">Net {{ money(perf.total_net) }}</span>
-        <span class="trendChip">Risk {{ insights.risk_now }}</span>
-        {% if review_filters.setup %}<span class="trendChip">Setup {{ review_filters.setup }}</span>{% endif %}
-        {% if review_filters.session %}<span class="trendChip">Session {{ review_filters.session }}</span>{% endif %}
-        {% if review_filters.outcome %}<span class="trendChip">{{ review_filters.outcome|title }}</span>{% endif %}
-        {% if review_filters.time_block %}<span class="trendChip">{{ review_filters.time_block }}</span>{% endif %}
-        {% if review_filters.mistake_tag %}<span class="trendChip">Mistake {{ review_filters.mistake_tag }}</span>{% endif %}
+
+      <div class="analyticsModeRail">
+        <a class="analyticsModeCard{% if tab == 'performance' %} is-active{% endif %}" href="/analytics?tab=performance&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}&scope={{ scope_mode }}">
+          <span class="analyticsModeKicker">Performance</span>
+          <strong>Outcome and curves</strong>
+          <span>Read P/L, drawdown, benchmark, and sizing context.</span>
+        </a>
+        <a class="analyticsModeCard{% if tab == 'behavior' %} is-active{% endif %}" href="/analytics?tab=behavior&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}&scope={{ scope_mode }}">
+          <span class="analyticsModeKicker">Behavior</span>
+          <strong>Sessions and mistakes</strong>
+          <span>See where discipline lifts or drags the curve.</span>
+        </a>
+        <a class="analyticsModeCard{% if tab == 'edge' %} is-active{% endif %}" href="/analytics?tab=edge&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}&scope={{ scope_mode }}">
+          <span class="analyticsModeKicker">Edge</span>
+          <strong>Setup and time edge</strong>
+          <span>Compare setups, hours, and repeatable expectancy.</span>
+        </a>
+        <a class="analyticsModeCard{% if tab == 'diagnostics' %} is-active{% endif %}" href="/analytics?tab=diagnostics&start={{ start_date }}&end={{ end_date }}&explain_day={{ explain_day }}&expectancy_granularity={{ expectancy_granularity }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}&scope={{ scope_mode }}">
+          <span class="analyticsModeKicker">Diagnostics</span>
+          <strong>Trust the input</strong>
+          <span>Check review hygiene, balances, and missing fields.</span>
+        </a>
       </div>
-    </div>
-    <details class="syncDetails analyticsControlFold">
-      <summary>
-        <span>Range and Filters</span>
-        <span class="tiny muted">
-          {{ start_date or 'Start open' }} to {{ end_date or 'Today' }}
-          {% if explain_day %} · Explain {{ explain_day }}{% endif %}
-        </span>
-      </summary>
-      <form method="get" class="row">
+
+      <form id="analyticsDashboardFilters" class="analyticsFilterPanel" method="get">
         <input type="hidden" name="tab" value="{{ tab }}">
-        <div><label>Start</label><input class="appDateInput" type="date" name="start" value="{{ start_date }}"></div>
-        <div><label>End</label><input class="appDateInput" type="date" name="end" value="{{ end_date }}"></div>
+        <input type="hidden" name="scope" value="{{ scope_mode }}" id="analyticsScopeInput">
+        <div class="analyticsScopeSwitch" role="group" aria-label="Analytics scope">
+          {% if account_scope and account_scope.enabled %}
+            <button class="analyticsScopeBtn{% if scope_mode == 'active' %} is-active{% endif %}" type="button" data-scope-value="active">Active</button>
+            <button class="analyticsScopeBtn{% if scope_mode == 'all' %} is-active{% endif %}" type="button" data-scope-value="all">All</button>
+          {% else %}
+            <a class="btn ctaLink" href="/ops/backups">Scope</a>
+          {% endif %}
+        </div>
+        <div>
+          <label>Start</label>
+          <input class="appDateInput" type="date" name="start" value="{{ start_date }}">
+        </div>
+        <div>
+          <label>End</label>
+          <input class="appDateInput" type="date" name="end" value="{{ end_date }}">
+        </div>
         <div>
           <label>Explain Day</label>
-          <input class="appDateInput" type="date" name="explain_day" value="{{ explain_day }}" />
+          <input class="appDateInput" type="date" name="explain_day" value="{{ explain_day }}">
         </div>
         <div>
           <label>Expectancy View</label>
@@ -205,7 +134,7 @@
         </div>
         <div>
           <label>Setup</label>
-          <input name="setup" value="{{ review_filters.setup }}" placeholder="ORB, Fade" />
+          <input name="setup" value="{{ review_filters.setup }}" placeholder="ORB, Fade">
         </div>
         <div>
           <label>Session</label>
@@ -237,794 +166,536 @@
         </div>
         <div>
           <label>Mistake Tag</label>
-          <input name="mistake_tag" value="{{ review_filters.mistake_tag }}" placeholder="late entry" />
+          <input name="mistake_tag" value="{{ review_filters.mistake_tag }}" placeholder="late entry">
         </div>
-        <div class="actionRow">
-          <button class="btn" type="submit">Apply</button>
-          <a class="btn" href="/analytics">Reset</a>
+        <div class="analyticsFilterActions">
+          <button class="btn primary" type="submit">Update Workspace</button>
+          <a class="btn" href="/analytics?tab={{ tab }}">Reset</a>
         </div>
       </form>
-    </details>
+
+      <div class="analyticsFilterMeta" id="analyticsFilterChips">
+        {% for chip in analytics_payload.meta.filter_chips %}
+          <span class="trendChip">{{ chip }}</span>
+        {% endfor %}
+      </div>
+    </div>
   </div>
-</div>
 
-<div class="analyticsWorkflowGrid">
-  <div class="card insightCard analyticsWorkflowCard analyticsWorkflowCardOutcome"><div class="toolbar">
-    <div class="pill">1. Outcome</div>
-    <div class="insightTitle">What changed</div>
-    <div class="insightBody">{{ insights.changed }}</div>
-    <div class="analyticsWorkflowMeta">
-      <span class="trendChip {% if perf.total_net > 0 %}positive{% elif perf.total_net < 0 %}negative{% endif %}">Net {{ money(perf.total_net) }}</span>
-      <span class="trendChip">WR {{ '%.1f'|format(perf.win_rate) }}%</span>
-      <span class="trendChip">Exp {{ money(perf.expectancy) }}</span>
-    </div>
-  </div></div>
-  <div class="card insightCard analyticsWorkflowCard analyticsWorkflowCardRisk"><div class="toolbar">
-    <div class="pill">2. Risk</div>
-    <div class="insightTitle">What needs protection</div>
-    <div class="insightBody">{{ insights.risk_now }}</div>
-    <div class="analyticsWorkflowMeta">
-      <span class="trendChip">Max DD {{ money(dd.max_drawdown) }}</span>
-      <span class="trendChip">DD streak {{ dd.current_drawdown_streak }}</span>
-      <span class="trendChip">Fitz 22 {{ 'On' if fitz_22 else 'Off' }}</span>
-    </div>
-  </div></div>
-  <div class="card insightCard analyticsWorkflowCard analyticsWorkflowCardAction"><div class="toolbar">
-    <div class="pill">3. Next Move</div>
-    <div class="insightTitle">What to do next</div>
-    <div class="insightBody">{{ insights.next_action }}</div>
-    <div class="analyticsWorkflowMeta">
-      <span class="trendChip">Explain day {{ day_story.day }}</span>
-      <span class="trendChip">Regime {{ sizing.regime }}</span>
-      <span class="trendChip">{{ sizing.action }}</span>
-    </div>
-  </div></div>
-</div>
+  <section class="analyticsSessionSummaryBar">
+    <article class="analyticsSessionCell">
+      <span>Trades In Scope</span>
+      <strong id="analyticsSessionTrades">{{ analytics_payload.summary.total_trades }}</strong>
+      <small>Closed sample inside the current filter set</small>
+    </article>
+    <article class="analyticsSessionCell">
+      <span>Profit Factor</span>
+      <strong id="analyticsSessionProfitFactor">{{ analytics_payload.summary.profit_factor_display }}</strong>
+      <small>Gross winners divided by gross losers</small>
+    </article>
+    <article class="analyticsSessionCell">
+      <span>Window</span>
+      <strong id="analyticsSessionWindow">{{ start_date }} to {{ end_date }}</strong>
+      <small id="analyticsSessionScopeText">{{ analytics_payload.meta.scope_label or 'All completed trades in range' }}</small>
+    </article>
+    <article class="analyticsSessionCell analyticsSessionCell-accent">
+      <span>Explain Day</span>
+      <strong id="analyticsSessionExplainDay">{{ explain_day or 'Auto' }}</strong>
+      <small>Single-day decomposition for the coach read</small>
+    </article>
+  </section>
 
-{% set review_setup_open = tab == 'diagnostics' or data_trust.tone == 'critical' %}
-<details class="syncDetails analyticsFoldSection analyticsTrustFold" {% if review_setup_open %}open{% endif %}>
-  <summary>
-    <span>Review Setup and Data Trust</span>
-    <span class="tiny muted">Open sync health, balance trust, and deeper metrics when you need to validate the read.</span>
-  </summary>
-  <div class="stack12">
-    <div class="card analyticsOpsBand"><div class="toolbar">
-      <div class="analyticsOpsHead">
-        <div>
-          <div class="pill">Review Ops</div>
-          <div class="analyticsOpsLead">Trust the data first, then review with confidence.</div>
+  <section class="analyticsStageShell">
+    <article class="card primaryCard analyticsChartCard analyticsHeroStageCard chartUsage-timeseries">
+      <div class="toolbar">
+        <div class="analyticsCardHead analyticsStageHead">
+          <div>
+            <div class="pill">Equity Curve</div>
+            <div class="analyticsStageTitle">Primary equity tape</div>
+            <div class="analyticsCardLead">This curve owns the page. The rest of the terminal explains why it bends, stalls, or compounds.</div>
+          </div>
+          <div class="tiny muted" id="analyticsEquitySubtitle">{{ analytics_payload.charts.equity.subtitle }}</div>
         </div>
-        {% if data_trust.primary_href and data_trust.primary_label %}
-          <div class="rightActions stack8">
-            <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-            {% if data_trust.secondary_href and data_trust.secondary_label %}
-              <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+        <div class="analyticsChartCanvas analyticsChartCanvas-stage" id="analyticsEquityChart"></div>
+      </div>
+    </article>
+
+    <div class="analyticsStageBody">
+      <div class="analyticsCurveColumn">
+        <article class="card primaryCard analyticsChartCard analyticsBenchmarkStageCard chartUsage-comparison">
+          <div class="toolbar">
+            <div class="analyticsCardHead">
+              <div>
+                <div class="pill">Equity vs SPX Benchmark</div>
+                <div class="analyticsStageSubTitle">Relative performance track</div>
+                <div class="analyticsCardLead">Strategy path against the in-book SPX curve.</div>
+              </div>
+              <div class="tiny muted">Benchmark compares only SPX ticker outcomes across the same trade timeline.</div>
+            </div>
+            <div class="analyticsChartCanvas analyticsChartCanvas-benchmark" id="analyticsBenchmarkChart"></div>
+          </div>
+        </article>
+
+        <article class="card primaryCard analyticsChartCard analyticsDrawdownCard chartUsage-timeseries">
+          <div class="toolbar">
+            <div class="analyticsCardHead">
+              <div>
+                <div class="pill">Drawdown Curve</div>
+                <div class="analyticsStageSubTitle">Pressure and recovery</div>
+                <div class="analyticsCardLead">Underwater path under the main tape.</div>
+              </div>
+              <div class="tiny muted" id="analyticsDrawdownSubtitle">{{ analytics_payload.charts.drawdown.subtitle }}</div>
+            </div>
+            <div class="analyticsChartCanvas analyticsChartCanvas-secondary" id="analyticsDrawdownChart"></div>
+          </div>
+        </article>
+
+        <article class="card primaryCard analyticsChartCard analyticsPnlByDayCard analyticsPnlBandCard chartUsage-comparison">
+          <div class="toolbar">
+            <div class="analyticsCardHead">
+              <div>
+                <div class="pill">PnL by Day</div>
+                <div class="analyticsStageSubTitle">Daily result cadence</div>
+                <div class="analyticsCardLead">A compact read on how the run distributes across days.</div>
+              </div>
+              <div class="tiny muted" id="analyticsPnlDaySubtitle">{{ analytics_payload.charts.pnl_day.subtitle }}</div>
+            </div>
+            <div class="analyticsChartCanvas analyticsChartCanvas-band" id="analyticsPnlDayChart"></div>
+          </div>
+        </article>
+      </div>
+
+      <aside class="analyticsInstrumentRail">
+      <div class="analyticsInstrumentHead">
+        <div class="pill">Instrument Cluster</div>
+        <div class="analyticsRailTitle">Circular reads first</div>
+        <div class="analyticsCardLead">High-signal context beside the curve.</div>
+      </div>
+
+      <section class="analyticsKpiCluster">
+        <article class="card supportCard analyticsChartCard analyticsKpiCard analyticsKpiCard-orbit chartUsage-kpi">
+          <div class="toolbar">
+            <div class="analyticsKpiTopline">Win Rate</div>
+            <div class="analyticsKpiContextTop">Precision on closed trades</div>
+            <div class="analyticsKpiChart" id="analyticsWinRateChart"></div>
+            <div class="analyticsKpiFoot" id="analyticsWinRateFoot">{{ analytics_payload.kpis.win_rate.footnote }}</div>
+          </div>
+        </article>
+        <article class="card supportCard analyticsChartCard analyticsKpiCard analyticsKpiCard-orbit chartUsage-kpi">
+          <div class="toolbar">
+            <div class="analyticsKpiTopline">Expectancy</div>
+            <div class="analyticsKpiContextTop">Edge per trade</div>
+            <div class="analyticsKpiChart" id="analyticsExpectancyChart"></div>
+            <div class="analyticsKpiFoot" id="analyticsExpectancyFoot">{{ analytics_payload.kpis.expectancy.footnote }}</div>
+          </div>
+        </article>
+        <article class="card supportCard analyticsChartCard analyticsKpiCard analyticsKpiCard-orbit chartUsage-kpi">
+          <div class="toolbar">
+            <div class="analyticsKpiTopline">Risk Control</div>
+            <div class="analyticsKpiContextTop">Drawdown and recovery posture</div>
+            <div class="analyticsKpiChart" id="analyticsRiskControlChart"></div>
+            <div class="analyticsKpiFoot" id="analyticsRiskControlFoot">{{ analytics_payload.kpis.risk_control.footnote }}</div>
+          </div>
+        </article>
+        <article class="card supportCard analyticsChartCard analyticsKpiCard analyticsKpiCard-orbit chartUsage-kpi">
+          <div class="toolbar">
+            <div class="analyticsKpiTopline">Review Coverage</div>
+            <div class="analyticsKpiContextTop">Decision-grade sample health</div>
+            <div class="analyticsKpiChart" id="analyticsReviewCoverageChart"></div>
+            <div class="analyticsKpiFoot" id="analyticsReviewCoverageFoot">{{ analytics_payload.kpis.review_coverage.footnote }}</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="analyticsNarrativeStack">
+        <article class="card primaryCard analyticsInsightCard analyticsInsightCard-primary">
+          <div class="toolbar">
+            <div class="pill">Outcome Read</div>
+            <div class="insightTitle">What changed</div>
+            <div class="insightBody" id="analyticsChangedText">{{ analytics_payload.coach.changed }}</div>
+          </div>
+        </article>
+        <article class="card supportCard analyticsInsightCard">
+          <div class="toolbar">
+            <div class="pill">Risk</div>
+            <div class="insightTitle">What needs protection</div>
+            <div class="insightBody" id="analyticsRiskText">{{ analytics_payload.coach.risk_now }}</div>
+          </div>
+        </article>
+        <article class="card supportCard analyticsInsightCard">
+          <div class="toolbar">
+            <div class="pill">Next Move</div>
+            <div class="insightTitle">What to do next</div>
+            <div class="insightBody" id="analyticsActionText">{{ analytics_payload.coach.next_action }}</div>
+            <div class="analyticsMiniMeta">
+              <span class="trendChip" id="analyticsSizingAction">{{ analytics_payload.coach.sizing_action }}</span>
+              <span class="trendChip" id="analyticsFitzStatus">Fitz 22 {{ analytics_payload.coach.fitz_status }}</span>
+            </div>
+          </div>
+        </article>
+      </section>
+      </aside>
+    </div>
+  </section>
+
+  <section class="analyticsCommandRibbon">
+  <article class="card supportCard analyticsSupportCard analyticsSupportCard-brief analyticsExecutionBrief">
+      <div class="toolbar">
+        <div class="analyticsSectionMeta">
+          <div class="pill">Execution Brief</div>
+          <div class="analyticsSectionLead">Condensed setup, leak, and sizing reads.</div>
+        </div>
+        <div class="analyticsBriefGrid">
+          <section class="analyticsBriefItem">
+            <span class="analyticsBriefKicker">Best Setup</span>
+            <div class="supportLead" id="analyticsBestSetupHeadline">{{ analytics_payload.coach.best_setup_headline }}</div>
+            <div class="supportBody" id="analyticsBestSetupBody">{{ analytics_payload.coach.best_setup_body }}</div>
+          </section>
+          <section class="analyticsBriefItem">
+            <span class="analyticsBriefKicker">Biggest Leak</span>
+            <div class="supportLead" id="analyticsLeakHeadline">{{ analytics_payload.coach.biggest_leak_headline }}</div>
+            <div class="supportBody" id="analyticsLeakBody">{{ analytics_payload.coach.biggest_leak_body }}</div>
+          </section>
+          <section class="analyticsBriefItem">
+            <span class="analyticsBriefKicker">Sizing</span>
+            <div class="supportLead" id="analyticsSizingLead">{{ analytics_payload.coach.sizing_action }}</div>
+            <div class="supportBody" id="analyticsSizingBody">{{ analytics_payload.coach.sizing_note }}</div>
+            <div class="analyticsMiniMeta">
+              <span class="trendChip" id="analyticsSizingRegime">Regime {{ analytics_payload.coach.sizing_regime }}</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </article>
+  <article class="card supportCard analyticsSupportCard analyticsSupportCard-brief analyticsTrustCompactPanel">
+      <div class="toolbar">
+        <div class="analyticsSectionMeta">
+          <div class="pill">Session Notes</div>
+          <div class="analyticsSectionLead">Trust and one-day context, kept secondary.</div>
+        </div>
+        <div class="analyticsBriefStack">
+          <section class="analyticsBriefItem analyticsBriefItem-compact">
+            <span class="analyticsBriefKicker">Data Trust</span>
+            <div class="supportBody{% if data_trust.tone == 'critical' %} metaRed{% else %} metaGreen{% endif %}" id="analyticsTrustMessage">{{ analytics_payload.coach.data_trust_message }}</div>
+            {% if analytics_payload.coach.data_trust_href and analytics_payload.coach.data_trust_label %}
+              <div class="actionRow">
+                <a class="btn primary" id="analyticsTrustCta" href="{{ analytics_payload.coach.data_trust_href }}">{{ analytics_payload.coach.data_trust_label }}</a>
+              </div>
+            {% endif %}
+          </section>
+          <section class="analyticsBriefItem analyticsBriefItem-compact">
+            <span class="analyticsBriefKicker" id="analyticsDayTitle">{{ analytics_payload.coach.day_title }}</span>
+            <div class="analyticsBulletList" id="analyticsDayLines">
+              {% for line in analytics_payload.coach.day_lines %}
+                <div class="tiny stack8 line16">• {{ line }}</div>
+              {% endfor %}
+            </div>
+          </section>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="analyticsBreakdownGrid">
+    <article class="card supportCard analyticsChartCard analyticsDonutCard analyticsDonutCard-feature chartUsage-breakdown">
+      <div class="toolbar">
+        <div class="analyticsCardHead">
+          <div>
+            <div class="pill">Outcome Breakdown</div>
+            <div class="analyticsCardLead">Wins, losses, and breakeven mix</div>
+          </div>
+        </div>
+        <div class="analyticsDonutCanvas" id="analyticsOutcomeBreakdownChart"></div>
+      </div>
+    </article>
+    <article class="card supportCard analyticsChartCard analyticsDonutCard chartUsage-breakdown">
+      <div class="toolbar">
+        <div class="analyticsCardHead">
+          <div>
+            <div class="pill">Setup Distribution</div>
+            <div class="analyticsCardLead">Tagged setup mix in the active sample</div>
+          </div>
+        </div>
+        <div class="analyticsDonutCanvas" id="analyticsSetupBreakdownChart"></div>
+      </div>
+    </article>
+    <article class="card supportCard analyticsChartCard analyticsDonutCard chartUsage-breakdown">
+      <div class="toolbar">
+        <div class="analyticsCardHead">
+          <div>
+            <div class="pill">Mistake Breakdown</div>
+            <div class="analyticsCardLead">Behavior and rule-break tags</div>
+          </div>
+        </div>
+        <div class="analyticsDonutCanvas" id="analyticsMistakeBreakdownChart"></div>
+      </div>
+    </article>
+    <article class="card supportCard analyticsChartCard analyticsDonutCard chartUsage-breakdown">
+      <div class="toolbar">
+        <div class="analyticsCardHead">
+          <div>
+            <div class="pill">Day Volatility Regime</div>
+            <div class="analyticsCardLead">Low, normal, and high volatility distribution</div>
+          </div>
+        </div>
+        <div class="analyticsDonutCanvas" id="analyticsRegimeBreakdownChart"></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="analyticsMicroGrid">
+    <article class="card supportCard analyticsMicroCard">
+      <div class="toolbar">
+        <div class="analyticsMicroHead">
+          <div class="pill">Review</div>
+          <div class="analyticsMicroValue" id="analyticsReviewMicroValue">{{ analytics_payload.micro.review.value }}</div>
+        </div>
+        <div class="supportBody" id="analyticsReviewMicroNote">{{ analytics_payload.micro.review.note }}</div>
+        <div class="analyticsSparkline" id="analyticsReviewSparkChart"></div>
+        <div class="analyticsProgressTrack"><span id="analyticsReviewMicroProgress" style="width: {{ '%.1f'|format(analytics_payload.micro.review.progress) }}%"></span></div>
+      </div>
+    </article>
+    <article class="card supportCard analyticsMicroCard">
+      <div class="toolbar">
+        <div class="analyticsMicroHead">
+          <div class="pill">Trust</div>
+          <div class="analyticsMicroValue" id="analyticsTrustMicroValue">{{ analytics_payload.micro.trust.value }}</div>
+        </div>
+        <div class="supportBody" id="analyticsTrustMicroNote">{{ analytics_payload.micro.trust.note }}</div>
+        <div class="analyticsSparkline" id="analyticsTrustSparkChart"></div>
+        <div class="analyticsProgressTrack"><span id="analyticsTrustMicroProgress" style="width: {{ '%.1f'|format(analytics_payload.micro.trust.progress) }}%"></span></div>
+      </div>
+    </article>
+    <article class="card supportCard analyticsMicroCard">
+      <div class="toolbar">
+        <div class="analyticsMicroHead">
+          <div class="pill">Edge</div>
+          <div class="analyticsMicroValue" id="analyticsEdgeMicroValue">{{ analytics_payload.micro.edge.value }}</div>
+        </div>
+        <div class="supportBody" id="analyticsEdgeMicroNote">{{ analytics_payload.micro.edge.note }}</div>
+        <div class="analyticsSparkline" id="analyticsEdgeSparkChart"></div>
+        <div class="analyticsProgressTrack"><span id="analyticsEdgeMicroProgress" style="width: {{ '%.1f'|format(analytics_payload.micro.edge.progress) }}%"></span></div>
+      </div>
+    </article>
+  </section>
+
+  <details class="syncDetails analyticsFoldSection analyticsTrustFold" {% if tab == 'diagnostics' or data_trust.tone == 'critical' %}open{% endif %}>
+    <summary>
+      <span>Review Setup and Data Trust</span>
+      <span class="tiny muted">Open sync health, balance trust, and validation badges when you need to confirm the read.</span>
+    </summary>
+    <div class="stack12">
+      <div class="card supportCard analyticsOpsBand">
+        <div class="toolbar">
+          <div class="analyticsOpsHead">
+            <div>
+              <div class="pill">Review Ops</div>
+              <div class="analyticsOpsLead">Data Trust</div>
+            </div>
+            {% if data_trust.primary_href and data_trust.primary_label %}
+              <div class="rightActions stack8">
+                <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
+                {% if data_trust.secondary_href and data_trust.secondary_label %}
+                  <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
+                {% endif %}
+              </div>
             {% endif %}
           </div>
-        {% endif %}
-      </div>
-      <div class="statusBadgeStrip analyticsStatusStrip">
-        {% for badge in balance_badges %}
-          <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-            <span class="statusBadgeLabel">{{ badge.label }}</span>
-            <strong>{{ badge.value }}</strong>
-          </div>
-        {% endfor %}
-        {% for badge in sync_badges %}
-          <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-            <span class="statusBadgeLabel">{{ badge.label }}</span>
-            <strong>{{ badge.value }}</strong>
-          </div>
-        {% endfor %}
-      </div>
-      <div class="analyticsOpsNarrative">
-        <div class="supportLead">Data Trust</div>
-        {% if data_trust.badges %}
-          <div class="trustBadgeRow">
-            {% for badge in data_trust.badges %}
-              <span class="trustBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-                {{ badge.label }} <b>{{ badge.value }}</b>
-              </span>
-            {% endfor %}
-          </div>
-        {% endif %}
-        <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">{{ data_trust.message }}</div>
-      </div>
-    </div></div>
-
-    <div class="showcaseGrid">
-      <div class="showcaseCard">
-        <div class="showcaseHead">
-          <div class="showcaseTitle">
-            <svg class="mcIcon"><use href="#mc-crown"></use></svg>
-            Edge Intensity
-          </div>
-          <span class="trendChip">{{ perf.total_trades }} trades</span>
-        </div>
-        <div class="showcaseValue">{{ money(perf.expectancy) }}</div>
-        <div class="showcaseMeta">
-          Profit factor {% if perf.profit_factor is not none %}{{ '%.2f'|format(perf.profit_factor) }}{% else %}∞{% endif %}
-          · Win rate {{ '%.1f'|format(perf.win_rate) }}%.
-        </div>
-        <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(edge_pulse) }}%">
-          <div class="showcasePulseFill"></div>
-          <div class="showcaseWave"></div>
-        </div>
-      </div>
-      <div class="showcaseCard">
-        <div class="showcaseHead">
-          <div class="showcaseTitle">
-            <svg class="mcIcon"><use href="#mc-crest"></use></svg>
-            Risk Control State
-          </div>
-          <span class="trendChip">DD streak {{ dd.current_drawdown_streak }}</span>
-        </div>
-        <div class="showcaseValue">{{ money(dd.current_drawdown) }}</div>
-        <div class="showcaseMeta">
-          Max DD {{ money(dd.max_drawdown) }} · Current streak {{ dd.current_drawdown_streak }}.
-        </div>
-        <div class="showcasePulse" style="--pulse-w: {{ '%.1f'|format(control_pulse) }}%">
-          <div class="showcasePulseFill"></div>
-          <div class="showcaseWave"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="metricStrip analyticsMetricStrip stack10">
-      <div class="metric"><div class="label">Trades</div><div class="value">{{ perf.total_trades }}</div><div class="sub">Reviewed sample in range</div></div>
-      <div class="metric"><div class="label">Win Rate</div><div class="value">{{ '%.1f'|format(perf.win_rate) }}%</div><div class="sub">Reviewed trades</div></div>
-      <div class="metric"><div class="label">Expectancy</div><div class="value">{{ money(perf.expectancy) }}</div><div class="sub">Average per trade</div></div>
-      <div class="metric"><div class="label">Profit Factor</div><div class="value">{{ '%.2f'|format(perf.profit_factor) if perf.profit_factor is not none else '∞' }}</div><div class="sub">Wins vs losses</div></div>
-      <div class="metric"><div class="label">Max Drawdown</div><div class="value">{{ money(perf.max_drawdown) }}</div><div class="sub">Peak to trough</div></div>
-      <div class="metric"><div class="label">DD Streak (Max)</div><div class="value">{{ dd.max_drawdown_streak }}</div><div class="sub">Longest streak</div></div>
-      <div class="metric"><div class="label">DD Streak (Current)</div><div class="value">{{ dd.current_drawdown_streak }}</div><div class="sub">Active now</div></div>
-      <div class="metric"><div class="label">Quality ↔ PnL Corr</div><div class="value">{% if corr.r is not none %}{{ '%.2f'|format(corr.r) }}{% else %}—{% endif %}</div><div class="sub">Score alignment</div></div>
-    </div>
-  </div>
-</details>
-
-{% if tab == 'performance' %}
-<div class="twoCol stack12">
-  <div class="card"><div class="toolbar">
-    <div class="pill">Equity Curve</div>
-    <div class="hr"></div>
-    <div class="trendChips">
-      <span class="trendChip {{ equity_story.tone }}">Latest {{ money(equity_story.latest) }}</span>
-      <span class="trendChip {{ equity_story.tone }}">
-        Δ {{ money(equity_story.delta) }}
-        {% if equity_story.pct is not none %}({{ '%.1f'|format(equity_story.pct) }}%){% endif %}
-      </span>
-      <span class="trendChip">{{ equity_story.label }}</span>
-    </div>
-    {{ equity_chart|safe }}
-  </div></div>
-  <div class="card"><div class="toolbar">
-    <div class="pill">Drawdown Curve</div>
-    <div class="hr"></div>
-    <div class="trendChips">
-      <span class="trendChip {{ drawdown_story.tone }}">Latest {{ money(drawdown_story.latest) }}</span>
-      <span class="trendChip {{ drawdown_story.tone }}">
-        Δ {{ money(drawdown_story.delta) }}
-        {% if drawdown_story.pct is not none %}({{ '%.1f'|format(drawdown_story.pct) }}%){% endif %}
-      </span>
-      <span class="trendChip">{{ drawdown_story.label }}</span>
-    </div>
-    {{ drawdown_chart|safe }}
-  </div></div>
-</div>
-<div class="twoCol stack12">
-  <div class="card"><div class="toolbar">
-    <div class="pill">Equity vs SPX Benchmark</div>
-    <div class="tiny stack8 line15">SPX benchmark applies only SPX ticker outcomes across the same trade timeline.</div>
-    <div class="hr"></div>
-    {{ benchmark_chart|safe }}
-  </div></div>
-  <div class="card"><div class="toolbar">
-    <div class="pill">Day Volatility Regime (5D)</div>
-    <div class="trendChips">
-      <span class="trendChip">Regime {{ vol_summary.regime }}</span>
-      <span class="trendChip">Current {{ money(vol_summary.current) }}</span>
-      <span class="trendChip">P33 {{ money(vol_summary.p33) }}</span>
-      <span class="trendChip">P66 {{ money(vol_summary.p66) }}</span>
-    </div>
-    <div class="hr"></div>
-    {{ vol_chart|safe }}
-  </div></div>
-</div>
-<div class="twoCol stack12">
-  <div class="card"><div class="toolbar">
-    <div class="pill">{{ day_story.title }}</div>
-    <div class="hr"></div>
-    <div class="tiny stack8 line16">• {{ day_story.pnl_driver }}</div>
-    <div class="tiny stack8 line16">• {{ day_story.risk_driver }}</div>
-    <div class="tiny stack8 line16">• {{ day_story.edge_driver }}</div>
-  </div></div>
-  <div class="card"><div class="toolbar">
-    <div class="pill">Regime-Aware Sizing</div>
-    <div class="trendChips">
-      <span class="trendChip">Regime {{ sizing.regime }}</span>
-      <span class="trendChip">{{ sizing.action }}</span>
-      <span class="trendChip">Size {{ sizing.size_pct }}%</span>
-    </div>
-    <div class="hr"></div>
-    <div class="tiny stack8 line16">{{ sizing.note }}</div>
-  </div></div>
-</div>
-<details class="syncDetails analyticsFoldSection analyticsDeepDive">
-  <summary>
-    <span>Scenario Lab and Deep Stats</span>
-    <span class="tiny muted">Open the simulator, expectancy trend, and raw tables when you want deeper review.</span>
-  </summary>
-  <div class="stack12">
-    <div class="card"><div class="toolbar">
-      <div class="pillRow">
-        <div class="pill">What-If Day Simulator</div>
-        <details class="inlineHelp">
-          <summary aria-label="What-if simulator help">?</summary>
-          <div class="helpPopover">Project ending balance from the current ledger using your actual consistency profile, then compare it against your real average day.</div>
-        </details>
-      </div>
-      <div class="hr"></div>
-      <form method="get" class="row">
-        <input type="hidden" name="tab" value="{{ tab }}">
-        <input type="hidden" name="start" value="{{ start_date }}">
-        <input type="hidden" name="end" value="{{ end_date }}">
-        <input type="hidden" name="explain_day" value="{{ explain_day }}">
-        <div><label>Max Trades</label><input type="number" min="1" max="30" name="sim_max_trades" value="{{ sim.max_trades }}"></div>
-        <div><label>Stop After Loss Streak</label><input type="number" min="1" max="8" name="sim_stop_loss_streak" value="{{ sim.stop_loss_streak }}"></div>
-        <div class="actionRow"><button class="btn" type="submit">Simulate</button></div>
-      </form>
-      <div class="hr"></div>
-      <div class="statRow stack10">
-        <div class="stat"><div class="k">Current Balance</div><div class="v">{{ money(sim.current_balance) }}</div></div>
-        <div class="stat"><div class="k">Projected Expectancy</div><div class="v">{{ money(sim.expectancy) }}</div></div>
-        <div class="stat"><div class="k">Projected Net (plan)</div><div class="v">{{ money(sim.projected_full) }}</div></div>
-        <div class="stat"><div class="k">Projected End Balance</div><div class="v">{{ money(sim.projected_end_balance) }}</div></div>
-        <div class="stat"><div class="k">Guardrail-Adjusted End</div><div class="v">{{ money(sim.projected_guardrail_end_balance) }}</div></div>
-        <div class="stat"><div class="k">Loss-Streak Trigger Prob</div><div class="v">{{ '%.1f'|format(sim.streak_prob * 100.0) }}%</div></div>
-      </div>
-      <div class="tiny stack8 line16">
-        Consistency profile in selected range: WR {{ '%.1f'|format(sim.consistency_win_rate) }}% · Avg Win {{ money(sim.consistency_avg_win) }} · Avg Loss {{ money(sim.consistency_avg_loss) }}.<br>
-        Real avg day: {{ money(sim.real_avg_day_net) }} · Real avg WR: {{ '%.1f'|format(sim.real_avg_win_rate) }}% · Real avg trades/day: {{ '%.1f'|format(sim.real_avg_trades) }}.<br>
-        Delta vs real avg day: {{ money(sim.delta_vs_real) }}.
-      </div>
-    </div></div>
-    <div class="card stack12"><div class="toolbar">
-      <div class="pill">Expectancy Trend ({{ expectancy_granularity|upper }})</div>
-      {% if expectancy_auto_switched %}
-        <div class="tiny stack8 line15">Auto-switched to weekly because monthly has too few points.</div>
-      {% endif %}
-      <div class="hr"></div>
-      <div class="trendChips">
-        <span class="trendChip {{ expectancy_story.tone }}">Latest {{ money(expectancy_story.latest) }}</span>
-        <span class="trendChip {{ expectancy_story.tone }}">
-          Δ {{ money(expectancy_story.delta) }}
-          {% if expectancy_story.pct is not none %}({{ '%.1f'|format(expectancy_story.pct) }}%){% endif %}
-        </span>
-        <span class="trendChip">{{ expectancy_story.label }}</span>
-      </div>
-      {{ expectancy_chart|safe }}
-    </div></div>
-    <div class="twoCol stack12">
-      <div class="card"><div class="toolbar">
-        <div class="pill">Performance Summary</div>
-        <div class="statRow stack10">
-          <div class="stat"><div class="k">Total Net</div><div class="v">{{ money(perf.total_net) }}</div></div>
-          <div class="stat"><div class="k">Gross Profit</div><div class="v">{{ money(perf.gross_profit) }}</div></div>
-          <div class="stat"><div class="k">Gross Loss</div><div class="v">{{ money(perf.gross_loss_abs) }}</div></div>
-        </div>
-        <details class="syncDetails stack10">
-          <summary>Open detailed performance table</summary>
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense kvTable">
-            <tbody>
-              <tr><td>Total Net</td><td>{{ money(perf.total_net) }}</td></tr>
-              <tr><td>Gross Profit</td><td>{{ money(perf.gross_profit) }}</td></tr>
-              <tr><td>Gross Loss</td><td>{{ money(perf.gross_loss_abs) }}</td></tr>
-              <tr><td>Avg Win</td><td>{{ money(perf.avg_win) }}</td></tr>
-              <tr><td>Avg Loss</td><td>{{ money(perf.avg_loss_abs) }}</td></tr>
-              <tr><td>Largest Win</td><td>{{ money(perf.max_win) }}</td></tr>
-              <tr><td>Largest Loss</td><td>{{ money(perf.max_loss) }}</td></tr>
-            </tbody>
-          </table></div>
-        </details>
-      </div></div>
-      <div class="card"><div class="toolbar">
-        <div class="pill">Streaks</div>
-        <div class="statRow stack10">
-          <div class="stat"><div class="k">Longest Win Streak</div><div class="v">{{ perf.max_win_streak }}</div></div>
-          <div class="stat"><div class="k">Longest Loss Streak</div><div class="v">{{ perf.max_loss_streak }}</div></div>
-          <div class="stat"><div class="k">Wins / Losses</div><div class="v">{{ perf.wins }} / {{ perf.losses }}</div></div>
-        </div>
-        <details class="syncDetails stack10">
-          <summary>Open detailed streak table</summary>
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense kvTable">
-            <tbody>
-              <tr><td>Longest Win Streak</td><td>{{ perf.max_win_streak }}</td></tr>
-              <tr><td>Longest Loss Streak</td><td>{{ perf.max_loss_streak }}</td></tr>
-              <tr><td>Wins</td><td>{{ perf.wins }}</td></tr>
-              <tr><td>Losses</td><td>{{ perf.losses }}</td></tr>
-              <tr><td>Breakeven</td><td>{{ perf.breakeven }}</td></tr>
-            </tbody>
-          </table></div>
-        </details>
-      </div></div>
-    </div>
-  </div>
-</details>
-{% elif tab == 'behavior' %}
-<div class="twoCol stack12">
-  <div class="card"><div class="toolbar">
-    <div class="pill">Session Breakdown</div>
-    {% set s_top = session_rows[0] if session_rows|length else none %}
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Top Session</div><div class="v">{% if s_top %}{{ s_top.k }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Top Session Net</div><div class="v">{% if s_top %}{{ money(s_top.net) }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Top Session Win Rate</div><div class="v">{% if s_top %}{{ '%.1f'|format(s_top.win_rate) }}%{% else %}—{% endif %}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open session breakdown table</summary>
-      <div class="hr"></div>
-      <div class="tableWrap desktopOnly"><table class="tableDense">
-        <thead><tr><th>Session</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
-        <tbody>
-        {% for r in session_rows %}
-          <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table></div>
-      <div class="mobileOnly">
-        <div class="grid">
-          {% for r in session_rows %}
-            <div class="card"><div class="toolbar">
-              <div class="pill">{{ r.k }}</div>
-              <div class="metaRow">
-                <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+          <div class="statusBadgeStrip analyticsStatusStrip">
+            {% for badge in balance_badges %}
+              <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+                <span class="statusBadgeLabel">{{ badge.label }}</span>
+                <strong>{{ badge.value }}</strong>
               </div>
-            </div></div>
-          {% endfor %}
-        </div>
-      </div>
-    </details>
-  </div></div>
-  <div class="card"><div class="toolbar">
-    <div class="pill">Rule Break Tags</div>
-    {% set rb_top = rule_breaks[0] if rule_breaks|length else none %}
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Top Rule Break</div><div class="v">{% if rb_top %}{{ rb_top.tag }}{% else %}None logged{% endif %}</div></div>
-      <div class="stat"><div class="k">Occurrences</div><div class="v">{% if rb_top %}{{ rb_top.count }}{% else %}0{% endif %}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open full rule-break list</summary>
-      <div class="hr"></div>
-      <div class="tableWrap desktopOnly"><table class="tableDense">
-        <thead><tr><th>Tag</th><th>Count</th></tr></thead>
-        <tbody>
-        {% for r in rule_breaks %}
-          <tr><td>{{ r.tag }}</td><td>{{ r.count }}</td></tr>
-        {% endfor %}
-        {% if rule_breaks|length == 0 %}
-          <tr><td colspan="2">
-            <div class="emptyState">
-              <div class="emptyStateTitle">No rule-break tags in this range.</div>
-              <div class="emptyStateBody">Keep tagging rule breaks during reviews so behavior drift stays measurable.</div>
-            </div>
-          </td></tr>
-        {% endif %}
-        </tbody>
-      </table></div>
-      <div class="mobileOnly">
-        <div class="grid">
-          {% for r in rule_breaks %}
-            <div class="card"><div class="toolbar">
-              <div class="pill">{{ r.tag }}</div>
-              <div class="meta">Count: <b>{{ r.count }}</b></div>
-            </div></div>
-          {% endfor %}
-          {% if rule_breaks|length == 0 %}
-            <div class="emptyState">
-              <div class="emptyStateTitle">No rule-break tags in this range.</div>
-              <div class="emptyStateBody">Tag rule breaks on each review to keep behavior analytics reliable.</div>
-            </div>
-          {% endif %}
-        </div>
-      </div>
-    </details>
-  </div></div>
-</div>
-<div class="card stack12"><div class="toolbar">
-  <div class="pillRow">
-    <div class="pill">Setup Expectancy Heatmap by Time Block</div>
-    <details class="inlineHelp">
-      <summary aria-label="Heatmap help">?</summary>
-      <div class="helpPopover">Color intensity reflects expectancy magnitude for the top tagged setups across intraday blocks.</div>
-    </details>
-  </div>
-  <div class="hr"></div>
-  {% if heatmap.setups|length == 0 %}
-    <div class="emptyState">
-      <div class="emptyStateTitle">No heatmap data in this range.</div>
-      <div class="emptyStateBody">Widen the date range or log more tagged trades.</div>
-    </div>
-  {% else %}
-    <div class="tableWrap desktopOnly">
-      <table class="tableDense">
-        <thead>
-          <tr>
-            <th>Time Block</th>
-            {% for s in heatmap.setups %}<th>{{ s }}</th>{% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in heatmap.rows %}
-          <tr>
-            <td>{{ row.block }}</td>
-            {% for c in row.cells %}
-              {% set ratio = ((c.expectancy|abs) / (heatmap.max_abs_exp if heatmap.max_abs_exp else 1.0)) %}
-              {% set alpha = 0.08 + (0.42 * ratio) %}
-              {% if c.expectancy > 0 %}
-                <td style="background: rgba(46, 204, 113, {{ alpha }});">{{ money(c.expectancy) }} · {{ c.count }}</td>
-              {% elif c.expectancy < 0 %}
-                <td style="background: rgba(231, 76, 60, {{ alpha }});">{{ money(c.expectancy) }} · {{ c.count }}</td>
-              {% else %}
-                <td style="background: rgba(255,255,255,.03);">{{ money(c.expectancy) }} · {{ c.count }}</td>
-              {% endif %}
             {% endfor %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="mobileOnly">
-      {% for row in heatmap.rows %}
-        <details class="syncDetails stack10">
-          <summary>{{ row.block }}</summary>
-          <div class="tiny stack8 line16">
-            {% for c in row.cells %}
-              • {{ c.setup }}: {{ money(c.expectancy) }} ({{ c.count }})<br>
+            {% for badge in sync_badges %}
+              <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+                <span class="statusBadgeLabel">{{ badge.label }}</span>
+                <strong>{{ badge.value }}</strong>
+              </div>
             {% endfor %}
           </div>
-        </details>
-      {% endfor %}
-    </div>
-  {% endif %}
-</div></div>
-<div class="twoCol stack12">
-  <div class="card"><div class="toolbar">
-    <div class="pill">Mistake Cost Ranking</div>
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Largest Leak</div><div class="v">{% if biggest_leak_card %}{{ biggest_leak_card.tag|replace('-', ' ')|title }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Loss Cost</div><div class="v">{% if biggest_leak_card %}{{ money(biggest_leak_card.loss_cost) }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Tagged Trades</div><div class="v">{% if biggest_leak_card %}{{ biggest_leak_card.count }}{% else %}0{% endif %}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open mistake-cost table</summary>
-      <div class="hr"></div>
-      <div class="tableWrap desktopOnly"><table class="tableDense">
-        <thead><tr><th>Mistake</th><th>Trades</th><th>Loss Cost</th><th>Net</th><th>Avg Impact</th></tr></thead>
-        <tbody>
-        {% for r in mistake_cost_rows %}
-          <tr><td>{{ r.tag|replace('-', ' ')|title }}</td><td>{{ r.count }}</td><td>{{ money(r.loss_cost) }}</td><td>{{ money(r.net) }}</td><td>{{ money(r.avg_impact) }}</td></tr>
-        {% endfor %}
-        {% if mistake_cost_rows|length == 0 %}
-          <tr><td colspan="5">No mistake tags in this range yet.</td></tr>
-        {% endif %}
-        </tbody>
-      </table></div>
-    </details>
-  </div></div>
-  <div class="card"><div class="toolbar">
-    <div class="pill">Review Completeness</div>
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Coverage</div><div class="v">{{ '%.0f'|format(review_coverage.completion_pct) }}%</div></div>
-      <div class="stat"><div class="k">Fully Reviewed</div><div class="v">{{ review_coverage.fully_reviewed }}</div></div>
-      <div class="stat"><div class="k">Missing Mistakes</div><div class="v">{{ review_coverage.missing_mistake }}</div></div>
-      <div class="stat"><div class="k">Missing Risk</div><div class="v">{{ review_coverage.missing_risk }}</div></div>
-    </div>
-    <div class="tiny stack8 line16">Use this to spot whether weak analytics are coming from weak behavior or weak review hygiene.</div>
-  </div></div>
-</div>
-{% elif tab == 'diagnostics' %}
-<div class="card stack12"><div class="toolbar">
-  <div class="pillRow">
-    <div class="pill">Data Integrity Diagnostics</div>
-    <details class="inlineHelp">
-      <summary aria-label="Diagnostics help">?</summary>
-      <div class="helpPopover">Use this tab to catch missing review data, stale balances, or duplicates before they distort analytics.</div>
-    </details>
-  </div>
-  <div class="hr"></div>
-  <div class="statRow">
-    <div class="stat"><div class="k">Missing Setup Tags</div><div class="v">{{ integrity.missing_setup }}</div></div>
-    <div class="stat"><div class="k">Missing Session Tags</div><div class="v">{{ integrity.missing_session }}</div></div>
-    <div class="stat"><div class="k">Missing Scores</div><div class="v">{{ integrity.missing_score }}</div></div>
-    <div class="stat"><div class="k">Duplicate Candidates</div><div class="v">{{ integrity.duplicate_candidates }}</div></div>
-    <div class="stat"><div class="k">Stale Balance Rows</div><div class="v">{{ integrity.stale_balance_rows }}</div></div>
-  </div>
-  <div class="hr"></div>
-  <details class="syncDetails stack10">
-    <summary>Priority Actions</summary>
-    <div class="tiny stack8 line15">
-      {% if integrity.stale_balance_rows > 0 %}
-        • Recompute stored balances from the dashboard drift action.<br>
-      {% endif %}
-      {% if integrity.missing_setup or integrity.missing_session %}
-        • Rebuild or fill trade reviews to restore setup and session analytics.<br>
-      {% endif %}
-      {% if integrity.missing_score > 0 %}
-        • Backfill checklist scores for quality-vs-PnL correlation.<br>
-      {% endif %}
-      {% if integrity.duplicate_candidates > 0 %}
-        • Review recent imports for duplicate signatures.<br>
-      {% endif %}
-      {% if not (integrity.stale_balance_rows or integrity.missing_setup or integrity.missing_session or integrity.missing_score or integrity.duplicate_candidates) %}
-        • No major integrity issues detected in this range.
-      {% endif %}
+          <div class="supportBody{% if data_trust.tone == 'critical' %} metaRed{% else %} metaGreen{% endif %}">{{ data_trust.message }}</div>
+        </div>
+      </div>
     </div>
   </details>
-</div></div>
-{% else %}
-<div class="twoCol stack12">
-  <div class="card"><div class="toolbar">
-    <div class="pill">Setup Edge</div>
-    {% set setup_top = setup_rows[0] if setup_rows|length else none %}
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Top Setup</div><div class="v">{% if setup_top %}{{ setup_top.k }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Top Setup Net</div><div class="v">{% if setup_top %}{{ money(setup_top.net) }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Top Setup Win Rate</div><div class="v">{% if setup_top %}{{ '%.1f'|format(setup_top.win_rate) }}%{% else %}—{% endif %}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open setup edge table</summary>
-      <div class="hr"></div>
-      <div class="tableWrap desktopOnly"><table class="tableDense">
-        <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
-        <tbody>
-        {% for r in setup_rows %}
-          <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table></div>
-      <div class="mobileOnly">
-        <div class="grid">
-          {% for r in setup_rows %}
-            <div class="card"><div class="toolbar">
-              <div class="pill">{{ r.k }}</div>
-              <div class="metaRow">
-                <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
+
+  <details class="syncDetails analyticsFoldSection analyticsDeepDive" {% if tab != 'performance' %}open{% endif %}>
+    <summary>
+      <span>{{ analytics_mode_label }} Deep Dive</span>
+      <span class="tiny muted">Open tables, simulator controls, and diagnostics once the chart deck gives you the read.</span>
+    </summary>
+
+    {% if tab == 'performance' %}
+      <div class="stack12">
+        <div class="card supportCard">
+          <div class="toolbar">
+            <div class="pill">What-If Day Simulator</div>
+            <div class="hr"></div>
+            <form method="get" class="row">
+              <input type="hidden" name="tab" value="{{ tab }}">
+              <input type="hidden" name="start" value="{{ start_date }}">
+              <input type="hidden" name="end" value="{{ end_date }}">
+              <input type="hidden" name="explain_day" value="{{ explain_day }}">
+              <input type="hidden" name="scope" value="{{ scope_mode }}">
+              <input type="hidden" name="expectancy_granularity" value="{{ expectancy_granularity }}">
+              <div><label>Max Trades</label><input type="number" min="1" max="30" name="sim_max_trades" value="{{ sim.max_trades }}"></div>
+              <div><label>Stop After Loss Streak</label><input type="number" min="1" max="8" name="sim_stop_loss_streak" value="{{ sim.stop_loss_streak }}"></div>
+              <div class="actionRow"><button class="btn" type="submit">Simulate</button></div>
+            </form>
+            <div class="hr"></div>
+            <div class="statRow stack10">
+              <div class="stat"><div class="k">Current Balance</div><div class="v">{{ money(sim.current_balance) }}</div></div>
+              <div class="stat"><div class="k">Projected Expectancy</div><div class="v">{{ money(sim.expectancy) }}</div></div>
+              <div class="stat"><div class="k">Projected Net</div><div class="v">{{ money(sim.projected_full) }}</div></div>
+              <div class="stat"><div class="k">Projected End Balance</div><div class="v">{{ money(sim.projected_end_balance) }}</div></div>
+              <div class="stat"><div class="k">Guardrail-Adjusted End</div><div class="v">{{ money(sim.projected_guardrail_end_balance) }}</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card primaryCard analyticsChartCard chartUsage-timeseries">
+          <div class="toolbar">
+            <div class="analyticsCardHead">
+              <div>
+                <div class="pill">Expectancy Trend ({{ expectancy_granularity|upper }})</div>
+                <div class="analyticsCardLead">Trend line for average outcome per period</div>
               </div>
-            </div></div>
-          {% endfor %}
+              {% if expectancy_auto_switched %}
+                <div class="tiny muted">Auto-switched to weekly because monthly has too few points.</div>
+              {% endif %}
+            </div>
+            <div class="analyticsChartCanvas analyticsChartCanvas-compact" id="analyticsExpectancyTrendChart"></div>
+          </div>
         </div>
       </div>
-    </details>
-  </div></div>
-  <div class="card"><div class="toolbar">
-    <div class="pill">Time of Day Edge</div>
-    {% set hour_top = hour_rows[0] if hour_rows|length else none %}
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Top Hour</div><div class="v">{% if hour_top %}{{ hour_top.k }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Top Hour Net</div><div class="v">{% if hour_top %}{{ money(hour_top.net) }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Top Hour Win Rate</div><div class="v">{% if hour_top %}{{ '%.1f'|format(hour_top.win_rate) }}%{% else %}—{% endif %}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open time-of-day edge table</summary>
-      <div class="hr"></div>
-      <div class="tableWrap desktopOnly"><table class="tableDense">
-        <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th><th>Score</th></tr></thead>
-        <tbody>
-        {% for r in hour_rows %}
-          <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td><td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table></div>
-      <div class="mobileOnly">
-        <div class="grid">
-          {% for r in hour_rows %}
-            <div class="card"><div class="toolbar">
-              <div class="pill">{{ r.k }}</div>
-              <div class="metaRow">
-                <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
+    {% elif tab == 'behavior' %}
+      <div class="stack12">
+        <div class="card supportCard">
+          <div class="toolbar">
+            <div class="pill">Setup Expectancy Heatmap by Time Block</div>
+            <div class="hr"></div>
+            {% if heatmap.setups|length == 0 %}
+              <div class="emptyState">
+                <div class="emptyStateTitle">No heatmap data in this range.</div>
+                <div class="emptyStateBody">Widen the date range or log more tagged trades.</div>
               </div>
-            </div></div>
-          {% endfor %}
+            {% else %}
+              <div class="tableWrap desktopOnly">
+                <table class="tableDense">
+                  <thead>
+                    <tr>
+                      <th>Time Block</th>
+                      {% for s in heatmap.setups %}<th>{{ s }}</th>{% endfor %}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in heatmap.rows %}
+                      <tr>
+                        <td>{{ row.block }}</td>
+                        {% for c in row.cells %}
+                          {% set ratio = ((c.expectancy|abs) / (heatmap.max_abs_exp if heatmap.max_abs_exp else 1.0)) %}
+                          {% set alpha = 0.08 + (0.42 * ratio) %}
+                          {% if c.expectancy > 0 %}
+                            <td style="background: rgba(46, 204, 113, {{ alpha }});">{{ money(c.expectancy) }} · {{ c.count }}</td>
+                          {% elif c.expectancy < 0 %}
+                            <td style="background: rgba(231, 76, 60, {{ alpha }});">{{ money(c.expectancy) }} · {{ c.count }}</td>
+                          {% else %}
+                            <td style="background: rgba(255,255,255,.03);">{{ money(c.expectancy) }} · {{ c.count }}</td>
+                          {% endif %}
+                        {% endfor %}
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="twoCol stack12">
+          <div class="card supportCard">
+            <div class="toolbar">
+              <div class="pill">Mistake Cost Ranking</div>
+              <div class="tableWrap">
+                <table class="tableDense">
+                  <thead><tr><th>Mistake</th><th>Trades</th><th>Loss Cost</th><th>Net</th><th>Avg Impact</th></tr></thead>
+                  <tbody>
+                    {% for r in mistake_cost_rows %}
+                      <tr><td>{{ r.tag|replace('-', ' ')|title }}</td><td>{{ r.count }}</td><td>{{ money(r.loss_cost) }}</td><td>{{ money(r.net) }}</td><td>{{ money(r.avg_impact) }}</td></tr>
+                    {% endfor %}
+                    {% if mistake_cost_rows|length == 0 %}
+                      <tr><td colspan="5">No mistake tags in this range yet.</td></tr>
+                    {% endif %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="card supportCard">
+            <div class="toolbar">
+              <div class="pill">Review Completeness</div>
+              <div class="statRow stack10">
+                <div class="stat"><div class="k">Coverage</div><div class="v">{{ '%.0f'|format(review_coverage.completion_pct) }}%</div></div>
+                <div class="stat"><div class="k">Fully Reviewed</div><div class="v">{{ review_coverage.fully_reviewed }}</div></div>
+                <div class="stat"><div class="k">Missing Mistakes</div><div class="v">{{ review_coverage.missing_mistake }}</div></div>
+                <div class="stat"><div class="k">Missing Risk</div><div class="v">{{ review_coverage.missing_risk }}</div></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </details>
-  </div></div>
+    {% elif tab == 'diagnostics' %}
+      <div class="card supportCard">
+        <div class="toolbar">
+          <div class="pill">Data Integrity Diagnostics</div>
+          <div class="hr"></div>
+          <div class="statRow">
+            <div class="stat"><div class="k">Missing Setup Tags</div><div class="v">{{ integrity.missing_setup }}</div></div>
+            <div class="stat"><div class="k">Missing Session Tags</div><div class="v">{{ integrity.missing_session }}</div></div>
+            <div class="stat"><div class="k">Missing Scores</div><div class="v">{{ integrity.missing_score }}</div></div>
+            <div class="stat"><div class="k">Duplicate Candidates</div><div class="v">{{ integrity.duplicate_candidates }}</div></div>
+            <div class="stat"><div class="k">Stale Balance Rows</div><div class="v">{{ integrity.stale_balance_rows }}</div></div>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="twoCol stack12">
+        <div class="card supportCard">
+          <div class="toolbar">
+            <div class="pill">Setup Edge</div>
+            <div class="tableWrap">
+              <table class="tableDense">
+                <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
+                <tbody>
+                  {% for r in setup_rows %}
+                    <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="card supportCard">
+          <div class="toolbar">
+            <div class="pill">Time of Day Edge</div>
+            <div class="tableWrap">
+              <table class="tableDense">
+                <thead><tr><th>Hour</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
+                <tbody>
+                  {% for r in hour_rows %}
+                    <tr><td>{{ r.k }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </details>
 </div>
 
-<div class="card stack12"><div class="toolbar">
-  <div class="pill">Setup Scorecards</div>
-  <div class="tiny stack8 line15">Sample size, expectancy, winner/loser shape, and R-multiple read in one table.</div>
-  <div class="hr"></div>
-  <div class="tableWrap desktopOnly"><table class="tableDense">
-    <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Expectancy</th><th>Net</th><th>Avg Winner</th><th>Avg Loser</th><th>Avg Score</th><th>Avg R</th></tr></thead>
-    <tbody>
-      {% for r in setup_scorecards %}
-        <tr>
-          <td>{{ r.setup }}</td>
-          <td>{{ r.count }}</td>
-          <td>{{ '%.1f'|format(r.win_rate) }}%</td>
-          <td>{{ money(r.expectancy) }}</td>
-          <td>{{ money(r.net) }}</td>
-          <td>{{ money(r.avg_winner) }}</td>
-          <td>{{ money(r.avg_loser) }}</td>
-          <td>{{ '%.1f'|format(r.avg_score) if r.avg_score is not none else '—' }}</td>
-          <td>{% if r.avg_r_multiple is not none %}{{ '%.2f'|format(r.avg_r_multiple) }}R{% else %}—{% endif %}</td>
-        </tr>
-      {% endfor %}
-      {% if setup_scorecards|length == 0 %}
-        <tr><td colspan="9">No setup scorecards available in this range.</td></tr>
-      {% endif %}
-    </tbody>
-  </table></div>
-</div></div>
-
-<div class="twoCol stack12">
-  <div class="card"><div class="toolbar">
-    <div class="pill">Setup Edge Over Time (Monthly)</div>
-    {% set setup_trend_top = setup_trend_rows[0] if setup_trend_rows|length else none %}
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Top Setup Trend</div><div class="v">{% if setup_trend_top %}{{ setup_trend_top.key }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Latest Period</div><div class="v">{% if setup_trend_top %}{{ setup_trend_top.period }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Latest Net</div><div class="v">{% if setup_trend_top %}{{ money(setup_trend_top.net) }}{% else %}—{% endif %}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open setup trend table</summary>
-      <div class="hr"></div>
-      <div class="tableWrap desktopOnly"><table class="tableDense">
-        <thead><tr><th>Setup</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
-        <tbody>
-        {% for r in setup_trend_rows %}
-          <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
-        {% endfor %}
-        {% if setup_trend_rows|length == 0 %}
-          <tr><td colspan="6">
-            <div class="emptyState">
-              <div class="emptyStateTitle">No setup trend data in this range.</div>
-              <div class="emptyStateBody">Expand the date range or increase tagged setup samples.</div>
-            </div>
-          </td></tr>
-        {% endif %}
-        </tbody>
-      </table></div>
-      <div class="mobileOnly">
-        <div class="grid">
-          {% for r in setup_trend_rows %}
-            <div class="card"><div class="toolbar">
-              <div class="pill">{{ r.key }} · {{ r.period }}</div>
-              <div class="metaRow">
-                <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
-              </div>
-            </div></div>
-          {% endfor %}
-          {% if setup_trend_rows|length == 0 %}
-            <div class="emptyState">
-              <div class="emptyStateTitle">No setup trend data in this range.</div>
-              <div class="emptyStateBody">Expand the date range or increase tagged setup samples.</div>
-            </div>
-          {% endif %}
-        </div>
-      </div>
-    </details>
-  </div></div>
-  <div class="card"><div class="toolbar">
-    <div class="pill">Session Edge Over Time (Monthly)</div>
-    {% set session_trend_top = session_trend_rows[0] if session_trend_rows|length else none %}
-    <div class="statRow stack10">
-      <div class="stat"><div class="k">Top Session Trend</div><div class="v">{% if session_trend_top %}{{ session_trend_top.key }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Latest Period</div><div class="v">{% if session_trend_top %}{{ session_trend_top.period }}{% else %}—{% endif %}</div></div>
-      <div class="stat"><div class="k">Latest Net</div><div class="v">{% if session_trend_top %}{{ money(session_trend_top.net) }}{% else %}—{% endif %}</div></div>
-    </div>
-    <details class="syncDetails stack10">
-      <summary>Open session trend table</summary>
-      <div class="hr"></div>
-      <div class="tableWrap desktopOnly"><table class="tableDense">
-        <thead><tr><th>Session</th><th>Period</th><th>Trades</th><th>Win Rate</th><th>Net</th><th>Expectancy</th></tr></thead>
-        <tbody>
-        {% for r in session_trend_rows %}
-          <tr><td>{{ r.key }}</td><td>{{ r.period }}</td><td>{{ r.count }}</td><td>{{ '%.1f'|format(r.win_rate) }}%</td><td>{{ money(r.net) }}</td><td>{{ money(r.expectancy) }}</td></tr>
-        {% endfor %}
-        {% if session_trend_rows|length == 0 %}
-          <tr><td colspan="6">
-            <div class="emptyState">
-              <div class="emptyStateTitle">No session trend data in this range.</div>
-              <div class="emptyStateBody">Keep tagging session context to unlock session edge tracking.</div>
-            </div>
-          </td></tr>
-        {% endif %}
-        </tbody>
-      </table></div>
-      <div class="mobileOnly">
-        <div class="grid">
-          {% for r in session_trend_rows %}
-            <div class="card"><div class="toolbar">
-              <div class="pill">{{ r.key }} · {{ r.period }}</div>
-              <div class="metaRow">
-                <span class="meta">Trades: <b>{{ r.count }}</b></span>
-                <span class="meta">Win: <b>{{ '%.1f'|format(r.win_rate) }}%</b></span>
-                <span class="meta">Net: <b>{{ money(r.net) }}</b></span>
-                <span class="meta">Exp: <b>{{ money(r.expectancy) }}</b></span>
-              </div>
-            </div></div>
-          {% endfor %}
-          {% if session_trend_rows|length == 0 %}
-            <div class="emptyState">
-              <div class="emptyStateTitle">No session trend data in this range.</div>
-              <div class="emptyStateBody">Keep tagging session context to unlock session edge tracking.</div>
-            </div>
-          {% endif %}
-        </div>
-      </div>
-    </details>
-  </div></div>
-</div>
-{% endif %}
-<script>
-  (function(){
-    const points = Array.from(document.querySelectorAll(".chartPoint"));
-    if(!points.length){ return; }
-    const tip = document.createElement("div");
-    tip.style.position = "fixed";
-    tip.style.zIndex = "9999";
-    tip.style.pointerEvents = "none";
-    tip.style.padding = "8px 10px";
-    tip.style.borderRadius = "10px";
-    tip.style.border = "1px solid rgba(53,212,255,.35)";
-    tip.style.background = "rgba(4,12,20,.95)";
-    tip.style.color = "#dff8ff";
-    tip.style.fontSize = "12px";
-    tip.style.lineHeight = "1.35";
-    tip.style.boxShadow = "0 10px 24px rgba(0,0,0,.45)";
-    tip.style.display = "none";
-    document.body.appendChild(tip);
-
-    function fmt(prefix, raw){
-      const v = Number(raw || 0);
-      if(prefix === "%"){ return `${v.toFixed(2)}%`; }
-      if(prefix === "$"){ return `$${v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`; }
-      return `${prefix || ""}${v.toFixed(2)}`;
-    }
-    function positionTip(evt){
-      tip.style.left = `${evt.clientX + 12}px`;
-      tip.style.top = `${evt.clientY + 12}px`;
-    }
-    function showTip(el, evt){
-      const label = el.dataset.label || "Point";
-      const series = el.dataset.series ? `${el.dataset.series} · ` : "";
-      const prefix = el.dataset.prefix || "$";
-      const value = fmt(prefix, el.dataset.value);
-      const day = el.dataset.day || "";
-      const drill = day ? `<div style="opacity:.8;margin-top:4px">Click to open ${day} trades</div>` : "";
-      tip.innerHTML = `<div style="font-weight:800">${series}${label}</div><div>${value}</div>${drill}`;
-      tip.style.display = "block";
-      positionTip(evt);
-    }
-    function hideTip(){ tip.style.display = "none"; }
-
-    points.forEach((pt)=>{
-      pt.style.cursor = "pointer";
-      pt.addEventListener("mouseenter", (e)=>showTip(pt, e));
-      pt.addEventListener("mousemove", positionTip);
-      pt.addEventListener("mouseleave", hideTip);
-      pt.addEventListener("click", ()=>{
-        const day = (pt.dataset.day || "").trim();
-        if(day){
-          window.location.href = `/trades?d=${encodeURIComponent(day)}`;
-        }
-      });
-    });
-  })();
-</script>
+<script src="{{ url_for('static', filename='vendor/apexcharts.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/analytics_dashboard.js') }}"></script>

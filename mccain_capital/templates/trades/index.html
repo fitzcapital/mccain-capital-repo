@@ -28,175 +28,443 @@
   </div>
 </div>
 
-<div class="dashboardSupportGrid">
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Data Trust</div>
-    <div class="supportLead">
-      {{ data_trust.status_label }}
-      {% if data_trust.stage_label %}· Stage {{ data_trust.stage_label }}{% endif %}
-      {% if data_trust.updated_label %}· Updated {{ data_trust.updated_label }}{% endif %}
+<section class="card primaryCard tradesFilterPanel">
+  <div class="toolbar">
+    <div class="tradesFilterHead">
+      <div>
+        <div class="pill">Review Scope</div>
+        <div class="supportLead">Filter first, then read the equity, setup, and timing edges inside the active review window.</div>
+        <div class="tradesScopeSelector" role="tablist" aria-label="Trades account scope">
+          <a class="btn{% if account_scope_mode == 'all' %} primary{% endif %}" href="/trades{% if scope_links.all %}?{{ scope_links.all }}{% endif %}">All History</a>
+          <a class="btn{% if account_scope_mode == 'current' %} primary{% endif %}" href="/trades{% if scope_links.current %}?{{ scope_links.current }}{% endif %}">Current Account</a>
+          <a class="btn{% if account_scope_mode == 'custom' %} primary{% endif %}" href="/trades{% if scope_links.custom %}?{{ scope_links.custom }}{% endif %}">Custom Range</a>
+        </div>
+        <div class="tradesScopeMeta">
+          <span class="tradesScopeMetaLabel">{{ resolved_scope.label }}</span>
+          <span>{{ resolved_scope.detail }}</span>
+          {% if resolved_scope.account_id %}
+            <span>ID {{ resolved_scope.account_id }}</span>
+          {% endif %}
+          {% if resolved_scope.account_type %}
+            <span>{{ resolved_scope.account_type }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="actionRow tradesFilterShortcuts">
+        <a class="btn{% if start_date == today_scope_date and end_date == today_scope_date %} primary{% endif %}" href="/trades{% if scope_links.today %}?{{ scope_links.today }}{% endif %}">Today</a>
+        <a class="btn{% if account_scope_mode == 'all' %} primary{% endif %}" href="/trades{% if scope_links.all %}?{{ scope_links.all }}{% endif %}">All Time</a>
+        <a class="btn{% if request.args.get('scope_preset') == '7d' %} primary{% endif %}" href="/trades{% if scope_links['7d'] %}?{{ scope_links['7d'] }}{% endif %}">7D</a>
+        <a class="btn{% if request.args.get('scope_preset') == '30d' %} primary{% endif %}" href="/trades{% if scope_links['30d'] %}?{{ scope_links['30d'] }}{% endif %}">30D</a>
+        <a class="btn{% if request.args.get('scope_preset') == '90d' %} primary{% endif %}" href="/trades{% if scope_links['90d'] %}?{{ scope_links['90d'] }}{% endif %}">90D</a>
+        <a class="btn{% if request.args.get('scope_preset') == 'ytd' %} primary{% endif %}" href="/trades{% if scope_links.ytd %}?{{ scope_links.ytd }}{% endif %}">YTD</a>
+        <a class="btn" href="/trades">Reset</a>
+      </div>
     </div>
-    {% if data_trust.badges %}
-      <div class="trustBadgeRow">
-        {% for badge in data_trust.badges %}
-          <span class="trustBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-            {{ badge.label }} <b>{{ badge.value }}</b>
-          </span>
+
+    {% if active_filter_chips %}
+      <div class="tradesActiveFilters">
+        {% for chip in active_filter_chips %}
+          <span class="tradesActiveFilterChip"><strong>{{ chip.label }}</strong>{{ chip.value }}</span>
         {% endfor %}
       </div>
     {% endif %}
-    <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
-      {{ data_trust.message }}
-    </div>
-    {% if data_trust.primary_href and data_trust.primary_label %}
-      <div class="rightActions stack8">
-        <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-        {% if data_trust.secondary_href and data_trust.secondary_label %}
-          <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
-        {% endif %}
+
+    <form method="get" action="/trades" class="tradesFilterForm">
+      <input type="hidden" name="account_scope_mode" value="{{ account_scope_mode }}" />
+      <div class="fieldGrow2">
+        <label for="search">Search</label>
+        <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
       </div>
-    {% endif %}
-  </div></div>
-
-  <div class="card supportCard workflowPromptCard"><div class="toolbar">
-    <div class="pill">Next Move</div>
-    <div class="supportLead">{{ execution_msg }}</div>
-    <div class="supportBody">{{ next_action_msg }}</div>
-    <div class="supportMeta">{{ risk_msg }}</div>
-  </div></div>
-</div>
-
-<div class="executionSignalGrid">
-  <div class="executionSignalCard {% if guardrail.locked %}is-danger{% else %}is-healthy{% endif %}">
-    <span class="executionSignalLabel">Execution State</span>
-    <strong>{% if guardrail.locked %}Locked{% else %}Active{% endif %}</strong>
-    <span class="executionSignalMeta">Day net {{ money(guardrail.day_net) }} against max loss {{ money(guardrail.daily_max_loss) }}.</span>
-  </div>
-  <div class="executionSignalCard {% if day_net > 0 %}is-healthy{% elif day_net < 0 %}is-danger{% else %}is-neutral{% endif %}">
-    <span class="executionSignalLabel">{{ primary_net_label }}</span>
-    <strong>{{ money(day_net) }}</strong>
-    <span class="executionSignalMeta">{{ primary_net_sub }}</span>
-  </div>
-  <div class="executionSignalCard">
-    <span class="executionSignalLabel">Review State</span>
-    <strong>{{ execution_msg }}</strong>
-    <span class="executionSignalMeta">{{ next_action_msg }}</span>
-  </div>
-  <div class="executionSignalCard">
-    <span class="executionSignalLabel">Ledger Balance</span>
-    <strong>{{ money(running_balance) }}</strong>
-    <span class="executionSignalMeta" title="{{ balance_integrity.source_detail }}">{{ balance_integrity.source_label }}</span>
-  </div>
-</div>
-
-<div class="dashboardSupportGrid">
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Best Setup</div>
-    <div class="supportLead">
-      {% if best_setup %}
-        {{ best_setup.setup }} · {{ money(best_setup.expectancy) }} expectancy
-      {% else %}
-        Need labeled setup data
-      {% endif %}
-    </div>
-    <div class="supportBody">
-      {% if best_setup %}
-        {{ best_setup.count }} trades · {{ '%.1f'|format(best_setup.win_rate) }}% win rate · net {{ money(best_setup.net) }}.
-      {% else %}
-        Tag more trades with setup labels to surface the highest-conviction pattern.
-      {% endif %}
-    </div>
-    {% if best_setup %}
-      <div class="rightActions">
-        <a class="btn primary" href="/analytics?tab=edge&setup={{ best_setup.setup|urlencode }}">Open Setup Edge</a>
+      <div class="fieldGrow1">
+        <label>Start Date</label>
+        <input class="tradeDateFilterInput" type="date" name="start_date" value="{{ start_date or '' }}" />
       </div>
-    {% endif %}
-  </div></div>
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Biggest Leak</div>
-    <div class="supportLead">
-      {% if biggest_leak %}
-        {{ biggest_leak.tag|replace('-', ' ')|title }} · {{ money(biggest_leak.loss_cost) }} loss cost
-      {% else %}
-        No mistake-cost read yet
-      {% endif %}
-    </div>
-    <div class="supportBody">
-      {% if biggest_leak %}
-        {{ biggest_leak.count }} tagged trades · average impact {{ money(biggest_leak.avg_impact) }}.
-      {% else %}
-        Add mistake tags during reviews so behavior drift becomes measurable.
-      {% endif %}
-    </div>
-    {% if biggest_leak %}
-      <div class="rightActions">
-        <a class="btn primary" href="/analytics?tab=behavior&mistake_tag={{ biggest_leak.tag|urlencode }}">Review Leak</a>
+      <div class="fieldGrow1">
+        <label>End Date</label>
+        <input class="tradeDateFilterInput" type="date" name="end_date" value="{{ end_date or '' }}" />
       </div>
-    {% endif %}
-  </div></div>
-  <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Review Coverage</div>
-    <div class="supportLead">{{ '%.0f'|format(review_coverage.completion_pct) }}% structured coverage</div>
-    <div class="supportBody">
-      {{ review_coverage.fully_reviewed }} of {{ review_coverage.total }} trades fully reviewed.
-      Missing setup {{ review_coverage.missing_setup }}, mistakes {{ review_coverage.missing_mistake }}, planned risk {{ review_coverage.missing_risk }}.
+      <div class="fieldGrow1">
+        <label>Preset</label>
+        <select name="scope_preset">
+          <option value="custom" {% if not request.args.get('scope_preset') or request.args.get('scope_preset') == 'custom' %}selected{% endif %}>Custom</option>
+          <option value="7d" {% if request.args.get('scope_preset') == '7d' %}selected{% endif %}>7D</option>
+          <option value="30d" {% if request.args.get('scope_preset') == '30d' %}selected{% endif %}>30D</option>
+          <option value="90d" {% if request.args.get('scope_preset') == '90d' %}selected{% endif %}>90D</option>
+          <option value="ytd" {% if request.args.get('scope_preset') == 'ytd' %}selected{% endif %}>YTD</option>
+        </select>
+      </div>
+      <div class="fieldGrow1">
+        <label>Setup</label>
+        <input name="setup" value="{{ review_filters.setup }}" placeholder="Sweep, Continuation" />
+      </div>
+      <div class="fieldGrow1">
+        <label>Session</label>
+        <select name="session">
+          <option value="" {% if not review_filters.session %}selected{% endif %}>All</option>
+          <option value="Open" {% if review_filters.session == 'Open' %}selected{% endif %}>Open</option>
+          <option value="Midday" {% if review_filters.session == 'Midday' %}selected{% endif %}>Midday</option>
+          <option value="Power Hour" {% if review_filters.session == 'Power Hour' %}selected{% endif %}>Power Hour</option>
+          <option value="After Hours" {% if review_filters.session == 'After Hours' %}selected{% endif %}>After Hours</option>
+        </select>
+      </div>
+      <div class="fieldGrow1">
+        <label>Grade</label>
+        <select name="trade_grade">
+          <option value="" {% if not request.args.get('trade_grade') %}selected{% endif %}>All</option>
+          <option value="A" {% if request.args.get('trade_grade') == 'A' %}selected{% endif %}>A</option>
+          <option value="B" {% if request.args.get('trade_grade') == 'B' %}selected{% endif %}>B</option>
+          <option value="C" {% if request.args.get('trade_grade') == 'C' %}selected{% endif %}>C</option>
+          <option value="D" {% if request.args.get('trade_grade') == 'D' %}selected{% endif %}>D</option>
+          <option value="F" {% if request.args.get('trade_grade') == 'F' %}selected{% endif %}>F</option>
+        </select>
+      </div>
+      <div class="fieldGrow1">
+        <label>Review State</label>
+        <select name="review_state">
+          <option value="" {% if not request.args.get('review_state') %}selected{% endif %}>All</option>
+          <option value="Not Reviewed" {% if request.args.get('review_state') == 'Not Reviewed' %}selected{% endif %}>Not Reviewed</option>
+          <option value="Partially Reviewed" {% if request.args.get('review_state') == 'Partially Reviewed' %}selected{% endif %}>Partially Reviewed</option>
+          <option value="Fully Reviewed" {% if request.args.get('review_state') == 'Fully Reviewed' %}selected{% endif %}>Fully Reviewed</option>
+        </select>
+      </div>
+      <div class="fieldGrow1">
+        <label>Bucket</label>
+        <select name="bucket">
+          <option value="" {% if not request.args.get('bucket') %}selected{% endif %}>All</option>
+          <option value="good_wins" {% if request.args.get('bucket') == 'good_wins' %}selected{% endif %}>Good Wins</option>
+          <option value="good_losses" {% if request.args.get('bucket') == 'good_losses' %}selected{% endif %}>Good Losses</option>
+          <option value="bad_wins" {% if request.args.get('bucket') == 'bad_wins' %}selected{% endif %}>Bad Wins</option>
+          <option value="bad_losses" {% if request.args.get('bucket') == 'bad_losses' %}selected{% endif %}>Bad Losses</option>
+          <option value="oversized" {% if request.args.get('bucket') == 'oversized' %}selected{% endif %}>Oversized</option>
+          <option value="missing_stop" {% if request.args.get('bucket') == 'missing_stop' %}selected{% endif %}>Missing Stop</option>
+          <option value="rule_breaks" {% if request.args.get('bucket') == 'rule_breaks' %}selected{% endif %}>Rule Breaks</option>
+          <option value="best_r" {% if request.args.get('bucket') == 'best_r' %}selected{% endif %}>Best R Trades</option>
+          <option value="best_grades" {% if request.args.get('bucket') == 'best_grades' %}selected{% endif %}>Best Grades</option>
+          <option value="worst_grades" {% if request.args.get('bucket') == 'worst_grades' %}selected{% endif %}>Worst Grades</option>
+          <option value="worst_discipline" {% if request.args.get('bucket') == 'worst_discipline' %}selected{% endif %}>Worst Discipline</option>
+        </select>
+      </div>
+      <details class="syncDetails workspaceControlFold tradesAdvancedFilters"{% if advanced_filters_active %} open{% endif %}>
+        <summary>
+          <span>Advanced Filters ▾</span>
+          <span class="tiny muted">
+            Grade, classification, risk, and exception filters
+          </span>
+        </summary>
+        <div class="tradesAdvancedFilterGrid">
+          <div class="fieldGrow1">
+            <label>Instrument</label>
+            <input name="instrument" value="{{ request.args.get('instrument', '') }}" placeholder="SPX, TSLA" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Classification</label>
+            <select name="classification">
+              <option value="" {% if not request.args.get('classification') %}selected{% endif %}>All</option>
+              <option value="Good Win" {% if request.args.get('classification') == 'Good Win' %}selected{% endif %}>Good Win</option>
+              <option value="Good Loss" {% if request.args.get('classification') == 'Good Loss' %}selected{% endif %}>Good Loss</option>
+              <option value="Bad Win" {% if request.args.get('classification') == 'Bad Win' %}selected{% endif %}>Bad Win</option>
+              <option value="Bad Loss" {% if request.args.get('classification') == 'Bad Loss' %}selected{% endif %}>Bad Loss</option>
+              <option value="Scratch" {% if request.args.get('classification') == 'Scratch' %}selected{% endif %}>Scratch</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Side</label>
+            <select name="side">
+              <option value="" {% if not request.args.get('side') %}selected{% endif %}>All</option>
+              <option value="CALL" {% if request.args.get('side') == 'CALL' %}selected{% endif %}>Call</option>
+              <option value="PUT" {% if request.args.get('side') == 'PUT' %}selected{% endif %}>Put</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Time Block</label>
+            <select name="time_block">
+              <option value="" {% if not review_filters.time_block %}selected{% endif %}>All</option>
+              <option value="Open" {% if review_filters.time_block == 'Open' %}selected{% endif %}>Open</option>
+              <option value="Midday" {% if review_filters.time_block == 'Midday' %}selected{% endif %}>Midday</option>
+              <option value="Power Hour" {% if review_filters.time_block == 'Power Hour' %}selected{% endif %}>Power Hour</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Day</label>
+            <select name="day_of_week">
+              <option value="" {% if not review_filters.day_of_week %}selected{% endif %}>All</option>
+              {% for day_label in day_of_week_options %}
+                <option value="{{ day_label }}" {% if review_filters.day_of_week == day_label %}selected{% endif %}>{{ day_label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Mistake Tag</label>
+            <input name="mistake_tag" value="{{ review_filters.mistake_tag }}" placeholder="late entry" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Outcome</label>
+            <select name="outcome">
+              <option value="" {% if not review_filters.outcome %}selected{% endif %}>All</option>
+              <option value="winner" {% if review_filters.outcome == 'winner' %}selected{% endif %}>Winner</option>
+              <option value="loser" {% if review_filters.outcome == 'loser' %}selected{% endif %}>Loser</option>
+              <option value="breakeven" {% if review_filters.outcome == 'breakeven' %}selected{% endif %}>Breakeven</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Stop Discipline</label>
+            <select name="stop_discipline">
+              <option value="" {% if not request.args.get('stop_discipline') %}selected{% endif %}>All</option>
+              <option value="Stop Respected" {% if request.args.get('stop_discipline') == 'Stop Respected' %}selected{% endif %}>Stop Respected</option>
+              <option value="Stop Missing" {% if request.args.get('stop_discipline') == 'Stop Missing' %}selected{% endif %}>Stop Missing</option>
+              <option value="Exited Early" {% if request.args.get('stop_discipline') == 'Exited Early' %}selected{% endif %}>Exited Early</option>
+              <option value="Loss Exceeded Planned Risk" {% if request.args.get('stop_discipline') == 'Loss Exceeded Planned Risk' %}selected{% endif %}>Loss Exceeded Planned Risk</option>
+              <option value="Within Risk Plan" {% if request.args.get('stop_discipline') == 'Within Risk Plan' %}selected{% endif %}>Within Risk Plan</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Execution Quality</label>
+            <select name="execution_quality">
+              <option value="" {% if not request.args.get('execution_quality') %}selected{% endif %}>All</option>
+              <option value="Clean" {% if request.args.get('execution_quality') == 'Clean' %}selected{% endif %}>Clean</option>
+              <option value="Minor Error" {% if request.args.get('execution_quality') == 'Minor Error' %}selected{% endif %}>Minor Error</option>
+              <option value="Rule Break" {% if request.args.get('execution_quality') == 'Rule Break' %}selected{% endif %}>Rule Break</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Risk Tier</label>
+            <select name="risk_tier">
+              <option value="" {% if not request.args.get('risk_tier') %}selected{% endif %}>All</option>
+              <option value="Low" {% if request.args.get('risk_tier') == 'Low' %}selected{% endif %}>Low</option>
+              <option value="Medium" {% if request.args.get('risk_tier') == 'Medium' %}selected{% endif %}>Medium</option>
+              <option value="High" {% if request.args.get('risk_tier') == 'High' %}selected{% endif %}>High</option>
+            </select>
+          </div>
+          <label><input type="checkbox" name="r_lt_zero" value="1" {% if request.args.get('r_lt_zero') %}checked{% endif %}/> R less than 0</label>
+          <label><input type="checkbox" name="oversized_only" value="1" {% if request.args.get('oversized_only') %}checked{% endif %}/> Oversized only</label>
+          <label><input type="checkbox" name="missing_stop_only" value="1" {% if request.args.get('missing_stop_only') %}checked{% endif %}/> Missing stop only</label>
+          <label><input type="checkbox" name="rule_break_only" value="1" {% if request.args.get('rule_break_only') %}checked{% endif %}/> Rule break only</label>
+        </div>
+      </details>
+      <div class="actionRow tradesFilterActions">
+        <button class="btn primary" type="submit">Apply Filters</button>
+        <a class="btn" href="/trades">Clear Scope</a>
+        <select id="savedTradesViewSelect" class="bulkSetupSelect">
+          <option value="">Saved views</option>
+        </select>
+        <button class="btn" type="button" id="loadTradesViewBtn">Load View</button>
+        <button class="btn" type="button" id="saveTradesViewBtn">Save View</button>
+        <button class="btn" type="button" id="deleteTradesViewBtn">Delete View</button>
+      </div>
+    </form>
+    <div class="tradesReviewQueue">
+      {% for item in review_queue %}
+        <div class="tradesReviewQueueItem is-{{ item.tone }}">
+          <span>{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+        </div>
+      {% endfor %}
     </div>
-    <div class="rightActions">
-      <a class="btn primary" href="/analytics?tab=diagnostics">Open Diagnostics</a>
-    </div>
-  </div></div>
-</div>
+  </div>
+</section>
 
-<details class="syncDetails workspaceStatusFold">
+<section class="tradesReviewWorkflowRail">
+  <a class="btn{% if request.args.get('review_state') == 'Not Reviewed' %} primary{% endif %}" href="/trades?{{ clear_bucket_query }}{% if clear_bucket_query %}&{% endif %}review_state=Not+Reviewed">Not Reviewed</a>
+  <a class="btn{% if request.args.get('review_state') == 'Partially Reviewed' %} primary{% endif %}" href="/trades?{{ clear_bucket_query }}{% if clear_bucket_query %}&{% endif %}review_state=Partially+Reviewed">Partially Reviewed</a>
+  <a class="btn{% if request.args.get('review_state') == 'Fully Reviewed' %} primary{% endif %}" href="/trades?{{ clear_bucket_query }}{% if clear_bucket_query %}&{% endif %}review_state=Fully+Reviewed">Fully Reviewed</a>
+  {% if request.args.get('review_state') %}
+    <a class="btn" href="/trades{% if clear_bucket_query %}?{{ clear_bucket_query }}{% endif %}">Clear Review State</a>
+  {% endif %}
+</section>
+
+<section class="tradesStatZone">
+  <div class="tradesStatWorkbench">
+    <section class="tradesSummaryBar" aria-label="Core trade metrics">
+      {% for item in summary_bar %}
+        <div class="tradesSummaryCell">
+          <span class="tradesSummaryLabel">{{ item.label }}</span>
+          <strong class="tradesSummaryValue">{{ item.value }}</strong>
+          <span class="tradesSummaryMeta">{{ item.meta }}</span>
+        </div>
+      {% endfor %}
+      <div class="tradesSummaryCell tradesSummaryCell-trust">
+        <span class="tradesSummaryLabel">Data Trust</span>
+        <strong class="tradesSummaryValue">{{ data_trust.status_label }}</strong>
+        <span class="tradesSummaryMeta">{{ data_trust.message }}</span>
+      </div>
+    </section>
+
+    <section class="tradesCircularSpotlight" aria-label="Performance spotlight">
+      {% for item in circular_stat_spotlight %}
+        <div class="tradesCircularStat tradesCircularStat-{{ item.tone }}">
+          <div class="tradesCircularStatRing" style="--stat-pct: {{ '%.1f'|format(item.pct) }}%">
+            <div class="tradesCircularStatInner">
+              <strong>{{ item.value }}</strong>
+            </div>
+          </div>
+          <div class="tradesCircularStatLabel">{{ item.label }}</div>
+          <div class="tradesCircularStatMeta">{{ item.meta }}</div>
+        </div>
+      {% endfor %}
+    </section>
+  </div>
+
+  <details class="syncDetails tradesSecondaryFold">
+    <summary>
+      <span>Account Context</span>
+      <span class="tiny muted">Health, drawdown, and scoped risk metrics</span>
+    </summary>
+    <section class="tradesAccountHealthStrip" aria-label="Account health">
+      {% for item in account_health_strip %}
+        <div class="tradesAccountHealthCell">
+          <span class="tradesAccountHealthLabel">{{ item.label }}</span>
+          <strong class="tradesAccountHealthValue">{{ item.value }}</strong>
+          <span class="tradesAccountHealthMeta">{{ item.meta }}</span>
+        </div>
+      {% endfor %}
+    </section>
+
+    <section class="tradesRiskStrip">
+      {% for item in risk_strip %}
+        <div class="tradesRiskMetric">
+          <span class="tradesRiskMetricLabel">{{ item.label }}</span>
+          <strong class="tradesRiskMetricValue">{{ item.value }}</strong>
+          <span class="tradesRiskMetricMeta">{{ item.meta }}</span>
+        </div>
+      {% endfor %}
+    </section>
+  </details>
+</section>
+
+<details class="syncDetails tradesInsightsFold">
   <summary>
-    <span>Execution Health</span>
-    <span class="tiny muted">{{ execution_msg }} · {{ balance_integrity.source_label }}</span>
+    <span>Insights</span>
+    <span class="tiny muted">What’s working and what needs review</span>
   </summary>
-  <div class="statusBadgeStrip">
-    {% for badge in trades_status_badges %}
-      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-        <span class="statusBadgeLabel">{{ badge.label }}</span>
-        <strong>{{ badge.value }}</strong>
+  <section class="tradesInsightGrid">
+    <article class="card primaryCard tradesInsightCard">
+      <div class="toolbar">
+        <div class="pill">What’s Working</div>
+        <div class="supportLead">Keep leaning on the reps that are producing clean edge.</div>
+        <div class="tradesInsightList">
+          {% for item in insight_working %}
+            <div class="tradesInsightItem">{{ item }}</div>
+          {% endfor %}
+        </div>
       </div>
-    {% endfor %}
-    {% for badge in balance_badges %}
-      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-        <span class="statusBadgeLabel">{{ badge.label }}</span>
-        <strong>{{ badge.value }}</strong>
+    </article>
+    <article class="card supportCard tradesInsightCard is-warning">
+      <div class="toolbar">
+        <div class="pill">What Needs Review</div>
+        <div class="supportLead">Cut noise fast, fix the leak, and keep setup labeling trustworthy.</div>
+        <div class="tradesInsightList">
+          {% for item in insight_not_working %}
+            <div class="tradesInsightItem">{{ item }}</div>
+          {% endfor %}
+          <div class="tradesInsightItem">{{ tagging_status.imported_untagged }} imported trades still need setup tags.</div>
+        </div>
       </div>
-    {% endfor %}
-    {% for badge in sync_badges %}
-      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-        <span class="statusBadgeLabel">{{ badge.label }}</span>
-        <strong>{{ badge.value }}</strong>
-      </div>
-    {% endfor %}
-  </div>
+    </article>
+  </section>
 </details>
 
-<div class="metricStrip executionMetricStrip">
-  <div class="metric">
-    <div class="label">{{ secondary_total_label }}</div>
-    <div class="value">{{ money(secondary_total_value) }}</div>
-    <div class="sub">Context beyond the active day filter</div>
-  </div>
-  <div class="metric">
-    <div class="label">Scope Mode</div>
-    <div class="value">{% if account_scope.enabled %}{% if d %}Day Filter{% else %}{{ 'Active Account' if scope_mode == 'active' else 'All History' }}{% endif %}{% else %}All History{% endif %}</div>
-    <div class="sub">{% if account_scope.enabled and account_scope.start_date %}Start {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}{% else %}No account scope filter set{% endif %}</div>
-  </div>
-  <div class="metric">
-    <div class="label">Review Route</div>
-    <div class="value"><a class="btn primary btnCompact" href="/analytics">Open Analytics</a></div>
-    <div class="sub">{{ risk_msg }}</div>
-  </div>
-</div>
+<details class="syncDetails tradesSecondaryFold tradesChartsFold">
+  <summary>
+    <span>Performance Charts</span>
+    <span class="tiny muted">Scoped equity, setup, session, and discipline views</span>
+  </summary>
+  <section class="tradesReviewCharts">
+    <article class="card primaryCard tradesChartCard tradesChartCard-hero chartUsage-timeseries">
+      <div class="toolbar">
+        <div class="tradesChartHeader">
+          <div>
+            <div class="pill">Scoped Performance</div>
+            <div class="supportLead">{{ equity_takeaway.title }}</div>
+            <div class="supportBody" title="{{ equity_takeaway.body }}">{{ equity_takeaway.body }}</div>
+          </div>
+          <div class="tradesChartMetricRail">
+            <div class="tradesChartToggle" id="tradesHeroChartMode">
+              <button type="button" class="is-active" data-view="equity">Equity Curve</button>
+              <button type="button" data-view="drawdown_dollars">Drawdown $</button>
+              <button type="button" data-view="drawdown_percent">Drawdown %</button>
+            </div>
+            <div class="tradesChartToggle" id="tradesEquityMode">
+              <button type="button" class="is-active" data-mode="dollars">Dollars</button>
+              <button type="button" data-mode="r">R</button>
+              <button type="button" data-mode="percent">Percent</button>
+            </div>
+          </div>
+        </div>
+        <div class="tradesHeroChartStats" id="tradesHeroChartStats">
+          <span><strong id="tradesHeroPeakEquity">{{ money(hero_chart_stats.peak_equity) }}</strong> Peak Equity</span>
+          <span><strong id="tradesHeroCurrentEquity">{{ money(hero_chart_stats.current_equity) }}</strong> Current Equity</span>
+          <span><strong id="tradesHeroMaxDrawdown">{{ money(hero_chart_stats.max_drawdown) }}</strong> Max Drawdown</span>
+          <span><strong id="tradesHeroCurrentDrawdown">{{ money(hero_chart_stats.current_drawdown) }}</strong> Current Drawdown</span>
+          <span><strong id="tradesHeroRecoveryPct">{{ '%.1f'|format(hero_chart_stats.recovery_pct) }}%</strong> Recovery</span>
+        </div>
+        <div
+          class="tradesMiniChart tradesMiniChart-hero"
+          id="tradesEquityCurveChart"
+          data-chart='{{ equity_curve_points|tojson }}'
+          data-stats='{{ hero_chart_stats|tojson }}'
+        ></div>
+      </div>
+    </article>
 
-<div class="card controlPanel"><div class="toolbar">
+    <div class="tradesChartGrid tradesChartGrid-support">
+      <article class="card supportCard tradesChartCard chartUsage-comparison">
+        <div class="toolbar">
+          <div class="tradesChartHeader">
+            <div>
+              <div class="pill">Setup Performance</div>
+              <div class="supportLead">{{ setup_takeaway.title }}</div>
+              <div class="supportBody" title="{{ setup_takeaway.body }}">{{ setup_takeaway.body }}</div>
+            </div>
+            <div class="tradesChartToggle" id="tradesSetupMode">
+              <button type="button" class="is-active" data-mode="net">Net</button>
+              <button type="button" data-mode="expectancy">Expect.</button>
+              <button type="button" data-mode="win_rate">Win %</button>
+            </div>
+          </div>
+          <div class="tradesMiniChart tradesMiniChart-support" id="tradesSetupPerformanceChart" data-chart='{{ setup_performance_points|tojson }}' data-chart-mode="net"></div>
+        </div>
+      </article>
+      <article class="card supportCard tradesChartCard chartUsage-comparison">
+        <div class="toolbar">
+          <div class="tradesChartHeader">
+            <div>
+              <div class="pill">Session Performance</div>
+              <div class="supportLead">{{ time_takeaway.title }}</div>
+              <div class="supportBody" title="{{ time_takeaway.body }}">{{ time_takeaway.body }}</div>
+            </div>
+            <div class="tradesChartToggle" id="tradesSessionMode">
+              <button type="button" class="is-active" data-mode="net">Net</button>
+              <button type="button" data-mode="win_rate">Win %</button>
+            </div>
+          </div>
+          <div class="tradesMiniChart tradesMiniChart-support" id="tradesTimeOfDayChart" data-chart='{{ time_of_day_points|tojson }}' data-chart-mode="net"></div>
+        </div>
+      </article>
+      <article class="card supportCard tradesChartCard chartUsage-comparison">
+        <div class="toolbar">
+          <div class="tradesChartHeader">
+            <div>
+              <div class="pill">Discipline</div>
+              <div class="supportLead">See which setups stay inside plan.</div>
+              <div class="supportBody" title="Stop respect is the cleanest discipline signal in the current dataset.">Stop respect is the cleanest discipline signal in the current dataset.</div>
+            </div>
+          </div>
+          <div class="tradesMiniChart tradesMiniChart-support" id="tradesStopRespectChart" data-chart='{{ stop_respect_points|tojson }}' data-chart-mode="respect"></div>
+        </div>
+      </article>
+    </div>
+  </section>
+</details>
+
+<details class="card controlPanel tradesToolsFold">
+  <summary>
+    <span>Review Tools</span>
+    <span class="tiny muted">Upload, add, rebuild, and manage trade-review utilities</span>
+  </summary>
+  <div class="toolbar">
     <div class="controlHead">
       <div>
-        <div class="pill">🧭 Control Stack</div>
-        <div class="summaryLead stack8 tradesControlLead">Filter the day, manage imports, and move straight from raw execution into review.</div>
+        <div class="summaryLead stack8 tradesControlLead">Trim noise, isolate patterns, and move from raw ledger rows into review fast.</div>
       </div>
       <div class="actionRow tradesControlRail">
         <a class="btn primary" href="/trades/upload/statement">Upload Statement</a>
@@ -205,75 +473,7 @@
         <a class="btn" href="/analytics">Analytics</a>
       </div>
     </div>
-    <details class="syncDetails workspaceControlFold"{% if q or d or review_filters.setup or review_filters.session or review_filters.outcome or review_filters.time_block or review_filters.mistake_tag %} open{% endif %}>
-      <summary>
-        <span>Filters and Routing</span>
-        <span class="tiny muted">
-          {{ d or 'All dates' }}
-          {% if q %} · {{ q }}{% endif %}
-          {% if review_filters.setup %} · Setup {{ review_filters.setup }}{% endif %}
-          {% if review_filters.session %} · Session {{ review_filters.session }}{% endif %}
-          {% if review_filters.outcome %} · {{ review_filters.outcome|title }}{% endif %}
-          {% if review_filters.time_block %} · {{ review_filters.time_block }}{% endif %}
-          {% if review_filters.mistake_tag %} · Mistake {{ review_filters.mistake_tag }}{% endif %}
-        </span>
-      </summary>
-      <form method="get" action="/trades" class="row">
-        <div class="fieldGrow2">
-          <label for="search">Search</label>
-          <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
-        </div>
-        <div class="fieldGrow1">
-          <label>Date</label>
-          <input class="tradeDateFilterInput" type="date" name="d" value="{{ d }}" />
-        </div>
-        <div class="fieldGrow1">
-          <label>Setup</label>
-          <input name="setup" value="{{ review_filters.setup }}" placeholder="ORB, Fade" />
-        </div>
-        <div class="fieldGrow1">
-          <label>Session</label>
-          <select name="session">
-            <option value="" {% if not review_filters.session %}selected{% endif %}>All</option>
-            <option value="Open" {% if review_filters.session == 'Open' %}selected{% endif %}>Open</option>
-            <option value="Midday" {% if review_filters.session == 'Midday' %}selected{% endif %}>Midday</option>
-            <option value="Power Hour" {% if review_filters.session == 'Power Hour' %}selected{% endif %}>Power Hour</option>
-            <option value="After Hours" {% if review_filters.session == 'After Hours' %}selected{% endif %}>After Hours</option>
-          </select>
-        </div>
-        <div class="fieldGrow1">
-          <label>Outcome</label>
-          <select name="outcome">
-            <option value="" {% if not review_filters.outcome %}selected{% endif %}>All</option>
-            <option value="winner" {% if review_filters.outcome == 'winner' %}selected{% endif %}>Winner</option>
-            <option value="loser" {% if review_filters.outcome == 'loser' %}selected{% endif %}>Loser</option>
-            <option value="breakeven" {% if review_filters.outcome == 'breakeven' %}selected{% endif %}>Breakeven</option>
-          </select>
-        </div>
-        <div class="fieldGrow1">
-          <label>Time Block</label>
-          <select name="time_block">
-            <option value="" {% if not review_filters.time_block %}selected{% endif %}>All</option>
-            <option value="Open" {% if review_filters.time_block == 'Open' %}selected{% endif %}>Open</option>
-            <option value="Midday" {% if review_filters.time_block == 'Midday' %}selected{% endif %}>Midday</option>
-            <option value="Power Hour" {% if review_filters.time_block == 'Power Hour' %}selected{% endif %}>Power Hour</option>
-          </select>
-        </div>
-        <div class="fieldGrow1">
-          <label>Mistake Tag</label>
-          <input name="mistake_tag" value="{{ review_filters.mistake_tag }}" placeholder="late entry" />
-        </div>
-        <div class="actionRow">
-          <a class="btn" href="/trades?d={{ prev_day }}&q={{ q }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">Prev</a>
-          <a class="btn" href="/trades?d={{ next_day }}&q={{ q }}&setup={{ review_filters.setup|urlencode }}&session={{ review_filters.session|urlencode }}&outcome={{ review_filters.outcome|urlencode }}&time_block={{ review_filters.time_block|urlencode }}&mistake_tag={{ review_filters.mistake_tag|urlencode }}">Next</a>
-          <button class="btn" type="submit">Filter</button>
-          <a class="btn" href="/trades">Reset</a>
-        </div>
-      </form>
-    </details>
-
-    <div class="hr"></div>
-    <details class="syncDetails stack10">
+    <details class="syncDetails stack10 tradesAdminFold">
       <summary>Execution Admin and Balance Bases</summary>
       <div class="statRow executionQuickLinks">
         <div class="stat {% if guardrail.locked %}glow-red{% else %}glow-green{% endif %}">
@@ -376,85 +576,6 @@
     </details>
 
     <div class="hr"></div>
-    <details class="syncDetails desktopOnly">
-    <summary>Day Performance Snapshot</summary>
-    <div class="statRow">
-      <div class="stat">
-        <div class="k">Prior EOD Balance</div>
-        <div class="v">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
-        <div class="tiny">Previous completed day's closing balance</div>
-      </div>
-
-      <div class="stat">
-        <div class="k">Wins</div>
-        <div class="v">{{ stats['wins'] if stats is mapping else stats.wins }}</div>
-      </div>
-
-      <div class="stat">
-        <div class="k">Losses</div>
-        <div class="v">{{ stats['losses'] if stats is mapping else stats.losses }}</div>
-      </div>
-
-      <div class="stat">
-        <div class="k">Win Rate</div>
-        <div class="v">
-          {{ '%.1f'|format((stats['win_rate'] if stats is mapping else stats.win_rate)) }}%
-        </div>
-      </div>
-
-      <div class="stat">
-        <div class="k">W/L Ratio</div>
-        <div class="v">
-          {{ '%.2f'|format((stats['wl_ratio'] if stats is mapping else stats.wl_ratio)) }}
-        </div>
-      </div>
-
-      <div class="stat {{ cons.class }}">
-        <div class="k">Consistency</div>
-        <div class="v">
-          {% if cons.ratio is none %}
-            —
-          {% else %}
-            {{ '%.1f'|format(cons.ratio * 100) }}%
-          {% endif %}
-        </div>
-        <div class="tiny">
-          Max: {{ money(cons.biggest) }} / {{ money(cons.denom) }}
-        </div>
-      </div>
-    </div>
-    </details>
-    <details class="mobileOnly syncDetails stack10">
-      <summary>Day Performance Snapshot</summary>
-      <div class="statRow stack10">
-        <div class="stat">
-          <div class="k">{{ primary_net_label }}</div>
-          <div class="v">{{ money(day_net) }}</div>
-        </div>
-        <div class="stat {% if secondary_total_value > 0 %}glow-green{% elif secondary_total_value < 0 %}glow-red{% endif %}">
-          <div class="k">{{ secondary_total_label }}</div>
-          <div class="v">{{ money(secondary_total_value) }}</div>
-        </div>
-        <div class="stat">
-          <div class="k">Prior EOD Balance</div>
-          <div class="v">{% if prior_eod_balance is not none %}{{ money(prior_eod_balance) }}{% else %}—{% endif %}</div>
-        </div>
-        <div class="stat">
-          <div class="k">Wins / Losses</div>
-          <div class="v">{{ stats['wins'] if stats is mapping else stats.wins }} / {{ stats['losses'] if stats is mapping else stats.losses }}</div>
-        </div>
-        <div class="stat">
-          <div class="k">Win Rate</div>
-          <div class="v">{{ '%.1f'|format((stats['win_rate'] if stats is mapping else stats.win_rate)) }}%</div>
-        </div>
-        <div class="stat {{ cons.class }}">
-          <div class="k">Consistency</div>
-          <div class="v">{% if cons.ratio is none %}—{% else %}{{ '%.1f'|format(cons.ratio * 100) }}%{% endif %}</div>
-        </div>
-      </div>
-    </details>
-
-    <div class="hr"></div>
     <div class="rightActions">
       <form id="clear-trades" method="post" action="/trades/clear" class="inlineForm"></form>
       <button class="btn danger" type="button" onclick="confirmClear('clear-trades')">Clear</button>
@@ -463,13 +584,17 @@
       <a class="btn" href="/dashboard">Calendar</a>
       <a class="btn" href="/calculator">Calculator</a>
     </div>
-  </div></div>
+  </div>
+</details>
 
-<div class="card stack12"><div class="toolbar">
+<div class="card stack12 tradesTableSection"><div class="toolbar">
+      <div class="tradesTableHead">
+        <div>
       <div class="pill">Trades ({{ total_rows }})</div>
       <div class="tiny stack8 line15">
         Page {{ page }} / {{ page_count }} · showing {{ page_trades|length }} rows ({{ per }} per page).
       </div>
+        </div>
       <div class="actionRow stack8">
         {% if page > 1 %}
           <a class="btn" href="/trades?{{ pagination_query_prefix }}per={{ per }}&page={{ page - 1 }}">Prev Page</a>
@@ -480,148 +605,282 @@
         <a class="btn" href="/trades?{{ pagination_query_prefix }}per=50&page=1">50 / page</a>
         <a class="btn" href="/trades?{{ pagination_query_prefix }}per=100&page=1">100 / page</a>
       </div>
+      </div>
       <div class="hr"></div>
 
-  <!-- Bulk actions: multi-select delete / copy -->
-  <div class="row bulkActions">
-    <label class="pill bulkSelectLabel">
-      <input type="checkbox" id="selectAll" />
-      Select all
-    </label>
-    <span class="meta bulkCount" id="selectedCount">0 selected</span>
-    <button class="btn danger" id="bulkDeleteBtn" disabled>🗑️ Delete selected</button>
+  <div class="bulkActionsWrap" id="bulkActionsWrap">
+    <div class="bulkActionsToggleRow">
+      <button class="btn" type="button" id="bulkActionsToggleBtn" aria-expanded="false" aria-controls="bulkActionsPanel">Bulk Actions</button>
+      <span class="meta bulkCount" id="selectedCount">0 selected</span>
+    </div>
 
-    <span class="hr bulkSpacer"></span>
+    <!-- Bulk actions: multi-select delete / copy -->
+    <div class="row bulkActions" id="bulkActionsPanel" hidden>
+      <label class="pill bulkSelectLabel">
+        <input type="checkbox" id="selectAll" />
+        Select all
+      </label>
+      <button class="btn danger" id="bulkDeleteBtn" disabled>🗑️ Delete selected</button>
 
-    <label class="meta bulkCopyLabel">
-      Copy to:
-      <input type="date" id="bulkCopyDate" class="bulkCopyDate" value="{{ d }}" />
-    </label>
-    <button class="btn" id="bulkCopyBtn" disabled>📋 Copy selected</button>
+      <span class="hr bulkSpacer"></span>
+
+      <label class="meta bulkCopyLabel">
+        Copy to:
+        <input type="date" id="bulkCopyDate" class="bulkCopyDate" value="{{ d }}" />
+      </label>
+      <button class="btn" id="bulkCopyBtn" disabled>📋 Copy selected</button>
+
+      <span class="hr bulkSpacer"></span>
+
+      <label class="meta bulkCopyLabel">
+        Setup:
+        <select id="bulkSetupValue" class="bulkSetupSelect">
+          <option value="">Choose setup</option>
+          <option value="Sweep">Sweep</option>
+          <option value="Reversal">Reversal</option>
+          <option value="Continuation">Continuation</option>
+          <option value="Chop">Chop</option>
+          <option value="Other">Skip / Other</option>
+        </select>
+      </label>
+      <button class="btn" id="bulkSetupBtn" disabled>Tag setup</button>
+    </div>
   </div>
 
   <div class="tradesDesktop tableWrap">
     <table class="tableDense">
+      <colgroup>
+        <col class="tradesTableCol-select" />
+        <col class="tradesTableCol-expand" />
+        <col class="tradesTableCol-date" />
+        <col class="tradesTableCol-trade" />
+        <col class="tradesTableCol-risk" />
+        <col class="tradesTableCol-result" />
+        <col class="tradesTableCol-review" />
+        <col class="tradesTableCol-action" />
+      </colgroup>
       <thead>
         <tr>
           <th class="thSelect"></th>
+          <th></th>
           <th>Date</th>
-          <th>Window</th>
-          <th>Instrument</th>
-          <th>Setup</th>
-          <th>Score</th>
-          <th>Strike</th>
-          <th>Qty</th>
-          <th>Spend</th>
-          <th>Entry</th>
-          <th>Exit</th>
-          <th>Risk 20%</th>
-          <th>Net</th>
+          <th>Trade</th>
+          <th>Risk</th>
           <th>Result</th>
-          <th>Balance</th>
-          <th class="thActions">Actions</th>
-
+          <th>Review</th>
+          <th class="thActions">Action</th>
         </tr>
       </thead>
       <tbody>
         {% for t in page_trades %}
-        {% set setup_label = t.get('setup_tag') or 'Unlabeled' %}
-        {% if setup_label == 'Statement Import' %}
-          {% set setup_label = 'Imported' %}
-        {% endif %}
-        <tr>
+        {% set setup_label = t.get('setup_label') or 'Unknown' %}
+        <tr class="tradeSummaryRow" data-trade-row="{{ t['id'] }}">
           <td><input type="checkbox" class="tradeCheckbox" data-id="{{ t['id'] }}" aria-label="Select trade {{ t['id'] }}"></td>
+          <td class="tradeExpandCell">
+            <button class="tradeExpandBtn" type="button" data-trade-expand="{{ t['id'] }}" aria-expanded="false" aria-controls="tradeDetail-{{ t['id'] }}">+</button>
+          </td>
           <td>
             <div class="tradeDateCell">
               <strong>{{ t['trade_date'] }}</strong>
+              {% if t.get('day_of_week') %}<span class="tiny muted">{{ t.get('day_of_week') }}</span>{% endif %}
             </div>
           </td>
 
           <td>
-            {% set et = t.get('entry_time') %}
-            {% set xt = t.get('exit_time') %}
-            <div class="tradeWindowCell">
-              {% if et and xt %}
-                <strong>{{ et }}</strong>
-                <span>→ {{ xt }}</span>
-              {% elif et %}
-                <strong>{{ et }}</strong>
-              {% elif xt %}
-                <strong>{{ xt }}</strong>
+            <div class="tradeIdentityCell">
+              <strong class="tradeTicker">{{ t['ticker'] }}</strong>
+              <div class="tradeContractLine">
+                <span class="tradeOptionType">{{ t['opt_type'] or '—' }}</span>
+                {% if t.get('strike') is not none %}
+                  <span>{{ t['strike'] }}</span>
+                {% else %}
+                  <span>—</span>
+                {% endif %}
+              </div>
+              <span class="tradeSetupPill">{{ setup_label }}</span>
+            </div>
+          </td>
+          <td>
+            <div class="tradeRiskCluster">
+              <div class="tradeRiskPrimary{% if t.get('oversized') or t.get('loss_exceeded_planned_risk') %} is-risk-alert{% endif %}">
+                {{ money(t.get('risk_dollars')) if t.get('risk_dollars') is not none else '—' }}
+              </div>
+              <div class="tradeRiskLine tradeRiskLine-stack">
+                <span>{{ t.get('trade_risk_pct_display') or '—' }} stop</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="tradePnLCluster">
+              {% set n = t.get('net_pl') %}
+              {% if n is none %}
+                <span class="tradeValueBubble tradeValueBubbleFlat">—</span>
+              {% elif n > 0 %}
+                <span class="tradeValueBubble tradeValueBubbleGain">{{ money(n) }}</span>
+              {% elif n < 0 %}
+                <span class="tradeValueBubble tradeValueBubbleLoss">{{ money(n) }}</span>
               {% else %}
-                <span class="muted">—</span>
+                <span class="tradeValueBubble tradeValueBubbleFlat">{{ money(n) }}</span>
               {% endif %}
-            </div>
-          </td>
-
-          <td>
-            <div class="tradeInstrumentCell">
-              <span class="tradeTicker">{{ t['ticker'] }}</span>
-              <span class="tradeOptionType">{{ t['opt_type'] or '—' }}</span>
+              <div class="tradePerformanceMeta tradePerformanceMeta-stack">{{ t.get('result_pct_display') or '—' }}</div>
+              <div class="tradePerformanceMeta tradePerformanceMeta-stack">{{ t.get('r_multiple_display') or '—' }}</div>
             </div>
           </td>
           <td>
-            <span class="tradeSetupPill">{{ setup_label }}</span>
-            {% if t.get('session_tag') %}
-              <div class="tiny muted">{{ t.get('session_tag') }} · {{ t.get('time_block') }}</div>
-            {% endif %}
+            <div class="tradeReviewSummary">
+              {% set review_label = t.get('review_state', {}).get('label', 'Not Reviewed') %}
+              <span class="tradeReviewState tradeReviewState-{{ t.get('review_state', {}).get('tone', 'neutral') }}">
+                {% if review_label == 'Partially Reviewed' %}Partial{% elif review_label == 'Fully Reviewed' %}Reviewed{% elif review_label == 'Not Reviewed' %}Not Reviewed{% else %}{{ review_label }}{% endif %}
+              </span>
+              <div class="tradeReviewMeta tradeReviewMeta-strong">Grade {{ t.get('final_grade_letter', t.get('trade_grade', '—')) }} · {{ t.get('final_grade_score', t.get('trade_score', '—')) }}/100</div>
+              <div class="tradeReviewMeta">{{ t.get('classification', t.get('trade_classification')) or '—' }}</div>
+            </div>
           </td>
-          <td>
-            {% if t.get('checklist_score') is not none %}
-              <span class="tradeScoreCell">{{ t.get('checklist_score') }}</span>
-            {% else %}
-              <span class="muted">—</span>
-            {% endif %}
-          </td>
-          <td class="tradeNumberCell">{{ '' if t['strike'] is none else t['strike'] }}</td>
-          <td class="tradeNumberCell">{{ '' if t['contracts'] is none else t['contracts'] }}</td>
-          <td class="tradeMoneyCell">{{ money(t['total_spent']) }}</td>
-          <td class="tradeMoneyCell">{{ money(t['entry_price']) }}</td>
-          <td class="tradeMoneyCell">{{ money(t['exit_price']) }}</td>
-          <td><span class="tradeValueBubble tradeValueBubbleRisk">{{ money((t['total_spent'] or 0) * 0.20) }}</span></td>
-          <td>
-  {% set n = t.get('net_pl') %}
-  {% if n is none %}
-    <span class="tradeValueBubble tradeValueBubbleFlat">—</span>
-  {% elif n > 0 %}
-    <span class="tradeValueBubble tradeValueBubbleGain">{{ money(n) }}</span>
-  {% elif n < 0 %}
-    <span class="tradeValueBubble tradeValueBubbleLoss">{{ money(n) }}</span>
-  {% else %}
-    <span class="tradeValueBubble tradeValueBubbleFlat">{{ money(n) }}</span>
-  {% endif %}
-</td>
-          {% set rp = t.get('result_pct') %}
-<td>
-  {% if rp is none %}
-    <span class="tradeValueBubble tradeValueBubbleFlat">–</span>
-  {% elif rp < 10 %}
-    <span class="tradeValueBubble tradeValueBubbleLoss">{{ pct(rp) }}</span>
-  {% elif rp > 20 %}
-    <span class="tradeValueBubble tradeValueBubbleGain">{{ pct(rp) }}</span>
-  {% elif rp > 15 %}
-    <span class="tradeValueBubble tradeValueBubbleWarm">{{ pct(rp) }}</span>
-  {% else %}
-    <span class="tradeValueBubble tradeValueBubbleFlat">{{ pct(rp) }}</span>
-  {% endif %}
-</td>
-
-          <td class="tradeBalanceCell">{{ money(t['balance']) }}</td>
           <td class="tdActions">
-            <div class="rowActions" id="rowActions-{{ t['id'] }}">
-              <button type="button" class="rowMoreBtn" onclick="toggleRowMenu('{{ t['id'] }}', event)" aria-label="Trade actions">▾</button>
-              <div class="rowMoreMenu" id="rowMenu-{{ t['id'] }}">
-                <a class="rowMenuItem" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}">✏️ Edit</a>
-                <a class="rowMenuItem" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">🧠 Review</a>
-                <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}">
-  <button class="rowMenuItem" type="submit">📄 Duplicate</button>
-</form>
+            <div class="tradeActionRail">
+              <div class="tradePrimaryActionRow">
+                <a class="btn btnCompact" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">Review</a>
+                <a class="btn btnCompact" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}">Replay</a>
+              </div>
+              <div class="rowActions" id="rowActions-{{ t['id'] }}">
+                <button type="button" class="rowMoreBtn" onclick="toggleRowMenu('{{ t['id'] }}', event)" aria-label="Trade actions">▾</button>
+                <div class="rowMoreMenu" id="rowMenu-{{ t['id'] }}">
+                  <a class="rowMenuItem" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}">✏️ Edit</a>
+                  <a class="rowMenuItem" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">🧠 Review</a>
+                  <a class="rowMenuItem" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}">🎞️ Replay</a>
+                  <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}">
+    <button class="rowMenuItem" type="submit">📄 Duplicate</button>
+  </form>
 
-                <form id="del-t-{{ t['id'] }}" method="post"
-                      action="/trades/delete/{{ t['id'] }}?d={{ d }}&q={{ q }}"
-                      onsubmit="return confirm('Delete this trade?');">
-                  <button class="rowMenuItem danger" type="submit">🗑️ Delete</button>
-                </form>
+                  <form id="del-t-{{ t['id'] }}" method="post"
+                        action="/trades/delete/{{ t['id'] }}?d={{ d }}&q={{ q }}"
+                        onsubmit="return confirm('Delete this trade?');">
+                    <button class="rowMenuItem danger" type="submit">🗑️ Delete</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+        <tr class="tradeDetailRow" id="tradeDetail-{{ t['id'] }}" hidden>
+          <td colspan="8">
+            <div class="tradeDetailPanel">
+              <div class="tradeExpandedPanels">
+                <section class="tradeExpandedPanel tradeExpandedPanel-summary">
+                  <div class="tradeRiskExecutionHead">Trade Context</div>
+                  <div class="tradeRiskExecutionGrid">
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Instrument</span><strong>{{ t['ticker'] }} {{ (t['opt_type'] or '—') ~ (' ' ~ t['strike'] if t.get('strike') is not none else '') }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Setup</span><strong>{{ t.get('setup_label') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Session</span><strong>{{ t.get('session_tag') or t.get('time_block') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Time</span><strong>{{ (t.get('entry_time') or '—') ~ (' → ' ~ t.get('exit_time') if t.get('exit_time') else '') }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Source</span><strong>{{ t.get('source_label') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Qty</span><strong>{{ t.get('contracts') if t.get('contracts') is not none else '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Spend</span><strong>{{ money(t['total_spent']) if t.get('total_spent') is not none else '—' }}</strong></div>
+                  </div>
+                  {% if t.get('setup_missing') %}
+                    <div class="tradeDetailQuickTag">
+                      <div class="tradeSetupMeta">Setup Unknown{% if t.get('setup_suggestion') %} · Suggest {{ t.get('setup_suggestion') }}{% endif %}</div>
+                      <div class="tradeQuickTagRow">
+                        {% for setup in ['Sweep', 'Reversal', 'Continuation', 'Chop', 'Other'] %}
+                          <button class="tradeQuickTagBtn{% if t.get('setup_suggestion') == setup %} is-suggested{% endif %}" type="button" data-trade-setup="{{ t['id'] }}" data-setup-value="{{ setup }}">{{ setup }}</button>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endif %}
+                </section>
+                <section class="tradeExpandedPanel tradeExpandedPanel-risk">
+                  <div class="tradeRiskExecutionHead">Risk &amp; Execution</div>
+                  <div class="tradeRiskExecutionGrid">
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Risk $</span><strong>{{ money(t.get('risk_dollars')) if t.get('risk_dollars') is not none else '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Stop %</span><strong>{{ t.get('stop_rule_display') or '20.0%' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Planned Stop</span><strong>{{ t.get('stop_rule_display') or '20.0%' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Realized R</span><strong>{{ t.get('r_multiple_display') }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">P/L %</span><strong>{{ t.get('result_pct_display') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">MAE</span><strong>{{ t.get('mae_display', '—') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">MFE</span><strong>{{ t.get('mfe_display', '—') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Sizing Quality</span><strong>{{ t.get('sizing_quality_label') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Stop Discipline</span><strong>{{ t.get('stop_discipline_label') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Rule Adherence</span><strong>{{ 'Rule Break' if t.get('rule_break_tags') else 'Clean' }}</strong></div>
+                  </div>
+                  <div class="tradeStatusGroups">
+                    <div class="tradeStatusGroup">
+                      <span class="tradeStatusGroupLabel">Issues</span>
+                      <div class="tradeRiskBadgeRail">
+                        {% if not t.get('stop_present') %}
+                          <span class="tradeReviewState tradeReviewState-warn">Stop Missing</span>
+                        {% endif %}
+                        {% if t.get('oversized') %}
+                          <span class="tradeReviewState tradeReviewState-negative">Oversized</span>
+                        {% endif %}
+                        {% if t.get('rule_break_tags') %}
+                          <span class="tradeReviewState tradeReviewState-negative">Rule Break</span>
+                        {% endif %}
+                        {% if t.get('stop_present') and not t.get('oversized') and not t.get('rule_break_tags') %}
+                          <span class="tradeStatusEmpty">—</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="tradeStatusGroup">
+                      <span class="tradeStatusGroupLabel">Positives</span>
+                      <div class="tradeRiskBadgeRail">
+                        {% if t.get('stop_discipline_label') in ['Stop Respected', 'Within Risk Plan'] %}
+                          <span class="tradeReviewState tradeReviewState-positive">Within Plan</span>
+                        {% endif %}
+                        {% if not t.get('rule_break_tags') %}
+                          <span class="tradeReviewState tradeReviewState-positive">Clean</span>
+                        {% endif %}
+                        {% if t.get('stop_discipline_label') not in ['Stop Respected', 'Within Risk Plan'] and t.get('rule_break_tags') %}
+                          <span class="tradeStatusEmpty">—</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+                <section class="tradeExpandedPanel tradeExpandedPanel-review">
+                  <div class="tradeRiskExecutionHead">Review / Grade</div>
+                  <div class="tradeVerdictGrid">
+                    <div class="tradeVerdictCell">
+                      <span class="tradeDetailLabel">Final Grade</span>
+                      <strong>{{ t.get('final_grade_letter') or t.get('trade_grade') or '—' }} · {{ t.get('final_grade_score') or t.get('trade_score') or '—' }}</strong>
+                    </div>
+                    <div class="tradeVerdictCell">
+                      <span class="tradeDetailLabel">Outcome</span>
+                      <strong>{{ t.get('outcome_label') or '—' }}</strong>
+                    </div>
+                    <div class="tradeVerdictCell">
+                      <span class="tradeDetailLabel">Classification</span>
+                      <strong>{{ t.get('classification') or t.get('trade_classification') or '—' }}</strong>
+                    </div>
+                    <div class="tradeVerdictCell">
+                      <span class="tradeDetailLabel">Completion</span>
+                      <strong>{{ t.get('review_completion_pct', 0) }}%</strong>
+                    </div>
+                  </div>
+                  <div class="tradeRiskExecutionGrid tradeRiskExecutionGrid-review">
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Review State</span><strong>{{ t.get('review_state', {}).get('label', 'Not Reviewed') }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Auto Grade</span><strong>{{ t.get('auto_grade_letter') or '—' }} · {{ t.get('auto_grade_score') or '—' }}</strong></div>
+                    <div class="tradeDetailCell"><span class="tradeDetailLabel">Execution Quality</span><strong>{{ t.get('execution_quality_label') or '—' }}</strong></div>
+                  </div>
+                  <div class="tradeGradeBreakdownMini">
+                    {% for component in t.get('grade_breakdown_items', []) %}
+                      <div class="tradeGradeBreakdownMiniItem">
+                        <span>{{ component.label }}</span>
+                        <strong>{{ '%.1f'|format(component.score) }}/{{ component.max }}</strong>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </section>
+              </div>
+              {% if t.get('detail_tags') %}
+                <div class="tradeDetailTags">
+                  {% for tag in t.get('detail_tags') %}
+                    <span class="tradeSessionPill">{{ tag }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              <div class="tradeDetailNotesSection">
+                <div class="tradeRiskExecutionHead">Notes</div>
+                <div class="tradeDetailNote">{{ t.get('key_note') or '—' }}</div>
               </div>
             </div>
           </td>
@@ -629,7 +888,7 @@
       {% endfor %}
 
       {% if total_rows == 0 %}
-        <tr><td colspan="17">
+        <tr><td colspan="8">
           <div class="emptyState">
             <div class="emptyStateTitle">No trades in this view yet.</div>
             <div class="emptyStateBody">Start by uploading a statement, then add setup, session, and review tags.</div>
@@ -644,10 +903,7 @@
     {% for t in page_trades %}
       {% set n = t.get('net_pl') %}
       {% set rp = t.get('result_pct') %}
-      {% set setup_label = t.get('setup_tag') or 'Unlabeled' %}
-      {% if setup_label == 'Statement Import' %}
-        {% set setup_label = 'Imported' %}
-      {% endif %}
+      {% set setup_label = t.get('setup_label') or 'Unknown' %}
       <article class="tradeCard">
         <div class="tradeCardHead">
           <div class="pill">{{ t['trade_date'] }}</div>
@@ -655,6 +911,7 @@
         </div>
         <div class="tradeCardSignalRow">
           <span class="tradeSetupPill">{{ setup_label }}</span>
+          <span class="tradeSessionPill">Source {{ t.get('source_label') }}</span>
           {% if t.get('session_tag') %}
             <span class="tradeSessionPill">{{ t.get('session_tag') }}</span>
           {% endif %}
@@ -665,6 +922,16 @@
             <span class="tradeScoreCell">{{ t.get('checklist_score') }}</span>
           {% endif %}
         </div>
+        {% if t.get('setup_missing') %}
+          <div class="tradeCardQuickTag">
+            <div class="tradeSetupMeta">Setup Unknown{% if t.get('setup_suggestion') %} · Suggest {{ t.get('setup_suggestion') }}{% endif %}</div>
+            <div class="tradeQuickTagRow">
+              {% for setup in ['Sweep', 'Reversal', 'Continuation', 'Chop', 'Other'] %}
+                <button class="tradeQuickTagBtn{% if t.get('setup_suggestion') == setup %} is-suggested{% endif %}" type="button" data-trade-setup="{{ t['id'] }}" data-setup-value="{{ setup }}">{{ setup }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
         <div class="tradeCardGrid">
           <div class="tradeCardMetaCell"><span class="meta">Window</span><div>{{ (t.get('entry_time') or '—') ~ (' → ' ~ t.get('exit_time') if t.get('exit_time') else '') }}</div></div>
           <div class="tradeCardMetaCell"><span class="meta">Strike / Qty</span><div>{{ '' if t['strike'] is none else t['strike'] }} / {{ '' if t['contracts'] is none else t['contracts'] }}</div></div>
@@ -697,6 +964,7 @@
         <div class="mobileActionGrid stack10">
           <a class="btn" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}">✏️ Edit</a>
           <a class="btn" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">🧠 Review</a>
+          <a class="btn" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}">🎞️ Replay</a>
           <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}" class="inlineForm">
             <button class="btn" type="submit">📄 Duplicate</button>
           </form>
@@ -802,7 +1070,21 @@ const selCountEl = document.getElementById('selectedCount');
 const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
 const bulkCopyBtn = document.getElementById('bulkCopyBtn');
 const bulkCopyDate = document.getElementById('bulkCopyDate');
+const bulkSetupBtn = document.getElementById('bulkSetupBtn');
+const bulkSetupValue = document.getElementById('bulkSetupValue');
 const selectAll = document.getElementById('selectAll');
+const bulkActionsPanel = document.getElementById('bulkActionsPanel');
+const bulkActionsToggleBtn = document.getElementById('bulkActionsToggleBtn');
+let bulkActionsPinnedOpen = false;
+
+function syncBulkActionsVisibility(forceOpen = false) {
+  if (!bulkActionsPanel || !bulkActionsToggleBtn) return;
+  const selectedCount = getSelectedIds().length;
+  const shouldShow = forceOpen || bulkActionsPinnedOpen || selectedCount > 0;
+  bulkActionsPanel.hidden = !shouldShow;
+  bulkActionsToggleBtn.setAttribute('aria-expanded', shouldShow ? 'true' : 'false');
+  bulkActionsToggleBtn.classList.toggle('primary', shouldShow);
+}
 
 function getSelectedIds() {
   return Array.from(document.querySelectorAll('.tradeCheckbox:checked'))
@@ -815,6 +1097,8 @@ function refreshBulkUi() {
   if (selCountEl) selCountEl.textContent = ids.length + ' selected';
   if (bulkDeleteBtn) bulkDeleteBtn.disabled = ids.length === 0;
   if (bulkCopyBtn) bulkCopyBtn.disabled = ids.length === 0;
+  if (bulkSetupBtn) bulkSetupBtn.disabled = ids.length === 0 || !(bulkSetupValue && bulkSetupValue.value);
+  syncBulkActionsVisibility();
 
   if (selectAll) {
     const all = document.querySelectorAll('.tradeCheckbox');
@@ -824,6 +1108,13 @@ function refreshBulkUi() {
     selectAll.checked = allCount > 0 && checkedCount === allCount;
     selectAll.indeterminate = checkedCount > 0 && checkedCount < allCount;
   }
+}
+
+if (bulkActionsToggleBtn) {
+  bulkActionsToggleBtn.addEventListener('click', () => {
+    bulkActionsPinnedOpen = !bulkActionsPinnedOpen;
+    syncBulkActionsVisibility();
+  });
 }
 
 if (selectAll) {
@@ -872,4 +1163,514 @@ if (bulkCopyBtn) {
     }
   });
 }
+
+if (bulkSetupValue) {
+  bulkSetupValue.addEventListener('change', refreshBulkUi);
+}
+
+async function postQuickSetup(url, payload) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(text || 'Setup tag update failed.');
+  }
+  return r.json();
+}
+
+document.querySelectorAll('[data-trade-setup]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const tradeId = button.dataset.tradeSetup;
+    const setup = button.dataset.setupValue;
+    if (!tradeId || !setup) return;
+    try {
+      button.disabled = true;
+      await postQuickSetup(`/trades/setup/${tradeId}`, { setup });
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || 'Setup tag update failed.');
+      button.disabled = false;
+    }
+  });
+});
+
+if (bulkSetupBtn) {
+  bulkSetupBtn.addEventListener('click', async () => {
+    const ids = getSelectedIds();
+    const setup = bulkSetupValue ? bulkSetupValue.value : '';
+    if (!ids.length || !setup) return;
+    try {
+      bulkSetupBtn.disabled = true;
+      await postQuickSetup('/trades/setup_many', { ids, setup });
+      window.location.reload();
+    } catch (error) {
+      alert(error.message || 'Bulk setup tag update failed.');
+      bulkSetupBtn.disabled = false;
+    }
+  });
+}
+
+document.querySelectorAll('[data-trade-expand]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const id = button.dataset.tradeExpand;
+    const row = document.getElementById(`tradeDetail-${id}`);
+    if (!row) return;
+    const open = !row.hidden;
+    document.querySelectorAll('.tradeDetailRow').forEach((detailRow) => { detailRow.hidden = true; });
+    document.querySelectorAll('[data-trade-expand]').forEach((toggle) => {
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.textContent = '+';
+    });
+    if (!open) {
+      row.hidden = false;
+      button.setAttribute('aria-expanded', 'true');
+      button.textContent = '–';
+    }
+  });
+});
+
+let tradesHeroChartView = window.localStorage.getItem('mcTradesHeroChartView') || 'equity';
+let tradesEquityMode = window.localStorage.getItem('mcTradesEquityMode') || 'dollars';
+let tradesSetupMode = window.localStorage.getItem('mcTradesSetupMode') || 'net';
+let tradesSessionMode = window.localStorage.getItem('mcTradesSessionMode') || 'net';
+
+function ensureChartTooltip(node) {
+  let tooltip = node.querySelector('.tradesChartTooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.className = 'tradesChartTooltip';
+    node.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function hideChartTooltip(node) {
+  const tooltip = node.querySelector('.tradesChartTooltip');
+  if (tooltip) tooltip.classList.remove('is-visible');
+}
+
+function showChartTooltip(node, html, x, y) {
+  const tooltip = ensureChartTooltip(node);
+  tooltip.innerHTML = html;
+  tooltip.classList.add('is-visible');
+  const tipWidth = tooltip.offsetWidth || 180;
+  const tipHeight = tooltip.offsetHeight || 72;
+  const left = Math.max(16, Math.min(x, node.clientWidth - tipWidth - 16));
+  const top = Math.max(tipHeight + 12, Math.min(y, node.clientHeight - 12));
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function formatMetricValue(mode, value) {
+  const number = Number(value || 0);
+  if (mode === 'percent' || mode === 'win_rate' || mode === 'respect') return `${number.toFixed(1)}%`;
+  if (mode === 'r' || mode === 'expectancy') return `${number > 0 ? '+' : ''}${number.toFixed(2)}R`;
+  return `${number < 0 ? '-' : ''}$${Math.abs(number).toFixed(2)}`;
+}
+
+function updateHeroChartStats(points) {
+  if (!Array.isArray(points) || !points.length) return;
+  const peakEquity = Math.max(...points.map((point) => Number(point.peak || point.value || 0)));
+  const currentEquity = Number(points[points.length - 1].value || 0);
+  const maxDrawdown = Math.max(...points.map((point) => Math.abs(Number(point.drawdown || 0))));
+  const currentDrawdown = Math.abs(Number(points[points.length - 1].drawdown || 0));
+  const maxDrawdownPct = Math.max(...points.map((point) => Math.abs(Number(point.drawdown_pct || 0))));
+  const currentDrawdownPct = Math.abs(Number(points[points.length - 1].drawdown_pct || 0));
+  const recoveryPct = maxDrawdown > 0 ? Math.max(0, Math.min(100, (1 - (currentDrawdown / maxDrawdown)) * 100)) : 100;
+  const setText = (id, text) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = text;
+  };
+  setText('tradesHeroPeakEquity', formatMetricValue('dollars', peakEquity));
+  setText('tradesHeroCurrentEquity', formatMetricValue('dollars', currentEquity));
+  setText(
+    'tradesHeroMaxDrawdown',
+    tradesHeroChartView === 'drawdown_percent'
+      ? formatMetricValue('percent', maxDrawdownPct)
+      : formatMetricValue('dollars', maxDrawdown)
+  );
+  setText(
+    'tradesHeroCurrentDrawdown',
+    tradesHeroChartView === 'drawdown_percent'
+      ? formatMetricValue('percent', currentDrawdownPct)
+      : formatMetricValue('dollars', currentDrawdown)
+  );
+  setText('tradesHeroRecoveryPct', formatMetricValue('percent', recoveryPct));
+}
+
+function renderTradesEquityChart(id) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  const points = JSON.parse(node.dataset.chart || '[]');
+  node.classList.add('is-hero');
+  if (!Array.isArray(points) || !points.length) {
+    node.innerHTML = '<div class="chartEmpty"><div class="chartEmptyTitle">No equity curve yet</div><div class="chartEmptySub">Closed trade days will populate the running curve and drawdown context.</div></div>';
+    return;
+  }
+  updateHeroChartStats(points);
+  const width = 980;
+  const height = 468;
+  const pad = { top: 20, right: 124, bottom: 52, left: 92 };
+  const isDrawdownView = tradesHeroChartView !== 'equity';
+  const valueKey = tradesHeroChartView === 'drawdown_dollars'
+    ? 'drawdown_abs'
+    : tradesHeroChartView === 'drawdown_percent'
+      ? 'drawdown_pct_abs'
+      : tradesEquityMode === 'r'
+        ? 'cum_r'
+        : tradesEquityMode === 'percent'
+          ? 'cum_pct'
+          : 'value';
+  const peakKey = tradesHeroChartView === 'drawdown_dollars'
+    ? 'drawdown_abs'
+    : tradesHeroChartView === 'drawdown_percent'
+      ? 'drawdown_pct_abs'
+      : tradesEquityMode === 'r'
+        ? 'peak_r'
+        : tradesEquityMode === 'percent'
+          ? 'peak_pct'
+          : 'peak';
+  const activeMetricMode = tradesHeroChartView === 'drawdown_percent' ? 'percent' : tradesHeroChartView === 'drawdown_dollars' ? 'dollars' : tradesEquityMode;
+  const values = points.map((point) => Number(point[valueKey] || 0));
+  const peaks = points.map((point) => Number(point[peakKey] || point[valueKey] || 0));
+  const minValue = isDrawdownView ? 0 : Math.min(...values, ...peaks);
+  const maxValue = Math.max(...values, ...peaks, minValue + 1);
+  const range = Math.max(maxValue - minValue, 1);
+  const innerWidth = width - pad.left - pad.right;
+  const innerHeight = height - pad.top - pad.bottom;
+  const mapX = (index) => pad.left + (points.length === 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
+  const mapY = (value) => pad.top + innerHeight - (((value - minValue) / range) * innerHeight);
+  const coords = points.map((point, index) => ({
+    ...point,
+    x: mapX(index),
+    y: mapY(Number(point[valueKey] || 0)),
+    peakY: mapY(Number(point[peakKey] || point[valueKey] || 0)),
+    value: Number(point[valueKey] || 0),
+  }));
+  const path = coords.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+  const area = `${path} L ${coords[coords.length - 1].x.toFixed(1)} ${(height - pad.bottom).toFixed(1)} L ${coords[0].x.toFixed(1)} ${(height - pad.bottom).toFixed(1)} Z`;
+  const drawdownTop = coords.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.peakY.toFixed(1)}`).join(' ');
+  const drawdownBottom = coords.slice().reverse().map((point) => `L ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+  const drawdownPath = `${drawdownTop} ${drawdownBottom} Z`;
+  const gridValues = Array.from({ length: 4 }, (_, index) => minValue + (range * index / 3));
+  const yLabels = gridValues.map((value) => {
+    const y = mapY(value);
+    return `
+      <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(width - pad.right).toFixed(1)}" y2="${y.toFixed(1)}" class="tradesChartGridLine"></line>
+      <text x="${(pad.left - 10).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="tradesChartAxisLabel">${formatMetricValue(activeMetricMode, value)}</text>
+    `;
+  }).join('');
+  const xLabelIndexes = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
+  const xLabels = xLabelIndexes.map((index) => {
+    const point = coords[index];
+    return `<text x="${point.x.toFixed(1)}" y="${(height - 18).toFixed(1)}" text-anchor="middle" class="tradesChartAxisLabel">${String(point.label || '').slice(0, 6)}</text>`;
+  }).join('');
+  const last = coords[coords.length - 1];
+  const peakPoint = coords.reduce((best, point) => (Number(point.peak || point.value || 0) >= Number(best.peak || best.value || 0) ? point : best), coords[0]);
+  const maxDrawdownPoint = coords.reduce((worst, point) => (Math.abs(Number(point.drawdown || 0)) >= Math.abs(Number(worst.drawdown || 0)) ? point : worst), coords[0]);
+  const biggestWin = coords.reduce((best, point) => ((Number(point.day_net || 0) > Number(best.day_net || 0)) ? point : best), coords[0]);
+  const biggestLoss = coords.reduce((worst, point) => ((Number(point.day_net || 0) < Number(worst.day_net || 0)) ? point : worst), coords[0]);
+  const marker = (point, tone, label) => `
+    <g data-point-label="${label}">
+      <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5.2" class="tradesChartMarkerDot is-${tone}"></circle>
+      <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="11.5" class="tradesChartMarkerHalo is-${tone}"></circle>
+    </g>
+  `;
+  const priceTagWidth = 86;
+  const priceTagHeight = 26;
+  const priceTagX = width - pad.right + 10;
+  const priceTagY = Math.max(pad.top + 4, Math.min(last.y - (priceTagHeight / 2), height - pad.bottom - priceTagHeight - 4));
+  node.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" class="tradesMiniChartSvg" aria-hidden="true">
+      <defs>
+        <linearGradient id="${id}-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${isDrawdownView ? 'rgba(255, 126, 146, .28)' : 'rgba(107, 196, 255, .34)'}"></stop>
+          <stop offset="100%" stop-color="${isDrawdownView ? 'rgba(255, 126, 146, 0)' : 'rgba(107, 196, 255, 0)'}"></stop>
+        </linearGradient>
+      </defs>
+      ${yLabels}
+      ${isDrawdownView ? '' : `<path d="${drawdownPath}" class="tradesChartDrawdownFill"></path>`}
+      <path d="${area}" fill="url(#${id}-fill)"></path>
+      <path d="${path}" class="tradesChartLine${isDrawdownView ? ' is-drawdown' : ''}"></path>
+      <line x1="${last.x.toFixed(1)}" y1="${pad.top}" x2="${last.x.toFixed(1)}" y2="${(height - pad.bottom).toFixed(1)}" class="tradesChartGuide"></line>
+      ${marker(peakPoint, 'peak', 'Peak equity')}
+      ${marker(maxDrawdownPoint, 'drawdown', 'Max drawdown')}
+      ${marker(biggestWin, 'positive', 'Biggest win')}
+      ${marker(biggestLoss, 'negative', 'Biggest loss')}
+      <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="5.5" class="tradesChartMarkerDot is-current"></circle>
+      <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="13" class="tradesChartMarkerHalo is-current"></circle>
+      <g>
+        <rect x="${priceTagX.toFixed(1)}" y="${priceTagY.toFixed(1)}" rx="8" width="${priceTagWidth}" height="${priceTagHeight}" class="tradesChartPriceTag"></rect>
+        <text x="${(priceTagX + (priceTagWidth / 2)).toFixed(1)}" y="${(priceTagY + 17).toFixed(1)}" text-anchor="middle" class="tradesChartPriceTagText">${formatMetricValue(activeMetricMode, last.value)}</text>
+      </g>
+      ${xLabels}
+    </svg>
+  `;
+  node.onmousemove = (event) => {
+    const rect = node.getBoundingClientRect();
+    const ratio = (event.clientX - rect.left) / rect.width;
+    const index = Math.max(0, Math.min(coords.length - 1, Math.round(ratio * (coords.length - 1))));
+    const point = coords[index];
+    showChartTooltip(
+      node,
+      `<strong>${point.date || point.label}</strong><span>${formatMetricValue(activeMetricMode, point.value)}</span><span>Day ${formatMetricValue('dollars', point.day_net || 0)}</span><span>Drawdown ${formatMetricValue('dollars', Math.abs(point.drawdown || 0))}</span><span>Drawdown ${formatMetricValue('percent', Math.abs(point.drawdown_pct || 0))}</span>`,
+      ((point.x / width) * rect.width) + 14,
+      ((point.y / height) * rect.height) - 14
+    );
+  };
+  node.onmouseleave = () => hideChartTooltip(node);
+}
+
+function renderTradesSupportChart(id, emptyTitle, emptySub, mode) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  const points = JSON.parse(node.dataset.chart || '[]');
+  if (!Array.isArray(points) || !points.length) {
+    node.innerHTML = `<div class="chartEmpty"><div class="chartEmptyTitle">${emptyTitle}</div><div class="chartEmptySub">${emptySub}</div></div>`;
+    return;
+  }
+  const valueAccessor = (point) => {
+    if (mode === 'expectancy') return Number(point.value || 0);
+    if (mode === 'win_rate' || mode === 'respect') return Number(point.win_rate ?? point.value ?? 0);
+    return Number(point.net ?? point.value ?? 0);
+  };
+  const values = points.map(valueAccessor);
+  const positiveOnly = mode === 'respect' || mode === 'win_rate';
+  const min = positiveOnly ? 0 : Math.min(...values, 0);
+  const max = Math.max(...values, 0, min + 1);
+  const range = Math.max(max - min, 1);
+  const positiveSpan = positiveOnly ? Math.max(max, 1) : Math.max(max, 0);
+  const negativeSpan = positiveOnly ? 0 : Math.abs(Math.min(min, 0));
+  const maxSpan = Math.max(positiveSpan, negativeSpan, 1);
+  const zeroPct = positiveOnly ? 0 : (negativeSpan / (positiveSpan + negativeSpan || 1)) * 100;
+  const lowCount = points.length <= 2;
+  const filterType = id === 'tradesSetupPerformanceChart'
+    ? 'setup'
+    : id === 'tradesTimeOfDayChart'
+      ? 'time_block'
+      : id === 'tradesStopRespectChart'
+        ? 'setup'
+        : '';
+  const rows = points.map((point, index) => {
+    const value = valueAccessor(point);
+    const isPositive = value >= 0;
+    const text = formatMetricValue(mode === 'respect' ? 'percent' : mode, value);
+    const meta = mode === 'respect'
+      ? `${point.count || 0} setups`
+      : `${point.count || 0} trades · ${Number(point.win_rate || 0).toFixed(0)}%`;
+    const label = String(point.label || '');
+    const safeLabel = label.replace(/"/g, '&quot;');
+    let fillStyle = '';
+    let toneClass = mode === 'respect' ? 'is-accent' : (isPositive ? 'is-positive' : 'is-negative');
+    if (positiveOnly) {
+      const pct = Math.max((Math.abs(value) / Math.max(max, 1)) * 100, 5);
+      fillStyle = `left:0%;width:${Math.min(pct, 100).toFixed(2)}%;`;
+    } else {
+      const spanPct = Math.max((Math.abs(value) / maxSpan) * 50, 3.5);
+      const leftPct = isPositive ? zeroPct : Math.max(zeroPct - spanPct, 0);
+      fillStyle = `left:${leftPct.toFixed(2)}%;width:${Math.min(spanPct, 100).toFixed(2)}%;`;
+    }
+    return `
+      <button
+        type="button"
+        class="tradesSupportBarRow"
+        title="${safeLabel}"
+        data-label="${safeLabel}"
+        data-value="${text}"
+        data-meta="${meta}"
+        data-filter-type="${filterType}"
+      >
+        <span class="tradesSupportLabel">${label}</span>
+        <span class="tradesSupportTrack" ${positiveOnly ? '' : `style="--zero-pct:${zeroPct.toFixed(2)}%;"`}>
+          ${positiveOnly ? '' : '<span class="tradesSupportZero"></span>'}
+          <span class="tradesSupportFill ${toneClass}" style="${fillStyle}"></span>
+        </span>
+        <span class="tradesSupportValue">${text}</span>
+      </button>
+    `;
+  }).join('');
+  const limitedNote = lowCount ? '<div class="tradesSupportChartHint">Limited scoped data</div>' : '';
+  node.innerHTML = `
+    <div class="tradesSupportChartList${lowCount ? ' is-low-count' : ''}">
+      ${rows}
+    </div>
+    ${limitedNote}
+  `;
+  node.onmousemove = (event) => {
+    const target = event.target.closest('.tradesSupportBarRow');
+    if (!target) {
+      hideChartTooltip(node);
+      return;
+    }
+    const rect = node.getBoundingClientRect();
+    showChartTooltip(
+      node,
+      `<strong>${target.dataset.label}</strong><span>${target.dataset.value}</span><span>${target.dataset.meta}</span>`,
+      event.clientX - rect.left + 12,
+      event.clientY - rect.top - 14
+    );
+  };
+  node.onmouseleave = () => hideChartTooltip(node);
+  node.onclick = (event) => {
+    const target = event.target.closest('.tradesSupportBarRow');
+    if (!target) return;
+    const nextFilterType = target.dataset.filterType;
+    const label = target.dataset.label;
+    if (!nextFilterType || !label) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set(nextFilterType, label);
+    params.delete('page');
+    window.location.search = params.toString();
+  };
+}
+
+function renderTradesCharts() {
+  renderTradesEquityChart('tradesEquityCurveChart');
+  renderTradesSupportChart(
+    'tradesSetupPerformanceChart',
+    'No setup performance yet',
+    'Tag setups on reviewed trades to surface the strongest pattern.',
+    tradesSetupMode
+  );
+  renderTradesSupportChart(
+    'tradesTimeOfDayChart',
+    'No time-of-day edge yet',
+    'Session windows will populate once closed trades are available.',
+    tradesSessionMode
+  );
+  renderTradesSupportChart(
+    'tradesStopRespectChart',
+    'No stop-discipline sample yet',
+    'Set planned risk and stop context to measure respect rate by setup.',
+    'respect'
+  );
+}
+
+document.querySelectorAll('#tradesEquityMode [data-mode]').forEach((node) => {
+  node.classList.toggle('is-active', node.dataset.mode === tradesEquityMode);
+});
+document.querySelectorAll('#tradesHeroChartMode [data-view]').forEach((node) => {
+  node.classList.toggle('is-active', node.dataset.view === tradesHeroChartView);
+});
+document.querySelectorAll('#tradesSetupMode [data-mode]').forEach((node) => {
+  node.classList.toggle('is-active', node.dataset.mode === tradesSetupMode);
+});
+document.querySelectorAll('#tradesSessionMode [data-mode]').forEach((node) => {
+  node.classList.toggle('is-active', node.dataset.mode === tradesSessionMode);
+});
+renderTradesCharts();
+
+document.querySelectorAll('#tradesHeroChartMode [data-view]').forEach((button) => {
+  button.addEventListener('click', () => {
+    tradesHeroChartView = button.dataset.view || 'equity';
+    window.localStorage.setItem('mcTradesHeroChartView', tradesHeroChartView);
+    document.querySelectorAll('#tradesHeroChartMode [data-view]').forEach((node) => {
+      node.classList.toggle('is-active', node === button);
+    });
+    renderTradesCharts();
+  });
+});
+
+document.querySelectorAll('#tradesEquityMode [data-mode]').forEach((button) => {
+  button.addEventListener('click', () => {
+    tradesEquityMode = button.dataset.mode || 'dollars';
+    window.localStorage.setItem('mcTradesEquityMode', tradesEquityMode);
+    document.querySelectorAll('#tradesEquityMode [data-mode]').forEach((node) => {
+      node.classList.toggle('is-active', node === button);
+    });
+    renderTradesCharts();
+  });
+});
+
+document.querySelectorAll('#tradesSetupMode [data-mode]').forEach((button) => {
+  button.addEventListener('click', () => {
+    tradesSetupMode = button.dataset.mode || 'net';
+    window.localStorage.setItem('mcTradesSetupMode', tradesSetupMode);
+    document.querySelectorAll('#tradesSetupMode [data-mode]').forEach((node) => {
+      node.classList.toggle('is-active', node === button);
+    });
+    renderTradesCharts();
+  });
+});
+
+document.querySelectorAll('#tradesSessionMode [data-mode]').forEach((button) => {
+  button.addEventListener('click', () => {
+    tradesSessionMode = button.dataset.mode || 'net';
+    window.localStorage.setItem('mcTradesSessionMode', tradesSessionMode);
+    document.querySelectorAll('#tradesSessionMode [data-mode]').forEach((node) => {
+      node.classList.toggle('is-active', node === button);
+    });
+    renderTradesCharts();
+  });
+});
+
+const saveTradesViewBtn = document.getElementById('saveTradesViewBtn');
+const loadTradesViewBtn = document.getElementById('loadTradesViewBtn');
+const deleteTradesViewBtn = document.getElementById('deleteTradesViewBtn');
+const savedTradesViewSelect = document.getElementById('savedTradesViewSelect');
+
+function readTradesViews() {
+  try {
+    return JSON.parse(window.localStorage.getItem('mcTradesViews') || '{}');
+  } catch (error) {
+    return {};
+  }
+}
+
+function writeTradesViews(payload) {
+  window.localStorage.setItem('mcTradesViews', JSON.stringify(payload));
+}
+
+function refreshTradesViewSelect() {
+  if (!savedTradesViewSelect) return;
+  const payload = readTradesViews();
+  const current = savedTradesViewSelect.value;
+  savedTradesViewSelect.innerHTML = '<option value="">Saved views</option>';
+  Object.keys(payload).sort((a, b) => a.localeCompare(b)).forEach((name) => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    savedTradesViewSelect.appendChild(option);
+  });
+  if (current && payload[current]) savedTradesViewSelect.value = current;
+}
+
+if (saveTradesViewBtn) {
+  saveTradesViewBtn.addEventListener('click', () => {
+    const name = window.prompt('Save this trades view as:');
+    if (!name) return;
+    const payload = readTradesViews();
+    payload[name] = window.location.search;
+    writeTradesViews(payload);
+    refreshTradesViewSelect();
+    if (savedTradesViewSelect) savedTradesViewSelect.value = name;
+    alert(`Saved view: ${name}`);
+  });
+}
+
+if (loadTradesViewBtn) {
+  loadTradesViewBtn.addEventListener('click', () => {
+    const name = savedTradesViewSelect ? savedTradesViewSelect.value : '';
+    if (!name) return;
+    const payload = readTradesViews();
+    if (!payload[name]) return;
+    window.location.href = `/trades${payload[name]}`;
+  });
+}
+
+if (deleteTradesViewBtn) {
+  deleteTradesViewBtn.addEventListener('click', () => {
+    const name = savedTradesViewSelect ? savedTradesViewSelect.value : '';
+    if (!name) return;
+    const payload = readTradesViews();
+    delete payload[name];
+    writeTradesViews(payload);
+    refreshTradesViewSelect();
+  });
+}
+
+refreshTradesViewSelect();
 </script>

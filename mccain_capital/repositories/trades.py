@@ -14,6 +14,15 @@ from mccain_capital.runtime import (
     set_setting_value,
 )
 
+SOURCE_PLACEHOLDER_SETUPS = {
+    "statement import",
+    "live upload",
+    "manual entry",
+    "api",
+    "balance snapshot",
+    "imported",
+}
+
 
 def _trade_clock_to_minutes(value: Any) -> Optional[int]:
     text = str(value or "").strip()
@@ -51,6 +60,33 @@ def _normalize_filter_value(raw: Any) -> str:
     return str(raw or "").strip()
 
 
+def clean_setup_label(raw: Any) -> str:
+    value = str(raw or "").strip()
+    return "" if value.lower() in SOURCE_PLACEHOLDER_SETUPS else value
+
+
+def setup_display_label(row: Dict[str, Any]) -> str:
+    return clean_setup_label(
+        row.get("setup_tag") or row.get("strategy_label") or row.get("resolved_setup_tag") or ""
+    ) or "Unknown"
+
+
+def normalize_trade_source(row: Dict[str, Any]) -> str:
+    explicit = str(row.get("trade_source") or "").strip()
+    if explicit:
+        if explicit.lower() == "statement import":
+            return "Live Upload"
+        return explicit
+    if str(row.get("import_batch_id") or "").strip():
+        return "Live Upload"
+    raw_line = str(row.get("raw_line") or "").strip().upper()
+    if raw_line == "MANUAL ENTRY" or raw_line.startswith("DUPLICATE OF #"):
+        return "Manual Entry"
+    if "BALANCE SNAPSHOT" in raw_line:
+        return "Balance Snapshot"
+    return "Unknown"
+
+
 def normalize_trade_filters(raw_filters: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
     raw_filters = raw_filters or {}
     return {
@@ -63,6 +99,9 @@ def normalize_trade_filters(raw_filters: Optional[Dict[str, Any]] = None) -> Dic
 
 
 def _row_matches_trade_filters(row: Dict[str, Any], filters: Dict[str, str]) -> bool:
+    setup = filters.get("setup", "")
+    if setup and str(row.get("setup_display") or "") != setup:
+        return False
     outcome = filters.get("outcome", "")
     net = row.get("net_pl")
     if outcome == "winner" and not (net is not None and float(net) > 0):
@@ -91,14 +130,12 @@ def _row_matches_trade_filters(row: Dict[str, Any], filters: Dict[str, str]) -> 
 
 def _enrich_trade_review_fields(row: Dict[str, Any]) -> Dict[str, Any]:
     enriched = dict(row)
-    enriched["setup_tag"] = (
-        str(
-            row.get("setup_tag")
-            or row.get("strategy_label")
-            or row.get("resolved_setup_tag")
-            or ""
-        ).strip()
+    enriched["trade_source"] = normalize_trade_source(row)
+    enriched["setup_tag"] = clean_setup_label(
+        row.get("setup_tag") or row.get("strategy_label") or row.get("resolved_setup_tag") or ""
     )
+    enriched["setup_display"] = enriched["setup_tag"] or "Unknown"
+    enriched["setup_missing"] = not bool(enriched["setup_tag"])
     enriched["time_block"] = classify_time_block(row.get("entry_time"))
     enriched["hold_minutes"] = compute_hold_minutes(row.get("entry_time"), row.get("exit_time"))
     planned_risk = row.get("planned_risk_dollars")
@@ -149,7 +186,19 @@ def fetch_trades(d: str = "", q: str = "", filters: Optional[Dict[str, Any]] = N
             r.size_rule_note,
             r.entry_quality_note,
             r.exit_quality_note,
-            r.improvement_note
+            r.improvement_note,
+            r.reviewed_stop_price,
+            r.reviewed_target_price,
+            r.reviewed_risk_dollars,
+            r.reviewed_risk_percent,
+            r.reviewed_execution_quality,
+            r.reviewed_sizing_quality,
+            r.reviewed_stop_discipline,
+            r.reviewed_within_plan,
+            r.manual_grade_score,
+            r.manual_grade_letter,
+            r.grade_override_reason,
+            r.classification_override
         FROM trades t
         LEFT JOIN trade_reviews r ON r.trade_id = t.id
         LEFT JOIN strategies s ON s.id = r.strategy_id
@@ -166,7 +215,7 @@ def fetch_trades(d: str = "", q: str = "", filters: Optional[Dict[str, Any]] = N
         like = f"%{q}%"
         params.extend([like, like, like])
 
-    if normalized["setup"]:
+    if normalized["setup"] and normalized["setup"].lower() != "unknown":
         where.append(
             "LOWER(COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '')) = LOWER(?)"
         )
@@ -291,7 +340,19 @@ def get_trade_review(trade_id: int) -> Optional[Dict[str, Any]]:
               size_rule_note,
               entry_quality_note,
               exit_quality_note,
-              improvement_note
+              improvement_note,
+              reviewed_stop_price,
+              reviewed_target_price,
+              reviewed_risk_dollars,
+              reviewed_risk_percent,
+              reviewed_execution_quality,
+              reviewed_sizing_quality,
+              reviewed_stop_discipline,
+              reviewed_within_plan,
+              manual_grade_score,
+              manual_grade_letter,
+              grade_override_reason,
+              classification_override
             FROM trade_reviews
             WHERE trade_id = ?
             """,
@@ -356,6 +417,18 @@ def upsert_trade_review(
     entry_quality_note: str = "",
     exit_quality_note: str = "",
     improvement_note: str = "",
+    reviewed_stop_price: Optional[float] = None,
+    reviewed_target_price: Optional[float] = None,
+    reviewed_risk_dollars: Optional[float] = None,
+    reviewed_risk_percent: Optional[float] = None,
+    reviewed_execution_quality: str = "",
+    reviewed_sizing_quality: str = "",
+    reviewed_stop_discipline: str = "",
+    reviewed_within_plan: Optional[int] = None,
+    manual_grade_score: Optional[int] = None,
+    manual_grade_letter: str = "",
+    grade_override_reason: str = "",
+    classification_override: str = "",
 ) -> None:
     now = now_iso()
     score_val = None if checklist_score is None else max(0, min(100, int(checklist_score)))
@@ -365,6 +438,20 @@ def upsert_trade_review(
     risk_dollars_val = None
     if planned_risk_dollars not in (None, ""):
         risk_dollars_val = abs(float(planned_risk_dollars))
+    reviewed_stop_val = None if reviewed_stop_price in (None, "") else float(reviewed_stop_price)
+    reviewed_target_val = None if reviewed_target_price in (None, "") else float(reviewed_target_price)
+    reviewed_risk_dollars_val = None
+    if reviewed_risk_dollars not in (None, ""):
+        reviewed_risk_dollars_val = abs(float(reviewed_risk_dollars))
+    reviewed_risk_pct_val = None
+    if reviewed_risk_percent not in (None, ""):
+        reviewed_risk_pct_val = float(reviewed_risk_percent)
+    reviewed_within_plan_val = None
+    if reviewed_within_plan not in (None, ""):
+        reviewed_within_plan_val = 1 if int(reviewed_within_plan) else 0
+    manual_grade_score_val = None
+    if manual_grade_score not in (None, ""):
+        manual_grade_score_val = max(0, min(100, int(manual_grade_score)))
     with db() as conn:
         resolved_strategy_id, resolved_strategy_label = _resolve_strategy_link(
             conn,
@@ -379,9 +466,13 @@ def upsert_trade_review(
                 trade_id, strategy_id, strategy_label, setup_tag, session_tag, checklist_score,
                 rule_break_tags, review_note, thesis_note, execution_grade, risk_grade, plan_grade,
                 mistake_tags, planned_risk_dollars, size_rule_note, entry_quality_note,
-                exit_quality_note, improvement_note, created_at, updated_at
+                exit_quality_note, improvement_note, reviewed_stop_price, reviewed_target_price,
+                reviewed_risk_dollars, reviewed_risk_percent, reviewed_execution_quality,
+                reviewed_sizing_quality, reviewed_stop_discipline, reviewed_within_plan,
+                manual_grade_score, manual_grade_letter, grade_override_reason,
+                classification_override, created_at, updated_at
               )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(trade_id) DO UPDATE SET
               strategy_id=excluded.strategy_id,
               strategy_label=excluded.strategy_label,
@@ -400,6 +491,18 @@ def upsert_trade_review(
               entry_quality_note=excluded.entry_quality_note,
               exit_quality_note=excluded.exit_quality_note,
               improvement_note=excluded.improvement_note,
+              reviewed_stop_price=excluded.reviewed_stop_price,
+              reviewed_target_price=excluded.reviewed_target_price,
+              reviewed_risk_dollars=excluded.reviewed_risk_dollars,
+              reviewed_risk_percent=excluded.reviewed_risk_percent,
+              reviewed_execution_quality=excluded.reviewed_execution_quality,
+              reviewed_sizing_quality=excluded.reviewed_sizing_quality,
+              reviewed_stop_discipline=excluded.reviewed_stop_discipline,
+              reviewed_within_plan=excluded.reviewed_within_plan,
+              manual_grade_score=excluded.manual_grade_score,
+              manual_grade_letter=excluded.manual_grade_letter,
+              grade_override_reason=excluded.grade_override_reason,
+              classification_override=excluded.classification_override,
               updated_at=excluded.updated_at
             """,
             (
@@ -421,6 +524,18 @@ def upsert_trade_review(
                 (entry_quality_note or "").strip(),
                 (exit_quality_note or "").strip(),
                 (improvement_note or "").strip(),
+                reviewed_stop_val,
+                reviewed_target_val,
+                reviewed_risk_dollars_val,
+                reviewed_risk_pct_val,
+                (reviewed_execution_quality or "").strip(),
+                (reviewed_sizing_quality or "").strip(),
+                (reviewed_stop_discipline or "").strip(),
+                reviewed_within_plan_val,
+                manual_grade_score_val,
+                (manual_grade_letter or "").strip(),
+                (grade_override_reason or "").strip(),
+                (classification_override or "").strip(),
                 now,
                 now,
             ),
@@ -455,7 +570,19 @@ def fetch_trade_reviews_map(trade_ids: List[int]) -> Dict[int, Dict[str, Any]]:
               size_rule_note,
               entry_quality_note,
               exit_quality_note,
-              improvement_note
+              improvement_note,
+              reviewed_stop_price,
+              reviewed_target_price,
+              reviewed_risk_dollars,
+              reviewed_risk_percent,
+              reviewed_execution_quality,
+              reviewed_sizing_quality,
+              reviewed_stop_discipline,
+              reviewed_within_plan,
+              manual_grade_score,
+              manual_grade_letter,
+              grade_override_reason,
+              classification_override
             FROM trade_reviews
             WHERE trade_id IN ({marks})
             """,
@@ -597,12 +724,18 @@ def week_total_net(day_iso: str) -> float:
 def account_scope_snapshot() -> Dict[str, Any]:
     start_date = str(get_setting_value("active_account_start_date", "") or "").strip()
     label = str(get_setting_value("active_account_label", "") or "").strip()
+    account_id = str(get_setting_value("active_account_id", "") or "").strip()
+    account_name = str(get_setting_value("active_account_name", "") or "").strip() or label
+    account_type = str(get_setting_value("active_account_type", "") or "").strip()
     if not start_date:
         return {
             "enabled": False,
             "start_date": "",
             "starting_balance": float(get_setting_float("starting_balance", 50000.0)),
             "label": label,
+            "account_id": account_id,
+            "account_name": account_name,
+            "account_type": account_type,
         }
     try:
         datetime.strptime(start_date, "%Y-%m-%d")
@@ -612,6 +745,9 @@ def account_scope_snapshot() -> Dict[str, Any]:
             "start_date": "",
             "starting_balance": float(get_setting_float("starting_balance", 50000.0)),
             "label": label,
+            "account_id": account_id,
+            "account_name": account_name,
+            "account_type": account_type,
         }
     scoped_starting = float(
         get_setting_float(
@@ -623,6 +759,9 @@ def account_scope_snapshot() -> Dict[str, Any]:
         "start_date": start_date,
         "starting_balance": scoped_starting,
         "label": label,
+        "account_id": account_id,
+        "account_name": account_name,
+        "account_type": account_type,
     }
 
 
@@ -630,6 +769,8 @@ def save_account_scope(start_date: str, starting_balance: float, label: str = ""
     set_setting_value("active_account_start_date", str(start_date).strip())
     set_setting_value("active_account_start_balance", f"{float(starting_balance):.2f}")
     set_setting_value("active_account_label", str(label or "").strip())
+    if str(label or "").strip():
+        set_setting_value("active_account_name", str(label or "").strip())
 
 
 def clear_account_scope() -> None:

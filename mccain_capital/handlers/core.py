@@ -61,6 +61,10 @@ def market_pulse_page():
     return svc.market_pulse_page()
 
 
+def market_pulse_news_feed_api():
+    return svc.market_pulse_news_feed_api()
+
+
 def stream_market():
     return svc.stream_market()
 
@@ -89,12 +93,20 @@ def dashboard_brief_update():
     return svc.dashboard_brief_update()
 
 
+def dashboard_pace_update():
+    return svc.dashboard_pace_update()
+
+
 def candle_opens_page():
     return svc.candle_opens_page()
 
 
 def analytics_page():
     return svc.analytics_page()
+
+
+def analytics_dashboard_api():
+    return svc.analytics_dashboard_api()
 
 
 def session_replay_page():

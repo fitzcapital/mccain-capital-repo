@@ -1,0 +1,88 @@
+<section class="card primaryCard tradesReplayPage">
+  <div class="toolbar">
+    <div class="tradesReplayHeader">
+      <div>
+        <div class="pill">Session Replay</div>
+        <h2 class="pageTitle">Replay Trade #{{ t.id }}</h2>
+        <div class="supportLead">{{ replay_chart.summary }}</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn" href="/trades/review/{{ t.id }}{% if back_query %}?{{ back_query }}{% endif %}">Edit Review</a>
+        <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}">Back to Trades</a>
+      </div>
+    </div>
+
+    <div class="tradesReplayMetricStrip">
+      <div class="tradesReviewHeaderMetric"><span class="k">Symbol</span><strong>{{ t.ticker }} {{ t.opt_type or '' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Date</span><strong>{{ t.trade_date }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Setup</span><strong>{{ review.setup_display or 'Unknown' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Session</span><strong>{{ rv.get('session_tag') if rv is defined else review.get('session_tag') or '—' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">P/L</span><strong>{{ money(t.net_pl or 0) }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Spend</span><strong>{{ money(t.total_spent) if t.total_spent is not none else '—' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Risk</span><strong>{{ money(review.risk_dollars) if review.risk_dollars is not none else '—' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Final Grade</span><strong>{{ review.final_grade_letter }} · {{ review.final_grade_score }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Classification</span><strong>{{ review.classification }}</strong></div>
+    </div>
+  </div>
+</section>
+
+<section class="tradesReplayWorkspace">
+  <article class="card primaryCard tradesReplayChartCard">
+    <div class="toolbar">
+      <div class="tradesChartHeader">
+        <div>
+          <div class="pill">Trade Window Map</div>
+          <div class="supportLead">{% if replay_chart.mode == 'intraday' %}Same-day intraday replay{% else %}Reference replay{% endif %}</div>
+          <div class="supportBody">Entry and exit markers are anchored to the saved trade record. Stop and target lines appear when review data exists.</div>
+        </div>
+        <div class="tradesChartMetricRail">
+          <span><strong>{{ t.entry_time or '—' }}</strong> entry</span>
+          <span><strong>{{ t.exit_time or '—' }}</strong> exit</span>
+          <span><strong>{{ review.stop_discipline }}</strong> stop</span>
+        </div>
+      </div>
+      <div class="tradesMiniChart tradesMiniChart-hero tradesReplayChartStage" id="tradesReplayChart" data-chart='{{ replay_chart|tojson }}'></div>
+    </div>
+  </article>
+
+  <div class="tradesReplaySide">
+    <article class="card supportCard tradesReplayPanel">
+      <div class="toolbar">
+        <div class="pill">Trade Summary</div>
+        <div class="tradeRiskExecutionGrid">
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Window</span><strong>{{ (t.entry_time or '—') ~ (' → ' ~ t.exit_time if t.exit_time else '') }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Entry → Exit</span><strong>{{ money(t.entry_price) }} → {{ money(t.exit_price) }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Qty / Spend</span><strong>{{ t.contracts if t.contracts is not none else '—' }} · {{ money(t.total_spent) if t.total_spent is not none else '—' }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">R / RR</span><strong>{{ review.r_multiple_display if review.r_multiple_display is defined else '—' }} · {% if review.reward_risk_at_entry is not none %}{{ '%.2f'|format(review.reward_risk_at_entry) }}R{% else %}—{% endif %}</strong></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card supportCard tradesReplayPanel">
+      <div class="toolbar">
+        <div class="pill">Review Summary</div>
+        <div class="tradeRiskExecutionGrid">
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Outcome</span><strong>{{ review.outcome_label }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Execution</span><strong>{{ review.execution_quality }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Sizing</span><strong>{{ review.sizing_quality }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Within Plan</span><strong>{{ 'Yes' if review.within_plan else 'No' }}</strong></div>
+        </div>
+        <div class="tradeDetailNote">{{ rv.review_note if rv is defined and rv.review_note else 'No saved review note yet.' }}</div>
+      </div>
+    </article>
+
+    <article class="card supportCard tradesReplayPanel">
+      <div class="toolbar">
+        <div class="pill">Grade Insight</div>
+        <div class="tradesGradeBreakdownGrid">
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Auto Grade</span><strong>{{ review.auto_grade_letter }} · {{ review.auto_grade_score }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Final Grade</span><strong>{{ review.final_grade_letter }} · {{ review.final_grade_score }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Strongest</span><strong>{{ review.strongest_components[0].label if review.strongest_components else '—' }}</strong></div>
+          <div class="tradeDetailCell"><span class="tradeDetailLabel">Weakest</span><strong>{{ review.weakest_components[0].label if review.weakest_components else '—' }}</strong></div>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<script src="/static/js/trades_replay_page.js"></script>

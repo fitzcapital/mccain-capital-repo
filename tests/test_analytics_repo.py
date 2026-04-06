@@ -183,8 +183,20 @@ def test_analytics_performance_renders_benchmark_sections(client):
     assert resp.status_code == 200
     assert b"Equity vs SPX Benchmark" in resp.data
     assert b"Day Volatility Regime" in resp.data
-    assert b"Regime-Aware Sizing" in resp.data
+    assert b"Execution Brief" in resp.data
     assert b"Explain This Day" in resp.data
+
+
+def test_analytics_dashboard_api_returns_chart_payload(client):
+    _seed_trades()
+    resp = client.get("/api/analytics/dashboard?tab=performance", follow_redirects=True)
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["summary"]["balance_display"].startswith("$")
+    assert "equity" in payload["charts"]
+    assert "breakdowns" in payload["charts"]
+    assert isinstance(payload["charts"]["equity"]["points"], list)
+    assert "win_rate" in payload["kpis"]
 
 
 def test_analytics_diagnostics_tab_renders(client):
