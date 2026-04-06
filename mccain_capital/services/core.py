@@ -4067,15 +4067,20 @@ def _dashboard_readiness_viewmodel(
     *,
     brief_ready: bool,
     today_count: int,
-    data_trust: Dict[str, Any],
+    data_trust: Any,
 ) -> Dict[str, Any]:
+    def _trust_value(field: str, default: Any = "") -> Any:
+        if isinstance(data_trust, dict):
+            return data_trust.get(field, default)
+        return getattr(data_trust, field, default)
+
     total = len(checklist)
     done = sum(1 for item in checklist if bool(item.get("done")))
     pct = (100.0 * done / total) if total else 0.0
     blockers = [str(item.get("label") or "").strip() for item in checklist if not bool(item.get("done"))]
-    if not blockers and str(data_trust.get("tone") or "").strip() == "critical":
+    if not blockers and str(_trust_value("tone") or "").strip() == "critical":
         blockers.append("Data trust")
-    if pct >= 100.0 and brief_ready and str(data_trust.get("tone") or "").strip() != "critical":
+    if pct >= 100.0 and brief_ready and str(_trust_value("tone") or "").strip() != "critical":
         state_label = "Ready to trade"
         state_tone = "positive"
     elif done >= max(1, total - 1):
@@ -5188,6 +5193,30 @@ def dashboard():
         gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     except Exception:
         gamma_snapshot = {}
+    if not current_app.config.get("TESTING"):
+        try:
+            from mccain_capital.services import market_pulse_runtime
+
+            market_pulse_runtime.ensure_market_pulse_runtime_started()
+            has_dashboard_levels = any(
+                isinstance(gamma_snapshot.get(key), (int, float))
+                for key in (
+                    "gamma_flip_combined_basket",
+                    "local_flip_aggregated_gamma",
+                    "call_wall_aggregated_gamma",
+                    "put_wall_aggregated_gamma",
+                )
+            )
+            snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
+            if (
+                not gamma_snapshot.get("asof")
+                or snapshot_status == "invalid"
+                or not has_dashboard_levels
+            ):
+                runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
+                gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
+        except Exception:
+            pass
     try:
         news_snapshot = _market_news_snapshot()
     except Exception:

@@ -172,9 +172,13 @@
       </div>
       <div class="marketPulseExecBarShell{% if spot_num is none %} is-empty{% endif %}" id="marketPulseZoneBarShell">
         <div class="marketPulseExecBarAxis">
-          <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-put" id="marketPulseZonePutLabel" style="left: {{ '%.2f'|format(structure_pct.put) }}%;">PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</span>
-          <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-flip" id="marketPulseZoneFlipLabel" style="left: {{ '%.2f'|format(structure_pct.main) }}%;">Main {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }}</span>
-          <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-call" id="marketPulseZoneCallLabel" style="left: {{ '%.2f'|format(structure_pct.call) }}%;">CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }}</span>
+          <div class="marketPulseExecBarAxisGroup marketPulseExecBarAxisGroup-left">
+            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-put" id="marketPulseZonePutLabel">PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</span>
+            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-call" id="marketPulseZoneCallLabel">CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }}</span>
+          </div>
+          <div class="marketPulseExecBarAxisGroup marketPulseExecBarAxisGroup-right">
+            <span class="marketPulseExecBarAxisLabel marketPulseExecBarAxisLabel-flip" id="marketPulseZoneFlipLabel">Main {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }}</span>
+          </div>
         </div>
         <div class="marketPulseExecBarTrack" id="marketPulseZoneBarTrack">
           <div class="marketPulseExecBarSplit" id="marketPulseZoneFlipMarker" style="left: {{ '%.2f'|format(structure_pct.main) }}%;">

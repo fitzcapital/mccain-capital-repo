@@ -1315,6 +1315,7 @@
 
   const updateStructureZoneBar = (input, derived, model) => {
     const shell = document.getElementById("marketPulseZoneBarShell");
+    const axis = shell ? shell.querySelector(".marketPulseExecBarAxis") : null;
     const priceMarker = document.getElementById("marketPulseZonePriceMarker");
     const flipMarker = document.getElementById("marketPulseZoneFlipMarker");
     const localMarker = document.getElementById("marketPulseZoneLocalMarker");
@@ -1358,6 +1359,47 @@
     setText("marketPulseZonePutLabel", `PW ${formatNumber(put, 0)}`);
     setText("marketPulseZoneFlipLabel", `Main ${formatNumber(flip, 0)}`);
     setText("marketPulseZoneCallLabel", `CW ${formatNumber(call, 0)}`);
+    if (axis) {
+      const putLabel = document.getElementById("marketPulseZonePutLabel");
+      const callLabel = document.getElementById("marketPulseZoneCallLabel");
+      const flipLabel = document.getElementById("marketPulseZoneFlipLabel");
+      const labels = [putLabel, callLabel, flipLabel].filter(Boolean);
+      labels.forEach((node) => node.style.setProperty("--label-row", "0"));
+
+      const metrics = labels.map((node) => {
+        const leftPct = parseFloat(node.style.left || "50");
+        return {
+          node,
+          leftPct: clamp(leftPct, 2, 98),
+        };
+      });
+
+      const findMetric = (node) => metrics.find((item) => item.node === node) || null;
+      const putMetric = findMetric(putLabel);
+      const callMetric = findMetric(callLabel);
+      const flipMetric = findMetric(flipLabel);
+      let maxRow = 0;
+
+      const overlaps = (left, right, minPctGap = 15) => {
+        if (!left || !right) return false;
+        return Math.abs(right.leftPct - left.leftPct) < minPctGap;
+      };
+
+      if (putLabel && callLabel && overlaps(putMetric, callMetric, 16)) {
+        callLabel.style.setProperty("--label-row", "1");
+        maxRow = Math.max(maxRow, 1);
+      }
+
+      if (callLabel && flipLabel) {
+        const callRow = Number(callLabel.style.getPropertyValue("--label-row") || 0);
+        if (overlaps(callMetric, flipMetric, 16)) {
+          callLabel.style.setProperty("--label-row", callRow > 0 ? "2" : "1");
+          maxRow = Math.max(maxRow, Number(callLabel.style.getPropertyValue("--label-row") || 1));
+        }
+      }
+
+      axis.style.setProperty("--axis-rows", String(maxRow + 1));
+    }
 
     const candidates = [
       { key: "flip", label: "Flip", distance: abs(derived.distanceToFlip) },
@@ -1819,6 +1861,9 @@
   const base = getJson("spxPriorityBasePayload") || {};
   let current = JSON.parse(JSON.stringify(base));
   render(current);
+  window.addEventListener("resize", () => {
+    window.requestAnimationFrame(() => render(current));
+  });
   window.dispatchEvent(new CustomEvent("market-pulse-core-ready"));
   dispatchStreamStatus("Live stream connecting", "Waiting for first tick…");
 

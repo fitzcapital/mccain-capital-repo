@@ -412,8 +412,7 @@
         <article class="stat dashboardCoreTapeStat dashboardCoreTapeHero dashboardTapePremiumCard dashboardTapeSpx {% if spx_tone_value is not none and spx_tone_value > 0 %}glow-green{% elif spx_tone_value is not none and spx_tone_value < 0 %}glow-red{% endif %}" data-symbol="SPX">
           <div class="dashboardTapeTopline">
             <div class="dashboardTapeIdentity">
-              <div class="k">SPX</div>
-              <div class="tiny muted">SPX cash</div>
+              <div class="k">SPX cash</div>
             </div>
             <span class="tiny muted dashboardCoreTapeFreshness" title="{{ spx_fresh_full }}" data-role="freshness">{{ spx_fresh_compact }}</span>
           </div>
@@ -452,7 +451,6 @@
             <div class="tiny dashboardTapeInfoText" data-role="info-primary">
               {% if spx_range_compact and spx_range_compact != '—' %}Range {{ spx_range_compact }} • Mid{% else %}Dist to Flip: 0 pts{% endif %}
             </div>
-            <div class="tiny muted dashboardTapeInfoText" data-role="source">{{ dashboard_spx.get('source_label') or 'Source unavailable' }}</div>
           </div>
         </article>
 
@@ -478,8 +476,7 @@
         <article class="stat dashboardCoreTapeStat dashboardCoreTapeHero dashboardTapePremiumCard dashboardTapeVix {% if vix_tone_value is not none and vix_tone_value > 0 %}glow-green{% elif vix_tone_value is not none and vix_tone_value < 0 %}glow-red{% endif %}" data-symbol="VIX">
           <div class="dashboardTapeTopline">
             <div class="dashboardTapeIdentity">
-              <div class="k">VIX</div>
-              <div class="tiny muted">VIX pulse</div>
+              <div class="k">VIX pulse</div>
             </div>
             <span class="tiny muted dashboardCoreTapeFreshness" title="{{ vix_fresh_full }}" data-role="freshness">{{ vix_fresh_compact }}</span>
           </div>
@@ -520,7 +517,6 @@
             <div class="tiny dashboardTapeInfoText" data-role="info-primary">
               {% if vix_range_compact and vix_range_compact != '—' %}Range {{ vix_range_compact }}{% else %}Intraday tone: stable{% endif %}
             </div>
-            <div class="tiny muted dashboardTapeInfoText" data-role="source">{{ dashboard_vix.get('source_label') or 'Source unavailable' }}</div>
           </div>
         </article>
 	      </div>

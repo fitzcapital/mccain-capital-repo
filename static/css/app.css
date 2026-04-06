@@ -7403,6 +7403,729 @@
   100%{transform:translateX(112%)}
 }
 
+/* Strat Core Playbook refinement pass */
+.page-strat .wrap{
+  max-width:1180px;
+}
+
+.page-strat .topbar{
+  margin-bottom:10px;
+}
+
+.page-strat .stratLabWrap{
+  gap:20px;
+}
+
+.page-strat .stratHeroLab{
+  padding:20px 22px 18px;
+  border-radius:22px;
+  border-color:rgba(var(--accent-rgb),.18);
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(103,189,255,.11), transparent 48%),
+    radial-gradient(90% 110% at 100% 0%, rgba(174,118,255,.07), transparent 42%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012) 46%, rgba(255,255,255,.018)),
+    rgba(8,14,26,.94);
+  box-shadow:
+    0 18px 34px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.page-strat .stratHeroLab::after{
+  opacity:.18;
+  animation-duration:13s;
+}
+
+.page-strat .stratHeroStatusRow{
+  gap:12px 14px;
+}
+
+.page-strat .stratHeroIdentity{
+  gap:8px;
+}
+
+.page-strat .stratHeroStatus,
+.page-strat .stratHeroStat{
+  border-color:rgba(255,255,255,.07);
+  background:rgba(255,255,255,.025);
+  box-shadow:none;
+}
+
+.page-strat .stratHeroStatus{
+  padding:6px 10px;
+  font-size:10px;
+  letter-spacing:.1em;
+}
+
+.page-strat .stratHeroQuickStats{
+  gap:7px;
+}
+
+.page-strat .stratHeroStat{
+  padding:7px 11px;
+  font-size:11px;
+  color:rgba(223,234,248,.74);
+}
+
+.page-strat .stratHeroMain{
+  margin-top:14px;
+  gap:18px;
+  grid-template-columns:minmax(0,1.28fr) minmax(290px,.72fr);
+}
+
+.page-strat .stratHeroCopy{
+  gap:10px;
+}
+
+.page-strat .stratTitle{
+  font-size:clamp(32px, 3.4vw, 42px);
+  line-height:1.02;
+  letter-spacing:-.03em;
+}
+
+.page-strat .stratSub{
+  max-width:60ch;
+  margin-top:0;
+  font-size:15px;
+  line-height:1.58;
+  color:rgba(226,235,248,.78);
+}
+
+.page-strat .stratPills{
+  margin-top:4px;
+  gap:8px;
+}
+
+.page-strat .stratModePills .stratPill{
+  padding:7px 11px;
+  border-color:rgba(var(--accent-rgb),.16);
+  background:rgba(255,255,255,.025);
+  font-size:11px;
+  color:rgba(233,240,251,.82);
+}
+
+.page-strat .stratModePills .stratPill:hover{
+  transform:translateY(-1px);
+  border-color:rgba(var(--accent-rgb),.24);
+  box-shadow:0 8px 16px rgba(0,0,0,.14);
+}
+
+.page-strat .stratModePills .stratPill.is-active{
+  border-color:rgba(165,190,230,.26);
+  background:
+    linear-gradient(180deg, rgba(150,198,255,.10), rgba(150,198,255,.02)),
+    rgba(255,255,255,.03);
+  color:#f5fbff;
+  box-shadow:0 10px 18px rgba(0,0,0,.16);
+}
+
+.page-strat .stratFocusCard{
+  gap:10px;
+  padding:16px;
+  border-radius:18px;
+  border-color:rgba(255,255,255,.08);
+  background:
+    radial-gradient(120% 120% at 100% 0%, rgba(156,190,255,.08), transparent 54%),
+    linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.014)),
+    rgba(8,11,20,.88);
+  box-shadow:
+    0 14px 28px rgba(0,0,0,.26),
+    inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.page-strat .stratFocusEyebrow{
+  font-size:10px;
+  color:rgba(220,231,255,.52);
+}
+
+.page-strat .stratFocusTitle{
+  font-size:21px;
+  line-height:1.15;
+}
+
+.page-strat .stratFocusBody,
+.page-strat .stratLearningMeterTop{
+  font-size:13px;
+  line-height:1.5;
+  color:rgba(224,235,249,.72);
+}
+
+.page-strat .stratProgressBar,
+.page-strat .stratProgressBar-hero{
+  border-color:rgba(255,255,255,.10);
+  background:rgba(255,255,255,.06);
+}
+
+.page-strat .stratGrid2,
+.page-strat .stratGrid3{
+  gap:16px;
+}
+
+.page-strat .stratCard,
+.page-strat .stratCardGlow,
+.page-strat .stratSectionCard,
+.page-strat .stratChecklistCard,
+.page-strat .stratComboCard{
+  border-radius:18px;
+  border-color:rgba(255,255,255,.08);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012)),
+    rgba(8,12,20,.9);
+  box-shadow:
+    0 12px 24px rgba(0,0,0,.24),
+    inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.page-strat .stratCard,
+.page-strat .stratSectionCard{
+  padding:16px;
+}
+
+.page-strat .stratChecklistCard{
+  padding:16px;
+  border-color:rgba(255,255,255,.08);
+  background:
+    radial-gradient(110% 160% at 100% 0%, rgba(146,160,208,.06), transparent 50%),
+    linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.012)),
+    rgba(7,10,18,.92);
+}
+
+.page-strat .stratCardGlow::before,
+.page-strat .stratSectionCard::before{
+  opacity:.62;
+}
+
+.page-strat .stratSectionSecondary,
+.page-strat .stratSectionTertiary{
+  opacity:1;
+}
+
+.page-strat .stratLabSection.is-focused,
+.page-strat .stratSectionCard.is-focused{
+  border-color:rgba(154,196,238,.20);
+  box-shadow:
+    0 14px 28px rgba(0,0,0,.26),
+    0 0 0 1px rgba(154,196,238,.08),
+    inset 0 1px 0 rgba(255,255,255,.03);
+}
+
+.page-strat .stratCardHead,
+.page-strat .stratSectionHeader{
+  gap:12px;
+}
+
+.page-strat .stratCard h3,
+.page-strat .stratChecklistTitle{
+  font-size:21px;
+  line-height:1.15;
+}
+
+.page-strat .stratSectionHeader h3{
+  margin-top:6px;
+  font-size:24px;
+  line-height:1.16;
+}
+
+.page-strat .stratCard .meta,
+.page-strat .stratSectionHeader .meta{
+  margin-top:6px;
+  font-size:13px;
+  line-height:1.55;
+  color:rgba(217,228,245,.66);
+}
+
+.page-strat .stratSectionBadge{
+  padding:7px 11px;
+  border-color:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.025);
+  font-size:10px;
+}
+
+.page-strat .stratPatternGrid,
+.page-strat .stratGammaGrid,
+.page-strat .stratScenarioGrid,
+.page-strat .stratTrapGrid,
+.page-strat .stratComboStack,
+.page-strat .stratContinuityGrid,
+.page-strat .stratTruthStack,
+.page-strat .stratAnchorGrid,
+.page-strat .stratIfThenRail,
+.page-strat .stratQuizStack{
+  margin-top:14px;
+  gap:12px;
+}
+
+.page-strat .stratPatternTile,
+.page-strat .stratContinuityState,
+.page-strat .stratAnchorTile,
+.page-strat .stratGammaCard,
+.page-strat .stratScenarioCard,
+.page-strat .stratTrapCard,
+.page-strat .stratIfThenCard,
+.page-strat .stratGlossaryDisplay,
+.page-strat .stratQuizQuestion,
+.page-strat .stratTruthRow{
+  border-color:rgba(255,255,255,.07);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01)),
+    rgba(7,11,18,.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.02),
+    0 8px 18px rgba(0,0,0,.14);
+}
+
+.page-strat .stratPatternTile:hover,
+.page-strat .stratGammaCard:hover,
+.page-strat .stratScenarioCard:hover,
+.page-strat .stratTrapCard:hover,
+.page-strat .stratQuizQuestion:hover,
+.page-strat .stratAnchorTile:hover,
+.page-strat .stratContinuityState:hover{
+  transform:translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.02),
+    0 10px 20px rgba(0,0,0,.16);
+}
+
+.page-strat .stratPatternTile,
+.page-strat .stratGammaCard,
+.page-strat .stratScenarioCard,
+.page-strat .stratTrapCard,
+.page-strat .stratQuizQuestion,
+.page-strat .stratAnchorTile{
+  padding:15px 16px;
+}
+
+.page-strat .stratPatternIcon,
+.page-strat .stratGammaIcon,
+.page-strat .stratTruthIcon{
+  border-radius:12px;
+  background:rgba(255,255,255,.04);
+  box-shadow:none;
+}
+
+.page-strat .stratPatternTitle{
+  font-size:17px;
+  line-height:1.2;
+}
+
+.page-strat .stratPatternBody,
+.page-strat .stratGammaCard p,
+.page-strat .stratScenarioBody,
+.page-strat .stratAnchorTile span,
+.page-strat .stratTruthRow span,
+.page-strat .stratStopBody,
+.page-strat .stratGlossaryDefinition,
+.page-strat .stratTrapCard{
+  font-size:13px;
+  line-height:1.58;
+  color:rgba(221,231,245,.72);
+}
+
+.page-strat .tone-neutral,
+.page-strat .tone-positive,
+.page-strat .tone-negative,
+.page-strat .tone-caution,
+.page-strat .tone-call,
+.page-strat .tone-put,
+.page-strat .tone-cyan,
+.page-strat .tone-danger{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.02),
+    0 8px 18px rgba(0,0,0,.14);
+}
+
+.page-strat .tone-neutral{border-color:rgba(107,199,255,.16)}
+.page-strat .tone-positive{border-color:rgba(91,239,191,.18)}
+.page-strat .tone-negative{border-color:rgba(255,116,155,.16)}
+.page-strat .tone-caution{border-color:rgba(255,198,120,.18)}
+.page-strat .tone-call{border-color:rgba(255,118,156,.16)}
+.page-strat .tone-put{border-color:rgba(88,240,191,.16)}
+.page-strat .tone-cyan{border-color:rgba(102,214,255,.16)}
+.page-strat .tone-danger{border-color:rgba(255,146,112,.18)}
+
+.page-strat .stratComboCard{
+  border-color:rgba(255,255,255,.08);
+}
+
+.page-strat .stratComboCard summary{
+  padding:14px 16px;
+  gap:10px;
+}
+
+.page-strat .stratComboTitle{
+  font-size:16px;
+}
+
+.page-strat .stratComboSummary{
+  font-size:12px;
+}
+
+.page-strat .stratComboBody{
+  gap:8px;
+  padding:0 16px 16px;
+  font-size:13px;
+  line-height:1.58;
+}
+
+.page-strat .stratContinuityState{
+  padding:14px 16px;
+}
+
+.page-strat .stratContinuityTitle,
+.page-strat .stratGammaCard h4,
+.page-strat .stratScenarioCard h4{
+  font-size:18px;
+  line-height:1.2;
+}
+
+.page-strat .stratTruthRow{
+  padding:12px 14px;
+  gap:12px;
+}
+
+.page-strat .stratIfThenRail{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+
+.page-strat .stratIfThenCard{
+  padding:13px 14px;
+  font-size:13px;
+  line-height:1.55;
+}
+
+.page-strat .stratGammaGrid{
+  grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.page-strat .stratGammaCard{
+  gap:10px;
+}
+
+.page-strat .stratGammaCard ul{
+  margin-left:18px;
+  gap:6px;
+  font-size:13px;
+  line-height:1.56;
+  color:rgba(221,231,245,.72);
+}
+
+.page-strat .stratScenarioGrid{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+
+.page-strat .stratScenarioCard{
+  display:grid;
+  gap:10px;
+  align-content:start;
+}
+
+.page-strat .stratScenarioBody{
+  padding-top:10px;
+  border-top:1px solid rgba(255,255,255,.07);
+}
+
+.page-strat .stratChecklistTop{
+  gap:14px;
+}
+
+.page-strat .stratProgress{
+  gap:12px;
+}
+
+.page-strat .stratReadinessState{
+  border-color:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.022);
+}
+
+.page-strat .stratChecklistCard .checklist{
+  gap:10px;
+}
+
+.page-strat .stratChecklistCard .checkRow{
+  padding:12px 14px;
+  border-color:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.022);
+}
+
+.page-strat .stratChecklistCard .checkRow:hover{
+  border-color:rgba(255,255,255,.12);
+  background:rgba(255,255,255,.032);
+}
+
+.page-strat .checkRow:has(input:checked),
+.page-strat .checkRow.checked{
+  border-color:rgba(98,198,165,.26);
+  background:rgba(98,198,165,.07);
+}
+
+.page-strat .stratActions{
+  margin-top:14px;
+}
+
+.page-strat .stratQuickRefCard{
+  padding-bottom:14px;
+}
+
+.page-strat .stratTableWrap{
+  margin-top:14px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(6,10,18,.4);
+}
+
+.page-strat .stratQuickTable{
+  min-width:760px;
+  border:0;
+}
+
+.page-strat .stratQuickTable th{
+  padding:12px 14px;
+  font-size:11px;
+  letter-spacing:.08em;
+  background:rgba(8,15,24,.94);
+}
+
+.page-strat .stratQuickTable td{
+  padding:13px 14px;
+  font-size:13px;
+  line-height:1.58;
+}
+
+.page-strat .stratQuickTable tbody tr:nth-child(even) td{
+  background:rgba(255,255,255,.018);
+}
+
+.page-strat .stratQuickTable td:first-child{
+  width:18%;
+}
+
+.page-strat .stratTableChip{
+  margin-top:8px;
+  padding:4px 9px;
+  font-size:10px;
+  background:rgba(255,255,255,.03);
+}
+
+.page-strat .stratQuizCard,
+.page-strat .stratGlossaryCard{
+  gap:12px;
+}
+
+.page-strat .stratQuizPrompt{
+  font-size:15px;
+  line-height:1.45;
+}
+
+.page-strat .stratQuizOptions{
+  gap:8px;
+  margin-top:12px;
+}
+
+.page-strat .stratQuizOption{
+  padding:11px 12px;
+  border-color:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.022);
+  line-height:1.45;
+}
+
+.page-strat .stratQuizOption:hover{
+  border-color:rgba(169,192,228,.22);
+  box-shadow:0 8px 18px rgba(0,0,0,.12);
+}
+
+.page-strat .stratQuizOption.is-correct{
+  border-color:rgba(83,239,183,.24);
+  background:rgba(83,239,183,.08);
+  box-shadow:none;
+}
+
+.page-strat .stratQuizOption.is-wrong{
+  border-color:rgba(255,116,155,.22);
+  background:rgba(255,116,155,.06);
+  box-shadow:none;
+}
+
+.page-strat .stratQuizFeedback{
+  margin-top:10px;
+  font-size:12px;
+  line-height:1.45;
+}
+
+.page-strat .stratGlossaryChips{
+  gap:8px;
+}
+
+.page-strat .stratGlossaryChip{
+  padding:8px 11px;
+  border-color:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.024);
+  font-size:12px;
+}
+
+.page-strat .stratGlossaryChip:hover{
+  border-color:rgba(169,192,228,.22);
+  box-shadow:0 8px 18px rgba(0,0,0,.12);
+}
+
+.page-strat .stratGlossaryChip.is-active{
+  border-color:rgba(168,188,224,.22);
+  background:
+    linear-gradient(180deg, rgba(150,198,255,.10), rgba(150,198,255,.025)),
+    rgba(255,255,255,.03);
+  box-shadow:none;
+}
+
+.page-strat .stratGlossaryDisplay{
+  min-height:132px;
+  padding:16px;
+}
+
+.page-strat .stratGlossaryTerm{
+  font-size:20px;
+}
+
+.page-strat .stratTrapSection{
+  border-color:rgba(255,255,255,.08);
+  background:
+    radial-gradient(100% 140% at 100% 0%, rgba(255,133,102,.05), transparent 48%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012)),
+    rgba(7,10,18,.92);
+}
+
+.page-strat .stratTrapCard{
+  color:rgba(235,224,228,.82);
+  border-color:rgba(255,184,150,.14);
+}
+
+.page-strat .stratLabSection,
+.page-strat .stratSectionCard{
+  scroll-margin-top:96px;
+}
+
+@media (min-width: 840px){
+  .page-strat .stratGrid3{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .page-strat #stratSection-context{
+    grid-column:1 / -1;
+  }
+}
+
+@media (min-width: 1180px){
+  .page-strat .stratGrid3{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .page-strat #stratSection-context{
+    grid-column:auto;
+  }
+}
+
+@media (max-width: 1080px){
+  .page-strat .stratHeroMain{
+    grid-template-columns:1fr;
+  }
+
+  .page-strat .stratScenarioGrid{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+@media (max-width: 860px){
+  .page-strat .stratLabWrap{
+    gap:18px;
+  }
+
+  .page-strat .stratHeroLab{
+    padding:18px 18px 16px;
+  }
+
+  .page-strat .stratTitle{
+    font-size:clamp(28px, 6vw, 36px);
+  }
+
+  .page-strat .stratSub{
+    font-size:14px;
+  }
+}
+
+@media (max-width: 720px){
+  .page-strat .wrap{
+    max-width:none;
+  }
+
+  .page-strat .stratLabWrap{
+    gap:16px;
+  }
+
+  .page-strat .stratHeroLab{
+    padding:16px 15px 15px;
+    border-radius:18px;
+  }
+
+  .page-strat .stratHeroQuickStats{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    width:100%;
+  }
+
+  .page-strat .stratHeroStat{
+    justify-content:flex-start;
+  }
+
+  .page-strat .stratModePills{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .page-strat .stratCard,
+  .page-strat .stratSectionCard,
+  .page-strat .stratChecklistCard{
+    padding:14px;
+  }
+
+  .page-strat .stratCard h3,
+  .page-strat .stratChecklistTitle{
+    font-size:19px;
+  }
+
+  .page-strat .stratSectionHeader h3{
+    font-size:21px;
+  }
+
+  .page-strat .stratScenarioGrid,
+  .page-strat .stratGammaGrid,
+  .page-strat .stratPatternGrid,
+  .page-strat .stratAnchorGrid,
+  .page-strat .stratTrapGrid{
+    grid-template-columns:1fr;
+  }
+
+  .page-strat .stratIfThenRail{
+    grid-template-columns:1fr;
+  }
+
+  .page-strat .stratQuickTable{
+    min-width:680px;
+  }
+}
+
+@media (max-width: 520px){
+  .page-strat .stratHeroQuickStats,
+  .page-strat .stratModePills{
+    grid-template-columns:1fr;
+  }
+
+  .page-strat .stratQuizQuestion,
+  .page-strat .stratGlossaryDisplay,
+  .page-strat .stratGammaCard,
+  .page-strat .stratScenarioCard,
+  .page-strat .stratTrapCard{
+    padding:13px;
+  }
+}
+
     .workflowRail{
       margin: 10px 0 14px;
       padding: 10px;
@@ -13758,9 +14481,9 @@ body.modalOpen{
   display:flex;
   align-items:center;
   justify-content:flex-start;
-  gap:10px;
+  gap:6px;
   margin-top:auto;
-  padding-top:8px;
+  padding-top:7px;
   border-top:1px solid rgba(150, 198, 255, .10);
 }
 
@@ -22699,14 +23422,16 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardDecisionCard{
-  border-color:rgba(var(--tone-warning-rgb), .12) !important;
+  border-color:rgba(var(--tone-warning-rgb), .20) !important;
   background:
-    radial-gradient(140% 130% at 100% 0%, rgba(var(--tone-warning-rgb), .06), transparent 54%),
-    linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.004)),
-    rgba(7, 14, 26, .80) !important;
+    radial-gradient(140% 130% at 100% 0%, rgba(var(--tone-warning-rgb), .10), transparent 54%),
+    radial-gradient(120% 120% at 0% 0%, rgba(var(--tone-info-rgb), .06), transparent 58%),
+    linear-gradient(180deg, rgba(255,255,255,.032), rgba(255,255,255,.008)),
+    rgba(8, 15, 28, .90) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.04),
-    0 14px 28px rgba(0,0,0,.18);
+    0 16px 30px rgba(0,0,0,.20),
+    0 0 0 1px rgba(255, 193, 92, .04);
 }
 
 .page-dashboard .dashboardDecisionHead{
@@ -22722,15 +23447,17 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardDecisionItem{
-  border:1px solid rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.06);
   background:
-    linear-gradient(180deg, rgba(255,255,255,.014), rgba(255,255,255,.004)),
-    rgba(8, 16, 29, .22);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+    linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,.006)),
+    rgba(8, 16, 29, .32);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.03),
+    0 6px 14px rgba(0,0,0,.10);
 }
 
 .page-dashboard .dashboardDecisionLabel{
-  color:rgba(224, 237, 252, .50);
+  color:rgba(226, 239, 252, .64);
 }
 
 .page-dashboard .dashboardDecisionItem strong{
@@ -22768,55 +23495,59 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardDecisionItem-plan{
-  border-color:rgba(255,255,255,.045);
+  border-color:rgba(255,255,255,.06);
   background:
-    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,.003)),
-    rgba(7, 14, 26, .20);
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.005)),
+    rgba(7, 14, 26, .28);
 }
 
 .page-dashboard .dashboardDecisionItem-plan strong{
   font-size:clamp(16px, 1.35vw, 20px);
   line-height:1.22;
-  color:rgba(232, 241, 251, .82);
+  color:rgba(238, 245, 252, .92);
   font-weight:600;
   letter-spacing:-.015em;
 }
 
 .page-dashboard .dashboardDecisionItem-tradegate{
-  border-color:rgba(255,255,255,.04);
+  border-color:rgba(255,255,255,.06);
   background:
-    linear-gradient(180deg, rgba(255,255,255,.010), rgba(255,255,255,.003)),
-    rgba(7, 14, 26, .18);
+    linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,.004)),
+    rgba(7, 14, 26, .24);
 }
 
 .page-dashboard .dashboardDecisionItem-tradegate .supportBody{
   font-size:11px;
   line-height:1.32;
-  color:rgba(219, 231, 246, .68);
+  color:rgba(226, 237, 249, .82);
   max-width:90ch;
 }
 
 .page-dashboard .dashboardGammaStrip{
   gap:8px;
   margin-top:2px;
+  padding:2px 0;
 }
 
 .page-dashboard .dashboardGammaChip{
   padding:9px 10px;
-  border-color:rgba(255,255,255,.05);
+  border-color:rgba(255,255,255,.08);
   background:
-    linear-gradient(180deg, rgba(255,255,255,.013), rgba(255,255,255,.004)),
-    rgba(8, 16, 29, .24);
+    linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,.006)),
+    rgba(8, 16, 29, .34);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.035),
+    0 8px 16px rgba(0,0,0,.10);
 }
 
 .page-dashboard .dashboardGammaChipLabel{
-  color:rgba(223, 236, 252, .44);
+  color:rgba(223, 236, 252, .58);
 }
 
 .page-dashboard .dashboardGammaChipValue{
   font-size:13px;
   line-height:1.05;
-  color:rgba(237, 245, 252, .84);
+  color:rgba(242, 248, 253, .94);
   overflow:visible;
   text-overflow:clip;
 }
@@ -22852,14 +23583,15 @@ textarea:focus-visible{
 }
 
 .page-dashboard #dashboardGammaChip-main_flip{
-  border-color:rgba(var(--tone-info-rgb), .20);
+  border-color:rgba(var(--tone-info-rgb), .28);
   background:
-    radial-gradient(120% 120% at 100% 0%, rgba(var(--tone-info-rgb), .09), transparent 60%),
-    linear-gradient(180deg, rgba(255,255,255,.016), rgba(255,255,255,.005)),
-    rgba(8, 16, 29, .30);
+    radial-gradient(120% 120% at 100% 0%, rgba(var(--tone-info-rgb), .14), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.006)),
+    rgba(8, 16, 29, .38);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.04),
-    0 0 16px rgba(var(--tone-info-rgb), .08);
+    0 0 18px rgba(var(--tone-info-rgb), .12),
+    0 10px 18px rgba(0,0,0,.10);
 }
 
 .page-dashboard #dashboardGammaChip-main_flip .dashboardGammaChipValue{
@@ -22869,48 +23601,60 @@ textarea:focus-visible{
 }
 
 .page-dashboard #dashboardGammaChip-local_flip{
-  opacity:.68;
-  border-color:rgba(255,255,255,.035);
+  opacity:1;
+  border-color:rgba(255, 171, 86, .32);
   background:
-    linear-gradient(180deg, rgba(255,255,255,.008), rgba(255,255,255,.002)),
-    rgba(8, 16, 29, .16);
-  box-shadow:none;
+    radial-gradient(130% 120% at 100% 0%, rgba(255, 163, 76, .18), transparent 58%),
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.006)),
+    rgba(28, 18, 12, .34);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 20px rgba(255, 166, 82, .18),
+    0 0 38px rgba(255, 166, 82, .08),
+    0 10px 18px rgba(0,0,0,.10);
+}
+
+.page-dashboard #dashboardGammaChip-local_flip .dashboardGammaChipLabel{
+  color:rgba(255, 221, 184, .76);
 }
 
 .page-dashboard #dashboardGammaChip-local_flip .dashboardGammaChipValue{
-  font-size:12px;
-  color:rgba(215, 229, 244, .58);
+  font-size:clamp(15px, 1.55vw, 16px);
+  color:rgba(255, 242, 226, .96);
+  text-shadow:
+    0 0 14px rgba(255, 173, 92, .22),
+    0 0 24px rgba(255, 173, 92, .10);
 }
 
 .page-dashboard #dashboardGammaChip-call_wall{
-  border-color:rgba(var(--tone-danger-rgb), .14);
+  border-color:rgba(var(--tone-danger-rgb), .20);
   background:
-    radial-gradient(120% 120% at 100% 0%, rgba(var(--tone-danger-rgb), .05), transparent 60%),
-    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,.004)),
-    rgba(18, 13, 22, .22);
+    radial-gradient(120% 120% at 100% 0%, rgba(var(--tone-danger-rgb), .09), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.004)),
+    rgba(18, 13, 22, .28);
 }
 
 .page-dashboard #dashboardGammaChip-call_wall .dashboardGammaChipValue{
   font-size:clamp(14px, 1.5vw, 15px);
-  color:rgba(255, 222, 229, .86);
+  color:rgba(255, 232, 237, .92);
 }
 
 .page-dashboard #dashboardGammaChip-put_wall{
-  border-color:rgba(var(--tone-success-rgb), .14);
+  border-color:rgba(var(--tone-success-rgb), .20);
   background:
-    radial-gradient(120% 120% at 100% 0%, rgba(var(--tone-success-rgb), .05), transparent 60%),
-    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,.004)),
-    rgba(10, 18, 20, .22);
+    radial-gradient(120% 120% at 100% 0%, rgba(var(--tone-success-rgb), .09), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.004)),
+    rgba(10, 18, 20, .28);
 }
 
 .page-dashboard #dashboardGammaChip-put_wall .dashboardGammaChipValue{
   font-size:clamp(14px, 1.5vw, 15px);
-  color:rgba(220, 248, 236, .86);
+  color:rgba(228, 250, 240, .92);
 }
 
 .page-dashboard .dashboardGammaMeta{
   margin-top:2px;
-  color:rgba(219, 231, 246, .42);
+  color:rgba(222, 234, 248, .58);
 }
 
 .page-dashboard .dashboardDecisionFooter{
@@ -23034,10 +23778,6 @@ textarea:focus-visible{
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.04),
     0 0 20px rgba(var(--tone-info-rgb), .10);
-}
-
-.page-dashboard #dashboardGammaChip-local_flip{
-  opacity:.52;
 }
 
 .page-dashboard .dashboardBriefCard > .toolbar{
@@ -24561,13 +25301,20 @@ textarea:focus-visible{
   display:grid;
   grid-template-columns:minmax(0, 1.1fr) minmax(0, .82fr) minmax(0, 1.08fr);
   gap:14px;
-  align-items:stretch;
+  align-items:start;
 }
 
+/* Market Pulse layout rearrangement: wrapper/grid only. */
 .marketPulseStructureLocationCard .toolbar,
 .marketPulseDistanceCard .toolbar,
 .marketPulseActionableCard .toolbar{
   gap:8px;
+}
+
+.marketPulseStructureLocationCard,
+.marketPulseDistanceCard,
+.marketPulseActionableCard{
+  align-self:start;
 }
 
 @keyframes marketPulseZonePricePulse{
@@ -25403,9 +26150,9 @@ textarea:focus-visible{
 .marketPulseExecBarShell{
   position:relative;
   display:grid;
-  gap:10px;
+  gap:8px;
   min-height:0;
-  padding:12px 12px 10px;
+  padding:10px 12px 9px;
   border-radius:16px;
   border:1px solid rgba(115, 157, 206, 0.18);
   background:
@@ -25420,14 +26167,31 @@ textarea:focus-visible{
 }
 
 .marketPulseExecBarAxis{
-  position:relative;
-  height:18px;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  min-height:24px;
+}
+
+.marketPulseExecBarAxisGroup{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  min-width:0;
+}
+
+.marketPulseExecBarAxisGroup-left{
+  justify-content:flex-start;
+  flex-wrap:wrap;
+}
+
+.marketPulseExecBarAxisGroup-right{
+  justify-content:flex-end;
+  margin-left:auto;
 }
 
 .marketPulseExecBarAxisLabel{
-  position:absolute;
-  top:0;
-  transform:translateX(-50%);
   display:inline-flex;
   align-items:center;
   gap:4px;
@@ -25554,30 +26318,56 @@ textarea:focus-visible{
 .marketPulseZoneSummaryGrid{
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:8px;
+  gap:7px;
+  align-items:start;
 }
 
 .marketPulseZoneSummaryGrid-compact .marketPulseZoneSummaryItem{
   display:grid;
   gap:2px;
   min-width:0;
-  padding:8px 9px 7px;
+  padding:7px 8px 6px;
   border-radius:12px;
   border:1px solid rgba(122, 170, 220, 0.14);
   background:rgba(9, 17, 30, 0.52);
 }
 
 .marketPulseZoneSummaryItem strong{
-  font-size:.88rem;
-  line-height:1.14;
+  font-size:.8rem;
+  line-height:1.08;
   color:rgba(242, 247, 255, .95);
 }
 
 .marketPulseExecBarRead{
-  font-size:.82rem;
-  line-height:1.18;
+  font-size:.76rem;
+  line-height:1.14;
   font-weight:800;
-  color:rgba(240, 246, 254, .92);
+  color:rgba(231, 239, 248, .86);
+}
+
+@media (max-width: 1180px){
+  .marketPulseZoneSummaryGrid{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 780px){
+  .marketPulseExecBarAxis{
+    align-items:flex-start;
+    gap:10px;
+  }
+
+  .marketPulseExecBarAxisGroup{
+    gap:10px;
+  }
+
+  .marketPulseZoneSummaryGrid{
+    grid-template-columns:1fr;
+  }
+
+  .marketPulseExecBarAxisLabel{
+    font-size:.68rem;
+  }
 }
 
 .marketPulseStructureReadout-compact{

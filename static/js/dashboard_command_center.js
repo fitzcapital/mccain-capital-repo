@@ -306,9 +306,6 @@
         <span class="dashboardTapeDeltaArrow ${changeClass}">${arrow}</span>
       `;
     }
-    if (sourceNode) {
-      sourceNode.textContent = sourceBadgeLabel(quote);
-    }
     if (sparkNode) {
       const profile = symbol === "VIX"
         ? (state !== "Live" ? "compressed" : (vixContextPrimary === "Compressed" || vixContextSecondary === "Stable" ? "compressed" : (vixContextPrimary === "Firming" || vixContextSecondary === "Expansion" ? "directional" : "normal")))
