@@ -1,9 +1,9 @@
 {% if today_count == 0 %}
   {% set hero_title = "Prepare the Session" %}
   {% set hero_lead = "Plan the day, confirm the brief, and start with one clean record." %}
-  {% set focus_body = "Upload a statement to start the day." %}
-  {% set focus_href = "/trades/upload/statement" %}
-  {% set focus_cta = "Upload Statement" %}
+  {% set focus_body = "Confirm structure, lock the brief, and wait for a clean trigger." %}
+  {% set focus_href = "/market-pulse?refresh=1" %}
+  {% set focus_cta = "Open Playbook" %}
 {% elif today_net < 0 %}
   {% set hero_title = "Protect Capital and Review" %}
   {% set hero_lead = "Review first. Re-entry earns its place after the leak is named." %}
@@ -183,16 +183,16 @@
       <div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
         <div class="pillRow dashboardBriefSignalRow">
           <div class="pill">Daily Brief</div>
-          <span class="trendChip {% if daily_brief.bias_tone %}{{ daily_brief.bias_tone }}{% endif %}">{{ daily_brief.bias_label }}</span>
+          <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
           <span class="dashboardBriefSignalText" title="{{ daily_brief.source_detail }}">{{ daily_brief.source_label }}</span>
         </div>
-        <div class="supportLead dashboardBriefHeadlineCompact" title="{{ daily_brief.headline }}">{{ daily_brief.headline|truncate(92, False, '…') }}</div>
+        <div class="supportLead dashboardBriefHeadlineCompact" title="{{ decision_panel.posture_summary or daily_brief.headline }}">{{ (decision_panel.posture_summary or daily_brief.headline)|truncate(92, False, '…') }}</div>
           <div class="dashboardBriefFoldBody dashboardBriefDesktopBody">
             <div class="dashboardBriefStructuredGrid">
-              <div class="dashboardBriefBiasPanel {% if daily_brief.bias_tone %}is-{{ daily_brief.bias_tone }}{% endif %}">
+              <div class="dashboardBriefBiasPanel {% if decision_panel.status_tone == 'positive' %}is-positive{% elif decision_panel.status_tone == 'negative' %}is-negative{% else %}is-warning{% endif %}">
                 <div class="dashboardBriefStructuredLabel">Session Bias</div>
-                <div class="dashboardBriefBiasValue">{{ daily_brief.bias_label }}</div>
-                <div class="dashboardBriefBiasText" title="{{ daily_brief.summary }}">{{ daily_brief.summary|truncate(76, False, '…') }}</div>
+                <div class="dashboardBriefBiasValue">{{ decision_panel.bias }}</div>
+                <div class="dashboardBriefBiasText" title="{{ decision_panel.posture_summary or daily_brief.summary }}">{{ (decision_panel.posture_summary or daily_brief.summary)|truncate(76, False, '…') }}</div>
               </div>
               <div class="dashboardBriefQuickItem">
                 <div class="dashboardBriefStructuredLabel">Operator Focus</div>
@@ -214,9 +214,9 @@
               </div>
             </div>
           <div class="rightActions dashboardBriefPrimaryActions">
-            <a class="btn primary" href="/market-pulse?refresh=1">Market Pulse</a>
-            <a class="btn" href="/trades/new">{{ daily_brief.cta_label }}</a>
-            <a class="btn ctaLink" href="/calendar">Open Calendar</a>
+              <a class="btn primary" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn" href="/ops/trading-window">Trade Gate</a>
+              <a class="btn ctaLink" href="/calendar">Open Calendar</a>
           </div>
           <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more">
             <summary>More Info</summary>
@@ -278,12 +278,12 @@
           <summary>
             <div class="dashboardBriefMobileSummary">
               <div class="dashboardBriefMobileTop">
-                <span class="trendChip {% if daily_brief.bias_tone %}{{ daily_brief.bias_tone }}{% endif %}">{{ daily_brief.bias_label }}</span>
-                <span class="trendChip">{{ daily_brief.status_label }}</span>
+                <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
+                <span class="trendChip">{{ decision_panel.status }}</span>
                 <span class="trendChip {% if daily_brief.is_tuned %}positive{% endif %}">{{ daily_brief.source_label }}</span>
                 <span class="dashboardBriefMobileChevron">▾</span>
               </div>
-              <div class="dashboardBriefMobileFocus">{{ daily_brief.focus }}</div>
+              <div class="dashboardBriefMobileFocus">{{ decision_panel.posture_summary or daily_brief.focus }}</div>
               <div class="dashboardBriefMobileMeta">
                 {% for level in daily_brief.key_levels[:2] %}
                   <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
@@ -332,8 +332,9 @@
               </div>
             </details>
             <div class="rightActions">
-              <a class="btn primary" href="/trades/new">{{ daily_brief.cta_label }}</a>
-              <a class="btn ctaLink" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn primary" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn" href="/ops/trading-window">Trade Gate</a>
+              <a class="btn ctaLink" href="/calendar">Open Calendar</a>
             </div>
             <details class="syncDetails stack10" data-dashboard-optional="brief-tune-mobile">
               <summary>Tune Brief</summary>

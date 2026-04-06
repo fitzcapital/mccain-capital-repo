@@ -161,19 +161,39 @@
     return "unavailable";
   };
 
-  const setRegime = (regime, environment, currentPrice, flipValue) => {
-    const positive = String(regime || "").toLowerCase().includes("positive");
-    if (gammaCard) gammaCard.classList.toggle("is-positive", positive);
-    if (gammaCard) gammaCard.classList.toggle("is-negative", !positive);
-    if (biasCard) biasCard.classList.toggle("is-positive", positive);
-    if (biasCard) biasCard.classList.toggle("is-negative", !positive);
-    if (gammaLabel) gammaLabel.textContent = positive ? "POSITIVE GAMMA" : "NEGATIVE GAMMA";
-    if (gammaSub) gammaSub.textContent = positive ? "MEAN REVERSION ACTIVE" : "TREND / EXPANSION";
-    const aboveFlip = currentPrice !== null && flipValue !== null && currentPrice >= flipValue;
-    if (biasPrimary) biasPrimary.textContent = aboveFlip ? "ABOVE FLIP" : "BELOW FLIP";
-    if (biasSecondary) biasSecondary.textContent = aboveFlip ? "BUY DIPS" : "SELL RIPS";
-    if (biasAbove) biasAbove.classList.toggle("is-active", aboveFlip);
-    if (biasBelow) biasBelow.classList.toggle("is-active", !aboveFlip);
+  const getExecutionModel = (payload) => (
+    payload && payload.execution_model && typeof payload.execution_model === "object"
+      ? payload.execution_model
+      : null
+  );
+
+  const updateHeaderCards = (model, fallbackRegime, fallbackEnvironment, currentPrice, mainFlipValue) => {
+    const macro = (model && model.macro_regime) || {};
+    const local = (model && model.local_bias) || {};
+    const macroState = String(macro.state || "").toLowerCase();
+    const fallbackRegimeText = String(fallbackRegime || "").toLowerCase();
+    const positive = macroState === "positive" || (!macroState && fallbackRegimeText.includes("positive"));
+    const neutral = macroState === "neutral" || (!macroState && fallbackRegimeText.includes("neutral"));
+    const negative = macroState === "negative" || (!macroState && !positive && !neutral);
+    const gammaTone = neutral ? "is-neutral" : positive ? "is-positive" : "is-negative";
+    if (gammaCard) {
+      gammaCard.classList.remove("is-positive", "is-negative", "is-neutral");
+      gammaCard.classList.add(gammaTone);
+    }
+    if (biasCard) {
+      biasCard.classList.remove("is-positive", "is-negative", "is-neutral");
+      biasCard.classList.add(
+        local.state === "above_local" ? "is-positive" : local.state === "below_local" ? "is-negative" : "is-neutral"
+      );
+    }
+    if (gammaLabel) gammaLabel.textContent = String(macro.title || (positive ? "POSITIVE GAMMA" : "NEGATIVE GAMMA"));
+    if (gammaSub) gammaSub.textContent = String(macro.subtitle || fallbackEnvironment || "—");
+
+    const fallbackAbove = currentPrice !== null && mainFlipValue !== null && currentPrice >= mainFlipValue;
+    if (biasPrimary) biasPrimary.textContent = String(local.context || (fallbackAbove ? "ABOVE LOCAL FLIP" : "BELOW LOCAL FLIP"));
+    if (biasSecondary) biasSecondary.textContent = String(local.label || (fallbackAbove ? "BUY DIPS" : "SELL RIPS"));
+    if (biasAbove) biasAbove.classList.toggle("is-active", String(local.state || "") === "above_local");
+    if (biasBelow) biasBelow.classList.toggle("is-active", String(local.state || "") === "below_local");
   };
 
   const levelMeta = (key) => {
@@ -293,6 +313,17 @@
       const regimeState = inferRegime(gamma, current);
       next.regime = regimeState.regime;
       next.environment = regimeState.environment;
+      if (next.execution_model && next.execution_model.levels) {
+        next.execution_model = {
+          ...next.execution_model,
+          levels: {
+            ...(next.execution_model.levels || {}),
+            main_flip: asNum(gamma.gamma_flip_combined_basket) ?? (next.execution_model.levels || {}).main_flip,
+            call_wall: asNum(gamma.call_wall_aggregated_gamma) ?? (next.execution_model.levels || {}).call_wall,
+            put_wall: asNum(gamma.put_wall_aggregated_gamma) ?? (next.execution_model.levels || {}).put_wall,
+          },
+        };
+      }
     }
 
     if (serverTs) next.phase = derivePhase(serverTs);
@@ -302,10 +333,20 @@
     const sessionLabel = lastPoint ? etLabel(lastPoint.stamp) : "";
     next.session_label = sessionLabel;
     if (!next.last_stored_replay_label && sessionLabel) next.last_stored_replay_label = sessionLabel;
+    if (next.execution_model && next.execution_model.levels && lastPoint) {
+      next.execution_model = {
+        ...next.execution_model,
+        levels: {
+          ...(next.execution_model.levels || {}),
+          spot: lastPoint.price,
+        },
+      };
+    }
     return next;
   };
 
   const renderLadder = (payload) => {
+    const model = getExecutionModel(payload);
     const levels = normalizeLevels(payload.levels);
     const stratLevels = loadStratLevels();
     const levelMap = new Map(levels.map((level) => [level.key, level]));
@@ -320,13 +361,21 @@
 
     const stack = document.createElement("div");
     stack.className = "marketPulseExecutionLadderStack";
-    const rows = [
-      { key: "gamma_flip", value: flip && flip.value, label: "Flip", tone: "flip" },
-      { key: "price", value: currentPrice, label: "Price", tone: "price" },
-      { key: "local_flip", value: localFlip && localFlip.value, label: "Local Flip", tone: "local" },
-      { key: "call_wall", value: callWall && callWall.value, label: "CW", tone: "call" },
-      { key: "put_wall", value: putWall && putWall.value, label: "PW", tone: "put" },
-    ];
+    const rows = Array.isArray(model && model.ladder_rows) && model.ladder_rows.length
+      ? model.ladder_rows.map((row) => ({
+          key: String(row.key || ""),
+          value: asNum(row.value),
+          label: String(row.label || row.short_label || ""),
+          tone: String(row.tone || "neutral"),
+          distance_points: asNum(row.distance_points),
+        }))
+      : [
+          { key: "gamma_flip", value: flip && flip.value, label: "Main Flip", tone: "flip", distance_points: currentPrice !== null && flip ? flip.value - currentPrice : null },
+          { key: "price", value: currentPrice, label: "Price", tone: "price", distance_points: null },
+          { key: "local_flip", value: localFlip && localFlip.value, label: "Local Flip", tone: "local", distance_points: currentPrice !== null && localFlip ? localFlip.value - currentPrice : null },
+          { key: "call_wall", value: callWall && callWall.value, label: "Call Wall", tone: "call", distance_points: currentPrice !== null && callWall ? callWall.value - currentPrice : null },
+          { key: "put_wall", value: putWall && putWall.value, label: "Put Wall", tone: "put", distance_points: currentPrice !== null && putWall ? putWall.value - currentPrice : null },
+        ];
     const diffs = rows
       .filter((row) => row.key !== "price" && currentPrice !== null && asNum(row.value) !== null)
       .map((row) => ({ key: row.key, diff: Math.abs(asNum(row.value) - currentPrice) }));
@@ -358,9 +407,11 @@
       const dist = document.createElement("div");
       dist.className = "marketPulseExecutionLadderMetricDist";
       if (row.key === "price") {
-        dist.textContent = flip ? `Δ Flip ${formatSigned(numeric - flip.value)}` : "Live price";
+        const localDistance = model && model.distances ? asNum(model.distances.to_local_flip) : null;
+        dist.textContent = localDistance !== null ? `Δ Local ${formatSigned(localDistance)}` : flip ? `Δ Main ${formatSigned(numeric - flip.value)}` : "Live price";
       } else {
-        dist.textContent = currentPrice === null ? "Awaiting price" : `${numeric >= currentPrice ? "+" : ""}${(numeric - currentPrice).toFixed(1)} pts`;
+        const distance = asNum(row.distance_points);
+        dist.textContent = currentPrice === null ? "Awaiting price" : distance !== null ? formatSigned(distance) : `${numeric >= currentPrice ? "+" : ""}${(numeric - currentPrice).toFixed(1)} pts`;
       }
 
       item.append(head, dist);
@@ -370,15 +421,15 @@
 
     const spreadParts = [];
     if (currentPrice !== null) spreadParts.push(`SPX ${formatPrice(currentPrice)}`);
-    if (flip) spreadParts.push(`Flip ${formatCompact(flip.value)}`);
-    if (localFlip) spreadParts.push(`Local ${formatCompact(localFlip.value)}`);
+    if (model && model.levels && asNum(model.levels.main_flip) !== null) spreadParts.push(`Main ${formatCompact(model.levels.main_flip)}`);
+    if (model && model.levels && asNum(model.levels.local_flip) !== null) spreadParts.push(`Local ${formatCompact(model.levels.local_flip)}`);
     ladderMeta.textContent = spreadParts.join(" • ") || "Price vs flip.";
     widgetMeta.textContent = "SPY 5m proxy";
     if (overlayPrice) overlayPrice.textContent = `Price ${formatPrice(currentPrice, 2)}`;
     if (overlayFlip) overlayFlip.textContent = `Flip ${formatCompact(flip && flip.value)}`;
     if (overlayCall) overlayCall.textContent = `CW ${formatCompact(callWall && callWall.value)}`;
     if (overlayPut) overlayPut.textContent = `PW ${formatCompact(putWall && putWall.value)}`;
-    setRegime(payload.regime, payload.environment, currentPrice, asNum(flip && flip.value));
+    updateHeaderCards(model, payload.regime, payload.environment, currentPrice, asNum(flip && flip.value));
 
     if (stratSummary) {
       stratSummary.hidden = true;

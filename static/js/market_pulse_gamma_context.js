@@ -1170,20 +1170,26 @@
     }
   };
 
-  const updateStructureZoneBar = (input, derived) => {
+  const updateStructureZoneBar = (input, derived, model) => {
     const shell = document.getElementById("marketPulseZoneBarShell");
     const priceMarker = document.getElementById("marketPulseZonePriceMarker");
     const flipMarker = document.getElementById("marketPulseZoneFlipMarker");
+    const localMarker = document.getElementById("marketPulseZoneLocalMarker");
     const priceLabel = document.getElementById("marketPulseZonePriceLabel");
     if (!shell || !priceMarker || !flipMarker || !priceLabel) return;
 
-    const spot = asNum(input.spot);
-    const flip = asNum(input.gammaFlip);
-    const call = asNum(input.callWall);
-    const put = asNum(input.putWall);
+    const levels = (model && model.levels) || {};
+    const location = (model && model.location) || {};
+    const spot = asNum(levels.spot ?? input.spot);
+    const flip = asNum(levels.main_flip ?? input.gammaFlip);
+    const local = asNum(levels.local_flip ?? input.vwap);
+    const call = asNum(levels.call_wall ?? input.callWall);
+    const put = asNum(levels.put_wall ?? input.putWall);
     const available = [spot, flip, call, put].every((value) => value !== null);
+    const localAvailable = local !== null;
     shell.classList.toggle("is-empty", !available);
     shell.classList.remove("is-near-level", "is-near-flip", "is-near-call", "is-near-put");
+    if (localMarker) localMarker.hidden = !localAvailable;
 
     if (!available) {
       setText("marketPulseZoneLabel", "Unavailable");
@@ -1203,10 +1209,11 @@
 
     priceMarker.style.left = `${pct(spot)}%`;
     flipMarker.style.left = `${pct(flip)}%`;
+    if (localMarker && localAvailable) localMarker.style.left = `${pct(local)}%`;
     priceLabel.style.left = `${pct(spot)}%`;
     setText("marketPulseZonePriceLabel", `Price ${formatNumber(spot, 0)}`);
     setText("marketPulseZonePutLabel", `PW ${formatNumber(put, 0)}`);
-    setText("marketPulseZoneFlipLabel", `Flip ${formatNumber(flip, 0)}`);
+    setText("marketPulseZoneFlipLabel", `Main ${formatNumber(flip, 0)}`);
     setText("marketPulseZoneCallLabel", `CW ${formatNumber(call, 0)}`);
 
     const candidates = [
@@ -1259,10 +1266,17 @@
       if (nearest.key === "put") shell.classList.add("is-near-put");
     }
 
-    setText("marketPulseZoneLabel", zone);
-    setText("marketPulseZoneNearest", nearest ? `${nearest.label} (${formatNumber(nearest.distance, 0)} pts)` : "—");
-    setText("marketPulseZoneStatus", status);
-    setText("marketPulseZoneRead", actionRead);
+    setText("marketPulseZoneLabel", String(location.zone || zone));
+    setText(
+      "marketPulseZoneNearest",
+      location.nearest_level_name
+        ? `${location.nearest_level_name} (${formatNumber(location.distance_points, 0)} pts)`
+        : nearest
+          ? `${nearest.label} (${formatNumber(nearest.distance, 0)} pts)`
+          : "—"
+    );
+    setText("marketPulseZoneStatus", String(location.status || status));
+    setText("marketPulseZoneRead", String(location.read || actionRead));
   };
 
   const summarizeStateLine = (input, derived, panelMode) => {
@@ -1473,6 +1487,10 @@
     const input = adaptInput(base);
     const derived = computeDistanceMetrics(input);
     const executionPlan = buildExecutionPlan(input, derived);
+    const model = (base && base.execution_model) || {};
+    const modelPlaybook = (model && model.playbook) || {};
+    const modelTone = String(modelPlaybook.tone || "");
+    const modelStatus = String(modelPlaybook.status || "");
     const triggerState = buildTriggerState(executionPlan.trigger, executionPlan.tone);
     const snapshotNarrative = (((base || {}).gamma_snapshot || {}).narrative) || {};
     const bullets = Array.isArray(snapshotNarrative.auto_read) && snapshotNarrative.auto_read.length
@@ -1515,25 +1533,21 @@
     setText("spxPriorityDealerRegime", derived.dealerRegime);
     setText("spxPriorityVolatilityState", derived.volatilityState);
     setText("spxPriorityStructureType", derived.structureType);
-    const tradeabilityScore100 = Math.max(0, Math.min(100, Math.round((asNum(derived.tradeability.score) || 0) * 10)));
-    const tradeabilityLabel = String(derived.tradeability.label || "Selective");
-    const toneClass = tradeabilityLabel === "Tradeable" ? "tone-positive" : tradeabilityLabel === "No Trade" ? "tone-negative" : "tone-warn";
-    const environmentLine = [
-      derived.dealerRegime,
-      derived.structureType === "Stable Range" ? "Inside range" : derived.structureType,
-      derived.aboveOrBelowFlip === "above" ? "Above flip" : derived.aboveOrBelowFlip === "below" ? "Below flip" : "At flip",
-      derived.aboveOrBelowLocalFlip === "above" ? "Above local" : derived.aboveOrBelowLocalFlip === "below" ? "Below local" : "At local",
-    ].filter(Boolean).join(" / ");
-    const bestLook = String(executionPlan.trigger || summarizeActionLine(executionPlan, panelMode) || "Wait for edge");
-    const avoidLine = summarizeRuleLine(executionPlan, derived);
-    const needLine = String(executionPlan.triggerLine || summarizeEdgeSubline(executionPlan) || "Need confirmation");
+    const tradeabilityScore100 = asNum(modelPlaybook.score) !== null
+      ? clamp(Math.round(asNum(modelPlaybook.score)), 0, 100)
+      : Math.max(0, Math.min(100, Math.round((asNum(derived.tradeability.score) || 0) * 10)));
+    const toneClass = modelTone === "positive" ? "tone-positive" : modelTone === "negative" ? "tone-negative" : "tone-warn";
+    const bestLook = String(modelPlaybook.best_look || executionPlan.trigger || summarizeActionLine(executionPlan, panelMode) || "Wait for edge");
+    const whyLine = String(modelPlaybook.why || (model && model.posture_summary) || executionPlan.biasLine || "Context is mixed.");
+    const avoidLine = String(modelPlaybook.avoid || summarizeRuleLine(executionPlan, derived));
+    const needLine = String(modelPlaybook.need || executionPlan.triggerLine || summarizeEdgeSubline(executionPlan) || "Need confirmation");
 
-    updateStructureZoneBar(input, derived);
+    updateStructureZoneBar(input, derived, model);
 
     setText("marketPulseTradeabilityScore", `${tradeabilityScore100}`);
-    setText("marketPulseTradeabilityGrade", gradeTradeability(tradeabilityScore100));
+    setText("marketPulseTradeabilityGrade", String(modelPlaybook.grade || gradeTradeability(tradeabilityScore100)));
     setText("marketPulseBestLook", bestLook);
-    setText("marketPulseEnvironment", environmentLine);
+    setText("marketPulseEnvironment", whyLine);
     setText("marketPulseAvoid", avoidLine);
     setText("marketPulseNeed", needLine);
     const scoreFill = document.getElementById("marketPulseTradeabilityBarFill");
@@ -1541,6 +1555,17 @@
       scoreFill.style.width = `${tradeabilityScore100}%`;
       scoreFill.classList.remove("tone-positive", "tone-warn", "tone-negative");
       scoreFill.classList.add(toneClass);
+    }
+    const card = document.getElementById("marketPulseTradeReadCard");
+    const chip = document.getElementById("marketPulseTradeabilityBadge");
+    if (card) {
+      card.classList.remove("tradeRead-tradeable", "tradeRead-conditional", "tradeRead-stand-down");
+      card.classList.add(modelTone === "positive" ? "tradeRead-tradeable" : modelStatus === "CAUTION" || modelStatus === "WATCH" ? "tradeRead-conditional" : "tradeRead-stand-down");
+    }
+    if (chip) {
+      chip.textContent = modelStatus || "WATCH";
+      chip.classList.remove("tone-positive", "tone-warn", "tone-negative");
+      chip.classList.add(toneClass);
     }
 
     setText("spxPriorityTradeabilityScore", `${derived.tradeability.score}/10 · ${derived.tradeability.label}`);
@@ -1552,9 +1577,10 @@
     setText("spxPrioritySupportQuality", derived.supportQuality);
     setText("spxPriorityResistanceQuality", derived.resistanceQuality);
 
-    setText("spxPriorityDistanceFlip", formatLevelDistance(derived.distanceToFlip));
-    setText("spxPriorityDistanceCall", formatLevelDistance(derived.distanceToCallWall));
-    setText("spxPriorityDistancePut", formatLevelDistance(derived.distanceToPutWall));
+    setText("spxPriorityDistanceFlip", formatLevelDistance(asNum(((model && model.distances) || {}).to_main_flip) ?? derived.distanceToFlip));
+    setText("spxPriorityDistanceLocal", formatLevelDistance(asNum(((model && model.distances) || {}).to_local_flip)));
+    setText("spxPriorityDistanceCall", formatLevelDistance(asNum(((model && model.distances) || {}).to_call_wall) ?? derived.distanceToCallWall));
+    setText("spxPriorityDistancePut", formatLevelDistance(asNum(((model && model.distances) || {}).to_put_wall) ?? derived.distanceToPutWall));
     setText("spxPriorityWallSpread", asNum(derived.wallSpread) === null ? "—" : `${formatNumber(derived.wallSpread, 1)} pts`);
     setText("spxPrioritySessionWindow", derived.sessionWindowState);
     setText("spxPriorityNoTradeState", derived.noTradeCenter ? "No-Trade Center · Trade the edges only" : "Center is tradeable with confirmation");
@@ -1601,7 +1627,7 @@
     setText("spxPrioritySourceBadge", sourceBadgeLabel(spxQuote));
     setText("marketPulseSourceMode", sourceBadgeLabel(spxQuote));
     setText("spxPriorityChangeLine", `${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`);
-    setText("spxPriorityFooterMeta", `${footerLabel} • ${formatNumber(input.spot, 2)} • ${footerTime}`);
+    setText("spxPriorityFooterMeta", String((model && model.posture_summary) || `${footerLabel} • ${formatNumber(input.spot, 2)} • ${footerTime}`));
     updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), spxPoints, sparkTone(spxQuote.change_pct));
     applyGlowState([shell, spotPanel], spxQuote.change_pct);
     setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
@@ -1624,7 +1650,7 @@
     setText("marketPulseSetupTargetLine", executionPlan.targetLine);
     setText("marketPulseSetupInvalidation", executionPlan.invalidation);
     setText("marketPulseSetupInvalidationLine", executionPlan.invalidationLine);
-    updateTradeReadState(derived.tradeability, executionPlan);
+    if (!modelPlaybook.status) updateTradeReadState(derived.tradeability, executionPlan);
 
     setBullets("spxPriorityNarrative", bullets);
     setBadges("spxPriorityWarningBadges", badges);

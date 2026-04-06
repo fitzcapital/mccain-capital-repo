@@ -23912,6 +23912,18 @@ textarea:focus-visible{
   box-shadow:0 0 22px rgba(255, 122, 146, .12), inset 0 1px 0 rgba(255,255,255,.04);
 }
 
+.marketPulseGammaStateCard.is-neutral{
+  border-color:rgba(255, 194, 112, .24);
+  box-shadow:
+    0 0 24px rgba(255, 194, 112, .12),
+    0 0 54px rgba(255, 194, 112, .05),
+    inset 0 1px 0 rgba(255,255,255,.04);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 194, 112, .12), rgba(255, 194, 112, 0) 34%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012)),
+    rgba(9, 18, 32, .62);
+}
+
 .marketPulseBiasCard.is-positive{
   border-color:rgba(102, 233, 173, .24);
   box-shadow:
@@ -23932,6 +23944,18 @@ textarea:focus-visible{
     inset 0 1px 0 rgba(255,255,255,.04);
   background:
     radial-gradient(circle at 82% 18%, rgba(255, 122, 146, .10), rgba(255, 122, 146, 0) 34%),
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012)),
+    rgba(9, 18, 32, .62);
+}
+
+.marketPulseBiasCard.is-neutral{
+  border-color:rgba(255, 194, 112, .22);
+  box-shadow:
+    0 0 24px rgba(255, 194, 112, .10),
+    0 0 54px rgba(255, 194, 112, .05),
+    inset 0 1px 0 rgba(255,255,255,.04);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(255, 194, 112, .08), rgba(255, 194, 112, 0) 32%),
     linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012)),
     rgba(9, 18, 32, .62);
 }
@@ -23965,6 +23989,13 @@ textarea:focus-visible{
   box-shadow:
     0 0 0 6px rgba(255, 140, 163, .16),
     0 0 18px rgba(255, 122, 146, .28);
+}
+
+.marketPulseGammaStateCard.is-neutral .marketPulseGammaStateDot{
+  background:#ffcf82;
+  box-shadow:
+    0 0 0 6px rgba(255, 207, 130, .16),
+    0 0 18px rgba(255, 194, 112, .24);
 }
 
 .marketPulseGammaStateCopy{
@@ -24035,6 +24066,13 @@ textarea:focus-visible{
   box-shadow:
     inset 0 0 0 1px rgba(255, 122, 146, .14),
     0 0 18px rgba(255, 122, 146, .10);
+}
+
+.marketPulseBiasCard.is-neutral .marketPulseBiasRailItem.is-active{
+  background:linear-gradient(90deg, rgba(255, 194, 112, .16), rgba(255, 194, 112, .08));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 194, 112, .14),
+    0 0 18px rgba(255, 194, 112, .10);
 }
 
 .marketPulsePlaybookActions{
@@ -24278,6 +24316,15 @@ textarea:focus-visible{
   background:linear-gradient(90deg, rgba(255, 118, 145, 0.76), rgba(255, 168, 104, 0.82));
 }
 
+.marketPulseDistanceItem.is-unavailable{
+  opacity:.54;
+}
+
+.marketPulseDistanceItem.is-unavailable .marketPulseDistanceFill{
+  width:0 !important;
+  background:rgba(132, 154, 184, .28);
+}
+
 .marketPulsePlaybookCell{
   padding:10px 11px 9px;
 }
@@ -24399,6 +24446,17 @@ textarea:focus-visible{
   box-shadow:
     0 0 0 4px rgba(220, 239, 255, .14),
     0 0 16px rgba(220, 239, 255, .20);
+}
+
+.marketPulseExecBarSplit-local{
+  background:linear-gradient(180deg, rgba(255,255,255,0), rgba(145, 200, 255, .92), rgba(255,255,255,0));
+}
+
+.marketPulseExecBarSplit-local .marketPulseExecBarSplitDot{
+  background:#93c6ff;
+  box-shadow:
+    0 0 0 4px rgba(147, 198, 255, .15),
+    0 0 16px rgba(127, 208, 255, .18);
 }
 
 .marketPulseExecBarPriceMarkerDot{

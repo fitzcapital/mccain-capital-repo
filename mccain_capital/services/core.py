@@ -57,6 +57,7 @@ from mccain_capital.services.viewmodels import (
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
 from mccain_capital.services.gamma_context_service import build_spx_priority_context
+from mccain_capital.services.market_feed_service import build_market_feed_snapshot
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -2328,6 +2329,546 @@ def _market_news_timestamp_label(stamp: Any) -> str:
     return datetime.fromtimestamp(int(stamp), tz=app_runtime.TZ).strftime("%b %-d, %-I:%M %p ET")
 
 
+def _market_pulse_level_value(rows: List[Dict[str, Any]], key: str) -> Optional[float]:
+    for row in rows:
+        if str(row.get("key") or "") != key:
+            continue
+        value = row.get("value")
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
+
+
+def _market_pulse_clamp(value: float, minimum: float, maximum: float) -> float:
+    return min(maximum, max(minimum, float(value)))
+
+
+def _market_pulse_score_grade(score: int) -> str:
+    if score >= 93:
+        return "A"
+    if score >= 88:
+        return "A-"
+    if score >= 80:
+        return "B"
+    if score >= 72:
+        return "B-"
+    if score >= 64:
+        return "C"
+    if score >= 56:
+        return "C-"
+    if score >= 48:
+        return "D"
+    return "F"
+
+
+def _market_pulse_score_status(score: int) -> str:
+    if score >= 80:
+        return "GO"
+    if score >= 60:
+        return "WATCH"
+    if score >= 40:
+        return "CAUTION"
+    return "NO TRADE"
+
+
+def _market_pulse_tone_for_status(status: str) -> str:
+    if status == "GO":
+        return "positive"
+    if status == "WATCH":
+        return "warn"
+    if status == "CAUTION":
+        return "warn"
+    return "negative"
+
+
+def _market_pulse_execution_model(
+    *,
+    spx_quote: Dict[str, Any],
+    gamma_snapshot: Dict[str, Any],
+    execution_chart: Dict[str, Any],
+    spx_priority_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    spot = (
+        float(spx_quote.get("price"))
+        if isinstance(spx_quote.get("price"), (int, float))
+        else float(execution_chart.get("latest_price"))
+        if isinstance(execution_chart.get("latest_price"), (int, float))
+        else None
+    )
+    main_flip = _market_pulse_level_value(list(execution_chart.get("levels") or []), "gamma_flip")
+    local_flip = _market_pulse_level_value(list(execution_chart.get("levels") or []), "local_flip")
+    call_wall = _market_pulse_level_value(list(execution_chart.get("levels") or []), "call_wall")
+    put_wall = _market_pulse_level_value(list(execution_chart.get("levels") or []), "put_wall")
+    raw_net_gamma = (
+        float(gamma_snapshot.get("net_gex"))
+        if isinstance(gamma_snapshot.get("net_gex"), (int, float))
+        else float(gamma_snapshot.get("net_gex_total"))
+        if isinstance(gamma_snapshot.get("net_gex_total"), (int, float))
+        else None
+    )
+    metrics = dict(spx_priority_context.get("metrics") or {})
+    structure_range_state = str(metrics.get("trap_zone_state") or "").strip() or "unavailable"
+    values = [
+        value
+        for value in (spot, main_flip, local_flip, call_wall, put_wall)
+        if isinstance(value, (int, float))
+    ]
+    structure_span = (max(values) - min(values)) if len(values) >= 2 else 0.0
+    wall_span = (
+        abs(float(call_wall) - float(put_wall))
+        if isinstance(call_wall, (int, float)) and isinstance(put_wall, (int, float))
+        else structure_span
+    )
+    neutral_band_main = _market_pulse_clamp(max(5.0, wall_span * 0.08), 5.0, 18.0)
+    neutral_band_local = _market_pulse_clamp(max(2.5, wall_span * 0.025), 2.5, 6.0)
+
+    if spot is not None and main_flip is not None:
+        if spot > (main_flip + neutral_band_main):
+            macro_state = "positive"
+            macro_title = "POSITIVE GAMMA"
+            macro_subtitle = "MEAN REVERSION ACTIVE"
+            macro_band_state = "above_main_flip"
+        elif spot < (main_flip - neutral_band_main):
+            macro_state = "negative"
+            macro_title = "NEGATIVE GAMMA"
+            macro_subtitle = "TREND / MOMENTUM ACTIVE"
+            macro_band_state = "below_main_flip"
+        else:
+            macro_state = "neutral"
+            macro_title = "FLIP ZONE"
+            macro_subtitle = "NO CLEAR EDGE"
+            macro_band_state = "at_main_flip"
+    else:
+        macro_state = "unknown"
+        macro_title = "REGIME UNKNOWN"
+        macro_subtitle = "LEVELS UNAVAILABLE"
+        macro_band_state = "unknown"
+
+    if spot is not None and local_flip is not None:
+        if spot > (local_flip + neutral_band_local):
+            local_state = "above_local"
+            local_title = "ABOVE LOCAL FLIP"
+            local_action = "BUY DIPS / HOLD ABOVE LOCAL PIVOT"
+            local_short = "BUY DIPS"
+            local_context = "ABOVE LOCAL FLIP"
+        elif spot < (local_flip - neutral_band_local):
+            local_state = "below_local"
+            local_title = "BELOW LOCAL FLIP"
+            local_action = "SELL RIPS / REJECT POPS"
+            local_short = "SELL RIPS"
+            local_context = "BELOW LOCAL FLIP"
+        else:
+            local_state = "at_local"
+            local_title = "AT LOCAL FLIP"
+            local_action = "WAIT FOR RESOLUTION"
+            local_short = "WAIT"
+            local_context = "AT LOCAL FLIP"
+    else:
+        local_state = "unknown"
+        local_title = "LOCAL FLIP UNKNOWN"
+        local_action = "WAIT FOR LOCAL PIVOT"
+        local_short = "WAIT"
+        local_context = "LOCAL FLIP UNKNOWN"
+
+    distances = {
+        "to_main_flip": (spot - main_flip) if spot is not None and main_flip is not None else None,
+        "to_local_flip": (spot - local_flip) if spot is not None and local_flip is not None else None,
+        "to_call_wall": (spot - call_wall) if spot is not None and call_wall is not None else None,
+        "to_put_wall": (spot - put_wall) if spot is not None and put_wall is not None else None,
+    }
+
+    levels_for_nearest = [
+        ("Main Flip", main_flip),
+        ("Local Flip", local_flip),
+        ("Call Wall", call_wall),
+        ("Put Wall", put_wall),
+    ]
+    nearest_name = ""
+    nearest_value = None
+    nearest_distance = None
+    if spot is not None:
+        for label, value in levels_for_nearest:
+            if not isinstance(value, (int, float)):
+                continue
+            distance = abs(float(spot) - float(value))
+            if nearest_distance is None or distance < nearest_distance:
+                nearest_name = label
+                nearest_value = float(value)
+                nearest_distance = distance
+
+    inside_walls = (
+        spot is not None
+        and call_wall is not None
+        and put_wall is not None
+        and put_wall <= spot <= call_wall
+    )
+    near_main_flip = nearest_distance is not None and nearest_name == "Main Flip" and nearest_distance <= neutral_band_main
+    near_local_flip = nearest_distance is not None and nearest_name == "Local Flip" and nearest_distance <= neutral_band_local
+    near_call_wall = nearest_distance is not None and nearest_name == "Call Wall" and nearest_distance <= 14.0
+    near_put_wall = nearest_distance is not None and nearest_name == "Put Wall" and nearest_distance <= 14.0
+    midrange = (
+        inside_walls
+        and nearest_distance is not None
+        and nearest_distance > max(neutral_band_local * 1.5, 22.0)
+    )
+
+    if spot is None:
+        location_summary = "STRUCTURE UNKNOWN"
+        zone_label = "Unknown"
+        status_line = "Awaiting price"
+        action_read = "Wait for live structure"
+    elif put_wall is not None and spot < put_wall:
+        location_summary = "BELOW PUT WALL"
+        zone_label = "Below Put Wall"
+        status_line = "Support nearby"
+        action_read = "Wait for support reclaim"
+    elif call_wall is not None and spot > call_wall:
+        location_summary = "ABOVE CALL WALL"
+        zone_label = "Above Call Wall"
+        status_line = "Resistance failed"
+        action_read = "Avoid chasing extension"
+    elif near_local_flip:
+        location_summary = "AT LOCAL FLIP"
+        zone_label = "Flip Decision Zone"
+        status_line = "Decision zone"
+        action_read = "Wait for local flip resolution"
+    elif near_call_wall:
+        location_summary = "NEAR CALL WALL"
+        zone_label = "Near Call Wall"
+        status_line = "Resistance nearby"
+        action_read = "Sell rips near resistance"
+    elif near_put_wall:
+        location_summary = "NEAR PUT WALL"
+        zone_label = "Near Put Wall"
+        status_line = "Support nearby"
+        action_read = "Buy dips near support"
+    elif inside_walls and macro_band_state == "below_main_flip":
+        location_summary = "BELOW MAIN FLIP INSIDE RANGE"
+        zone_label = "Inside Range / Below Main Flip"
+        status_line = "Range with overhead pressure"
+        action_read = "Sell rips below main flip"
+    elif inside_walls and macro_band_state == "above_main_flip":
+        location_summary = "ABOVE MAIN FLIP INSIDE RANGE"
+        zone_label = "Inside Range / Above Main Flip"
+        status_line = "Supportive range"
+        action_read = "Buy dips above main flip"
+    elif inside_walls:
+        location_summary = "INSIDE RANGE"
+        zone_label = "Inside Range"
+        status_line = "Neutral range"
+        action_read = "Avoid mid-range entries"
+    else:
+        location_summary = "BETWEEN LEVELS"
+        zone_label = "Between Levels"
+        status_line = "Mixed location"
+        action_read = "Wait for cleaner location"
+
+    macro_local_conflict = bool(
+        (macro_state == "positive" and local_state == "below_local")
+        or (macro_state == "negative" and local_state == "above_local")
+    )
+    net_gamma_sign_conflict = bool(
+        raw_net_gamma is not None
+        and macro_state in {"positive", "negative"}
+        and ((raw_net_gamma >= 0 and macro_state == "negative") or (raw_net_gamma < 0 and macro_state == "positive"))
+    )
+
+    score = 50
+    if macro_state in {"positive", "negative"}:
+        score += 20
+    elif macro_state == "neutral":
+        score -= 25
+    else:
+        score -= 15
+
+    if local_state in {"above_local", "below_local"}:
+        score += 25
+    elif local_state == "at_local":
+        score -= 18
+    else:
+        score -= 18
+
+    if macro_local_conflict:
+        score -= 22
+    elif macro_state == "positive" and local_state == "above_local":
+        score += 12
+    elif macro_state == "negative" and local_state == "below_local":
+        score += 12
+
+    if midrange:
+        score -= 20
+    if near_main_flip:
+        score -= 12
+    if near_local_flip:
+        score += 8
+    if near_call_wall or near_put_wall:
+        score += 12
+    if macro_local_conflict and inside_walls:
+        score -= 10
+    if nearest_distance is not None and nearest_distance > 140:
+        score -= 10
+    if structure_range_state in {"knife_edge_structure", "compressed_trap_zone"}:
+        score -= 10
+    if execution_chart.get("mode") == "unavailable":
+        score -= 6
+    if local_state == "unknown":
+        score = min(score, 55)
+
+    score = max(0, min(100, int(round(score))))
+    readiness_status = _market_pulse_score_status(score)
+    readiness_tone = _market_pulse_tone_for_status(readiness_status)
+    grade = _market_pulse_score_grade(score)
+
+    if readiness_status == "NO TRADE":
+        if local_state == "unknown":
+            best_look = "Wait for local flip to print"
+            avoid = "Trading without a tactical pivot"
+            need = "Live local flip or usable intraday anchor"
+            why = "Macro context exists, but the intraday local flip is unavailable."
+        elif local_state == "at_local" or macro_state == "neutral":
+            best_look = "Wait for local flip resolution"
+            avoid = "Do not trade the flip zone"
+            need = "Clear break or reclaim"
+            why = "Macro and tactical context are not resolved."
+        elif midrange:
+            best_look = "Wait for wall interaction"
+            avoid = "Midrange guessing inside structure"
+            need = "Touch or rejection at a real level"
+            why = "Price is too far from a clean trigger level."
+        else:
+            best_look = "Wait for better alignment"
+            avoid = "Forcing entries without alignment"
+            need = "Macro and local bias to agree"
+            why = "Context is conflicted or not close enough to a usable level."
+    elif readiness_status == "CAUTION":
+        if local_state == "unknown":
+            best_look = "Wait for local pivot or wall test"
+            avoid = "Committing before tactical structure appears"
+            need = "Local flip or clear wall reaction"
+            why = "Macro context is present, but tactical intraday bias is still unknown."
+        elif macro_local_conflict:
+            best_look = "Wait for local flip reclaim or rejection"
+            avoid = "Trading against the local pivot"
+            need = "Tactical bias to align with regime"
+            why = "Macro and tactical reads still conflict."
+        else:
+            best_look = action_read
+            avoid = "Late entries away from levels"
+            need = "Tighter proximity to key structure"
+            why = "There is context, but not enough location quality yet."
+    elif readiness_status == "WATCH":
+        if macro_state == "positive" and local_state == "above_local":
+            best_look = "Buy dip above local flip"
+            avoid = "Chasing extension into resistance"
+            need = "Hold above local flip or support"
+            why = "Macro and local structure are supportive, but trigger quality still matters."
+        elif macro_state == "negative" and local_state == "below_local":
+            best_look = "Sell rip below local flip"
+            avoid = "Shorting directly into put wall"
+            need = "Failed reclaim or rejection"
+            why = "Macro and local weakness align, but location still matters."
+        elif macro_state == "positive" and local_state == "below_local":
+            best_look = "Wait for local flip reclaim"
+            avoid = "Buying weak structure below local pivot"
+            need = "Reclaim and hold above local flip"
+            why = "Macro is supportive, but tactical bias remains weak."
+        else:
+            best_look = action_read
+            avoid = "Low-quality midrange entries"
+            need = "Confirmation at the nearest level"
+            why = "Usable context exists, but it is not a clean go yet."
+    else:
+        if macro_state == "negative" and local_state == "below_local":
+            best_look = "Sell rip into failed local reclaim"
+            avoid = "Shorting into put wall support"
+            need = "Rejection candle or lower high"
+            why = "Negative macro and bearish tactical bias are aligned."
+        elif macro_state == "positive" and local_state == "above_local":
+            best_look = "Buy dip above local flip"
+            avoid = "Buying straight into call wall"
+            need = "Pullback hold or reclaim"
+            why = "Positive macro and bullish tactical bias are aligned."
+        else:
+            best_look = action_read
+            avoid = "Trading before confirmation"
+            need = "Execution trigger at the nearest level"
+            why = "The board is aligned enough to act once the trigger prints."
+
+    posture_parts = []
+    if macro_state == "positive":
+        posture_parts.append("Macro positive")
+    elif macro_state == "negative":
+        posture_parts.append("Macro negative")
+    elif macro_state == "neutral":
+        posture_parts.append("Flip zone")
+    if local_state == "above_local":
+        posture_parts.append("local bullish")
+    elif local_state == "below_local":
+        posture_parts.append("local bearish")
+    elif local_state == "at_local":
+        posture_parts.append("local undecided")
+    elif local_state == "unknown":
+        posture_parts.append("local pivot unavailable")
+    if inside_walls:
+        posture_parts.append("inside range")
+    if readiness_status == "NO TRADE":
+        posture_parts.append("no clean trigger")
+    elif readiness_status == "WATCH":
+        posture_parts.append(best_look.lower())
+
+    ladder_rows = [
+        {
+            "key": "call_wall",
+            "label": "Call Wall",
+            "short_label": "CW",
+            "value": call_wall,
+            "distance_points": distances["to_call_wall"],
+            "tone": "call",
+        },
+        {
+            "key": "main_flip",
+            "label": "Main Flip",
+            "short_label": "Main Flip",
+            "value": main_flip,
+            "distance_points": distances["to_main_flip"],
+            "tone": "flip",
+        },
+        {
+            "key": "local_flip",
+            "label": "Local Flip",
+            "short_label": "Local Flip",
+            "value": local_flip,
+            "distance_points": distances["to_local_flip"],
+            "tone": "local",
+        },
+        {
+            "key": "price",
+            "label": "Price",
+            "short_label": "Price",
+            "value": spot,
+            "distance_points": None,
+            "tone": "price",
+        },
+        {
+            "key": "put_wall",
+            "label": "Put Wall",
+            "short_label": "PW",
+            "value": put_wall,
+            "distance_points": distances["to_put_wall"],
+            "tone": "put",
+        },
+    ]
+    ladder_rows = [row for row in ladder_rows if isinstance(row.get("value"), (int, float))]
+    ladder_rows.sort(key=lambda row: float(row.get("value") or 0.0), reverse=True)
+
+    structure_bar_rows = [
+        row for row in (
+            {"key": "put_wall", "label": "PW", "value": put_wall, "tone": "put"},
+            {"key": "main_flip", "label": "Main Flip", "value": main_flip, "tone": "flip"},
+            {"key": "local_flip", "label": "Local Flip", "value": local_flip, "tone": "local"},
+            {"key": "call_wall", "label": "CW", "value": call_wall, "tone": "call"},
+            {"key": "price", "label": "Price", "value": spot, "tone": "price"},
+        )
+        if isinstance(row.get("value"), (int, float))
+    ]
+
+    return {
+        "levels": {
+            "spot": spot,
+            "main_flip": main_flip,
+            "local_flip": local_flip,
+            "call_wall": call_wall,
+            "put_wall": put_wall,
+        },
+        "neutral_band_main": neutral_band_main,
+        "neutral_band_local": neutral_band_local,
+        "raw_net_gamma": raw_net_gamma,
+        "structure_range_state": structure_range_state,
+        "macro_regime": {
+            "state": macro_state,
+            "title": macro_title,
+            "subtitle": macro_subtitle,
+            "band_state": macro_band_state,
+        },
+        "local_bias": {
+            "state": local_state,
+            "title": local_title,
+            "action": local_action,
+            "label": local_short,
+            "context": local_context,
+        },
+        "location": {
+            "summary": location_summary,
+            "zone": zone_label,
+            "nearest_level_name": nearest_name,
+            "nearest_level_value": nearest_value,
+            "distance_points": nearest_distance,
+            "inside_range": inside_walls,
+            "midrange": midrange,
+            "status": status_line,
+            "read": action_read,
+            "bar_rows": structure_bar_rows,
+        },
+        "playbook": {
+            "status": readiness_status,
+            "tone": readiness_tone,
+            "grade": grade,
+            "score": score,
+            "score_pct": score,
+            "best_look": best_look,
+            "avoid": avoid,
+            "need": need,
+            "why": why,
+        },
+        "distances": {
+            "to_main_flip": distances["to_main_flip"],
+            "to_local_flip": distances["to_local_flip"],
+            "to_call_wall": distances["to_call_wall"],
+            "to_put_wall": distances["to_put_wall"],
+        },
+        "distance_rows": [
+            {
+                "key": "main_flip",
+                "label": "Main Flip",
+                "value": abs(float(distances["to_main_flip"])) if isinstance(distances["to_main_flip"], (int, float)) else None,
+                "signed_value": distances["to_main_flip"],
+                "pct": min(100.0, (abs(float(distances["to_main_flip"])) / max(20.0, wall_span)) * 100.0) if isinstance(distances["to_main_flip"], (int, float)) else 0.0,
+                "direction": "up" if isinstance(distances["to_main_flip"], (int, float)) and float(distances["to_main_flip"]) > 0 else "down" if isinstance(distances["to_main_flip"], (int, float)) and float(distances["to_main_flip"]) < 0 else "flat",
+            },
+            {
+                "key": "local_flip",
+                "label": "Local Flip",
+                "value": abs(float(distances["to_local_flip"])) if isinstance(distances["to_local_flip"], (int, float)) else None,
+                "signed_value": distances["to_local_flip"],
+                "pct": min(100.0, (abs(float(distances["to_local_flip"])) / max(20.0, wall_span)) * 100.0) if isinstance(distances["to_local_flip"], (int, float)) else 0.0,
+                "direction": "up" if isinstance(distances["to_local_flip"], (int, float)) and float(distances["to_local_flip"]) > 0 else "down" if isinstance(distances["to_local_flip"], (int, float)) and float(distances["to_local_flip"]) < 0 else "flat",
+            },
+            {
+                "key": "call_wall",
+                "label": "Call Wall",
+                "value": abs(float(distances["to_call_wall"])) if isinstance(distances["to_call_wall"], (int, float)) else None,
+                "signed_value": distances["to_call_wall"],
+                "pct": min(100.0, (abs(float(distances["to_call_wall"])) / max(20.0, wall_span)) * 100.0) if isinstance(distances["to_call_wall"], (int, float)) else 0.0,
+                "direction": "up" if isinstance(distances["to_call_wall"], (int, float)) and float(distances["to_call_wall"]) > 0 else "down" if isinstance(distances["to_call_wall"], (int, float)) and float(distances["to_call_wall"]) < 0 else "flat",
+            },
+            {
+                "key": "put_wall",
+                "label": "Put Wall",
+                "value": abs(float(distances["to_put_wall"])) if isinstance(distances["to_put_wall"], (int, float)) else None,
+                "signed_value": distances["to_put_wall"],
+                "pct": min(100.0, (abs(float(distances["to_put_wall"])) / max(20.0, wall_span)) * 100.0) if isinstance(distances["to_put_wall"], (int, float)) else 0.0,
+                "direction": "up" if isinstance(distances["to_put_wall"], (int, float)) and float(distances["to_put_wall"]) > 0 else "down" if isinstance(distances["to_put_wall"], (int, float)) and float(distances["to_put_wall"]) < 0 else "flat",
+            },
+        ],
+        "conflicts": {
+            "net_gamma_sign_conflict": net_gamma_sign_conflict,
+            "macro_local_conflict": macro_local_conflict,
+        },
+        "posture_summary": " — ".join([part for part in posture_parts if part]),
+        "ladder_rows": ladder_rows,
+    }
+
+
 def _market_pulse_regime_strip_viewmodel(
     *,
     spx_quote: Dict[str, Any],
@@ -3347,36 +3888,13 @@ def _dedupe_market_news_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return list(deduped.values())
 
 
-def _market_news_snapshot() -> Dict[str, Any]:
-    now_et = app_runtime.now_et()
-    fetched_at = _market_news_cache.get("fetched_at")
-    cached_payload = _market_news_cache.get("payload")
-    disk_payload = _load_market_news_disk_cache()
-    if (
-        isinstance(fetched_at, datetime)
-        and isinstance(cached_payload, dict)
-        and (now_et - fetched_at).total_seconds() < MARKET_NEWS_CACHE_TTL_SECONDS
-    ):
-        return cached_payload
-
-    # In environments without Finnhub, prefer cached market news over blocking on
-    # multiple RSS network calls every page load.
-    if (
-        not FINNHUB_API_KEY
-        and isinstance(disk_payload, dict)
-        and bool(
-            (disk_payload.get("market_items") or [])
-            or (disk_payload.get("watchlist_items") or [])
-            or (disk_payload.get("macro_events") or [])
-        )
-    ):
-        cached = dict(disk_payload)
-        cached["source_note"] = str(
-            cached.get("source_note") or "Using cached news/macro snapshot (fast path)."
-        )
-        _market_news_cache["fetched_at"] = now_et
-        _market_news_cache["payload"] = cached
-        return cached
+def _market_news_snapshot(
+    *,
+    now_et: Optional[datetime] = None,
+    quotes: Optional[List[Dict[str, Any]]] = None,
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    now_et = now_et or app_runtime.now_et()
 
     macro_overlay = _forex_factory_usd_week_events(now_et.date())
     macro_events = []
@@ -3396,148 +3914,22 @@ def _market_news_snapshot() -> Dict[str, Any]:
             }
         )
 
-    market_items: List[Dict[str, Any]] = []
-    watchlist_items: List[Dict[str, Any]] = []
-    x_feed_items: List[Dict[str, Any]] = []
-    source_note = "Fresh Yahoo Finance and Investing.com RSS drivers plus Forex Factory macro triggers."
-    pulse_feed_source_note = (
-        "Curated market feed from Yahoo Finance, Investing.com, Forex Factory, Finnhub, and X when available."
-        if X_BEARER_TOKEN
-        else "Curated market feed from Yahoo Finance, Investing.com, Forex Factory, and Finnhub when available."
-    )
-    rss_rows, rss_watchlist_items = _market_news_rss_snapshot(now_et)
-    if FINNHUB_API_KEY:
-        general_payload = _market_pulse_json_request_any(
-            FINNHUB_BASE_URL + "/news",
-            {"category": "general", "token": FINNHUB_API_KEY},
-            timeout=8,
-        )
-        market_rows = general_payload if isinstance(general_payload, list) else []
-        relevant_general = [
-            row
-            for row in market_rows
-            if isinstance(row, dict)
-            and _market_news_score(row) >= 4
-            and _market_news_is_recent(row.get("datetime"), now_et, MARKET_NEWS_MAX_AGE_SECONDS)
-        ]
-        combined_rows = _dedupe_market_news_rows(list(rss_rows) + relevant_general)
-        combined_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
-        market_items = [
-            _market_news_item(row, now_et=now_et) for row in combined_rows[:MARKET_NEWS_FEED_LIMIT]
-        ]
-
-        watchlist_by_symbol = {
-            str(item.get("symbol") or "").strip().upper(): item
-            for item in rss_watchlist_items
-            if isinstance(item, dict) and str(item.get("symbol") or "").strip()
-        }
-        from_day = (now_et.date() - timedelta(days=5)).isoformat()
-        to_day = now_et.date().isoformat()
-        for symbol in MARKET_PULSE_WATCHLIST_NEWS_SYMBOLS:
-            payload = _market_pulse_json_request_any(
-                FINNHUB_BASE_URL + "/company-news",
-                {"symbol": symbol, "from": from_day, "to": to_day, "token": FINNHUB_API_KEY},
-                timeout=8,
-            )
-            if not isinstance(payload, list):
-                continue
-            rows = [
-                row
-                for row in payload
-                if isinstance(row, dict)
-                and str(row.get("headline") or "").strip()
-                and _market_news_is_recent(
-                    row.get("datetime"), now_et, WATCHLIST_NEWS_MAX_AGE_SECONDS
-                )
-            ]
-            rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
-            best = rows[0] if rows else None
-            if best is None:
-                continue
-            watchlist_by_symbol[symbol] = (
-                _market_news_item(best, now_et=now_et, symbol=symbol, forced_tag=symbol)
-            )
-        watchlist_items = list(watchlist_by_symbol.values())
-        source_note = "Fresh Yahoo Finance + Investing.com RSS with Finnhub drivers and Forex Factory macro triggers."
-    else:
-        all_rows = [row for row in rss_rows if isinstance(row, dict)]
-        all_rows.sort(key=lambda row: _market_news_row_priority(row, now_et))
-        market_items = [
-            _market_news_item(row, now_et=now_et) for row in all_rows[:MARKET_NEWS_FEED_LIMIT]
-        ]
-        watchlist_items = list(rss_watchlist_items)
-
-    x_feed_items = _market_pulse_x_feed(now_et)
-    pulse_feed_items = _market_news_compose_feed(
-        market_items=market_items,
-        macro_events=macro_events,
-        watchlist_items=watchlist_items,
-        x_feed_items=x_feed_items,
-    )
-    tracked_sources = ["Yahoo Finance", "Investing.com", "Forex Factory"]
-    if FINNHUB_API_KEY:
-        tracked_sources.append("Finnhub")
-    if X_BEARER_TOKEN:
-        tracked_sources.append("X")
+    feed_snapshot = build_market_feed_snapshot(now_et=now_et, quotes=quotes, context=context)
     result = {
-        "available": bool(market_items or watchlist_items or macro_events),
-        "source_note": source_note,
+        "available": bool(feed_snapshot.get("top_items") or macro_events),
+        "source_note": str(feed_snapshot.get("source_note") or ""),
         "macro_events": macro_events,
-        "market_items": market_items,
-        "watchlist_items": watchlist_items,
-        "pulse_feed_available": bool(pulse_feed_items),
-        "pulse_feed_source_note": pulse_feed_source_note,
-        "pulse_feed_accounts": tracked_sources,
-        "pulse_feed_items": pulse_feed_items,
-        "fetched_at": now_et.isoformat(),
+        "market_items": list(feed_snapshot.get("market_items") or []),
+        "watchlist_items": [],
+        "pulse_feed_available": bool(feed_snapshot.get("top_items")),
+        "pulse_feed_source_note": str(feed_snapshot.get("source_note") or ""),
+        "pulse_feed_accounts": list(feed_snapshot.get("sources_monitored") or []),
+        "pulse_feed_items": list(feed_snapshot.get("top_items") or []),
+        "fetched_at": str(feed_snapshot.get("updated_at") or now_et.isoformat()),
+        "market_feed_snapshot": feed_snapshot,
     }
-    if isinstance(disk_payload, dict):
-        cached_macro = list(disk_payload.get("macro_events") or [])
-        cached_market = list(disk_payload.get("market_items") or [])
-        cached_watch = list(disk_payload.get("watchlist_items") or [])
-        cached_pulse = list(disk_payload.get("pulse_feed_items") or [])
-        merged = False
-        if not result["macro_events"] and cached_macro:
-            result["macro_events"] = cached_macro[:6]
-            merged = True
-        if not result["market_items"] and cached_market:
-            result["market_items"] = cached_market[:MARKET_NEWS_FEED_LIMIT]
-            merged = True
-        if not result["watchlist_items"] and cached_watch:
-            result["watchlist_items"] = cached_watch
-            merged = True
-        if not result["pulse_feed_items"] and cached_pulse:
-            result["pulse_feed_items"] = cached_pulse[:MARKET_PULSE_X_FEED_LIMIT]
-            result["pulse_feed_available"] = True
-            merged = True
-        if merged:
-            result["available"] = True
-            result["source_note"] = (
-                "Live + cached merge (restored missing fresh sections where possible)."
-            )
-    if (
-        (not result["available"])
-        and isinstance(disk_payload, dict)
-        and bool(
-            (disk_payload.get("market_items") or [])
-            or (disk_payload.get("watchlist_items") or [])
-            or (disk_payload.get("macro_events") or [])
-        )
-    ):
-        fallback = dict(disk_payload)
-        fallback["source_note"] = (
-            "Using cached news/macro snapshot (live fetch unavailable). Headline freshness may be degraded."
-        )
-        fallback["pulse_feed_available"] = bool(fallback.get("pulse_feed_items"))
-        fallback.setdefault("pulse_feed_source_note", pulse_feed_source_note)
-        fallback.setdefault("pulse_feed_accounts", tracked_sources)
-        _market_news_cache["fetched_at"] = now_et
-        _market_news_cache["payload"] = fallback
-        return fallback
     _market_news_cache["fetched_at"] = now_et
     _market_news_cache["payload"] = result
-    if result["available"]:
-        _save_market_news_disk_cache(result)
     return result
 
 
@@ -3922,126 +4314,103 @@ def _dashboard_decision_viewmodel(
     readiness: Dict[str, Any],
     dashboard_vix: Dict[str, Any],
     gamma_strip: Optional[Dict[str, Any]] = None,
+    execution_model: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     def _trust_value(field: str, default: Any = "") -> Any:
         if isinstance(data_trust, dict):
             return data_trust.get(field, default)
         return getattr(data_trust, field, default)
 
-    vix = None
-    try:
-        raw_vix = dashboard_vix.get("price")
-        vix = float(raw_vix) if raw_vix is not None else None
-    except Exception:
-        vix = None
-    if str(_trust_value("tone") or "").strip() == "critical":
-        risk_size = "Stand down"
-        status = "Blocked until sync / ledger trust clears"
+    model = dict(execution_model or {})
+    macro = dict(model.get("macro_regime") or {})
+    local = dict(model.get("local_bias") or {})
+    location = dict(model.get("location") or {})
+    playbook = dict(model.get("playbook") or {})
+    conflicts = dict(model.get("conflicts") or {})
+    posture_summary = str(model.get("posture_summary") or "").strip()
+    levels = dict(model.get("levels") or {})
+    gamma_state = str(macro.get("state") or "").strip()
+    local_state = str(local.get("state") or "").strip()
+    playbook_status = str(playbook.get("status") or "").strip()
+    playbook_tone = str(playbook.get("tone") or "").strip()
+    snapshot_unavailable = (
+        gamma_state in {"", "unknown"}
+        or not any(isinstance(levels.get(key), (int, float)) for key in ("main_flip", "call_wall", "put_wall"))
+    )
+
+    if snapshot_unavailable:
+        bias = "Unavailable"
+    elif gamma_state == "positive" and local_state == "above_local":
+        bias = "Buy dips bias"
+    elif gamma_state == "negative" and local_state == "below_local":
+        bias = "Sell rips bias"
+    elif gamma_state == "positive" and local_state == "unknown":
+        bias = "Positive / degraded local read"
+    elif gamma_state == "negative" and local_state == "unknown":
+        bias = "Negative / degraded local read"
+    elif (
+        gamma_state == "neutral"
+        or local_state == "at_local"
+        or bool(location.get("midrange"))
+        or bool(conflicts.get("macro_local_conflict"))
+    ):
+        bias = "Two-way / responsive"
+    else:
+        bias = "Two-way / responsive"
+
+    if str(_trust_value("tone") or "").strip() == "critical" or snapshot_unavailable:
+        risk_size = "No trade / stand down"
+        status = "Stand down until structure is valid"
         tone = "negative"
-    elif vix is not None and vix >= 22:
+    elif playbook_status == "GO":
+        risk_size = "Normal size"
+        status = "Aligned if trigger confirms"
+        tone = "positive"
+    elif playbook_status in {"WATCH", "CAUTION"}:
         risk_size = "Reduced size"
         status = "Ready only if structure confirms cleanly"
         tone = "warning"
-    elif readiness.get("pct", 0.0) >= 100.0:
-        risk_size = "Normal size"
-        status = "Ready if acceptance confirms"
-        tone = "positive"
     else:
-        risk_size = "Probe size"
-        status = "Wait for missing prep to clear"
-        tone = "warning"
+        risk_size = "No trade / stand down"
+        status = "No clean trade right now"
+        tone = "negative"
+
+    plan = str(playbook.get("best_look") or "").strip() or str(daily_brief.get("plan_a") or "Wait")
+    trade_gate = (
+        str(playbook.get("need") or "").strip()
+        or str(playbook.get("avoid") or "").strip()
+        or str(daily_brief.get("no_trade") or "").strip()
+        or "Wait"
+    )
     return {
-        "bias": str(daily_brief.get("bias_label") or "Mixed bias"),
-        "plan": str(daily_brief.get("plan_a") or "Trade only the clearest structure."),
+        "bias": bias,
+        "plan": plan,
         "risk_size": risk_size,
         "status": status,
         "status_tone": tone,
-        "trade_gate": str(daily_brief.get("no_trade") or ""),
+        "trade_gate": trade_gate,
         "risk_posture_title": risk_posture_title,
         "risk_posture_detail": risk_posture_detail,
         "gamma_strip": gamma_strip or {"entries": [], "headline": "Structure unavailable"},
+        "posture_summary": posture_summary or str(daily_brief.get("headline") or ""),
+        "playbook_status": playbook_status or "NO TRADE",
+        "playbook_score": playbook.get("score"),
+        "playbook_grade": playbook.get("grade"),
+        "local_bias_state": local_state or "unknown",
     }
 
 
 def _dashboard_gamma_strip_viewmodel(
     *,
+    execution_model: Optional[Dict[str, Any]],
     gamma_snapshot: Dict[str, Any],
-    dashboard_spx: Dict[str, Any],
-    dashboard_vix: Dict[str, Any],
 ) -> Dict[str, Any]:
-    gamma_priority = build_spx_priority_context(dashboard_spx, gamma_snapshot)
+    def _fmt_level(value: Any) -> str:
+        return f"{float(value):.0f}" if isinstance(value, (int, float)) else "--"
 
-    def _num(*values: Any) -> Optional[float]:
-        for value in values:
-            try:
-                if value is None or str(value).strip() == "":
-                    continue
-                return float(value)
-            except Exception:
-                continue
-        return None
-
-    def _fmt_level(value: Optional[float]) -> str:
-        return f"{value:.0f}" if value is not None else "--"
-
-    spot = _num((dashboard_spx or {}).get("price"), ((gamma_priority.get("input") or {}).get("spot")))
-    main_flip = _num(
-        gamma_snapshot.get("gamma_flip_combined_basket"),
-        gamma_snapshot.get("gamma_flip"),
-        ((gamma_priority.get("input") or {}).get("gammaFlip")),
-    )
-    call_wall = _num(
-        gamma_snapshot.get("call_wall_aggregated_gamma"),
-        gamma_snapshot.get("call_wall"),
-        ((gamma_priority.get("input") or {}).get("callWall")),
-    )
-    put_wall = _num(
-        gamma_snapshot.get("put_wall_aggregated_gamma"),
-        gamma_snapshot.get("put_wall"),
-        ((gamma_priority.get("input") or {}).get("putWall")),
-    )
-    next_call = _num(
-        gamma_snapshot.get("next_call_wall_above"),
-        ((gamma_priority.get("metrics") or {}).get("next_call_wall_above")),
-    )
-    next_put = _num(
-        gamma_snapshot.get("next_put_wall_below"),
-        ((gamma_priority.get("metrics") or {}).get("next_put_wall_below")),
-    )
-    local_flip = None
-    if spot is not None and (next_call is not None or next_put is not None):
-        candidates = []
-        if next_call is not None:
-            candidates.append((abs(next_call - spot), next_call))
-        if next_put is not None:
-            candidates.append((abs(next_put - spot), next_put))
-        if candidates:
-            local_flip = sorted(candidates, key=lambda item: item[0])[0][1]
-
-    net_gamma = _num(gamma_snapshot.get("net_gex_total"), ((gamma_priority.get("input") or {}).get("netGamma")))
-    regime_raw = str(gamma_snapshot.get("regime") or ((gamma_priority.get("input") or {}).get("regime")) or "").strip()
-    regime_tone = "info"
-    if regime_raw:
-        regime_label = regime_raw.replace("_", " ").title()
-        lowered = regime_raw.lower()
-        if "positive" in lowered:
-            regime_tone = "positive"
-        elif "negative" in lowered:
-            regime_tone = "negative"
-    elif net_gamma is not None:
-        regime_label = "Positive gamma" if net_gamma >= 0 else "Negative gamma"
-        regime_tone = "positive" if net_gamma >= 0 else "negative"
-    else:
-        vix_value = _num(dashboard_vix.get("price"))
-        if vix_value is not None and vix_value < 16:
-            regime_label = "Contained vol"
-        elif vix_value is not None and vix_value < 21:
-            regime_label = "Balanced"
-        elif vix_value is not None:
-            regime_label = "Expansion"
-        else:
-            regime_label = "--"
-
+    model = dict(execution_model or {})
+    macro = dict(model.get("macro_regime") or {})
+    levels = dict(model.get("levels") or {})
     snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
     snapshot_label = str(gamma_snapshot.get("snapshot_status_label") or "").strip()
     snapshot_detail = str(gamma_snapshot.get("snapshot_status_detail") or "").strip()
@@ -4051,9 +4420,13 @@ def _dashboard_gamma_strip_viewmodel(
         or gamma_snapshot.get("asof")
     )
     updated_label = _format_iso_et_label(updated_raw)
+    regime_label = str(macro.get("title") or "Unavailable")
+    regime_state = str(macro.get("state") or "").strip()
+    regime_tone = "positive" if regime_state == "positive" else "negative" if regime_state == "negative" else "warning" if regime_state == "neutral" else "info"
     has_levels = any(
-        value is not None for value in (main_flip, local_flip, call_wall, put_wall)
-    ) or regime_label not in {"", "--"}
+        isinstance(levels.get(key), (int, float))
+        for key in ("main_flip", "local_flip", "call_wall", "put_wall")
+    ) or regime_label not in {"", "--", "Unavailable", "REGIME UNKNOWN"}
 
     state = "live"
     status_text = snapshot_label or "Live gamma snapshot"
@@ -4084,7 +4457,7 @@ def _dashboard_gamma_strip_viewmodel(
         {
             "key": "main_flip",
             "label": "Main Flip",
-            "value": _fmt_level(main_flip),
+            "value": _fmt_level(levels.get("main_flip")),
             "emphasis": "strong",
             "tone": "info",
             "glow": False,
@@ -4092,7 +4465,7 @@ def _dashboard_gamma_strip_viewmodel(
         {
             "key": "local_flip",
             "label": "Local Flip",
-            "value": _fmt_level(local_flip),
+            "value": _fmt_level(levels.get("local_flip")),
             "emphasis": "quiet",
             "tone": "",
             "glow": False,
@@ -4100,7 +4473,7 @@ def _dashboard_gamma_strip_viewmodel(
         {
             "key": "call_wall",
             "label": "Call Wall",
-            "value": _fmt_level(call_wall),
+            "value": _fmt_level(levels.get("call_wall")),
             "emphasis": "medium",
             "tone": "negative",
             "glow": False,
@@ -4108,7 +4481,7 @@ def _dashboard_gamma_strip_viewmodel(
         {
             "key": "put_wall",
             "label": "Put Wall",
-            "value": _fmt_level(put_wall),
+            "value": _fmt_level(levels.get("put_wall")),
             "emphasis": "medium",
             "tone": "positive",
             "glow": False,
@@ -4844,13 +5217,22 @@ def dashboard():
                 enriched["day_range_compact"] = (
                     f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
                 )
-            elif intraday_series:
-                day_low = min(intraday_series)
-                day_high = max(intraday_series)
-                enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
-                enriched["day_range_compact"] = (
-                    f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
-                )
+            vwap_num = 0.0
+            vwap_den = 0.0
+            for r in full_intraday_rows:
+                if not isinstance(r, dict):
+                    continue
+                close_v = r.get("close")
+                vol_v = r.get("volume")
+                if (
+                    isinstance(close_v, (int, float))
+                    and isinstance(vol_v, (int, float))
+                    and float(vol_v) > 0
+                ):
+                    vwap_num += float(close_v) * float(vol_v)
+                    vwap_den += float(vol_v)
+            if vwap_den > 0:
+                enriched["vwap"] = vwap_num / vwap_den
         elif intraday_series:
             day_low = min(intraday_series)
             day_high = max(intraday_series)
@@ -4966,6 +5348,19 @@ def dashboard():
         news_snapshot = _market_news_snapshot()
     except Exception:
         news_snapshot = {"macro_events": []}
+    spx_priority_context = build_spx_priority_context(dashboard_spx, gamma_snapshot)
+    dashboard_execution_chart = _market_pulse_execution_chart_viewmodel(
+        spx_quote=dashboard_spx,
+        gamma_snapshot=gamma_snapshot,
+        macro_events=list(news_snapshot.get("macro_events") or []),
+        now_et=now_et,
+    )
+    dashboard_execution_model = _market_pulse_execution_model(
+        spx_quote=dashboard_spx,
+        gamma_snapshot=gamma_snapshot,
+        execution_chart=dashboard_execution_chart,
+        spx_priority_context=spx_priority_context,
+    )
     daily_brief = _dashboard_daily_brief_viewmodel(
         now_et=now_et,
         dashboard_spx=dashboard_spx,
@@ -5004,16 +5399,16 @@ def dashboard():
             "action": "Review" if brief_ready else "Tune",
         },
         {
-            "label": "Session data",
-            "status": "Loaded" if today_count else "Missing",
+            "label": "Post-session import",
+            "status": "Loaded" if today_count else "Pending",
             "detail": (
-                f"{today_count} trade{'s' if today_count != 1 else ''} synced for today."
+                f"{today_count} trade{'s' if today_count != 1 else ''} loaded for today."
                 if today_count
-                else "No statement synced for today's session yet."
+                else "No trades loaded yet. Import after the session if needed."
             ),
             "done": today_count > 0,
             "href": "/trades" if today_count else "/trades/upload/statement",
-            "action": "Open" if today_count else "Upload",
+            "action": "Open" if today_count else "Import",
         },
         {
             "label": "Journal today",
@@ -5062,9 +5457,8 @@ def dashboard():
         data_trust=data_trust,
     )
     gamma_strip = _dashboard_gamma_strip_viewmodel(
+        execution_model=dashboard_execution_model,
         gamma_snapshot=gamma_snapshot,
-        dashboard_spx=dashboard_spx,
-        dashboard_vix=dashboard_vix,
     )
     decision_panel = _dashboard_decision_viewmodel(
         daily_brief=daily_brief,
@@ -5074,6 +5468,7 @@ def dashboard():
         readiness=readiness,
         dashboard_vix=dashboard_vix,
         gamma_strip=gamma_strip,
+        execution_model=dashboard_execution_model,
     )
     pace_card = _dashboard_pace_viewmodel(
         proj,
@@ -5137,6 +5532,7 @@ def dashboard():
         dashboard_vix=dashboard_vix,
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
+        dashboard_execution_model=dashboard_execution_model,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
         snapshot_bar=snapshot_bar,
@@ -5315,7 +5711,6 @@ def market_pulse_page():
             options_contracts = list(options_spx.get("contracts") or [])
         except Exception:
             options_contracts = []
-    news_snapshot = _market_news_snapshot()
     gamma_updated_label = (
         _format_iso_et_label(
             gamma_snapshot.get("last_successful_compute")
@@ -5385,6 +5780,8 @@ def market_pulse_page():
         for q in quotes
         if isinstance(q, dict) and str(q.get("label") or q.get("symbol") or "").strip()
     }
+    context = _market_pulse_context(quotes)
+    news_snapshot = _market_news_snapshot(now_et=now_et, quotes=quotes, context=context)
     spx_priority_context = build_spx_priority_context(
         spx_quote=spx_quote, gamma_snapshot=gamma_snapshot
     )
@@ -5394,30 +5791,15 @@ def market_pulse_page():
         macro_events=list(news_snapshot.get("macro_events") or []),
         now_et=now_et,
     )
-    regime_strip = _market_pulse_regime_strip_viewmodel(
+    execution_model = _market_pulse_execution_model(
         spx_quote=spx_quote,
         gamma_snapshot=gamma_snapshot,
         execution_chart=execution_chart,
         spx_priority_context=spx_priority_context,
     )
-    structure_location = _market_pulse_structure_location_viewmodel(
-        spot=spx_quote.get("price"),
-        gamma_flip=gamma_snapshot.get("gamma_flip_combined_basket"),
-        call_wall=gamma_snapshot.get("call_wall_aggregated_gamma"),
-        put_wall=gamma_snapshot.get("put_wall_aggregated_gamma"),
-    )
-    distance_rows = _market_pulse_distances_viewmodel(
-        spx_quote=spx_quote,
-        spx_priority_context=spx_priority_context,
-        gamma_snapshot=gamma_snapshot,
-    )
-    playbook = _market_pulse_playbook_viewmodel(
-        execution_chart=execution_chart,
-        spx_priority_context=spx_priority_context,
-    )
+    execution_chart_payload = {**execution_chart, "execution_model": execution_model}
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)
-    context = _market_pulse_context(quotes)
     gamma_quality = _gamma_data_quality(gamma_snapshot, quotes, now_et)
     source_health = build_market_source_health(snapshot, news_snapshot, gamma_snapshot, now_et)
     integrity = dict(snapshot.get("integrity") or {})
@@ -5462,10 +5844,8 @@ def market_pulse_page():
         market_now_iso=now_et.isoformat(),
         series_points=series_points,
         execution_chart=execution_chart,
-        regime_strip=regime_strip,
-        structure_location=structure_location,
-        distance_rows=distance_rows,
-        playbook=playbook,
+        execution_chart_payload=execution_chart_payload,
+        execution_model=execution_model,
         gamma_csv_href=gamma_csv_href,
         gamma_png_href=gamma_png_href,
         options_contracts=options_contracts,
@@ -5480,6 +5860,7 @@ def market_pulse_page():
         pulse_feed_items=list(news_snapshot.get("pulse_feed_items") or []),
         pulse_feed_accounts=list(news_snapshot.get("pulse_feed_accounts") or []),
         watchlist_items=list(news_snapshot.get("watchlist_items") or []),
+        market_feed_snapshot=dict(news_snapshot.get("market_feed_snapshot") or {}),
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -5496,10 +5877,12 @@ def market_pulse_news_feed_api():
         return jsonify({"ok": False, "error": "auth_required"}), 401
     news_snapshot = _market_news_snapshot()
     items = list(news_snapshot.get("pulse_feed_items") or [])
+    feed_snapshot = dict(news_snapshot.get("market_feed_snapshot") or {})
     return jsonify(
         {
             "ok": True,
             "items": items[:MARKET_NEWS_FEED_LIMIT],
+            "status": str(feed_snapshot.get("status") or ("live" if news_snapshot.get("pulse_feed_available") else "quiet")),
             "source_note": str(
                 news_snapshot.get("pulse_feed_source_note")
                 or news_snapshot.get("source_note")
@@ -5508,6 +5891,8 @@ def market_pulse_news_feed_api():
             "available": bool(news_snapshot.get("pulse_feed_available")),
             "fetched_at": str(news_snapshot.get("fetched_at") or ""),
             "tracked_accounts": list(news_snapshot.get("pulse_feed_accounts") or []),
+            "sources_monitored": list(feed_snapshot.get("sources_monitored") or news_snapshot.get("pulse_feed_accounts") or []),
+            "now_summary": dict(feed_snapshot.get("now_summary") or {}),
         }
     )
 
