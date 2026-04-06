@@ -381,6 +381,8 @@ def get_trading_window_state() -> dict[str, Any]:
         upcoming_notice_minutes = TRADING_WINDOW_UPCOMING_NOTICE_MINUTES
     upcoming_notice_minutes = max(0, min(240, int(upcoming_notice_minutes)))
     minutes_until_start = start_min - now_min
+    next_change_minutes: int | None = None
+    primary_reason = "Opening volatility protection"
     if not enabled:
         state = "off"
         state_label = "Do Not Trade"
@@ -389,17 +391,22 @@ def get_trading_window_state() -> dict[str, Any]:
         rail_detail = "Window disabled"
         pill_tone = "negative"
         show_banner = False
+        next_change_minutes = None
+        primary_reason = "Window guidance disabled"
     elif not is_trading_day and not using_test_clock:
         state = "closed"
         state_label = "Do Not Trade"
         if session_day.weekday() >= 5:
             message = "Trading window is hidden because today is not a trading day."
+            primary_reason = "Weekend protection"
         else:
             message = f"Trading window is hidden for {holiday_name}."
+            primary_reason = holiday_name or "Market closed"
         rail_label = "Do Not Trade"
         rail_detail = "Closed Today"
         pill_tone = "negative"
         show_banner = False
+        next_change_minutes = None
     elif now_min < start_min:
         state = "upcoming" if minutes_until_start <= upcoming_notice_minutes else "pending"
         state_label = "Do Not Trade"
@@ -408,14 +415,18 @@ def get_trading_window_state() -> dict[str, Any]:
         rail_detail = f"Starts {start_et} ET"
         pill_tone = "negative"
         show_banner = state == "upcoming"
+        next_change_minutes = max(0, minutes_until_start)
+        primary_reason = "Opening volatility protection"
     elif now_min < done_min:
         state = "active"
-        state_label = "Trade Window Open"
+        state_label = "Trading Allowed"
         message = f"Execution window is open. Be done by {done_by_et} ET."
-        rail_label = "Good To Trade"
+        rail_label = "Trading Allowed"
         rail_detail = f"Done By {done_by_et} ET"
         pill_tone = "positive"
         show_banner = True
+        next_change_minutes = max(0, done_min - now_min)
+        primary_reason = "Inside execution window"
     else:
         state = "stop"
         state_label = "Done Trading"
@@ -424,6 +435,12 @@ def get_trading_window_state() -> dict[str, Any]:
         rail_detail = f"Closed {done_by_et} ET"
         pill_tone = "negative"
         show_banner = False
+        next_change_minutes = None
+        primary_reason = "Session cutoff reached"
+
+    progress_pct = 0.0
+    if done_min > start_min:
+        progress_pct = max(0.0, min(100.0, ((now_min - start_min) / (done_min - start_min)) * 100.0))
 
     return {
         "enabled": enabled,
@@ -445,6 +462,13 @@ def get_trading_window_state() -> dict[str, Any]:
         "rail_detail": rail_detail,
         "message": message,
         "now_label": now_et.strftime("%a %b %-d · %I:%M %p ET"),
+        "now_time_et": now_et.strftime("%H:%M"),
+        "now_min": now_min,
+        "start_min": start_min,
+        "done_min": done_min,
+        "progress_pct": progress_pct,
+        "next_change_minutes": next_change_minutes,
+        "primary_reason": primary_reason,
     }
 
 

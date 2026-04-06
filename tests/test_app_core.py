@@ -274,10 +274,10 @@ def test_dashboard_renders_accountability_checklist(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Command Tools" in body
+    assert "Tools" in body
     assert "Daily accountability checklist" in body
     assert "Brief locked" in body
-    assert "Session data" in body
+    assert "Post-session import" in body
     assert "Journal today" in body
     assert "No debrief or quick capture logged for today yet." in body
 
@@ -531,6 +531,15 @@ def test_dashboard_links_to_auto_debrief_draft_when_trades_exist(client):
     body = resp.get_data(as_text=True)
     assert "Auto Debrief Draft" in body
     assert "auto_draft=1" in body
+
+
+def test_dashboard_primary_decision_actions_link_to_market_pulse_trade_gate_and_calendar(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'href="/market-pulse?refresh=1"' in body
+    assert 'href="/ops/trading-window"' in body
+    assert 'href="/calendar"' in body
 
 
 def test_vanquish_blocklist_download_endpoint(client):
@@ -949,7 +958,7 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     monkeypatch.setattr(
         core_service,
         "_market_news_snapshot",
-        lambda: {
+        lambda **_: {
             "available": False,
             "source_note": "",
             "macro_events": [],
@@ -993,7 +1002,7 @@ def test_market_pulse_news_surface_keeps_tape_drivers_and_removes_watchlist_bloc
     monkeypatch.setattr(
         core_service,
         "_market_news_snapshot",
-        lambda: {
+        lambda **_: {
             "available": True,
             "source_note": "Fresh Finnhub drivers plus Forex Factory macro triggers.",
             "macro_events": [
@@ -1061,7 +1070,7 @@ def test_market_pulse_refresh_query_forces_snapshot_refresh(client, monkeypatch)
     monkeypatch.setattr(
         core_service,
         "_market_news_snapshot",
-        lambda: {
+        lambda **_: {
             "available": False,
             "source_note": "",
             "macro_events": [],
@@ -1198,7 +1207,7 @@ def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):
     monkeypatch.setattr(
         core_service,
         "_market_news_snapshot",
-        lambda: {
+        lambda **_: {
             "available": False,
             "source_note": "",
             "macro_events": [],
@@ -1238,12 +1247,27 @@ def test_market_pulse_empty_state_uses_consistent_feed_copy(client, monkeypatch)
     monkeypatch.setattr(
         core_service,
         "_market_news_snapshot",
-        lambda: {
+        lambda **_: {
             "available": False,
-            "source_note": "No live headlines loaded",
+            "source_note": "No major market drivers in the current refresh window. Monitoring tracked sources for fresh catalysts.",
             "macro_events": [],
             "market_items": [],
             "watchlist_items": [],
+            "pulse_feed_available": False,
+            "pulse_feed_source_note": "No major market drivers in the current refresh window. Monitoring tracked sources for fresh catalysts.",
+            "pulse_feed_accounts": ["Reuters", "Federal Reserve", "Yahoo Finance", "MarketWatch"],
+            "pulse_feed_items": [],
+            "market_feed_snapshot": {
+                "status": "quiet",
+                "source_note": "No major market drivers in the current refresh window. Monitoring tracked sources for fresh catalysts.",
+                "sources_monitored": ["Reuters", "Federal Reserve", "Yahoo Finance", "MarketWatch"],
+                "now_summary": {
+                    "spx_focus": "Watching SPX and leadership rotation.",
+                    "leadership": "Mixed tape",
+                    "weakness": "No clear laggard",
+                    "feed_state": "Monitoring Reuters, Federal Reserve, Yahoo Finance, and MarketWatch",
+                },
+            },
         },
     )
     monkeypatch.setattr(core_service, "_market_pulse_market_hours", lambda now_et: False)
@@ -1272,6 +1296,109 @@ def test_market_pulse_empty_state_uses_consistent_feed_copy(client, monkeypatch)
     assert "No trend" in body
     assert "Awaiting contract rows." in body
     assert "Fallback Snapshot" in body
+    assert "No major market drivers in the current refresh window" in body
+    assert "Monitoring tracked sources for fresh catalysts." in body
+
+
+def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_snapshot",
+        lambda **_: {
+            "available": True,
+            "fetched_at": "Apr 5, 2026 9:45 AM ET",
+            "source_label": "Yahoo Finance chart feed",
+            "source_note": "Live snapshot",
+            "quotes": [],
+            "integrity": {},
+        },
+    )
+    monkeypatch.setattr(
+        core_service,
+        "_market_news_snapshot",
+        lambda **_: {
+            "available": True,
+            "source_note": "RSS feed live",
+            "macro_events": [],
+            "market_items": [],
+            "watchlist_items": [],
+            "pulse_feed_available": True,
+            "pulse_feed_source_note": "RSS feed live",
+            "pulse_feed_accounts": ["Reuters", "Federal Reserve", "Yahoo Finance", "MarketWatch"],
+            "pulse_feed_items": [
+                {
+                    "headline": "FOMC minutes point to higher rates sensitivity",
+                    "summary": "Macro desks are focused on yields and policy language.",
+                    "source_label": "Reuters",
+                    "url": "https://example.com/1",
+                    "published_label": "5m ago",
+                    "impact": "high",
+                    "impact_label": "HIGH",
+                    "category": "macro",
+                    "category_label": "Macro",
+                },
+                {
+                    "headline": "Treasury yields climb as SPX futures fade",
+                    "summary": "Rates pressure remains the lead market driver.",
+                    "source_label": "MarketWatch",
+                    "url": "https://example.com/2",
+                    "published_label": "9m ago",
+                    "impact": "high",
+                    "impact_label": "HIGH",
+                    "category": "market",
+                    "category_label": "Market",
+                },
+                {
+                    "headline": "Nvidia extends leadership while Tesla lags",
+                    "summary": "Mega-cap divergence is driving tape selection.",
+                    "source_label": "Yahoo Finance",
+                    "url": "https://example.com/3",
+                    "published_label": "14m ago",
+                    "impact": "medium",
+                    "impact_label": "MED",
+                    "category": "company",
+                    "category_label": "Company",
+                },
+            ],
+            "market_feed_snapshot": {
+                "status": "live",
+                "source_note": "RSS feed live",
+                "sources_monitored": ["Reuters", "Federal Reserve", "Yahoo Finance", "MarketWatch"],
+                "now_summary": {
+                    "spx_focus": "SPX flat, QQQ slightly strong, small caps leading",
+                    "leadership": "Broad risk-on",
+                    "weakness": "TSLA -5.4%",
+                    "feed_state": "Monitoring Reuters, Fed, Yahoo Finance, and MarketWatch",
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(core_service, "_market_pulse_market_hours", lambda now_et: True)
+
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import options_panel_service
+
+    monkeypatch.setattr(gamma_map_service, "start_gamma_worker_once", lambda: None)
+    monkeypatch.setattr(options_panel_service, "start_options_worker_once", lambda: None)
+    monkeypatch.setattr(
+        gamma_map_service,
+        "get_gamma_snapshot",
+        lambda: {"asof": "", "regime": "unavailable", "bias": "insufficient_data"},
+    )
+    monkeypatch.setattr(
+        options_panel_service,
+        "get_options_snapshot",
+        lambda: {"asof": "", "symbols": {"SPX": {"contracts": []}}},
+    )
+
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "FOMC minutes point to higher rates sensitivity" in body
+    assert "Treasury yields climb as SPX futures fade" in body
+    assert "Nvidia extends leadership while Tesla lags" in body
+    assert "Broad risk-on" in body
+    assert "TSLA -5.4%" in body
 
 
 def test_calculator_shows_projected_balances_for_stop_and_target(client):

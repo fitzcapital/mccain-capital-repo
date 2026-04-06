@@ -1,101 +1,188 @@
 {% set tw = trading_window or {} %}
-<div class="card pageHero"><div class="toolbar">
+{% set is_allowed = tw.state == 'active' and tw.enabled %}
+{% set is_warning = tw.state in ['upcoming', 'pending'] and tw.enabled %}
+{% set status_text = 'TRADING ALLOWED' if is_allowed else 'DO NOT TRADE' %}
+{% set strip_class = 'is-active' if is_allowed else ('is-warning' if is_warning else 'is-stop') %}
+{% set next_change = (tw.next_change_minutes ~ ' min') if tw.next_change_minutes is not none else 'Next session' %}
+{% set state_chip = 'Weekend' if tw.state == 'closed' and not tw.using_test_clock and not tw.holiday_name else
+                    (tw.holiday_name if tw.state == 'closed' and tw.holiday_name else
+                    ('Pending Open' if tw.state in ['upcoming', 'pending'] else
+                    ('Live Window' if tw.state == 'active' else
+                    ('Window Off' if tw.state == 'off' else 'Closed')))) %}
+{% set show_timeline = tw.enabled and (tw.is_trading_day or tw.using_test_clock) %}
+{% set progress_state = 'Active now' if is_allowed else ('Opens soon' if is_warning else ('Closed today' if tw.state == 'closed' else 'Blocked')) %}
+{% set progress_caption = 'Simulated session clock' if tw.using_test_clock else ('Inside active guardrail window' if is_allowed else ('Upcoming guardrail window' if is_warning else ('Weekend protection active' if tw.state == 'closed' and not tw.holiday_name else ('Holiday protection active' if tw.holiday_name else ('Window disabled' if tw.state == 'off' else tw.primary_reason))))) %}
+
+<div class="card pageHero tradingWindowHero"><div class="toolbar">
   <div class="pageHeroHead">
     <div>
       <div class="pill">Trading Window</div>
       <div class="pageTitleRow">
-        <h2 class="pageTitle">Session Guardrail Settings</h2>
+        <h2 class="pageTitle">Session Guardrail Control Panel</h2>
       </div>
-      <div class="dashboardLead stack8">Keep the rule simple: green when trading is allowed, red when it is not. There is no separate hard-stop phase anymore.</div>
     </div>
-    <div class="actionRow">
+    <div class="actionRow tradingWindowUtilityActions">
       <a class="btn" href="/dashboard">Dashboard</a>
       <a class="btn" href="/ops/backups">Backups</a>
+      <button class="btn" type="button" data-tw-open-info>Info</button>
     </div>
   </div>
 </div></div>
 
-<div class="opsShell">
+<div class="opsShell tradingWindowControlShell">
   <div class="opsPrimary">
-    <div class="card"><div class="toolbar">
-      <div class="pill">Current Status</div>
-      <div class="workspaceSectionLead">The header pill is visible only when the window is active or close enough to matter.</div>
-      <div class="metricStrip metricStripCompact">
-        <div class="metric">
-          <div class="label">Status</div>
-          <div class="value">{{ tw.state_label or 'Unknown' }}</div>
-        </div>
-        <div class="metric">
-          <div class="label">Rule</div>
-          <div class="value">{{ tw.start_et }} → {{ tw.done_by_et }} ET</div>
-        </div>
-        <div class="metric">
-          <div class="label">Tone</div>
-          <div class="value">{{ 'Green' if tw.pill_tone == 'positive' else 'Red' }}</div>
-        </div>
-        <div class="metric">
-          <div class="label">Upcoming Notice</div>
-          <div class="value">{{ tw.upcoming_notice_minutes or 0 }} min</div>
-        </div>
+    {% if tw.using_test_clock %}
+      <div class="tradingWindowTestBanner">
+        TEST MODE ACTIVE — Simulating {{ tw.test_date }} {{ tw.test_time_et }} ET
       </div>
-      <div class="tiny stack8 line15">
-        {{ tw.message }}
-        {% if tw.using_test_clock %}
-          Test mode is active for {{ tw.test_date }} {{ tw.test_time_et }} ET.
-        {% endif %}
+    {% endif %}
+
+    <div class="card"><div class="toolbar">
+      <div class="tradingWindowStatusPanel {{ strip_class }}">
+        <div class="tradingWindowStatusTop">
+          <div class="tradingWindowStatusLead">
+            <div class="tradingWindowStatusKicker">Session Status</div>
+            <span class="tradingWindowStateChip">{{ state_chip }}</span>
+          </div>
+          <div class="tradingWindowStatusNow">{{ tw.now_label }}</div>
+        </div>
+        <div class="tradingWindowStatusMain">
+          {% if not is_allowed %}
+            <span class="tradingWindowLockIcon" aria-hidden="true">🔒</span>
+          {% endif %}
+          <span>{{ status_text }}</span>
+        </div>
+        <div class="tradingWindowStatusSub">Window: {{ tw.start_et }} → {{ tw.done_by_et }} ET</div>
+        <div class="tradingWindowStatusMeta">
+          <div class="tradingWindowMetaItem">
+            <span class="tiny">Next</span>
+            <strong>{{ next_change }}</strong>
+          </div>
+          <div class="tradingWindowMetaItem">
+            <span class="tiny">Reason</span>
+            <strong>{{ tw.primary_reason }}</strong>
+          </div>
+        </div>
+
+        <div class="tradingWindowProgressPanel">
+          <div class="tradingWindowProgressLabels">
+            <span>{{ tw.start_et }}</span>
+            <span>{{ tw.done_by_et }}</span>
+          </div>
+          <div class="tradingWindowProgressBar tradingWindowProgressBar-{{ tw.state }} {% if not show_timeline %}is-disabled{% endif %}">
+            {% if show_timeline %}
+              <div class="tradingWindowProgressFill" style="width: {{ tw.progress_pct }}%;"></div>
+              <div class="tradingWindowProgressDot" style="left: calc({{ tw.progress_pct }}% - 8px);"></div>
+            {% endif %}
+          </div>
+          <div class="tradingWindowProgressLegend">
+            <span>{{ progress_state }}</span>
+            <span>{{ progress_caption }}</span>
+          </div>
+        </div>
       </div>
     </div></div>
 
-    <div class="card"><div class="toolbar">
-      <div class="pill">Window Settings</div>
-      <div class="workspaceSectionLead">Show the header pill only when it is actionable: active now, or upcoming soon. No extra hard stop is applied.</div>
-      <form method="post" action="/ops/trading-window" class="tradingWindowForm">
+    <details class="card tradingWindowEditorFold">
+      <summary class="tradingWindowEditorSummary">Edit Guardrails</summary>
+      <div class="toolbar">
+      <form method="post" action="/ops/trading-window" class="tradingWindowForm tradingWindowFormCompact">
         <input type="hidden" name="next" value="/ops/trading-window">
-        <label class="tradingWindowToggle">
-          <input type="checkbox" name="tw_enabled" value="1" {% if tw.enabled %}checked{% endif %}>
-          Enable trading window guidance
-        </label>
+        <input type="hidden" name="tw_enabled" value="{{ '1' if tw.enabled else '0' }}">
+        <input type="hidden" name="tw_hard_stop_et" value="{{ tw.done_by_et }}">
+        <input type="hidden" name="tw_test_date" value="{{ tw.test_date }}">
+        <input type="hidden" name="tw_test_time_et" value="{{ tw.test_time_et }}">
         <label>
-          Start (ET)
+          Start
           <input type="time" name="tw_start_et" value="{{ tw.start_et }}" required>
         </label>
         <label>
-          Done By (ET)
+          End
           <input type="time" name="tw_done_by_et" value="{{ tw.done_by_et }}" required>
         </label>
         <label>
-          Upcoming Notice (minutes)
+          Notice
           <input type="number" name="tw_upcoming_notice_minutes" value="{{ tw.upcoming_notice_minutes or 60 }}" min="0" max="240" step="5">
         </label>
         <label class="tradingWindowToggle">
-          <input type="checkbox" name="tw_test_mode" value="1" {% if tw.test_mode %}checked{% endif %} data-tw-test-mode>
-          Test mode (simulate clock)
-        </label>
-        <label>
-          Test Date
-          <input type="date" name="tw_test_date" value="{{ tw.test_date }}" data-tw-test-field>
-        </label>
-        <label>
-          Test Time (ET)
-          <input type="time" name="tw_test_time_et" value="{{ tw.test_time_et }}" data-tw-test-field>
+          <input type="checkbox" name="tw_test_mode" value="1" {% if tw.test_mode %}checked{% endif %}>
+          Test mode
         </label>
         <div class="tradingWindowActions">
-          <button class="btn primary" type="submit">Save Window</button>
+          <button class="btn primary" type="submit">Save Guardrails</button>
         </div>
       </form>
-    </div></div>
+      </div>
+    </details>
   </div>
-
-  <aside class="opsSecondary">
-    <div class="card supportCard"><div class="toolbar">
-      <div class="pill">Guidance</div>
-      <div class="supportLead">This should be boring and strict.</div>
-      <div class="supportBody">Pick the earliest realistic cutoff for your session. After you are done, the pill should disappear instead of lingering as dead chrome.</div>
-    </div></div>
-    <div class="card supportCard subtleCard"><div class="toolbar">
-      <div class="pill">Header Behavior</div>
-      <div class="supportLead">No inline editing in the top bar.</div>
-      <div class="supportBody">The header now only reports actionable state: active now, or upcoming within the configured notice window. Changes belong here on the settings page.</div>
-    </div></div>
-  </aside>
 </div>
+
+<div class="calendarPreview commandCalendarModal" id="tradingWindowInfoModal" hidden>
+  <div class="calendarPreviewBackdrop" data-tw-close-info></div>
+  <div class="calendarPreviewCard commandCalendarModalCard tradingWindowInfoCard" role="dialog" aria-modal="true" aria-labelledby="tradingWindowInfoTitle">
+    <div class="calendarPreviewHead">
+      <div>
+        <div class="calendarPreviewTitle" id="tradingWindowInfoTitle">Guardrail Info</div>
+        <div class="tiny">Keep the session rule simple and operational.</div>
+      </div>
+      <button type="button" class="btn" data-tw-close-info>Close</button>
+    </div>
+    <div class="previewNarrative commandCalendarPreviewSummary">
+      <div class="previewNarrativeBlock">
+        <div class="k">Status</div>
+        <div class="tiny line16">The main panel tells you immediately if execution is allowed right now.</div>
+      </div>
+      <div class="previewNarrativeBlock">
+        <div class="k">Window</div>
+        <div class="tiny line16">Use the earliest realistic cutoff so the page turns red before your discipline slips.</div>
+      </div>
+      <div class="previewNarrativeBlock">
+        <div class="k">Notice</div>
+        <div class="tiny line16">Notice minutes control how early the upcoming window becomes visible.</div>
+      </div>
+      <div class="previewNarrativeBlock">
+        <div class="k">Test Mode</div>
+        <div class="tiny line16">Test mode uses the saved simulated clock shown in the banner.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const modal = document.getElementById("tradingWindowInfoModal");
+    const openBtn = document.querySelector("[data-tw-open-info]");
+    if (!modal || !openBtn) return;
+
+    const syncModalState = (open) => {
+      modal.hidden = !open;
+      if (open) {
+        modal.removeAttribute("hidden");
+        document.body.classList.add("modalOpen");
+      } else {
+        modal.setAttribute("hidden", "");
+        document.body.classList.remove("modalOpen");
+      }
+    };
+
+    const closeModal = () => syncModalState(false);
+    const openModal = () => syncModalState(true);
+
+    syncModalState(false);
+
+    openBtn.addEventListener("click", () => {
+      openModal();
+    });
+    modal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-tw-close-info]")) closeModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !modal.hidden) closeModal();
+    });
+    window.addEventListener("pageshow", () => {
+      syncModalState(false);
+    });
+  })();
+</script>

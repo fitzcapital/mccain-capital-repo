@@ -27,12 +27,24 @@ def trades_copy_many():
     return trades_mutations.trades_copy_many()
 
 
+def trades_set_setup(trade_id: int):
+    return trades_mutations.trades_set_setup(trade_id)
+
+
+def trades_set_setup_many():
+    return trades_mutations.trades_set_setup_many()
+
+
 def trades_edit(trade_id: int):
     return trades_forms.trades_edit(trade_id)
 
 
 def trades_review(trade_id: int):
     return trades_forms.trades_review(trade_id)
+
+
+def trades_replay(trade_id: int):
+    return trades_forms.trades_replay(trade_id)
 
 
 def trades_clear():

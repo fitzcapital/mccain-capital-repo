@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import re
+from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -59,6 +61,9 @@ def _entry_form(
 def journal_home():
     q = request.args.get("q", "")
     d = request.args.get("d", "")
+    outcome_filter = (request.args.get("outcome") or "").strip().lower()
+    grade_filter = (request.args.get("grade_filter") or "").strip().upper()
+    mistake_filter = (request.args.get("mistake_filter") or "").strip().lower()
     entries = [dict(r) for r in repo.fetch_entries(q=q, d=d)]
     for entry in entries:
         entry["entry_date_display"] = _format_entry_date(entry.get("entry_date"))
@@ -74,6 +79,23 @@ def journal_home():
         note_view = _render_note_sections(str(entry.get("notes") or "").strip())
         entry["note_sections"] = note_view["sections"]
         entry["note_plain"] = note_view["plain"]
+        _enrich_journal_entry(entry)
+
+    all_entries = list(entries)
+    entries = [
+        entry
+        for entry in entries
+        if _journal_entry_matches_filters(entry, outcome_filter, grade_filter, mistake_filter)
+    ]
+
+    journal_insights = _build_journal_insights(entries)
+    available_mistake_tags = _collect_journal_mistake_tags(all_entries)
+    filter_counts = {
+        "wins": sum(1 for entry in all_entries if entry.get("outcome_key") == "win"),
+        "losses": sum(1 for entry in all_entries if entry.get("outcome_key") == "loss"),
+        "mistakes": sum(1 for entry in all_entries if entry.get("mistake_tags")),
+        "graded": sum(1 for entry in all_entries if entry.get("grade_display")),
+    }
 
     latest_entry = entries[0] if entries else {}
     linked_trades_total = sum(int(entry.get("linked_trades") or 0) for entry in entries)
@@ -158,7 +180,13 @@ def journal_home():
         "journal/home.html",
         q=q,
         d=d,
+        outcome_filter=outcome_filter,
+        grade_filter=grade_filter,
+        mistake_filter=mistake_filter,
         entries=entries,
+        journal_insights=journal_insights,
+        available_mistake_tags=available_mistake_tags,
+        filter_counts=filter_counts,
         money=money,
         hero_title=hero_title,
         hero_blurb=hero_blurb,
@@ -484,6 +512,222 @@ def _render_note_sections(text: str) -> Dict[str, Any]:
     if sections:
         return {"sections": sections, "plain": ""}
     return {"sections": [], "plain": raw}
+
+
+_JOURNAL_MISTAKE_PATTERNS = {
+    "Late Entry": ("late entry", "chased", "chase", "late"),
+    "Early Entry": ("early entry", "jumped early", "too early"),
+    "Oversized": ("oversized", "too big", "size creep"),
+    "Revenge": ("revenge", "revenge trade"),
+    "No Confirmation": ("no confirmation", "without confirmation", "forced"),
+    "Rule Break": ("rule break", "broke rule", "ignored plan"),
+    "FOMO": ("fomo",),
+    "Hesitation": ("hesitation", "hesitated"),
+    "Emotional": ("emotional", "anxious", "tilted", "frustrated"),
+}
+
+
+def _normalize_grade_letter(raw: Any) -> str:
+    text = str(raw or "").strip().upper()
+    if not text:
+        return ""
+    if text.startswith("A+"):
+        return "A+"
+    if text.startswith("A"):
+        return "A"
+    if text.startswith("B"):
+        return "B"
+    if text.startswith("C"):
+        return "C"
+    if text.startswith("D") or text.startswith("F"):
+        return "F"
+    return text[:2]
+
+
+def _grade_tone(grade: str) -> str:
+    if grade in {"A+", "A"}:
+        return "elite"
+    if grade == "B":
+        return "strong"
+    if grade == "C":
+        return "mixed"
+    if grade == "F":
+        return "weak"
+    return "neutral"
+
+
+def _outcome_key(pnl: Any) -> str:
+    try:
+        value = float(pnl or 0.0)
+    except (TypeError, ValueError):
+        value = 0.0
+    if value > 0:
+        return "win"
+    if value < 0:
+        return "loss"
+    return "flat"
+
+
+def _extract_mistake_tags(entry: Dict[str, Any]) -> List[str]:
+    haystack = " ".join(
+        [
+            str(entry.get("mood") or ""),
+            str(entry.get("note_plain") or ""),
+            " ".join(
+                f"{section.get('title', '')} {section.get('body', '')}"
+                for section in list(entry.get("note_sections") or [])
+                if isinstance(section, dict)
+            ),
+        ]
+    ).lower()
+    tags: List[str] = []
+    for label, patterns in _JOURNAL_MISTAKE_PATTERNS.items():
+        if any(pattern in haystack for pattern in patterns):
+            tags.append(label)
+    return tags
+
+
+def _first_section_value(entry: Dict[str, Any], keywords: tuple[str, ...]) -> str:
+    for section in list(entry.get("note_sections") or []):
+        title = str(section.get("title") or "").strip().lower()
+        if any(keyword in title for keyword in keywords):
+            return str(section.get("body") or "").strip()
+    return ""
+
+
+def _shorten_text(value: str, limit: int = 110) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _structured_journal_sections(entry: Dict[str, Any]) -> List[Dict[str, str]]:
+    sections = list(entry.get("note_sections") or [])
+    used_ids = set()
+    buckets = []
+    mapping = [
+        ("Context", ("context", "market", "thesis", "what i saw", "best setup")),
+        ("Execution", ("execution", "entry", "exit", "what i did", "trade")),
+        ("Mistakes", ("mistake", "rule", "slip", "error", "next time")),
+    ]
+    for label, keywords in mapping:
+        picked = None
+        for idx, section in enumerate(sections):
+            if idx in used_ids:
+                continue
+            title = str(section.get("title") or "").lower()
+            if any(keyword in title for keyword in keywords):
+                picked = section
+                used_ids.add(idx)
+                break
+        if picked:
+            buckets.append({"title": label, "body": str(picked.get("body") or "").strip()})
+
+    leftovers = [
+        str(section.get("body") or "").strip()
+        for idx, section in enumerate(sections)
+        if idx not in used_ids and str(section.get("body") or "").strip()
+    ]
+    if leftovers and not any(bucket["title"] == "Context" for bucket in buckets):
+        buckets.insert(0, {"title": "Context", "body": leftovers[0]})
+        leftovers = leftovers[1:]
+    if leftovers and not any(bucket["title"] == "Execution" for bucket in buckets):
+        buckets.append({"title": "Execution", "body": leftovers[0]})
+        leftovers = leftovers[1:]
+    if leftovers and not any(bucket["title"] == "Mistakes" for bucket in buckets):
+        buckets.append({"title": "Mistakes", "body": leftovers[0]})
+
+    if not buckets:
+        fallback = str(entry.get("note_plain") or entry.get("notes") or "").strip()
+        if fallback:
+            buckets = [{"title": "Context", "body": fallback}]
+    return buckets
+
+
+def _enrich_journal_entry(entry: Dict[str, Any]) -> None:
+    grade_display = _normalize_grade_letter(entry.get("grade"))
+    outcome_key = _outcome_key(entry.get("pnl"))
+    outcome_label = {"win": "Win", "loss": "Loss", "flat": "Scratch"}[outcome_key]
+    mistake_tags = _extract_mistake_tags(entry)
+    lesson_text = (
+        _first_section_value(entry, ("lesson", "improvement", "next time"))
+        or _first_section_value(entry, ("mistake", "rule", "error"))
+        or str(entry.get("note_plain") or "").strip()
+    )
+    mistake_text = _first_section_value(entry, ("mistake", "rule", "error")) or (
+        ", ".join(mistake_tags) if mistake_tags else "Clean review"
+    )
+    mood = str(entry.get("mood") or "").strip() or "Neutral"
+    summary = {
+        "mistake": _shorten_text(mistake_text, 72),
+        "emotion": mood,
+        "lesson": _shorten_text(lesson_text, 84),
+    }
+    structured_sections = _structured_journal_sections(entry)
+    note_preview = next(
+        (section.get("body") for section in structured_sections if section.get("body")),
+        str(entry.get("note_plain") or "").strip(),
+    ) or ""
+    entry["grade_display"] = grade_display
+    entry["grade_tone"] = _grade_tone(grade_display)
+    entry["outcome_key"] = outcome_key
+    entry["outcome_label"] = outcome_label
+    entry["mistake_tags"] = mistake_tags
+    entry["quick_summary"] = summary
+    entry["structured_sections"] = structured_sections
+    entry["note_preview"] = _shorten_text(note_preview, 150)
+
+
+def _journal_entry_matches_filters(
+    entry: Dict[str, Any], outcome_filter: str, grade_filter: str, mistake_filter: str
+) -> bool:
+    if outcome_filter and entry.get("outcome_key") != outcome_filter:
+        return False
+    if grade_filter and str(entry.get("grade_display") or "").upper() != grade_filter:
+        return False
+    if mistake_filter:
+        tags = [str(tag).lower() for tag in list(entry.get("mistake_tags") or [])]
+        if mistake_filter == "mistakes":
+            return bool(tags)
+        if mistake_filter not in tags:
+            return False
+    return True
+
+
+def _collect_journal_mistake_tags(entries: List[Dict[str, Any]]) -> List[str]:
+    counts = Counter()
+    for entry in entries:
+        counts.update(list(entry.get("mistake_tags") or []))
+    return [tag for tag, _ in counts.most_common()]
+
+
+def _build_journal_insights(entries: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    if not entries:
+        return []
+    setup_counter = Counter(
+        str(entry.get("setup") or "").strip() for entry in entries if str(entry.get("setup") or "").strip()
+    )
+    mood_counter = Counter(
+        str(entry.get("mood") or "").strip() for entry in entries if str(entry.get("mood") or "").strip()
+    )
+    mistake_counter = Counter(tag for entry in entries for tag in list(entry.get("mistake_tags") or []))
+    top_setup = setup_counter.most_common(1)[0][0] if setup_counter else "Unlabeled"
+    top_mood = mood_counter.most_common(1)[0][0] if mood_counter else "Neutral"
+    top_mistake = mistake_counter.most_common(1)[0][0] if mistake_counter else "No repeated mistake"
+    wins = sum(1 for entry in entries if entry.get("outcome_key") == "win")
+    losses = sum(1 for entry in entries if entry.get("outcome_key") == "loss")
+    graded = sum(1 for entry in entries if entry.get("grade_display"))
+    return [
+        {
+            "title": "What’s Working",
+            "body": f"{top_setup} shows up most often in the current journal scope. {wins} win{'s' if wins != 1 else ''} logged with {graded} graded debrief{'s' if graded != 1 else ''}.",
+        },
+        {
+            "title": "What Needs Review",
+            "body": f"{top_mistake} is the most repeated mistake pattern. Mood drift is anchored around {top_mood.lower()}, with {losses} loss{'es' if losses != 1 else ''} needing cleaner follow-through.",
+        },
+    ]
 
 
 def _capture_href(relpath: str) -> str:

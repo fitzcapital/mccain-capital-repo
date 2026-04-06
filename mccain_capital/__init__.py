@@ -129,7 +129,9 @@ def create_app():
                 "default-src 'self'; img-src 'self' data: https:; "
                 "script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://cdn.plot.ly; "
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-                "font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'self'",
+                "font-src 'self' https://fonts.gstatic.com; connect-src 'self'; "
+                "frame-src 'self' https://s.tradingview.com https://www.tradingview.com; "
+                "frame-ancestors 'self'",
             )
             return resp
 

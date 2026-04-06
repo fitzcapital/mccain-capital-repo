@@ -18,6 +18,7 @@ def normalize_trade_filters(raw_filters: Optional[Dict[str, Any]] = None) -> Dic
     raw_filters = raw_filters or {}
     return {
         "setup": _normalize_filter_value(raw_filters.get("setup")),
+        "day_of_week": _normalize_filter_value(raw_filters.get("day_of_week")),
         "session": _normalize_filter_value(raw_filters.get("session")),
         "outcome": _normalize_filter_value(raw_filters.get("outcome")).lower(),
         "time_block": _normalize_filter_value(raw_filters.get("time_block")),
@@ -26,6 +27,9 @@ def normalize_trade_filters(raw_filters: Optional[Dict[str, Any]] = None) -> Dic
 
 
 def _row_matches_filters(row: Dict[str, Any], filters: Dict[str, str]) -> bool:
+    setup = filters.get("setup", "")
+    if setup and str(row.get("setup_display") or "") != setup:
+        return False
     outcome = filters.get("outcome", "")
     net = _safe_float(row.get("net_pl"))
     if outcome == "winner" and not (net is not None and net > 0):
@@ -37,6 +41,14 @@ def _row_matches_filters(row: Dict[str, Any], filters: Dict[str, str]) -> bool:
     time_block = filters.get("time_block", "")
     if time_block and str(row.get("time_block") or "") != time_block:
         return False
+    day_of_week = filters.get("day_of_week", "")
+    if day_of_week:
+        try:
+            row_day = datetime.fromisoformat(str(row.get("trade_date") or "")).strftime("%a")
+        except Exception:
+            row_day = ""
+        if row_day != day_of_week:
+            return False
     mistake_tag = filters.get("mistake_tag", "").lower()
     if mistake_tag:
         tags = ",".join(
@@ -49,9 +61,12 @@ def _row_matches_filters(row: Dict[str, Any], filters: Dict[str, str]) -> bool:
 
 def _enrich_analytics_row(row: Dict[str, Any]) -> Dict[str, Any]:
     enriched = dict(row)
-    enriched["setup_tag"] = str(
+    enriched["trade_source"] = trades_repo.normalize_trade_source(row)
+    enriched["setup_tag"] = trades_repo.clean_setup_label(
         row.get("setup_tag") or row.get("strategy_label") or row.get("resolved_setup_tag") or ""
-    ).strip()
+    )
+    enriched["setup_display"] = enriched["setup_tag"] or "Unknown"
+    enriched["setup_missing"] = not bool(enriched["setup_tag"])
     enriched["time_block"] = trades_repo.classify_time_block(row.get("entry_time"))
     enriched["hold_minutes"] = trades_repo.compute_hold_minutes(
         row.get("entry_time"), row.get("exit_time")
@@ -94,6 +109,9 @@ def fetch_analytics_rows(
           t.ticker,
           t.net_pl,
           t.balance,
+          t.trade_source,
+          t.raw_line,
+          t.import_batch_id,
           r.strategy_label,
           COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '') AS setup_tag,
           COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '') AS resolved_setup_tag,
@@ -115,7 +133,7 @@ def fetch_analytics_rows(
         LEFT JOIN trade_reviews r ON r.trade_id = t.id
         LEFT JOIN strategies s ON s.id = r.strategy_id
     """
-    if normalized["setup"]:
+    if normalized["setup"] and normalized["setup"].lower() != "unknown":
         where.append(
             "LOWER(COALESCE(NULLIF(r.strategy_label, ''), NULLIF(s.title, ''), NULLIF(r.setup_tag, ''), '')) = LOWER(?)"
         )
@@ -238,7 +256,11 @@ def performance_metrics(
 def group_table(rows: List[Dict[str, Any]], key_name: str) -> List[Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     for r in rows:
-        key = (r.get(key_name) or "").strip() or "Unlabeled"
+        key = (
+            str(r.get("setup_display") or "").strip()
+            if key_name == "setup_tag"
+            else str(r.get(key_name) or "").strip()
+        ) or "Unknown"
         out.setdefault(key, {"count": 0, "wins": 0, "net": 0.0, "scores": []})
         out[key]["count"] += 1
         net = _safe_float(r.get("net_pl")) or 0.0
@@ -345,7 +367,7 @@ def mistake_costs(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def setup_scorecards(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     buckets: Dict[str, Dict[str, Any]] = {}
     for r in rows:
-        setup = str(r.get("setup_tag") or "").strip() or "Unlabeled"
+        setup = str(r.get("setup_display") or "").strip() or "Unknown"
         net = _safe_float(r.get("net_pl")) or 0.0
         bucket = buckets.setdefault(
             setup,
@@ -537,7 +559,11 @@ def edge_over_time(
 
     period_map: Dict[tuple[str, str], Dict[str, Any]] = {}
     for r in rows:
-        key = (r.get(key_name) or "").strip() or "Unlabeled"
+        key = (
+            str(r.get("setup_display") or "").strip()
+            if key_name == "setup_tag"
+            else str(r.get(key_name) or "").strip()
+        ) or "Unknown"
         if key not in top_keys:
             continue
         trade_date = (r.get("trade_date") or "").strip()
@@ -837,7 +863,7 @@ def _entry_time_to_block(entry_time: str) -> str:
 def setup_expectancy_heatmap(rows: List[Dict[str, Any]], top_n_setups: int = 5) -> Dict[str, Any]:
     setup_stats: Dict[str, Dict[str, float]] = {}
     for r in rows:
-        setup = (r.get("setup_tag") or "").strip() or "Unlabeled"
+        setup = str(r.get("setup_display") or "").strip() or "Unknown"
         net = float(_safe_float(r.get("net_pl")) or 0.0)
         entry = setup_stats.setdefault(setup, {"count": 0.0, "net": 0.0})
         entry["count"] += 1.0
@@ -863,7 +889,7 @@ def setup_expectancy_heatmap(rows: List[Dict[str, Any]], top_n_setups: int = 5) 
     ]
     agg: Dict[tuple[str, str], Dict[str, float]] = {}
     for r in rows:
-        setup = (r.get("setup_tag") or "").strip() or "Unlabeled"
+        setup = str(r.get("setup_display") or "").strip() or "Unknown"
         if setup not in top_setups:
             continue
         block = _entry_time_to_block(str(r.get("entry_time") or ""))

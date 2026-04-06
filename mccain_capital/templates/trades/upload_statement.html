@@ -3,7 +3,25 @@
 {% set last = sync_status or {} %}
 {% set workspace_title = 'Live Sync Lane' if ws == 'live' else 'Upload Lane' if ws == 'upload' else 'Reconcile Lane' %}
 {% set workspace_lead = 'Run broker login sync first, then use diagnostics and reliability trends to keep the import system healthy.' if ws == 'live' else 'Manual statement upload is the fastest recovery lane when you already have the file in hand.' if ws == 'upload' else 'Audit import batches before they distort balances, analytics, or review coverage.' %}
-{% if sync_badges %}
+{% set initial_sync_state = (last.get('status') or 'idle')|lower %}
+{% set initial_system_state = 'Healthy' if initial_sync_state in ['success', 'succeeded', 'ok', 'healthy', 'idle', 'debug_only'] else 'Warning' if initial_sync_state in ['queued', 'running', 'stale'] else 'Failed' %}
+{% set initial_system_tone = 'positive' if initial_system_state == 'Healthy' else 'warning' if initial_system_state == 'Warning' else 'negative' %}
+{% if ws == 'live' %}
+<div class="syncStatusSummary syncStatusSummary-{{ initial_system_tone }}" id="sync-status-summary">
+  <div class="syncStatusSummaryItem">
+    <span class="syncStatusSummaryLabel">System</span>
+    <strong id="sync-top-health-value">{{ initial_system_state }}</strong>
+  </div>
+  <div class="syncStatusSummaryItem">
+    <span class="syncStatusSummaryLabel">Last Run</span>
+    <strong id="sync-top-result-value">{{ (last.get('status') or 'No recent run')|replace('_', ' ')|title }}</strong>
+  </div>
+  <div class="syncStatusSummaryItem">
+    <span class="syncStatusSummaryLabel">Updated</span>
+    <strong id="sync-top-updated-value">{{ last.get('updated_at_human') or last.get('updated_at') or 'No recent run' }}</strong>
+  </div>
+</div>
+{% elif sync_badges %}
 <div class="statusBadgeStrip" {% if ws == 'live' %}id="sync-status-badges"{% endif %}>
   {% for badge in sync_badges %}
     <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}"
@@ -133,8 +151,121 @@
 {% set effective_help = (sync_stage_help or {}).get(effective_stage) or last.get('stage_help') or '' %}
 {% set effective_updated = job.get('updated_at_human') or last.get('updated_at_human') or job.get('updated_at') or last.get('updated_at') or 'No recent sync run' %}
 {% set effective_artifacts = (summary.get('artifacts_rel') or last.get('artifacts_rel') or []) %}
+{% set feedback_inserted = summary.get('inserted') if summary.get('inserted') is not none else (last.get('inserted') if last.get('inserted') is not none else last.get('inserted_trades', 0)) %}
+{% set feedback_warn_count = summary.get('warn_count') if summary.get('warn_count') is not none else last.get('warn_count', 0) %}
+{% set feedback_error_count = summary.get('error_count') if summary.get('error_count') is not none else last.get('error_count', 0) %}
 <div class="workspaceShell syncWorkspaceLive">
   <div class="workspacePrimary">
+    <div class="card stack12 syncLaunchHero">
+      <div class="toolbar">
+        <div class="syncLaunchHeader">
+          <div class="pillRow">
+            <div class="pill">Run Live Sync</div>
+            <details class="inlineHelp">
+              <summary aria-label="Live login sync help">?</summary>
+              <div class="helpPopover">Logs into Vanquish, opens the statement flow, generates the statement, and imports the HTML output.</div>
+            </details>
+          </div>
+          <div class="supportLead">Launch the broker sync from here.</div>
+          <div class="supportBody">Set the window, confirm credentials, run one controlled import.</div>
+        </div>
+        <div class="syncProfileRail">
+          <button class="btn syncProfileBtn" type="button" data-sync-profile="balanced">Balanced Run</button>
+          <button class="btn syncProfileBtn" type="button" data-sync-profile="recovery">Recovery Run</button>
+          <button class="btn syncProfileBtn" type="button" data-sync-profile="fast">Fast Run</button>
+          <div class="tiny syncProfileNote" id="sync-profile-note">Balanced keeps debug capture on and performs a full import.</div>
+        </div>
+        <div class="hr"></div>
+        <form method="post" action="/trades/sync/live" id="live-sync-form">
+          <div class="row syncLaunchCompactRow">
+            <div>
+              <label>Mode</label>
+              <select name="mode">
+                <option value="broker">🏦 Broker fills → trades</option>
+                <option value="balance">🏁 Statement → ending balance snapshot</option>
+              </select>
+            </div>
+            <div>
+              <label>From</label>
+              <input class="appDateInput" type="date" name="from_date" value="{{ default_day }}" />
+            </div>
+            <div>
+              <label>To</label>
+              <input class="appDateInput" type="date" name="to_date" value="{{ default_day }}" />
+            </div>
+          </div>
+          <div class="row syncCredentialRow">
+            <div class="fieldGrow2">
+              <label>Username</label>
+              <input name="username" placeholder="Vanquish username/email" />
+            </div>
+            <div class="fieldGrow2">
+              <label>Password</label>
+              <input type="password" name="password" placeholder="Vanquish password" />
+            </div>
+          </div>
+          <details class="syncDetails stack10">
+            <summary>⚙️ Advanced Sync Options</summary>
+            <div class="stack10">
+              <div class="row syncLaunchCompactRow">
+                <div class="fieldGrow2">
+                  <label>Base Origin</label>
+                  <input name="base_url" value="{{ broker_cfg.base_url }}" />
+                </div>
+                <div class="fieldGrow2">
+                  <label>Account</label>
+                  <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
+                </div>
+              </div>
+              <div class="row syncLaunchCompactRow">
+                <div>
+                  <label>Whitelist</label>
+                  <input name="wl" value="{{ broker_cfg.wl }}" />
+                </div>
+                <div>
+                  <label>Timezone</label>
+                  <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
+                </div>
+                <div>
+                  <label>Date Locale</label>
+                  <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
+                </div>
+                <div>
+                  <label>Report Locale</label>
+                  <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
+                </div>
+              </div>
+              <div class="row syncLaunchCompactRow">
+                <div class="stack12">
+                  <label>Browser Mode</label>
+                  <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
+                </div>
+                <div class="stack12">
+                  <label>Diagnostics</label>
+                  <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
+                  <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
+                </div>
+                <div class="stack12">
+                  <label>Config</label>
+                  <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="hr"></div>
+          <div class="syncLaunchActions">
+            <button class="btn primary" type="submit" id="live-sync-submit" {% if sync_active %}disabled{% endif %}>Run Live Sync</button>
+            <a class="btn" href="/trades/upload/statement">Reset</a>
+          </div>
+          <div class="tiny stack10 line15 syncLaunchLoading" id="live-sync-loading" style="display:none;" aria-live="polite">
+            ⏳ Live sync in progress. Login, generate, import.
+          </div>
+          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge='Live', label='Opening broker session...', label_id='live-sync-stage-label') }}
+        </form>
+      </div>
+    </div>
+
     <div class="card stack12 syncControlDeck">
       <div class="toolbar">
         <div class="pillRow">
@@ -142,49 +273,18 @@
           <div class="trendChip {% if effective_status == 'success' %}positive{% elif effective_status in ['failed', 'stale'] %}negative{% endif %}" id="sync-control-status-chip">
             <span id="sync-control-status-value">{{ effective_status|replace('_', ' ')|title }}</span>
           </div>
-          <div class="trendChip"><span id="sync-control-stage-value">{{ effective_stage|replace('_', ' ')|title }}</span></div>
           <div class="trendChip"><span id="sync-control-updated-value">{{ effective_updated }}</span></div>
         </div>
-        <div class="workspaceSectionLead">Use this deck to decide whether to run, retry, or inspect artifacts before touching the detailed controls.</div>
+        <div class="workspaceSectionLead">Use this only when the lane needs intervention.</div>
         <div class="syncControlGrid">
           <div class="syncControlPanel">
-            <div class="k">Current Focus</div>
-            <div class="syncControlValue" id="sync-control-message">{{ effective_message }}</div>
-            {% if effective_help %}
-            <div class="tiny line16" id="sync-control-help">{{ effective_help }}</div>
-            {% else %}
-            <div class="tiny line16" id="sync-control-help"></div>
-            {% endif %}
-          </div>
-          <div class="syncControlPanel">
-            <div class="k">Best Next Action</div>
-            <div class="syncControlValue" id="sync-control-next-action">
-              {% if sync_active %}
-              Let the current run finish or cancel it deliberately. Do not start a second browser sync.
-              {% elif effective_status in ['failed', 'stale'] %}
-              Retry with the recovery profile, then open diagnostics if the same stage fails twice.
-              {% elif effective_status in ['success', 'debug_only'] %}
-              Review the imported trades or inspect the artifacts before the next run.
-              {% else %}
-              Stage a clean run with today&apos;s dates and save diagnostics on until the lane is stable.
-              {% endif %}
-            </div>
-            <div class="syncGuideList">
-              <span>1. Confirm account and date window.</span>
-              <span>2. Use the correct sync profile.</span>
-              <span>3. Check artifacts only if the lane fails.</span>
-            </div>
-          </div>
-          <div class="syncControlPanel">
-            <div class="k">Quick Tools</div>
-            <div class="syncQuickActions">
-              <button class="btn" type="button" id="quick-retry-btn-deck" {% if not last %}disabled{% endif %}>Reuse Last Request</button>
-              <a class="btn" href="/ops/alerts">Open Ops</a>
-              {% if effective_artifacts %}
-              <a class="btn" href="/trades/sync/debug/{{ effective_artifacts[0] }}" target="_blank" rel="noopener">Latest Artifact</a>
-              {% else %}
-              <span class="tiny muted">No artifacts yet</span>
-              {% endif %}
+            <div class="k">Action Checklist</div>
+            <div class="syncChecklistMeta" id="sync-control-checklist-stage">{{ (job.get('stage') or effective_stage or 'standby')|replace('_', ' ')|title }}</div>
+            <div class="syncChecklistList" id="sync-control-checklist">
+              <div class="syncChecklistItem"><span class="syncChecklistIndex">1</span><span id="sync-check-1">Confirm account and date window.</span></div>
+              <div class="syncChecklistItem"><span class="syncChecklistIndex">2</span><span id="sync-check-2">Use the correct sync profile.</span></div>
+              <div class="syncChecklistItem"><span class="syncChecklistIndex">3</span><span id="sync-check-3">Run one controlled sync.</span></div>
+              <div class="syncChecklistItem"><span class="syncChecklistIndex">4</span><span id="sync-check-4">Open artifacts only if the lane fails.</span></div>
             </div>
           </div>
         </div>
@@ -194,7 +294,7 @@
     <div class="card stack12 syncJobCard{% if compact_job_card %} is-compact{% endif %}" id="sync-job-card" data-job-id="{{ job.get('id', '') }}" {% if not job %}hidden{% endif %}>
       <div class="toolbar">
         <div class="pill">Sync Job Status</div>
-        <div class="workspaceSectionLead">Current run progress and artifacts stay here so the primary lane always answers “what is happening now?”</div>
+        <div class="workspaceSectionLead">Current run progress and artifacts.</div>
         <div class="syncHealthStrip" id="sync-health-strip">
           <div class="syncHealthChip syncHealthChipStatus" id="sync-health-status">{{ (job.get('status') or 'idle')|replace('_', ' ')|title }}</div>
           <div class="syncHealthChip" id="sync-health-stage">{{ (job.get('stage') or 'standby')|replace('_', ' ')|title }}</div>
@@ -254,112 +354,30 @@
       </div>
     </div>
 
-    <div class="card stack12">
+    <div class="card stack12 syncRunFeedbackCard" id="sync-run-feedback-card" {% if not (job or last) %}hidden{% endif %}>
       <div class="toolbar">
-        <div class="pillRow">
-          <div class="pill">Live Login Sync</div>
-          <details class="inlineHelp">
-            <summary aria-label="Live login sync help">?</summary>
-            <div class="helpPopover">Logs into Vanquish, opens the statement flow, generates the statement, and imports the HTML output.</div>
-          </details>
+        <div class="pill">Run Feedback</div>
+        <div class="workspaceSectionLead">Check the sync result before moving back into trade review.</div>
+        <div class="syncFeedbackGrid">
+          <div class="syncFeedbackStat">
+            <div class="k">Trades Imported</div>
+            <div class="v" id="sync-feedback-inserted">{{ feedback_inserted or 0 }}</div>
+          </div>
+          <div class="syncFeedbackStat">
+            <div class="k">Errors</div>
+            <div class="v" id="sync-feedback-errors">{{ feedback_error_count or 0 }}</div>
+          </div>
+          <div class="syncFeedbackStat">
+            <div class="k">Warnings</div>
+            <div class="v" id="sync-feedback-warnings">{{ feedback_warn_count or 0 }}</div>
+          </div>
+          <div class="syncFeedbackActions">
+            <a class="btn primary" href="/trades" id="sync-feedback-review-btn">Review Trades</a>
+          </div>
         </div>
-        <div class="workspaceSectionLead">Primary lane: log in, generate the statement, and import without leaving this screen.</div>
-        <div class="syncProfileRail">
-          <button class="btn syncProfileBtn" type="button" data-sync-profile="balanced">Balanced Run</button>
-          <button class="btn syncProfileBtn" type="button" data-sync-profile="recovery">Recovery Run</button>
-          <button class="btn syncProfileBtn" type="button" data-sync-profile="fast">Fast Run</button>
-          <div class="tiny syncProfileNote" id="sync-profile-note">Balanced keeps debug capture on and performs a full import.</div>
-        </div>
-        <div class="hr"></div>
-        <form method="post" action="/trades/sync/live" id="live-sync-form">
-          <div class="row">
-            <div>
-              <label>Mode</label>
-              <select name="mode">
-                <option value="broker">🏦 Broker fills → trades</option>
-                <option value="balance">🏁 Statement → ending balance snapshot</option>
-              </select>
-            </div>
-            <div>
-              <label>From</label>
-              <input class="appDateInput" type="date" name="from_date" value="{{ default_day }}" />
-            </div>
-            <div>
-              <label>To</label>
-              <input class="appDateInput" type="date" name="to_date" value="{{ default_day }}" />
-            </div>
-          </div>
-          <div class="row">
-            <div class="fieldGrow2">
-              <label>Username</label>
-              <input name="username" placeholder="Vanquish username/email" />
-            </div>
-            <div class="fieldGrow2">
-              <label>Password</label>
-              <input type="password" name="password" placeholder="Vanquish password" />
-            </div>
-          </div>
-          <details class="syncDetails stack10">
-            <summary>⚙️ Advanced Sync Options</summary>
-            <div class="stack10">
-              <div class="row">
-                <div class="fieldGrow2">
-                  <label>Base Origin</label>
-                  <input name="base_url" value="{{ broker_cfg.base_url }}" />
-                </div>
-                <div class="fieldGrow2">
-                  <label>Account</label>
-                  <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
-                </div>
-              </div>
-              <div class="row">
-                <div>
-                  <label>Whitelist</label>
-                  <input name="wl" value="{{ broker_cfg.wl }}" />
-                </div>
-                <div>
-                  <label>Timezone</label>
-                  <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
-                </div>
-                <div>
-                  <label>Date Locale</label>
-                  <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
-                </div>
-                <div>
-                  <label>Report Locale</label>
-                  <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
-                </div>
-              </div>
-              <div class="row">
-                <div class="stack12">
-                  <label>Browser Mode</label>
-                  <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
-                </div>
-                <div class="stack12">
-                  <label>Diagnostics</label>
-                  <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
-                  <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
-                </div>
-                <div class="stack12">
-                  <label>Config</label>
-                  <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <div class="hr"></div>
-          <div class="rightActions">
-            <button class="btn primary" type="submit" id="live-sync-submit" {% if sync_active %}disabled{% endif %}>Run Live Sync</button>
-            <a class="btn" href="/trades/upload/statement">Reset</a>
-          </div>
-          <div class="tiny stack10 line15" id="live-sync-loading" style="display:none;" aria-live="polite">
-            ⏳ Live sync in progress. Logging in, generating statement, and importing. This can take 20-60 seconds.
-          </div>
-          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge='Live', label='Opening broker session...', label_id='live-sync-stage-label') }}
-        </form>
       </div>
     </div>
+
   </div>
 
   <aside class="workspaceSecondary">
@@ -399,20 +417,26 @@
       </div>
     </div>
 
-    {% if last %}
     <div class="card stack12">
       <div class="toolbar">
         <div class="pillRow">
-          <div class="pill">Live Sync Diagnostics</div>
+          <div class="pill">Tools</div>
           <details class="inlineHelp">
-            <summary aria-label="Live sync diagnostics help">?</summary>
-            <div class="helpPopover">Shows the last run status, failure stage, and quick retry controls.</div>
+            <summary aria-label="Live sync tools help">?</summary>
+            <div class="helpPopover">Retry, inspect artifacts, and verify reliability from one place.</div>
           </details>
         </div>
-        <div class="workspaceSectionLead">Support lane: confirm the last run state before retrying or changing automation.</div>
+        <div class="workspaceSectionLead">Operational tools, diagnostics, artifacts, and reliability in one panel.</div>
+        <div class="syncQuickActions syncToolsActions">
+          <button class="btn" type="button" id="quick-retry-btn" {% if not last %}disabled{% endif %}>Reuse Last Request</button>
+          <a class="btn" href="/ops/alerts">Open Ops</a>
+          <a class="btn" href="/analytics?tab=diagnostics">Diagnostics</a>
+          <a class="btn" href="/trades/upload/statement">Reset</a>
+        </div>
+        <div class="tiny stack8" id="quick-retry-note" aria-live="polite"></div>
         <details class="syncAsideFold">
           <summary>
-            <span>Open Diagnostics Snapshot</span>
+            <span>Diagnostics Snapshot</span>
             <span class="syncAsideMeta" id="sync-diagnostics-meta">{{ (last.get('status') or 'unknown')|replace('_', ' ')|title }} · {{ (last.get('stage') or '—')|replace('_', ' ')|title }}</span>
           </summary>
           <div class="hr"></div>
@@ -436,44 +460,10 @@
               <div class="tiny line16 syncMessageClamp" id="sync-diagnostics-message" title="{{ last.get('message') or 'No message' }}">{{ last.get('message') or 'No message' }}</div>
             </div>
           </div>
-          {% if last.get('artifacts_rel') %}
-            <div class="hr"></div>
-            <details class="syncDetails">
-              <summary>Debug Artifacts ({{ last.get('artifacts_rel')|length }})</summary>
-              <div class="syncArtifactList stack10">
-                {% for rel_path in last.get('artifacts_rel')[:8] %}
-                  {% set label = rel_path.rsplit('/', 1)[-1] if '/' in rel_path else rel_path %}
-                  <div class="syncArtifactRow">
-                    <span class="syncArtifactName" title="{{ rel_path }}">{{ label }}</span>
-                    <a class="btn btnCompact" href="/trades/sync/debug/{{ rel_path }}" target="_blank" rel="noopener">Open</a>
-                  </div>
-                {% endfor %}
-              </div>
-            </details>
-          {% endif %}
-          <div class="hr"></div>
-          <div class="rightActions">
-            <button class="btn" type="button" id="quick-retry-btn">Quick Retry</button>
-            <a class="btn" href="/trades/upload/statement">Reset</a>
-            <details class="inlineHelp">
-              <summary aria-label="Quick retry help">?</summary>
-              <div class="helpPopover">Quick retry reuses the last sync settings and moves focus to the password field.</div>
-            </details>
-          </div>
-          <div class="tiny stack8" id="quick-retry-note" aria-live="polite"></div>
         </details>
-      </div>
-    </div>
-    {% endif %}
-
-    {% if effective_artifacts %}
-    <div class="card stack12">
-      <div class="toolbar">
-        <div class="pill">Latest Artifacts</div>
-        <div class="workspaceSectionLead">Open the smallest useful artifact first instead of downloading the whole bundle blindly.</div>
         <details class="syncAsideFold">
           <summary>
-            <span>Open Latest Artifacts</span>
+            <span>Latest Artifacts</span>
             <span class="syncAsideMeta" id="sync-latest-artifacts-meta">{{ effective_artifacts|length }} file{{ '' if effective_artifacts|length == 1 else 's' }}</span>
           </summary>
           <div class="syncArtifactGrid" id="sync-latest-artifacts-grid">
@@ -486,23 +476,9 @@
             {% endfor %}
           </div>
         </details>
-      </div>
-    </div>
-    {% endif %}
-
-    <div class="card stack12">
-      <div class="toolbar">
-        <div class="pillRow">
-          <div class="pill">Sync Reliability (30D)</div>
-          <details class="inlineHelp">
-            <summary aria-label="Sync reliability help">?</summary>
-            <div class="helpPopover">Tracks success rate, runtime, and failure-stage trends for live and auto sync runs.</div>
-          </details>
-        </div>
-        <div class="workspaceSectionLead">Reliability should tell you whether the system is healthy without opening logs.</div>
         <details class="syncAsideFold">
           <summary>
-            <span>Open Reliability Metrics</span>
+            <span>Reliability Metrics</span>
             <span class="syncAsideMeta">{{ '%.1f'|format(rel.get('success_rate', 0.0)) }}% success · {{ rel.get('attempts', 0) }} runs</span>
           </summary>
           <div class="hr"></div>
@@ -584,111 +560,117 @@
             <div class="helpPopover">Set a daily sync time so the statement import can run automatically after the market closes.</div>
           </details>
         </div>
-        <div class="workspaceSectionLead">Automation belongs in the support lane so manual sync stays the primary action and scheduled sync stays easy to verify.</div>
-        <div class="hr"></div>
-        <form method="post" action="/trades/sync/auto/config" id="auto-sync-config-form">
-          <div class="row">
-            <div class="stack10">
-              <label><input type="checkbox" name="auto_enabled" value="1" {% if auto.get('enabled') %}checked{% endif %} /> Enable daily auto sync</label>
-            </div>
-            <div>
-              <label>Run Time (ET)</label>
-              <input type="time" name="auto_run_time_et" value="{{ auto.get('run_time_et', '16:15') }}" />
-            </div>
-            <div class="stack10">
-              <label><input type="checkbox" name="auto_run_weekends" value="1" {% if auto.get('run_weekends') %}checked{% endif %} /> Run on weekends</label>
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label>Mode</label>
-              <select name="auto_mode">
-                <option value="broker" {% if auto.get('mode') == 'broker' %}selected{% endif %}>🏦 Broker fills → trades</option>
-                <option value="balance" {% if auto.get('mode') == 'balance' %}selected{% endif %}>🏁 Statement → ending balance snapshot</option>
-              </select>
-            </div>
-            <div class="fieldGrow2">
-              <label>Username</label>
-              <input name="auto_username" value="{{ auto.get('username', '') }}" placeholder="Vanquish username/email" />
-            </div>
-            <div class="fieldGrow2">
-              <label>Password ({% if auto_sync_password_fallback %}Keychain or container fallback{% else %}OS keychain{% endif %})</label>
-              <input type="password" name="auto_password" placeholder="Set/replace password (leave blank to keep current)" />
-            </div>
-          </div>
-          <div class="row">
-            <div class="stack10">
-              <label><input type="checkbox" name="auto_clear_password" value="1" /> Clear stored keychain password</label>
-            </div>
-            <div class="tiny stack10 line16" id="auto-sync-credential-status">
-              {% if auto.get('password_stored') %}
-              Credential status: <b>ready</b> for scheduled runs.
-              {% else %}
-              Credential status: <b>setup needed</b>. Run Now uses saved credentials only. Click Save Auto Sync first.
-              {% endif %}
-            </div>
-          </div>
-          <details class="syncDetails stack10">
-            <summary>⚙️ Connection Settings</summary>
-            <div class="stack10">
-              <div class="tiny stack8 line15">
-                Keychain: {% if auto.get('keyring_available') %}<b>available</b>{% else %}<b>not available</b>{% endif %}
-                · Password: {% if auto.get('password_stored') %}<b>stored</b>{% else %}<b>not stored</b>{% endif %}
-                {% if auto_sync_password_fallback %}
-                · Storage: <b>keychain with container fallback enabled</b>
-                {% else %}
-                · Storage: <b>keychain only</b>
-                {% endif %}
-              </div>
-              <div class="row">
-                <div class="fieldGrow2">
-                  <label>Base Origin</label>
-                  <input name="auto_base_url" value="{{ auto.get('base_url', broker_cfg.base_url) }}" />
-                </div>
-                <div class="fieldGrow2">
-                  <label>Account</label>
-                  <input name="auto_account" value="{{ auto.get('account', broker_cfg.account) }}" placeholder="default:OEXXXXXXXX" />
-                </div>
-              </div>
-              <div class="row">
-                <div><label>Whitelist</label><input name="auto_wl" value="{{ auto.get('wl', broker_cfg.wl) }}" /></div>
-                <div><label>Timezone</label><input name="auto_time_zone" value="{{ auto.get('time_zone', broker_cfg.time_zone) }}" /></div>
-                <div><label>Date Locale</label><input name="auto_date_locale" value="{{ auto.get('date_locale', broker_cfg.date_locale) }}" /></div>
-                <div><label>Report Locale</label><input name="auto_report_locale" value="{{ auto.get('report_locale', broker_cfg.report_locale) }}" /></div>
-              </div>
-              <div class="row">
-                <div class="stack10">
-                  <label><input type="checkbox" name="auto_headless" value="1" {% if auto.get('headless', true) %}checked{% endif %} /> Headless browser</label>
-                </div>
-                <div class="stack10">
-                  <label><input type="checkbox" name="auto_debug_capture" value="1" {% if auto.get('debug_capture', true) %}checked{% endif %} /> Save debug artifacts</label>
-                </div>
-              </div>
-            </div>
-          </details>
+        <details class="syncAsideFold">
+          <summary>
+            <span>Automation Settings</span>
+            <span class="syncAsideMeta">{{ 'Enabled' if auto.get('enabled') else 'Disabled' }} · {{ auto.get('run_time_et', '16:15') }} ET</span>
+          </summary>
+          <div class="workspaceSectionLead">Keep scheduled sync available without taking focus from manual runs.</div>
           <div class="hr"></div>
-          <div class="rightActions">
-            <button class="btn primary" type="submit" id="auto-sync-config-submit">Save Auto Sync</button>
-            <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if sync_active or not auto.get('password_stored') %}disabled{% endif %} title="{% if sync_active %}Another sync is already running{% elif not auto.get('password_stored') %}Save Auto Sync first so credentials are stored{% endif %}">Run Now</button>
-            <details class="inlineHelp">
-              <summary aria-label="Auto sync security help">?</summary>
-              <div class="helpPopover">
-                {% if auto_sync_password_fallback %}
-                Auto sync prefers OS keychain; if unavailable, the password is stored encrypted in container config.
+          <form method="post" action="/trades/sync/auto/config" id="auto-sync-config-form">
+            <div class="row syncLaunchCompactRow">
+              <div class="stack10">
+                <label><input type="checkbox" name="auto_enabled" value="1" {% if auto.get('enabled') %}checked{% endif %} /> Enable daily auto sync</label>
+              </div>
+              <div>
+                <label>Run Time (ET)</label>
+                <input type="time" name="auto_run_time_et" value="{{ auto.get('run_time_et', '16:15') }}" />
+              </div>
+              <div class="stack10">
+                <label><input type="checkbox" name="auto_run_weekends" value="1" {% if auto.get('run_weekends') %}checked{% endif %} /> Run on weekends</label>
+              </div>
+            </div>
+            <div class="row syncCredentialRow">
+              <div>
+                <label>Mode</label>
+                <select name="auto_mode">
+                  <option value="broker" {% if auto.get('mode') == 'broker' %}selected{% endif %}>🏦 Broker fills → trades</option>
+                  <option value="balance" {% if auto.get('mode') == 'balance' %}selected{% endif %}>🏁 Statement → ending balance snapshot</option>
+                </select>
+              </div>
+              <div class="fieldGrow2">
+                <label>Username</label>
+                <input name="auto_username" value="{{ auto.get('username', '') }}" placeholder="Vanquish username/email" />
+              </div>
+              <div class="fieldGrow2">
+                <label>Password</label>
+                <input type="password" name="auto_password" placeholder="Set or replace password" />
+              </div>
+            </div>
+            <div class="row syncLaunchCompactRow">
+              <div class="stack10">
+                <label><input type="checkbox" name="auto_clear_password" value="1" /> Clear stored keychain password</label>
+              </div>
+              <div class="tiny stack10 line16" id="auto-sync-credential-status">
+                {% if auto.get('password_stored') %}
+                Credential ready for scheduled runs.
                 {% else %}
-                Auto sync stores the password in the OS keychain, not in app config files.
+                Save Auto Sync first to store credentials.
                 {% endif %}
+              </div>
+            </div>
+            <details class="syncDetails stack10">
+              <summary>⚙️ Connection Settings</summary>
+              <div class="stack10">
+                <div class="tiny stack8 line15">
+                  Keychain: {% if auto.get('keyring_available') %}<b>available</b>{% else %}<b>not available</b>{% endif %}
+                  · Password: {% if auto.get('password_stored') %}<b>stored</b>{% else %}<b>not stored</b>{% endif %}
+                  {% if auto_sync_password_fallback %}
+                  · Storage: <b>keychain with container fallback enabled</b>
+                  {% else %}
+                  · Storage: <b>keychain only</b>
+                  {% endif %}
+                </div>
+                <div class="row syncLaunchCompactRow">
+                  <div class="fieldGrow2">
+                    <label>Base Origin</label>
+                    <input name="auto_base_url" value="{{ auto.get('base_url', broker_cfg.base_url) }}" />
+                  </div>
+                  <div class="fieldGrow2">
+                    <label>Account</label>
+                    <input name="auto_account" value="{{ auto.get('account', broker_cfg.account) }}" placeholder="default:OEXXXXXXXX" />
+                  </div>
+                </div>
+                <div class="row syncLaunchCompactRow">
+                  <div><label>Whitelist</label><input name="auto_wl" value="{{ auto.get('wl', broker_cfg.wl) }}" /></div>
+                  <div><label>Timezone</label><input name="auto_time_zone" value="{{ auto.get('time_zone', broker_cfg.time_zone) }}" /></div>
+                  <div><label>Date Locale</label><input name="auto_date_locale" value="{{ auto.get('date_locale', broker_cfg.date_locale) }}" /></div>
+                  <div><label>Report Locale</label><input name="auto_report_locale" value="{{ auto.get('report_locale', broker_cfg.report_locale) }}" /></div>
+                </div>
+                <div class="row syncLaunchCompactRow">
+                  <div class="stack10">
+                    <label><input type="checkbox" name="auto_headless" value="1" {% if auto.get('headless', true) %}checked{% endif %} /> Headless browser</label>
+                  </div>
+                  <div class="stack10">
+                    <label><input type="checkbox" name="auto_debug_capture" value="1" {% if auto.get('debug_capture', true) %}checked{% endif %} /> Save debug artifacts</label>
+                  </div>
+                </div>
               </div>
             </details>
-          </div>
-          <div class="tiny stack8" id="auto-sync-config-loading" style="display:none;" aria-live="polite">
-            ⏳ Saving auto sync settings...
-          </div>
-          <div class="tiny stack8" id="auto-sync-run-loading" style="display:none;" aria-live="polite">
-            ⏳ Running auto sync now (login + generate + import)...
-          </div>
-          {{ runway('auto-sync-runway', ['Load credentials', 'Login', 'Generate', 'Import'], badge='Running', label='Preparing sync run...', label_id='auto-sync-stage-label') }}
-        </form>
+            <div class="hr"></div>
+            <div class="rightActions">
+              <button class="btn primary" type="submit" id="auto-sync-config-submit">Save Auto Sync</button>
+              <button class="btn" type="submit" form="auto-sync-run-form" id="auto-sync-run-submit" {% if sync_active or not auto.get('password_stored') %}disabled{% endif %} title="{% if sync_active %}Another sync is already running{% elif not auto.get('password_stored') %}Save Auto Sync first so credentials are stored{% endif %}">Run Now</button>
+              <details class="inlineHelp">
+                <summary aria-label="Auto sync security help">?</summary>
+                <div class="helpPopover">
+                  {% if auto_sync_password_fallback %}
+                  Auto sync prefers OS keychain; if unavailable, the password is stored encrypted in container config.
+                  {% else %}
+                  Auto sync stores the password in the OS keychain, not in app config files.
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+            <div class="tiny stack8" id="auto-sync-config-loading" style="display:none;" aria-live="polite">
+              ⏳ Saving auto sync settings...
+            </div>
+            <div class="tiny stack8" id="auto-sync-run-loading" style="display:none;" aria-live="polite">
+              ⏳ Running auto sync now...
+            </div>
+            {{ runway('auto-sync-runway', ['Load credentials', 'Login', 'Generate', 'Import'], badge='Running', label='Preparing sync run...', label_id='auto-sync-stage-label') }}
+          </form>
+        </details>
         <form method="post" action="/trades/sync/auto/run" id="auto-sync-run-form"></form>
       </div>
     </div>
@@ -805,16 +787,55 @@
       return job.updated_at_human || job.updated_at || 'No recent run';
     }
 
-    function syncNextAction(status, active) {
-      const normalized = String(status || '').toLowerCase();
-      if (active) return 'Let the current run finish or cancel it deliberately. Do not start a second browser sync.';
-      if (normalized === 'failed' || normalized === 'stale' || normalized === 'error' || normalized === 'blocked') {
-        return 'Retry with the recovery profile, then open diagnostics if the same stage fails twice.';
+    function syncChecklistLines(stage, status, active) {
+      const normalizedStage = String(stage || '').toLowerCase();
+      const normalizedStatus = String(status || '').toLowerCase();
+      if (active) {
+        return [
+          'Wait for the active run.',
+          'Do not start a second sync.',
+          'Watch job status only.',
+          'Open artifacts only if it stalls.'
+        ];
       }
-      if (normalized === 'success' || normalized === 'debug_only') {
-        return 'Review the imported trades or inspect the artifacts before the next run.';
+      if (['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus)) {
+        return [
+          'Switch to Recovery.',
+          'Retry once with debug capture.',
+          'Open the latest artifact.',
+          'Escalate repeated stage failures.'
+        ];
       }
-      return "Stage a clean run with today's dates and save diagnostics on until the lane is stable.";
+      if (['submit_login', 'locate_username', 'locate_password'].includes(normalizedStage)) {
+        return [
+          'Check username and password.',
+          'Keep debug capture on.',
+          'Retry with Recovery.',
+          'Inspect login artifacts.'
+        ];
+      }
+      if (['storage_io', 'capture_statement_html'].includes(normalizedStage)) {
+        return [
+          'Check upload storage.',
+          'Open the latest artifact.',
+          'Retry one controlled run.',
+          'Confirm files write cleanly.'
+        ];
+      }
+      if (normalizedStatus === 'success' || normalizedStatus === 'debug_only') {
+        return [
+          'Review imported trades.',
+          'Confirm setup tagging.',
+          'Keep diagnostics if unstable.',
+          'Queue the next run only if needed.'
+        ];
+      }
+      return [
+        'Confirm account and dates.',
+        'Use the correct profile.',
+        'Run one controlled sync.',
+        'Check artifacts only on failure.'
+      ];
     }
 
     function syncGuideLines(stage) {
@@ -847,9 +868,16 @@
       ];
     }
 
+    function systemStateLabel(status) {
+      const normalized = String(status || 'idle').toLowerCase();
+      if (['success', 'succeeded', 'ok', 'healthy', 'idle', 'debug_only'].includes(normalized)) return 'Healthy';
+      if (['queued', 'running', 'stale'].includes(normalized)) return 'Warning';
+      return 'Failed';
+    }
+
     function setToneClass(el, tone, baseClass) {
       if (!el) return;
-      el.classList.remove('positive', 'negative');
+      el.classList.remove('positive', 'negative', 'warning');
       if (baseClass) {
         el.classList.add(baseClass);
       }
@@ -870,19 +898,18 @@
       const terminal = !['queued', 'running'].includes(status);
       const tone = syncTone(status);
       const artifacts = Array.isArray((job.summary || {}).artifacts_rel) ? (job.summary || {}).artifacts_rel.slice(0, 4) : [];
+      const systemState = systemStateLabel(status);
 
-      const topStatusBadge = document.getElementById('sync-top-status-badge');
-      const topStageBadge = document.getElementById('sync-top-stage-badge');
+      const topSummary = document.getElementById('sync-status-summary');
+      const topHealthValue = document.getElementById('sync-top-health-value');
+      const topResultValue = document.getElementById('sync-top-result-value');
       const topUpdatedBadge = document.getElementById('sync-top-updated-badge');
-      const topStatusValue = document.getElementById('sync-top-status-value');
-      const topStageValue = document.getElementById('sync-top-stage-value');
       const topUpdatedValue = document.getElementById('sync-top-updated-value');
-      setToneClass(topStatusBadge, tone, 'statusBadge');
-      if (topStatusValue) topStatusValue.textContent = statusLabel;
-      if (topStageValue) topStageValue.textContent = stageLabel;
+      setToneClass(topSummary, tone, 'syncStatusSummary');
+      if (topHealthValue) topHealthValue.textContent = systemState;
+      if (topResultValue) topResultValue.textContent = statusLabel;
       if (topUpdatedValue) topUpdatedValue.textContent = updated;
-      if (topStatusBadge) topStatusBadge.title = message;
-      if (topStageBadge) topStageBadge.title = stageHelp || stageLabel;
+      if (topSummary) topSummary.title = `${systemState} · ${message}`;
       if (topUpdatedBadge) topUpdatedBadge.title = updated;
 
       const heroStatusChip = document.getElementById('sync-hero-status-chip');
@@ -894,18 +921,21 @@
 
       const controlStatusChip = document.getElementById('sync-control-status-chip');
       const controlStatusValue = document.getElementById('sync-control-status-value');
-      const controlStageValue = document.getElementById('sync-control-stage-value');
       const controlUpdatedValue = document.getElementById('sync-control-updated-value');
-      const controlMessage = document.getElementById('sync-control-message');
-      const controlHelp = document.getElementById('sync-control-help');
-      const controlNextAction = document.getElementById('sync-control-next-action');
+      const controlChecklistStage = document.getElementById('sync-control-checklist-stage');
+      const controlChecklist = [
+        document.getElementById('sync-check-1'),
+        document.getElementById('sync-check-2'),
+        document.getElementById('sync-check-3'),
+        document.getElementById('sync-check-4')
+      ];
       setToneClass(controlStatusChip, tone, 'trendChip');
       if (controlStatusValue) controlStatusValue.textContent = statusLabel;
-      if (controlStageValue) controlStageValue.textContent = stageLabel;
       if (controlUpdatedValue) controlUpdatedValue.textContent = updated;
-      if (controlMessage) controlMessage.textContent = message;
-      if (controlHelp) controlHelp.textContent = stageHelp;
-      if (controlNextAction) controlNextAction.textContent = syncNextAction(status, !terminal);
+      if (controlChecklistStage) controlChecklistStage.textContent = stageLabel;
+      syncChecklistLines(stage, status, !terminal).forEach((line, index) => {
+        if (controlChecklist[index]) controlChecklist[index].textContent = line;
+      });
 
       const guideHeadline = document.getElementById('sync-guide-headline');
       const guideMessage = document.getElementById('sync-guide-message');
@@ -934,7 +964,6 @@
 
       const latestArtifactsMeta = document.getElementById('sync-latest-artifacts-meta');
       const latestArtifactsGrid = document.getElementById('sync-latest-artifacts-grid');
-      const latestArtifactBtn = Array.from(document.querySelectorAll('a.btn')).find((el) => el.textContent.trim() === 'Latest Artifact');
       if (latestArtifactsMeta) {
         latestArtifactsMeta.textContent = `${artifacts.length} file${artifacts.length === 1 ? '' : 's'}`;
       }
@@ -945,13 +974,18 @@
           return `<a class="syncArtifactTile" href="/trades/sync/debug/${relPath}" target="_blank" rel="noopener"><strong>${label}</strong><span>${relPath}</span></a>`;
         }).join('');
       }
-      if (latestArtifactBtn) {
-        if (artifacts.length) {
-          latestArtifactBtn.href = `/trades/sync/debug/${artifacts[0]}`;
-          latestArtifactBtn.hidden = false;
-        } else {
-          latestArtifactBtn.hidden = true;
-        }
+
+      const feedbackCard = document.getElementById('sync-run-feedback-card');
+      const feedbackInserted = document.getElementById('sync-feedback-inserted');
+      const feedbackErrors = document.getElementById('sync-feedback-errors');
+      const feedbackWarnings = document.getElementById('sync-feedback-warnings');
+      const feedbackSummary = job.summary || {};
+      if (feedbackInserted) feedbackInserted.textContent = String(Number(feedbackSummary.inserted || 0));
+      if (feedbackErrors) feedbackErrors.textContent = String(Number(feedbackSummary.error_count || 0));
+      if (feedbackWarnings) feedbackWarnings.textContent = String(Number(feedbackSummary.warn_count || 0));
+      if (feedbackCard) {
+        const shouldShowFeedback = terminal || Number(feedbackSummary.inserted || 0) || Number(feedbackSummary.warn_count || 0) || Number(feedbackSummary.error_count || 0);
+        feedbackCard.hidden = !shouldShowFeedback;
       }
     }
 
@@ -1308,7 +1342,6 @@
     startAsyncSync('auto-sync-run-form', 'auto-sync-run-submit', 'auto-sync-run-loading', '⏳ Running...', 'Run Now');
 
     const quickRetryBtn = document.getElementById('quick-retry-btn');
-    const quickRetryDeckBtn = document.getElementById('quick-retry-btn-deck');
     const quickRetryNote = document.getElementById('quick-retry-note');
     const liveForm = document.getElementById('live-sync-form');
     const autoPwd = document.querySelector('#auto-sync-config-form [name="auto_password"]');
@@ -1325,15 +1358,15 @@
           autoRunBtn.disabled = false;
           autoRunBtn.title = '';
         }
-        autoStatus.innerHTML = 'Credential status: <b>ready</b> for scheduled runs.';
+        autoStatus.textContent = 'Credential ready for scheduled runs.';
         return;
       }
       autoRunBtn.disabled = true;
       autoRunBtn.title = 'Save Auto Sync first so credentials are stored';
       if (hasTypedPassword) {
-        autoStatus.innerHTML = 'Credential status: <b>password entered but not saved</b>. Click <b>Save Auto Sync</b>, then use <b>Run Now</b>.';
+        autoStatus.textContent = 'Password entered. Save Auto Sync before Run Now.';
       } else {
-        autoStatus.innerHTML = 'Credential status: <b>setup needed</b>. Run Now uses saved credentials only. Click <b>Save Auto Sync</b> first.';
+        autoStatus.textContent = 'Save Auto Sync first to store credentials.';
       }
     }
 
@@ -1376,7 +1409,7 @@
       });
     });
 
-    if ((quickRetryBtn || quickRetryDeckBtn) && liveForm) {
+    if (quickRetryBtn && liveForm) {
       const requested = {{ (last.get('requested') or {}) | tojson }};
       const handleQuickRetry = function() {
         if (!requested || Object.keys(requested).length === 0) {
@@ -1402,7 +1435,6 @@
         }
       };
       if (quickRetryBtn) quickRetryBtn.addEventListener('click', handleQuickRetry);
-      if (quickRetryDeckBtn) quickRetryDeckBtn.addEventListener('click', handleQuickRetry);
     }
 
     applySyncLockState({{ ((sync_active if sync_active is defined else false)) | tojson }});

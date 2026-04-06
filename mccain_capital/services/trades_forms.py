@@ -2,10 +2,119 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from urllib.parse import urlencode
 
 from mccain_capital.repositories import analytics as analytics_repo
+from mccain_capital.services import market_data_service
+from mccain_capital.services.trade_review_scoring import compute_trade_review_foundation, grade_from_score
 from mccain_capital.services import trades as legacy
+
+
+def _trade_back_query() -> str:
+    return urlencode(
+        {
+            key: value
+            for key, value in legacy.request.args.items()
+            if value not in (None, "", [])
+        }
+    )
+
+
+def _merge_trade_review_payload(trade_row: dict, review_row: dict | None) -> dict:
+    payload = dict(trade_row)
+    payload.update(review_row or {})
+    payload["setup_display"] = (
+        str(payload.get("strategy_label") or payload.get("setup_tag") or "").strip() or "Unknown"
+    )
+    foundation = compute_trade_review_foundation(payload)
+    payload.update(foundation)
+    return payload
+
+
+def _intraday_points_for_day(symbol: str, day: str) -> list[dict]:
+    try:
+        rows = market_data_service.get_intraday(symbol)
+    except Exception:
+        rows = []
+    points: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        ts_raw = str(row.get("ts") or "").strip()
+        close_v = row.get("close")
+        if not ts_raw or not isinstance(close_v, (int, float)):
+            continue
+        try:
+            dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        dt_et = dt.astimezone(legacy.app_runtime.TZ) if dt.tzinfo else dt.replace(tzinfo=legacy.app_runtime.TZ)
+        if dt_et.date().isoformat() != day:
+            continue
+        points.append(
+            {
+                "ts": dt_et.isoformat(),
+                "label": dt_et.strftime("%I:%M %p").lstrip("0"),
+                "minute": (dt_et.hour * 60) + dt_et.minute,
+                "close": float(close_v),
+            }
+        )
+    return points
+
+
+def _minute_from_label(value: str) -> int:
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    for fmt in ("%I:%M %p", "%H:%M"):
+        try:
+            parsed = datetime.strptime(text.upper(), fmt)
+            return (parsed.hour * 60) + parsed.minute
+        except ValueError:
+            continue
+    return 0
+
+
+def _trade_replay_payload(trade: dict, review: dict) -> dict:
+    trade_date = str(trade.get("trade_date") or "").strip()
+    symbol = str(trade.get("ticker") or "SPX").strip().upper() or "SPX"
+    intraday = _intraday_points_for_day(symbol, trade_date)
+    entry_minute = _minute_from_label(str(trade.get("entry_time") or ""))
+    exit_minute = _minute_from_label(str(trade.get("exit_time") or "")) or entry_minute + 30
+    series: list[dict] = []
+    mode = "reference"
+    if intraday:
+        filtered = [
+            point
+            for point in intraday
+            if point["minute"] >= max(0, entry_minute - 20)
+            and point["minute"] <= min((24 * 60), exit_minute + 20)
+        ]
+        series = filtered or intraday[-30:]
+        mode = "intraday"
+    else:
+        entry_price = legacy.parse_float(str(trade.get("entry_price") or ""))
+        exit_price = legacy.parse_float(str(trade.get("exit_price") or ""))
+        series = [
+            {"label": str(trade.get("entry_time") or "Entry"), "minute": entry_minute, "close": float(entry_price or 0)},
+            {"label": str(trade.get("exit_time") or "Exit"), "minute": exit_minute, "close": float(exit_price or entry_price or 0)},
+        ]
+    return {
+        "mode": mode,
+        "series": series,
+        "entry_minute": entry_minute,
+        "exit_minute": exit_minute,
+        "entry_price": legacy.parse_float(str(trade.get("entry_price") or "")),
+        "exit_price": legacy.parse_float(str(trade.get("exit_price") or "")),
+        "stop_price": review.get("stop_value"),
+        "target_price": review.get("target_value"),
+        "summary": (
+            "Trade-window replay using same-day intraday prints."
+            if mode == "intraday"
+            else "Reference replay built from the trade’s saved execution levels."
+        ),
+    }
 
 
 def trades_edit(trade_id: int):
@@ -156,38 +265,17 @@ def trades_review(trade_id: int):
     if not row:
         legacy.abort(404)
 
-    d = legacy.request.args.get("d", "")
-    q = legacy.request.args.get("q", "")
-    review_filters = analytics_repo.normalize_trade_filters(
-        {
-            "setup": legacy.request.args.get("setup", ""),
-            "session": legacy.request.args.get("session", ""),
-            "outcome": legacy.request.args.get("outcome", ""),
-            "time_block": legacy.request.args.get("time_block", ""),
-            "mistake_tag": legacy.request.args.get("mistake_tag", ""),
-        }
-    )
-    back_query = urlencode(
-        {
-            "d": d,
-            "q": q,
-            **{key: value for key, value in review_filters.items() if value},
-        }
-    )
+    back_query = _trade_back_query()
     rv = legacy.repo.get_trade_review(trade_id) or {}
     trade_row = dict(row)
+    review_payload = _merge_trade_review_payload(trade_row, rv)
     trade_metrics = {
         "net_pl": float(row["net_pl"] or 0.0) if row["net_pl"] is not None else 0.0,
         "hold_minutes": legacy.repo.compute_hold_minutes(
             trade_row.get("entry_time"), trade_row.get("exit_time")
         ),
+        "r_multiple": review_payload.get("r_multiple"),
     }
-    planned_risk_existing = legacy.parse_float(str(rv.get("planned_risk_dollars") or ""))
-    trade_metrics["r_multiple"] = (
-        (trade_metrics["net_pl"] / planned_risk_existing)
-        if planned_risk_existing and planned_risk_existing > 0
-        else None
-    )
 
     if legacy.request.method == "POST":
         f = legacy.request.form
@@ -216,6 +304,31 @@ def trades_review(trade_id: int):
         exit_quality_note = (f.get("exit_quality_note") or "").strip()
         review_note = (f.get("review_note") or "").strip()
         improvement_note = (f.get("improvement_note") or "").strip()
+        reviewed_stop_price = legacy.parse_float((f.get("reviewed_stop_price") or "").strip())
+        reviewed_target_price = legacy.parse_float((f.get("reviewed_target_price") or "").strip())
+        reviewed_risk_dollars = legacy.parse_float((f.get("reviewed_risk_dollars") or "").strip())
+        reviewed_risk_percent = legacy.parse_float((f.get("reviewed_risk_percent") or "").strip())
+        reviewed_execution_quality = (f.get("reviewed_execution_quality") or "").strip()
+        reviewed_sizing_quality = (f.get("reviewed_sizing_quality") or "").strip()
+        reviewed_stop_discipline = (f.get("reviewed_stop_discipline") or "").strip()
+        reviewed_within_plan_raw = (f.get("reviewed_within_plan") or "").strip()
+        reviewed_within_plan = (
+            1 if reviewed_within_plan_raw == "1" else 0 if reviewed_within_plan_raw == "0" else None
+        )
+        manual_grade_score = legacy.parse_int((f.get("manual_grade_score") or "").strip() or "")
+        manual_grade_letter = (f.get("manual_grade_letter") or "").strip().upper()
+        if manual_grade_score is not None and not manual_grade_letter:
+            manual_grade_letter = grade_from_score(manual_grade_score)
+        if manual_grade_letter and manual_grade_score is None:
+            score_floor = {"A": 90, "B": 75, "C": 60, "D": 40, "F": 0}.get(manual_grade_letter)
+            manual_grade_score = score_floor
+        classification_override = (f.get("classification_override") or "").strip()
+        grade_override_reason = (f.get("grade_override_reason") or "").strip()
+        if f.get("use_auto_grade") == "1":
+            manual_grade_score = None
+            manual_grade_letter = ""
+            classification_override = ""
+            grade_override_reason = ""
         legacy.repo.upsert_trade_review(
             trade_id=trade_id,
             strategy_id=rv.get("strategy_id"),
@@ -235,113 +348,59 @@ def trades_review(trade_id: int):
             entry_quality_note=entry_quality_note,
             exit_quality_note=exit_quality_note,
             improvement_note=improvement_note,
+            reviewed_stop_price=reviewed_stop_price,
+            reviewed_target_price=reviewed_target_price,
+            reviewed_risk_dollars=reviewed_risk_dollars,
+            reviewed_risk_percent=reviewed_risk_percent,
+            reviewed_execution_quality=reviewed_execution_quality,
+            reviewed_sizing_quality=reviewed_sizing_quality,
+            reviewed_stop_discipline=reviewed_stop_discipline,
+            reviewed_within_plan=reviewed_within_plan,
+            manual_grade_score=manual_grade_score,
+            manual_grade_letter=manual_grade_letter,
+            grade_override_reason=grade_override_reason,
+            classification_override=classification_override,
         )
         legacy.flash("Trade review saved.", "success")
-        return legacy.redirect(f"/trades?{back_query}" if back_query else legacy.url_for("trades_page"))
+        if f.get("back_to_trades") == "1":
+            return legacy.redirect(f"/trades?{back_query}" if back_query else legacy.url_for("trades_page"))
+        review_href = f"/trades/review/{trade_id}"
+        if back_query:
+            review_href += f"?{back_query}"
+        return legacy.redirect(review_href)
 
     strategy_options = [dict(r) for r in legacy.strategies_repo.fetch_strategies()]
-    content = legacy.render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🧠 Trade Review #{{ t.id }}</div>
-          <div class="tiny stack8">{{ t.trade_date }} · {{ t.ticker }} {{ t.opt_type }}</div>
-          <div class="trendChips">
-            <span class="trendChip {% if metrics.net_pl > 0 %}positive{% elif metrics.net_pl < 0 %}negative{% endif %}">Net {{ money(metrics.net_pl) }}</span>
-            <span class="trendChip">Hold {{ metrics.hold_minutes if metrics.hold_minutes is not none else '—' }} min</span>
-            <span class="trendChip">Time Block {{ repo.classify_time_block(t.entry_time) }}</span>
-            <span class="trendChip">R {% if metrics.r_multiple is not none %}{{ '%.2f'|format(metrics.r_multiple) }}R{% else %}—{% endif %}</span>
-          </div>
-          <div class="hr"></div>
-          <form method="post" action="/trades/review/{{ t.id }}?{{ back_query }}">
-            <div class="pill">Setup</div>
-            <div class="row">
-              <div>
-                <label>Strategy</label>
-                <input name="strategy_label" list="strategy-options" value="{{ rv.get('strategy_label','') or rv.get('setup_tag','') }}" placeholder="FVG, ORB, Fade, Breakout">
-              </div>
-              <div>
-                <label>Session Tag</label>
-                <select name="session_tag">
-                  {% set s = rv.get('session_tag','') %}
-                  <option value="" {% if s=='' %}selected{% endif %}>—</option>
-                  <option value="Open" {% if s=='Open' %}selected{% endif %}>Open</option>
-                  <option value="Midday" {% if s=='Midday' %}selected{% endif %}>Midday</option>
-                  <option value="Power Hour" {% if s=='Power Hour' %}selected{% endif %}>Power Hour</option>
-                  <option value="After Hours" {% if s=='After Hours' %}selected{% endif %}>After Hours</option>
-                </select>
-              </div>
-              <div><label>Checklist Score (0-100)</label><input name="checklist_score" inputmode="numeric" value="{{ '' if rv.get('checklist_score') is none else rv.get('checklist_score') }}"></div>
-            </div>
-            <div class="stack10">
-              <label>Thesis Note</label>
-              <textarea name="thesis_note" placeholder="What was the read before entry?">{{ rv.get('thesis_note','') }}</textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="pill">Risk</div>
-            <div class="row">
-              <div><label>Planned Risk ($)</label><input name="planned_risk_dollars" inputmode="decimal" value="{{ '' if rv.get('planned_risk_dollars') is none else rv.get('planned_risk_dollars') }}"></div>
-              <div><label>Risk Grade (0-100)</label><input name="risk_grade" inputmode="numeric" value="{{ '' if rv.get('risk_grade') is none else rv.get('risk_grade') }}"></div>
-              <div><label>Plan Grade (0-100)</label><input name="plan_grade" inputmode="numeric" value="{{ '' if rv.get('plan_grade') is none else rv.get('plan_grade') }}"></div>
-            </div>
-            <div class="stack10">
-              <label>Size Rule Note</label>
-              <textarea name="size_rule_note" placeholder="Was size aligned with the plan?">{{ rv.get('size_rule_note','') }}</textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="pill">Execution</div>
-            <div class="row">
-              <div><label>Execution Grade (0-100)</label><input name="execution_grade" inputmode="numeric" value="{{ '' if rv.get('execution_grade') is none else rv.get('execution_grade') }}"></div>
-              <div><label>Entry Quality Note</label><input name="entry_quality_note" value="{{ rv.get('entry_quality_note','') }}" placeholder="Patience, location, confirmation"></div>
-              <div><label>Exit Quality Note</label><input name="exit_quality_note" value="{{ rv.get('exit_quality_note','') }}" placeholder="Scale, target, stop management"></div>
-            </div>
-            <div class="hr"></div>
-            <div class="pill">Mistakes</div>
-            <div class="row stack10">
-              <div>
-                <label>Mistake Tags (comma separated)</label>
-                <input name="mistake_tags" value="{{ rv.get('mistake_tags','') }}" placeholder="late entry, overtrade, size creep">
-              </div>
-            </div>
-            <div class="row stack10">
-              <div>
-                <label>Rule-Break Tags (comma separated)</label>
-                <input name="rule_break_tags" value="{{ rv.get('rule_break_tags','') }}" placeholder="oversized, late entry, no stop, revenge trade">
-              </div>
-            </div>
-            <datalist id="strategy-options">
-              {% for strategy in strategy_options %}
-                <option value="{{ strategy['title'] }}"></option>
-              {% endfor %}
-            </datalist>
-            <div class="hr"></div>
-            <div class="pill">Lesson</div>
-            <div class="stack10">
-              <label>Review Note</label>
-              <textarea name="review_note" placeholder="What to repeat, what to remove next session">{{ rv.get('review_note','') }}</textarea>
-            </div>
-            <div class="stack10">
-              <label>Improvement Note</label>
-              <textarea name="improvement_note" placeholder="What changes on the next clean rep?">{{ rv.get('improvement_note','') }}</textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save Review</button>
-              <a class="btn" href="/analytics?tab=edge&setup={{ (rv.get('strategy_label','') or rv.get('setup_tag',''))|urlencode }}">Setup Analytics</a>
-              <a class="btn" href="/journal/new?d={{ t.trade_date }}&entry_type=trade_debrief">Journal Draft</a>
-              <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    content = legacy.render_template(
+        "trades/review.html",
         t=trade_row,
         rv=rv,
-        d=d,
-        q=q,
+        review=review_payload,
         back_query=back_query,
         strategy_options=strategy_options,
         metrics=trade_metrics,
         money=legacy.money,
         repo=legacy.repo,
+    )
+    return legacy.render_page(content, active="trades")
+
+
+def trades_replay(trade_id: int):
+    row = legacy.get_trade(trade_id)
+    if not row:
+        legacy.abort(404)
+    back_query = _trade_back_query()
+    trade_row = dict(row)
+    review_row = legacy.repo.get_trade_review(trade_id) or {}
+    review_payload = _merge_trade_review_payload(trade_row, review_row)
+    replay_chart = _trade_replay_payload(trade_row, review_payload)
+    content = legacy.render_template(
+        "trades/replay.html",
+        t=trade_row,
+        rv=review_row,
+        review=review_payload,
+        replay_chart=replay_chart,
+        back_query=back_query,
+        money=legacy.money,
     )
     return legacy.render_page(content, active="trades")
 

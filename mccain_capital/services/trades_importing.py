@@ -666,7 +666,7 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
 
     score = max(35, min(95, int(round(score))))
     return {
-        "setup_tag": "Statement Import",
+        "setup_tag": "",
         "session_tag": _infer_session_tag(str(trade.get("entry_time") or "")),
         "checklist_score": score,
         "rule_break_tags": ", ".join(sorted(set(tags))),
@@ -956,8 +956,8 @@ def insert_trades_from_broker_paste_with_report(
                         entry_price, exit_price, contracts, total_spent,
                         stop_pct, target_pct, stop_price, take_profit,
                         risk, comm, gross_pl, net_pl, result_pct, balance,
-                        raw_line, created_at, import_batch_id
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        raw_line, created_at, import_batch_id, trade_source
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         tr["trade_date"],
@@ -983,16 +983,11 @@ def insert_trades_from_broker_paste_with_report(
                         tr["raw_line"],
                         created,
                         import_batch_id or "",
+                        "Statement Import",
                     ),
                 )
                 trade_id = int(cur.lastrowid)
                 payload = _auto_review_payload(tr)
-                strategy_id, strategy_label = trades_repo._resolve_strategy_link(
-                    conn,
-                    strategy_id=None,
-                    strategy_label=payload.get("setup_tag", ""),
-                    setup_tag=payload.get("setup_tag", ""),
-                )
                 conn.execute(
                     """
                     INSERT OR IGNORE INTO trade_reviews
@@ -1001,9 +996,9 @@ def insert_trades_from_broker_paste_with_report(
                     """,
                     (
                         trade_id,
-                        strategy_id,
-                        strategy_label,
-                        strategy_label,
+                        None,
+                        "",
+                        "",
                         payload.get("session_tag", ""),
                         payload.get("checklist_score", None),
                         payload.get("rule_break_tags", ""),
@@ -1143,8 +1138,8 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
                     entry_price, exit_price, contracts, total_spent,
                     stop_pct, target_pct, stop_price, take_profit,
                     risk, comm, gross_pl, net_pl, result_pct, balance,
-                    raw_line, created_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    raw_line, created_at, trade_source
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     row["trade_date"],
@@ -1169,16 +1164,11 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
                     row["balance"],
                     row["raw_line"],
                     created,
+                    "Statement Import",
                 ),
             )
             trade_id = int(cur.lastrowid)
             payload = _auto_review_payload(row)
-            strategy_id, strategy_label = trades_repo._resolve_strategy_link(
-                conn,
-                strategy_id=None,
-                strategy_label=payload.get("setup_tag", ""),
-                setup_tag=payload.get("setup_tag", ""),
-            )
             conn.execute(
                 """
                 INSERT OR IGNORE INTO trade_reviews
@@ -1187,9 +1177,9 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
                 """,
                 (
                     trade_id,
-                    strategy_id,
-                    strategy_label,
-                    strategy_label,
+                    None,
+                    "",
+                    "",
                     payload.get("session_tag", ""),
                     payload.get("checklist_score", None),
                     payload.get("rule_break_tags", ""),
@@ -1215,8 +1205,8 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
                 entry_price, exit_price, contracts, total_spent,
                 stop_pct, target_pct, stop_price, take_profit,
                 risk, comm, gross_pl, net_pl, result_pct, balance,
-                raw_line, created_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                raw_line, created_at, trade_source
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 trade_date,
@@ -1241,5 +1231,6 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
                 float(balance),
                 raw_line or "BALANCE SNAPSHOT",
                 created,
+                "Balance Snapshot",
             ),
         )
