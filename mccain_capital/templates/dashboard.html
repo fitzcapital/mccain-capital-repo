@@ -36,7 +36,14 @@
 {% set tape_live = dashboard_spx_state == 'Live' or dashboard_vix_state == 'Live' %}
 {% set tape_delayed = (dashboard_spx_state == 'Delayed' or dashboard_vix_state == 'Delayed') and not tape_live %}
 {% set tape_status_label = 'Live Feed' if tape_live else 'Delayed Feed' if tape_delayed else 'Feed Standby' %}
+{% set dashboard_default_mode = 'live' if tape_live else 'pre' %}
 
+<div
+  class="dashboardModeShell"
+  id="dashboardModeShell"
+  data-dashboard-mode="{{ dashboard_default_mode }}"
+  data-dashboard-default-mode="{{ dashboard_default_mode }}"
+>
 <div class="dashboardSnapshotBar">
   {% for item in snapshot_bar.entries %}
     <div class="dashboardSnapshotCard{% if item.tone %} is-{{ item.tone }}{% endif %}">
@@ -134,21 +141,21 @@
           <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% endif %}">{{ decision_panel.status }}</span>
         </div>
         <div class="dashboardDecisionGrid">
-          <div class="dashboardDecisionItem">
+          <div class="dashboardDecisionItem dashboardDecisionItem-bias">
             <span class="dashboardDecisionLabel">Bias</span>
             <strong>{{ decision_panel.bias }}</strong>
           </div>
-          <div class="dashboardDecisionItem">
+          <div class="dashboardDecisionItem dashboardDecisionItem-risk">
             <span class="dashboardDecisionLabel">Risk</span>
             <strong>{{ decision_panel.risk_size }}</strong>
           </div>
-          <div class="dashboardDecisionItem dashboardDecisionItem-wide">
+          <div class="dashboardDecisionItem dashboardDecisionItem-wide dashboardDecisionItem-plan">
             <span class="dashboardDecisionLabel">Plan</span>
-            <strong>{{ decision_panel.plan }}</strong>
+            <strong title="{{ decision_panel.plan }}">{{ decision_panel.plan|truncate(88, False, '…') }}</strong>
           </div>
-          <div class="dashboardDecisionItem dashboardDecisionItem-wide">
+          <div class="dashboardDecisionItem dashboardDecisionItem-wide dashboardDecisionItem-tradegate">
             <span class="dashboardDecisionLabel">Trade Gate</span>
-            <div class="supportBody">{{ decision_panel.trade_gate }}</div>
+            <div class="supportBody" title="{{ decision_panel.trade_gate }}">{{ decision_panel.trade_gate|truncate(74, False, '…') }}</div>
           </div>
         </div>
         <div
@@ -172,56 +179,52 @@
         <div class="dashboardGammaMeta{% if decision_panel.gamma_strip.state == 'stale' %} is-stale{% elif decision_panel.gamma_strip.state == 'loading' %} is-loading{% elif decision_panel.gamma_strip.state == 'unavailable' %} is-unavailable{% endif %}" id="dashboardGammaMeta">
           {{ decision_panel.gamma_strip.status_text }}
         </div>
-        <div class="dashboardDecisionFooter">
-          <span class="dashboardDecisionFooterLabel">{{ decision_panel.risk_posture_title }}</span>
-          <span class="dashboardDecisionFooterText">{{ decision_panel.risk_posture_detail }}</span>
-        </div>
       </div></div>
       <div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
         <div class="pillRow dashboardBriefSignalRow">
           <div class="pill">Daily Brief</div>
           <span class="trendChip {% if daily_brief.bias_tone %}{{ daily_brief.bias_tone }}{% endif %}">{{ daily_brief.bias_label }}</span>
-          <span class="dashboardBriefSignalText" title="{{ daily_brief.source_detail }}">{{ daily_brief.status_label }} · {{ daily_brief.source_label }}</span>
+          <span class="dashboardBriefSignalText" title="{{ daily_brief.source_detail }}">{{ daily_brief.source_label }}</span>
         </div>
-        <div class="supportLead">{{ daily_brief.headline }}</div>
+        <div class="supportLead dashboardBriefHeadlineCompact" title="{{ daily_brief.headline }}">{{ daily_brief.headline|truncate(92, False, '…') }}</div>
           <div class="dashboardBriefFoldBody dashboardBriefDesktopBody">
             <div class="dashboardBriefStructuredGrid">
               <div class="dashboardBriefBiasPanel {% if daily_brief.bias_tone %}is-{{ daily_brief.bias_tone }}{% endif %}">
                 <div class="dashboardBriefStructuredLabel">Session Bias</div>
                 <div class="dashboardBriefBiasValue">{{ daily_brief.bias_label }}</div>
-                <div class="dashboardBriefBiasText">{{ daily_brief.summary }}</div>
+                <div class="dashboardBriefBiasText" title="{{ daily_brief.summary }}">{{ daily_brief.summary|truncate(76, False, '…') }}</div>
               </div>
               <div class="dashboardBriefQuickItem">
                 <div class="dashboardBriefStructuredLabel">Operator Focus</div>
-                <div class="dashboardBriefQuickText">{{ daily_brief.focus }}</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.focus }}">{{ daily_brief.focus|truncate(72, False, '…') }}</div>
               </div>
               <div class="dashboardBriefQuickItem">
                 <div class="dashboardBriefStructuredLabel">Plan A</div>
-                <div class="dashboardBriefQuickText">{{ daily_brief.plan_a }}</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.plan_a }}">{{ daily_brief.plan_a|truncate(72, False, '…') }}</div>
               </div>
             </div>
             <div class="dashboardBriefQuickGrid dashboardBriefQuickGrid-secondary">
               <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
                 <div class="dashboardBriefStructuredLabel">Invalidates</div>
-                <div class="dashboardBriefQuickText">{{ daily_brief.no_trade }}</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.no_trade }}">{{ daily_brief.no_trade|truncate(72, False, '…') }}</div>
               </div>
               <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
                 <div class="dashboardBriefStructuredLabel">Risk Note</div>
-                <div class="dashboardBriefQuickText">{{ decision_panel.risk_posture_detail }}</div>
+                <div class="dashboardBriefQuickText" title="{{ decision_panel.risk_posture_detail }}">{{ decision_panel.risk_posture_detail|truncate(70, False, '…') }}</div>
               </div>
             </div>
-          <div class="dashboardBriefMeta dashboardBriefMetaStrong">
-            {% for level in daily_brief.key_levels %}
-              <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
-            {% endfor %}
-          </div>
           <div class="rightActions dashboardBriefPrimaryActions">
-            <a class="btn primary" href="/trades/new">{{ daily_brief.cta_label }}</a>
-            <a class="btn" href="/market-pulse?refresh=1">Market Pulse</a>
+            <a class="btn primary" href="/market-pulse?refresh=1">Market Pulse</a>
+            <a class="btn" href="/trades/new">{{ daily_brief.cta_label }}</a>
             <a class="btn ctaLink" href="/calendar">Open Calendar</a>
           </div>
-          <details class="dashboardBriefMoreInfo">
+          <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more">
             <summary>More Info</summary>
+            <div class="dashboardBriefMeta dashboardBriefMetaStrong">
+              {% for level in daily_brief.key_levels %}
+                <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
+              {% endfor %}
+            </div>
             <div class="dashboardBriefSecondaryGrid">
               <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
                 <div class="tiny muted">Plan B</div>
@@ -241,7 +244,7 @@
               {% endfor %}
             </div>
           </details>
-          <details class="syncDetails stack10">
+          <details class="syncDetails stack10" data-dashboard-optional="brief-tune">
             <summary>Tune Brief</summary>
             <form method="post" action="/dashboard/brief" class="stack10">
               <input type="hidden" name="brief_day" value="{{ daily_brief.day_key }}"/>
@@ -302,7 +305,7 @@
                 <div class="dashboardBriefCopy">{{ daily_brief.plan_a }}</div>
               </div>
             </div>
-            <details class="dashboardBriefMoreInfo">
+            <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more-mobile">
               <summary>More Info</summary>
               <div class="dashboardBriefSecondaryGrid">
                 <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
@@ -332,7 +335,7 @@
               <a class="btn primary" href="/trades/new">{{ daily_brief.cta_label }}</a>
               <a class="btn ctaLink" href="/market-pulse?refresh=1">Market Pulse</a>
             </div>
-            <details class="syncDetails stack10">
+            <details class="syncDetails stack10" data-dashboard-optional="brief-tune-mobile">
               <summary>Tune Brief</summary>
               <form method="post" action="/dashboard/brief" class="stack10">
                 <input type="hidden" name="brief_day" value="{{ daily_brief.day_key }}"/>
@@ -374,9 +377,6 @@
       <div class="dashboardTapeHeader">
         <div class="dashboardTapeHeaderBrand">
           <div class="pill">Live Tape</div>
-          <span class="dashboardLivePulse {% if tape_live %}is-live{% elif tape_delayed %}is-delayed{% else %}is-idle{% endif %}">
-            <i></i>{{ tape_status_label }}
-          </span>
         </div>
         <div class="dashboardTapeHeaderStatus">
           <span class="liveTapeBadge" data-tone="off" id="dashboardTapeStreamStatus">Connecting</span>
@@ -402,18 +402,18 @@
         {% if spx_gap_points is none %}
           {% set spx_gap_points = dashboard_spx.get('overnight_gap_pct') %}
         {% endif %}
+        {% set spx_dir = '↑' if spx_change_points is not none and spx_change_points > 0 else '↓' if spx_change_points is not none and spx_change_points < 0 else '→' %}
         <article class="stat dashboardCoreTapeStat dashboardCoreTapeHero dashboardTapePremiumCard dashboardTapeSpx {% if spx_tone_value is not none and spx_tone_value > 0 %}glow-green{% elif spx_tone_value is not none and spx_tone_value < 0 %}glow-red{% endif %}" data-symbol="SPX">
           <div class="dashboardTapeTopline">
             <div class="dashboardTapeIdentity">
-              <span class="trendChip stateChip state-{{ spx_tone }}" data-role="state-chip">{{ spx_state }}</span>
-              <div class="k">SPX cash</div>
+              <div class="k">SPX</div>
             </div>
             <span class="tiny muted dashboardCoreTapeFreshness" title="{{ spx_fresh_full }}" data-role="freshness">{{ spx_fresh_compact }}</span>
           </div>
-          <div class="dashboardTapeSparkBand">
-            <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_spx.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
-          </div>
           <div class="dashboardTapePriceBlock">
+            <div class="dashboardTapeSparkBand">
+              <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_spx.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
+            </div>
             <div class="v" data-role="price">
               {% if dashboard_spx.get('price') is not none %}
                 {{ '%.2f'|format(dashboard_spx.get('price')) }}
@@ -422,45 +422,24 @@
               {% endif %}
             </div>
             <div class="tiny dashboardTapeDelta" data-role="change-line">
-              {{ '%+.2f'|format(dashboard_spx.get('change_points')) if dashboard_spx.get('change_points') is not none else '—' }}
-              · {{ '%+.2f'|format(dashboard_spx.get('pct_change')) if dashboard_spx.get('pct_change') is not none else '—' }}%
+              <span class="dashboardTapeDeltaValue{% if spx_change_points is not none and spx_change_points > 0 %} is-up{% elif spx_change_points is not none and spx_change_points < 0 %} is-down{% endif %}">
+                {{ '%+.2f'|format(dashboard_spx.get('change_points')) if dashboard_spx.get('change_points') is not none else '—' }}
+              </span>
+              <span class="dashboardTapeDeltaPct{% if dashboard_spx.get('pct_change') is not none and dashboard_spx.get('pct_change') > 0 %} is-up{% elif dashboard_spx.get('pct_change') is not none and dashboard_spx.get('pct_change') < 0 %} is-down{% endif %}">
+                {{ '%+.2f'|format(dashboard_spx.get('pct_change')) if dashboard_spx.get('pct_change') is not none else '—' }}%
+              </span>
+              <span class="dashboardTapeDeltaArrow{% if spx_change_points is not none and spx_change_points > 0 %} is-up{% elif spx_change_points is not none and spx_change_points < 0 %} is-down{% endif %}">{{ spx_dir }}</span>
             </div>
           </div>
-          <div class="tiny muted dashboardTapeMetaLine dashboardTapeSourceLine" data-role="source-badge">{{ dashboard_spx.get('source_badge_label') or dashboard_spx.get('source_label') or 'Awaiting feed' }}</div>
-          {% if spx_state != 'Live' %}
-            <div class="tiny muted dashboardTapeMetaLine dashboardTapeMetaStatus dashboardTapeStateNote">
-              {% if spx_state == 'Delayed' %}
-                Using delayed quote data. Confirm timing before treating tape changes as actionable.
-              {% else %}
-                Waiting on a live Tradier quote. Tape values will fill when the feed recovers.
-              {% endif %}
+          <div class="dashboardTapeContextBlock">
+            <div class="tiny dashboardTapeContextLine" data-role="context-primary">
+              {% if spx_range_full and spx_range_full != '—' %}Inside Range{% else %}At Flip{% endif %}
             </div>
-          {% endif %}
-          <div class="dashboardTapeStatsRow">
-            <div class="dashboardTapeStatCell">
-              <div class="tiny muted">Gap</div>
-              <div class="tiny dashboardGapLine {% if spx_gap_points is not none and spx_gap_points > 0 %}is-positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ spx_gap_full }}" data-role="gap-line">
-                <span class="trendChip {% if spx_gap_points is not none and spx_gap_points > 0 %}positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}negative{% endif %}" data-role="gap-chip">
-                  {{ spx_gap_compact }}
-                </span>
-              </div>
-            </div>
-            <div class="dashboardTapeStatCell dashboardTapeStatCell--range">
-              <div class="tiny muted">Range</div>
-              <div class="tiny dashboardTapeRangeDesktop" title="Range {{ spx_range_full }}" data-role="range-line">{{ spx_range_compact }}</div>
-              {% if spx_range_parts|length == 2 %}
-                <div class="dashboardTapeRangeMobile" title="Range {{ spx_range_full }}">
-                  <div class="dashboardTapeRangeEdge" data-side="low">
-                    <span class="dashboardTapeRangeTag">Low</span>
-                    <span class="dashboardTapeRangeValue">{{ spx_range_parts[0] }}</span>
-                  </div>
-                  <span class="dashboardTapeRangeTrack" aria-hidden="true"></span>
-                  <div class="dashboardTapeRangeEdge" data-side="high">
-                    <span class="dashboardTapeRangeTag">High</span>
-                    <span class="dashboardTapeRangeValue">{{ spx_range_parts[1] }}</span>
-                  </div>
-                </div>
-              {% endif %}
+            <div class="tiny dashboardTapeContextSubline" data-role="context-secondary">Balanced tape</div>
+          </div>
+          <div class="dashboardTapeInfoRow">
+            <div class="tiny dashboardTapeInfoText" data-role="info-primary">
+              {% if spx_range_compact and spx_range_compact != '—' %}Range {{ spx_range_compact }} • Mid{% else %}Dist to Flip: 0 pts{% endif %}
             </div>
           </div>
         </article>
@@ -483,18 +462,18 @@
         {% if vix_gap_points is none %}
           {% set vix_gap_points = dashboard_vix.get('overnight_gap_pct') %}
         {% endif %}
+        {% set vix_dir = '↑' if vix_change_points is not none and vix_change_points > 0 else '↓' if vix_change_points is not none and vix_change_points < 0 else '→' %}
         <article class="stat dashboardCoreTapeStat dashboardCoreTapeHero dashboardTapePremiumCard dashboardTapeVix {% if vix_tone_value is not none and vix_tone_value > 0 %}glow-green{% elif vix_tone_value is not none and vix_tone_value < 0 %}glow-red{% endif %}" data-symbol="VIX">
           <div class="dashboardTapeTopline">
             <div class="dashboardTapeIdentity">
-              <span class="trendChip stateChip state-{{ vix_tone }}" data-role="state-chip">{{ vix_state }}</span>
-              <div class="k">VIX pulse</div>
+              <div class="k">VIX</div>
             </div>
             <span class="tiny muted dashboardCoreTapeFreshness" title="{{ vix_fresh_full }}" data-role="freshness">{{ vix_fresh_compact }}</span>
           </div>
-          <div class="dashboardTapeSparkBand">
-            <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_vix.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
-          </div>
           <div class="dashboardTapePriceBlock">
+            <div class="dashboardTapeSparkBand">
+              <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_vix.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
+            </div>
             <div class="v" data-role="price">
               {% if dashboard_vix.get('price') is not none %}
                 {{ '%.2f'|format(dashboard_vix.get('price')) }}
@@ -503,45 +482,26 @@
               {% endif %}
             </div>
             <div class="tiny dashboardTapeDelta" data-role="change-line">
-              {{ '%+.2f'|format(dashboard_vix.get('change_points')) if dashboard_vix.get('change_points') is not none else '—' }}
-              · {{ '%+.2f'|format(dashboard_vix.get('pct_change')) if dashboard_vix.get('pct_change') is not none else '—' }}%
+              <span class="dashboardTapeDeltaValue{% if vix_change_points is not none and vix_change_points > 0 %} is-up{% elif vix_change_points is not none and vix_change_points < 0 %} is-down{% endif %}">
+                {{ '%+.2f'|format(dashboard_vix.get('change_points')) if dashboard_vix.get('change_points') is not none else '—' }}
+              </span>
+              <span class="dashboardTapeDeltaPct{% if dashboard_vix.get('pct_change') is not none and dashboard_vix.get('pct_change') > 0 %} is-up{% elif dashboard_vix.get('pct_change') is not none and dashboard_vix.get('pct_change') < 0 %} is-down{% endif %}">
+                {{ '%+.2f'|format(dashboard_vix.get('pct_change')) if dashboard_vix.get('pct_change') is not none else '—' }}%
+              </span>
+              <span class="dashboardTapeDeltaArrow{% if vix_change_points is not none and vix_change_points > 0 %} is-up{% elif vix_change_points is not none and vix_change_points < 0 %} is-down{% endif %}">{{ vix_dir }}</span>
             </div>
           </div>
-          <div class="tiny muted dashboardTapeMetaLine dashboardTapeSourceLine" data-role="source-badge">{{ dashboard_vix.get('source_badge_label') or dashboard_vix.get('source_label') or 'Awaiting feed' }}</div>
-          {% if vix_state != 'Live' %}
-            <div class="tiny muted dashboardTapeMetaLine dashboardTapeMetaStatus dashboardTapeStateNote">
-              {% if vix_state == 'Delayed' %}
-                Using delayed quote data. Treat VIX moves as context, not live tape confirmation.
-              {% else %}
-                Waiting on a live Tradier quote. VIX context will return when the feed recovers.
-              {% endif %}
+          <div class="dashboardTapeContextBlock">
+            <div class="tiny dashboardTapeContextLine" data-role="context-primary">
+              {% if vix_change_points is not none and vix_change_points > 0 %}Firming{% elif vix_change_points is not none and vix_change_points < 0 %}Falling{% else %}Compressed{% endif %}
             </div>
-          {% endif %}
-          <div class="dashboardTapeStatsRow">
-            <div class="dashboardTapeStatCell">
-              <div class="tiny muted">Gap</div>
-              <div class="tiny dashboardGapLine {% if vix_gap_points is not none and vix_gap_points > 0 %}is-positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}is-negative{% endif %}" title="Gap O/N: {{ vix_gap_full }}" data-role="gap-line">
-                <span class="trendChip {% if vix_gap_points is not none and vix_gap_points > 0 %}positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}negative{% endif %}" data-role="gap-chip">
-                  {{ vix_gap_compact }}
-                </span>
-              </div>
+            <div class="tiny dashboardTapeContextSubline" data-role="context-secondary">
+              {% if vix_change_points is not none and vix_change_points > 0 %}Risk firming{% elif vix_change_points is not none and vix_change_points < 0 %}Risk easing{% else %}Stable{% endif %}
             </div>
-            <div class="dashboardTapeStatCell dashboardTapeStatCell--range">
-              <div class="tiny muted">Range</div>
-              <div class="tiny dashboardTapeRangeDesktop" title="Range {{ vix_range_full }}" data-role="range-line">{{ vix_range_compact }}</div>
-              {% if vix_range_parts|length == 2 %}
-                <div class="dashboardTapeRangeMobile" title="Range {{ vix_range_full }}">
-                  <div class="dashboardTapeRangeEdge" data-side="low">
-                    <span class="dashboardTapeRangeTag">Low</span>
-                    <span class="dashboardTapeRangeValue">{{ vix_range_parts[0] }}</span>
-                  </div>
-                  <span class="dashboardTapeRangeTrack" aria-hidden="true"></span>
-                  <div class="dashboardTapeRangeEdge" data-side="high">
-                    <span class="dashboardTapeRangeTag">High</span>
-                    <span class="dashboardTapeRangeValue">{{ vix_range_parts[1] }}</span>
-                  </div>
-                </div>
-              {% endif %}
+          </div>
+          <div class="dashboardTapeInfoRow">
+            <div class="tiny dashboardTapeInfoText" data-role="info-primary">
+              {% if vix_range_compact and vix_range_compact != '—' %}Range {{ vix_range_compact }}{% else %}Intraday tone: stable{% endif %}
             </div>
           </div>
         </article>
@@ -568,7 +528,7 @@
 	      {% endif %}
 	    {% endfor %}
 
-	    <details class="syncDetails dashboardFoldSection dashboardSupportFold"{% if badge_meta.critical %} open{% endif %}>
+	    <details class="syncDetails dashboardFoldSection dashboardSupportFold" data-dashboard-optional="support-fold"{% if badge_meta.critical %} open{% endif %}>
 	      <summary>
 	        <span class="dashboardStepLabel dashboardStepLabel-inline">Review</span>
 	        <span class="dashboardFoldTitle">Session Support &amp; Health</span>
@@ -676,73 +636,180 @@
 	          </div>
 	        </div></div>
 
-        <div class="metricStrip dashboardMetricStrip dashboardMetricStripCompact">
-          <div class="metric">
-            <div class="label">Today Net</div>
-            <div class="value">{{ money(today_net) }}</div>
-            <div class="sub">Closed trades only</div>
-	          </div>
-	          <div class="metric">
-	            <div class="label">Session Record</div>
-	            <div class="value">{{ today_wins }}W / {{ today_losses }}L</div>
-	            <div class="sub">{{ today_count }} trade{% if today_count != 1 %}s{% endif %} logged</div>
-          </div>
-          <div class="metric">
-            <div class="label">Account Scope</div>
-            <div class="value">{% if account_scope and account_scope.enabled and scope_mode == 'active' %}Active{% else %}All{% endif %}</div>
-            <div class="sub">
-              {% if account_scope and account_scope.enabled and scope_mode == 'active' %}
-                {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}
-              {% else %}
-                Legacy + current trade history
-              {% endif %}
+        {% set scope_short = 'ACT' if account_scope and account_scope.enabled and scope_mode == 'active' else 'ALL' %}
+        {% set scope_context = (account_scope.start_date ~ (' · ' ~ account_scope.label if account_scope.label else '')) if account_scope and account_scope.enabled and scope_mode == 'active' else 'Full ledger' %}
+        {% set today_net_short = money_compact(today_net)|replace('.00','') %}
+        {% set today_net_tone = 'positive' if today_net > 0 else 'negative' if today_net < 0 else 'neutral' %}
+        {% set session_record_short = today_wins ~ '/' ~ today_losses %}
+        {% set payout_tone = 'positive' if 'projects' in payout_focus else 'warning' %}
+        {% set payout_ring_pct = 74 if 'projects' in payout_focus else 28 %}
+        {% set risk_tone = 'positive' if 'Attack' in risk_posture_title else 'negative' if 'Protect' in risk_posture_title else 'warning' %}
+        {% set risk_short = 'GO' if 'Attack' in risk_posture_title else 'CUT' if 'Protect' in risk_posture_title else 'WAIT' %}
+        {% set pattern_tone = 'warning' if 'Most common breach' in pattern_watch else 'info' %}
+        {% set pattern_short = 'TAG' if 'Most common breach' in pattern_watch else 'CLR' %}
+        {% set today_net_meta = 'Green' if today_net > 0 else 'Red' if today_net < 0 else 'Flat' %}
+        {% set record_meta = 'No trades' if today_count == 0 else today_wins ~ 'W / ' ~ today_losses ~ 'L' %}
+        {% set pace_meta = 'On track' if 'projects' in payout_focus else 'Need sample' %}
+        {% set risk_meta = 'Clean only' if 'Wait' in risk_posture_title else 'Reduce' if 'Protect' in risk_posture_title else 'Attack' %}
+        {% set pattern_meta = 'No breaks' if pattern_short == 'CLEAR' else 'Watch tag' %}
+        {% set pattern_detail_title = pattern_watch if 'Most common breach' in pattern_watch else 'No recurring rule-break tag' %}
+        <div class="dashboardStatusOrbitRow" role="tablist" aria-label="Session status indicators">
+          <button
+            type="button"
+            class="dashboardStatusOrb is-{{ today_net_tone }}"
+            id="dashboardStatusTab-net"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="net"
+            data-status-section="Session Net"
+            data-status-title="Today Net"
+            data-status-primary="{{ money(today_net) }}"
+            data-status-line1="Closed trades only"
+            data-status-line2="{{ today_count }} trades logged"
+            data-status-line3="Net session result {% if today_count %}{{ 'active' if today_net != 0 else 'not yet established' }}{% else %}not yet established{% endif %}"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ today_net_short }}</strong>
             </div>
-          </div>
+            <div class="dashboardStatusOrbLabel">Net</div>
+            <div class="dashboardStatusOrbMeta">{{ today_net_meta }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb is-{{ 'positive' if today_wins >= today_losses and today_count else 'negative' if today_losses > today_wins else 'neutral' }}"
+            id="dashboardStatusTab-record"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="record"
+            data-status-section="Session Record"
+            data-status-title="Record"
+            data-status-primary="{{ today_wins }}W / {{ today_losses }}L"
+            data-status-line1="{{ today_count }} trades logged"
+            data-status-line2="{{ '%.1f'|format(today_win_rate) }}% win rate"
+            data-status-line3="{% if today_count %}Closed execution sample in scope{% else %}No closed execution sample yet{% endif %}"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ session_record_short }}</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Record</div>
+            <div class="dashboardStatusOrbMeta">{{ record_meta }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb is-info"
+            id="dashboardStatusTab-scope"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="scope"
+            data-status-section="Account Scope"
+            data-status-title="{% if scope_short == 'ACT' %}Active Account{% else %}Account Scope{% endif %}"
+            data-status-primary="{% if scope_short == 'ACT' %}Active{% else %}All{% endif %}"
+            data-status-line1="{{ account_scope.start_date if account_scope and account_scope.enabled and scope_mode == 'active' else 'Legacy + current' }}"
+            data-status-line2="{{ account_scope.label if account_scope and account_scope.label and scope_mode == 'active' else 'Millions' if scope_short == 'ACT' else 'All history' }}"
+            data-status-line3="Current session scope loaded"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ scope_short }}</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Scope</div>
+            <div class="dashboardStatusOrbMeta">{{ account_scope.label if account_scope and account_scope.label and scope_mode == 'active' else 'Millions' if scope_short == 'ACT' else 'All history' }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb dashboardStatusOrb-payout is-{{ payout_tone }}"
+            id="dashboardStatusTab-pace"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="pace"
+            data-status-section="Payout Pace"
+            data-status-title="5-Day Pace"
+            data-status-primary="{{ payout_focus|replace('5-day pace projects ', '')|replace('5-day pace Projects ', '')|replace('5-day pace ', '') }}"
+            data-status-line1="{{ payout_focus_detail.split(' · ')[0] if ' · ' in payout_focus_detail else payout_focus_detail }}"
+            data-status-line2="{% if ' · Avg day ' in payout_focus_detail %}Avg day {{ payout_focus_detail.split(' · Avg day ')[1]|replace('.','') }}{% else %}Avg day {{ pace_card.live_headline }}{% endif %}"
+            data-status-line3="{% if 'projects' in payout_focus %}Payout pacing remains on track{% else %}Need more weekday history{% endif %}"
+            data-status-tags="Pace||{{ 'On Track' if 'projects' in payout_focus else 'Needs Sample' }}"
+          >
+            <div class="dashboardStatusOrbCircle dashboardStatusOrbCircle-ring" style="--orb-pct: {{ payout_ring_pct }}%">
+              <strong>5D</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Pace</div>
+            <div class="dashboardStatusOrbMeta">{{ pace_meta }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb dashboardStatusOrb-risk is-{{ risk_tone }} is-active"
+            id="dashboardStatusTab-risk"
+            role="tab"
+            aria-selected="true"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="0"
+            data-status-key="risk"
+            data-status-section="Risk Posture"
+            data-status-title="{{ risk_posture_title }}"
+            data-status-primary="Today {{ today_wins }}W / {{ today_losses }}L"
+            data-status-line1="Consistency {{ '%.1f'|format((ytd_cons.ratio or 0) * 100) if ytd_cons.ratio is not none else '—' }}%"
+            data-status-line2="{{ setup_focus|replace('Lead setup ','') }}"
+            data-status-line3="{{ today_count }} trades tracked"
+            data-status-tags="Risk||Guardrail Aware"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ risk_short }}</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Risk</div>
+            <div class="dashboardStatusOrbMeta">{{ risk_meta }}</div>
+          </button>
+
+          <button
+            type="button"
+            class="dashboardStatusOrb is-{{ pattern_tone }}"
+            id="dashboardStatusTab-pattern"
+            role="tab"
+            aria-selected="false"
+            aria-controls="dashboardStatusDetailCard"
+            tabindex="-1"
+            data-status-key="pattern"
+            data-status-section="Pattern Watch"
+            data-status-title="{{ pattern_detail_title }}"
+            data-status-primary="Confidence {% if data_trust.tone == 'critical' %}Low{% else %}High{% endif %}"
+            data-status-line1="Source {{ badge_meta.source }}"
+            data-status-line2="Mode {{ 'Sync review' if data_trust.tone == 'critical' else 'Normal workflow' }}"
+            data-status-line3="{{ 'Ledger and sync need attention' if data_trust.tone == 'critical' else 'Ledger and sync look healthy' }}"
+            data-status-tags="Pattern||{{ 'Needs Review' if data_trust.tone == 'critical' else 'Clean' }}||{{ 'Synced' if badge_meta.sync == 'Success' else badge_meta.sync }}"
+          >
+            <div class="dashboardStatusOrbCircle">
+              <strong>{{ pattern_short }}</strong>
+            </div>
+            <div class="dashboardStatusOrbLabel">Pattern</div>
+            <div class="dashboardStatusOrbMeta">{{ pattern_meta }}</div>
+          </button>
         </div>
 
-	        <div class="dashboardSupportGrid dashboardStageSupportGrid">
-	          <div class="card supportCard subtleCard dashboardSignalCard"><div class="toolbar">
-	            <div class="pill">Payout Pace</div>
-	            <div class="supportLead">{{ payout_focus }}</div>
-	            <div class="supportBody">{{ payout_focus_detail }}</div>
-	            <div class="rightActions stack8">
-	              <a class="btn primary" href="/payouts">Payouts</a>
-	              <a class="btn ctaLink" href="/calendar">Calendar</a>
-	            </div>
-	          </div></div>
-
-	          <div class="card supportCard dashboardSignalCard dashboardSignalCard-refined"><div class="toolbar">
-	            <div class="pill">Risk Posture</div>
-	            <div class="supportLead">{{ risk_posture_title }}</div>
-	            <div class="supportBody">{{ risk_posture_detail }}</div>
-	            <div class="supportMeta">{{ setup_focus }}</div>
-	          </div></div>
-
-	          <div class="card supportCard dashboardSignalCard dashboardSignalCard-refined"><div class="toolbar">
-	            <div class="pill">Pattern Watch</div>
-	            <div class="supportLead">{{ pattern_watch }}</div>
-	            {% if data_trust.badges %}
-	              <div class="trustBadgeRow">
-	                {% for badge in data_trust.badges %}
-	                  <span class="trustBadge is-{{ badge.tone }}" title="{{ badge.title }}">
-	                    {{ badge.label }} <b>{{ badge.value }}</b>
-	                  </span>
-	                {% endfor %}
-	              </div>
-	            {% endif %}
-	            <div class="supportBody {% if data_trust.tone == 'critical' %}metaRed{% else %}metaGreen{% endif %}">
-	              {{ data_trust.message }}
-	            </div>
-	            {% if data_trust.primary_href and data_trust.primary_label %}
-	              <div class="rightActions stack8">
-	                <a class="btn primary" href="{{ data_trust.primary_href }}">{{ data_trust.primary_label }}</a>
-	                {% if data_trust.secondary_href and data_trust.secondary_label %}
-	                  <a class="btn ctaLink" href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label }}</a>
-	                {% endif %}
-	              </div>
-	            {% endif %}
-	          </div></div>
-	        </div>
+        <div class="dashboardStatusDetailCard" id="dashboardStatusDetailCard" role="tabpanel" aria-labelledby="dashboardStatusTab-risk" tabindex="0" aria-live="polite">
+          <div class="dashboardStatusDetailSection" id="dashboardStatusDetailSection">Risk Posture</div>
+          <div class="dashboardStatusDetailTitle" id="dashboardStatusDetailTitle">{{ risk_posture_title }}</div>
+          <div class="dashboardStatusDetailPrimary" id="dashboardStatusDetailPrimary">Today {{ today_wins }}W / {{ today_losses }}L</div>
+          <div class="dashboardStatusDetailLines" id="dashboardStatusDetailLines">
+            <div class="dashboardStatusDetailLine">Consistency {{ '%.1f'|format((ytd_cons.ratio or 0) * 100) if ytd_cons.ratio is not none else '—' }}%</div>
+            <div class="dashboardStatusDetailLine">{{ setup_focus|replace('Lead setup ','') }}</div>
+            <div class="dashboardStatusDetailLine">{{ today_count }} trades tracked</div>
+          </div>
+          <div class="dashboardStatusDetailTags" id="dashboardStatusDetailTags">
+            <span class="trendChip">Risk</span>
+            <span class="trendChip">Guardrail Aware</span>
+          </div>
+        </div>
 
 	        <details class="syncDetails dataTrustDetails"{% if badge_meta.critical %} open{% endif %}>
 	          <summary>
@@ -823,11 +890,36 @@
 	</div>
 
 {% set balance_spark = namespace(values=[], min=None, max=None, points='', last_y=15) %}
+{% set performance_chart = namespace(
+  days=[],
+  actuals=[],
+  targets=[],
+  min=None,
+  max=None,
+  actual_points='',
+  target_points='',
+  actual_last_x=98,
+  actual_last_y=26,
+  target_last=0,
+  actual_last=0,
+  status='neutral',
+  start_day_label='',
+  end_day_label='',
+  latest_day_label='',
+  target_daily=(pace_card.headline|replace('$', '')|replace(',', '')|float),
+  recent_days=[],
+  streak=0,
+  recent_wins=0,
+  recent_losses=0
+) %}
 {% for wk in heat.weeks %}
   {% for day in wk.days %}
     {% if day.daynum is not none and day.wd is not none and day.wd < 5 and day.balance is not none %}
       {% set spark_value = day.balance|float %}
       {% set balance_spark.values = balance_spark.values + [spark_value] %}
+      {% set performance_chart.days = performance_chart.days + [day.daynum|int] %}
+      {% set performance_chart.actuals = performance_chart.actuals + [spark_value] %}
+      {% set performance_chart.recent_days = performance_chart.recent_days + [day] %}
       {% if balance_spark.min is none or spark_value < balance_spark.min %}
         {% set balance_spark.min = spark_value %}
       {% endif %}
@@ -838,6 +930,7 @@
   {% endfor %}
 {% endfor %}
 {% set balance_spark_range = (balance_spark.max - balance_spark.min) if balance_spark.max is not none and balance_spark.min is not none else 0 %}
+{% set performance_month_label = month_name.split(' ')[0][:3] if month_name else '' %}
 {% set balance_progress = namespace(pct=0) %}
 {% if balance_spark.values|length > 1 and balance_spark_range > 0 %}
   {% set balance_progress.pct = (((balance_spark.values[-1] - balance_spark.min) / balance_spark_range) * 100) %}
@@ -857,6 +950,111 @@
     {% endif %}
   {% endfor %}
 {% endif %}
+{% if performance_chart.actuals %}
+  {% set performance_chart.start_day_label = performance_month_label ~ ' ' ~ performance_chart.days[0] %}
+  {% set performance_chart.end_day_label = performance_month_label ~ ' ' ~ performance_chart.days[-1] %}
+  {% set performance_chart.latest_day_label = performance_month_label ~ ' ' ~ performance_chart.days[-1] %}
+  {% for actual_value in performance_chart.actuals %}
+    {% set projected_value = performance_chart.actuals[0] + (performance_chart.target_daily * loop.index0) %}
+    {% set performance_chart.targets = performance_chart.targets + [projected_value] %}
+    {% if performance_chart.min is none or actual_value < performance_chart.min %}
+      {% set performance_chart.min = actual_value %}
+    {% endif %}
+    {% if performance_chart.min is none or projected_value < performance_chart.min %}
+      {% set performance_chart.min = projected_value %}
+    {% endif %}
+    {% if performance_chart.max is none or actual_value > performance_chart.max %}
+      {% set performance_chart.max = actual_value %}
+    {% endif %}
+    {% if performance_chart.max is none or projected_value > performance_chart.max %}
+      {% set performance_chart.max = projected_value %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% set performance_chart_range = (performance_chart.max - performance_chart.min) if performance_chart.max is not none and performance_chart.min is not none else 0 %}
+{% if performance_chart.actuals|length > 1 %}
+  {% set x_span = performance_chart.days[-1] - performance_chart.days[0] %}
+  {% for actual_value in performance_chart.actuals %}
+    {% set chart_x = ((performance_chart.days[loop.index0] - performance_chart.days[0]) * 94 / x_span) + 3 if x_span > 0 else (loop.index0 * 94 / ((performance_chart.actuals|length) - 1)) + 3 %}
+    {% set actual_ratio = ((actual_value - performance_chart.min) / performance_chart_range) if performance_chart_range else 0.5 %}
+    {% set target_ratio = ((performance_chart.targets[loop.index0] - performance_chart.min) / performance_chart_range) if performance_chart_range else 0.5 %}
+    {% set actual_y = 34 - (actual_ratio * 28) %}
+    {% set target_y = 34 - (target_ratio * 28) %}
+    {% set performance_chart.actual_points = performance_chart.actual_points ~ ('%.2f'|format(chart_x)) ~ ',' ~ ('%.2f'|format(actual_y)) ~ ' ' %}
+    {% set performance_chart.target_points = performance_chart.target_points ~ ('%.2f'|format(chart_x)) ~ ',' ~ ('%.2f'|format(target_y)) ~ ' ' %}
+    {% if loop.last %}
+      {% set performance_chart.actual_last_x = chart_x %}
+      {% set performance_chart.actual_last_y = actual_y %}
+      {% set performance_chart.actual_last = actual_value %}
+      {% set performance_chart.target_last = performance_chart.targets[loop.index0] %}
+    {% endif %}
+  {% endfor %}
+{% elif performance_chart.actuals|length == 1 %}
+  {% set performance_chart.actual_last = performance_chart.actuals[0] %}
+  {% set performance_chart.target_last = performance_chart.actuals[0] %}
+  {% set performance_chart.actual_points = '3.00,20.00 97.00,20.00' %}
+  {% set performance_chart.target_points = '3.00,20.00 97.00,20.00' %}
+  {% set performance_chart.actual_last_x = 97 %}
+  {% set performance_chart.actual_last_y = 20 %}
+{% else %}
+  {% set performance_chart.actual_points = '3.00,20.00 97.00,20.00' %}
+  {% set performance_chart.target_points = '3.00,20.00 97.00,20.00' %}
+  {% set performance_chart.start_day_label = performance_month_label ~ ' 1' %}
+  {% set performance_chart.end_day_label = performance_month_label ~ ' ' ~ last_dom %}
+{% endif %}
+{% if performance_chart.actual_last > performance_chart.target_last %}
+  {% set performance_chart.status = 'ahead' %}
+{% elif performance_chart.actual_last < performance_chart.target_last %}
+  {% set performance_chart.status = 'behind' %}
+{% endif %}
+{% set performance_delta = performance_chart.actual_last - performance_chart.target_last %}
+{% set performance_delta_abs = performance_delta if performance_delta >= 0 else (performance_delta * -1) %}
+{% if performance_chart.status == 'ahead' %}
+  {% set performance_status_label = 'Ahead of Target' %}
+  {% set performance_delta_label = '+' ~ money(performance_delta_abs) ~ ' ahead' %}
+{% elif performance_chart.status == 'behind' %}
+  {% set performance_status_label = 'Behind Pace' %}
+  {% set performance_delta_label = '-' ~ money(performance_delta_abs) ~ ' behind target' %}
+{% else %}
+  {% set performance_status_label = 'On Track' %}
+  {% set performance_delta_label = money(performance_chart.actual_last) ~ ' on pace' if performance_chart.actuals else 'Awaiting month sample' %}
+{% endif %}
+{% if performance_chart.recent_days|length > 15 %}
+  {% set performance_chart.recent_days = performance_chart.recent_days[-15:] %}
+{% endif %}
+{% if performance_chart.recent_days %}
+  {% set streak_state = namespace(mode='', count=0, wins=0, losses=0) %}
+  {% for day in performance_chart.recent_days|reverse %}
+    {% if day.net > 0 %}
+      {% set streak_state.wins = streak_state.wins + 1 %}
+      {% if streak_state.mode in ['', 'win'] %}
+        {% set streak_state.mode = 'win' %}
+        {% set streak_state.count = streak_state.count + 1 %}
+      {% endif %}
+    {% elif day.net < 0 %}
+      {% set streak_state.losses = streak_state.losses + 1 %}
+      {% if streak_state.mode in ['', 'loss'] %}
+        {% set streak_state.mode = 'loss' %}
+        {% set streak_state.count = streak_state.count + 1 %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+  {% set performance_chart.streak = streak_state.count %}
+  {% set performance_chart.recent_wins = streak_state.wins %}
+  {% set performance_chart.recent_losses = streak_state.losses %}
+{% endif %}
+{% set performance_reference_min = performance_chart.actuals[0] if performance_chart.actuals else 0 %}
+{% set performance_reference_max = performance_chart.actual_last %}
+{% if performance_chart.target_last > performance_reference_max %}{% set performance_reference_max = performance_chart.target_last %}{% endif %}
+{% if performance_reference_min > performance_chart.actual_last %}{% set performance_reference_min = performance_chart.actual_last %}{% endif %}
+{% if performance_reference_min > performance_chart.target_last %}{% set performance_reference_min = performance_chart.target_last %}{% endif %}
+{% set performance_reference_span = performance_reference_max - performance_reference_min %}
+{% set performance_target_pct = (((performance_chart.target_last - performance_reference_min) / performance_reference_span) * 100) if performance_reference_span > 0 else 50 %}
+{% set performance_actual_pct = (((performance_chart.actual_last - performance_reference_min) / performance_reference_span) * 100) if performance_reference_span > 0 else 50 %}
+{% if performance_target_pct < 0 %}{% set performance_target_pct = 0 %}{% endif %}
+{% if performance_target_pct > 100 %}{% set performance_target_pct = 100 %}{% endif %}
+{% if performance_actual_pct < 0 %}{% set performance_actual_pct = 0 %}{% endif %}
+{% if performance_actual_pct > 100 %}{% set performance_actual_pct = 100 %}{% endif %}
 
 <div class="dashboardStepLabel">Project</div>
 <div class="dashboardAnalyticsCluster">
@@ -879,24 +1077,66 @@
         <div class="summaryMonth">{{ month_name }}</div>
         <div class="summaryBalance">{{ money(overall_balance) }}</div>
         <div class="summaryCaption">{{ trajectory_caption }}</div>
-        {% if balance_spark.points %}
-          <div class="dashboardBalanceSparkWrap" aria-hidden="true">
-            <svg class="dashboardBalanceSpark" viewBox="0 0 100 28" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="dashboardBalanceSparkStroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stop-color="#53d7ff" stop-opacity=".72"/>
-                  <stop offset="100%" stop-color="#67f3c1" stop-opacity=".95"/>
-                </linearGradient>
-              </defs>
-              <polyline points="{{ balance_spark.points|trim }}" fill="none" stroke="url(#dashboardBalanceSparkStroke)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></polyline>
-              <circle cx="100" cy="{{ '%.2f'|format(balance_spark.last_y) }}" r="2.7" fill="#67f3c1"></circle>
-            </svg>
-            <div class="dashboardBalanceSparkMeta">
-              <span>{{ money(balance_spark.values[0]) }} start</span>
-              <span>{{ money(balance_spark.values[-1]) }} current</span>
+        <div class="dashboardPerformanceBoard dashboardPerformanceBoard-{{ performance_chart.status }}">
+          <div class="dashboardPerformanceBoardHead">
+            <div class="dashboardPerformanceScore">
+              <span class="dashboardPerformanceStatus">{{ performance_status_label }}</span>
+              <strong class="dashboardPerformanceDelta">{{ performance_delta_label }}</strong>
+            </div>
+            <div class="dashboardPerformanceHeadMeta">
+              {% if performance_chart.recent_days and performance_chart.streak > 1 %}
+                <strong>{% if performance_chart.recent_days[-1].net > 0 %}Win Streak: {{ performance_chart.streak }} days{% else %}Loss Streak: {{ performance_chart.streak }} days{% endif %}</strong>
+              {% else %}
+                <strong>Choppy: {{ performance_chart.recent_wins }}W / {{ performance_chart.recent_losses }}L last {{ performance_chart.recent_days|length }}</strong>
+              {% endif %}
             </div>
           </div>
-        {% endif %}
+          <div class="dashboardPerformanceTargetLabel">Target: {{ pace_card.live_headline }}/day</div>
+          <div class="dashboardPerformanceTiles">
+            {% if performance_chart.recent_days %}
+              {% for day in performance_chart.recent_days %}
+                {% set tile_tone = 'flat' %}
+                {% if day.trade_count <= 0 %}
+                  {% set tile_tone = 'flat' %}
+                {% elif day.net >= performance_chart.target_daily and performance_chart.target_daily > 0 %}
+                  {% set tile_tone = 'strong' %}
+                {% elif day.net > 0 %}
+                  {% set tile_tone = 'win' %}
+                {% elif day.net < 0 %}
+                  {% set tile_tone = 'loss' %}
+                {% endif %}
+                <div class="dashboardPerformanceTile dashboardPerformanceTile-{{ tile_tone }}" title="{{ day.iso }} · {{ money(day.net) }}">
+                  <span class="dashboardPerformanceTileDay">{{ day.daynum }}</span>
+                  <strong class="dashboardPerformanceTileValue">{{ money_compact(day.net) }}</strong>
+                </div>
+              {% endfor %}
+            {% else %}
+              {% for i in range(10) %}
+                <div class="dashboardPerformanceTile dashboardPerformanceTile-flat is-empty">
+                  <span class="dashboardPerformanceTileDay">—</span>
+                  <strong class="dashboardPerformanceTileValue">—</strong>
+                </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+          <div class="dashboardPerformancePaceRow">
+            <div class="dashboardPerformancePaceLabels">
+              <span>Target by today</span>
+              <span>Current</span>
+              <span>Gap</span>
+            </div>
+            <div class="dashboardPerformancePaceBar" style="--target-pct: {{ '%.1f'|format(performance_target_pct) }}%; --actual-pct: {{ '%.1f'|format(performance_actual_pct) }}%;">
+              <div class="dashboardPerformancePaceTrack"></div>
+              <div class="dashboardPerformancePaceTarget" aria-hidden="true"></div>
+              <div class="dashboardPerformancePaceActual" aria-hidden="true"></div>
+            </div>
+            <div class="dashboardPerformancePaceMeta">
+              <span>Target: {{ money(performance_chart.target_last) }}</span>
+              <span>Actual: {{ money(performance_chart.actual_last) }}</span>
+              <span>{{ performance_delta_label }}</span>
+            </div>
+          </div>
+        </div>
         <div class="dashboardBalanceProgressWrap">
           <div class="dashboardBalanceProgressLabel">
             <span>Active account balance</span>
@@ -969,16 +1209,16 @@
 
           <div class="tiny stack8{% if ytd_cons.ratio > cons_threshold %} dashboardConsistencyStatus is-danger{% else %} dashboardConsistencyStatus is-safe{% endif %}">
             {% if ytd_cons.ratio <= cons_threshold %}
-              ✅ Within threshold
+              ✅ Within threshold · Stable execution
             {% else %}
-              ❌ Over threshold
+              ❌ Over threshold · Guardrail warning
             {% endif %}
           </div>
         {% endif %}
       </div>
     </div>
 
-    <details class="syncDetails stack10">
+    <details class="syncDetails stack10" data-dashboard-optional="performance-more">
       <summary>More Stats</summary>
       <div class="summaryGrid stack10">
         <div class="summaryStat"><div class="k">MTD Net</div><div class="v">{{ money(mtd_net) }}</div></div>
@@ -1008,7 +1248,7 @@
       <div class="dashboardProjectionHeroValue">{{ pace_card.headline }}<small>{{ pace_card.headline_suffix }}</small></div>
       <div class="dashboardProjectionHeroCopy">{{ pace_card.mode_detail }} Base {{ pace_card.base_balance }}.</div>
     </div>
-    <details class="dashboardProjectionFold"{% if pace_card.custom_enabled %} open{% endif %}>
+    <details class="dashboardProjectionFold" data-dashboard-optional="pace-fold"{% if pace_card.custom_enabled %} open{% endif %}>
       <summary>
         <span class="dashboardProjectionFoldTitle">Set pace / day</span>
         <span class="dashboardProjectionFoldMeta tiny">
@@ -1063,7 +1303,7 @@
   </div></div>
 </div>
 
-<details class="syncDetails dashboardFoldSection analyticsFold" id="advancedDashboardWidgets">
+<details class="syncDetails dashboardFoldSection analyticsFold" id="advancedDashboardWidgets" data-dashboard-optional="calendar-fold">
     <summary>
       <span class="dashboardFoldTitle">Daily P/L Calendar</span>
       <span class="dashboardCalendarSummary">{{ calendar_state.scope_label }} · {{ calendar_state.green_days }} green · {{ calendar_state.red_days }} red · {{ calendar_state.flat_days }} flat</span>
@@ -1207,4 +1447,5 @@
       </div>
     </div>
 </details>
+</div>
 <script src="{{ url_for('static', filename='js/dashboard_command_center.js') }}?v={{ static_v }}"></script>

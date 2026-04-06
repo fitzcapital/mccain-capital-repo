@@ -12,6 +12,7 @@ import re
 import secrets
 import sqlite3
 import tempfile
+import time
 import calendar
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Callable
@@ -228,7 +229,19 @@ def today_iso() -> str:
 def init_db() -> None:
     from mccain_capital.migrations import run_migrations
 
-    run_migrations(DB_PATH)
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            run_migrations(DB_PATH)
+            return
+        except sqlite3.OperationalError as exc:
+            last_error = exc
+            message = str(exc).lower()
+            if "locked" not in message and "busy" not in message:
+                raise
+            time.sleep(0.25 * (attempt + 1))
+    if last_error:
+        raise last_error
 
 
 def prev_day_iso(d_iso: str) -> str:

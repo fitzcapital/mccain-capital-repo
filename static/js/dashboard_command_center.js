@@ -94,30 +94,93 @@
     };
   };
 
-  const buildSparkline = (points, tone, state) => {
+  let sparklineId = 0;
+
+  const buildSmoothPath = (coords) => {
+    if (!coords.length) return "";
+    if (coords.length === 1) return `M ${coords[0][0].toFixed(2)} ${coords[0][1].toFixed(2)}`;
+    let path = `M ${coords[0][0].toFixed(2)} ${coords[0][1].toFixed(2)}`;
+    for (let index = 0; index < coords.length - 1; index += 1) {
+      const current = coords[index];
+      const next = coords[index + 1];
+      const midpointX = (current[0] + next[0]) / 2;
+      path += ` Q ${current[0].toFixed(2)} ${current[1].toFixed(2)} ${midpointX.toFixed(2)} ${((current[1] + next[1]) / 2).toFixed(2)}`;
+    }
+    const last = coords[coords.length - 1];
+    path += ` T ${last[0].toFixed(2)} ${last[1].toFixed(2)}`;
+    return path;
+  };
+
+  const buildSparkline = (points, tone, state, options = {}) => {
     const values = (Array.isArray(points) ? points : [])
       .map((row) => (row && typeof row === "object" ? asNum(row.v) : null))
-      .filter((value) => value !== null);
+      .filter((value) => value !== null)
+      .slice(-20);
+    const sparkId = `spark-${sparklineId += 1}`;
+    const toneColor = tone === "up" ? "#62efbf" : tone === "down" ? "#ff8e98" : "#b5c5d9";
+    const profile = String(options.profile || "normal");
+    const symbolClass = String(options.symbol || "").toLowerCase() === "spx" ? "symbol-spx" : "symbol-vix";
+    const isLive = state === "Live";
+    const isDelayed = state === "Delayed";
+    const verticalBias = profile === "compressed" ? 0.58 : profile === "directional" ? 1.18 : 0.92;
     if (values.length < 2) {
-      const emptyLabel = state === "Live"
-        ? "Awaiting ticks"
-        : state === "Delayed"
-        ? "Snapshot only"
-        : "Feed standby";
-      return `<div class="marketMiniSparkEmpty is-${stateClass(state)}">${emptyLabel}</div>`;
+      const coords = [[0, 14], [120, 14]];
+      const path = buildSmoothPath(coords);
+      return `<svg viewBox="0 0 120 28" class="marketMiniSpark ${symbolClass} is-${stateClass(state)}" aria-hidden="true">
+        <defs>
+          <linearGradient id="${sparkId}-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="${toneColor}" stop-opacity=".18" />
+            <stop offset="100%" stop-color="${toneColor}" stop-opacity=".92" />
+          </linearGradient>
+          <linearGradient id="${sparkId}-fill" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="${toneColor}" stop-opacity=".10" />
+            <stop offset="100%" stop-color="${toneColor}" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <path class="marketMiniSparkArea flat" d="${path} L 120 28 L 0 28 Z" fill="url(#${sparkId}-fill)" />
+        <path class="marketMiniSparkLine flat" d="${path}" stroke="url(#${sparkId}-stroke)" />
+        <circle class="marketMiniSparkEnd flat" cx="120" cy="14" r="2.1" />
+      </svg>`;
     }
     const width = 120;
     const height = 28;
     let minV = Math.min(...values);
     let maxV = Math.max(...values);
     if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
+    const pad = (maxV - minV) * 0.12;
+    minV -= pad;
+    maxV += pad;
     const step = width / Math.max(values.length - 1, 1);
     const coords = values.map((value, index) => {
       const x = index * step;
-      const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
+      const normalized = ((maxV - value) / (maxV - minV));
+      const centered = ((normalized - 0.5) * verticalBias) + 0.5;
+      const bounded = Math.max(0.06, Math.min(0.94, centered));
+      const y = bounded * (height - 4) + 2;
+      return [x, y];
     });
-    return `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true"><polyline class="marketMiniSparkLine ${tone}" points="${coords.join(" ")}" /></svg>`;
+    const path = buildSmoothPath(coords);
+    const lineEnd = coords[coords.length - 1];
+    const areaPath = `${path} L 120 28 L 0 28 Z`;
+    const gradientStartOpacity = isLive ? ".22" : isDelayed ? ".12" : ".10";
+    const gradientEndOpacity = isLive ? ".98" : isDelayed ? ".64" : ".52";
+    const fillOpacity = isLive ? ".14" : isDelayed ? ".08" : ".06";
+    return `<svg viewBox="0 0 120 28" class="marketMiniSpark ${symbolClass} is-${stateClass(state)}" aria-hidden="true">
+      <defs>
+        <linearGradient id="${sparkId}-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="${toneColor}" stop-opacity="${gradientStartOpacity}" />
+          <stop offset="65%" stop-color="${toneColor}" stop-opacity="${Math.max(0.35, Number(gradientEndOpacity) - 0.22)}" />
+          <stop offset="100%" stop-color="${toneColor}" stop-opacity="${gradientEndOpacity}" />
+        </linearGradient>
+        <linearGradient id="${sparkId}-fill" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="${toneColor}" stop-opacity="${fillOpacity}" />
+          <stop offset="100%" stop-color="${toneColor}" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <path class="marketMiniSparkArea ${tone}" d="${areaPath}" fill="url(#${sparkId}-fill)" />
+      <path class="marketMiniSparkLine ${tone}" d="${path}" stroke="url(#${sparkId}-stroke)" />
+      <circle class="marketMiniSparkEnd ${tone}" cx="${lineEnd[0].toFixed(2)}" cy="${lineEnd[1].toFixed(2)}" r="2.1" />
+    </svg>`;
   };
 
   const deriveState = (quote) => {
@@ -145,40 +208,90 @@
     return "missing";
   };
 
-  const sourceBadgeLabel = (quote) => {
-    const provider = String((quote || {}).provider || "").toLowerCase();
-    const reason = String((quote || {}).reason || (quote || {}).data_reason || "").toLowerCase();
-    if (provider === "tradier" && reason.startsWith("tradier_stream_")) return "Tradier Stream";
-    if (provider === "tradier" && reason.startsWith("tradier_live")) return "Tradier Live Quote";
-    if (provider === "tradier" && reason.startsWith("tradier_close")) return "Tradier Close";
-    if (provider === "massive") return "Fallback Snapshot";
-    if (provider === "yfinance") return "Yahoo Fallback";
-    if (provider) return `${provider[0].toUpperCase()}${provider.slice(1)} Fallback`;
-    return "Feed unavailable";
-  };
-
   const updateCard = (card, quote, points) => {
     const price = asNum((quote || {}).price);
     const pct = asNum((quote || {}).pct_change);
     const tone = pct === null ? "flat" : pct > 0 ? "up" : pct < 0 ? "down" : "flat";
     const state = deriveState(quote);
-    const stateChip = card.querySelector('[data-role="state-chip"]');
     const freshnessNode = card.querySelector('[data-role="freshness"]');
     const priceNode = card.querySelector('[data-role="price"]');
     const changeNode = card.querySelector('[data-role="change-line"]');
     const sparkNode = card.querySelector('[data-role="sparkline"]');
-    const sourceNode = card.querySelector('[data-role="source-badge"]');
-    const gapLine = card.querySelector('[data-role="gap-line"]');
-    const gapChip = card.querySelector('[data-role="gap-chip"]');
-    const rangeNode = card.querySelector('[data-role="range-line"]');
+    const contextPrimaryNode = card.querySelector('[data-role="context-primary"]');
+    const contextSecondaryNode = card.querySelector('[data-role="context-secondary"]');
+    const infoPrimaryNode = card.querySelector('[data-role="info-primary"]');
     const asOf = String((quote || {}).as_of || "").trim();
     const freshness = formatFreshness(asOf, state);
-
-    if (stateChip) {
-      stateChip.textContent = state;
-      stateChip.classList.remove("state-live", "state-delayed", "state-missing");
-      stateChip.classList.add(`state-${stateClass(state)}`);
-    }
+    const values = (Array.isArray(points) ? points : [])
+      .map((row) => (row && typeof row === "object" ? asNum(row.v) : null))
+      .filter((value) => value !== null);
+    const low = values.length ? Math.min(...values) : null;
+    const high = values.length ? Math.max(...values) : null;
+    const range = low !== null && high !== null ? high - low : null;
+    const pctOfRange = (price !== null && low !== null && high !== null && range && range > 0)
+      ? (price - low) / range
+      : null;
+    const formatRange = (lo, hi) => {
+      if (lo === null || hi === null) return "Range —";
+      return `Range ${lo.toFixed(2)}–${hi.toFixed(2)}`;
+    };
+    const parseLevel = (value) => {
+      if (value === null || value === undefined) return null;
+      const cleaned = String(value).replace(/[^0-9.-]/g, "");
+      return asNum(cleaned);
+    };
+    const mainFlip = parseLevel(document.getElementById("dashboardGammaValue-main_flip")?.textContent || "");
+    const arrow = pct === null ? "→" : pct > 0 ? "↑" : pct < 0 ? "↓" : "→";
+    const changeClass = pct === null ? "is-flat" : pct > 0 ? "is-up" : pct < 0 ? "is-down" : "is-flat";
+    const symbol = String(card.dataset.symbol || "").toUpperCase();
+    const positionLabel = (() => {
+      if (pctOfRange === null) return "Inside Range";
+      if (pctOfRange >= 0.8) return "Near High";
+      if (pctOfRange <= 0.2) return "Near Low";
+      return "Mid";
+    })();
+    const spxContextPrimary = (() => {
+      if (price !== null && mainFlip !== null) {
+        const diff = price - mainFlip;
+        if (Math.abs(diff) <= 2) return "At Flip";
+        return `${diff > 0 ? "Above" : "Below"} Flip ${diff > 0 ? "+" : ""}${diff.toFixed(0)} pts`;
+      }
+      if (pctOfRange >= 0.8) return "Near Session High";
+      if (pctOfRange <= 0.2) return "Near Session Low";
+      return "Inside Range";
+    })();
+    const spxContextSecondary = (() => {
+      if (state !== "Live") return "Last session";
+      if (price !== null && mainFlip !== null && pct !== null) {
+        if (Math.abs(pct) < 0.05) return "Balanced tape";
+        if (price >= mainFlip && pct > 0) return "Acceptance";
+        if (price >= mainFlip && pct < 0) return "Rejection";
+        if (price < mainFlip && pct < 0) return "Weak structure";
+        if (price < mainFlip && pct > 0) return "Rejection";
+      }
+      if (pct !== null && Math.abs(pct) >= 0.3) return "Expansion building";
+      return "Balanced tape";
+    })();
+    const vixContextPrimary = (() => {
+      if (pct !== null) {
+        if (pct <= -1) return "Falling";
+        if (pct < 0) return "Compressed";
+        if (pct >= 1) return "Firming";
+        if (pct > 0) return "Elevated";
+      }
+      if (pctOfRange !== null && pctOfRange >= 0.75) return "Elevated";
+      return "Compressed";
+    })();
+    const vixContextSecondary = (() => {
+      if (state !== "Live") return "Last session";
+      if (pct !== null) {
+        if (pct <= -1) return "Risk easing";
+        if (pct < 0) return "Stable";
+        if (pct >= 1) return "Expansion";
+        if (pct > 0) return "Risk firming";
+      }
+      return "Stable";
+    })();
     if (freshnessNode) {
       freshnessNode.textContent = freshness.compact;
       freshnessNode.setAttribute("title", freshness.full);
@@ -187,45 +300,41 @@
       priceNode.textContent = price === null ? "—" : price.toFixed(2);
     }
     if (changeNode) {
-      changeNode.textContent = `${formatSigned(inferAbsoluteChange(price, pct), 2)} · ${formatSigned(pct, 2)}%`;
+      changeNode.innerHTML = `
+        <span class="dashboardTapeDeltaValue ${changeClass}">${formatSigned(inferAbsoluteChange(price, pct), 2)}</span>
+        <span class="dashboardTapeDeltaPct ${changeClass}">${formatSigned(pct, 2)}%</span>
+        <span class="dashboardTapeDeltaArrow ${changeClass}">${arrow}</span>
+      `;
     }
     if (sourceNode) {
       sourceNode.textContent = sourceBadgeLabel(quote);
     }
     if (sparkNode) {
-      sparkNode.innerHTML = buildSparkline(points, tone, state);
+      const profile = symbol === "VIX"
+        ? (state !== "Live" ? "compressed" : (vixContextPrimary === "Compressed" || vixContextSecondary === "Stable" ? "compressed" : (vixContextPrimary === "Firming" || vixContextSecondary === "Expansion" ? "directional" : "normal")))
+        : (state !== "Live" ? "compressed" : (spxContextPrimary === "At Flip" || spxContextSecondary === "Balanced tape" ? "compressed" : (spxContextSecondary === "Acceptance" || spxContextSecondary === "Expansion building" || spxContextSecondary === "Weak structure" ? "directional" : "normal")));
+      sparkNode.innerHTML = buildSparkline(points, tone, state, { profile, symbol });
     }
-    if (rangeNode) {
-      const values = (Array.isArray(points) ? points : [])
-        .map((row) => (row && typeof row === "object" ? asNum(row.v) : null))
-        .filter((value) => value !== null);
-      if (!values.length) {
-        rangeNode.textContent = "—";
+    if (contextPrimaryNode) {
+      contextPrimaryNode.textContent = symbol === "VIX" ? vixContextPrimary : spxContextPrimary;
+    }
+    if (contextSecondaryNode) {
+      contextSecondaryNode.textContent = symbol === "VIX" ? vixContextSecondary : spxContextSecondary;
+    }
+    if (infoPrimaryNode) {
+      if (symbol === "VIX") {
+        infoPrimaryNode.textContent = low !== null && high !== null
+          ? `${formatRange(low, high)}`
+          : `Intraday tone: ${vixContextSecondary.toLowerCase()}`;
+      } else if (mainFlip !== null && price !== null) {
+        const diff = price - mainFlip;
+        infoPrimaryNode.textContent = `Dist to Flip: ${diff > 0 ? "+" : ""}${diff.toFixed(0)} pts`;
+      } else if (low !== null && high !== null) {
+        infoPrimaryNode.textContent = `${formatRange(low, high)} • ${positionLabel}`;
       } else {
-        const low = Math.min(...values);
-        const high = Math.max(...values);
-        rangeNode.textContent = Math.abs(high - low) < 0.01 ? high.toFixed(2) : `${low.toFixed(2)}-${high.toFixed(2)}`;
+        infoPrimaryNode.textContent = positionLabel;
       }
     }
-
-    const dayOpen = Array.isArray(points) && points.length ? asNum(points[0].v) : null;
-    const prevClose = price !== null && pct !== null ? price / (1 + (pct / 100)) : null;
-    const gap = dayOpen !== null && prevClose !== null ? dayOpen - prevClose : null;
-    const gapPct = gap !== null && prevClose ? (gap / prevClose) * 100 : null;
-    const gapText = gap === null || gapPct === null ? "—" : `${formatSigned(gap, 2)} (${formatSigned(gapPct, 2)}%)`;
-    if (gapChip) {
-      gapChip.textContent = gapText;
-      gapChip.classList.remove("positive", "negative");
-      if ((gap || 0) > 0) gapChip.classList.add("positive");
-      if ((gap || 0) < 0) gapChip.classList.add("negative");
-    }
-    if (gapLine) {
-      gapLine.classList.remove("is-positive", "is-negative");
-      if ((gap || 0) > 0) gapLine.classList.add("is-positive");
-      if ((gap || 0) < 0) gapLine.classList.add("is-negative");
-      gapLine.setAttribute("title", `Gap O/N: ${gapText}`);
-    }
-
     card.classList.toggle("glow-green", (pct || 0) > 0);
     card.classList.toggle("glow-red", (pct || 0) < 0);
     card.classList.remove("is-live", "is-delayed", "is-missing");
@@ -298,6 +407,14 @@
         const symbol = String(card.dataset.symbol || "").toUpperCase();
         updateCard(card, prices[symbol] || {}, seriesPoints[symbol] || []);
       });
+      const liveCards = cards.filter((card) => card.classList.contains("is-live")).length;
+      const delayedCards = cards.filter((card) => card.classList.contains("is-delayed")).length;
+      document.dispatchEvent(new CustomEvent("dashboard:tape-state", {
+        detail: {
+          hasLive: liveCards > 0,
+          hasDelayed: delayedCards > 0,
+        },
+      }));
       setStreamStatus("Live", formatClock(payload.updated_at || payload.server_ts || new Date().toISOString()));
       updatedNode.classList.remove("is-fresh");
       window.requestAnimationFrame(() => updatedNode.classList.add("is-fresh"));
@@ -319,4 +436,155 @@
 
   setStreamStatus("Connecting", "waiting for first tick…");
   connect();
+})();
+
+(function () {
+  const shell = document.getElementById("dashboardModeShell");
+  const toggle = document.getElementById("dashboardModeToggle");
+  if (!shell || !toggle) return;
+
+  const storageKey = "mc_dashboard_attention_mode";
+  const buttons = Array.from(toggle.querySelectorAll("[data-dashboard-mode-target]"));
+  const optionalDetails = Array.from(document.querySelectorAll("[data-dashboard-optional]"));
+  const defaultMode = String(shell.dataset.dashboardDefaultMode || shell.dataset.dashboardMode || "pre");
+
+  const validMode = (value) => (value === "live" ? "live" : "pre");
+  const getStoredMode = () => {
+    try {
+      const value = window.localStorage.getItem(storageKey);
+      return value === "live" || value === "pre" ? value : null;
+    } catch (_err) {
+      return null;
+    }
+  };
+
+  const syncButtons = (mode) => {
+    buttons.forEach((button) => {
+      const isActive = button.dataset.dashboardModeTarget === mode;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+  };
+
+  const collapseOptionalDetails = () => {
+    optionalDetails.forEach((node) => {
+      if (
+        node.matches(".dashboardProjectionFold[open]")
+        || node.matches(".dashboardSupportFold[open]")
+        || node.matches(".dataTrustDetails[open]")
+      ) {
+        return;
+      }
+      node.removeAttribute("open");
+    });
+  };
+
+  const applyMode = (mode, options = {}) => {
+    const nextMode = validMode(mode);
+    shell.dataset.dashboardMode = nextMode;
+    syncButtons(nextMode);
+    if (options.persist) {
+      try {
+        window.localStorage.setItem(storageKey, nextMode);
+      } catch (_err) {
+        // Ignore storage failures.
+      }
+    }
+    if (nextMode === "live") {
+      collapseOptionalDetails();
+    }
+  };
+
+  let manualOverride = getStoredMode();
+  applyMode(manualOverride || defaultMode);
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      manualOverride = validMode(button.dataset.dashboardModeTarget);
+      applyMode(button.dataset.dashboardModeTarget, { persist: true });
+    });
+  });
+
+  document.addEventListener("dashboard:tape-state", (event) => {
+    if (manualOverride) return;
+    const detail = event && event.detail ? event.detail : {};
+    if (detail.hasLive) {
+      applyMode("live");
+    } else if (detail.hasDelayed) {
+      applyMode("pre");
+    }
+  });
+})();
+
+(function () {
+  const buttons = Array.from(document.querySelectorAll(".dashboardStatusOrb[data-status-key]"));
+  const sectionNode = document.getElementById("dashboardStatusDetailSection");
+  const panelNode = document.getElementById("dashboardStatusDetailCard");
+  const titleNode = document.getElementById("dashboardStatusDetailTitle");
+  const primaryNode = document.getElementById("dashboardStatusDetailPrimary");
+  const linesNode = document.getElementById("dashboardStatusDetailLines");
+  const tagsNode = document.getElementById("dashboardStatusDetailTags");
+  if (!buttons.length || !sectionNode || !panelNode || !titleNode || !primaryNode || !linesNode || !tagsNode) return;
+
+  const renderButton = (button) => {
+    const data = button.dataset || {};
+    sectionNode.textContent = data.statusSection || "Status";
+    titleNode.textContent = data.statusTitle || "—";
+    primaryNode.textContent = data.statusPrimary || "—";
+
+    const lines = [
+      data.statusLine1,
+      data.statusLine2,
+      data.statusLine3,
+      data.statusLine4,
+    ].filter((value) => typeof value === "string" && value.trim());
+    linesNode.innerHTML = lines
+      .map((line) => `<div class="dashboardStatusDetailLine">${line}</div>`)
+      .join("");
+
+    const tags = String(data.statusTags || "")
+      .split("||")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    tagsNode.innerHTML = tags
+      .map((tag) => `<span class="trendChip">${tag}</span>`)
+      .join("");
+    tagsNode.hidden = tags.length === 0;
+  };
+
+  const activate = (button) => {
+    buttons.forEach((node) => {
+      const active = node === button;
+      node.classList.toggle("is-active", active);
+      node.setAttribute("aria-selected", String(active));
+      node.tabIndex = active ? 0 : -1;
+    });
+    panelNode.setAttribute("aria-labelledby", button.id || "");
+    renderButton(button);
+  };
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => activate(button));
+    button.addEventListener("keydown", (event) => {
+      const currentIndex = buttons.indexOf(button);
+      if (currentIndex < 0) return;
+      let nextIndex = null;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        nextIndex = (currentIndex + 1) % buttons.length;
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+      } else if (event.key === "Home") {
+        nextIndex = 0;
+      } else if (event.key === "End") {
+        nextIndex = buttons.length - 1;
+      }
+      if (nextIndex === null) return;
+      event.preventDefault();
+      activate(buttons[nextIndex]);
+      buttons[nextIndex].focus();
+    });
+  });
+
+  const defaultButton = buttons.find((button) => button.classList.contains("is-active")) || buttons[0];
+  activate(defaultButton);
 })();

@@ -8,6 +8,8 @@ from typing import Any, List
 
 from mccain_capital.services import trades as legacy
 
+QUICK_SETUP_CHOICES = {"Sweep", "Reversal", "Continuation", "Chop", "Other"}
+
 
 def _parse_ids_from_request() -> List[int]:
     ids: Any = None
@@ -44,6 +46,37 @@ def _trades_table_columns(conn: sqlite3.Connection) -> List[str]:
     return [r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
 
 
+def _parse_setup_from_request() -> str:
+    payload = legacy.request.get_json(silent=True) or {} if legacy.request.is_json else {}
+    raw = payload.get("setup") if legacy.request.is_json else legacy.request.form.get("setup")
+    setup = str(raw or "").strip()
+    if setup not in QUICK_SETUP_CHOICES:
+        return ""
+    return setup
+
+
+def _preserve_review_with_setup(review: dict[str, Any], setup: str) -> dict[str, Any]:
+    return {
+        "strategy_id": None,
+        "strategy_label": setup,
+        "setup_tag": setup,
+        "session_tag": review.get("session_tag", ""),
+        "checklist_score": review.get("checklist_score"),
+        "rule_break_tags": review.get("rule_break_tags", ""),
+        "review_note": review.get("review_note", ""),
+        "thesis_note": review.get("thesis_note", ""),
+        "execution_grade": review.get("execution_grade"),
+        "risk_grade": review.get("risk_grade"),
+        "plan_grade": review.get("plan_grade"),
+        "mistake_tags": review.get("mistake_tags", ""),
+        "planned_risk_dollars": review.get("planned_risk_dollars"),
+        "size_rule_note": review.get("size_rule_note", ""),
+        "entry_quality_note": review.get("entry_quality_note", ""),
+        "exit_quality_note": review.get("exit_quality_note", ""),
+        "improvement_note": review.get("improvement_note", ""),
+    }
+
+
 def trades_duplicate(trade_id: int):
     src = legacy.get_trade(trade_id)
     if not src:
@@ -60,8 +93,8 @@ def trades_duplicate(trade_id: int):
                 entry_price, exit_price, contracts, total_spent,
                 stop_pct, target_pct, stop_price, take_profit,
                 risk, comm, gross_pl, net_pl, result_pct, balance,
-                raw_line, created_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                raw_line, created_at, trade_source
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 src["trade_date"],
@@ -86,6 +119,7 @@ def trades_duplicate(trade_id: int):
                 new_balance,
                 f"DUPLICATE OF #{trade_id}",
                 legacy.now_iso(),
+                str(src.get("trade_source") or "Manual Entry"),
             ),
         )
 
@@ -203,6 +237,36 @@ def trades_copy_many():
     return legacy.redirect(
         legacy.url_for("trades_page", d=str(target_date), q=legacy.request.args.get("q", ""))
     )
+
+
+def trades_set_setup(trade_id: int):
+    setup = _parse_setup_from_request()
+    if not setup:
+        return (legacy.jsonify({"ok": False, "error": "Invalid setup."}), 400)
+    review = legacy.repo.get_trade_review(trade_id) or {}
+    legacy.repo.upsert_trade_review(
+        trade_id=trade_id,
+        **_preserve_review_with_setup(review, setup),
+    )
+    return legacy.jsonify({"ok": True, "setup": setup})
+
+
+def trades_set_setup_many():
+    setup = _parse_setup_from_request()
+    ids = _parse_ids_from_request()
+    if not setup:
+        return (legacy.jsonify({"ok": False, "error": "Invalid setup."}), 400)
+    if not ids:
+        return (legacy.jsonify({"ok": False, "error": "No trades selected."}), 400)
+    updated = 0
+    for trade_id in ids:
+        review = legacy.repo.get_trade_review(trade_id) or {}
+        legacy.repo.upsert_trade_review(
+            trade_id=trade_id,
+            **_preserve_review_with_setup(review, setup),
+        )
+        updated += 1
+    return legacy.jsonify({"ok": True, "updated": updated, "setup": setup})
 
 
 def trades_clear():

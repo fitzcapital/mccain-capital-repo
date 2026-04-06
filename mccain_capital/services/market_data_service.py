@@ -741,6 +741,11 @@ def get_prior_session_intraday(
         return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
     if tradier_rows:
         return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
+    massive_rows = _massive_intraday_rows_for_date(symbol, session_day)
+    if len(massive_rows) >= 20:
+        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, massive_rows)
+    if massive_rows:
+        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, massive_rows)
     return []
 
 

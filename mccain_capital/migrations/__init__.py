@@ -280,6 +280,90 @@ def _migration_0006_trade_review_rich_fields(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0007_trade_source(conn: sqlite3.Connection) -> None:
+    trade_cols = [r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+    if "trade_source" not in trade_cols:
+        conn.execute("ALTER TABLE trades ADD COLUMN trade_source TEXT DEFAULT ''")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_trade_source ON trades(trade_source)")
+    conn.execute(
+        """
+        UPDATE trades
+        SET trade_source = CASE
+            WHEN COALESCE(trade_source, '') <> '' THEN trade_source
+            WHEN COALESCE(import_batch_id, '') <> '' THEN 'Statement Import'
+            WHEN UPPER(COALESCE(raw_line, '')) = 'MANUAL ENTRY' THEN 'Manual Entry'
+            WHEN UPPER(COALESCE(raw_line, '')) LIKE 'DUPLICATE OF #%' THEN 'Manual Entry'
+            WHEN UPPER(COALESCE(raw_line, '')) LIKE '%BALANCE SNAPSHOT%' THEN 'Balance Snapshot'
+            ELSE 'Unknown'
+        END
+        """
+    )
+    review_cols = [r["name"] for r in conn.execute("PRAGMA table_info(trade_reviews)").fetchall()]
+    if "strategy_label" in review_cols and "strategy_id" in review_cols:
+        conn.execute(
+            """
+            UPDATE trade_reviews
+            SET strategy_id = NULL,
+                strategy_label = CASE
+                    WHEN LOWER(TRIM(COALESCE(strategy_label, ''))) = 'statement import' THEN ''
+                    ELSE strategy_label
+                END,
+                setup_tag = CASE
+                    WHEN LOWER(TRIM(COALESCE(setup_tag, ''))) = 'statement import' THEN ''
+                    ELSE setup_tag
+                END
+            WHERE LOWER(TRIM(COALESCE(strategy_label, setup_tag, ''))) = 'statement import'
+               OR LOWER(TRIM(COALESCE(setup_tag, ''))) = 'statement import'
+            """
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE trade_reviews
+            SET setup_tag = ''
+            WHERE LOWER(TRIM(COALESCE(setup_tag, ''))) = 'statement import'
+            """
+        )
+
+
+def _migration_0008_trade_review_workflow(conn: sqlite3.Connection) -> None:
+    review_cols = [r["name"] for r in conn.execute("PRAGMA table_info(trade_reviews)").fetchall()]
+    if "reviewed_stop_price" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_stop_price REAL DEFAULT NULL")
+    if "reviewed_target_price" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_target_price REAL DEFAULT NULL")
+    if "reviewed_risk_dollars" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_risk_dollars REAL DEFAULT NULL")
+    if "reviewed_risk_percent" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_risk_percent REAL DEFAULT NULL")
+    if "reviewed_execution_quality" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_execution_quality TEXT DEFAULT ''")
+    if "reviewed_sizing_quality" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_sizing_quality TEXT DEFAULT ''")
+    if "reviewed_stop_discipline" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_stop_discipline TEXT DEFAULT ''")
+    if "reviewed_within_plan" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_within_plan INTEGER DEFAULT NULL")
+    if "manual_grade_score" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN manual_grade_score INTEGER DEFAULT NULL")
+    if "manual_grade_letter" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN manual_grade_letter TEXT DEFAULT ''")
+    if "grade_override_reason" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN grade_override_reason TEXT DEFAULT ''")
+    if "classification_override" not in review_cols:
+        conn.execute("ALTER TABLE trade_reviews ADD COLUMN classification_override TEXT DEFAULT ''")
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trade_reviews_manual_grade ON trade_reviews(manual_grade_letter)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trade_reviews_reviewed_execution ON trade_reviews(reviewed_execution_quality)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trade_reviews_reviewed_stop ON trade_reviews(reviewed_stop_discipline)"
+    )
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
@@ -287,12 +371,20 @@ MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0004_strategy_links", _migration_0004_strategy_links),
     ("0005_market_alerts", _migration_0005_market_alerts),
     ("0006_trade_review_rich_fields", _migration_0006_trade_review_rich_fields),
+    ("0007_trade_source", _migration_0007_trade_source),
+    ("0008_trade_review_workflow", _migration_0008_trade_review_workflow),
 ]
 
 
 def run_migrations(db_path: str) -> List[str]:
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=10.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 10000")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+    except sqlite3.DatabaseError:
+        pass
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS schema_migrations (

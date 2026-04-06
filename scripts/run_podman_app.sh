@@ -13,6 +13,7 @@ CURL_BIN="${CURL_BIN:-$(command -v curl || echo /usr/bin/curl)}"
 REPAIR_DB_SCRIPT="${REPAIR_DB_SCRIPT:-$ROOT_DIR/scripts/repair_sqlite_mount_db.sh}"
 STAMP_SCRIPT="${STAMP_SCRIPT:-$ROOT_DIR/scripts/current_repo_stamp.sh}"
 STAMP_FILE="${STAMP_FILE:-$DATA_DIR/.podman-image-repo-stamp}"
+ENV_PASSTHROUGH_VARS=(X_BEARER_TOKEN X_API_BEARER_TOKEN TWITTER_BEARER_TOKEN X_API_BASE_URL)
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
@@ -43,11 +44,26 @@ if "$PODMAN_BIN" ps -a --format '{{.Names}}' | "$RG_BIN" -x "$CONTAINER_NAME" >/
 fi
 
 echo "[run_podman_app] starting $CONTAINER_NAME on port $HOST_PORT"
-"$PODMAN_BIN" run -d \
-  --name "$CONTAINER_NAME" \
-  -p "$HOST_PORT:5001" \
-  -v "$DATA_DIR:/data" \
-  "$IMAGE_NAME" >/dev/null
+declare -a RUN_ENV_ARGS=()
+for env_name in "${ENV_PASSTHROUGH_VARS[@]}"; do
+  if [[ -n "${!env_name:-}" ]]; then
+    RUN_ENV_ARGS+=(-e "$env_name=${!env_name}")
+  fi
+done
+if [[ ${#RUN_ENV_ARGS[@]} -gt 0 ]]; then
+  "$PODMAN_BIN" run -d \
+    --name "$CONTAINER_NAME" \
+    -p "$HOST_PORT:5001" \
+    -v "$DATA_DIR:/data" \
+    "${RUN_ENV_ARGS[@]}" \
+    "$IMAGE_NAME" >/dev/null
+else
+  "$PODMAN_BIN" run -d \
+    --name "$CONTAINER_NAME" \
+    -p "$HOST_PORT:5001" \
+    -v "$DATA_DIR:/data" \
+    "$IMAGE_NAME" >/dev/null
+fi
 
 echo "[run_podman_app] waiting for healthz"
 for _ in $(seq 1 30); do

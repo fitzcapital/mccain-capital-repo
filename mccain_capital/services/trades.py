@@ -2426,8 +2426,8 @@ def trades_new_manual():
                     trade_date, entry_time, exit_time, ticker, opt_type, strike,
                     entry_price, exit_price, contracts, total_spent,
                     comm, gross_pl, net_pl, result_pct, balance,
-                    raw_line, created_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    raw_line, created_at, trade_source
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     trade_date,
@@ -2447,6 +2447,7 @@ def trades_new_manual():
                     balance,
                     "MANUAL ENTRY",
                     now_iso(),
+                    "Manual Entry",
                 ),
             )
             trade_id = int(conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"])

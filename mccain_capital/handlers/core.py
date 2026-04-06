@@ -61,6 +61,10 @@ def market_pulse_page():
     return svc.market_pulse_page()
 
 
+def market_pulse_news_feed_api():
+    return svc.market_pulse_news_feed_api()
+
+
 def stream_market():
     return svc.stream_market()
 

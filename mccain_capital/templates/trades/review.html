@@ -1,0 +1,273 @@
+<section class="card primaryCard tradesReviewPage">
+  <div class="toolbar">
+    <div class="tradesReviewHeaderStrip">
+      <div class="tradesReviewHeaderMain">
+        <div class="pill">Trade Review</div>
+        <h2 class="pageTitle">Review Trade #{{ t.id }}</h2>
+        <div class="supportLead">Structured execution review with auto grade, final grade control, and a clean path back into Trades.</div>
+      </div>
+      <div class="actionRow tradesReviewHeaderActions">
+        <a class="btn" href="/trades/{{ t.id }}/replay{% if back_query %}?{{ back_query }}{% endif %}">Replay</a>
+        <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}">Back to Trades</a>
+      </div>
+    </div>
+
+    <div class="tradesReviewHeaderMetrics">
+      <div class="tradesReviewHeaderMetric"><span class="k">Trade</span><strong>#{{ t.id }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Symbol</span><strong>{{ t.ticker }} {{ t.opt_type or '' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Date</span><strong>{{ t.trade_date }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Setup</span><strong>{{ review.setup_display or 'Unknown' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Session</span><strong>{{ rv.get('session_tag') or repo.classify_time_block(t.entry_time) or '—' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">P/L</span><strong>{{ money(t.net_pl or 0) }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Risk</span><strong>{{ money(review.risk_dollars) if review.risk_dollars is not none else '—' }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Auto Grade</span><strong>{{ review.auto_grade_letter }} · {{ review.auto_grade_score }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Final Grade</span><strong>{{ review.final_grade_letter }} · {{ review.final_grade_score }}</strong></div>
+      <div class="tradesReviewHeaderMetric"><span class="k">Class</span><strong>{{ review.classification }}</strong></div>
+    </div>
+  </div>
+</section>
+
+<form method="post" action="/trades/review/{{ t.id }}{% if back_query %}?{{ back_query }}{% endif %}" class="tradesReviewForm" id="tradeReviewForm">
+  <section class="tradesReviewWorkspace">
+    <article class="card supportCard tradesReviewSection">
+      <div class="toolbar">
+        <div class="pill">Setup + Thesis</div>
+        <div class="tradesReviewFieldGrid">
+          <div class="fieldGrow2">
+            <label>Setup Tag</label>
+            <input name="strategy_label" list="strategy-options" value="{{ rv.get('strategy_label','') or rv.get('setup_tag','') }}" placeholder="Sweep, Reversal, Continuation" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Session Tag</label>
+            <select name="session_tag">
+              {% set s = rv.get('session_tag','') %}
+              <option value="" {% if s=='' %}selected{% endif %}>—</option>
+              <option value="Open" {% if s=='Open' %}selected{% endif %}>Open</option>
+              <option value="Midday" {% if s=='Midday' %}selected{% endif %}>Midday</option>
+              <option value="Power Hour" {% if s=='Power Hour' %}selected{% endif %}>Power Hour</option>
+              <option value="After Hours" {% if s=='After Hours' %}selected{% endif %}>After Hours</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Checklist Score</label>
+            <input name="checklist_score" inputmode="numeric" value="{{ '' if rv.get('checklist_score') is none else rv.get('checklist_score') }}" />
+          </div>
+        </div>
+        <div class="stack10">
+          <label>Thesis Note</label>
+          <textarea name="thesis_note" placeholder="State the setup and why it existed.">{{ rv.get('thesis_note','') }}</textarea>
+        </div>
+      </div>
+    </article>
+
+    <article class="card supportCard tradesReviewSection">
+      <div class="toolbar">
+        <div class="pill">Risk</div>
+        <div class="tradesReviewFieldGrid">
+          <div class="fieldGrow1">
+            <label>Planned Risk ($)</label>
+            <input name="planned_risk_dollars" inputmode="decimal" value="{{ '' if rv.get('planned_risk_dollars') is none else rv.get('planned_risk_dollars') }}" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Reviewed Risk ($)</label>
+            <input name="reviewed_risk_dollars" inputmode="decimal" value="{{ '' if rv.get('reviewed_risk_dollars') is none else rv.get('reviewed_risk_dollars') }}" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Reviewed Risk %</label>
+            <input name="reviewed_risk_percent" inputmode="decimal" value="{{ '' if rv.get('reviewed_risk_percent') is none else rv.get('reviewed_risk_percent') }}" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Risk Grade</label>
+            <input name="risk_grade" inputmode="numeric" value="{{ '' if rv.get('risk_grade') is none else rv.get('risk_grade') }}" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Plan Grade</label>
+            <input name="plan_grade" inputmode="numeric" value="{{ '' if rv.get('plan_grade') is none else rv.get('plan_grade') }}" />
+          </div>
+        </div>
+        <div class="tradesReviewFieldGrid">
+          <div class="fieldGrow1">
+            <label>Reviewed Stop</label>
+            <input name="reviewed_stop_price" inputmode="decimal" value="{{ '' if rv.get('reviewed_stop_price') is none else rv.get('reviewed_stop_price') }}" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Reviewed Target</label>
+            <input name="reviewed_target_price" inputmode="decimal" value="{{ '' if rv.get('reviewed_target_price') is none else rv.get('reviewed_target_price') }}" />
+          </div>
+          <div class="fieldGrow3">
+            <label>Size Rule Note</label>
+            <input name="size_rule_note" value="{{ rv.get('size_rule_note','') }}" placeholder="Was size aligned with the rule set?" />
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card supportCard tradesReviewSection">
+      <div class="toolbar">
+        <div class="pill">Execution</div>
+        <div class="tradesReviewFieldGrid">
+          <div class="fieldGrow1">
+            <label>Execution Grade</label>
+            <input name="execution_grade" inputmode="numeric" value="{{ '' if rv.get('execution_grade') is none else rv.get('execution_grade') }}" />
+          </div>
+          <div class="fieldGrow1">
+            <label>Execution Quality</label>
+            <select name="reviewed_execution_quality">
+              <option value="" {% if not rv.get('reviewed_execution_quality') %}selected{% endif %}>Auto</option>
+              <option value="Clean" {% if rv.get('reviewed_execution_quality') == 'Clean' %}selected{% endif %}>Clean</option>
+              <option value="Minor Error" {% if rv.get('reviewed_execution_quality') == 'Minor Error' %}selected{% endif %}>Minor Error</option>
+              <option value="Rule Break" {% if rv.get('reviewed_execution_quality') == 'Rule Break' %}selected{% endif %}>Rule Break</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Sizing Quality</label>
+            <select name="reviewed_sizing_quality">
+              <option value="" {% if not rv.get('reviewed_sizing_quality') %}selected{% endif %}>Auto</option>
+              <option value="Proper" {% if rv.get('reviewed_sizing_quality') == 'Proper' %}selected{% endif %}>Proper</option>
+              <option value="Undersized" {% if rv.get('reviewed_sizing_quality') == 'Undersized' %}selected{% endif %}>Undersized</option>
+              <option value="Oversized" {% if rv.get('reviewed_sizing_quality') == 'Oversized' %}selected{% endif %}>Oversized</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Stop Discipline</label>
+            <select name="reviewed_stop_discipline">
+              <option value="" {% if not rv.get('reviewed_stop_discipline') %}selected{% endif %}>Auto</option>
+              <option value="Stop Respected" {% if rv.get('reviewed_stop_discipline') == 'Stop Respected' %}selected{% endif %}>Stop Respected</option>
+              <option value="Stop Missing" {% if rv.get('reviewed_stop_discipline') == 'Stop Missing' %}selected{% endif %}>Stop Missing</option>
+              <option value="Exited Early" {% if rv.get('reviewed_stop_discipline') == 'Exited Early' %}selected{% endif %}>Exited Early</option>
+              <option value="Loss Exceeded Planned Risk" {% if rv.get('reviewed_stop_discipline') == 'Loss Exceeded Planned Risk' %}selected{% endif %}>Loss Exceeded Planned Risk</option>
+              <option value="Within Risk Plan" {% if rv.get('reviewed_stop_discipline') == 'Within Risk Plan' %}selected{% endif %}>Within Risk Plan</option>
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Within Plan</label>
+            <select name="reviewed_within_plan">
+              <option value="" {% if rv.get('reviewed_within_plan') in [None, ''] %}selected{% endif %}>Auto</option>
+              <option value="1" {% if rv.get('reviewed_within_plan') in [1, '1'] %}selected{% endif %}>Yes</option>
+              <option value="0" {% if rv.get('reviewed_within_plan') in [0, '0'] %}selected{% endif %}>No</option>
+            </select>
+          </div>
+        </div>
+        <div class="tradesReviewFieldGrid">
+          <div class="fieldGrow2">
+            <label>Entry Quality Note</label>
+            <input name="entry_quality_note" value="{{ rv.get('entry_quality_note','') }}" placeholder="Entry patience, location, confirmation." />
+          </div>
+          <div class="fieldGrow2">
+            <label>Exit Quality Note</label>
+            <input name="exit_quality_note" value="{{ rv.get('exit_quality_note','') }}" placeholder="Target, stop, and exit management." />
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card supportCard tradesReviewSection">
+      <div class="toolbar">
+        <div class="pill">Mistakes</div>
+        <div class="tradesReviewFieldGrid">
+          <div class="fieldGrow2">
+            <label>Mistake Tags</label>
+            <input name="mistake_tags" value="{{ rv.get('mistake_tags','') }}" placeholder="late entry, overtrade, size creep" />
+          </div>
+          <div class="fieldGrow2">
+            <label>Rule-Break Tags</label>
+            <input name="rule_break_tags" value="{{ rv.get('rule_break_tags','') }}" placeholder="oversized, no stop, revenge trade" />
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card supportCard tradesReviewSection">
+      <div class="toolbar">
+        <div class="pill">Lesson</div>
+        <div class="stack10">
+          <label>Review Note</label>
+          <textarea name="review_note" placeholder="What should repeat and what should stop?">{{ rv.get('review_note','') }}</textarea>
+        </div>
+        <div class="stack10">
+          <label>Improvement Note</label>
+          <textarea name="improvement_note" placeholder="What changes on the next rep?">{{ rv.get('improvement_note','') }}</textarea>
+        </div>
+      </div>
+    </article>
+
+    <article class="card primaryCard tradesReviewSection tradesReviewGradeSection">
+      <div class="toolbar">
+        <div class="pill">Grade Control</div>
+        <div class="tradesGradeControlGrid">
+          <div class="tradesGradeSummaryBox">
+            <span class="k">Auto Grade</span>
+            <strong>{{ review.auto_grade_letter }}</strong>
+            <span class="meta">{{ review.auto_grade_score }}/100</span>
+          </div>
+          <div class="tradesGradeSummaryBox">
+            <span class="k">Final Grade</span>
+            <strong>{{ review.final_grade_letter }}</strong>
+            <span class="meta">{{ review.final_grade_score }}/100</span>
+          </div>
+          <div class="fieldGrow1">
+            <label>Final Grade</label>
+            <select name="manual_grade_letter" id="manualGradeLetter">
+              <option value="" {% if not rv.get('manual_grade_letter') %}selected{% endif %}>Use auto</option>
+              {% for grade in ['A','B','C','D','F'] %}
+                <option value="{{ grade }}" {% if rv.get('manual_grade_letter') == grade %}selected{% endif %}>{{ grade }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fieldGrow1">
+            <label>Final Score</label>
+            <input name="manual_grade_score" id="manualGradeScore" inputmode="numeric" value="{{ '' if rv.get('manual_grade_score') is none else rv.get('manual_grade_score') }}" />
+          </div>
+          <div class="fieldGrow2">
+            <label>Classification</label>
+            <select name="classification_override" id="classificationOverride">
+              <option value="" {% if not rv.get('classification_override') %}selected{% endif %}>Use derived classification</option>
+              {% for item in ['Good Win', 'Good Loss', 'Bad Win', 'Bad Loss', 'Scratch'] %}
+                <option value="{{ item }}" {% if rv.get('classification_override') == item %}selected{% endif %}>{{ item }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="stack10">
+          <label>Override Reason</label>
+          <textarea name="grade_override_reason" id="gradeOverrideReason" placeholder="Why should the final grade differ from the auto grade?">{{ rv.get('grade_override_reason','') }}</textarea>
+        </div>
+        <div class="actionRow">
+          <button class="btn" type="submit" name="recalc_auto" value="1">Recalculate Auto Grade</button>
+          <button class="btn" type="button" id="useAutoGradeBtn">Use Auto Grade</button>
+          <button class="btn primary" type="submit">Save Review</button>
+          <button class="btn" type="submit" name="back_to_trades" value="1">Save + Back</button>
+        </div>
+      </div>
+    </article>
+
+    <article class="card supportCard tradesReviewSection">
+      <div class="toolbar">
+        <div class="pill">Grade Breakdown</div>
+        <div class="tradesGradeBreakdownGrid">
+          {% for component in review.grade_breakdown_items %}
+            <div class="tradeDetailCell">
+              <span class="tradeDetailLabel">{{ component.label }}</span>
+              <strong>{{ '%.1f'|format(component.score) }} / {{ component.max }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <datalist id="strategy-options">
+    {% for strategy in strategy_options %}
+      <option value="{{ strategy['title'] }}"></option>
+    {% endfor %}
+  </datalist>
+</form>
+
+<script>
+  window.mcTradeReviewAuto = {
+    score: {{ review.auto_grade_score|int }},
+    grade: "{{ review.auto_grade_letter }}",
+    classification: "{{ review.classification }}"
+  };
+</script>
+<script src="/static/js/trades_review_page.js"></script>

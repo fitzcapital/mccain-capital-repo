@@ -417,9 +417,9 @@ def _explain_day(rows: List[Dict[str, Any]], day_iso: str = "") -> Dict[str, Any
     biggest_loss = min([n for n in nets if n < 0], default=0.0)
     by_setup: Dict[str, float] = {}
     for r in day_rows:
-        setup = (r.get("setup_tag") or "").strip() or "Unlabeled"
+        setup = str(r.get("setup_display") or "").strip() or "Unknown"
         by_setup[setup] = by_setup.get(setup, 0.0) + float(r.get("net_pl") or 0.0)
-    top_setup = "Unlabeled"
+    top_setup = "Unknown"
     top_setup_net = 0.0
     if by_setup:
         top_setup, top_setup_net = sorted(by_setup.items(), key=lambda kv: kv[1], reverse=True)[0]
@@ -1057,6 +1057,7 @@ def _build_analytics_context(args: Any) -> Dict[str, Any]:
             for row in setup_scorecards
             if str(row.get("setup") or "").strip()
             and str(row.get("setup") or "").strip() != "Unlabeled"
+            and str(row.get("setup") or "").strip() != "Unknown"
         ),
         None,
     )
@@ -1258,7 +1259,7 @@ def session_replay_page():
                 "exit_time": str(r.get("exit_time") or "—"),
                 "ticker": str(r.get("ticker") or ""),
                 "opt_type": str(r.get("opt_type") or ""),
-                "setup_tag": str(r.get("setup_tag") or ""),
+                "setup_tag": str(r.get("setup_display") or r.get("setup_tag") or "Unknown"),
                 "session_tag": str(r.get("session_tag") or ""),
                 "rule_break_tags": str(r.get("rule_break_tags") or ""),
                 "checklist_score": r.get("checklist_score"),
@@ -1360,7 +1361,7 @@ def session_replay_page():
                 "time_label": str(t.get("entry_time") or "Trade"),
                 "headline": f"Trade #{t['id']} · {t['ticker']} {t['opt_type']}",
                 "summary": (
-                    f"{t.get('setup_tag') or 'Unlabeled'} · {t.get('session_tag') or 'No session tag'}"
+                    f"{t.get('setup_tag') or 'Unknown'} · {t.get('session_tag') or 'No session tag'}"
                 ),
                 "tone": (
                     "positive"

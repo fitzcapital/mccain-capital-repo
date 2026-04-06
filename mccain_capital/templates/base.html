@@ -1,7 +1,9 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v={{ static_v }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icon-192.png') }}?v={{ static_v }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icon-180.png') }}?v={{ static_v }}">
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <meta name="csrf-token" content="{{ csrf_token }}"/>
@@ -34,17 +36,43 @@
     data-active="0"
   >
     <div class="marketPulseLoadingCard">
-      <div class="marketPulseLoadingOrb">
-        <div class="marketPulseLoadingHalo"></div>
-        <div class="marketPulseLoadingHalo marketPulseLoadingHalo-secondary"></div>
-        <div class="marketPulseSpinner"></div>
-        <div class="marketPulseLoadingCore"></div>
+      <div class="marketPulseLoadingTopline">
+        <div class="marketPulseLoadingStatusIcon" aria-hidden="true">
+          <span class="marketPulseLoadingStatusPulse"></span>
+        </div>
+        <div class="marketPulseLoadingHead">
+          <div class="marketPulseLoadingTitle" id="marketPulseLoadingTitle">Market Pulse Sync</div>
+          <div class="marketPulseLoadingSub" id="marketPulseLoadingSub">Refreshing SPX priority, tape leadership, and macro catalysts…</div>
+        </div>
+        <div class="marketPulseLoadingPercent" id="marketPulseLoadingPercent">12%</div>
       </div>
-      <div class="pill marketPulseLoadingPill">Live reload</div>
-      <div class="marketPulseLoadingTitle" id="marketPulseLoadingTitle">Loading Market Pulse</div>
-      <div class="marketPulseLoadingSub" id="marketPulseLoadingSub">Refreshing SPX priority, tape leadership, and macro catalysts…</div>
-      <div class="marketPulseLoadingTrack">
-        <span class="marketPulseLoadingTrackBar"></span>
+      <div class="marketPulseLoadingMetaRow">
+        <div class="pill marketPulseLoadingPill">System sync</div>
+        <div class="tiny muted marketPulseLoadingMetaText" id="marketPulseLoadingMetaText">Preparing live decision context</div>
+      </div>
+      <div class="dashboardProgress dashboardProgress-primary marketPulseLoadingProgress">
+        <div class="dashboardProgressBar">
+          <span class="dashboardProgressBarFill marketPulseLoadingTrackBar" id="marketPulseLoadingTrackBar"></span>
+          <span class="dashboardProgressBarCap"></span>
+        </div>
+      </div>
+      <div class="marketPulseLoadingSteps" id="marketPulseLoadingSteps">
+        <div class="marketPulseLoadingStep is-active" data-step="levels">
+          <span class="marketPulseLoadingStepIcon" aria-hidden="true"></span>
+          <span class="marketPulseLoadingStepLabel">Loading levels</span>
+        </div>
+        <div class="marketPulseLoadingStep" data-step="tape">
+          <span class="marketPulseLoadingStepIcon" aria-hidden="true"></span>
+          <span class="marketPulseLoadingStepLabel">Syncing tape</span>
+        </div>
+        <div class="marketPulseLoadingStep" data-step="macro">
+          <span class="marketPulseLoadingStepIcon" aria-hidden="true"></span>
+          <span class="marketPulseLoadingStepLabel">Processing macro</span>
+        </div>
+        <div class="marketPulseLoadingStep" data-step="finalizing">
+          <span class="marketPulseLoadingStepIcon" aria-hidden="true"></span>
+          <span class="marketPulseLoadingStepLabel">Finalizing</span>
+        </div>
       </div>
     </div>
   </div>
@@ -54,12 +82,38 @@
       if (!overlay) return;
       const titleNode = document.getElementById("marketPulseLoadingTitle");
       const subNode = document.getElementById("marketPulseLoadingSub");
+      const percentNode = document.getElementById("marketPulseLoadingPercent");
+      const metaNode = document.getElementById("marketPulseLoadingMetaText");
+      const trackNode = document.getElementById("marketPulseLoadingTrackBar");
+      const stepNodes = Array.from(document.querySelectorAll(".marketPulseLoadingStep"));
       const flagKey = "mc_market_pulse_transition";
       const isMarketPulse = window.location.pathname === "/market-pulse";
       const navEntries = (typeof performance !== "undefined" && performance.getEntriesByType)
         ? performance.getEntriesByType("navigation")
         : [];
       const navType = navEntries && navEntries[0] ? navEntries[0].type : "";
+
+      const STAGES = [
+        { id: "loading_levels", step: "levels", pct: 24, meta: "Preparing live decision context" },
+        { id: "syncing_tape", step: "tape", pct: 52, meta: "Streaming live tape state" },
+        { id: "processing_macro", step: "macro", pct: 78, meta: "Folding macro and catalyst context" },
+        { id: "finalizing", step: "finalizing", pct: 94, meta: "Locking final execution state" },
+        { id: "complete", step: "finalizing", pct: 100, meta: "Sync complete. Launching Market Pulse..." },
+      ];
+      const stageIndex = (id) => {
+        const idx = STAGES.findIndex((stage) => stage.id === id);
+        return idx < 0 ? 0 : idx;
+      };
+      const loaderState = {
+        stage: "loading_levels",
+        currentPct: 0,
+        targetPct: 0,
+        rafId: 0,
+        active: false,
+        completeTimer: 0,
+        releaseTimer: 0,
+        completionWatcher: 0,
+      };
 
       const readPayload = () => {
         try {
@@ -69,19 +123,86 @@
         }
       };
 
-      const show = (title, detail, persist = true) => {
+      const syncVisualPercent = () => {
+        const pct = Math.max(0, Math.min(100, loaderState.currentPct));
+        if (percentNode) percentNode.textContent = `${Math.round(pct)}%`;
+        if (trackNode) trackNode.style.width = `${pct}%`;
+      };
+
+      const animateProgress = () => {
+        if (loaderState.rafId) cancelAnimationFrame(loaderState.rafId);
+        const tick = () => {
+          const diff = loaderState.targetPct - loaderState.currentPct;
+          if (Math.abs(diff) < 0.35) {
+            loaderState.currentPct = loaderState.targetPct;
+            syncVisualPercent();
+            loaderState.rafId = 0;
+            return;
+          }
+          loaderState.currentPct += diff * 0.16;
+          syncVisualPercent();
+          loaderState.rafId = requestAnimationFrame(tick);
+        };
+        loaderState.rafId = requestAnimationFrame(tick);
+      };
+
+      const applyStage = (nextStage, title, detail) => {
+        const currentIdx = stageIndex(loaderState.stage);
+        const requestedIdx = stageIndex(nextStage);
+        const stage = STAGES[Math.max(currentIdx, requestedIdx)];
+        loaderState.stage = stage.id;
+        loaderState.targetPct = Math.max(loaderState.targetPct, stage.pct);
         if (titleNode && title) titleNode.textContent = title;
         if (subNode && detail) subNode.textContent = detail;
+        if (metaNode) metaNode.textContent = stage.meta;
+        stepNodes.forEach((node) => {
+          const nodeStep = node.dataset.step || "";
+          const nodeIdx = Math.max(0, STAGES.findIndex((entry) => entry.step === nodeStep));
+          node.classList.toggle("is-complete", nodeIdx < stageIndex(stage.id));
+          node.classList.toggle("is-active", nodeStep === stage.step && stage.id !== "complete");
+        });
+        animateProgress();
+      };
+
+      const inferStage = (title, detail) => {
+        const text = `${title || ""} ${detail || ""}`.toLowerCase();
+        if (text.includes("final") || text.includes("ready")) return "finalizing";
+        if (text.includes("macro") || text.includes("catalyst")) return "processing_macro";
+        if (text.includes("tape") || text.includes("stream")) return "syncing_tape";
+        return "loading_levels";
+      };
+
+      const scheduleSoftProgress = () => {
+        window.setTimeout(() => {
+          if (loaderState.active) applyStage("syncing_tape");
+        }, 180);
+        window.setTimeout(() => {
+          if (loaderState.active) applyStage("processing_macro");
+        }, 420);
+      };
+
+      const show = (title, detail, persist = true) => {
+        window.clearTimeout(loaderState.completeTimer);
+        window.clearTimeout(loaderState.releaseTimer);
+        if (loaderState.completionWatcher) cancelAnimationFrame(loaderState.completionWatcher);
+        loaderState.active = true;
+        loaderState.stage = "loading_levels";
+        loaderState.currentPct = 12;
+        loaderState.targetPct = 20;
+        syncVisualPercent();
+        applyStage(inferStage(title, detail), title, detail);
         overlay.classList.add("show");
         overlay.setAttribute("aria-hidden", "false");
         overlay.dataset.active = "1";
         document.documentElement.classList.add("marketPulseBooting");
         document.body.classList.add("marketPulseBooting");
+        document.body.classList.remove("marketPulseReady");
+        scheduleSoftProgress();
         if (persist) {
           sessionStorage.setItem(
             flagKey,
             JSON.stringify({
-              title: title || "Loading Market Pulse",
+              title: title || "Market Pulse Sync",
               detail: detail || "Refreshing SPX priority, tape leadership, and macro catalysts…",
               ts: Date.now(),
             })
@@ -90,25 +211,62 @@
       };
 
       const hide = (clearFlag = true) => {
+        loaderState.active = false;
         overlay.classList.remove("show");
         overlay.setAttribute("aria-hidden", "true");
         overlay.dataset.active = "0";
-        document.documentElement.classList.remove("marketPulseBooting");
-        document.body.classList.remove("marketPulseBooting");
+        window.clearTimeout(loaderState.releaseTimer);
+        if (loaderState.completionWatcher) cancelAnimationFrame(loaderState.completionWatcher);
+        loaderState.releaseTimer = window.setTimeout(() => {
+          document.documentElement.classList.remove("marketPulseBooting");
+          document.body.classList.remove("marketPulseBooting");
+        }, 260);
         if (clearFlag) {
           sessionStorage.removeItem(flagKey);
         }
       };
 
+      const waitForFullCompletion = () => {
+        if (!loaderState.active) return;
+        if (loaderState.currentPct >= 99.5) {
+          window.clearTimeout(loaderState.completeTimer);
+          loaderState.completeTimer = window.setTimeout(() => {
+            hide(true);
+          }, 460);
+          loaderState.completionWatcher = 0;
+          return;
+        }
+        loaderState.completionWatcher = requestAnimationFrame(waitForFullCompletion);
+      };
+
+      const complete = () => {
+        if (!loaderState.active) return;
+        window.clearTimeout(loaderState.completeTimer);
+        window.clearTimeout(loaderState.releaseTimer);
+        if (loaderState.completionWatcher) cancelAnimationFrame(loaderState.completionWatcher);
+        applyStage("complete", "Market Pulse Sync", "Sync complete. Launching Market Pulse...");
+        document.body.classList.add("marketPulseReady");
+        stepNodes.forEach((node) => {
+          node.classList.remove("is-active");
+          node.classList.add("is-complete");
+        });
+        waitForFullCompletion();
+      };
+
       window.showMarketPulseLoading = (title, detail) => show(title, detail, true);
-      window.hideMarketPulseLoading = () => hide(true);
+      window.hideMarketPulseLoading = () => complete();
+      window.updateMarketPulseLoadingStage = (stage, title, detail) => {
+        if (!loaderState.active) return;
+        applyStage(stage, title, detail);
+      };
+      window.completeMarketPulseLoading = () => complete();
 
       const payload = readPayload();
       const payloadFresh = !!(payload && payload.ts && (Date.now() - payload.ts) < 15000);
       const shouldBoot = isMarketPulse && (navType === "reload" || payloadFresh);
       if (shouldBoot) {
         show(
-          (payload && payload.title) || "Loading Market Pulse",
+          (payload && payload.title) || "Market Pulse Sync",
           (payload && payload.detail) || "Refreshing SPX priority, tape leadership, and macro catalysts…",
           false
         );
@@ -186,11 +344,13 @@
       <div class="nav">
         <div class="navGroup">
           <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">Dashboard</a>
+          <a class="btn navPulseBtn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
+          <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
           <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
-          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
           <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
+          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
           <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
         </div>
 
@@ -201,28 +361,45 @@
 
           <div id="moreMenu" class="moreMenu" role="menu">
             {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
-            <div class="menuTitle">Workspace</div>
-            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
+            <div class="menuTitle">Core</div>
             <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
-            <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
-            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
-            <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
-            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
-            <a class="btn {% if active=='books' %}active{% endif %}" href="/books">Books</a>
-            <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
             <a class="btn {% if request.path == '/ops/trading-window' %}active{% endif %}" href="/ops/trading-window">Trading Window</a>
+            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
+            <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
+            <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
+            <div class="hr"></div>
+            <div class="menuTitle">Review</div>
+            <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
+            <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
+            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
+            {% if active == 'dashboard' %}
+              <div class="hr"></div>
+              <div class="menuTitle">Dashboard Mode</div>
+              <div class="dashboardMenuModeControl" aria-label="Dashboard attention mode">
+                <div class="dashboardModeToggle" id="dashboardModeToggle" role="tablist" aria-label="Dashboard mode">
+                  <button type="button" class="dashboardModeToggleButton is-active" data-dashboard-mode-target="pre" aria-pressed="true">Pre-Market</button>
+                  <button type="button" class="dashboardModeToggleButton" data-dashboard-mode-target="live" aria-pressed="false">Live</button>
+                </div>
+              </div>
+            {% endif %}
+            <div class="hr"></div>
+            <div class="menuTitle">Ops</div>
+            <a class="btn" href="/trades/upload/statement">Live Upload</a>
+            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
             <div class="hr"></div>
             <div class="menuTitle">Business</div>
+            <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
             <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">Income Tracker</a>
             <div class="hr"></div>
-            <div class="menuTitle">Data</div>
+            <div class="menuTitle">System</div>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/backups">Auto Backups</a>
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
             <a class="btn" href="/setup">Login Setup</a>
             <div class="hr"></div>
-            <div class="menuTitle">External</div>
+            <div class="menuTitle">Extra</div>
+            <a class="btn {% if active=='books' %}active{% endif %}" href="/books">Books</a>
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
             {% if vanquish_lock and vanquish_lock.active %}
               <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
@@ -380,26 +557,40 @@
         </section>
 
         <section class="drawerSection drawerSectionNavigate">
-          <div class="drawerSectionTitle">Navigate</div>
+          <div class="drawerSectionTitle">Core</div>
           <div class="drawerPrimaryGrid">
             <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Dashboard</a>
-            <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
-            <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
-            <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
-            <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
+            <a class="btn {% if request.path == '/ops/trading-window' %}primary{% endif %}" href="/ops/trading-window">Trading Window</a>
+            <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
+            <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>
+            <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">Strategies</a>
           </div>
         </section>
 
         <section class="drawerSection drawerSectionTools">
-          <div class="drawerSectionTitle">Tools</div>
+          <div class="drawerSectionTitle">Review</div>
           <div class="drawerStack">
+            <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
+            <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
+            <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
+            <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Planner</a>
+          </div>
+        </section>
+
+        <section class="drawerSection drawerSectionSystem">
+          <div class="drawerSectionTitle">Ops</div>
+          <div class="drawerStack">
+            <a class="btn" href="/trades/upload/statement">Live Upload</a>
+            <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/alerts">Ops Alerts</a>
+          </div>
+        </section>
+
+        <section class="drawerSection drawerSectionSystem">
+          <div class="drawerSectionTitle">Business</div>
+          <div class="drawerStack">
             <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payouts</a>
-            <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
-            <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">Strategies</a>
-            <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>
-            <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">Books</a>
             <a class="btn {% if active=='goals' %}primary{% endif %}" href="/goals">Income Tracker</a>
           </div>
         </section>
@@ -407,12 +598,18 @@
         <section class="drawerSection drawerSectionSystem">
           <div class="drawerSectionTitle">System</div>
           <div class="drawerStack">
-            <a class="btn {% if request.path == '/ops/trading-window' %}primary{% endif %}" href="/ops/trading-window">Trading Window</a>
-            <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">Backups</a>
+            <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">Auto Backups</a>
             <a class="btn" href="/admin/backup">Download Backup</a>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
             <a class="btn" href="/setup">Login Setup</a>
+          </div>
+        </section>
+
+        <section class="drawerSection drawerSectionSystem">
+          <div class="drawerSectionTitle">Extra</div>
+          <div class="drawerStack">
+            <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">Books</a>
             <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
             {% if vanquish_lock and vanquish_lock.active %}
               <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
@@ -476,7 +673,7 @@
     const marketPulsePayload = (targetUrl) => {
       const isRefresh = window.location.pathname === "/market-pulse" || targetUrl.searchParams.get("refresh") === "1";
       return {
-        title: "Loading Market Pulse",
+        title: "Market Pulse Sync",
         detail: isRefresh
           ? "Refreshing SPX priority, tape leadership, and macro catalysts…"
           : "Building live SPX context, tape leadership, and macro catalysts…",
