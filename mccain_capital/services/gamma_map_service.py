@@ -43,10 +43,13 @@ DEFAULT_CONTRACT_MULTIPLIER = 100
 DEFAULT_GEX_SCALER = 0.01
 DEFAULT_GAMMA_REGIME_POSITIVE_THRESHOLD = 50_000_000.0
 DEFAULT_GAMMA_REGIME_NEGATIVE_THRESHOLD = -50_000_000.0
+DEFAULT_LOCAL_FLIP_SPOT_PCT_BAND = 0.02
+DEFAULT_LOCAL_FLIP_STRIKE_WINDOW = 21
 SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
 SPOT_TIMESTAMP_DRIFT_SECONDS = 120
 GAMMA_RANGE_LABEL = "Gamma Range Estimate (wall-based)"
 GAMMA_STATUS_INVALID_LABEL = "Invalid Snapshot: gamma levels unavailable"
+LOCAL_FLIP_NONE_LABEL = "None in local band"
 GAMMA_REFRESH_MODE = str(os.environ.get("MARKET_PULSE_REFRESH_MODE") or "in_process").strip().lower()
 EOD_GAMMA_NOTIFY_ENABLED = os.environ.get("EOD_GAMMA_NOTIFY_ENABLED", "1") == "1"
 EOD_GAMMA_NOTIFY_TIME_ET = (os.environ.get("EOD_GAMMA_NOTIFY_TIME_ET") or "17:10").strip()
@@ -57,6 +60,7 @@ _STARTED = False
 _DEFAULT_FIELD_LABELS: Dict[str, str] = {
     "spot": "Spot (raw market data)",
     "gamma_flip_combined_basket": "Gamma Flip (combined basket)",
+    "local_flip_aggregated_gamma": "Local Flip (spot-adjacent gamma transition)",
     "call_wall_aggregated_gamma": "Call Wall (aggregated strike gamma)",
     "put_wall_aggregated_gamma": "Put Wall (aggregated strike gamma)",
     "net_gex_total": "Net GEX (selected basket)",
@@ -213,6 +217,22 @@ def _safe_int(v: Any) -> int:
         return 0
 
 
+def _local_flip_spot_pct_band() -> float:
+    raw = os.environ.get("LOCAL_GAMMA_FLIP_SPOT_PCT_BAND")
+    parsed = _safe_float(raw)
+    if parsed is None or parsed <= 0:
+        return DEFAULT_LOCAL_FLIP_SPOT_PCT_BAND
+    return min(0.1, float(parsed))
+
+
+def _local_flip_strike_window() -> int:
+    raw = os.environ.get("LOCAL_GAMMA_FLIP_STRIKE_WINDOW")
+    parsed = _safe_int(raw)
+    if parsed <= 0:
+        return DEFAULT_LOCAL_FLIP_STRIKE_WINDOW
+    return max(15, min(25, int(parsed)))
+
+
 def _fmt_level(value: Any) -> str:
     level = _safe_float(value)
     if level is None:
@@ -319,6 +339,7 @@ def _boundary_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         warning_state.get("snapshot_status_detail") or "No trustworthy gamma calculation is available."
     )
     payload["gamma_flip"] = payload.get("gamma_flip_combined_basket")
+    payload["local_flip"] = payload.get("local_flip_aggregated_gamma")
     payload["call_wall"] = payload.get("call_wall_aggregated_gamma")
     payload["put_wall"] = payload.get("put_wall_aggregated_gamma")
     # Deprecated compatibility shim for legacy context helpers and client code.
@@ -387,6 +408,11 @@ def _internal_invalid_snapshot(
         "net_gex_total": 0.0,
         "net_gamma_label": "0",
         "gamma_flip_combined_basket": None,
+        "local_flip_aggregated_gamma": None,
+        "local_flip_found": False,
+        "local_flip_distance_from_spot": None,
+        "local_flip_window_used": {},
+        "local_flip_expiries_used": [],
         "call_wall_aggregated_gamma": None,
         "put_wall_aggregated_gamma": None,
         "call_wall_gamma_per_point": None,
@@ -1148,6 +1174,109 @@ def compute_gamma_flip(grouped_df: pd.DataFrame, spot: float) -> Optional[float]
     return min(crosses, key=lambda strike: abs(float(strike) - float(spot)))
 
 
+def compute_local_gamma_flip(
+    grouped_df: pd.DataFrame,
+    spot: float,
+    *,
+    pct_band: Optional[float] = None,
+    strike_window: Optional[int] = None,
+) -> Dict[str, Any]:
+    if grouped_df.empty:
+        return {
+            "found": False,
+            "value": None,
+            "distance_from_spot": None,
+            "window_used": {},
+            "candidate_count": 0,
+        }
+
+    band_pct = float(pct_band if pct_band is not None else _local_flip_spot_pct_band())
+    window_size = int(strike_window if strike_window is not None else _local_flip_strike_window())
+    ordered = grouped_df.sort_values("strike", kind="mergesort").copy()
+    ordered["strike"] = ordered["strike"].astype(float)
+    ordered["net_gex"] = ordered["net_gex"].astype(float)
+    ordered["distance_to_spot"] = (ordered["strike"] - float(spot)).abs()
+
+    band_points = abs(float(spot)) * max(0.0, band_pct)
+    band_min = float(spot) - band_points
+    band_max = float(spot) + band_points
+    local_window = ordered[
+        (ordered["strike"] >= band_min) & (ordered["strike"] <= band_max)
+    ].copy()
+    window_mode = "spot_pct_band"
+    if len(local_window.index) < 2:
+        local_window = (
+            ordered.nsmallest(max(2, window_size), "distance_to_spot")
+            .sort_values("strike", kind="mergesort")
+            .copy()
+        )
+        window_mode = "nearest_strikes"
+
+    if len(local_window.index) < 2:
+        return {
+            "found": False,
+            "value": None,
+            "distance_from_spot": None,
+            "window_used": {
+                "mode": window_mode,
+                "spot_pct_band": band_pct,
+                "band_points": band_points,
+                "band_min_strike": band_min,
+                "band_max_strike": band_max,
+                "strike_window": window_size,
+                "rows_considered": int(len(local_window.index)),
+            },
+            "candidate_count": 0,
+        }
+
+    xs = local_window["strike"].to_numpy(dtype=float)
+    ys = local_window["net_gex"].to_numpy(dtype=float)
+    candidates: List[float] = []
+
+    for idx, value in enumerate(ys):
+        if np.isclose(value, 0.0):
+            candidates.append(float(xs[idx]))
+
+    for idx in range(len(xs) - 1):
+        x1, x2 = xs[idx], xs[idx + 1]
+        y1, y2 = ys[idx], ys[idx + 1]
+        if np.sign(y1) == np.sign(y2):
+            continue
+        denom = y2 - y1
+        if np.isclose(denom, 0.0):
+            continue
+        cross = x1 + ((0.0 - y1) / denom) * (x2 - x1)
+        candidates.append(float(cross))
+
+    deduped = sorted({round(value, 6) for value in candidates})
+    best = (
+        min(
+            deduped,
+            key=lambda value: (abs(float(value) - float(spot)), float(value)),
+        )
+        if deduped
+        else None
+    )
+    window_used = {
+        "mode": window_mode,
+        "spot_pct_band": band_pct,
+        "band_points": band_points,
+        "band_min_strike": band_min,
+        "band_max_strike": band_max,
+        "strike_window": window_size,
+        "rows_considered": int(len(local_window.index)),
+        "window_min_strike": float(local_window["strike"].min()),
+        "window_max_strike": float(local_window["strike"].max()),
+    }
+    return {
+        "found": best is not None,
+        "value": float(best) if best is not None else None,
+        "distance_from_spot": abs(float(best) - float(spot)) if best is not None else None,
+        "window_used": window_used,
+        "candidate_count": len(deduped),
+    }
+
+
 def compute_secondary_gamma_levels(grouped_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
     if grouped_df.empty:
         return {
@@ -1198,6 +1327,10 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
             "gamma_walls_top3": [],
             "void_zone": {"start": None, "end": None},
             "gamma_flip": None,
+            "local_flip": None,
+            "local_flip_found": False,
+            "local_flip_distance_from_spot": None,
+            "local_flip_window_used": {},
             "call_wall": None,
             "put_wall": None,
             "call_wall_gamma_per_point": None,
@@ -1212,6 +1345,7 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
     net_gex = compute_net_gex_total(aggregated)
     call_wall_row = compute_call_wall(aggregated, float(spot))
     put_wall_row = compute_put_wall(aggregated, float(spot))
+    local_flip = compute_local_gamma_flip(aggregated, float(spot))
     secondary = compute_secondary_gamma_levels(aggregated, float(spot))
     call_wall = call_wall_row["strike"] if call_wall_row else None
     put_wall = put_wall_row["strike"] if put_wall_row else None
@@ -1224,6 +1358,10 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
         "gamma_walls_top3": secondary.get("top_3_positive_gamma_strikes") or [],
         "void_zone": _identify_void_zone(aggregated),
         "gamma_flip": compute_gamma_flip(aggregated, float(spot)),
+        "local_flip": local_flip.get("value"),
+        "local_flip_found": bool(local_flip.get("found")),
+        "local_flip_distance_from_spot": local_flip.get("distance_from_spot"),
+        "local_flip_window_used": dict(local_flip.get("window_used") or {}),
         "call_wall": call_wall,
         "put_wall": put_wall,
         "call_wall_gamma_per_point": call_wall_gamma_per_point,
@@ -1520,6 +1658,11 @@ def assemble_market_pulse_snapshot(
         "net_gex_total": float(net_gex_total),
         "net_gamma_label": _abbrev_billions(float(net_gex_total)),
         "gamma_flip_combined_basket": levels.get("gamma_flip"),
+        "local_flip_aggregated_gamma": levels.get("local_flip"),
+        "local_flip_found": bool(levels.get("local_flip_found")),
+        "local_flip_distance_from_spot": levels.get("local_flip_distance_from_spot"),
+        "local_flip_window_used": dict(levels.get("local_flip_window_used") or {}),
+        "local_flip_expiries_used": list(included_expiries),
         "call_wall_aggregated_gamma": levels.get("call_wall"),
         "put_wall_aggregated_gamma": levels.get("put_wall"),
         "call_wall_gamma_per_point": levels.get("call_wall_gamma_per_point"),

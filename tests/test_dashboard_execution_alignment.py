@@ -120,7 +120,7 @@ def test_dashboard_decision_local_flip_missing_stays_aligned_but_degraded():
         gamma_strip={"entries": [], "state": "live", "status_text": "ok"},
         execution_model=model,
     )
-    assert panel["bias"] == "Positive / degraded local read"
+    assert panel["bias"] == "Positive"
     assert panel["playbook_status"] in {"NO TRADE", "CAUTION"}
 
 
@@ -138,8 +138,25 @@ def test_dashboard_gamma_strip_reads_levels_from_execution_model():
         gamma_snapshot={"snapshot_status": "healthy"},
     )
     entry_map = {entry["key"]: entry["value"] for entry in strip["entries"]}
-    assert entry_map["regime"] == model["macro_regime"]["title"]
+    assert entry_map["regime"] == "POSITIVE"
     assert entry_map["main_flip"] == "6500"
     assert entry_map["local_flip"] == "6590"
     assert entry_map["call_wall"] == "6690"
     assert entry_map["put_wall"] == "6450"
+
+
+def test_dashboard_gamma_strip_shows_no_local_band_label_for_null_local_flip():
+    model = _execution_model(
+        spot=6582,
+        main_flip=6500,
+        local_flip=None,
+        call_wall=6690,
+        put_wall=6450,
+        raw_net_gamma=10,
+    )
+    strip = core._dashboard_gamma_strip_viewmodel(
+        execution_model=model,
+        gamma_snapshot={"snapshot_status": "healthy", "local_flip_found": False},
+    )
+    entry_map = {entry["key"]: entry["value"] for entry in strip["entries"]}
+    assert entry_map["local_flip"] == "None in local band"

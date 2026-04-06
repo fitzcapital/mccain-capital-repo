@@ -433,6 +433,7 @@
       {% endif %}
     {% endwith %}
 
+    <main class="pageShell pageShell-{{ active|replace('_', '-')|replace(' ', '-') }}" id="pageShell">
     {% if active == 'dashboard' %}
       {% set ss = system_status if system_status is defined else {} %}
       {% set sync_status = (ss.last_sync_status or '')|lower %}
@@ -630,7 +631,10 @@
       </div>
     </aside>
 
-    {{ content|safe }}
+    <div class="pageContent pageContent-{{ active|replace('_', '-')|replace(' ', '-') }}" id="pageContent">
+      {{ content|safe }}
+    </div>
+    </main>
 
     <div id="quickLauncher" class="quickLauncher" aria-label="Quick actions">
       <button id="quickToggleBtn" class="btn primary quickToggle" type="button" aria-expanded="false" onclick="toggleQuickPanel()">+</button>

@@ -55,7 +55,8 @@
 </div>
 
 <div class="dashboardStage">
-  <div class="dashboardStageLead">
+  <div class="dashboardStageColumn dashboardStageLead">
+  <section class="dashboardStageSection dashboardStageCommand">
     <div class="dashboardStepLabel">Prepare</div>
     <div class="dashboardHero card pageHero heroCard">
       <div class="toolbar">
@@ -131,6 +132,9 @@
       </div>
     </div>
 
+  </section>
+
+  <section class="dashboardStageSection dashboardStagePlan">
     <div class="dashboardPriorityGrid">
       <div class="dashboardStepLabel">Plan</div>
       <div class="card primaryCard dashboardPriorityCard dashboardDecisionCard"><div class="toolbar">
@@ -186,31 +190,31 @@
           <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
           <span class="dashboardBriefSignalText" title="{{ daily_brief.source_detail }}">{{ daily_brief.source_label }}</span>
         </div>
-        <div class="supportLead dashboardBriefHeadlineCompact" title="{{ decision_panel.posture_summary or daily_brief.headline }}">{{ (decision_panel.posture_summary or daily_brief.headline)|truncate(92, False, '…') }}</div>
+        <div class="supportLead dashboardBriefHeadlineCompact" title="{{ decision_panel.posture_summary or daily_brief.headline }}">{{ decision_panel.posture_summary or daily_brief.headline }}</div>
           <div class="dashboardBriefFoldBody dashboardBriefDesktopBody">
             <div class="dashboardBriefStructuredGrid">
               <div class="dashboardBriefBiasPanel {% if decision_panel.status_tone == 'positive' %}is-positive{% elif decision_panel.status_tone == 'negative' %}is-negative{% else %}is-warning{% endif %}">
                 <div class="dashboardBriefStructuredLabel">Session Bias</div>
                 <div class="dashboardBriefBiasValue">{{ decision_panel.bias }}</div>
-                <div class="dashboardBriefBiasText" title="{{ decision_panel.posture_summary or daily_brief.summary }}">{{ (decision_panel.posture_summary or daily_brief.summary)|truncate(76, False, '…') }}</div>
+                <div class="dashboardBriefBiasText" title="{{ decision_panel.posture_summary or daily_brief.summary }}">{{ decision_panel.posture_summary or daily_brief.summary }}</div>
               </div>
               <div class="dashboardBriefQuickItem">
                 <div class="dashboardBriefStructuredLabel">Operator Focus</div>
-                <div class="dashboardBriefQuickText" title="{{ daily_brief.focus }}">{{ daily_brief.focus|truncate(72, False, '…') }}</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.focus }}">{{ daily_brief.focus }}</div>
               </div>
               <div class="dashboardBriefQuickItem">
                 <div class="dashboardBriefStructuredLabel">Plan A</div>
-                <div class="dashboardBriefQuickText" title="{{ daily_brief.plan_a }}">{{ daily_brief.plan_a|truncate(72, False, '…') }}</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.plan_a }}">{{ daily_brief.plan_a }}</div>
               </div>
             </div>
             <div class="dashboardBriefQuickGrid dashboardBriefQuickGrid-secondary">
               <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
                 <div class="dashboardBriefStructuredLabel">Invalidates</div>
-                <div class="dashboardBriefQuickText" title="{{ daily_brief.no_trade }}">{{ daily_brief.no_trade|truncate(72, False, '…') }}</div>
+                <div class="dashboardBriefQuickText" title="{{ daily_brief.no_trade }}">{{ daily_brief.no_trade }}</div>
               </div>
               <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
                 <div class="dashboardBriefStructuredLabel">Risk Note</div>
-                <div class="dashboardBriefQuickText" title="{{ decision_panel.risk_posture_detail }}">{{ decision_panel.risk_posture_detail|truncate(70, False, '…') }}</div>
+                <div class="dashboardBriefQuickText" title="{{ decision_panel.risk_posture_detail }}">{{ decision_panel.risk_posture_detail }}</div>
               </div>
             </div>
           <div class="rightActions dashboardBriefPrimaryActions">
@@ -369,10 +373,11 @@
         </details>
       </div></div>
     </div>
-
+  </section>
   </div>
 
-  <div class="dashboardStageSide">
+  <div class="dashboardStageColumn dashboardStageSide">
+  <section class="dashboardStageSection dashboardStageMonitor">
     <div class="dashboardStepLabel">Monitor</div>
 	    <div class="card primaryCard stack12 dashboardCoreTapeCard"><div class="toolbar">
       <div class="dashboardTapeHeader">
@@ -408,6 +413,7 @@
           <div class="dashboardTapeTopline">
             <div class="dashboardTapeIdentity">
               <div class="k">SPX</div>
+              <div class="tiny muted">SPX cash</div>
             </div>
             <span class="tiny muted dashboardCoreTapeFreshness" title="{{ spx_fresh_full }}" data-role="freshness">{{ spx_fresh_compact }}</span>
           </div>
@@ -438,10 +444,15 @@
             </div>
             <div class="tiny dashboardTapeContextSubline" data-role="context-secondary">Balanced tape</div>
           </div>
+          <div class="dashboardGapLine {% if spx_gap_points is not none and spx_gap_points > 0 %}is-positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}is-negative{% endif %}">
+            <span class="trendChip">Gap</span>
+            <span class="tiny">Gap O/N: {{ spx_gap_compact }}</span>
+          </div>
           <div class="dashboardTapeInfoRow">
             <div class="tiny dashboardTapeInfoText" data-role="info-primary">
               {% if spx_range_compact and spx_range_compact != '—' %}Range {{ spx_range_compact }} • Mid{% else %}Dist to Flip: 0 pts{% endif %}
             </div>
+            <div class="tiny muted dashboardTapeInfoText" data-role="source">{{ dashboard_spx.get('source_label') or 'Source unavailable' }}</div>
           </div>
         </article>
 
@@ -468,6 +479,7 @@
           <div class="dashboardTapeTopline">
             <div class="dashboardTapeIdentity">
               <div class="k">VIX</div>
+              <div class="tiny muted">VIX pulse</div>
             </div>
             <span class="tiny muted dashboardCoreTapeFreshness" title="{{ vix_fresh_full }}" data-role="freshness">{{ vix_fresh_compact }}</span>
           </div>
@@ -500,14 +512,22 @@
               {% if vix_change_points is not none and vix_change_points > 0 %}Risk firming{% elif vix_change_points is not none and vix_change_points < 0 %}Risk easing{% else %}Stable{% endif %}
             </div>
           </div>
+          <div class="dashboardGapLine {% if vix_gap_points is not none and vix_gap_points > 0 %}is-positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}is-negative{% endif %}">
+            <span class="trendChip">Gap</span>
+            <span class="tiny">Gap O/N: {{ vix_gap_compact }}</span>
+          </div>
           <div class="dashboardTapeInfoRow">
             <div class="tiny dashboardTapeInfoText" data-role="info-primary">
               {% if vix_range_compact and vix_range_compact != '—' %}Range {{ vix_range_compact }}{% else %}Intraday tone: stable{% endif %}
             </div>
+            <div class="tiny muted dashboardTapeInfoText" data-role="source">{{ dashboard_vix.get('source_label') or 'Source unavailable' }}</div>
           </div>
         </article>
 	      </div>
 	    </div></div>
+  </section>
+
+  <section class="dashboardStageSection dashboardStageHealth">
 	    {% set badge_meta = namespace(source='—', sync='—', updated='—', critical=false) %}
 	    {% for badge in balance_badges %}
 	      {% if (badge.tone or '') == 'critical' %}
@@ -887,8 +907,9 @@
 	        </div>
 	      </div>
 	    </details>
-	  </div>
+	  </section>
 	</div>
+  </div>
 
 {% set balance_spark = namespace(values=[], min=None, max=None, points='', last_y=15) %}
 {% set performance_chart = namespace(

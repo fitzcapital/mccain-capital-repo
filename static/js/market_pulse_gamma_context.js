@@ -8,6 +8,7 @@
   };
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const LOCAL_FLIP_NONE_LABEL = "None in local band";
   const abs = (value) => {
     const n = asNum(value);
     return n === null ? null : Math.abs(n);
@@ -38,6 +39,23 @@
     const side = value > 0 ? "above" : "below";
     return `${pts.toFixed(1)} ${unit} ${side}`;
   }
+
+  const localFlipFromSnapshot = (gammaSnapshot, fallback = null) => {
+    const snapshot = gammaSnapshot && typeof gammaSnapshot === "object" ? gammaSnapshot : {};
+    if (Object.prototype.hasOwnProperty.call(snapshot, "local_flip_aggregated_gamma")) {
+      return asNum(snapshot.local_flip_aggregated_gamma);
+    }
+    if (Object.prototype.hasOwnProperty.call(snapshot, "local_flip")) {
+      return asNum(snapshot.local_flip);
+    }
+    return fallback;
+  };
+
+  const localFlipMissingInBand = (gammaSnapshot) => {
+    const snapshot = gammaSnapshot && typeof gammaSnapshot === "object" ? gammaSnapshot : {};
+    const status = String(snapshot.snapshot_status || "").toLowerCase();
+    return ["healthy", "degraded", "stale"].includes(status) && snapshot.local_flip_found === false;
+  };
 
   function classifyProximity(distance, kind) {
     const value = asNum(distance);
@@ -332,7 +350,7 @@
   function computeDistanceMetrics(input) {
     const spot = asNum(input.spot);
     const gammaFlip = asNum(input.gammaFlip);
-    const localFlip = asNum(input.vwap);
+    const localFlip = asNum(input.localFlip);
     const callWall = asNum(input.callWall);
     const putWall = asNum(input.putWall);
 
@@ -518,6 +536,7 @@
   function buildExecutionPlan(input, derived) {
     const spot = asNum(input.spot);
     const gammaFlip = asNum(input.gammaFlip);
+    const localFlip = asNum(input.localFlip);
     const callWall = asNum(input.callWall);
     const putWall = asNum(input.putWall);
     const nextCallWall = asNum(derived.nextCallWall);
@@ -856,6 +875,8 @@
       if (tickPrice !== null) nextSpx.price = tickPrice;
       const tickPct = asNum(spxTick.pct_change);
       if (tickPct !== null) nextSpx.change_pct = tickPct;
+      const tickVwap = asNum(spxTick.vwap);
+      if (tickVwap !== null) nextSpx.vwap = tickVwap;
       if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
       if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
       if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
@@ -884,6 +905,10 @@
       nextVix.source_badge_label = sourceBadgeLabel(nextVix);
     }
 
+    const nextGammaSnapshot = {
+      ...(current.gamma_snapshot || {}),
+      ...(gamma || {}),
+    };
     current = {
       ...(current || {}),
       spx_quote: nextSpx,
@@ -895,10 +920,12 @@
         ...((current || {}).series_points || {}),
         ...(seriesPoints || {}),
       },
-      gamma_snapshot: {
-        ...(current.gamma_snapshot || {}),
-        ...(gamma || {}),
-      },
+      gamma_snapshot: nextGammaSnapshot,
+      execution_model: patchExecutionModelForStream(
+        payload.execution_model || current.execution_model,
+        nextSpx,
+        nextGammaSnapshot
+      ),
     };
     render(current);
     tapeCards.forEach((card) => {
@@ -1140,6 +1167,122 @@
     return "D";
   };
 
+  const patchExecutionModelForStream = (model, spxQuote, gammaSnapshot) => {
+    if (!model || typeof model !== "object") return model;
+    const next = {
+      ...model,
+      levels: { ...((model && model.levels) || {}) },
+      distances: { ...((model && model.distances) || {}) },
+      location: { ...((model && model.location) || {}) },
+    };
+    const spot = asNum((spxQuote || {}).price) ?? asNum(next.levels.spot);
+    const mainFlip = asNum((gammaSnapshot || {}).gamma_flip_combined_basket) ?? asNum(next.levels.main_flip);
+    const localFlip = localFlipFromSnapshot(gammaSnapshot, asNum(next.levels.local_flip));
+    const callWall = asNum((gammaSnapshot || {}).call_wall_aggregated_gamma) ?? asNum(next.levels.call_wall);
+    const putWall = asNum((gammaSnapshot || {}).put_wall_aggregated_gamma) ?? asNum(next.levels.put_wall);
+
+    next.levels = {
+      ...next.levels,
+      spot,
+      main_flip: mainFlip,
+      local_flip: localFlip,
+      call_wall: callWall,
+      put_wall: putWall,
+    };
+
+    const nextDistances = {
+      to_main_flip: spot !== null && mainFlip !== null ? spot - mainFlip : null,
+      to_local_flip: spot !== null && localFlip !== null ? spot - localFlip : null,
+      to_call_wall: spot !== null && callWall !== null ? spot - callWall : null,
+      to_put_wall: spot !== null && putWall !== null ? spot - putWall : null,
+    };
+    next.distances = { ...next.distances, ...nextDistances };
+
+    const wallSpan = (() => {
+      if (callWall !== null && putWall !== null) return Math.max(20, Math.abs(callWall - putWall));
+      const numeric = [spot, mainFlip, localFlip, callWall, putWall].filter((value) => value !== null);
+      return numeric.length >= 2 ? Math.max(20, Math.max(...numeric) - Math.min(...numeric)) : 20;
+    })();
+
+    if (Array.isArray(model.distance_rows)) {
+      next.distance_rows = model.distance_rows.map((row) => {
+        const key = String((row && row.key) || "");
+        const signedValue =
+          key === "main_flip" ? nextDistances.to_main_flip
+            : key === "local_flip" ? nextDistances.to_local_flip
+              : key === "call_wall" ? nextDistances.to_call_wall
+                : key === "put_wall" ? nextDistances.to_put_wall
+                  : null;
+        return {
+          ...row,
+          value: signedValue === null ? null : Math.abs(signedValue),
+          signed_value: signedValue,
+          pct: signedValue === null ? 0 : Math.min(100, (Math.abs(signedValue) / wallSpan) * 100),
+          direction: signedValue === null ? "flat" : signedValue > 0 ? "up" : signedValue < 0 ? "down" : "flat",
+        };
+      });
+    }
+
+    if (Array.isArray(model.ladder_rows)) {
+      const valuesByKey = {
+        call_wall: callWall,
+        main_flip: mainFlip,
+        local_flip: localFlip,
+        price: spot,
+        put_wall: putWall,
+      };
+      const signedByKey = {
+        call_wall: nextDistances.to_call_wall,
+        main_flip: nextDistances.to_main_flip,
+        local_flip: nextDistances.to_local_flip,
+        price: null,
+        put_wall: nextDistances.to_put_wall,
+      };
+      next.ladder_rows = model.ladder_rows
+        .map((row) => ({
+          ...row,
+          value: Object.prototype.hasOwnProperty.call(valuesByKey, String(row.key || ""))
+            ? valuesByKey[String(row.key || "")]
+            : asNum(row.value),
+          distance_points: Object.prototype.hasOwnProperty.call(signedByKey, String(row.key || ""))
+            ? signedByKey[String(row.key || "")]
+            : asNum(row.distance_points),
+        }))
+        .filter((row) => asNum(row.value) !== null)
+        .sort((a, b) => asNum(b.value) - asNum(a.value));
+    }
+
+    const nearestCandidates = [
+      ["Main Flip", mainFlip],
+      ["Local Flip", localFlip],
+      ["Call Wall", callWall],
+      ["Put Wall", putWall],
+    ].filter(([, value]) => value !== null && spot !== null);
+    let nearestLevelName = "";
+    let nearestLevelValue = null;
+    let nearestDistance = null;
+    nearestCandidates.forEach(([label, value]) => {
+      const distance = Math.abs(spot - value);
+      if (nearestDistance === null || distance < nearestDistance) {
+        nearestLevelName = label;
+        nearestLevelValue = value;
+        nearestDistance = distance;
+      }
+    });
+    const insideRange = spot !== null && callWall !== null && putWall !== null && spot >= putWall && spot <= callWall;
+    const localBand = Math.max(2.5, asNum(next.neutral_band_local) || 2.5);
+    next.location = {
+      ...next.location,
+      nearest_level_name: nearestLevelName || next.location.nearest_level_name || "",
+      nearest_level_value: nearestLevelValue !== null ? nearestLevelValue : next.location.nearest_level_value,
+      distance_points: nearestDistance !== null ? nearestDistance : next.location.distance_points,
+      inside_range: insideRange,
+      midrange: Boolean(insideRange && nearestDistance !== null && nearestDistance > Math.max(localBand * 1.5, 22)),
+    };
+
+    return next;
+  };
+
   const updateTradeReadState = (tradeability, executionPlan) => {
     const card = document.getElementById("marketPulseTradeReadCard");
     const chip = document.getElementById("marketPulseTradeabilityBadge");
@@ -1182,7 +1325,7 @@
     const location = (model && model.location) || {};
     const spot = asNum(levels.spot ?? input.spot);
     const flip = asNum(levels.main_flip ?? input.gammaFlip);
-    const local = asNum(levels.local_flip ?? input.vwap);
+    const local = asNum(levels.local_flip);
     const call = asNum(levels.call_wall ?? input.callWall);
     const put = asNum(levels.put_wall ?? input.putWall);
     const available = [spot, flip, call, put].every((value) => value !== null);
@@ -1455,6 +1598,9 @@
       priorDayHigh: asNum(spx.prior_day_high), // TODO(api): wire prior_day_high in quote payload when available.
       priorDayLow: asNum(spx.prior_day_low), // TODO(api): wire prior_day_low in quote payload when available.
       vwap: asNum(spx.vwap), // TODO(api): wire session VWAP from provider stream when available.
+      localFlip: localFlipFromSnapshot(gamma),
+      localFlipFound: gamma.local_flip_found === true,
+      localFlipMissingInBand: localFlipMissingInBand(gamma),
       overnightHigh: asNum(spx.overnight_high), // TODO(api): wire overnight levels when available.
       overnightLow: asNum(spx.overnight_low), // TODO(api): wire overnight levels when available.
       vix: asNum(vixQuote.price),
@@ -1533,14 +1679,12 @@
     setText("spxPriorityDealerRegime", derived.dealerRegime);
     setText("spxPriorityVolatilityState", derived.volatilityState);
     setText("spxPriorityStructureType", derived.structureType);
-    const tradeabilityScore100 = asNum(modelPlaybook.score) !== null
-      ? clamp(Math.round(asNum(modelPlaybook.score)), 0, 100)
-      : Math.max(0, Math.min(100, Math.round((asNum(derived.tradeability.score) || 0) * 10)));
+    const tradeabilityScore100 = clamp(Math.round(asNum(modelPlaybook.score) || 0), 0, 100);
     const toneClass = modelTone === "positive" ? "tone-positive" : modelTone === "negative" ? "tone-negative" : "tone-warn";
-    const bestLook = String(modelPlaybook.best_look || executionPlan.trigger || summarizeActionLine(executionPlan, panelMode) || "Wait for edge");
-    const whyLine = String(modelPlaybook.why || (model && model.posture_summary) || executionPlan.biasLine || "Context is mixed.");
-    const avoidLine = String(modelPlaybook.avoid || summarizeRuleLine(executionPlan, derived));
-    const needLine = String(modelPlaybook.need || executionPlan.triggerLine || summarizeEdgeSubline(executionPlan) || "Need confirmation");
+    const bestLook = String(modelPlaybook.best_look || "Wait for cleaner structure");
+    const whyLine = String(modelPlaybook.why || (model && model.posture_summary) || "Context is mixed.");
+    const avoidLine = String(modelPlaybook.avoid || "Avoid forcing entries");
+    const needLine = String(modelPlaybook.need || "Need confirmation");
 
     updateStructureZoneBar(input, derived, model);
 
@@ -1577,10 +1721,16 @@
     setText("spxPrioritySupportQuality", derived.supportQuality);
     setText("spxPriorityResistanceQuality", derived.resistanceQuality);
 
-    setText("spxPriorityDistanceFlip", formatLevelDistance(asNum(((model && model.distances) || {}).to_main_flip) ?? derived.distanceToFlip));
-    setText("spxPriorityDistanceLocal", formatLevelDistance(asNum(((model && model.distances) || {}).to_local_flip)));
-    setText("spxPriorityDistanceCall", formatLevelDistance(asNum(((model && model.distances) || {}).to_call_wall) ?? derived.distanceToCallWall));
-    setText("spxPriorityDistancePut", formatLevelDistance(asNum(((model && model.distances) || {}).to_put_wall) ?? derived.distanceToPutWall));
+    const localDistance = asNum(((model && model.distances) || {}).to_local_flip);
+    setText("spxPriorityDistanceFlip", formatLevelDistance(asNum(((model && model.distances) || {}).to_main_flip)));
+    setText(
+      "spxPriorityDistanceLocal",
+      localDistance === null && input.localFlipMissingInBand
+        ? LOCAL_FLIP_NONE_LABEL
+        : formatLevelDistance(localDistance)
+    );
+    setText("spxPriorityDistanceCall", formatLevelDistance(asNum(((model && model.distances) || {}).to_call_wall)));
+    setText("spxPriorityDistancePut", formatLevelDistance(asNum(((model && model.distances) || {}).to_put_wall)));
     setText("spxPriorityWallSpread", asNum(derived.wallSpread) === null ? "—" : `${formatNumber(derived.wallSpread, 1)} pts`);
     setText("spxPrioritySessionWindow", derived.sessionWindowState);
     setText("spxPriorityNoTradeState", derived.noTradeCenter ? "No-Trade Center · Trade the edges only" : "Center is tradeable with confirmation");

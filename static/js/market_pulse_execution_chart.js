@@ -89,6 +89,17 @@
     return n === null ? "—" : n.toLocaleString("en-US", { maximumFractionDigits: 0 });
   };
 
+  const localFlipFromGamma = (gamma, fallback = null) => {
+    const snapshot = gamma && typeof gamma === "object" ? gamma : {};
+    if (Object.prototype.hasOwnProperty.call(snapshot, "local_flip_aggregated_gamma")) {
+      return asNum(snapshot.local_flip_aggregated_gamma);
+    }
+    if (Object.prototype.hasOwnProperty.call(snapshot, "local_flip")) {
+      return asNum(snapshot.local_flip);
+    }
+    return fallback;
+  };
+
   const formatSigned = (value) => {
     const n = asNum(value);
     if (n === null) return "—";
@@ -167,7 +178,7 @@
       : null
   );
 
-  const updateHeaderCards = (model, fallbackRegime, fallbackEnvironment, currentPrice, mainFlipValue) => {
+  const updateHeaderCards = (model, fallbackRegime, fallbackEnvironment, currentPrice) => {
     const macro = (model && model.macro_regime) || {};
     const local = (model && model.local_bias) || {};
     const macroState = String(macro.state || "").toLowerCase();
@@ -189,9 +200,8 @@
     if (gammaLabel) gammaLabel.textContent = String(macro.title || (positive ? "POSITIVE GAMMA" : "NEGATIVE GAMMA"));
     if (gammaSub) gammaSub.textContent = String(macro.subtitle || fallbackEnvironment || "—");
 
-    const fallbackAbove = currentPrice !== null && mainFlipValue !== null && currentPrice >= mainFlipValue;
-    if (biasPrimary) biasPrimary.textContent = String(local.context || (fallbackAbove ? "ABOVE LOCAL FLIP" : "BELOW LOCAL FLIP"));
-    if (biasSecondary) biasSecondary.textContent = String(local.label || (fallbackAbove ? "BUY DIPS" : "SELL RIPS"));
+    if (biasPrimary) biasPrimary.textContent = String(local.context || "LOCAL FLIP UNKNOWN");
+    if (biasSecondary) biasSecondary.textContent = String(local.label || (currentPrice !== null ? "WAIT" : "—"));
     if (biasAbove) biasAbove.classList.toggle("is-active", String(local.state || "") === "above_local");
     if (biasBelow) biasBelow.classList.toggle("is-active", String(local.state || "") === "below_local");
   };
@@ -275,6 +285,10 @@
   const mergePayload = (current, streamPayload) => {
     const next = { ...current };
     const gamma = (streamPayload && streamPayload.gamma_map) || {};
+    const streamExecutionModel =
+      streamPayload && streamPayload.execution_model && typeof streamPayload.execution_model === "object"
+        ? streamPayload.execution_model
+        : null;
     const streamPoints =
       (((streamPayload || {}).series_points || {}).SPX)
       || (((streamPayload || {}).series_points || {})["^GSPC"])
@@ -299,31 +313,42 @@
 
     if (gamma && typeof gamma === "object") {
       const levels = new Map(normalizeLevels(next.levels).map((level) => [level.key, level]));
+      const nextLocalFlip = localFlipFromGamma(gamma);
       const patch = {
         gamma_flip: gamma.gamma_flip_combined_basket,
+        local_flip: nextLocalFlip,
         call_wall: gamma.call_wall_aggregated_gamma,
         put_wall: gamma.put_wall_aggregated_gamma,
       };
       Object.entries(patch).forEach(([key, value]) => {
         const n = asNum(value);
-        if (n === null) return;
+        if (n === null) {
+          if (key === "local_flip") levels.delete(key);
+          return;
+        }
         levels.set(key, { key, value: n });
       });
       next.levels = Array.from(levels.values());
       const regimeState = inferRegime(gamma, current);
       next.regime = regimeState.regime;
       next.environment = regimeState.environment;
-      if (next.execution_model && next.execution_model.levels) {
+      if (streamExecutionModel) {
+        next.execution_model = streamExecutionModel;
+      } else if (next.execution_model && next.execution_model.levels) {
         next.execution_model = {
           ...next.execution_model,
           levels: {
             ...(next.execution_model.levels || {}),
             main_flip: asNum(gamma.gamma_flip_combined_basket) ?? (next.execution_model.levels || {}).main_flip,
+            local_flip: localFlipFromGamma(gamma, (next.execution_model.levels || {}).local_flip),
             call_wall: asNum(gamma.call_wall_aggregated_gamma) ?? (next.execution_model.levels || {}).call_wall,
             put_wall: asNum(gamma.put_wall_aggregated_gamma) ?? (next.execution_model.levels || {}).put_wall,
           },
         };
       }
+    }
+    if (streamExecutionModel && !next.execution_model) {
+      next.execution_model = streamExecutionModel;
     }
 
     if (serverTs) next.phase = derivePhase(serverTs);
@@ -429,7 +454,7 @@
     if (overlayFlip) overlayFlip.textContent = `Flip ${formatCompact(flip && flip.value)}`;
     if (overlayCall) overlayCall.textContent = `CW ${formatCompact(callWall && callWall.value)}`;
     if (overlayPut) overlayPut.textContent = `PW ${formatCompact(putWall && putWall.value)}`;
-    updateHeaderCards(model, payload.regime, payload.environment, currentPrice, asNum(flip && flip.value));
+    updateHeaderCards(model, payload.regime, payload.environment, currentPrice);
 
     if (stratSummary) {
       stratSummary.hidden = true;

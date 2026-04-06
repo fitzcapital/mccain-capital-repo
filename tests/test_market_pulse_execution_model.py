@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from mccain_capital.services import core
 
 
@@ -121,6 +123,33 @@ def test_execution_model_missing_local_flip_degrades_cleanly():
     assert "local flip" in model["playbook"]["why"].lower()
 
 
+def test_execution_model_missing_local_flip_in_valid_band_surfaces_explicit_no_band():
+    model = core._market_pulse_execution_model(
+        spx_quote={"price": 6582},
+        gamma_snapshot={
+            "snapshot_status": "healthy",
+            "local_flip_found": False,
+            "gamma_flip_combined_basket": 6500,
+            "call_wall_aggregated_gamma": 6690,
+            "put_wall_aggregated_gamma": 6450,
+            "net_gex": 10,
+        },
+        execution_chart={
+            "mode": "live_session",
+            "levels": [
+                {"key": "gamma_flip", "value": 6500},
+                {"key": "local_flip", "value": None},
+                {"key": "call_wall", "value": 6690},
+                {"key": "put_wall", "value": 6450},
+            ],
+        },
+        spx_priority_context={"metrics": {"trap_zone_state": "clear"}},
+    )
+    assert model["local_bias"]["title"] == "NONE IN LOCAL BAND"
+    assert model["local_bias"]["state"] == "unknown"
+    assert model["local_bias"]["label"] == "NO BAND"
+
+
 def test_execution_model_negative_macro_with_unknown_local_degrades_readiness():
     model = _build_model(
         spot=6410,
@@ -178,3 +207,46 @@ def test_execution_model_ladder_rows_are_sorted_by_value():
     labels = [row["label"] for row in model["ladder_rows"]]
     assert "Main Flip" in labels
     assert "Local Flip" in labels
+
+
+def test_market_pulse_series_vwap_uses_available_rows_without_chart_threshold():
+    vwap = core._market_pulse_series_vwap(
+        [
+            {"close": 100.0, "volume": 10},
+            {"close": 103.0, "volume": 20},
+            {"close": 101.0, "volume": 30},
+        ]
+    )
+    assert vwap == 101.5
+
+
+def test_execution_chart_uses_gamma_snapshot_local_flip():
+    chart = core._market_pulse_execution_chart_viewmodel(
+        spx_quote={
+            "symbol": "SPX",
+            "price": 6582.0,
+            "vwap": None,
+            "prior_session_day": "2026-04-02",
+            "prior_session_series": [
+                {"ts": "2026-04-02T14:30:00-04:00", "close": 6570.0, "volume": 100},
+                {"ts": "2026-04-02T14:35:00-04:00", "close": 6580.0, "volume": 200},
+                {"ts": "2026-04-02T14:40:00-04:00", "close": 6590.0, "volume": 300},
+                {"ts": "2026-04-02T14:45:00-04:00", "close": 6585.0, "volume": 200},
+                {"ts": "2026-04-02T14:50:00-04:00", "close": 6578.0, "volume": 150},
+                {"ts": "2026-04-02T14:55:00-04:00", "close": 6582.0, "volume": 180},
+                {"ts": "2026-04-02T15:00:00-04:00", "close": 6588.0, "volume": 170},
+                {"ts": "2026-04-02T15:05:00-04:00", "close": 6584.0, "volume": 120},
+            ],
+        },
+        gamma_snapshot={
+            "gamma_flip_combined_basket": 6940,
+            "local_flip_aggregated_gamma": 6578.5,
+            "call_wall_aggregated_gamma": 6690,
+            "put_wall_aggregated_gamma": 6450,
+            "regime": "Positive Gamma",
+        },
+        macro_events=[],
+        now_et=datetime.fromisoformat("2026-04-05T10:00:00-04:00"),
+    )
+    local_flip = next(row["value"] for row in chart["levels"] if row["key"] == "local_flip")
+    assert round(local_flip, 2) == 6578.5

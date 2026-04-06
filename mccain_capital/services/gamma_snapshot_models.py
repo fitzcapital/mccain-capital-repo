@@ -265,6 +265,11 @@ class MarketPulseSnapshotModel(BaseModel):
     net_gex_total: float
     net_gamma_label: str
     gamma_flip_combined_basket: Optional[float] = None
+    local_flip_aggregated_gamma: Optional[float] = None
+    local_flip_found: bool = False
+    local_flip_distance_from_spot: Optional[float] = None
+    local_flip_window_used: Dict[str, Any] = Field(default_factory=dict)
+    local_flip_expiries_used: List[str] = Field(default_factory=list)
     call_wall_aggregated_gamma: Optional[float] = None
     put_wall_aggregated_gamma: Optional[float] = None
     call_wall_gamma_per_point: Optional[float] = None
@@ -313,6 +318,8 @@ class MarketPulseSnapshotModel(BaseModel):
         "net_gex",
         "net_gex_total",
         "gamma_flip_combined_basket",
+        "local_flip_aggregated_gamma",
+        "local_flip_distance_from_spot",
         "call_wall_aggregated_gamma",
         "put_wall_aggregated_gamma",
         "call_wall_gamma_per_point",
@@ -369,6 +376,7 @@ class MarketPulseSnapshotModel(BaseModel):
                 value is not None
                 for value in (
                     self.gamma_flip_combined_basket,
+                    self.local_flip_aggregated_gamma,
                     self.call_wall_aggregated_gamma,
                     self.put_wall_aggregated_gamma,
                 )
@@ -379,6 +387,10 @@ class MarketPulseSnapshotModel(BaseModel):
                 raise ValueError("non-invalid snapshot requires selected rows")
             if self.total_unique_strikes <= 0:
                 raise ValueError("non-invalid snapshot requires grouped strikes")
+        if self.local_flip_found and self.local_flip_aggregated_gamma is None:
+            raise ValueError("local_flip_found requires local_flip_aggregated_gamma")
+        if not self.local_flip_found and self.local_flip_distance_from_spot is not None:
+            raise ValueError("local flip distance requires a discovered local flip")
         return self
 
 

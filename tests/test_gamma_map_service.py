@@ -202,6 +202,60 @@ def test_no_sign_change_returns_none_for_flip():
     assert svc.compute_gamma_flip(grouped, spot=5007.0) is None
 
 
+def test_local_flip_prefers_exact_zero_inside_local_band():
+    grouped = _aggregated_df(
+        [
+            {"strike": 4990.0, "net_gex": -12.0},
+            {"strike": 5000.0, "net_gex": 0.0},
+            {"strike": 5010.0, "net_gex": 9.0},
+        ]
+    )
+
+    result = svc.compute_local_gamma_flip(grouped, spot=5004.0, pct_band=0.02, strike_window=5)
+
+    assert result["found"] is True
+    assert result["value"] == 5000.0
+    assert result["distance_from_spot"] == pytest.approx(4.0)
+    assert result["window_used"]["mode"] == "spot_pct_band"
+
+
+def test_local_flip_interpolates_nearest_sign_change_inside_local_band():
+    grouped = _aggregated_df(
+        [
+            {"strike": 4980.0, "net_gex": 14.0},
+            {"strike": 5000.0, "net_gex": -10.0},
+            {"strike": 5010.0, "net_gex": 10.0},
+            {"strike": 5040.0, "net_gex": -12.0},
+        ]
+    )
+
+    result = svc.compute_local_gamma_flip(grouped, spot=5008.0, pct_band=0.02, strike_window=5)
+
+    assert result["found"] is True
+    assert result["value"] == pytest.approx(5005.0)
+    assert result["distance_from_spot"] == pytest.approx(3.0)
+    assert result["candidate_count"] >= 1
+
+
+def test_local_flip_returns_none_when_local_band_has_no_sign_change():
+    grouped = _aggregated_df(
+        [
+            {"strike": 4950.0, "net_gex": -14.0},
+            {"strike": 5000.0, "net_gex": 8.0},
+            {"strike": 5010.0, "net_gex": 10.0},
+            {"strike": 5020.0, "net_gex": 12.0},
+            {"strike": 5150.0, "net_gex": -8.0},
+        ]
+    )
+
+    result = svc.compute_local_gamma_flip(grouped, spot=5010.0, pct_band=0.01, strike_window=5)
+
+    assert result["found"] is False
+    assert result["value"] is None
+    assert result["distance_from_spot"] is None
+    assert result["candidate_count"] == 0
+
+
 def test_call_wall_selection_uses_strongest_positive_grouped_strike():
     grouped = _aggregated_df(
         [
@@ -293,6 +347,11 @@ def test_complete_basket_snapshot_is_healthy(monkeypatch):
 
     assert snapshot["warning_state"]["snapshot_status"] == SnapshotStatus.HEALTHY.value
     assert snapshot["source_metadata"]["included_expiries"] == ["2026-03-19", "2026-03-20"]
+    assert snapshot["local_flip_found"] is True
+    assert snapshot["local_flip_aggregated_gamma"] is not None
+    assert snapshot["local_flip_distance_from_spot"] is not None
+    assert snapshot["local_flip_window_used"]["rows_considered"] >= 2
+    assert snapshot["local_flip_expiries_used"] == ["2026-03-19", "2026-03-20"]
 
 
 def test_single_expiry_snapshot_is_degraded(monkeypatch):
