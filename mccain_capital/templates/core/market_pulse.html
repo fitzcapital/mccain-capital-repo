@@ -10,6 +10,8 @@
 {% set local_flip_label = '%.0f'|format(local_flip_num) if local_flip_num is not none else ('None in local band' if local_flip_missing_in_band else '—') %}
 {% set call_wall_num = model_levels.call_wall if model_levels.call_wall is number else none %}
 {% set put_wall_num = model_levels.put_wall if model_levels.put_wall is number else none %}
+{% set next_call_wall_num = gamma_snapshot.get('next_call_wall_above') if gamma_snapshot.get('next_call_wall_above') is number else none %}
+{% set next_put_wall_num = gamma_snapshot.get('next_put_wall_below') if gamma_snapshot.get('next_put_wall_below') is number else none %}
 {% set spot_num = model_levels.spot if model_levels.spot is number else (spx_quote.get('price') if spx_quote.get('price') is number else none) %}
 {% set macro_regime = execution_model.macro_regime if execution_model else {} %}
 {% set local_bias = execution_model.local_bias if execution_model else {} %}
@@ -108,51 +110,135 @@
   </div>
 </div>
 
-<section class="card stack12 marketPulseExecutionChartShell marketPulseHeroChart marketPulseSection marketPulseHeroChart-compact">
+<section class="card stack12 marketPulseExecutionHero marketPulseSection">
   <div class="toolbar">
-      <div class="marketPulseExecutionChartHead">
-        <div class="marketPulseExecutionChartLine">
-          <span class="supportLead">SPX Structure</span>
-          <span class="supportBody marketPulseClampLine">{{ execution_chart.last_valid_session_label or '—' }}</span>
-        </div>
-        <div class="marketPulseExecutionChartSide">
-          <div class="marketPulseExecutionLegend" id="spxExecutionLegend">
-            <button class="trendChip marketPulseLegendButton" type="button" data-open-modal="marketPulseLevelsModal">More</button>
-          </div>
-        </div>
-      </div>
-    <div class="marketPulseExecutionChartStage" id="spxExecutionChartStage">
-      <div class="marketPulseExecutionSurface">
-        <section class="marketPulseExecutionLadderShell" aria-label="Execution ladder">
-          <div class="marketPulseExecutionSurfaceHead">
-            <div class="tiny muted">Execution Ladder</div>
-            <div class="tiny muted marketPulseClampLine" id="spxExecutionLadderMeta">SPX {{ spx_price_label }}</div>
-          </div>
-          <div class="marketPulseExecutionLadderBody" id="spxExecutionLadder"></div>
-        </section>
-
-        <section class="marketPulseExecutionWidgetShell" aria-label="SPX live chart">
-          <div class="marketPulseExecutionSurfaceHead">
-            <div class="tiny muted">Movement</div>
-            <div class="tiny muted marketPulseClampLine" id="spxExecutionWidgetMeta">SPY 5m proxy</div>
-          </div>
-          <div class="marketPulseExecutionWidgetFrame">
-            <div id="spxExecutionTradingView" class="marketPulseExecutionWidgetEmbed" aria-label="SPX TradingView Widget"></div>
-          </div>
-        </section>
-      </div>
+    <div class="pillRow marketPulseExecutionHeroTopline">
+      <span class="pill">SPX Execution Hero</span>
+      <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailContext">{{ execution_model.posture_summary if execution_model else 'Execution map pending.' }}</span>
+      <button class="trendChip marketPulseLegendButton" type="button" data-open-modal="marketPulseLevelsModal">More</button>
     </div>
-    {% if execution_chart.replay_gap_note %}
-      <div class="marketPulseExecutionNotice">
-        <span class="tiny muted marketPulseClampLine">Replay not stored · Live structure only</span>
-      </div>
-    {% endif %}
+    <div class="marketPulseExecutionHeroGrid">
+      <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-state" aria-label="Market state">
+        <div class="marketPulseExecutionHeroSectionHead">
+          <span class="tiny muted">State Summary</span>
+          <span class="trendChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateContext">{{ playbook.status or 'WAIT' }}</span>
+        </div>
+        <div class="marketPulseExecutionHeroMetrics">
+          <div class="marketPulseExecutionHeroMetric is-spot">
+            <span class="tiny muted">SPX Spot</span>
+            <strong id="marketPulseHeroSpot">{{ spx_price_label }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroMetric">
+            <span class="tiny muted">Gamma Regime</span>
+            <strong id="marketPulseHeroGamma">{{ macro_regime.title or 'Unavailable' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroMetric">
+            <span class="tiny muted">Bias</span>
+            <strong id="marketPulseHeroBias">{{ local_bias.title or local_bias.label or 'Unavailable' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroMetric">
+            <span class="tiny muted">Tradeability</span>
+            <strong id="marketPulseHeroTradeability">{{ playbook.status or 'WAIT' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroMetric">
+            <span class="tiny muted">Session</span>
+            <strong id="marketPulseHeroSession">{{ macro_regime.subtitle or 'Confirmation required' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroMetric is-macro">
+            <span class="tiny muted">Main Flip (Macro)</span>
+            <strong id="marketPulseHeroMacroFlip">{{ '%.0f'|format(main_flip_num) if main_flip_num is not none else 'Unavailable' }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-rail" aria-label="Execution rail">
+        <div class="marketPulseExecutionHeroSectionHead">
+          <span class="tiny muted">SPX Hero Chart</span>
+          <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ location.read or 'Local Flip is the intraday decision line.' }}</span>
+        </div>
+        <div class="marketPulseExecutionHeroChartShell">
+          <div class="marketPulseExecutionHeroChartBanner">
+            <div class="marketPulseExecutionHeroChartStateStrip">
+              <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroChartStateChip">{{ playbook.status or 'WAIT' }}</span>
+              <span class="marketPulseExecutionHeroChartStateRead" id="marketPulseHeroChartStateRead">{{ location.zone or 'Awaiting structure' }}</span>
+              <span class="marketPulseExecutionHeroChartStateAction" id="marketPulseHeroChartStateAction">{{ playbook.best_look or 'Wait for cleaner structure' }}</span>
+            </div>
+            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ playbook.status or 'WAIT' }} — Awaiting execution state</div>
+            <div class="marketPulseExecutionHeroChartBannerSub" id="marketPulseHeroChartBannerSub">{{ execution_model.posture_summary if execution_model else 'Execution levels pending.' }}</div>
+          </div>
+          {# NCW / NPW come from gamma_snapshot.next_call_wall_above / next_put_wall_below when available. #}
+          <div
+            class="marketPulseExecutionHeroChartStage"
+            id="spxExecutionHeroChart"
+            aria-label="SPX execution chart"
+            data-symbol="SPX"
+            data-interval="5min"
+            data-bars-url="{{ url_for('hero_bars_api') }}"
+            data-levels-url="{{ url_for('hero_levels_api') }}"
+            data-stream-url="{{ url_for('hero_stream_session_api') }}"
+            data-spot="{{ spot_num if spot_num is not none else '' }}"
+            data-main-flip="{{ main_flip_num if main_flip_num is not none else '' }}"
+            data-local-flip="{{ local_flip_num if local_flip_num is not none else '' }}"
+            data-call-wall="{{ call_wall_num if call_wall_num is not none else '' }}"
+            data-put-wall="{{ put_wall_num if put_wall_num is not none else '' }}"
+            data-next-call-wall="{{ next_call_wall_num if next_call_wall_num is not none else '' }}"
+            data-next-put-wall="{{ next_put_wall_num if next_put_wall_num is not none else '' }}"
+          >
+            <div class="marketPulseExecutionHeroChartCanvas" id="spxExecutionHeroChartCanvas" aria-hidden="true"></div>
+            <div class="marketPulseExecutionHeroChartEmpty tiny muted" id="spxExecutionHeroChartEmpty">Loading SPX hero chart…</div>
+          </div>
+        </div>
+        <div class="marketPulseExecutionHeroRailFooter marketPulseExecutionHeroRailFooter-map">
+          <div class="marketPulseExecutionHeroRailFootCell">
+            <span class="tiny muted">Current Read</span>
+            <strong id="marketPulseHeroRailFootState">{{ location.zone or 'Awaiting structure' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroRailFootCell">
+            <span class="tiny muted">Pullback Level</span>
+            <strong id="marketPulseHeroPullbackLevel">{{ '%.0f'|format(local_flip_num) if local_flip_num is not none else 'Awaiting level' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroRailFootCell">
+            <span class="tiny muted">Next Destination</span>
+            <strong id="marketPulseHeroDestinationInline">{{ location.nearest_level_name or 'Awaiting next test' }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-decision" aria-label="Execution decision box">
+        <div class="marketPulseExecutionHeroSectionHead">
+          <span class="tiny muted">Trade State</span>
+          <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateChip">{{ playbook.status or 'WAIT' }}</span>
+        </div>
+        <div class="marketPulseExecutionHeroDecisionGrid">
+          <div class="marketPulseExecutionHeroDecisionLead">
+            <div class="tiny muted">State</div>
+            <strong id="marketPulseHeroTradeState">{{ playbook.status or 'WAIT' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroDecisionCell">
+            <div class="tiny muted">Best Look</div>
+            <strong id="marketPulseHeroBestLook">{{ playbook.best_look or 'Wait for cleaner structure' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroDecisionCell">
+            <div class="tiny muted">Required Trigger</div>
+            <strong id="marketPulseHeroRequiredTrigger">{{ playbook.need or 'Confirmation required' }}</strong>
+          </div>
+          <div class="marketPulseExecutionHeroDecisionCell">
+            <div class="tiny muted">Invalidation</div>
+            <strong id="marketPulseHeroInvalidation">{{ playbook.need or 'Wait for live structure' }}</strong>
+          </div>
+        </div>
+        <div class="marketPulseExecutionHeroDecisionNote">
+          <span class="tiny muted">Plan Note</span>
+          <strong id="marketPulseHeroStateNote">{{ execution_model.posture_summary if execution_model else 'Awaiting market posture.' }}</strong>
+        </div>
+      </section>
+    </div>
   </div>
 </section>
 
 {% set spx_priority_change = spx_quote.get('change_pct') if spx_quote else none %}
 {% set spx_priority_tone = 'glow-green' if spx_priority_change is not none and spx_priority_change > 0 else 'glow-red' if spx_priority_change is not none and spx_priority_change < 0 else '' %}
-<section class="marketPulseDecisionGrid marketPulseSection">
+<section class="marketPulseExecutionContextGrid marketPulseSection">
   {% set structure_values = [spot_num, main_flip_num, local_flip_num, call_wall_num, put_wall_num]|select('number')|list %}
   {% set structure_lo = (structure_values|min) if structure_values else 0 %}
   {% set structure_hi = (structure_values|max) if structure_values else 1 %}
@@ -245,13 +331,14 @@
   </section>
 
   {% set playbook_state_class = 'tradeRead-tradeable' if playbook.tone == 'positive' else 'tradeRead-conditional' if playbook.tone == 'warn' and playbook.status != 'NO TRADE' else 'tradeRead-stand-down' %}
-  <section id="marketPulseTradeReadCard" class="card stack12 marketPulseSection spxPriorityShell marketPulseActionableCard {{ spx_priority_tone }} {{ playbook_state_class }}">
+  <section id="marketPulseTradeReadCard" class="card stack12 marketPulseSection spxPriorityShell marketPulseActionableCard marketPulseTradeContextCard {{ spx_priority_tone }} {{ playbook_state_class }}">
     <div class="toolbar" id="spxPriorityCard">
       <div class="pillRow marketPulseExecutionPanelTopline">
-        <span class="pill">Action / Playbook</span>
+        <span class="pill">Action / Trade Context</span>
         <span class="marketPulseTradeabilityBadge tone-{{ playbook.tone or 'warn' }}" id="marketPulseTradeabilityBadge">{{ playbook.status or 'WATCH' }}</span>
       </div>
-      <div class="marketPulseTradeabilityMetaRow">
+      <div class="marketPulseTradeContextLead" id="marketPulseActionLead">{{ playbook.why or execution_model.posture_summary or 'Execution context pending.' }}</div>
+      <div class="marketPulseTradeabilityMetaRow marketPulseTradeabilityMetaRow-compact">
         <div class="marketPulseTradeabilityMeta">
           <div class="tiny muted">Grade</div>
           <strong id="marketPulseTradeabilityGrade">{{ playbook.grade or '—' }}</strong>
@@ -264,14 +351,10 @@
           </div>
         </div>
       </div>
-      <div class="marketPulsePlaybookGrid marketPulsePlaybookGrid-engine">
+      <div class="marketPulsePlaybookGrid marketPulsePlaybookGrid-context">
         <div class="marketPulsePlaybookCell">
           <div class="tiny muted">Best Look</div>
           <strong id="marketPulseBestLook">{{ playbook.best_look or 'Wait for cleaner structure' }}</strong>
-        </div>
-        <div class="marketPulsePlaybookCell">
-          <div class="tiny muted">Why</div>
-          <strong id="marketPulseEnvironment">{{ playbook.why or execution_model.posture_summary }}</strong>
         </div>
         <div class="marketPulsePlaybookCell">
           <div class="tiny muted">Avoid</div>
@@ -280,6 +363,10 @@
         <div class="marketPulsePlaybookCell">
           <div class="tiny muted">Need</div>
           <strong id="marketPulseNeed">{{ playbook.need or 'Need confirmation' }}</strong>
+        </div>
+        <div class="marketPulsePlaybookCell">
+          <div class="tiny muted">If / Then</div>
+          <strong id="marketPulseIfThen">{{ playbook.need or 'If the level confirms, act. If not, wait.' }}</strong>
         </div>
       </div>
       <div class="marketPulseExecutionPanelFooter marketPulseExecutionPanelFooter-compact">
@@ -298,6 +385,7 @@
       <div id="spxPriorityTradeabilityLine" hidden>—</div>
       <div id="spxPrioritySessionRange" hidden>—</div>
       <div id="spxPriorityVWAP" hidden>—</div>
+      <div id="marketPulseEnvironment" hidden>{{ playbook.why or execution_model.posture_summary }}</div>
       <div id="spxPriorityNarrative" hidden></div>
       <div id="spxPriorityWarningBadges" hidden></div>
       <div id="spxPriorityReversalFit" hidden>—</div>
@@ -305,6 +393,49 @@
       <div id="spxPriorityTrap" hidden>—</div>
     </div>
   </section>
+</section>
+
+<section class="card stack12 marketPulseSection marketPulseTriggerValidationShell">
+  <div class="toolbar">
+    <div class="pillRow marketPulseTriggerTopline">
+      <span class="pill">Trigger Validation</span>
+      <span class="tiny muted marketPulseClampLine" id="marketPulseTriggerHeaderLine">No trigger = no trade.</span>
+    </div>
+    <div class="marketPulseTriggerChecklist">
+      <div class="marketPulseTriggerItem" id="marketPulseTriggerSweep">
+        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+        <div class="marketPulseTriggerCopy">
+          <strong>Sweep detected</strong>
+          <span id="marketPulseTriggerSweepLine">Need sweep into the working level before entry is considered.</span>
+        </div>
+      </div>
+      <div class="marketPulseTriggerItem" id="marketPulseTriggerReclaim">
+        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+        <div class="marketPulseTriggerCopy">
+          <strong>Reclaim confirmed</strong>
+          <span id="marketPulseTriggerReclaimLine">Wait for the level to prove itself after the interaction.</span>
+        </div>
+      </div>
+      <div class="marketPulseTriggerItem" id="marketPulseTriggerReversal">
+        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+        <div class="marketPulseTriggerCopy">
+          <strong>2-2 reversal</strong>
+          <span id="marketPulseTriggerReversalLine">A clean 5m reversal or continuation trigger still has to print.</span>
+        </div>
+      </div>
+      <div class="marketPulseTriggerItem" id="marketPulseTriggerVolume">
+        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+        <div class="marketPulseTriggerCopy">
+          <strong>Volume confirmation</strong>
+          <span id="marketPulseTriggerVolumeLine">Require real participation before calling the move valid.</span>
+        </div>
+      </div>
+    </div>
+    <div class="marketPulseTriggerFooter" id="marketPulseTriggerFooter">
+      <strong id="marketPulseTriggerStatus">NO TRIGGER — NO TRADE</strong>
+      <span id="marketPulseTriggerFooterLine">Trigger wiring is placeholder-only here; live booleans can be mapped into these same rows later.</span>
+    </div>
+  </div>
 </section>
 
 {% set watch_ns = namespace(leaders=[], laggard='—', laggard_move=None) %}
@@ -667,9 +798,8 @@
      hidden></div>
 
 <script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'vix_direction': context.get('vix_direction') if context else ''}|tojson }}</script>
-<script id="spxExecutionChartPayload" type="application/json">{{ execution_chart_payload|tojson }}</script>
-
-<script src="{{ url_for('static', filename='js/market_pulse_execution_chart.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
+<script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>
 <script>
 (() => {

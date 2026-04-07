@@ -53,6 +53,14 @@ def register(app):
         view_func=h.market_pulse_news_feed_api,
         methods=["GET"],
     )
+    app.add_url_rule("/api/hero/bars", endpoint="hero_bars_api", view_func=h.hero_bars_api)
+    app.add_url_rule("/api/hero/levels", endpoint="hero_levels_api", view_func=h.hero_levels_api)
+    app.add_url_rule(
+        "/api/hero/stream-session",
+        endpoint="hero_stream_session_api",
+        view_func=h.hero_stream_session_api,
+        methods=["GET"],
+    )
     app.add_url_rule(
         "/market-pulse/gamma-artifact/<path:name>",
         endpoint="market_pulse_gamma_artifact",

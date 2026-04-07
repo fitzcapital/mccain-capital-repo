@@ -65,6 +65,18 @@ def market_pulse_news_feed_api():
     return svc.market_pulse_news_feed_api()
 
 
+def hero_bars_api():
+    return svc.hero_bars_api()
+
+
+def hero_levels_api():
+    return svc.hero_levels_api()
+
+
+def hero_stream_session_api():
+    return svc.hero_stream_session_api()
+
+
 def stream_market():
     return svc.stream_market()
 

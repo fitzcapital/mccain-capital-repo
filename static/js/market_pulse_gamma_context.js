@@ -1523,6 +1523,287 @@
     return raw;
   };
 
+  const buildIfThenLine = (input, derived) => {
+    const spot = asNum(input.spot);
+    const local = asNum(input.localFlip);
+    const call = asNum(input.callWall);
+    const put = asNum(input.putWall);
+    const nextCall = asNum(derived.nextCallWall);
+    const nextPut = asNum(derived.nextPutWall);
+    if (spot === null) return "If live price is unavailable, stand down.";
+    if (call !== null && spot > call) {
+      return `If ${formatNumber(call, 0)} holds on retest, continuation can stretch toward ${formatNumber(nextCall, 0)}.`;
+    }
+    if (put !== null && spot < put) {
+      return `If ${formatNumber(put, 0)} fails to reclaim, downside can continue toward ${formatNumber(nextPut, 0)}.`;
+    }
+    if (local !== null && spot > local) {
+      return `If dips hold above ${formatNumber(local, 0)}, continuation can press toward ${formatNumber(call, 0)}.`;
+    }
+    if (local !== null && spot < local) {
+      return `If pops fail below ${formatNumber(local, 0)}, pressure can rotate back toward ${formatNumber(put, 0)}.`;
+    }
+    return "If the level confirms, act. If not, wait.";
+  };
+
+  const computeHeroState = (input, derived, executionPlan) => {
+    const spot = asNum(input.spot);
+    const local = asNum(input.localFlip);
+    const call = asNum(input.callWall);
+    const put = asNum(input.putWall);
+    const nextCall = asNum(derived.nextCallWall);
+    const nextPut = asNum(derived.nextPutWall);
+    const negativeGamma = String(derived.dealerRegime || "").toLowerCase().includes("negative");
+    const extensionThreshold = 15;
+
+    if (spot === null || (local === null && call === null && put === null)) {
+      return {
+        state: "NO TRADE",
+        tone: "warn",
+        bestLook: "Unavailable",
+        destination: "Await live levels",
+        invalidation: "No structure",
+        trigger: "Await data",
+        note: "Execution stays blocked until spot and core levels print cleanly.",
+      };
+    }
+
+    if (derived.noTradeCenter) {
+      return {
+        state: "NO TRADE",
+        tone: "negative",
+        bestLook: "No trade in the center",
+        destination: "Wait for a wall test",
+        invalidation: "Center is invalid",
+        trigger: "Edge interaction first",
+        note: "Flip and wall cluster are too compressed. Trade only after price tags a real boundary.",
+      };
+    }
+
+    if (call !== null && spot > call) {
+      const extensionDistance = spot - call;
+      const extended = extensionDistance <= extensionThreshold;
+      return {
+        state: extended ? "NO TRADE" : "WAIT",
+        tone: extended ? "negative" : "warn",
+        bestLook: "Wait for pullback into Call Wall",
+        destination: nextCall !== null ? `NCW ${formatNumber(nextCall, 0)}` : "Expansion zone",
+        invalidation: local !== null ? `Lose Local Flip ${formatNumber(local, 0)}` : `Lose Call Wall ${formatNumber(call, 0)}`,
+        trigger: "Sweep + reclaim + 2-2 + volume",
+        note: negativeGamma
+          ? "Macro negative, local bullish. Avoid chasing extension and require pullback confirmation."
+          : "Above call wall. Momentum can continue, but the only valid long is a confirmed retest.",
+      };
+    }
+
+    if (put !== null && spot < put) {
+      return {
+        state: "WAIT",
+        tone: "negative",
+        bestLook: "Short bounces after failed reclaim",
+        destination: nextPut !== null ? `NPW ${formatNumber(nextPut, 0)}` : `Press below PW ${formatNumber(put, 0)}`,
+        invalidation: local !== null ? `Reclaim Local Flip ${formatNumber(local, 0)}` : `Reclaim Put Wall ${formatNumber(put, 0)}`,
+        trigger: "Failed reclaim + 2-2 + volume",
+        note: negativeGamma
+          ? "Put wall is lost in a fast tape. Do not front-run; wait for failed reclaim or clean continuation."
+          : "Put wall is lost. Wait for failed reclaim before pressing downside.",
+      };
+    }
+
+    if (local !== null && spot > local) {
+      return {
+        state: (abs(derived.distanceToLocalFlip) || 999) <= 10 && (call === null || spot < call) ? "READY" : "WAIT",
+        tone: "positive",
+        bestLook: "Buy dip after sweep + reclaim",
+        destination: call !== null ? `CW ${formatNumber(call, 0)}` : "Press toward next upside shelf",
+        invalidation: `Lose Local Flip ${formatNumber(local, 0)}`,
+        trigger: "Sweep + reclaim + 2-2 + volume",
+        note: negativeGamma
+          ? "Above Local Flip in negative gamma. Long bias is valid, but no lazy entries and no chasing."
+          : "Above Local Flip. Buy dips only and keep continuation longs tied to real confirmation.",
+      };
+    }
+
+    if (local !== null && spot < local) {
+      return {
+        state: (abs(derived.distanceToLocalFlip) || 999) <= 10 && (put === null || spot > put) ? "READY" : "WAIT",
+        tone: "negative",
+        bestLook: "Sell failed bounce below Local Flip",
+        destination: put !== null && spot >= put ? `PW ${formatNumber(put, 0)}` : nextPut !== null ? `NPW ${formatNumber(nextPut, 0)}` : "Press toward next downside shelf",
+        invalidation: `Reclaim Local Flip ${formatNumber(local, 0)}`,
+        trigger: "Pop + fail + 2-2 + volume",
+        note: negativeGamma
+          ? "Below Local Flip in negative gamma. Failed pops can resolve fast, but only after confirmation."
+          : "Below Local Flip. Sell rips only and require the failed reclaim first.",
+      };
+    }
+
+    return {
+      state: "WAIT",
+      tone: executionPlan.tone === "positive" ? "positive" : executionPlan.tone === "negative" ? "negative" : "warn",
+      bestLook: executionPlan.doThis || executionPlan.headline || "Wait for clean structure",
+      destination: executionPlan.target || "Await next level",
+      invalidation: executionPlan.invalidation || "Reset if thesis breaks",
+      trigger: executionPlan.trigger || "Confirmation required",
+      note: executionPlan.subline || "Wait for clean structure before committing size.",
+    };
+  };
+
+  const buildHeroMapSummary = (input, derived) => {
+    const spot = asNum(input.spot);
+    const local = asNum(input.localFlip);
+    const call = asNum(input.callWall);
+    const put = asNum(input.putWall);
+    const nextCall = asNum(derived.nextCallWall);
+    const nextPut = asNum(derived.nextPutWall);
+
+    if (spot === null) {
+      return {
+        currentRead: "Unavailable",
+        pullbackLevel: "Unavailable",
+        nextDestination: "Await live levels",
+      };
+    }
+
+    if (call !== null && spot > call) {
+      return {
+        currentRead: "Above Call Wall",
+        pullbackLevel: `CW ${formatNumber(call, 0)}`,
+        nextDestination: nextCall !== null ? `NCW ${formatNumber(nextCall, 0)}` : "Expansion zone",
+      };
+    }
+
+    if (local !== null && call !== null && spot >= local && spot <= call) {
+      return {
+        currentRead: "Above Local Flip",
+        pullbackLevel: `Local ${formatNumber(local, 0)}`,
+        nextDestination: `CW ${formatNumber(call, 0)}`,
+      };
+    }
+
+    if (local !== null && spot < local) {
+      return {
+        currentRead: "Below Local Flip",
+        pullbackLevel: `Local ${formatNumber(local, 0)}`,
+        nextDestination: put !== null && spot >= put ? `PW ${formatNumber(put, 0)}` : nextPut !== null ? `NPW ${formatNumber(nextPut, 0)}` : put !== null ? `PW ${formatNumber(put, 0)}` : "Downside shelf",
+      };
+    }
+
+    return {
+      currentRead: "Responsive / rotational",
+      pullbackLevel: local !== null ? `Local ${formatNumber(local, 0)}` : "Working level",
+      nextDestination: call !== null ? `CW ${formatNumber(call, 0)}` : "Await next level",
+    };
+  };
+
+  const updateHeroRail = (input, derived) => {
+    const track = document.getElementById("marketPulseExecutionHeroRail");
+    if (!track) return;
+    const levels = [
+      { id: "marketPulseHeroMarkerNextPut", labelId: "marketPulseHeroNextPut", keyId: "marketPulseHeroLevelKeyNextPut", prefix: "NPW", short: "NPW", value: asNum(derived.nextPutWall) },
+      { id: "marketPulseHeroMarkerPut", labelId: "marketPulseHeroPutWall", keyId: "marketPulseHeroLevelKeyPut", prefix: "PW", short: "PW", value: asNum(input.putWall) },
+      { id: "marketPulseHeroMarkerLocal", labelId: "marketPulseHeroLocalFlip", keyId: "marketPulseHeroLevelKeyLocal", prefix: "LF", short: "LF", value: asNum(input.localFlip), allowNoneText: input.localFlipMissingInBand },
+      { id: "marketPulseHeroMarkerMain", labelId: "marketPulseHeroMainFlip", keyId: null, prefix: "Main", short: "Main", value: asNum(input.gammaFlip) },
+      { id: "marketPulseHeroMarkerSpot", labelId: "marketPulseHeroSpotLabel", keyId: "marketPulseHeroLevelKeySpot", prefix: "Spot", short: "Spot", value: asNum(input.spot), digits: 2 },
+      { id: "marketPulseHeroMarkerCall", labelId: "marketPulseHeroCallWall", keyId: "marketPulseHeroLevelKeyCall", prefix: "CW", short: "CW", value: asNum(input.callWall) },
+      { id: "marketPulseHeroMarkerNextCall", labelId: "marketPulseHeroNextCall", keyId: "marketPulseHeroLevelKeyNextCall", prefix: "NCW", short: "NCW", value: asNum(derived.nextCallWall) },
+    ];
+    const numeric = levels.map((row) => row.value).filter((value) => value !== null);
+    if (!numeric.length) return;
+    const lo = Math.min(...numeric);
+    const hi = Math.max(...numeric);
+    const pad = Math.max(8, (hi - lo) * 0.1);
+    const domainMin = lo - pad;
+    const domainMax = hi + pad;
+    const pct = (value) => clamp(((value - domainMin) / Math.max(1, domainMax - domainMin)) * 100, 3, 97);
+
+    levels.forEach((row) => {
+      const marker = document.getElementById(row.id);
+      const label = document.getElementById(row.labelId);
+      const key = row.keyId ? document.getElementById(row.keyId) : null;
+      if (!marker || !label) return;
+      if (row.value === null) {
+        marker.hidden = true;
+        label.textContent = row.short;
+        if (key) {
+          key.hidden = false;
+          key.textContent = row.allowNoneText ? `${row.prefix} ${LOCAL_FLIP_NONE_LABEL}` : `${row.prefix} Unavailable`;
+        }
+        return;
+      }
+      marker.hidden = false;
+      marker.style.left = `${pct(row.value)}%`;
+      const position = pct(row.value);
+      marker.classList.toggle("is-edge-left", position <= 9);
+      marker.classList.toggle("is-edge-right", position >= 91);
+      label.textContent = row.short;
+      if (key) {
+        key.hidden = false;
+        key.textContent = `${row.prefix} ${formatNumber(row.value, row.digits || 0)}`;
+      }
+    });
+  };
+
+  const updateExecutionHero = (input, derived, executionPlan, model) => {
+    if (window.__mcHeroApiDriven) return;
+    const hero = computeHeroState(input, derived, executionPlan);
+    const mapSummary = buildHeroMapSummary(input, derived);
+    const biasLine = input.localFlip === null
+      ? (input.localFlipMissingInBand ? LOCAL_FLIP_NONE_LABEL : "Unavailable")
+      : input.spot !== null && input.localFlip !== null && input.spot >= input.localFlip
+        ? `Bullish above Local Flip ${formatNumber(input.localFlip, 0)}`
+        : `Bearish below Local Flip ${formatNumber(input.localFlip, 0)}`;
+
+    setText("marketPulseHeroSpot", formatNumber(input.spot, 2));
+    setText("marketPulseHeroGamma", String(derived.dealerRegime || "Unavailable").replace(" / ", " · "));
+    setText("marketPulseHeroBias", biasLine);
+    setText("marketPulseHeroTradeability", `${derived.tradeability.label} · ${derived.tradeability.score}/10`);
+    setText("marketPulseHeroSession", derived.dealerRegime.includes("Negative") ? "Fast tape · confirmation required" : `${derived.sessionWindowState} · ${derived.volatilityState}`);
+    setText("marketPulseHeroMacroFlip", formatNumber(input.gammaFlip, 0));
+    setText("marketPulseHeroRailContext", (model && model.posture_summary) || executionPlan.subline);
+    setText("marketPulseHeroRailSummary", executionPlan.locationLine || executionPlan.subline);
+    setText("marketPulseHeroRailFootState", mapSummary.currentRead);
+    setText("marketPulseHeroPullbackLevel", mapSummary.pullbackLevel);
+    setText("marketPulseHeroDestinationInline", mapSummary.nextDestination);
+    setText("marketPulseHeroStateContext", hero.state);
+    setText("marketPulseHeroStateChip", hero.state);
+    setText("marketPulseHeroTradeState", hero.state);
+    setText("marketPulseHeroBestLook", hero.bestLook);
+    setText("marketPulseHeroInvalidation", hero.invalidation);
+    setText("marketPulseHeroRequiredTrigger", hero.trigger);
+    setText("marketPulseHeroStateNote", hero.note);
+
+    const stateChip = document.getElementById("marketPulseHeroStateChip");
+    const stateContext = document.getElementById("marketPulseHeroStateContext");
+    [stateChip, stateContext].forEach((node) => {
+      if (!node) return;
+      node.classList.remove("tone-positive", "tone-warn", "tone-negative");
+      node.classList.add(hero.tone === "positive" ? "tone-positive" : hero.tone === "negative" ? "tone-negative" : "tone-warn");
+    });
+
+    updateHeroRail(input, derived);
+  };
+
+  const updateTriggerValidation = (heroState, derived) => {
+    const nearLong = derived.aboveOrBelowLocalFlip === "above";
+    const nearShort = derived.aboveOrBelowLocalFlip === "below";
+    const setItem = (id, lineId, text, active = false) => {
+      const node = document.getElementById(id);
+      if (node) node.classList.toggle("is-active", Boolean(active));
+      setText(lineId, text);
+    };
+
+    // Placeholder structure for future live trigger booleans. Wire real signals into these rows later.
+    setItem("marketPulseTriggerSweep", "marketPulseTriggerSweepLine", nearLong ? "Need sweep into support or Local Flip before the long exists." : nearShort ? "Need pop into resistance or Local Flip before the short exists." : "Need sweep into the working level before entry is considered.");
+    setItem("marketPulseTriggerReclaim", "marketPulseTriggerReclaimLine", nearLong ? "Need reclaim back above the working level after the sweep." : nearShort ? "Need failed reclaim back under the working level after the pop." : "Wait for the level to prove itself after the interaction.");
+    setItem("marketPulseTriggerReversal", "marketPulseTriggerReversalLine", nearLong ? "Need 5m 2-2 up / 3-1-2 continuation before the long is valid." : nearShort ? "Need 5m 2-2 down / 3-1-2 continuation before the short is valid." : "A clean 5m reversal or continuation trigger still has to print.");
+    setItem("marketPulseTriggerVolume", "marketPulseTriggerVolumeLine", String(derived.dealerRegime || "").toLowerCase().includes("negative") ? "Fast tape is active. Volume confirmation is mandatory." : "Require real participation before calling the move valid.");
+
+    setText("marketPulseTriggerHeaderLine", heroState.state === "READY" ? "Ready location, but still trigger-gated." : heroState.state === "BLOCKED" ? "Blocked until a real edge appears." : "No trigger = no trade.");
+    setText("marketPulseTriggerStatus", heroState.state === "BLOCKED" ? "BLOCKED — WAIT FOR EDGE" : heroState.state === "READY" ? "READY LOCATION — TRIGGER STILL REQUIRED" : "NO TRIGGER — NO TRADE");
+    setText("marketPulseTriggerFooterLine", heroState.note);
+  };
+
   const updateTapeSummary = (prices) => {
     const tracked = tapeCards
       .map((card) => String(card.dataset.symbol || "").toUpperCase())
@@ -1704,6 +1985,13 @@
     const panelStateLabel = panelMode === "live" ? dataStateLabel(panelState) : panelMode === "replay" ? "Replay" : "Reference";
     const panelPriceLabel = panelMode === "live" ? "Live Price" : panelMode === "replay" ? "Last Session Close" : "Reference Price";
     const panelRange = formatRange(spxPoints);
+    const tickTimeRaw =
+      (base.spx_quote || {}).as_of
+      || (base.spx_quote || {}).asof
+      || base.updated_at
+      || base.server_ts
+      || base.market_now_iso
+      || null;
     const footerTime = panelMode === "live"
       ? String(spxQuote.freshness_label || "Updated just now")
       : formatEtLabel(tickTimeRaw);
@@ -1727,15 +2015,21 @@
     const whyLine = String(modelPlaybook.why || (model && model.posture_summary) || "Context is mixed.");
     const avoidLine = String(modelPlaybook.avoid || "Avoid forcing entries");
     const needLine = String(modelPlaybook.need || "Need confirmation");
+    const ifThenLine = buildIfThenLine(input, derived);
+    const heroState = computeHeroState(input, derived, executionPlan);
 
     updateStructureZoneBar(input, derived, model);
+    updateExecutionHero(input, derived, executionPlan, model);
+    updateTriggerValidation(heroState, derived);
 
     setText("marketPulseTradeabilityScore", `${tradeabilityScore100}`);
     setText("marketPulseTradeabilityGrade", String(modelPlaybook.grade || gradeTradeability(tradeabilityScore100)));
+    setText("marketPulseActionLead", whyLine);
     setText("marketPulseBestLook", bestLook);
     setText("marketPulseEnvironment", whyLine);
     setText("marketPulseAvoid", avoidLine);
     setText("marketPulseNeed", needLine);
+    setText("marketPulseIfThen", ifThenLine);
     const scoreFill = document.getElementById("marketPulseTradeabilityBarFill");
     if (scoreFill) {
       scoreFill.style.width = `${tradeabilityScore100}%`;
@@ -1797,13 +2091,6 @@
     setText("spxPriorityNetGammaValue", formatNetGamma(input.netGamma));
     setText("spxPriorityCallGammaPerPoint", asNum(input.callWallGammaPerPoint) === null ? "—" : formatNetGamma(input.callWallGammaPerPoint));
     setText("spxPriorityPutGammaPerPoint", asNum(input.putWallGammaPerPoint) === null ? "—" : formatNetGamma(input.putWallGammaPerPoint));
-    const tickTimeRaw =
-      (base.spx_quote || {}).as_of
-      || (base.spx_quote || {}).asof
-      || base.updated_at
-      || base.server_ts
-      || base.market_now_iso
-      || null;
     setText(
       "spxPriorityTickPing",
       buildTickPingLabel(

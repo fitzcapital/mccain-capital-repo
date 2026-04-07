@@ -596,8 +596,9 @@ def _market_pulse_resolve_replay_session(
     last_valid_day = _market_pulse_expected_replay_session_day(phase=phase, now_et=now_et)
     stored_replay_day = replay_session_day or _market_pulse_points_session_day(replay_points)
     stored_points = list(replay_points or [])
+    same_day_session_available = bool(current_points) and current_day == today
 
-    if phase == "open" and current_points and current_day == today:
+    if phase == "open" and same_day_session_available:
         return {
             "mode": "live_session",
             "points": current_points,
@@ -607,12 +608,24 @@ def _market_pulse_resolve_replay_session(
             "replay_source": "live",
         }
 
-    if phase == "afterhours" and current_points and current_day == today:
+    if phase == "afterhours" and same_day_session_available:
         return {
             "mode": "last_session_replay",
             "points": current_points,
             "session_day": current_day,
             "last_valid_day": today,
+            "stored_replay_day": stored_replay_day,
+            "replay_source": "live_close",
+        }
+
+    # After 8 PM ET the phase rolls to "closed", but the just-finished session's
+    # SPX series is still the most relevant replay source for the hero chart.
+    if phase == "closed" and same_day_session_available:
+        return {
+            "mode": "last_session_replay",
+            "points": current_points,
+            "session_day": current_day,
+            "last_valid_day": current_day,
             "stored_replay_day": stored_replay_day,
             "replay_source": "live_close",
         }
@@ -5791,6 +5804,33 @@ def market_pulse_news_feed_api():
             "now_summary": dict(feed_snapshot.get("now_summary") or {}),
         }
     )
+
+
+def hero_bars_api():
+    from mccain_capital.services import tradier_hero_chart_service as hero_service
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    symbol = str(request.args.get("symbol") or hero_service.DEFAULT_SYMBOL).strip().upper()
+    interval = str(request.args.get("interval") or hero_service.DEFAULT_INTERVAL).strip().lower()
+    return jsonify(hero_service.get_intraday_bars(symbol=symbol, interval=interval))
+
+
+def hero_levels_api():
+    from mccain_capital.services import tradier_hero_chart_service as hero_service
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    symbol = str(request.args.get("symbol") or hero_service.DEFAULT_SYMBOL).strip().upper()
+    return jsonify(hero_service.get_hero_levels(symbol=symbol))
+
+
+def hero_stream_session_api():
+    from mccain_capital.services import tradier_hero_chart_service as hero_service
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    return jsonify(hero_service.get_stream_session_payload())
 
 
 def system_check_page():
