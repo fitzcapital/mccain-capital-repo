@@ -19,37 +19,80 @@
   const streamUrl = String(host.dataset.streamUrl || "/api/hero/stream-session");
   const symbol = String(host.dataset.symbol || "SPX");
   const interval = String(host.dataset.interval || "5min");
+  const HERO_CHART_THEME = {
+    background: "#06111F",
+    panel: "#0B1D33",
+    border: "#163250",
+    textPrimary: "#EAF2FF",
+    textSecondary: "#9CB3D1",
+    gridMajor: "rgba(120, 160, 200, 0.16)",
+    gridMinor: "rgba(120, 160, 200, 0.08)",
+    axis: "rgba(120, 160, 200, 0.20)",
+    bull: "#0FA37F",
+    bullBorder: "#19C997",
+    bullWick: "#22D3A6",
+    bear: "#C23B57",
+    bearBorder: "#E25574",
+    bearWick: "#F06A88",
+    spx: "#63B3FF",
+    current: "#C23B57",
+    cw: "#C85A72",
+    ncw: "#E07186",
+    lf: "#A88BFF",
+    npw: "#4DD599",
+    pw: "#218A5A",
+    main: "rgba(140,155,180,0.38)",
+    labelDark: "rgba(8, 14, 24, 0.88)",
+    labelBorder: "rgba(255,255,255,0.08)",
+    labelCwBg: "#C85A72",
+    labelCwText: "#FFFFFF",
+    labelNcwBg: "#E07186",
+    labelNcwText: "#08111D",
+    labelLfBg: "#A88BFF",
+    labelLfText: "#08111D",
+    labelBlueBg: "#63B3FF",
+    labelBlueText: "#08111D",
+    labelCurrentBg: "#C23B57",
+    labelCurrentText: "#FFFFFF",
+    labelMintBg: "#4DD599",
+    labelMintText: "#08111D",
+    labelGreenBg: "#218A5A",
+    labelGreenText: "#EAF2FF",
+  };
+  const DEFAULT_VISIBLE_BARS = 140;
+  const LEFT_SCROLL_BUFFER_BARS = 18;
+  const DEFAULT_RIGHT_OFFSET_BARS = 10;
 
   const priceScaleWidth = 88;
   const chart = LightweightCharts.createChart(canvas, {
     autoSize: true,
     height: 358,
     layout: {
-      background: { type: LightweightCharts.ColorType.Solid, color: "#07111f" },
-      textColor: "rgba(229, 239, 252, 0.84)",
+      background: { type: LightweightCharts.ColorType.Solid, color: HERO_CHART_THEME.background },
+      textColor: HERO_CHART_THEME.textSecondary,
       fontFamily: '"Segoe UI", "Trebuchet MS", sans-serif',
       fontSize: 12,
     },
     grid: {
-      vertLines: { color: "rgba(92, 126, 170, 0.12)" },
-      horzLines: { color: "rgba(112, 150, 196, 0.18)" },
+      vertLines: { color: HERO_CHART_THEME.gridMinor },
+      horzLines: { color: HERO_CHART_THEME.gridMajor },
     },
     crosshair: {
-      vertLine: { color: "rgba(144, 188, 235, 0.26)", width: 1, style: 2 },
-      horzLine: { color: "rgba(144, 188, 235, 0.22)", width: 1, style: 2 },
+      vertLine: { color: "rgba(99, 179, 255, 0.16)", width: 1, style: 2 },
+      horzLine: { color: "rgba(46, 211, 198, 0.12)", width: 1, style: 2 },
     },
     rightPriceScale: {
-      borderColor: "rgba(102, 137, 181, 0.18)",
+      borderColor: HERO_CHART_THEME.axis,
       scaleMargins: { top: 0.08, bottom: 0.18 },
       minimumWidth: priceScaleWidth,
     },
     timeScale: {
-      borderColor: "rgba(102, 137, 181, 0.14)",
+      borderColor: HERO_CHART_THEME.axis,
       timeVisible: true,
       secondsVisible: false,
-      rightOffset: 8,
-      barSpacing: 9,
-      fixLeftEdge: true,
+      rightOffset: DEFAULT_RIGHT_OFFSET_BARS,
+      barSpacing: 7.5,
+      fixLeftEdge: false,
       lockVisibleTimeRangeOnResize: true,
     },
     localization: {
@@ -61,20 +104,20 @@
   });
 
   const candleSeries = chart.addCandlestickSeries({
-    upColor: "#38d6c4",
-    downColor: "#ff6c8a",
-    wickUpColor: "#65ead7",
-    wickDownColor: "#ff86a1",
-    borderUpColor: "#38d6c4",
-    borderDownColor: "#ff6c8a",
-    lastValueVisible: true,
+    upColor: HERO_CHART_THEME.bull,
+    downColor: HERO_CHART_THEME.bear,
+    wickUpColor: HERO_CHART_THEME.bullWick,
+    wickDownColor: HERO_CHART_THEME.bearWick,
+    borderUpColor: HERO_CHART_THEME.bullBorder,
+    borderDownColor: HERO_CHART_THEME.bearBorder,
+    lastValueVisible: false,
     priceLineVisible: false,
   });
 
   const volumeSeries = chart.addHistogramSeries({
     priceScaleId: "",
     priceFormat: { type: "volume" },
-    color: "rgba(111, 171, 236, 0.32)",
+    color: "rgba(86, 116, 151, 0.22)",
     priceLineVisible: false,
     lastValueVisible: false,
   });
@@ -83,11 +126,42 @@
     scaleMargins: { top: 0.78, bottom: 0 },
   });
 
+  const upperFrameSeries = chart.addLineSeries({
+    color: "rgba(0,0,0,0)",
+    lineWidth: 1,
+    crosshairMarkerVisible: false,
+    lastValueVisible: false,
+    priceLineVisible: false,
+  });
+
+  const lowerFrameSeries = chart.addLineSeries({
+    color: "rgba(0,0,0,0)",
+    lineWidth: 1,
+    crosshairMarkerVisible: false,
+    lastValueVisible: false,
+    priceLineVisible: false,
+  });
+
   let priceLines = [];
   let polling = { bars_interval_ms: 30000, levels_interval_ms: 10000 };
   let barsTimer = null;
   let levelsTimer = null;
   let initialized = false;
+  let lastBarsPayload = null;
+  let lastLevelsPayload = null;
+  let lastGoodLevelsPayload = null;
+  let lastAppliedLevelsSignature = "";
+  let pendingLevelsPayload = null;
+  let levelsRenderTimer = null;
+  const LEVEL_RENDER_DEBOUNCE_MS = 120;
+  const HERO_LEVEL_KEYS = [
+    "main_flip",
+    "local_flip",
+    "call_wall",
+    "put_wall",
+    "next_call_wall",
+    "next_put_wall",
+  ];
 
   const asNum = (value) => {
     const numeric = Number(value);
@@ -132,6 +206,138 @@
     `${barsUrl}?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`;
   const levelsEndpoint = () => `${levelsUrl}?symbol=${encodeURIComponent(symbol)}`;
 
+  const isValidHeroLevel = (value) => {
+    const numeric = asNum(value);
+    return numeric !== null && numeric > 0;
+  };
+
+  const levelsSignature = (payload) =>
+    HERO_LEVEL_KEYS.map((key) => {
+      const numeric = asNum(payload?.[key]);
+      return `${key}:${numeric === null ? "na" : numeric.toFixed(4)}`;
+    }).join("|");
+
+  const sanitizeLevelsPayload = (payload) => {
+    if (!payload || typeof payload !== "object") return null;
+    for (const key of HERO_LEVEL_KEYS) {
+      if (!isValidHeroLevel(payload[key])) {
+        return null;
+      }
+    }
+    return {
+      ...(lastGoodLevelsPayload || {}),
+      ...payload,
+    };
+  };
+
+  const applyLevelsPayload = (payload) => {
+    lastLevelsPayload = payload;
+    lastGoodLevelsPayload = payload;
+    lastAppliedLevelsSignature = levelsSignature(payload);
+    renderSummary(payload);
+    updateOverlayLines(payload);
+    applyViewport();
+    if (emptyState && initialized) emptyState.hidden = true;
+  };
+
+  const scheduleLevelsApply = (payload) => {
+    pendingLevelsPayload = payload;
+    window.clearTimeout(levelsRenderTimer);
+    levelsRenderTimer = window.setTimeout(() => {
+      if (!pendingLevelsPayload) return;
+      applyLevelsPayload(pendingLevelsPayload);
+      pendingLevelsPayload = null;
+    }, LEVEL_RENDER_DEBOUNCE_MS);
+  };
+
+  const clearFrameBounds = () => {
+    upperFrameSeries.setData([]);
+    lowerFrameSeries.setData([]);
+  };
+
+  const applyFrameBounds = (bars, levels) => {
+    if (!Array.isArray(bars) || !bars.length) {
+      clearFrameBounds();
+      return;
+    }
+    const prices = [];
+    bars.forEach((bar) => {
+      const high = asNum(bar.high);
+      const low = asNum(bar.low);
+      if (high !== null) prices.push(high);
+      if (low !== null) prices.push(low);
+    });
+    [
+      levels?.spot,
+      levels?.local_flip,
+      levels?.call_wall,
+      levels?.put_wall,
+      levels?.next_call_wall,
+      levels?.next_put_wall,
+    ].forEach((value) => {
+      const numeric = asNum(value);
+      if (numeric !== null) prices.push(numeric);
+    });
+    if (!prices.length) {
+      clearFrameBounds();
+      return;
+    }
+    const low = Math.min(...prices);
+    const high = Math.max(...prices);
+    const padding = Math.max((high - low) * 0.14, 6);
+    const firstTime = Number(bars[0].time);
+    const lastTime = Number(bars[bars.length - 1].time);
+    upperFrameSeries.setData([
+      { time: firstTime, value: high + padding },
+      { time: lastTime, value: high + padding },
+    ]);
+    lowerFrameSeries.setData([
+      { time: firstTime, value: low - padding },
+      { time: lastTime, value: low - padding },
+    ]);
+  };
+
+  const applyViewport = ({ fitContent = false } = {}) => {
+    if (!lastBarsPayload || !Array.isArray(lastBarsPayload.bars) || !lastBarsPayload.bars.length) return;
+    const bars = lastBarsPayload.bars;
+    const openingMode = Boolean(lastBarsPayload.opening_session_mode);
+    if (openingMode) {
+      // Hold a stable opening frame with prior-session carryover and right-side
+      // breathing room instead of zooming the hero into the first live candle.
+      const rightOffsetBars = Math.max(4, Number(lastBarsPayload.right_offset_bars) || 6);
+      const desiredWindowBars = Math.max(
+        bars.length,
+        Number(lastBarsPayload.visible_window_bars) || 0,
+      );
+      chart.timeScale().applyOptions({
+        rightOffset: rightOffsetBars,
+        barSpacing: 11,
+      });
+      chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(-1, bars.length - desiredWindowBars),
+        to: (bars.length - 1) + rightOffsetBars,
+      });
+      applyFrameBounds(bars, lastLevelsPayload);
+      return;
+    }
+
+    clearFrameBounds();
+    chart.timeScale().applyOptions({
+      rightOffset: DEFAULT_RIGHT_OFFSET_BARS,
+      barSpacing: 7.5,
+    });
+    if (fitContent || !initialized) {
+      const visibleBars = Math.max(
+        Math.min(bars.length + LEFT_SCROLL_BUFFER_BARS, DEFAULT_VISIBLE_BARS),
+        Math.min(bars.length, 90),
+      );
+      chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(-LEFT_SCROLL_BUFFER_BARS, bars.length - visibleBars - LEFT_SCROLL_BUFFER_BARS),
+        to: (bars.length - 1) + DEFAULT_RIGHT_OFFSET_BARS,
+      });
+    }
+  };
+
   const clearPriceLines = () => {
     priceLines.forEach((line) => {
       try {
@@ -141,7 +347,16 @@
     priceLines = [];
   };
 
-  const addLevelLine = ({ title, value, color, width = 1, style = 0, axis = true }) => {
+  const addLevelLine = ({
+    title,
+    value,
+    color,
+    width = 1,
+    style = 0,
+    axis = true,
+    axisLabelColor,
+    axisLabelTextColor,
+  }) => {
     const numeric = asNum(value);
     if (numeric === null) return;
     priceLines.push(
@@ -151,6 +366,8 @@
         lineWidth: width,
         lineStyle: style,
         axisLabelVisible: axis,
+        axisLabelColor,
+        axisLabelTextColor,
         title,
       })
     );
@@ -168,21 +385,77 @@
     const nextCallWall = asNum(levels.next_call_wall);
     const nextPutWall = asNum(levels.next_put_wall);
 
-    addLevelLine({ title: "Main", value: mainFlip, color: "rgba(214, 223, 236, 0.34)", width: 1, style: 2 });
-    addLevelLine({ title: "NPW", value: nextPutWall, color: "rgba(130, 233, 191, 0.52)", width: 1, style: 1 });
-    addLevelLine({ title: "PW", value: putWall, color: "rgba(102, 233, 173, 0.86)", width: 2, style: 0 });
-    addLevelLine({ title: "LF", value: localFlip, color: "rgba(255, 210, 116, 0.96)", width: 3, style: 0 });
+    addLevelLine({
+      title: "Main",
+      value: mainFlip,
+      color: HERO_CHART_THEME.main,
+      width: 1,
+      style: 2,
+      axisLabelColor: HERO_CHART_THEME.labelDark,
+      axisLabelTextColor: HERO_CHART_THEME.textSecondary,
+    });
+    addLevelLine({
+      title: "NPW",
+      value: nextPutWall,
+      color: HERO_CHART_THEME.npw,
+      width: 1,
+      style: 1,
+      axisLabelColor: HERO_CHART_THEME.labelMintBg,
+      axisLabelTextColor: HERO_CHART_THEME.labelMintText,
+    });
+    addLevelLine({
+      title: "PW",
+      value: putWall,
+      color: HERO_CHART_THEME.pw,
+      width: 2,
+      style: 0,
+      axisLabelColor: HERO_CHART_THEME.labelGreenBg,
+      axisLabelTextColor: HERO_CHART_THEME.labelGreenText,
+    });
+    addLevelLine({
+      title: "LF",
+      value: localFlip,
+      color: HERO_CHART_THEME.lf,
+      width: 3,
+      style: 0,
+      axisLabelColor: HERO_CHART_THEME.labelLfBg,
+      axisLabelTextColor: HERO_CHART_THEME.labelLfText,
+    });
     addLevelLine({
       title: "CW",
       value: callWall,
-      color: state === "NO_TRADE" || (price !== null && callWall !== null && price >= callWall)
-        ? "rgba(255, 172, 106, 0.98)"
-        : "rgba(255, 128, 162, 0.88)",
+      color: HERO_CHART_THEME.cw,
       width: state === "NO_TRADE" ? 3 : 2,
       style: 0,
+      axisLabelColor: HERO_CHART_THEME.labelCwBg,
+      axisLabelTextColor: HERO_CHART_THEME.labelCwText,
     });
-    addLevelLine({ title: "NCW", value: nextCallWall, color: "rgba(255, 214, 144, 0.52)", width: 1, style: 1 });
-    addLevelLine({ title: "SPX", value: price, color: "rgba(127, 208, 255, 0.92)", width: 2, style: 2 });
+    addLevelLine({
+      title: "NCW",
+      value: nextCallWall,
+      color: HERO_CHART_THEME.ncw,
+      width: 1,
+      style: 1,
+      axisLabelColor: HERO_CHART_THEME.labelNcwBg,
+      axisLabelTextColor: HERO_CHART_THEME.labelNcwText,
+    });
+    addLevelLine({
+      title: "",
+      value: price,
+      color: HERO_CHART_THEME.current,
+      width: 1,
+      style: 1,
+      axis: false,
+    });
+    addLevelLine({
+      title: "SPX",
+      value: price,
+      color: HERO_CHART_THEME.spx,
+      width: 2,
+      style: 2,
+      axisLabelColor: HERO_CHART_THEME.labelBlueBg,
+      axisLabelTextColor: HERO_CHART_THEME.labelBlueText,
+    });
   };
 
   const renderSummary = (levels) => {
@@ -249,14 +522,18 @@
         return {
           time: Number(bar.time),
           value: Number.isFinite(amount) ? amount : 0,
-          color: close >= open ? "rgba(56, 214, 196, 0.28)" : "rgba(255, 108, 138, 0.24)",
+          color: close >= open ? "rgba(15, 163, 127, 0.18)" : "rgba(194, 59, 87, 0.16)",
         };
       })
       .filter((bar) => Number.isFinite(bar.time));
 
     candleSeries.setData(candles);
     volumeSeries.setData(volume);
-    if (fitContent || !initialized) chart.timeScale().fitContent();
+    lastBarsPayload = {
+      ...payload,
+      bars: candles,
+    };
+    applyViewport({ fitContent });
     if (emptyState) emptyState.hidden = true;
     if (!initialized) {
       initialized = true;
@@ -266,9 +543,18 @@
 
   const updateLevels = async () => {
     const payload = await fetchJson(levelsEndpoint());
-    renderSummary(payload);
-    updateOverlayLines(payload);
-    if (emptyState && initialized) emptyState.hidden = true;
+    const nextLevels = sanitizeLevelsPayload(payload);
+    if (!nextLevels) {
+      console.warn("SPX hero levels update skipped: invalid level payload", payload);
+      return;
+    }
+    const nextSignature = levelsSignature(nextLevels);
+    if (nextSignature === lastAppliedLevelsSignature) {
+      lastLevelsPayload = nextLevels;
+      lastGoodLevelsPayload = nextLevels;
+      return;
+    }
+    scheduleLevelsApply(nextLevels);
   };
 
   const startPolling = () => {

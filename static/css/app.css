@@ -26395,11 +26395,11 @@ textarea:focus-visible{
   border-radius:18px;
   border:1px solid rgba(105, 149, 201, .18);
   background:
-    radial-gradient(circle at top, rgba(80, 122, 177, 0.08), transparent 58%),
-    linear-gradient(180deg, rgba(10, 18, 31, .86), rgba(7, 14, 27, .94));
+    radial-gradient(circle at top, rgba(33, 60, 94, 0.06), transparent 58%),
+    linear-gradient(180deg, rgba(11, 29, 51, .92), rgba(6, 17, 31, .98));
   box-shadow:
     inset 0 0 0 1px rgba(255,255,255,.02),
-    0 18px 44px rgba(2, 8, 18, .22);
+    0 14px 30px rgba(2, 8, 18, .18);
 }
 
 .marketPulseExecutionHeroSectionHead{
@@ -26421,8 +26421,8 @@ textarea:focus-visible{
   min-width:0;
   padding:10px 11px;
   border-radius:14px;
-  border:1px solid rgba(118, 160, 206, .14);
-  background:rgba(7, 14, 26, .46);
+  border:1px solid #163250;
+  background:rgba(11, 29, 51, .72);
 }
 
 .marketPulseExecutionHeroMetric strong{
@@ -26436,11 +26436,11 @@ textarea:focus-visible{
 
 .marketPulseExecutionHeroMetric.is-spot{
   grid-column:1 / -1;
-  border-color:rgba(127, 208, 255, .24);
+  border-color:#163250;
   background:
-    radial-gradient(circle at 12% 26%, rgba(127, 208, 255, .14), rgba(127, 208, 255, 0) 36%),
-    rgba(7, 16, 29, .58);
-  box-shadow:0 0 24px rgba(127, 208, 255, .10);
+    radial-gradient(circle at 12% 26%, rgba(99, 179, 255, .08), rgba(99, 179, 255, 0) 36%),
+    rgba(11, 29, 51, .78);
+  box-shadow:0 8px 18px rgba(2, 8, 18, .14);
 }
 
 .marketPulseExecutionHeroMetric.is-spot strong{
@@ -26468,13 +26468,13 @@ textarea:focus-visible{
   gap:4px;
   padding:11px 13px;
   border-radius:18px;
-  border:1px solid rgba(115, 157, 206, 0.16);
+  border:1px solid #163250;
   background:
-    radial-gradient(circle at top left, rgba(114, 170, 230, .10), rgba(114, 170, 230, 0) 38%),
-    linear-gradient(180deg, rgba(8, 15, 28, .82), rgba(6, 12, 22, .92));
+    radial-gradient(circle at top left, rgba(38, 67, 104, .08), rgba(38, 67, 104, 0) 38%),
+    linear-gradient(180deg, rgba(11, 29, 51, .88), rgba(6, 17, 31, .96));
   box-shadow:
     inset 0 0 0 1px rgba(255,255,255,.02),
-    0 12px 28px rgba(2, 8, 18, .16);
+    0 10px 22px rgba(2, 8, 18, .14);
 }
 
 .marketPulseExecutionHeroChartStateStrip{
@@ -26492,8 +26492,8 @@ textarea:focus-visible{
   min-height:22px;
   padding:0 9px;
   border-radius:999px;
-  border:1px solid rgba(114, 153, 196, .14);
-  background:rgba(9, 17, 30, .54);
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(8, 14, 24, .88);
   font-size:.69rem;
   line-height:1.05;
   color:rgba(224, 234, 246, .88);
@@ -26501,8 +26501,8 @@ textarea:focus-visible{
 }
 
 .marketPulseExecutionHeroChartStateRead{
-  border-color:rgba(127, 208, 255, .18);
-  color:rgba(236, 245, 255, .92);
+  border-color:rgba(120, 160, 200, .12);
+  color:#EAF2FF;
 }
 
 .marketPulseExecutionHeroChartStateAction{
@@ -26516,13 +26516,13 @@ textarea:focus-visible{
   line-height:1.02;
   font-weight:900;
   letter-spacing:.02em;
-  color:rgba(248, 251, 255, .97);
+  color:#EAF2FF;
 }
 
 .marketPulseExecutionHeroChartBannerSub{
   font-size:.76rem;
   line-height:1.18;
-  color:rgba(216, 227, 241, .82);
+  color:#9CB3D1;
 }
 
 .marketPulseExecutionHeroChartStage{
@@ -26530,14 +26530,13 @@ textarea:focus-visible{
   min-height:382px;
   padding:14px 12px 10px;
   border-radius:20px;
-  border:1px solid rgba(115, 157, 206, 0.16);
+  border:1px solid #163250;
   background:
-    radial-gradient(circle at top, rgba(70, 114, 166, .11), rgba(70, 114, 166, 0) 42%),
-    linear-gradient(180deg, rgba(8, 15, 28, .92), rgba(6, 12, 22, .98));
+    radial-gradient(circle at top, rgba(31, 57, 89, .08), rgba(31, 57, 89, 0) 42%),
+    linear-gradient(180deg, rgba(11, 29, 51, .96), rgba(6, 17, 31, 1));
   box-shadow:
     inset 0 0 0 1px rgba(255,255,255,.02),
-    0 18px 42px rgba(3, 8, 17, .24),
-    0 0 46px rgba(82, 136, 205, .08);
+    0 16px 30px rgba(3, 8, 17, .18);
   overflow:hidden;
 }
 
@@ -26559,7 +26558,7 @@ textarea:focus-visible{
   display:grid;
   place-items:center;
   text-align:center;
-  background:rgba(6, 12, 22, .76);
+  background:rgba(11, 29, 51, .92);
   border-radius:inherit;
   z-index:2;
 }

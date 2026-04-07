@@ -10,7 +10,9 @@ template so the frontend can consume a small, stable contract:
 
 from __future__ import annotations
 
+from datetime import date
 from datetime import datetime
+from datetime import time
 from datetime import timedelta
 import logging
 from typing import Any, Dict, List, Optional
@@ -23,8 +25,11 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_SYMBOL = "SPX"
 DEFAULT_INTERVAL = "5min"
-DEFAULT_BARS_LIMIT = 240
+DEFAULT_BARS_LIMIT = 480
 LEVEL_UNAVAILABLE = "Unavailable"
+OPENING_SESSION_BAR_THRESHOLD = 10
+OPENING_SESSION_CARRYOVER_MINUTES = 390
+OPENING_SESSION_RIGHT_OFFSET_BARS = 6
 
 
 def _as_float(value: Any) -> Optional[float]:
@@ -103,6 +108,83 @@ def _parse_ts(value: Any) -> Optional[datetime]:
     return parsed.astimezone(app_runtime.TZ)
 
 
+def _interval_minutes(interval: str) -> int:
+    return 5 if str(interval or DEFAULT_INTERVAL).strip().lower() == "5min" else 1
+
+
+def _is_regular_session_dt(dt: datetime) -> bool:
+    if int(dt.weekday()) >= 5:
+        return False
+    clock = dt.timetz().replace(tzinfo=None)
+    return time(9, 30) <= clock < time(16, 0)
+
+
+def _previous_trading_day(anchor_day: date) -> date:
+    out = anchor_day - timedelta(days=1)
+    while out.weekday() >= 5:
+        out -= timedelta(days=1)
+    return out
+
+
+def _bars_for_session_day(
+    bars: List[Dict[str, Any]], *, session_day: date, regular_only: bool = True
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for bar in bars:
+        ts = _as_float(bar.get("time"))
+        if ts is None:
+            continue
+        dt = datetime.fromtimestamp(int(ts), tz=app_runtime.TZ)
+        if dt.date() != session_day:
+            continue
+        if regular_only and not _is_regular_session_dt(dt):
+            continue
+        out.append(dict(bar))
+    return out
+
+
+def _opening_session_carryover_bars(
+    *,
+    current_bars: List[Dict[str, Any]],
+    prior_bars: List[Dict[str, Any]],
+    session_day: date,
+    interval: str,
+) -> Dict[str, Any]:
+    # During the opening minutes, prepend the last slice of the prior regular
+    # session so the hero chart has context instead of auto-fitting to 1-2 bars.
+    threshold = OPENING_SESSION_BAR_THRESHOLD
+    carryover_target = max(
+        1,
+        int(OPENING_SESSION_CARRYOVER_MINUTES / max(1, _interval_minutes(interval))),
+    )
+    current_regular = _bars_for_session_day(current_bars, session_day=session_day, regular_only=True)
+    live_count = len(current_regular)
+    if live_count <= 0 or live_count >= threshold:
+        return {
+            "bars": list(current_regular or current_bars),
+            "opening_session_mode": False,
+            "live_session_bar_count": live_count,
+            "opening_threshold": threshold,
+            "carryover_bar_count": 0,
+            "visible_window_bars": len(current_regular or current_bars),
+            "right_offset_bars": OPENING_SESSION_RIGHT_OFFSET_BARS,
+        }
+
+    prior_session_day = _previous_trading_day(session_day)
+    prior_regular = _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=True)
+    carryover = prior_regular[-carryover_target:] if prior_regular else []
+    combined = [dict(bar) for bar in carryover] + [dict(bar) for bar in current_regular]
+    return {
+        "bars": combined,
+        "opening_session_mode": True,
+        "live_session_bar_count": live_count,
+        "opening_threshold": threshold,
+        "carryover_bar_count": len(carryover),
+        "visible_window_bars": max(len(combined), threshold + len(carryover) + OPENING_SESSION_RIGHT_OFFSET_BARS),
+        "right_offset_bars": OPENING_SESSION_RIGHT_OFFSET_BARS,
+    }
+
+
 def normalize_tradier_timesales(
     rows: List[Dict[str, Any]], *, interval: str = DEFAULT_INTERVAL, limit: int = DEFAULT_BARS_LIMIT
 ) -> List[Dict[str, Any]]:
@@ -112,7 +194,7 @@ def normalize_tradier_timesales(
     We floor timestamps to 5-minute buckets for a stable frontend contract.
     """
 
-    interval_minutes = 5 if str(interval or DEFAULT_INTERVAL).strip().lower() == "5min" else 1
+    interval_minutes = _interval_minutes(interval)
     bucketed: Dict[int, Dict[str, Any]] = {}
 
     for row in rows:
@@ -162,11 +244,38 @@ def get_intraday_bars(symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTE
     except Exception as exc:
         LOGGER.warning("hero chart intraday fetch failed for %s: %s", symbol, exc)
         rows = []
-    return {
-        "symbol": str(symbol or DEFAULT_SYMBOL).strip().upper() or DEFAULT_SYMBOL,
+    normalized_current = normalize_tradier_timesales(list(rows or []), interval=interval)
+    now_et = app_runtime.now_et()
+    symbol_name = str(symbol or DEFAULT_SYMBOL).strip().upper() or DEFAULT_SYMBOL
+    payload: Dict[str, Any] = {
+        "symbol": symbol_name,
         "interval": interval,
-        "bars": normalize_tradier_timesales(list(rows or []), interval=interval),
+        "bars": normalized_current,
+        "opening_session_mode": False,
+        "live_session_bar_count": 0,
+        "opening_threshold": OPENING_SESSION_BAR_THRESHOLD,
+        "carryover_bar_count": 0,
+        "visible_window_bars": len(normalized_current),
+        "right_offset_bars": OPENING_SESSION_RIGHT_OFFSET_BARS,
     }
+
+    if _session_phase(now_et) != "open" or not normalized_current:
+        return payload
+
+    try:
+        prior_rows = market_data_service.get_prior_session_intraday(symbol_name, anchor_session_day=now_et.date())
+    except Exception as exc:
+        LOGGER.warning("hero chart prior-session fetch failed for %s: %s", symbol_name, exc)
+        prior_rows = []
+    normalized_prior = normalize_tradier_timesales(list(prior_rows or []), interval=interval)
+    framing = _opening_session_carryover_bars(
+        current_bars=normalized_current,
+        prior_bars=normalized_prior,
+        session_day=now_et.date(),
+        interval=interval,
+    )
+    payload.update(framing)
+    return payload
 
 
 def get_live_quote(symbol: str = DEFAULT_SYMBOL) -> Dict[str, Any]:

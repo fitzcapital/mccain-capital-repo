@@ -22,6 +22,9 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
             "symbol": symbol,
             "interval": interval,
             "bars": [{"time": 1712601900, "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 1200}],
+            "opening_session_mode": True,
+            "live_session_bar_count": 2,
+            "opening_threshold": 10,
         },
     )
 
@@ -31,3 +34,5 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
     payload = response.get_json()
     assert payload["symbol"] == "SPX"
     assert payload["bars"][0]["close"] == 1.5
+    assert payload["opening_session_mode"] is True
+    assert payload["live_session_bar_count"] == 2

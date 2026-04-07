@@ -1,4 +1,11 @@
+from datetime import datetime
+from datetime import timedelta
+
 from mccain_capital.services import tradier_hero_chart_service as svc
+
+
+def _ts(year: int, month: int, day: int, hour: int, minute: int) -> int:
+    return int(datetime(year, month, day, hour, minute, tzinfo=svc.app_runtime.TZ).timestamp())
 
 
 def test_normalize_tradier_timesales_aggregates_to_five_minute_bars():
@@ -35,3 +42,56 @@ def test_derive_hero_state_below_put_wall_uses_next_put_wall():
     assert payload["state"] == "WAIT"
     assert payload["current_read"] == "Below Local Flip"
     assert payload["next_destination"] == "NPW 6,535"
+
+
+def test_opening_session_carryover_prepends_prior_session_context():
+    current_bars = [
+        {"time": _ts(2026, 4, 7, 9, 30), "open": 6600, "high": 6602, "low": 6598, "close": 6601, "volume": 1000},
+        {"time": _ts(2026, 4, 7, 9, 35), "open": 6601, "high": 6603, "low": 6600, "close": 6602, "volume": 1100},
+    ]
+    prior_bars = [
+        {"time": _ts(2026, 4, 6, 14, 30), "open": 6560, "high": 6561, "low": 6558, "close": 6559, "volume": 900},
+        {"time": _ts(2026, 4, 6, 14, 35), "open": 6559, "high": 6560, "low": 6557, "close": 6558, "volume": 850},
+    ]
+
+    payload = svc._opening_session_carryover_bars(
+        current_bars=current_bars,
+        prior_bars=prior_bars,
+        session_day=svc.date(2026, 4, 7),
+        interval="5min",
+    )
+
+    assert payload["opening_session_mode"] is True
+    assert payload["live_session_bar_count"] == 2
+    assert payload["carryover_bar_count"] == 2
+    assert len(payload["bars"]) == 4
+    assert payload["bars"][0]["time"] == prior_bars[0]["time"]
+    assert payload["bars"][-1]["time"] == current_bars[-1]["time"]
+
+
+def test_opening_session_carryover_disables_once_threshold_is_met():
+    current_bars = []
+    start = datetime(2026, 4, 7, 9, 30, tzinfo=svc.app_runtime.TZ)
+    for index in range(10):
+        current_bars.append(
+            {
+                "time": int((start + timedelta(minutes=index * 5)).timestamp()),
+                "open": 6600 + index,
+                "high": 6601 + index,
+                "low": 6599 + index,
+                "close": 6600.5 + index,
+                "volume": 1000,
+            }
+        )
+
+    payload = svc._opening_session_carryover_bars(
+        current_bars=current_bars,
+        prior_bars=[],
+        session_day=svc.date(2026, 4, 7),
+        interval="5min",
+    )
+
+    assert payload["opening_session_mode"] is False
+    assert payload["live_session_bar_count"] == 10
+    assert payload["carryover_bar_count"] == 0
+    assert len(payload["bars"]) == 10
