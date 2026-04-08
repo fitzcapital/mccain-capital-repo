@@ -230,7 +230,11 @@ def _merge_fast_prices(prices: Dict[str, Dict[str, Any]]) -> None:
             if symbol not in WATCHLIST or not isinstance(quote, dict):
                 continue
             prior = dict(cache_prices.get(symbol) or {})
-            merged = {**prior, **quote}
+            merged = dict(prior)
+            for key, value in quote.items():
+                if value is None and key in prior:
+                    continue
+                merged[key] = value
             cache_prices[symbol] = merged
             price = merged.get("price")
             if price is None:

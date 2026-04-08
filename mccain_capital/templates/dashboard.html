@@ -379,7 +379,7 @@
   <div class="dashboardStageColumn dashboardStageSide">
   <section class="dashboardStageSection dashboardStageMonitor">
     <div class="dashboardStepLabel">Monitor</div>
-	    <div class="card primaryCard stack12 dashboardCoreTapeCard"><div class="toolbar">
+	    <div class="card primaryCard dashboardTapeMonitor dashboardTapeWatchlist"><div class="toolbar">
       <div class="dashboardTapeHeader">
         <div class="dashboardTapeHeaderBrand">
           <div class="pill">Live Tape</div>
@@ -389,137 +389,73 @@
           <span class="tiny muted" id="dashboardTapeUpdatedAt">{{ dashboard_tape_updated_label or '—' }}</span>
         </div>
       </div>
-      <div class="statRow dashboardCoreTapeRow">
+      <div class="liveTapeWatchTableShell">
+        <div class="liveTapeWatchTable">
+        <div class="liveTapeWatchGridRow liveTapeWatchHeaderRow">
+          <div class="liveTapeWatchCell liveTapeWatchCell-icon" aria-hidden="true"></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-symbol">Symbol</div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-last">Price</div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-chgp">Chg%</div>
+        </div>
         {% set spx_state = (dashboard_spx.get('market_state') or 'Awaiting Feed') %}
         {% set spx_tone = 'live' if spx_state == 'Live' else 'delayed' if spx_state == 'Delayed' else 'missing' %}
-        {% set spx_fresh_full = dashboard_spx.get('freshness_label') or 'Waiting on data' %}
-        {% set spx_fresh_compact = (dashboard_spx.get('freshness_label_compact') or spx_fresh_full)|replace('Live · ', '')|replace('Delayed · ', '')|replace('Cached · ', '')|replace('Unavailable · ', '') %}
-        {% set spx_gap_full = dashboard_spx.get('overnight_gap_label') or '—' %}
-        {% set spx_gap_compact = dashboard_spx.get('overnight_gap_compact') or spx_gap_full %}
-        {% set spx_range_full = dashboard_spx.get('day_range') or '—' %}
-        {% set spx_range_compact = dashboard_spx.get('day_range_compact') or spx_range_full %}
-        {% set spx_range_parts = spx_range_compact.split('-', 1) if spx_range_compact and spx_range_compact != '—' and '-' in spx_range_compact else [] %}
-        {% set spx_change_points = dashboard_spx.get('change_points') %}
-        {% if spx_change_points is none %}
-          {% set spx_change_points = dashboard_spx.get('change') %}
-        {% endif %}
-        {% set spx_tone_value = spx_change_points if spx_change_points is not none else dashboard_spx.get('pct_change') %}
-        {% set spx_gap_points = dashboard_spx.get('overnight_gap_points') %}
-        {% if spx_gap_points is none %}
-          {% set spx_gap_points = dashboard_spx.get('overnight_gap_pct') %}
-        {% endif %}
-        {% set spx_dir = '↑' if spx_change_points is not none and spx_change_points > 0 else '↓' if spx_change_points is not none and spx_change_points < 0 else '→' %}
-        <article class="stat dashboardCoreTapeStat dashboardCoreTapeHero dashboardTapePremiumCard dashboardTapeSpx {% if spx_tone_value is not none and spx_tone_value > 0 %}glow-green{% elif spx_tone_value is not none and spx_tone_value < 0 %}glow-red{% endif %}" data-symbol="SPX">
-          <div class="dashboardTapeTopline">
-            <div class="dashboardTapeIdentity">
-              <div class="k">SPX cash</div>
-            </div>
-            <span class="tiny muted dashboardCoreTapeFreshness" title="{{ spx_fresh_full }}" data-role="freshness">{{ spx_fresh_compact }}</span>
+        {% set spx_change_points = dashboard_spx.get('change_points') if dashboard_spx.get('change_points') is not none else dashboard_spx.get('change') %}
+        {% set spx_prior_close = dashboard_spx.get('prior_close') %}
+        <button type="button" class="liveTapeWatchGridRow liveTapeWatchRow{% if spx_change_points is not none and spx_change_points > 0 %} is-up{% elif spx_change_points is not none and spx_change_points < 0 %} is-down{% else %} is-flat{% endif %}" data-watch-symbol="SPX" aria-expanded="false">
+          <div class="liveTapeWatchCell liveTapeWatchCell-icon"><span class="liveTapeWatchDot"></span></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-symbol"><span class="liveTapeWatchSymbol">SPX</span></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-last" data-role="last">{% if dashboard_spx.get('price') is not none %}{{ '%.2f'|format(dashboard_spx.get('price')) }}{% else %}loading...{% endif %}</div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-chgp" data-role="chgp">{% if dashboard_spx.get('pct_change') is not none %}{{ '%+.2f'|format(dashboard_spx.get('pct_change')) }}%{% else %}loading...{% endif %}</div>
+        </button>
+        <div class="liveTapeWatchDetail" data-detail-symbol="SPX" hidden>
+          <div class="liveTapeWatchDetailGrid">
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Chg</span><span class="liveTapeWatchDetailValue" data-role="detail-chg">{% if spx_change_points is not none %}{{ '%+.2f'|format(spx_change_points) }}{% else %}loading...{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{% if dashboard_spx.get('day_open') is not none %}{{ '%.2f'|format(dashboard_spx.get('day_open')) }}{% else %}—{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{% if spx_prior_close is not none %}{{ '%.2f'|format(spx_prior_close) }}{% else %}—{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Live</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ (dashboard_spx.get('freshness_label_compact') or '—')|replace('Live · ', '')|replace('Delayed · ', '')|replace('Unavailable · ', '') }}</span></div>
           </div>
-          <div class="dashboardTapePriceBlock">
-            <div class="dashboardTapeSparkBand">
-              <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_spx.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
-            </div>
-            <div class="v" data-role="price">
-              {% if dashboard_spx.get('price') is not none %}
-                {{ '%.2f'|format(dashboard_spx.get('price')) }}
-              {% else %}
-                —
-              {% endif %}
-            </div>
-            <div class="tiny dashboardTapeDelta" data-role="change-line">
-              <span class="dashboardTapeDeltaValue{% if spx_change_points is not none and spx_change_points > 0 %} is-up{% elif spx_change_points is not none and spx_change_points < 0 %} is-down{% endif %}">
-                {{ '%+.2f'|format(dashboard_spx.get('change_points')) if dashboard_spx.get('change_points') is not none else '—' }}
-              </span>
-              <span class="dashboardTapeDeltaPct{% if dashboard_spx.get('pct_change') is not none and dashboard_spx.get('pct_change') > 0 %} is-up{% elif dashboard_spx.get('pct_change') is not none and dashboard_spx.get('pct_change') < 0 %} is-down{% endif %}">
-                {{ '%+.2f'|format(dashboard_spx.get('pct_change')) if dashboard_spx.get('pct_change') is not none else '—' }}%
-              </span>
-              <span class="dashboardTapeDeltaArrow{% if spx_change_points is not none and spx_change_points > 0 %} is-up{% elif spx_change_points is not none and spx_change_points < 0 %} is-down{% endif %}">{{ spx_dir }}</span>
-            </div>
-          </div>
-          <div class="dashboardTapeContextBlock">
-            <div class="tiny dashboardTapeContextLine" data-role="context-primary">
-              {% if spx_range_full and spx_range_full != '—' %}Inside Range{% else %}At Flip{% endif %}
-            </div>
-            <div class="tiny dashboardTapeContextSubline" data-role="context-secondary">Balanced tape</div>
-          </div>
-          <div class="dashboardGapLine {% if spx_gap_points is not none and spx_gap_points > 0 %}is-positive{% elif spx_gap_points is not none and spx_gap_points < 0 %}is-negative{% endif %}">
-            <span class="trendChip">Gap</span>
-            <span class="tiny">Gap O/N: {{ spx_gap_compact }}</span>
-          </div>
-          <div class="dashboardTapeInfoRow">
-            <div class="tiny dashboardTapeInfoText" data-role="info-primary">
-              {% if spx_range_compact and spx_range_compact != '—' %}Range {{ spx_range_compact }} • Mid{% else %}Dist to Flip: 0 pts{% endif %}
-            </div>
-          </div>
-        </article>
-
+        </div>
         {% set vix_state = (dashboard_vix.get('market_state') or 'Awaiting Feed') %}
         {% set vix_tone = 'live' if vix_state == 'Live' else 'delayed' if vix_state == 'Delayed' else 'missing' %}
-        {% set vix_fresh_full = dashboard_vix.get('freshness_label') or 'Waiting on data' %}
-        {% set vix_fresh_compact = (dashboard_vix.get('freshness_label_compact') or vix_fresh_full)|replace('Live · ', '')|replace('Delayed · ', '')|replace('Cached · ', '')|replace('Unavailable · ', '') %}
-        {% set vix_gap_full = dashboard_vix.get('overnight_gap_label') or '—' %}
-        {% set vix_gap_compact = dashboard_vix.get('overnight_gap_compact') or vix_gap_full %}
-        {% set vix_range_full = dashboard_vix.get('day_range') or '—' %}
-        {% set vix_range_compact = dashboard_vix.get('day_range_compact') or vix_range_full %}
-        {% set vix_range_parts = vix_range_compact.split('-', 1) if vix_range_compact and vix_range_compact != '—' and '-' in vix_range_compact else [] %}
-        {% set vix_change_points = dashboard_vix.get('change_points') %}
-        {% if vix_change_points is none %}
-          {% set vix_change_points = dashboard_vix.get('change') %}
-        {% endif %}
-        {% set vix_tone_value = vix_change_points if vix_change_points is not none else dashboard_vix.get('pct_change') %}
-        {% set vix_gap_points = dashboard_vix.get('overnight_gap_points') %}
-        {% if vix_gap_points is none %}
-          {% set vix_gap_points = dashboard_vix.get('overnight_gap_pct') %}
-        {% endif %}
-        {% set vix_dir = '↑' if vix_change_points is not none and vix_change_points > 0 else '↓' if vix_change_points is not none and vix_change_points < 0 else '→' %}
-        <article class="stat dashboardCoreTapeStat dashboardCoreTapeHero dashboardTapePremiumCard dashboardTapeVix {% if vix_tone_value is not none and vix_tone_value > 0 %}glow-green{% elif vix_tone_value is not none and vix_tone_value < 0 %}glow-red{% endif %}" data-symbol="VIX">
-          <div class="dashboardTapeTopline">
-            <div class="dashboardTapeIdentity">
-              <div class="k">VIX pulse</div>
-            </div>
-            <span class="tiny muted dashboardCoreTapeFreshness" title="{{ vix_fresh_full }}" data-role="freshness">{{ vix_fresh_compact }}</span>
+        {% set vix_change_points = dashboard_vix.get('change_points') if dashboard_vix.get('change_points') is not none else dashboard_vix.get('change') %}
+        {% set vix_prior_close = dashboard_vix.get('prior_close') %}
+        <button type="button" class="liveTapeWatchGridRow liveTapeWatchRow{% if vix_change_points is not none and vix_change_points > 0 %} is-up{% elif vix_change_points is not none and vix_change_points < 0 %} is-down{% else %} is-flat{% endif %}" data-watch-symbol="VIX" aria-expanded="false">
+          <div class="liveTapeWatchCell liveTapeWatchCell-icon"><span class="liveTapeWatchDot"></span></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-symbol"><span class="liveTapeWatchSymbol">VIX</span></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-last" data-role="last">{% if dashboard_vix.get('price') is not none %}{{ '%.2f'|format(dashboard_vix.get('price')) }}{% else %}loading...{% endif %}</div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-chgp" data-role="chgp">{% if dashboard_vix.get('pct_change') is not none %}{{ '%+.2f'|format(dashboard_vix.get('pct_change')) }}%{% else %}loading...{% endif %}</div>
+        </button>
+        <div class="liveTapeWatchDetail" data-detail-symbol="VIX" hidden>
+          <div class="liveTapeWatchDetailGrid">
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Chg</span><span class="liveTapeWatchDetailValue" data-role="detail-chg">{% if vix_change_points is not none %}{{ '%+.2f'|format(vix_change_points) }}{% else %}loading...{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{% if dashboard_vix.get('day_open') is not none %}{{ '%.2f'|format(dashboard_vix.get('day_open')) }}{% else %}—{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{% if vix_prior_close is not none %}{{ '%.2f'|format(vix_prior_close) }}{% else %}—{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Live</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ (dashboard_vix.get('freshness_label_compact') or '—')|replace('Live · ', '')|replace('Delayed · ', '')|replace('Unavailable · ', '') }}</span></div>
           </div>
-          <div class="dashboardTapePriceBlock">
-            <div class="dashboardTapeSparkBand">
-              <div class="marketMiniSparkWrap" data-role="sparkline">{{ dashboard_vix.get('sparkline_svg', '<div class="marketMiniSparkEmpty">No trend</div>')|safe }}</div>
-            </div>
-            <div class="v" data-role="price">
-              {% if dashboard_vix.get('price') is not none %}
-                {{ '%.2f'|format(dashboard_vix.get('price')) }}
-              {% else %}
-                —
-              {% endif %}
-            </div>
-            <div class="tiny dashboardTapeDelta" data-role="change-line">
-              <span class="dashboardTapeDeltaValue{% if vix_change_points is not none and vix_change_points > 0 %} is-up{% elif vix_change_points is not none and vix_change_points < 0 %} is-down{% endif %}">
-                {{ '%+.2f'|format(dashboard_vix.get('change_points')) if dashboard_vix.get('change_points') is not none else '—' }}
-              </span>
-              <span class="dashboardTapeDeltaPct{% if dashboard_vix.get('pct_change') is not none and dashboard_vix.get('pct_change') > 0 %} is-up{% elif dashboard_vix.get('pct_change') is not none and dashboard_vix.get('pct_change') < 0 %} is-down{% endif %}">
-                {{ '%+.2f'|format(dashboard_vix.get('pct_change')) if dashboard_vix.get('pct_change') is not none else '—' }}%
-              </span>
-              <span class="dashboardTapeDeltaArrow{% if vix_change_points is not none and vix_change_points > 0 %} is-up{% elif vix_change_points is not none and vix_change_points < 0 %} is-down{% endif %}">{{ vix_dir }}</span>
-            </div>
+        </div>
+        {% for symbol in ['QQQ', 'IWM', 'AAPL', 'TSLA'] %}
+        {% set tape_quote = dashboard_tape_quotes.get(symbol) or {} %}
+        {% set tape_state = (tape_quote.get('market_state') or 'Awaiting Feed') %}
+        {% set tape_tone = 'live' if tape_state == 'Live' else 'delayed' if tape_state == 'Delayed' else 'missing' %}
+        {% set tape_change_points = tape_quote.get('change_points') if tape_quote.get('change_points') is not none else tape_quote.get('change') %}
+        {% set tape_prior_close = tape_quote.get('prior_close') %}
+        <button type="button" class="liveTapeWatchGridRow liveTapeWatchRow{% if tape_change_points is not none and tape_change_points > 0 %} is-up{% elif tape_change_points is not none and tape_change_points < 0 %} is-down{% else %} is-flat{% endif %}" data-watch-symbol="{{ symbol }}" aria-expanded="false">
+          <div class="liveTapeWatchCell liveTapeWatchCell-icon"><span class="liveTapeWatchDot"></span></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-symbol"><span class="liveTapeWatchSymbol">{{ symbol }}</span></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-last" data-role="last">{% if tape_quote.get('price') is not none %}{{ '%.2f'|format(tape_quote.get('price')) }}{% else %}loading...{% endif %}</div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-chgp" data-role="chgp">{% if tape_quote.get('pct_change') is not none %}{{ '%+.2f'|format(tape_quote.get('pct_change')) }}%{% else %}loading...{% endif %}</div>
+        </button>
+        <div class="liveTapeWatchDetail" data-detail-symbol="{{ symbol }}" hidden>
+          <div class="liveTapeWatchDetailGrid">
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Chg</span><span class="liveTapeWatchDetailValue" data-role="detail-chg">{% if tape_change_points is not none %}{{ '%+.2f'|format(tape_change_points) }}{% else %}loading...{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{% if tape_quote.get('day_open') is not none %}{{ '%.2f'|format(tape_quote.get('day_open')) }}{% else %}—{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{% if tape_prior_close is not none %}{{ '%.2f'|format(tape_prior_close) }}{% else %}—{% endif %}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Live</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ (tape_quote.get('freshness_label_compact') or '—')|replace('Live · ', '')|replace('Delayed · ', '')|replace('Unavailable · ', '') }}</span></div>
           </div>
-          <div class="dashboardTapeContextBlock">
-            <div class="tiny dashboardTapeContextLine" data-role="context-primary">
-              {% if vix_change_points is not none and vix_change_points > 0 %}Firming{% elif vix_change_points is not none and vix_change_points < 0 %}Falling{% else %}Compressed{% endif %}
-            </div>
-            <div class="tiny dashboardTapeContextSubline" data-role="context-secondary">
-              {% if vix_change_points is not none and vix_change_points > 0 %}Risk firming{% elif vix_change_points is not none and vix_change_points < 0 %}Risk easing{% else %}Stable{% endif %}
-            </div>
-          </div>
-          <div class="dashboardGapLine {% if vix_gap_points is not none and vix_gap_points > 0 %}is-positive{% elif vix_gap_points is not none and vix_gap_points < 0 %}is-negative{% endif %}">
-            <span class="trendChip">Gap</span>
-            <span class="tiny">Gap O/N: {{ vix_gap_compact }}</span>
-          </div>
-          <div class="dashboardTapeInfoRow">
-            <div class="tiny dashboardTapeInfoText" data-role="info-primary">
-              {% if vix_range_compact and vix_range_compact != '—' %}Range {{ vix_range_compact }}{% else %}Intraday tone: stable{% endif %}
-            </div>
-          </div>
-        </article>
-	      </div>
+        </div>
+        {% endfor %}
+        </div>
+      </div>
 	    </div></div>
   </section>
 
@@ -551,23 +487,23 @@
 	        <span class="dashboardFoldTitle">Session Support &amp; Health</span>
 	        <span class="tiny muted">Open for milestone, pacing, balance, and data trust.</span>
 	      </summary>
-	      <div class="dashboardFoldBody">
+	      <div class="dashboardFoldBody dashboardHealthGrid session-health-grid">
 	        {% set milestone_pct = '%.1f'|format(milestone.overall_progress_pct) %}
 	        {% set milestone_balance_remaining = (milestone.target_balance|float - overall_balance|float) if milestone.has_balance_goal else 0 %}
-	        <div class="card primaryCard milestoneCard mobileKeep dashboardMilestoneCard"><div class="toolbar">
+	        <div class="card primaryCard milestoneCard mobileKeep dashboardMilestoneCard dashboardHealthMilestone"><div class="toolbar">
 	          <div class="dashboardMilestoneTop">
 	            <div class="dashboardMilestoneHead">
 	              <div class="pill">Profit Milestone</div>
 	              <div class="supportLead">{{ milestone.name }}</div>
 	            </div>
-	            <div class="dashboardMilestoneMission">
+	            <div class="dashboardMilestoneMission profit-milestone-body">
 	              <div class="dashboardMilestoneRing" style="--milestone-pct: {{ milestone_pct }}%">
 	                <div class="dashboardMilestoneRingInner">
 	                  <strong>{{ milestone_pct }}%</strong>
 	                  <span>Complete</span>
 	                </div>
 	              </div>
-	              <div class="dashboardMilestoneProgressBlock">
+	              <div class="dashboardMilestoneProgressBlock profit-details">
 	                <div class="dashboardMilestonePrimary">{{ milestone_pct }}% complete</div>
 	                <div class="dashboardMilestoneSecondary">
 	                  {% if milestone.has_profit_goal %}
@@ -599,7 +535,7 @@
 	              </div>
 	            </div>
 	          </div>
-	          <div class="dashboardMilestoneBottom">
+	          <div class="dashboardMilestoneBottom profit-footer">
 	            <div class="dashboardMilestoneMeta">
 	              <div class="dashboardMilestoneMetaItem">
 	                <span>Pace</span>
@@ -670,7 +606,7 @@
         {% set risk_meta = 'Clean only' if 'Wait' in risk_posture_title else 'Reduce' if 'Protect' in risk_posture_title else 'Attack' %}
         {% set pattern_meta = 'No breaks' if pattern_short == 'CLEAR' else 'Watch tag' %}
         {% set pattern_detail_title = pattern_watch if 'Most common breach' in pattern_watch else 'No recurring rule-break tag' %}
-        <div class="dashboardStatusOrbitRow" role="tablist" aria-label="Session status indicators">
+        <div class="dashboardStatusOrbitRow dashboardHealthKpiStrip" role="tablist" aria-label="Session status indicators">
           <button
             type="button"
             class="dashboardStatusOrb is-{{ today_net_tone }}"
@@ -813,7 +749,7 @@
           </button>
         </div>
 
-        <div class="dashboardStatusDetailCard" id="dashboardStatusDetailCard" role="tabpanel" aria-labelledby="dashboardStatusTab-risk" tabindex="0" aria-live="polite">
+        <div class="dashboardStatusDetailCard dashboardHealthRiskCard" id="dashboardStatusDetailCard" role="tabpanel" aria-labelledby="dashboardStatusTab-risk" tabindex="0" aria-live="polite">
           <div class="dashboardStatusDetailSection" id="dashboardStatusDetailSection">Risk Posture</div>
           <div class="dashboardStatusDetailTitle" id="dashboardStatusDetailTitle">{{ risk_posture_title }}</div>
           <div class="dashboardStatusDetailPrimary" id="dashboardStatusDetailPrimary">Today {{ today_wins }}W / {{ today_losses }}L</div>
@@ -828,7 +764,7 @@
           </div>
         </div>
 
-	        <details class="syncDetails dataTrustDetails"{% if badge_meta.critical %} open{% endif %}>
+	        <details class="syncDetails dataTrustDetails dashboardHealthTrustCard"{% if badge_meta.critical %} open{% endif %}>
 	          <summary>
 	            <span class="dataTrustTitle">Data Trust &amp; Sync</span>
 	            <span class="dataTrustSummary">
@@ -851,7 +787,7 @@
 	          </div>
 	        </details>
 
-	        <div class="showcaseGrid">
+	        <div class="showcaseGrid dashboardHealthBottomRow">
 	          <div class="showcaseCard">
 	            <div class="showcaseHead">
 	              <div class="showcaseTitle">
@@ -1075,7 +1011,7 @@
 {% if performance_actual_pct > 100 %}{% set performance_actual_pct = 100 %}{% endif %}
 
 <div class="dashboardStepLabel">Project</div>
-<div class="dashboardAnalyticsCluster">
+<div class="dashboardAnalyticsCluster dashboardProjectGrid">
   <div class="card primaryCard summaryPanel dashboardAnalyticsPrimary"><div class="toolbar">
     <div class="calendarHead">
       <div>

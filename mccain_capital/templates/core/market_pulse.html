@@ -124,7 +124,7 @@
           <span class="trendChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateContext">{{ playbook.status or 'WAIT' }}</span>
         </div>
         <div class="marketPulseExecutionHeroMetrics">
-          <div class="marketPulseExecutionHeroMetric is-spot">
+          <div class="marketPulseExecutionHeroMetric is-spot" id="marketPulseHeroSpotCard">
             <span class="tiny muted">SPX Spot</span>
             <strong id="marketPulseHeroSpot">{{ spx_price_label }}</strong>
           </div>
@@ -153,7 +153,7 @@
 
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-rail" aria-label="Execution rail">
         <div class="marketPulseExecutionHeroSectionHead">
-          <span class="tiny muted">SPX Hero Chart</span>
+          <span class="tiny muted">SPX Hero Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
           <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ location.read or 'Local Flip is the intraday decision line.' }}</span>
         </div>
         <div class="marketPulseExecutionHeroChartShell">

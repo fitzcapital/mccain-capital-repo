@@ -42,13 +42,21 @@
 })();
 
 (function () {
-  const cards = Array.from(document.querySelectorAll(".dashboardCoreTapeStat[data-symbol]"));
+  const rows = Array.from(document.querySelectorAll(".liveTapeWatchRow[data-watch-symbol]"));
+  const detailPanels = new Map(
+    Array.from(document.querySelectorAll(".liveTapeWatchDetail[data-detail-symbol]")).map((node) => [
+      String(node.dataset.detailSymbol || "").toUpperCase(),
+      node,
+    ])
+  );
   const statusNode = document.getElementById("dashboardTapeStreamStatus");
   const updatedNode = document.getElementById("dashboardTapeUpdatedAt");
   const gammaStrip = document.getElementById("dashboardGammaStrip");
   const gammaMeta = document.getElementById("dashboardGammaMeta");
-  if (!cards.length || !statusNode || !updatedNode) return;
+  if (!rows.length || !statusNode || !updatedNode) return;
+
   let freshTimer = null;
+  let openSymbol = "";
 
   const asNum = (value) => {
     if (value === null || value === undefined) return null;
@@ -62,6 +70,21 @@
     return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}`;
   };
 
+  const formatValue = (value, digits = 2) => {
+    const n = asNum(value);
+    if (n === null) return "—";
+    return n.toLocaleString("en-US", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  };
+
+  const hasMeaningfulText = (node) => {
+    if (!node) return false;
+    const text = String(node.textContent || "").trim().toLowerCase();
+    return Boolean(text) && text !== "loading..." && text !== "—" && text !== "--";
+  };
+
   const inferAbsoluteChange = (price, pctChange) => {
     const p = asNum(price);
     const pct = asNum(pctChange);
@@ -69,6 +92,16 @@
     const prior = p / (1 + (pct / 100));
     if (!Number.isFinite(prior)) return null;
     return p - prior;
+  };
+
+  const inferPreviousClose = (quote) => {
+    const explicit = asNum((quote || {}).prev_close ?? (quote || {}).prior_close ?? (quote || {}).previous_close);
+    if (explicit !== null) return explicit;
+    const price = asNum((quote || {}).price);
+    const pct = asNum((quote || {}).pct_change);
+    if (price === null || pct === null || Math.abs(100.0 + pct) < 1e-9) return null;
+    const prior = price / (1 + (pct / 100.0));
+    return Number.isFinite(prior) ? prior : null;
   };
 
   const formatClock = (iso) => {
@@ -92,95 +125,6 @@
       full: `${state} · ${ageS.toFixed(1)}s old`,
       compact,
     };
-  };
-
-  let sparklineId = 0;
-
-  const buildSmoothPath = (coords) => {
-    if (!coords.length) return "";
-    if (coords.length === 1) return `M ${coords[0][0].toFixed(2)} ${coords[0][1].toFixed(2)}`;
-    let path = `M ${coords[0][0].toFixed(2)} ${coords[0][1].toFixed(2)}`;
-    for (let index = 0; index < coords.length - 1; index += 1) {
-      const current = coords[index];
-      const next = coords[index + 1];
-      const midpointX = (current[0] + next[0]) / 2;
-      path += ` Q ${current[0].toFixed(2)} ${current[1].toFixed(2)} ${midpointX.toFixed(2)} ${((current[1] + next[1]) / 2).toFixed(2)}`;
-    }
-    const last = coords[coords.length - 1];
-    path += ` T ${last[0].toFixed(2)} ${last[1].toFixed(2)}`;
-    return path;
-  };
-
-  const buildSparkline = (points, tone, state, options = {}) => {
-    const values = (Array.isArray(points) ? points : [])
-      .map((row) => (row && typeof row === "object" ? asNum(row.v) : null))
-      .filter((value) => value !== null)
-      .slice(-20);
-    const sparkId = `spark-${sparklineId += 1}`;
-    const toneColor = tone === "up" ? "#62efbf" : tone === "down" ? "#ff8e98" : "#b5c5d9";
-    const profile = String(options.profile || "normal");
-    const symbolClass = String(options.symbol || "").toLowerCase() === "spx" ? "symbol-spx" : "symbol-vix";
-    const isLive = state === "Live";
-    const isDelayed = state === "Delayed";
-    const verticalBias = profile === "compressed" ? 0.58 : profile === "directional" ? 1.18 : 0.92;
-    if (values.length < 2) {
-      const coords = [[0, 14], [120, 14]];
-      const path = buildSmoothPath(coords);
-      return `<svg viewBox="0 0 120 28" class="marketMiniSpark ${symbolClass} is-${stateClass(state)}" aria-hidden="true">
-        <defs>
-          <linearGradient id="${sparkId}-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="${toneColor}" stop-opacity=".18" />
-            <stop offset="100%" stop-color="${toneColor}" stop-opacity=".92" />
-          </linearGradient>
-          <linearGradient id="${sparkId}-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="${toneColor}" stop-opacity=".10" />
-            <stop offset="100%" stop-color="${toneColor}" stop-opacity="0" />
-          </linearGradient>
-        </defs>
-        <path class="marketMiniSparkArea flat" d="${path} L 120 28 L 0 28 Z" fill="url(#${sparkId}-fill)" />
-        <path class="marketMiniSparkLine flat" d="${path}" stroke="url(#${sparkId}-stroke)" />
-        <circle class="marketMiniSparkEnd flat" cx="120" cy="14" r="2.1" />
-      </svg>`;
-    }
-    const width = 120;
-    const height = 28;
-    let minV = Math.min(...values);
-    let maxV = Math.max(...values);
-    if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
-    const pad = (maxV - minV) * 0.12;
-    minV -= pad;
-    maxV += pad;
-    const step = width / Math.max(values.length - 1, 1);
-    const coords = values.map((value, index) => {
-      const x = index * step;
-      const normalized = ((maxV - value) / (maxV - minV));
-      const centered = ((normalized - 0.5) * verticalBias) + 0.5;
-      const bounded = Math.max(0.06, Math.min(0.94, centered));
-      const y = bounded * (height - 4) + 2;
-      return [x, y];
-    });
-    const path = buildSmoothPath(coords);
-    const lineEnd = coords[coords.length - 1];
-    const areaPath = `${path} L 120 28 L 0 28 Z`;
-    const gradientStartOpacity = isLive ? ".22" : isDelayed ? ".12" : ".10";
-    const gradientEndOpacity = isLive ? ".98" : isDelayed ? ".64" : ".52";
-    const fillOpacity = isLive ? ".14" : isDelayed ? ".08" : ".06";
-    return `<svg viewBox="0 0 120 28" class="marketMiniSpark ${symbolClass} is-${stateClass(state)}" aria-hidden="true">
-      <defs>
-        <linearGradient id="${sparkId}-stroke" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="${toneColor}" stop-opacity="${gradientStartOpacity}" />
-          <stop offset="65%" stop-color="${toneColor}" stop-opacity="${Math.max(0.35, Number(gradientEndOpacity) - 0.22)}" />
-          <stop offset="100%" stop-color="${toneColor}" stop-opacity="${gradientEndOpacity}" />
-        </linearGradient>
-        <linearGradient id="${sparkId}-fill" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="${toneColor}" stop-opacity="${fillOpacity}" />
-          <stop offset="100%" stop-color="${toneColor}" stop-opacity="0" />
-        </linearGradient>
-      </defs>
-      <path class="marketMiniSparkArea ${tone}" d="${areaPath}" fill="url(#${sparkId}-fill)" />
-      <path class="marketMiniSparkLine ${tone}" d="${path}" stroke="url(#${sparkId}-stroke)" />
-      <circle class="marketMiniSparkEnd ${tone}" cx="${lineEnd[0].toFixed(2)}" cy="${lineEnd[1].toFixed(2)}" r="2.1" />
-    </svg>`;
   };
 
   const deriveState = (quote) => {
@@ -208,134 +152,82 @@
     return "missing";
   };
 
-  const updateCard = (card, quote, points) => {
+  const setExpandedSymbol = (symbol) => {
+    openSymbol = String(symbol || "").toUpperCase();
+    rows.forEach((row) => {
+      const rowSymbol = String(row.dataset.watchSymbol || "").toUpperCase();
+      const isOpen = rowSymbol === openSymbol;
+      row.setAttribute("aria-expanded", String(isOpen));
+      detailPanels.get(rowSymbol)?.toggleAttribute("hidden", !isOpen);
+    });
+  };
+
+  rows.forEach((row) => {
+    row.addEventListener("click", () => {
+      const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
+      setExpandedSymbol(symbol === openSymbol ? "" : symbol);
+    });
+  });
+
+  const updateRow = (row, quote, points) => {
+    const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
+    const detailNode = detailPanels.get(symbol);
     const price = asNum((quote || {}).price);
     const pct = asNum((quote || {}).pct_change);
-    const tone = pct === null ? "flat" : pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+    const absChange = inferAbsoluteChange(price, pct);
     const state = deriveState(quote);
-    const freshnessNode = card.querySelector('[data-role="freshness"]');
-    const priceNode = card.querySelector('[data-role="price"]');
-    const changeNode = card.querySelector('[data-role="change-line"]');
-    const sparkNode = card.querySelector('[data-role="sparkline"]');
-    const contextPrimaryNode = card.querySelector('[data-role="context-primary"]');
-    const contextSecondaryNode = card.querySelector('[data-role="context-secondary"]');
-    const infoPrimaryNode = card.querySelector('[data-role="info-primary"]');
-    const asOf = String((quote || {}).as_of || "").trim();
-    const freshness = formatFreshness(asOf, state);
-    const values = (Array.isArray(points) ? points : [])
-      .map((row) => (row && typeof row === "object" ? asNum(row.v) : null))
-      .filter((value) => value !== null);
-    const low = values.length ? Math.min(...values) : null;
-    const high = values.length ? Math.max(...values) : null;
-    const range = low !== null && high !== null ? high - low : null;
-    const pctOfRange = (price !== null && low !== null && high !== null && range && range > 0)
-      ? (price - low) / range
-      : null;
-    const formatRange = (lo, hi) => {
-      if (lo === null || hi === null) return "Range —";
-      return `Range ${lo.toFixed(2)}–${hi.toFixed(2)}`;
-    };
-    const parseLevel = (value) => {
-      if (value === null || value === undefined) return null;
-      const cleaned = String(value).replace(/[^0-9.-]/g, "");
-      return asNum(cleaned);
-    };
-    const mainFlip = parseLevel(document.getElementById("dashboardGammaValue-main_flip")?.textContent || "");
-    const arrow = pct === null ? "→" : pct > 0 ? "↑" : pct < 0 ? "↓" : "→";
-    const changeClass = pct === null ? "is-flat" : pct > 0 ? "is-up" : pct < 0 ? "is-down" : "is-flat";
-    const symbol = String(card.dataset.symbol || "").toUpperCase();
-    const positionLabel = (() => {
-      if (pctOfRange === null) return "Inside Range";
-      if (pctOfRange >= 0.8) return "Near High";
-      if (pctOfRange <= 0.2) return "Near Low";
-      return "Mid";
-    })();
-    const spxContextPrimary = (() => {
-      if (price !== null && mainFlip !== null) {
-        const diff = price - mainFlip;
-        if (Math.abs(diff) <= 2) return "At Flip";
-        return `${diff > 0 ? "Above" : "Below"} Flip ${diff > 0 ? "+" : ""}${diff.toFixed(0)} pts`;
+    const lastNode = row.querySelector('[data-role="last"]');
+    const chgpNode = row.querySelector('[data-role="chgp"]');
+    const detailChgNode = detailNode?.querySelector('[data-role="detail-chg"]');
+    const detailOpenNode = detailNode?.querySelector('[data-role="detail-open"]');
+    const detailPrevNode = detailNode?.querySelector('[data-role="detail-prev"]');
+    const detailLiveNode = detailNode?.querySelector('[data-role="detail-live"]');
+    const openValue = asNum((quote || {}).day_open ?? (quote || {}).open);
+    const prevCloseValue = inferPreviousClose(quote);
+    const freshness = formatFreshness((quote || {}).as_of, state);
+    const hasSeededRowValues = (
+      price === null
+      && !String((quote || {}).as_of || "").trim()
+      && !String((quote || {}).provider || "").trim()
+      && (
+        hasMeaningfulText(lastNode)
+        || hasMeaningfulText(chgpNode)
+      )
+    );
+
+    if (hasSeededRowValues) {
+      return;
+    }
+
+    if (lastNode) {
+      if (price !== null) {
+        lastNode.textContent = formatValue(price, 2);
+      } else if (!hasMeaningfulText(lastNode)) {
+        lastNode.textContent = "loading...";
       }
-      if (pctOfRange >= 0.8) return "Near Session High";
-      if (pctOfRange <= 0.2) return "Near Session Low";
-      return "Inside Range";
-    })();
-    const spxContextSecondary = (() => {
-      if (state !== "Live") return "Last session";
-      if (price !== null && mainFlip !== null && pct !== null) {
-        if (Math.abs(pct) < 0.05) return "Balanced tape";
-        if (price >= mainFlip && pct > 0) return "Acceptance";
-        if (price >= mainFlip && pct < 0) return "Rejection";
-        if (price < mainFlip && pct < 0) return "Weak structure";
-        if (price < mainFlip && pct > 0) return "Rejection";
-      }
-      if (pct !== null && Math.abs(pct) >= 0.3) return "Expansion building";
-      return "Balanced tape";
-    })();
-    const vixContextPrimary = (() => {
+    }
+    if (chgpNode) {
       if (pct !== null) {
-        if (pct <= -1) return "Falling";
-        if (pct < 0) return "Compressed";
-        if (pct >= 1) return "Firming";
-        if (pct > 0) return "Elevated";
-      }
-      if (pctOfRange !== null && pctOfRange >= 0.75) return "Elevated";
-      return "Compressed";
-    })();
-    const vixContextSecondary = (() => {
-      if (state !== "Live") return "Last session";
-      if (pct !== null) {
-        if (pct <= -1) return "Risk easing";
-        if (pct < 0) return "Stable";
-        if (pct >= 1) return "Expansion";
-        if (pct > 0) return "Risk firming";
-      }
-      return "Stable";
-    })();
-    if (freshnessNode) {
-      freshnessNode.textContent = freshness.compact;
-      freshnessNode.setAttribute("title", freshness.full);
-    }
-    if (priceNode) {
-      priceNode.textContent = price === null ? "—" : price.toFixed(2);
-    }
-    if (changeNode) {
-      changeNode.innerHTML = `
-        <span class="dashboardTapeDeltaValue ${changeClass}">${formatSigned(inferAbsoluteChange(price, pct), 2)}</span>
-        <span class="dashboardTapeDeltaPct ${changeClass}">${formatSigned(pct, 2)}%</span>
-        <span class="dashboardTapeDeltaArrow ${changeClass}">${arrow}</span>
-      `;
-    }
-    if (sparkNode) {
-      const profile = symbol === "VIX"
-        ? (state !== "Live" ? "compressed" : (vixContextPrimary === "Compressed" || vixContextSecondary === "Stable" ? "compressed" : (vixContextPrimary === "Firming" || vixContextSecondary === "Expansion" ? "directional" : "normal")))
-        : (state !== "Live" ? "compressed" : (spxContextPrimary === "At Flip" || spxContextSecondary === "Balanced tape" ? "compressed" : (spxContextSecondary === "Acceptance" || spxContextSecondary === "Expansion building" || spxContextSecondary === "Weak structure" ? "directional" : "normal")));
-      sparkNode.innerHTML = buildSparkline(points, tone, state, { profile, symbol });
-    }
-    if (contextPrimaryNode) {
-      contextPrimaryNode.textContent = symbol === "VIX" ? vixContextPrimary : spxContextPrimary;
-    }
-    if (contextSecondaryNode) {
-      contextSecondaryNode.textContent = symbol === "VIX" ? vixContextSecondary : spxContextSecondary;
-    }
-    if (infoPrimaryNode) {
-      if (symbol === "VIX") {
-        infoPrimaryNode.textContent = low !== null && high !== null
-          ? `${formatRange(low, high)}`
-          : `Intraday tone: ${vixContextSecondary.toLowerCase()}`;
-      } else if (mainFlip !== null && price !== null) {
-        const diff = price - mainFlip;
-        infoPrimaryNode.textContent = `Dist to Flip: ${diff > 0 ? "+" : ""}${diff.toFixed(0)} pts`;
-      } else if (low !== null && high !== null) {
-        infoPrimaryNode.textContent = `${formatRange(low, high)} • ${positionLabel}`;
-      } else {
-        infoPrimaryNode.textContent = positionLabel;
+        chgpNode.textContent = `${formatSigned(pct, 2)}%`;
+      } else if (!hasMeaningfulText(chgpNode)) {
+        chgpNode.textContent = "loading...";
       }
     }
-    card.classList.toggle("glow-green", (pct || 0) > 0);
-    card.classList.toggle("glow-red", (pct || 0) < 0);
-    card.classList.remove("is-live", "is-delayed", "is-missing");
-    card.classList.add(`is-${stateClass(state)}`);
+
+    row.classList.remove("is-up", "is-down", "is-flat", "is-live", "is-delayed", "is-missing");
+    row.classList.add(`is-${stateClass(state)}`);
+    row.classList.add(pct > 0 ? "is-up" : pct < 0 ? "is-down" : "is-flat");
+
+    if (detailChgNode) {
+      if (absChange !== null) {
+        detailChgNode.textContent = formatSigned(absChange, 2);
+      } else if (!hasMeaningfulText(detailChgNode)) {
+        detailChgNode.textContent = "loading...";
+      }
+    }
+    if (detailOpenNode && openValue !== null) detailOpenNode.textContent = formatValue(openValue, 2);
+    if (detailPrevNode && prevCloseValue !== null) detailPrevNode.textContent = formatValue(prevCloseValue, 2);
+    if (detailLiveNode && String((quote || {}).as_of || "").trim()) detailLiveNode.textContent = freshness.compact;
   };
 
   const setStreamStatus = (label, detail) => {
@@ -400,12 +292,12 @@
       const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
       const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
       updateGammaStrip(payload && typeof payload === "object" ? payload.dashboard_gamma : null);
-      cards.forEach((card) => {
-        const symbol = String(card.dataset.symbol || "").toUpperCase();
-        updateCard(card, prices[symbol] || {}, seriesPoints[symbol] || []);
+      rows.forEach((row) => {
+        const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
+        updateRow(row, prices[symbol] || {}, seriesPoints[symbol] || []);
       });
-      const liveCards = cards.filter((card) => card.classList.contains("is-live")).length;
-      const delayedCards = cards.filter((card) => card.classList.contains("is-delayed")).length;
+      const liveCards = rows.filter((row) => row.classList.contains("is-live")).length;
+      const delayedCards = rows.filter((row) => row.classList.contains("is-delayed")).length;
       document.dispatchEvent(new CustomEvent("dashboard:tape-state", {
         detail: {
           hasLive: liveCards > 0,

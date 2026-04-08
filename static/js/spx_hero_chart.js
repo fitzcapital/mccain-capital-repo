@@ -59,7 +59,7 @@
     labelGreenBg: "#218A5A",
     labelGreenText: "#EAF2FF",
   };
-  const DEFAULT_VISIBLE_BARS = 140;
+  const DEFAULT_VISIBLE_BARS = 42;
   const LEFT_SCROLL_BUFFER_BARS = 18;
   const DEFAULT_RIGHT_OFFSET_BARS = 10;
 
@@ -179,6 +179,25 @@
   const setText = (id, value) => {
     const node = document.getElementById(id);
     if (node) node.textContent = String(value ?? "");
+  };
+
+  const setSpotTrendTone = (trend) => {
+    const node = document.getElementById("marketPulseHeroSpotCard");
+    if (!node) return;
+    node.classList.remove("is-trend-up", "is-trend-down");
+    if (trend === "up") node.classList.add("is-trend-up");
+    if (trend === "down") node.classList.add("is-trend-down");
+  };
+
+  const detectShortTermTrend = (bars) => {
+    if (!Array.isArray(bars) || bars.length < 4) return "neutral";
+    const lastClose = asNum(bars[bars.length - 1]?.close);
+    const anchorClose = asNum(bars[Math.max(0, bars.length - 4)]?.close);
+    if (lastClose === null || anchorClose === null) return "neutral";
+    const delta = lastClose - anchorClose;
+    if (delta >= 1.25) return "up";
+    if (delta <= -1.25) return "down";
+    return "neutral";
   };
 
   const toneClass = (state) => {
@@ -329,7 +348,7 @@
     if (fitContent || !initialized) {
       const visibleBars = Math.max(
         Math.min(bars.length + LEFT_SCROLL_BUFFER_BARS, DEFAULT_VISIBLE_BARS),
-        Math.min(bars.length, 90),
+        Math.min(bars.length, 30),
       );
       chart.timeScale().setVisibleLogicalRange({
         from: Math.max(-LEFT_SCROLL_BUFFER_BARS, bars.length - visibleBars - LEFT_SCROLL_BUFFER_BARS),
@@ -529,6 +548,7 @@
 
     candleSeries.setData(candles);
     volumeSeries.setData(volume);
+    setSpotTrendTone(detectShortTermTrend(candles));
     lastBarsPayload = {
       ...payload,
       bars: candles,

@@ -673,6 +673,31 @@ def _yf_watch_quote(symbol: str) -> Dict[str, Any]:
     }
 
 
+def _intraday_quote_fallback(symbol: str) -> Dict[str, Any]:
+    rows = get_intraday(symbol)
+    if not rows:
+        return {}
+    latest = rows[-1] if isinstance(rows[-1], dict) else {}
+    latest_close = _safe_float(latest.get("close"))
+    latest_ts = str(latest.get("ts") or _now_iso())
+    prev_close = None
+    prior_rows = get_prior_session_intraday(symbol)
+    if prior_rows:
+        prior_last = prior_rows[-1] if isinstance(prior_rows[-1], dict) else {}
+        prev_close = _safe_float(prior_last.get("close"))
+    pct = None
+    if latest_close is not None and prev_close is not None and prev_close > 0:
+        pct = ((latest_close - prev_close) / prev_close) * 100.0
+    return {
+        "price": latest_close,
+        "pct_change": pct,
+        "as_of": latest_ts,
+        "provider": "tradier",
+        "reason": "tradier_intraday_fallback",
+        "prev_close": prev_close,
+    }
+
+
 def get_price(symbol: str) -> Optional[float]:
     snapshot = get_price_snapshot(symbol)
     return _safe_float(snapshot.get("value"))
@@ -752,8 +777,11 @@ def get_prior_session_intraday(
 def get_watchlist(
     symbols: List[str], *, allow_yf_fallback: bool = True
 ) -> Dict[str, Dict[str, Any]]:
-    _ = allow_yf_fallback
-    return get_watchlist_tradier(symbols)
+    return (
+        get_watchlist_with_fallback(symbols)
+        if allow_yf_fallback
+        else get_watchlist_tradier(symbols)
+    )
 
 
 def get_watchlist_tradier(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -801,6 +829,10 @@ def get_watchlist_with_fallback(symbols: List[str]) -> Dict[str, Dict[str, Any]]
             continue
         quote = dict(snapshot.get(symbol) or {})
         if _safe_float(quote.get("price")) is not None:
+            continue
+        intraday_quote = _intraday_quote_fallback(symbol)
+        if _safe_float(intraday_quote.get("price")) is not None:
+            snapshot[symbol] = intraday_quote
             continue
         massive_quote = _massive_watch_quote(symbol)
         if _safe_float(massive_quote.get("price")) is not None:

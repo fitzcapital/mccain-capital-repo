@@ -5122,9 +5122,16 @@ def dashboard():
         enriched["data_status_label"] = state
         price = _float_or_none(enriched.get("price"))
         pct = _float_or_none(enriched.get("pct_change"))
-        prev_close = None
-        if price is not None and pct is not None and abs(100.0 + pct) > 1e-9:
+        prev_close = (
+            _float_or_none(enriched.get("prior_close"))
+            or _float_or_none(enriched.get("prev_close"))
+            or _float_or_none(enriched.get("previous_close"))
+        )
+        if prev_close is None and price is not None and pct is not None and abs(100.0 + pct) > 1e-9:
             prev_close = price / (1.0 + (pct / 100.0))
+        if pct is None and price is not None and prev_close is not None and prev_close > 0:
+            pct = ((price - prev_close) / prev_close) * 100.0
+            enriched["pct_change"] = pct
         enriched["prior_close"] = prev_close
 
         # Keep the tape line smooth from intraday points and overlay prior-close reference.
@@ -5202,6 +5209,36 @@ def dashboard():
 
     dashboard_spx = _enrich_dashboard_quote("SPX", dashboard_spx)
     dashboard_vix = _enrich_dashboard_quote("VIX", dashboard_vix)
+    dashboard_tape_symbols = ["SPX", "VIX", "QQQ", "IWM", "AAPL", "TSLA"]
+    dashboard_tape_quotes: Dict[str, Dict[str, Any]] = {
+        "SPX": dict(dashboard_spx),
+        "VIX": dict(dashboard_vix),
+    }
+    try:
+        extra_tape_quotes = market_data_service.get_watchlist_with_fallback(
+            [symbol for symbol in dashboard_tape_symbols if symbol not in dashboard_tape_quotes]
+        )
+    except Exception:
+        extra_tape_quotes = {}
+    for symbol in dashboard_tape_symbols:
+        if symbol in dashboard_tape_quotes:
+            continue
+        worker_quote = dict(tape_prices.get(symbol) or {})
+        fallback_quote = dict(extra_tape_quotes.get(symbol) or {})
+        # Prefer the live cache only when it has an actual quote; otherwise keep
+        # the direct watchlist fetch so the dashboard doesn't render fake loading
+        # states while valid quotes already exist.
+        source_quote = dict(fallback_quote)
+        for key, value in worker_quote.items():
+            if value is None and key in source_quote:
+                continue
+            source_quote[key] = value
+        if not source_quote:
+            source_quote = worker_quote or fallback_quote
+        dashboard_tape_quotes[symbol] = _enrich_dashboard_quote(
+            symbol,
+            source_quote,
+        )
     try:
         gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     except Exception:
@@ -5416,6 +5453,7 @@ def dashboard():
         setup_focus=setup_focus,
         dashboard_spx=dashboard_spx,
         dashboard_vix=dashboard_vix,
+        dashboard_tape_quotes=dashboard_tape_quotes,
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
         dashboard_execution_model=dashboard_execution_model,
