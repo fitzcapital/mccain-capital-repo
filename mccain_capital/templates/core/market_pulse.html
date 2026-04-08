@@ -1,20 +1,37 @@
 {% set gamma_quality_tone = 'marketPulseTrustChip-critical' if gamma_quality.get('tone') == 'critical' else 'marketPulseTrustChip-warn' if gamma_quality.get('tone') == 'warn' else 'marketPulseTrustChip-ok' %}
 {% set gamma_snapshot_status = gamma_snapshot.get('snapshot_status') or 'invalid' %}
 {% set gamma_snapshot_status_tone = 'positive' if gamma_snapshot_status == 'healthy' else 'warn' if gamma_snapshot_status in ['degraded', 'stale'] else 'negative' %}
-{% set spx_price_label = '%.2f'|format(spx_quote.get('price')) if spx_quote.get('price') is not none else '—' %}
+{% set structure_snapshot = market_structure_snapshot or {} %}
+{% set spx_price_label = '%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is not none else '—' %}
 {% set market_closed = execution_chart.mode != 'live_session' %}
-{% set model_levels = execution_model.levels if execution_model else {} %}
+{% set model_levels = {
+  'spot': structure_snapshot.get('spot'),
+  'main_flip': structure_snapshot.get('main_flip'),
+  'local_flip': structure_snapshot.get('local_flip'),
+  'call_wall': structure_snapshot.get('call_wall'),
+  'put_wall': structure_snapshot.get('put_wall'),
+} %}
 {% set main_flip_num = model_levels.main_flip if model_levels.main_flip is number else none %}
 {% set local_flip_num = model_levels.local_flip if model_levels.local_flip is number else none %}
 {% set local_flip_missing_in_band = gamma_snapshot_status in ['healthy', 'degraded', 'stale'] and not gamma_snapshot.get('local_flip_found') %}
 {% set local_flip_label = '%.0f'|format(local_flip_num) if local_flip_num is not none else ('None in local band' if local_flip_missing_in_band else '—') %}
 {% set call_wall_num = model_levels.call_wall if model_levels.call_wall is number else none %}
 {% set put_wall_num = model_levels.put_wall if model_levels.put_wall is number else none %}
-{% set next_call_wall_num = gamma_snapshot.get('next_call_wall_above') if gamma_snapshot.get('next_call_wall_above') is number else none %}
-{% set next_put_wall_num = gamma_snapshot.get('next_put_wall_below') if gamma_snapshot.get('next_put_wall_below') is number else none %}
+{% set next_call_wall_num = structure_snapshot.get('next_call_wall') if structure_snapshot.get('next_call_wall') is number else none %}
+{% set next_put_wall_num = structure_snapshot.get('next_put_wall') if structure_snapshot.get('next_put_wall') is number else none %}
 {% set spot_num = model_levels.spot if model_levels.spot is number else (spx_quote.get('price') if spx_quote.get('price') is number else none) %}
-{% set macro_regime = execution_model.macro_regime if execution_model else {} %}
-{% set local_bias = execution_model.local_bias if execution_model else {} %}
+{% set macro_regime = {
+  'state': structure_snapshot.get('gamma_regime') or 'unavailable',
+  'title': structure_snapshot.get('gamma_regime_label') or 'REGIME UNAVAILABLE',
+  'subtitle': structure_snapshot.get('gamma_regime_subtitle') or 'Gamma snapshot unavailable',
+} %}
+{% set local_bias = {
+  'state': structure_snapshot.get('bias_state') or 'neutral',
+  'title': structure_snapshot.get('bias_context') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
+  'label': structure_snapshot.get('bias_label') or 'WAIT',
+  'context': structure_snapshot.get('bias_context') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
+  'action': structure_snapshot.get('bias') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
+} %}
 {% set location = execution_model.location if execution_model else {} %}
 {% set playbook = execution_model.playbook if execution_model else {} %}
 {% set distance_rows = execution_model.distance_rows if execution_model else [] %}
@@ -23,6 +40,9 @@
 {% set gamma_neutral = macro_regime.state == 'neutral' %}
 {% set bias_context = local_bias.context or 'LOCAL BIAS' %}
 {% set bias_label = local_bias.label or 'WAIT' %}
+{% set trade_state_label = structure_snapshot.get('trade_state_label') or playbook.status or 'WAIT' %}
+{% set hero_tradeability_label = structure_snapshot.get('execution_regime_label') or structure_snapshot.get('tradeability') or playbook.status or 'WAIT' %}
+{% set hero_session_label = structure_snapshot.get('session') or macro_regime.subtitle or 'Confirmation required' %}
 
 <div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact">
   <div class="toolbar">
@@ -30,9 +50,9 @@
       <div class="marketPulsePlaybookTitleZone">
         <div class="pill">Market Pulse</div>
         <h2 class="pageTitle">SPX PLAYBOOK</h2>
-        <div class="marketPulseHeaderSubline">Main Flip {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }} | Local Flip {{ local_flip_label }} | CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }} | PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</div>
-        <div class="marketPulsePlaybookMeta tiny muted">Last Valid {{ execution_chart.last_valid_session_label or '—' }} • SPX {{ spx_price_label }}</div>
-        <div class="marketPulsePlaybookMeta tiny muted marketPulseClampLine">{{ execution_model.posture_summary if execution_model else 'Awaiting market posture.' }}</div>
+        <div class="marketPulseHeaderSubline" id="marketPulseHeaderSubline">Main Flip {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }} | Local Flip {{ local_flip_label }} | CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }} | PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</div>
+        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }} • SPX {{ spx_price_label }}</div>
+        <div class="marketPulsePlaybookMeta tiny muted marketPulseClampLine">{{ structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</div>
       </div>
       <div class="marketPulseGammaStateCard {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard">
         <div class="marketPulseGammaStateTop">
@@ -67,7 +87,7 @@
     <span>Source Health</span>
     <span>Tape Drivers</span>
     <span>Loading Market Pulse</span>
-    <span id="marketPulseSetupHeadline">{{ execution_model.posture_summary if execution_model else 'Awaiting market posture.' }}</span>
+    <span id="marketPulseSetupHeadline">{{ structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
     <span id="marketPulseTradeReadState">{{ playbook.status or 'WATCH' }}</span>
     <span>{{ gamma_quality.summary if gamma_quality else '' }}</span>
     <span>{{ gamma_snapshot.get('source_effective_timestamp_note') or '' }}</span>
@@ -114,18 +134,18 @@
   <div class="toolbar">
     <div class="pillRow marketPulseExecutionHeroTopline">
       <span class="pill">SPX Execution Hero</span>
-      <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailContext">{{ execution_model.posture_summary if execution_model else 'Execution map pending.' }}</span>
+      <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailContext">{{ structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Execution map pending.') }}</span>
       <button class="trendChip marketPulseLegendButton" type="button" data-open-modal="marketPulseLevelsModal">More</button>
     </div>
     <div class="marketPulseExecutionHeroGrid">
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-state" aria-label="Market state">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">State Summary</span>
-          <span class="trendChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateContext">{{ playbook.status or 'WAIT' }}</span>
+          <span class="trendChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateContext">{{ trade_state_label }}</span>
         </div>
         <div class="marketPulseExecutionHeroMetrics">
           <div class="marketPulseExecutionHeroMetric is-spot" id="marketPulseHeroSpotCard">
-            <span class="tiny muted">SPX Spot</span>
+            <span class="tiny muted" id="marketPulseHeroSpotLabel">{{ structure_snapshot.get('spot_source_short_label') or 'SPX Spot' }}</span>
             <strong id="marketPulseHeroSpot">{{ spx_price_label }}</strong>
           </div>
           <div class="marketPulseExecutionHeroMetric">
@@ -134,15 +154,15 @@
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Bias</span>
-            <strong id="marketPulseHeroBias">{{ local_bias.title or local_bias.label or 'Unavailable' }}</strong>
+            <strong id="marketPulseHeroBias">{{ structure_snapshot.get('planning_bias_label') or local_bias.title or local_bias.label or 'Unavailable' }}</strong>
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Tradeability</span>
-            <strong id="marketPulseHeroTradeability">{{ playbook.status or 'WAIT' }}</strong>
+            <strong id="marketPulseHeroTradeability">{{ hero_tradeability_label }}</strong>
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Session</span>
-            <strong id="marketPulseHeroSession">{{ macro_regime.subtitle or 'Confirmation required' }}</strong>
+            <strong id="marketPulseHeroSession">{{ hero_session_label }}</strong>
           </div>
           <div class="marketPulseExecutionHeroMetric is-macro">
             <span class="tiny muted">Main Flip (Macro)</span>
@@ -154,16 +174,16 @@
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-rail" aria-label="Execution rail">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">SPX Hero Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
-          <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ location.read or 'Local Flip is the intraday decision line.' }}</span>
+          <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ structure_snapshot.get('current_read') or location.read or 'Awaiting valid structure' }}</span>
         </div>
         <div class="marketPulseExecutionHeroChartShell">
           <div class="marketPulseExecutionHeroChartBanner">
             <div class="marketPulseExecutionHeroChartStateStrip">
-              <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroChartStateChip">{{ playbook.status or 'WAIT' }}</span>
+              <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroChartStateChip">{{ trade_state_label }}</span>
               <span class="marketPulseExecutionHeroChartStateRead" id="marketPulseHeroChartStateRead">{{ location.zone or 'Awaiting structure' }}</span>
               <span class="marketPulseExecutionHeroChartStateAction" id="marketPulseHeroChartStateAction">{{ playbook.best_look or 'Wait for cleaner structure' }}</span>
             </div>
-            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ playbook.status or 'WAIT' }} — Awaiting execution state</div>
+            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ trade_state_label }} — Awaiting execution state</div>
             <div class="marketPulseExecutionHeroChartBannerSub" id="marketPulseHeroChartBannerSub">{{ execution_model.posture_summary if execution_model else 'Execution levels pending.' }}</div>
           </div>
           {# NCW / NPW come from gamma_snapshot.next_call_wall_above / next_put_wall_below when available. #}
@@ -207,12 +227,12 @@
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-decision" aria-label="Execution decision box">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">Trade State</span>
-          <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateChip">{{ playbook.status or 'WAIT' }}</span>
+          <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateChip">{{ trade_state_label }}</span>
         </div>
         <div class="marketPulseExecutionHeroDecisionGrid">
           <div class="marketPulseExecutionHeroDecisionLead">
             <div class="tiny muted">State</div>
-            <strong id="marketPulseHeroTradeState">{{ playbook.status or 'WAIT' }}</strong>
+            <strong id="marketPulseHeroTradeState">{{ trade_state_label }}</strong>
           </div>
           <div class="marketPulseExecutionHeroDecisionCell">
             <div class="tiny muted">Best Look</div>
@@ -370,7 +390,7 @@
         </div>
       </div>
       <div class="marketPulseExecutionPanelFooter marketPulseExecutionPanelFooter-compact">
-        <span class="tiny marketPulseClampLine" id="spxPriorityFooterMeta">{{ execution_model.posture_summary if execution_model else 'Awaiting market posture.' }}</span>
+        <span class="tiny marketPulseClampLine" id="spxPriorityFooterMeta">{{ structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
       </div>
       <div id="spxPrioritySpotPanel" hidden></div>
       <div id="spxPriorityPriceLabel" hidden>{{ execution_chart.price_label or 'Live Price' }}</div>

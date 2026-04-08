@@ -266,8 +266,9 @@ def test_dashboard_renders_daily_brief_card(client):
     assert b"Daily Brief" in resp.data
     assert b"Auto-generated" in resp.data
     assert b"More Info" in resp.data
-    assert b"Plan A" in resp.data
-    assert b"No-trade condition" in resp.data
+    assert b"Active Level" in resp.data
+    assert b"Execution Triggers" in resp.data
+    assert b"Do Not Do" in resp.data
 
 
 def test_dashboard_renders_accountability_checklist(client):
@@ -384,6 +385,38 @@ def test_dashboard_daily_brief_filters_stale_macro_events():
     headlines = [row["headline"] for row in brief["macro_events"]]
     assert "Old CPI" not in headlines
     assert headlines == ["FOMC", "Fed Presser"]
+
+
+def test_dashboard_daily_brief_anchors_to_nearest_actionable_level():
+    now_et = datetime(2026, 3, 17, 13, 0, tzinfo=core_service.app_runtime.TZ)
+    brief = core_service._dashboard_daily_brief_viewmodel(
+        now_et=now_et,
+        dashboard_spx={"price": 6596.0, "pct_change": 0.3, "day_open": 6588.0},
+        dashboard_vix={"price": 18.0},
+        gamma_snapshot={
+            "gamma_flip": 6785.0,
+            "local_flip": 6593.0,
+            "call_wall": 6600.0,
+            "put_wall": 6575.0,
+            "next_call_wall": 6620.0,
+        },
+        market_structure_snapshot={
+            "spot": 6596.0,
+            "main_flip": 6785.0,
+            "local_flip": 6593.0,
+            "call_wall": 6600.0,
+            "put_wall": 6575.0,
+            "next_call_wall": 6620.0,
+        },
+        news_snapshot={"macro_events": []},
+        today_count=0,
+        today_net=0.0,
+    )
+    assert brief["active_level_name"] == "Local Flip"
+    assert "Local Flip 6593" in brief["active_level_display"]
+    assert "between Local Flip 6593 and Call Wall 6600" in brief["market_location"]
+    assert "Hold above Local Flip 6593 supports longs" in brief["execution_triggers"]
+    assert "Main Flip" not in brief["market_condition"]
 
 
 def test_dashboard_brief_uses_true_intraday_day_open(client, monkeypatch):

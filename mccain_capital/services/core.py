@@ -7,12 +7,14 @@ keeps that dependency localized behind explicit delegator functions.
 from __future__ import annotations
 
 from calendar import Calendar, monthrange
+import copy
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
 from email.utils import parsedate_to_datetime
 import html
 import json
+import logging
 import os
 import re
 import tempfile
@@ -68,6 +70,8 @@ WEEK_OPEN_INTERVALS = (2, 3, 4, 5, 6)
 MONTH_OPEN_INTERVALS = (2,)
 MARKET_PULSE_CACHE_TTL_SECONDS = 300
 MARKET_PULSE_UNSAFE_CRITICAL_THRESHOLD = 2
+MARKET_PULSE_LAST_VALID_MAX_AGE_SECONDS = 20 * 60 * 60
+MARKET_PULSE_LAST_GOOD_SNAPSHOT_MAX_AGE_SECONDS = 20 * 60 * 60
 MARKET_NEWS_CACHE_TTL_SECONDS = 60
 MARKET_NEWS_RSS_TIMEOUT_SECONDS = 1.25
 MARKET_NEWS_RSS_SYMBOL_LIMIT = 5
@@ -217,6 +221,9 @@ INVESTING_RSS_URLS: Tuple[str, ...] = (
 _market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_pulse_x_user_cache: Dict[str, Any] = {"fetched_at": None, "payload": {}}
+_market_pulse_playbook_cache: Dict[str, Any] = {"generated_at": None, "payload": None}
+
+LOGGER = logging.getLogger(__name__)
 USD_CALENDAR_FALLBACK_EVENTS: Tuple[Tuple[str, str, str], ...] = (
     ("2026-03-11T08:30:00-04:00", "High", "Core CPI m/m"),
     ("2026-03-11T08:30:00-04:00", "High", "CPI m/m"),
@@ -742,6 +749,495 @@ def _parse_iso_et(value: Any) -> Optional[datetime]:
         return dt.astimezone(app_runtime.TZ)
     except Exception:
         return None
+
+
+def _market_pulse_log(event: str, **fields: Any) -> None:
+    payload = {"event": event}
+    payload.update({key: value for key, value in fields.items() if value is not None})
+    try:
+        LOGGER.info("market_pulse_snapshot %s", json.dumps(payload, default=str, sort_keys=True))
+    except Exception:
+        LOGGER.info("market_pulse_snapshot %s %s", event, payload)
+
+
+def _market_pulse_positive_float(value: Any) -> Optional[float]:
+    try:
+        numeric = float(value)
+    except Exception:
+        return None
+    return numeric if numeric > 0 else None
+
+
+def _market_pulse_quote_prev_close(spx_quote: Dict[str, Any]) -> Optional[float]:
+    for key in ("prev_close", "previous_close", "prior_close"):
+        numeric = _market_pulse_positive_float(spx_quote.get(key))
+        if numeric is not None:
+            return numeric
+
+    price = _market_pulse_positive_float(spx_quote.get("price"))
+    pct = (
+        float(spx_quote.get("change_pct"))
+        if isinstance(spx_quote.get("change_pct"), (int, float))
+        else float(spx_quote.get("pct_change"))
+        if isinstance(spx_quote.get("pct_change"), (int, float))
+        else None
+    )
+    if price is not None and pct is not None and abs(100.0 + pct) > 1e-9:
+        prev_close = price / (1.0 + (pct / 100.0))
+        if prev_close > 0:
+            return prev_close
+
+    prior_session_series = list(spx_quote.get("prior_session_series") or [])
+    for row in reversed(prior_session_series):
+        if not isinstance(row, dict):
+            continue
+        numeric = _market_pulse_positive_float(row.get("v", row.get("close")))
+        if numeric is not None:
+            return numeric
+    return None
+
+
+def _market_pulse_cached_playbook_snapshot(now_et: datetime) -> Optional[Dict[str, Any]]:
+    generated_at = _market_pulse_playbook_cache.get("generated_at")
+    payload = _market_pulse_playbook_cache.get("payload")
+    if not isinstance(generated_at, datetime) or not isinstance(payload, dict):
+        return None
+    age = max(0.0, (now_et - generated_at).total_seconds())
+    if age > MARKET_PULSE_LAST_GOOD_SNAPSHOT_MAX_AGE_SECONDS:
+        return None
+    return copy.deepcopy(payload)
+
+
+def _market_pulse_store_playbook_snapshot(now_et: datetime, payload: Dict[str, Any]) -> None:
+    _market_pulse_playbook_cache["generated_at"] = now_et
+    _market_pulse_playbook_cache["payload"] = copy.deepcopy(payload)
+
+
+def _market_pulse_level_payload(
+    *,
+    value: Any,
+    source: str,
+    as_of: str,
+    freshness_status: str,
+    confidence: str,
+    derived_from_session: bool,
+    validation_status: str,
+    reason: str = "",
+) -> Dict[str, Any]:
+    return {
+        "value": _market_pulse_positive_float(value),
+        "source": source,
+        "as_of": str(as_of or ""),
+        "freshness_status": freshness_status,
+        "confidence": confidence,
+        "derived_from_session": bool(derived_from_session),
+        "validation_status": validation_status,
+        "reason": reason,
+    }
+
+
+def _market_pulse_resolve_spot_snapshot(
+    *,
+    session_mode: str,
+    spx_quote: Dict[str, Any],
+    gamma_snapshot: Dict[str, Any],
+    now_et: datetime,
+    last_good_snapshot: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    quote_price = _market_pulse_positive_float(spx_quote.get("price"))
+    quote_as_of = str(spx_quote.get("asof") or spx_quote.get("as_of") or "")
+    quote_band = str(spx_quote.get("freshness_band") or "")
+    quote_state = str(spx_quote.get("data_state") or "")
+    official_close = _market_pulse_quote_prev_close(spx_quote)
+    gamma_spot = _market_pulse_positive_float(
+        gamma_snapshot.get("spot") if gamma_snapshot.get("spot") is not None else gamma_snapshot.get("spot_price_used")
+    )
+    gamma_as_of = str(
+        gamma_snapshot.get("spot_source_timestamp")
+        or gamma_snapshot.get("last_successful_compute")
+        or gamma_snapshot.get("computed_at")
+        or ""
+    )
+    last_good_meta = dict((last_good_snapshot or {}).get("market_structure_snapshot", {}).get("spot_meta") or {})
+    last_good_value = _market_pulse_positive_float(last_good_meta.get("value"))
+    last_good_as_of = str(
+        last_good_meta.get("as_of")
+        or (last_good_snapshot or {}).get("market_structure_snapshot", {}).get("snapshot_timestamp")
+        or ""
+    )
+
+    candidates: List[Dict[str, Any]] = []
+    if session_mode == "regular" and quote_price is not None and quote_state != "missing":
+        candidates.append(
+            {
+                "value": quote_price,
+                "source": "live",
+                "source_label": "Live Session",
+                "as_of": quote_as_of,
+                "freshness_status": "live" if quote_band == "live" else "stale",
+                "confidence": "high" if quote_band == "live" else "medium",
+                "state": "LIVE_SESSION",
+            }
+        )
+    if quote_price is not None:
+        candidates.append(
+            {
+                "value": quote_price,
+                "source": "session_anchor",
+                "source_label": "Last Valid Session",
+                "as_of": quote_as_of,
+                "freshness_status": "stale" if session_mode != "regular" or quote_band != "live" else "live",
+                "confidence": "medium" if session_mode != "regular" else "high",
+                "state": "AFTER_HOURS_VALID" if session_mode != "regular" else "LIVE_SESSION",
+            }
+        )
+    if official_close is not None:
+        candidates.append(
+            {
+                "value": official_close,
+                "source": "official_close",
+                "source_label": "Official Close",
+                "as_of": quote_as_of,
+                "freshness_status": "stale",
+                "confidence": "medium",
+                "state": "AFTER_HOURS_VALID" if session_mode != "regular" else "LIVE_SESSION",
+            }
+        )
+    if gamma_spot is not None:
+        candidates.append(
+            {
+                "value": gamma_spot,
+                "source": "last_good_snapshot",
+                "source_label": "Last Good Snapshot",
+                "as_of": gamma_as_of,
+                "freshness_status": "stale",
+                "confidence": "low",
+                "state": "AFTER_HOURS_VALID" if session_mode != "regular" else "LIVE_SESSION",
+            }
+        )
+    if last_good_value is not None:
+        candidates.append(
+            {
+                "value": last_good_value,
+                "source": "last_good_snapshot",
+                "source_label": "Last Good Snapshot",
+                "as_of": last_good_as_of,
+                "freshness_status": "stale",
+                "confidence": "low",
+                "state": "AFTER_HOURS_VALID" if session_mode != "regular" else "LIVE_SESSION",
+            }
+        )
+
+    selected = next((candidate for candidate in candidates if candidate.get("value") is not None), None)
+    if selected:
+        _market_pulse_log(
+            "spot_selected",
+            session_mode=session_mode,
+            source=selected.get("source"),
+            freshness_status=selected.get("freshness_status"),
+            confidence=selected.get("confidence"),
+            as_of=selected.get("as_of"),
+            value=selected.get("value"),
+        )
+        return selected
+
+    _market_pulse_log("spot_unavailable", session_mode=session_mode)
+    return {
+        "value": None,
+        "source": "unavailable",
+        "source_label": "Unavailable",
+        "as_of": "",
+        "freshness_status": "unavailable",
+        "confidence": "none",
+        "state": "UNAVAILABLE",
+    }
+
+
+def _market_pulse_resolve_gamma_payload(
+    *,
+    gamma_snapshot: Dict[str, Any],
+    last_good_snapshot: Optional[Dict[str, Any]],
+    session_mode: str,
+    now_et: datetime,
+) -> Dict[str, Any]:
+    snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
+    gamma_as_of = str(
+        gamma_snapshot.get("last_successful_compute")
+        or gamma_snapshot.get("computed_at")
+        or gamma_snapshot.get("asof")
+        or ""
+    )
+    raw_levels = {
+        "main_flip": gamma_snapshot.get("gamma_flip_combined_basket"),
+        "local_flip": gamma_snapshot.get("local_flip_aggregated_gamma"),
+        "call_wall": gamma_snapshot.get("call_wall_aggregated_gamma"),
+        "put_wall": gamma_snapshot.get("put_wall_aggregated_gamma"),
+        "next_call_wall": gamma_snapshot.get("next_call_wall_above"),
+        "next_put_wall": gamma_snapshot.get("next_put_wall_below"),
+    }
+    required_level_count = sum(
+        1
+        for key in ("main_flip", "local_flip", "call_wall", "put_wall")
+        if _market_pulse_positive_float(raw_levels.get(key)) is not None
+    )
+    current_snapshot_usable = snapshot_status in {"healthy", "degraded", "stale"} and required_level_count >= 3
+
+    cached_structure = dict((last_good_snapshot or {}).get("market_structure_snapshot") or {})
+    fallback_level_meta = dict(cached_structure.get("level_meta") or {})
+    fallback_required_present = all(
+        _market_pulse_positive_float(dict(fallback_level_meta.get(key) or {}).get("value")) is not None
+        for key in ("local_flip", "call_wall", "put_wall")
+    )
+    fallback_time = _parse_iso_et(
+        cached_structure.get("last_valid_snapshot_time") or cached_structure.get("snapshot_timestamp")
+    )
+    fallback_age_seconds = (
+        max(0.0, (now_et - fallback_time).total_seconds()) if fallback_time is not None else None
+    )
+    fallback_usable = bool(
+        fallback_required_present
+        and fallback_time is not None
+        and fallback_age_seconds is not None
+        and fallback_age_seconds <= MARKET_PULSE_LAST_GOOD_SNAPSHOT_MAX_AGE_SECONDS
+    )
+    use_fallback = (
+        session_mode in {"after_hours", "premarket", "closed"}
+        and not current_snapshot_usable
+        and fallback_usable
+    )
+
+    if use_fallback:
+        selected_levels = {
+            key: _market_pulse_positive_float(dict(fallback_level_meta.get(key) or {}).get("value"))
+            for key in ("main_flip", "local_flip", "call_wall", "put_wall", "next_call_wall", "next_put_wall")
+        }
+        levels_source = "last_valid_snapshot"
+        gamma_data_status = "stale_but_usable"
+        gamma_regime_meta = {
+            "value": "unconfirmed",
+            "label": "Unconfirmed",
+            "subtitle": "Using last valid session structure",
+            "source": "last_valid_snapshot",
+            "as_of": str(cached_structure.get("last_valid_snapshot_time") or ""),
+            "freshness_status": "stale",
+            "confidence": "low",
+            "derived_from_session": True,
+            "validation_status": "fallback_valid",
+        }
+    elif current_snapshot_usable or snapshot_status in {"healthy", "degraded", "stale"}:
+        selected_levels = {
+            key: _market_pulse_positive_float(value)
+            for key, value in raw_levels.items()
+        }
+        levels_source = (
+            "live_session_snapshot"
+            if session_mode == "regular" and snapshot_status == "healthy"
+            else "stale_snapshot"
+            if snapshot_status == "stale"
+            else "last_valid_snapshot"
+            if session_mode != "regular"
+            else "live_session_snapshot"
+        )
+        gamma_data_status = _market_pulse_gamma_data_status(
+            gamma_snapshot,
+            level_count=sum(1 for value in raw_levels.values() if _market_pulse_positive_float(value) is not None),
+        )
+        regime_view = _market_pulse_gamma_regime_viewmodel(
+            gamma_snapshot,
+            gamma_data_status=gamma_data_status,
+        )
+        gamma_regime_meta = {
+            "value": regime_view["gamma_regime"],
+            "label": regime_view["gamma_regime_label"],
+            "subtitle": regime_view["gamma_regime_subtitle"],
+            "source": "validated_gamma_snapshot",
+            "as_of": gamma_as_of,
+            "freshness_status": "live" if snapshot_status == "healthy" and session_mode == "regular" else "stale",
+            "confidence": "high" if snapshot_status == "healthy" and session_mode == "regular" else "medium" if snapshot_status in {"healthy", "degraded"} else "low",
+            "derived_from_session": session_mode != "regular",
+            "validation_status": snapshot_status or "validated",
+        }
+    else:
+        selected_levels = {
+            key: None
+            for key in ("main_flip", "local_flip", "call_wall", "put_wall", "next_call_wall", "next_put_wall")
+        }
+        levels_source = "unavailable"
+        gamma_data_status = "invalid"
+        gamma_regime_meta = {
+            "value": "unavailable",
+            "label": "Regime Unavailable",
+            "subtitle": "Gamma snapshot unavailable",
+            "source": "unavailable",
+            "as_of": gamma_as_of,
+            "freshness_status": "unavailable",
+            "confidence": "none",
+            "derived_from_session": False,
+            "validation_status": "invalid",
+        }
+
+    level_meta: Dict[str, Dict[str, Any]] = {}
+    for key, value in selected_levels.items():
+        if use_fallback:
+            source = "last_good_snapshot" if key == "main_flip" else "prior_valid_session"
+            as_of = str(cached_structure.get("last_valid_snapshot_time") or "")
+            freshness_status = "stale"
+            confidence = "low"
+            validation_status = "fallback_valid"
+            derived_from_session = True
+        elif levels_source != "unavailable":
+            source = "live_session" if session_mode == "regular" and snapshot_status == "healthy" else "prior_valid_session"
+            as_of = gamma_as_of
+            freshness_status = "live" if session_mode == "regular" and snapshot_status == "healthy" else "stale"
+            confidence = "high" if freshness_status == "live" else "medium"
+            validation_status = snapshot_status or "validated"
+            derived_from_session = session_mode != "regular"
+        else:
+            source = "unavailable"
+            as_of = ""
+            freshness_status = "unavailable"
+            confidence = "none"
+            validation_status = "invalid"
+            derived_from_session = False
+        level_meta[key] = _market_pulse_level_payload(
+            value=value,
+            source=source,
+            as_of=as_of,
+            freshness_status=freshness_status,
+            confidence=confidence,
+            derived_from_session=derived_from_session,
+            validation_status=validation_status,
+        )
+
+    local_flip_meta = dict(
+        level_meta.get("local_flip")
+        or _market_pulse_level_payload(
+            value=None,
+            source="unavailable",
+            as_of="",
+            freshness_status="unavailable",
+            confidence="none",
+            derived_from_session=False,
+            validation_status="invalid",
+        )
+    )
+    if local_flip_meta.get("value") is not None:
+        local_flip_meta["source"] = (
+            "live_session" if session_mode == "regular" and current_snapshot_usable else "prior_valid_session"
+        )
+        local_flip_meta["reason"] = (
+            "validated_live_local_flip"
+            if local_flip_meta["source"] == "live_session"
+            else "using_last_valid_session_local_flip"
+        )
+    else:
+        local_flip_meta["reason"] = "no_valid_local_flip"
+
+    _market_pulse_log(
+        "gamma_selected",
+        session_mode=session_mode,
+        snapshot_status=snapshot_status,
+        levels_source=levels_source,
+        gamma_data_status=gamma_data_status,
+        gamma_regime=gamma_regime_meta.get("value"),
+        fallback_used=use_fallback,
+        fallback_age_seconds=fallback_age_seconds,
+    )
+    return {
+        "levels_source": levels_source,
+        "gamma_data_status": gamma_data_status,
+        "gamma_regime_meta": gamma_regime_meta,
+        "level_meta": level_meta,
+        "local_flip_meta": local_flip_meta,
+        "selected_as_of": gamma_regime_meta.get("as_of") or gamma_as_of,
+    }
+
+
+def _market_pulse_apply_resolved_levels(
+    gamma_snapshot: Dict[str, Any],
+    gamma_resolution: Dict[str, Any],
+) -> Dict[str, Any]:
+    out = dict(gamma_snapshot or {})
+    level_meta = dict(gamma_resolution.get("level_meta") or {})
+    out["gamma_flip_combined_basket"] = dict(level_meta.get("main_flip") or {}).get("value")
+    out["local_flip_aggregated_gamma"] = dict(level_meta.get("local_flip") or {}).get("value")
+    out["call_wall_aggregated_gamma"] = dict(level_meta.get("call_wall") or {}).get("value")
+    out["put_wall_aggregated_gamma"] = dict(level_meta.get("put_wall") or {}).get("value")
+    out["next_call_wall_above"] = dict(level_meta.get("next_call_wall") or {}).get("value")
+    out["next_put_wall_below"] = dict(level_meta.get("next_put_wall") or {}).get("value")
+    out["local_flip_found"] = dict(level_meta.get("local_flip") or {}).get("value") is not None
+    regime_meta = dict(gamma_resolution.get("gamma_regime_meta") or {})
+    out["regime"] = regime_meta.get("label")
+    out["resolved_gamma_data_status"] = str(gamma_resolution.get("gamma_data_status") or "")
+    return out
+
+
+def _market_pulse_apply_resolved_spot(
+    spx_quote: Dict[str, Any],
+    spot_resolution: Dict[str, Any],
+) -> Dict[str, Any]:
+    out = dict(spx_quote or {})
+    out["price"] = spot_resolution.get("value")
+    if spot_resolution.get("as_of"):
+        out["asof"] = spot_resolution.get("as_of")
+        out["as_of"] = spot_resolution.get("as_of")
+    out["spot_source"] = spot_resolution.get("source")
+    out["spot_source_label"] = spot_resolution.get("source_label")
+    return out
+
+
+def _market_pulse_chart_source_viewmodel(
+    *,
+    execution_chart: Dict[str, Any],
+    session_mode: str,
+) -> Dict[str, Any]:
+    mode = str(execution_chart.get("mode") or "unavailable")
+    points = list(execution_chart.get("points") or [])
+    bars_as_of = ""
+    if points and isinstance(points[-1], dict):
+        bars_as_of = str(points[-1].get("ts") or "")
+    if mode == "live_session":
+        chart_state = "live_session"
+        bars_source = "live_session_bars"
+        freshness_status = "live"
+    elif mode == "last_session_replay":
+        chart_state = "last_valid_session"
+        bars_source = str(execution_chart.get("replay_source") or "last_valid_session")
+        freshness_status = "stale" if session_mode != "regular" else "live"
+    else:
+        chart_state = "unavailable"
+        bars_source = "unavailable"
+        freshness_status = "unavailable"
+    _market_pulse_log(
+        "chart_selected",
+        session_mode=session_mode,
+        chart_state=chart_state,
+        bars_source=bars_source,
+        bars_as_of=bars_as_of,
+    )
+    return {
+        "chart_state": chart_state,
+        "bars_source": bars_source,
+        "bars_as_of": bars_as_of,
+        "session_label": str(execution_chart.get("session_label") or execution_chart.get("last_valid_session_label") or ""),
+        "freshness_status": freshness_status,
+    }
+
+
+def _market_pulse_playbook_snapshot_valid(payload: Dict[str, Any]) -> bool:
+    structure = dict(payload.get("market_structure_snapshot") or {})
+    spot_meta = dict(structure.get("spot_meta") or {})
+    spot_value = _market_pulse_positive_float(spot_meta.get("value"))
+    app_state = str(structure.get("app_state") or "")
+    levels_source = str(structure.get("levels_source") or "")
+    if app_state == "UNAVAILABLE" or spot_value is None:
+        return False
+    if levels_source != "unavailable":
+        level_meta = dict(structure.get("level_meta") or {})
+        for key in ("call_wall", "put_wall"):
+            if _market_pulse_positive_float(dict(level_meta.get(key) or {}).get("value")) is None:
+                return False
+    return True
 
 
 def _market_pulse_json_request_any(url: str, params: Dict[str, Any], timeout: int = 4) -> Any:
@@ -2107,6 +2603,8 @@ def _market_pulse_execution_chart_viewmodel(
     gamma_snapshot: Dict[str, Any],
     macro_events: List[Dict[str, Any]],
     now_et: datetime,
+    resolved_spot: Any = None,
+    resolved_levels: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     raw_points = list(spx_quote.get("series") or [])
     raw_replay_points = list(spx_quote.get("prior_session_series") or [])
@@ -2185,13 +2683,30 @@ def _market_pulse_execution_chart_viewmodel(
 
     # Keep local reference to the active session phase for labels and client handoff.
     phase = _market_pulse_session_phase(now_et)
-    local_flip_value = gamma_snapshot.get("local_flip_aggregated_gamma")
+    resolved_levels = dict(resolved_levels or {})
+    local_flip_value = (
+        resolved_levels.get("local_flip")
+        if resolved_levels.get("local_flip") is not None
+        else gamma_snapshot.get("local_flip_aggregated_gamma")
+    )
 
     levels = {
-        "gamma_flip": gamma_snapshot.get("gamma_flip_combined_basket"),
+        "gamma_flip": (
+            resolved_levels.get("main_flip")
+            if resolved_levels.get("main_flip") is not None
+            else gamma_snapshot.get("gamma_flip_combined_basket")
+        ),
         "local_flip": local_flip_value,
-        "call_wall": gamma_snapshot.get("call_wall_aggregated_gamma"),
-        "put_wall": gamma_snapshot.get("put_wall_aggregated_gamma"),
+        "call_wall": (
+            resolved_levels.get("call_wall")
+            if resolved_levels.get("call_wall") is not None
+            else gamma_snapshot.get("call_wall_aggregated_gamma")
+        ),
+        "put_wall": (
+            resolved_levels.get("put_wall")
+            if resolved_levels.get("put_wall") is not None
+            else gamma_snapshot.get("put_wall_aggregated_gamma")
+        ),
         "pdh": spx_quote.get("prior_day_high"),
         "pdl": spx_quote.get("prior_day_low"),
     }
@@ -2238,6 +2753,8 @@ def _market_pulse_execution_chart_viewmodel(
     latest_price = None
     if points:
         latest_price = points[-1]["price"]
+    elif isinstance(resolved_spot, (int, float)):
+        latest_price = float(resolved_spot)
     elif isinstance(spx_quote.get("price"), (int, float)):
         latest_price = float(spx_quote.get("price"))
 
@@ -2907,6 +3424,704 @@ def _market_pulse_execution_model(
     }
 
 
+def _market_pulse_snapshot_session_mode(now_et: datetime) -> str:
+    phase = _market_pulse_session_phase(now_et)
+    if phase == "open":
+        return "regular"
+    if phase == "afterhours":
+        return "after_hours"
+    if phase == "premarket":
+        return "premarket"
+    return "closed"
+
+
+def _market_pulse_gamma_data_status(
+    gamma_snapshot: Dict[str, Any],
+    *,
+    level_count: int,
+) -> str:
+    snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
+    regime_text = str(gamma_snapshot.get("regime") or "").strip().lower()
+    has_regime = regime_text not in {"", "unavailable", "invalid", "unknown"}
+
+    # Treat snapshot health first, then downgrade based on structural completeness.
+    if snapshot_status == "healthy":
+        return "fresh_valid" if level_count >= 4 and has_regime else "partial"
+    if snapshot_status in {"degraded", "stale"}:
+        return "stale_but_usable" if level_count >= 3 else "partial"
+    if level_count >= 2 or has_regime:
+        return "partial"
+    return "invalid"
+
+
+def _market_pulse_gamma_regime_viewmodel(
+    gamma_snapshot: Dict[str, Any],
+    *,
+    gamma_data_status: str,
+) -> Dict[str, str]:
+    regime_text = str(gamma_snapshot.get("regime") or "").strip()
+    regime_lower = regime_text.lower()
+    raw_net_gamma = (
+        float(gamma_snapshot.get("net_gex"))
+        if isinstance(gamma_snapshot.get("net_gex"), (int, float))
+        else float(gamma_snapshot.get("net_gex_total"))
+        if isinstance(gamma_snapshot.get("net_gex_total"), (int, float))
+        else None
+    )
+
+    if gamma_data_status == "invalid":
+        return {
+            "gamma_regime": "unavailable",
+            "gamma_regime_label": "Regime Unavailable",
+            "gamma_regime_subtitle": "Gamma snapshot unavailable",
+        }
+    if gamma_data_status == "partial":
+        return {
+            "gamma_regime": "unconfirmed",
+            "gamma_regime_label": "Unconfirmed",
+            "gamma_regime_subtitle": "Gamma board incomplete",
+        }
+    if "negative" in regime_lower:
+        return {
+            "gamma_regime": "negative",
+            "gamma_regime_label": "Negative Gamma",
+            "gamma_regime_subtitle": "Trend / momentum active",
+        }
+    if "positive" in regime_lower:
+        return {
+            "gamma_regime": "positive",
+            "gamma_regime_label": "Positive Gamma",
+            "gamma_regime_subtitle": "Mean reversion active",
+        }
+    if "neutral" in regime_lower or "flip" in regime_lower:
+        return {
+            "gamma_regime": "neutral",
+            "gamma_regime_label": "Neutral Gamma",
+            "gamma_regime_subtitle": "Mixed dealer structure",
+        }
+    if raw_net_gamma is not None:
+        if abs(raw_net_gamma) < 1e-9:
+            return {
+                "gamma_regime": "neutral",
+                "gamma_regime_label": "Neutral Gamma",
+                "gamma_regime_subtitle": "Mixed dealer structure",
+            }
+        is_positive = raw_net_gamma > 0
+        return {
+            "gamma_regime": "positive" if is_positive else "negative",
+            "gamma_regime_label": "Positive Gamma" if is_positive else "Negative Gamma",
+            "gamma_regime_subtitle": "Mean reversion active" if is_positive else "Trend / momentum active",
+        }
+    return {
+        "gamma_regime": "unconfirmed",
+        "gamma_regime_label": "Unconfirmed",
+        "gamma_regime_subtitle": "Gamma board incomplete",
+    }
+
+
+def _market_pulse_regime_confidence(
+    *,
+    session_mode: str,
+    gamma_data_status: str,
+) -> str:
+    if gamma_data_status == "fresh_valid":
+        return "high" if session_mode == "regular" else "medium"
+    if gamma_data_status == "stale_but_usable":
+        return "medium" if session_mode == "regular" else "low"
+    if gamma_data_status == "partial":
+        return "low"
+    return "none"
+
+
+def _market_pulse_levels_source(
+    *,
+    session_mode: str,
+    execution_chart: Dict[str, Any],
+    gamma_data_status: str,
+    level_count: int,
+) -> str:
+    if level_count <= 0:
+        return "unavailable"
+    if gamma_data_status == "stale_but_usable":
+        return "stale_snapshot"
+    if session_mode == "regular" and str(execution_chart.get("mode") or "") == "live_session" and gamma_data_status == "fresh_valid":
+        return "live_session_snapshot"
+    if str(execution_chart.get("mode") or "") == "last_session_replay" or session_mode in {"after_hours", "premarket", "closed"}:
+        return "last_valid_snapshot"
+    if gamma_data_status in {"fresh_valid", "partial"}:
+        return "live_session_snapshot"
+    return "unavailable"
+
+
+def _market_pulse_planning_bias_viewmodel(
+    *,
+    spot: Any,
+    local_flip: Any,
+    call_wall: Any,
+    put_wall: Any,
+    next_call_wall: Any,
+    next_put_wall: Any,
+) -> Dict[str, str]:
+    spot_num = float(spot) if isinstance(spot, (int, float)) else None
+    local_num = float(local_flip) if isinstance(local_flip, (int, float)) else None
+    call_num = float(call_wall) if isinstance(call_wall, (int, float)) else None
+    put_num = float(put_wall) if isinstance(put_wall, (int, float)) else None
+    next_call_num = float(next_call_wall) if isinstance(next_call_wall, (int, float)) else None
+    next_put_num = float(next_put_wall) if isinstance(next_put_wall, (int, float)) else None
+
+    if spot_num is None:
+        return {"planning_bias": "unavailable", "planning_bias_label": "Unavailable"}
+    if call_num is not None and spot_num > call_num:
+        target = next_call_num if next_call_num is not None else call_num
+        return {
+            "planning_bias": "above_call_wall_extension_risk",
+            "planning_bias_label": f"Above Call Wall · extension risk toward {target:.0f}",
+        }
+    if put_num is not None and spot_num < put_num:
+        target = next_put_num if next_put_num is not None else put_num
+        return {
+            "planning_bias": "below_put_wall_breakdown_risk",
+            "planning_bias_label": f"Below Put Wall · breakdown risk toward {target:.0f}",
+        }
+    if local_num is not None and spot_num >= local_num:
+        return {
+            "planning_bias": "bullish_above_local_flip",
+            "planning_bias_label": f"Bullish above Local Flip {local_num:.0f}",
+        }
+    if local_num is not None and spot_num < local_num:
+        return {
+            "planning_bias": "bearish_below_local_flip",
+            "planning_bias_label": f"Bearish below Local Flip {local_num:.0f}",
+        }
+    if any(isinstance(value, (int, float)) for value in (call_num, put_num, local_num)):
+        return {
+            "planning_bias": "neutral_between_levels",
+            "planning_bias_label": "Neutral between levels",
+        }
+    return {"planning_bias": "unavailable", "planning_bias_label": "Unavailable"}
+
+
+def _market_pulse_compact_level_label(prefix: str, value: Any, fallback: str) -> str:
+    numeric = _market_pulse_positive_float(value)
+    if numeric is None:
+        return fallback
+    return f"{prefix} {numeric:.0f}"
+
+
+def _market_pulse_display_context_viewmodel(
+    *,
+    session_mode: str,
+    levels_source: str,
+    planning_bias: Dict[str, str],
+    local_bias: Dict[str, Any],
+    location: Dict[str, Any],
+    playbook: Dict[str, Any],
+    execution_model: Dict[str, Any],
+    local_flip: Any,
+    call_wall: Any,
+    put_wall: Any,
+    next_call_wall: Any,
+    next_put_wall: Any,
+) -> Dict[str, str]:
+    """Return UI-facing labels from the unified backend snapshot.
+
+    Regular-session flow can still use the richer execution model language when
+    tactical structure is available. Outside regular hours, or when tactical
+    context is missing, we switch to planning-oriented language derived from
+    the resolved spot/levels snapshot rather than surfacing vague "unknown"
+    labels from missing intraday fields.
+    """
+
+    local_state = str(local_bias.get("state") or "").strip().lower()
+    location_zone = str(location.get("zone") or "").strip()
+    playbook_why = str(
+        playbook.get("why")
+        or execution_model.get("posture_summary")
+        or ""
+    ).strip()
+
+    if session_mode == "regular" and levels_source != "unavailable" and local_state not in {"", "unknown"}:
+        return {
+            "bias_state": local_bias.get("state") or "neutral",
+            "bias_context": local_bias.get("title") or local_bias.get("context") or planning_bias.get("planning_bias_label") or "Awaiting structure",
+            "bias_label": local_bias.get("label") or "WAIT",
+            "bias": planning_bias.get("planning_bias_label") or local_bias.get("title") or "Unavailable",
+            "current_read": location_zone or "Awaiting structure",
+            "pullback_level": playbook.get("pullback_level") or _market_pulse_compact_level_label("LF", local_flip, "Awaiting level"),
+            "next_destination": location.get("nearest_level_name") or "Awaiting next test",
+            "plan_note": playbook_why or "Awaiting market posture.",
+            "best_look": playbook.get("best_look") or "Wait for cleaner structure",
+            "required_trigger": playbook.get("need") or "Confirmation required",
+            "invalidation": playbook.get("need") or "Wait for live structure",
+        }
+
+    if levels_source == "unavailable":
+        return {
+            "bias_state": "neutral",
+            "bias_context": "STRUCTURE UNAVAILABLE",
+            "bias_label": "WAIT",
+            "bias": "Unavailable",
+            "current_read": "Unavailable",
+            "pullback_level": "Awaiting level",
+            "next_destination": "Awaiting next test",
+            "plan_note": "No validated session structure is available.",
+            "best_look": "Wait for validated structure",
+            "required_trigger": "Validated session structure",
+            "invalidation": "Structure unavailable",
+        }
+
+    session_prefix = {
+        "after_hours": "After-hours planning",
+        "premarket": "Premarket planning",
+        "closed": "Closed-session planning",
+    }.get(session_mode, "Planning")
+
+    local_label = _market_pulse_compact_level_label("LF", local_flip, "Awaiting level")
+    call_label = _market_pulse_compact_level_label("CW", call_wall, "Awaiting level")
+    put_label = _market_pulse_compact_level_label("PW", put_wall, "Awaiting level")
+    next_call_label = _market_pulse_compact_level_label("NCW", next_call_wall, call_label)
+    next_put_label = _market_pulse_compact_level_label("NPW", next_put_wall, put_label)
+    planning_state = planning_bias.get("planning_bias") or "unavailable"
+
+    if planning_state == "above_call_wall_extension_risk":
+        return {
+            "bias_state": "above_local",
+            "bias_context": "ABOVE CALL WALL",
+            "bias_label": "EXTENSION RISK",
+            "bias": planning_bias.get("planning_bias_label") or "Above Call Wall",
+            "current_read": "Above Call Wall",
+            "pullback_level": call_label,
+            "next_destination": next_call_label,
+            "plan_note": f"{session_prefix}: above call wall. Respect extension risk and plan for pullback into call wall.",
+            "best_look": "Wait for pullback into Call Wall",
+            "required_trigger": "Next live session retest and hold at Call Wall",
+            "invalidation": call_label,
+        }
+    if planning_state == "below_put_wall_breakdown_risk":
+        return {
+            "bias_state": "below_local",
+            "bias_context": "BELOW PUT WALL",
+            "bias_label": "BREAKDOWN RISK",
+            "bias": planning_bias.get("planning_bias_label") or "Below Put Wall",
+            "current_read": "Below Put Wall",
+            "pullback_level": put_label,
+            "next_destination": next_put_label,
+            "plan_note": f"{session_prefix}: below put wall. Respect breakdown risk and plan from put-wall reclaim or continuation.",
+            "best_look": "Wait for reclaim or continuation below Put Wall",
+            "required_trigger": "Next live session reclaim or clean continuation below Put Wall",
+            "invalidation": put_label,
+        }
+    if planning_state == "bullish_above_local_flip":
+        return {
+            "bias_state": "above_local",
+            "bias_context": "ABOVE LOCAL FLIP",
+            "bias_label": "BUY DIPS",
+            "bias": planning_bias.get("planning_bias_label") or "Bullish above Local Flip",
+            "current_read": "Above Local Flip",
+            "pullback_level": local_label,
+            "next_destination": call_label if call_label != "Awaiting level" else next_call_label,
+            "plan_note": f"{session_prefix}: macro context is supportive above local flip. Plan for dip-buying only if the next live session holds above the local flip.",
+            "best_look": "Buy dip above Local Flip",
+            "required_trigger": "Next live session dip-hold above Local Flip",
+            "invalidation": local_label,
+        }
+    if planning_state == "bearish_below_local_flip":
+        return {
+            "bias_state": "below_local",
+            "bias_context": "BELOW LOCAL FLIP",
+            "bias_label": "SELL RIPS",
+            "bias": planning_bias.get("planning_bias_label") or "Bearish below Local Flip",
+            "current_read": "Below Local Flip",
+            "pullback_level": local_label,
+            "next_destination": put_label if put_label != "Awaiting level" else next_put_label,
+            "plan_note": f"{session_prefix}: macro context is weak below local flip. Plan for rip-selling only if the next live session fails back under the local flip.",
+            "best_look": "Sell rip below Local Flip",
+            "required_trigger": "Next live session failed reclaim at Local Flip",
+            "invalidation": local_label,
+        }
+    if planning_state == "neutral_between_levels":
+        return {
+            "bias_state": "neutral",
+            "bias_context": "BETWEEN LEVELS",
+            "bias_label": "WAIT",
+            "bias": planning_bias.get("planning_bias_label") or "Neutral between levels",
+            "current_read": "Between Levels",
+            "pullback_level": local_label,
+            "next_destination": call_label if call_label != "Awaiting level" else put_label,
+            "plan_note": f"{session_prefix}: structure is coherent, but price is between actionable levels. Wait for a cleaner live-session test.",
+            "best_look": "Wait for cleaner structure",
+            "required_trigger": "Next live session test at Local Flip or wall",
+            "invalidation": "No live trigger yet",
+        }
+
+    return {
+        "bias_state": "neutral",
+        "bias_context": "MACRO CONTEXT VALID",
+        "bias_label": "LIVE TRIGGER PENDING",
+        "bias": planning_bias.get("planning_bias_label") or "Macro context valid / live trigger pending",
+        "current_read": "Macro Context Valid",
+        "pullback_level": local_label,
+        "next_destination": call_label if call_label != "Awaiting level" else put_label,
+        "plan_note": f"{session_prefix}: structure is usable, but the next live trigger has not printed yet.",
+        "best_look": "Wait for next live trigger",
+        "required_trigger": "Next live session confirmation at a key level",
+        "invalidation": "Live trigger pending",
+    }
+
+
+def _market_pulse_execution_regime_viewmodel(
+    *,
+    session_mode: str,
+    gamma_regime: str,
+    gamma_data_status: str,
+    planning_bias: str,
+    levels_source: str,
+) -> Dict[str, str]:
+    if session_mode in {"after_hours", "premarket"}:
+        if levels_source in {"last_valid_snapshot", "stale_snapshot", "live_session_snapshot"}:
+            return {
+                "execution_regime": "planning_mode_only",
+                "execution_regime_label": "Planning mode only",
+            }
+        return {
+            "execution_regime": "reduced_confidence_structure_first",
+            "execution_regime_label": "Reduced confidence · structure first",
+        }
+    if session_mode == "closed":
+        if levels_source != "unavailable":
+            return {
+                "execution_regime": "planning_mode_only",
+                "execution_regime_label": "Planning mode only",
+            }
+        return {
+            "execution_regime": "reduced_confidence_structure_first",
+            "execution_regime_label": "Reduced confidence · structure first",
+        }
+    if gamma_data_status in {"invalid", "partial"} or levels_source == "unavailable":
+        return {
+            "execution_regime": "reduced_confidence_structure_first",
+            "execution_regime_label": "Reduced confidence · structure first",
+        }
+    if planning_bias == "above_call_wall_extension_risk":
+        return {
+            "execution_regime": "expansion_risk",
+            "execution_regime_label": "Expansion risk",
+        }
+    if planning_bias == "below_put_wall_breakdown_risk":
+        return {
+            "execution_regime": "breakdown_risk",
+            "execution_regime_label": "Breakdown risk",
+        }
+    if gamma_regime == "negative":
+        return {
+            "execution_regime": "trend_momentum_active",
+            "execution_regime_label": "Trend momentum active",
+        }
+    if gamma_regime == "positive":
+        return {
+            "execution_regime": "mean_reversion_active",
+            "execution_regime_label": "Mean reversion active",
+        }
+    return {
+        "execution_regime": "mixed_structure_first",
+        "execution_regime_label": "Mixed structure first",
+    }
+
+
+def _market_pulse_trade_state(
+    *,
+    session_mode: str,
+    levels_source: str,
+    gamma_data_status: str,
+    playbook_status: str,
+) -> str:
+    if session_mode in {"after_hours", "premarket"}:
+        return "PLANNING_ONLY" if levels_source != "unavailable" else "UNAVAILABLE"
+    if session_mode == "closed":
+        return "PLANNING_ONLY" if levels_source != "unavailable" else "UNAVAILABLE"
+    if levels_source == "unavailable" or gamma_data_status == "invalid":
+        return "NO_TRADE"
+    normalized = str(playbook_status or "").strip().upper().replace(" ", "_")
+    if normalized == "GO":
+        return "READY"
+    if normalized in {"WATCH", "CAUTION"}:
+        return "WAIT"
+    if normalized == "NO_TRADE":
+        return "NO_TRADE"
+    return "WAIT"
+
+
+def _market_pulse_last_valid_snapshot_usable(
+    *,
+    now_et: datetime,
+    gamma_snapshot: Dict[str, Any],
+    execution_chart: Dict[str, Any],
+    levels: Dict[str, Any],
+    next_call_wall: Any,
+    next_put_wall: Any,
+) -> Dict[str, Any]:
+    """Decide whether the last valid structure board is coherent enough for planning.
+
+    This is intentionally stricter than "some numbers exist". For outside-session
+    planning we require a recent last-valid timestamp plus the core structure
+    levels that matter most for next-session framing: local flip, call wall,
+    and put wall.
+    """
+
+    max_age_seconds = max(
+        60,
+        int(
+            float(
+                os.environ.get("MARKET_PULSE_LAST_VALID_MAX_AGE_SECONDS")
+                or MARKET_PULSE_LAST_VALID_MAX_AGE_SECONDS
+            )
+        ),
+    )
+    last_valid_text = (
+        gamma_snapshot.get("last_successful_compute")
+        or gamma_snapshot.get("computed_at")
+        or gamma_snapshot.get("asof")
+        or ""
+    )
+    last_valid_dt = _parse_iso_et(last_valid_text)
+    if last_valid_dt is None:
+        return {"usable": False, "reason": "missing_last_valid_time", "age_seconds": None}
+
+    age_seconds = max(0.0, (now_et - last_valid_dt).total_seconds())
+    if age_seconds > max_age_seconds:
+        return {"usable": False, "reason": "last_valid_too_old", "age_seconds": age_seconds}
+
+    local_flip = levels.get("local_flip")
+    call_wall = levels.get("call_wall")
+    put_wall = levels.get("put_wall")
+    spot = levels.get("spot")
+    required_present = all(
+        isinstance(value, (int, float))
+        for value in (local_flip, call_wall, put_wall)
+    )
+    if not required_present:
+        return {"usable": False, "reason": "required_levels_missing", "age_seconds": age_seconds}
+
+    local_num = float(local_flip)
+    call_num = float(call_wall)
+    put_num = float(put_wall)
+    spot_num = float(spot) if isinstance(spot, (int, float)) else None
+    coherent = call_num > put_num and put_num <= local_num <= call_num
+    if spot_num is not None:
+        coherent = coherent and (put_num - 80.0) <= spot_num <= (call_num + 80.0)
+    if not coherent:
+        return {"usable": False, "reason": "coherence_failed", "age_seconds": age_seconds}
+
+    has_next_levels = any(isinstance(value, (int, float)) for value in (next_call_wall, next_put_wall))
+    source_label = str(execution_chart.get("last_valid_session_label") or execution_chart.get("session_label") or "").strip()
+    return {
+        "usable": True,
+        "reason": "usable_last_valid_snapshot",
+        "age_seconds": age_seconds,
+        "has_next_levels": has_next_levels,
+        "source_label": source_label,
+    }
+
+
+def _market_pulse_structure_snapshot(
+    *,
+    spx_quote: Dict[str, Any],
+    gamma_snapshot: Dict[str, Any],
+    execution_chart: Dict[str, Any],
+    execution_model: Dict[str, Any],
+    now_et: datetime,
+) -> Dict[str, Any]:
+    levels = dict(execution_model.get("levels") or {})
+    local_bias = dict(execution_model.get("local_bias") or {})
+    playbook = dict(execution_model.get("playbook") or {})
+    location = dict(execution_model.get("location") or {})
+    raw_snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
+    session_mode = _market_pulse_snapshot_session_mode(now_et)
+    next_call_wall = gamma_snapshot.get("next_call_wall_above")
+    next_put_wall = gamma_snapshot.get("next_put_wall_below")
+    level_count = sum(
+        1
+        for value in (
+            levels.get("main_flip"),
+            levels.get("local_flip"),
+            levels.get("call_wall"),
+            levels.get("put_wall"),
+            next_call_wall,
+            next_put_wall,
+        )
+        if isinstance(value, (int, float))
+    )
+    gamma_data_status = _market_pulse_gamma_data_status(gamma_snapshot, level_count=level_count)
+    last_valid_snapshot_check = _market_pulse_last_valid_snapshot_usable(
+        now_et=now_et,
+        gamma_snapshot=gamma_snapshot,
+        execution_chart=execution_chart,
+        levels=levels,
+        next_call_wall=next_call_wall,
+        next_put_wall=next_put_wall,
+    )
+    raw_snapshot_invalid = raw_snapshot_status in {"", "invalid"}
+    planning_fallback_active = (
+        session_mode in {"after_hours", "premarket", "closed"}
+        and raw_snapshot_invalid
+        and bool(last_valid_snapshot_check.get("usable"))
+    )
+    effective_gamma_data_status = gamma_data_status
+    if planning_fallback_active:
+        effective_gamma_data_status = "partial"
+    elif session_mode in {"after_hours", "premarket", "closed"} and raw_snapshot_invalid:
+        effective_gamma_data_status = "invalid"
+    regime = _market_pulse_gamma_regime_viewmodel(
+        gamma_snapshot,
+        gamma_data_status=effective_gamma_data_status,
+    )
+    if planning_fallback_active:
+        regime = {
+            "gamma_regime": "unconfirmed",
+            "gamma_regime_label": "Unconfirmed",
+            "gamma_regime_subtitle": "Using last valid session structure",
+        }
+    levels_source = _market_pulse_levels_source(
+        session_mode=session_mode,
+        execution_chart=execution_chart,
+        gamma_data_status=effective_gamma_data_status,
+        level_count=level_count,
+    )
+    if planning_fallback_active:
+        levels_source = "last_valid_snapshot"
+    elif session_mode in {"after_hours", "premarket", "closed"} and raw_snapshot_invalid:
+        levels_source = "unavailable"
+    regime_confidence = _market_pulse_regime_confidence(
+        session_mode=session_mode,
+        gamma_data_status=effective_gamma_data_status,
+    )
+    planning_bias = _market_pulse_planning_bias_viewmodel(
+        spot=levels.get("spot"),
+        local_flip=levels.get("local_flip"),
+        call_wall=levels.get("call_wall"),
+        put_wall=levels.get("put_wall"),
+        next_call_wall=next_call_wall,
+        next_put_wall=next_put_wall,
+    )
+    execution_regime = _market_pulse_execution_regime_viewmodel(
+        session_mode=session_mode,
+        gamma_regime=regime["gamma_regime"],
+        gamma_data_status=effective_gamma_data_status,
+        planning_bias=planning_bias["planning_bias"],
+        levels_source=levels_source,
+    )
+    trade_state = _market_pulse_trade_state(
+        session_mode=session_mode,
+        levels_source=levels_source,
+        gamma_data_status=effective_gamma_data_status,
+        playbook_status=str(playbook.get("status") or "WAIT"),
+    )
+    trade_state_label = str(trade_state).replace("_", " ")
+    display_context = _market_pulse_display_context_viewmodel(
+        session_mode=session_mode,
+        levels_source=levels_source,
+        planning_bias=planning_bias,
+        local_bias=local_bias,
+        location=location,
+        playbook=playbook,
+        execution_model=execution_model,
+        local_flip=levels.get("local_flip"),
+        call_wall=levels.get("call_wall"),
+        put_wall=levels.get("put_wall"),
+        next_call_wall=next_call_wall,
+        next_put_wall=next_put_wall,
+    )
+
+    confidence_label = {
+        "high": "High confidence",
+        "medium": "Medium confidence",
+        "low": "Low confidence",
+        "none": "No confidence",
+    }.get(regime_confidence, "No confidence")
+    session_mode_label = {
+        "regular": "Regular",
+        "after_hours": "After Hours",
+        "premarket": "Premarket",
+        "closed": "Closed",
+    }.get(session_mode, "Closed")
+    levels_source_label = {
+        "live_session_snapshot": "Live session snapshot",
+        "last_valid_snapshot": "Last valid snapshot",
+        "stale_snapshot": "Stale snapshot",
+        "unavailable": "Unavailable",
+    }.get(levels_source, "Unavailable")
+    gamma_data_status_label = {
+        "fresh_valid": "Fresh valid",
+        "stale_but_usable": "Stale but usable",
+        "partial": "Partial",
+        "invalid": "Invalid",
+    }.get(effective_gamma_data_status, "Invalid")
+
+    snapshot_timestamp = (
+        gamma_snapshot.get("last_successful_compute")
+        or gamma_snapshot.get("computed_at")
+        or gamma_snapshot.get("asof")
+        or spx_quote.get("asof")
+        or spx_quote.get("as_of")
+        or ""
+    )
+    last_valid_snapshot_time = (
+        gamma_snapshot.get("last_successful_compute")
+        or gamma_snapshot.get("computed_at")
+        or gamma_snapshot.get("asof")
+        or ""
+    )
+
+    return {
+        "spot": levels.get("spot"),
+        "session_mode": session_mode,
+        "session_mode_label": session_mode_label,
+        "levels_source": levels_source,
+        "levels_source_label": levels_source_label,
+        "gamma_data_status": effective_gamma_data_status,
+        "gamma_data_status_label": gamma_data_status_label,
+        "gamma_regime": regime["gamma_regime"],
+        "gamma_regime_label": regime["gamma_regime_label"],
+        "gamma_regime_subtitle": regime["gamma_regime_subtitle"],
+        "regime_confidence": regime_confidence,
+        "regime_confidence_label": confidence_label,
+        "execution_regime": execution_regime["execution_regime"],
+        "execution_regime_label": execution_regime["execution_regime_label"],
+        "planning_bias": planning_bias["planning_bias"],
+        "planning_bias_label": planning_bias["planning_bias_label"],
+        "main_flip": levels.get("main_flip"),
+        "local_flip": levels.get("local_flip"),
+        "call_wall": levels.get("call_wall"),
+        "put_wall": levels.get("put_wall"),
+        "next_call_wall": next_call_wall,
+        "next_put_wall": next_put_wall,
+        "bias_state": display_context["bias_state"],
+        "bias_context": display_context["bias_context"],
+        "bias_label": display_context["bias_label"],
+        "bias": display_context["bias"],
+        "trade_state": trade_state,
+        "trade_state_label": trade_state_label,
+        "trade_state_tone": playbook.get("tone") or "warn",
+        # Preserve current UI fields while feeding them from the unified snapshot.
+        "tradeability": execution_regime["execution_regime_label"],
+        "session": f"{session_mode_label} · {confidence_label}",
+        "current_read": display_context["current_read"],
+        "pullback_level": display_context["pullback_level"],
+        "next_destination": display_context["next_destination"],
+        "plan_note": display_context["plan_note"],
+        "best_look": display_context["best_look"],
+        "required_trigger": display_context["required_trigger"],
+        "invalidation": display_context["invalidation"],
+        "snapshot_timestamp": snapshot_timestamp,
+        "snapshot_timestamp_label": _format_iso_et_label(snapshot_timestamp) or "—",
+        "last_valid_snapshot_time": last_valid_snapshot_time,
+        "last_valid_snapshot_time_label": _format_iso_et_label(last_valid_snapshot_time) or "—",
+        "last_valid_snapshot_usable": bool(last_valid_snapshot_check.get("usable")),
+        "last_valid_snapshot_reason": str(last_valid_snapshot_check.get("reason") or ""),
+        "last_valid_snapshot_age_seconds": last_valid_snapshot_check.get("age_seconds"),
+    }
+
+
 def _market_pulse_regime_strip_viewmodel(
     *,
     spx_quote: Dict[str, Any],
@@ -2940,6 +4155,212 @@ def _market_pulse_regime_strip_viewmodel(
         "spot": spot_label,
         "bias": bias,
     }
+
+
+def get_or_build_market_pulse_snapshot(
+    *,
+    force_refresh: bool = False,
+    now_et: Optional[datetime] = None,
+    preloaded_snapshot: Optional[Dict[str, Any]] = None,
+    preloaded_gamma_snapshot: Optional[Dict[str, Any]] = None,
+    preloaded_quotes: Optional[List[Dict[str, Any]]] = None,
+    preloaded_macro_events: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Build the canonical Market Pulse snapshot consumed by the page and hero API.
+
+    The snapshot keeps spot resolution, gamma board selection, local flip
+    validity, chart source, and planning/execution labels separate so a single
+    weak field does not collapse the entire page into an ambiguous state.
+    """
+
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_pulse_runtime
+    from mccain_capital.services import market_worker
+
+    now_et = now_et or app_runtime.now_et()
+    raw_snapshot = dict(preloaded_snapshot or _market_pulse_snapshot(force_refresh=force_refresh) or {})
+    gamma_snapshot = dict(preloaded_gamma_snapshot or gamma_map_service.get_gamma_snapshot() or {})
+
+    if (force_refresh or not gamma_snapshot.get("asof")) and not current_app.config.get("TESTING"):
+        runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
+        gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
+
+    quotes = list(preloaded_quotes or [])
+    if not quotes:
+        quotes = _market_pulse_enrich_quotes(list(raw_snapshot.get("quotes") or []), now_et)
+        if not current_app.config.get("TESTING"):
+            try:
+                live_snapshot = market_worker.get_market_snapshot()
+                live_series = dict(live_snapshot.get("series") or {})
+                for q in quotes:
+                    symbol = str(q.get("symbol") or "")
+                    series = live_series.get(symbol)
+                    if isinstance(series, list) and len(series) >= 8:
+                        q["mini_series"] = [float(v) for v in series if isinstance(v, (int, float))]
+                quotes = _market_pulse_enrich_quotes(quotes, now_et)
+            except Exception:
+                pass
+
+    spx_quote = next((q for q in quotes if str(q.get("label") or q.get("symbol") or "").upper() == "SPX"), {})
+    macro_events = list(preloaded_macro_events or [])
+    session_mode = _market_pulse_snapshot_session_mode(now_et)
+    cached_playbook = _market_pulse_cached_playbook_snapshot(now_et)
+
+    provisional_chart = _market_pulse_execution_chart_viewmodel(
+        spx_quote=spx_quote,
+        gamma_snapshot=gamma_snapshot,
+        macro_events=macro_events,
+        now_et=now_et,
+    )
+    spot_meta = _market_pulse_resolve_spot_snapshot(
+        session_mode=session_mode,
+        spx_quote=spx_quote,
+        gamma_snapshot=gamma_snapshot,
+        now_et=now_et,
+        last_good_snapshot=cached_playbook,
+    )
+    gamma_resolution = _market_pulse_resolve_gamma_payload(
+        gamma_snapshot=gamma_snapshot,
+        last_good_snapshot=cached_playbook,
+        session_mode=session_mode,
+        now_et=now_et,
+    )
+    resolved_levels = {
+        key: dict(value or {}).get("value")
+        for key, value in dict(gamma_resolution.get("level_meta") or {}).items()
+    }
+    resolved_spx_quote = _market_pulse_apply_resolved_spot(spx_quote, spot_meta)
+    resolved_gamma_snapshot = _market_pulse_apply_resolved_levels(gamma_snapshot, gamma_resolution)
+    execution_chart = _market_pulse_execution_chart_viewmodel(
+        spx_quote=resolved_spx_quote,
+        gamma_snapshot=resolved_gamma_snapshot,
+        macro_events=macro_events,
+        now_et=now_et,
+        resolved_spot=spot_meta.get("value"),
+        resolved_levels=resolved_levels,
+    )
+    chart_meta = _market_pulse_chart_source_viewmodel(
+        execution_chart=execution_chart,
+        session_mode=session_mode,
+    )
+    spx_priority_context = build_spx_priority_context(
+        spx_quote=resolved_spx_quote,
+        gamma_snapshot=resolved_gamma_snapshot,
+    )
+    execution_model = _market_pulse_execution_model(
+        spx_quote=resolved_spx_quote,
+        gamma_snapshot=resolved_gamma_snapshot,
+        execution_chart=execution_chart,
+        spx_priority_context=spx_priority_context,
+    )
+    market_structure_snapshot = _market_pulse_structure_snapshot(
+        spx_quote=resolved_spx_quote,
+        gamma_snapshot=resolved_gamma_snapshot,
+        execution_chart=execution_chart,
+        execution_model=execution_model,
+        now_et=now_et,
+    )
+
+    # Backend remains the source of truth for UI labels and provenance.
+    market_structure_snapshot["spot"] = spot_meta.get("value")
+    market_structure_snapshot["spot_meta"] = spot_meta
+    market_structure_snapshot["level_meta"] = gamma_resolution.get("level_meta") or {}
+    market_structure_snapshot["local_flip_meta"] = gamma_resolution.get("local_flip_meta") or {}
+    market_structure_snapshot["gamma_regime_meta"] = gamma_resolution.get("gamma_regime_meta") or {}
+    market_structure_snapshot["chart_meta"] = chart_meta
+    market_structure_snapshot["levels_source"] = gamma_resolution.get("levels_source") or market_structure_snapshot.get("levels_source")
+    market_structure_snapshot["gamma_data_status"] = gamma_resolution.get("gamma_data_status") or market_structure_snapshot.get("gamma_data_status")
+    market_structure_snapshot["gamma_regime"] = dict(gamma_resolution.get("gamma_regime_meta") or {}).get("value") or market_structure_snapshot.get("gamma_regime")
+    market_structure_snapshot["gamma_regime_label"] = dict(gamma_resolution.get("gamma_regime_meta") or {}).get("label") or market_structure_snapshot.get("gamma_regime_label")
+    market_structure_snapshot["gamma_regime_subtitle"] = dict(gamma_resolution.get("gamma_regime_meta") or {}).get("subtitle") or market_structure_snapshot.get("gamma_regime_subtitle")
+    market_structure_snapshot["main_flip"] = resolved_levels.get("main_flip")
+    market_structure_snapshot["local_flip"] = resolved_levels.get("local_flip")
+    market_structure_snapshot["call_wall"] = resolved_levels.get("call_wall")
+    market_structure_snapshot["put_wall"] = resolved_levels.get("put_wall")
+    market_structure_snapshot["next_call_wall"] = resolved_levels.get("next_call_wall")
+    market_structure_snapshot["next_put_wall"] = resolved_levels.get("next_put_wall")
+    market_structure_snapshot["session_mode"] = session_mode
+    market_structure_snapshot["app_state"] = spot_meta.get("state") if spot_meta.get("value") is not None else "UNAVAILABLE"
+    market_structure_snapshot["app_state_label"] = {
+        "LIVE_SESSION": "Live Session",
+        "AFTER_HOURS_VALID": "After-Hours Planning",
+        "UNAVAILABLE": "Unavailable",
+    }.get(str(market_structure_snapshot.get("app_state") or "UNAVAILABLE"), "Unavailable")
+    market_structure_snapshot["session"] = (
+        f"{market_structure_snapshot.get('session_mode_label') or session_mode.title()} · "
+        f"{market_structure_snapshot.get('regime_confidence_label') or 'No confidence'}"
+    )
+    market_structure_snapshot["spot_source_label"] = spot_meta.get("source_label") or "Unavailable"
+    market_structure_snapshot["spot_source_short_label"] = (
+        "SPX Spot"
+        if spot_meta.get("source") == "live"
+        else f"Spot · {spot_meta.get('source_label') or 'Unavailable'}"
+    )
+    market_structure_snapshot["chart_state"] = chart_meta.get("chart_state")
+    market_structure_snapshot["bars_source"] = chart_meta.get("bars_source")
+    market_structure_snapshot["bars_as_of"] = chart_meta.get("bars_as_of")
+    market_structure_snapshot["last_valid_snapshot_time"] = (
+        dict(gamma_resolution.get("gamma_regime_meta") or {}).get("as_of")
+        or market_structure_snapshot.get("last_valid_snapshot_time")
+    )
+    market_structure_snapshot["last_valid_snapshot_time_label"] = (
+        _format_iso_et_label(market_structure_snapshot.get("last_valid_snapshot_time")) or "—"
+    )
+    market_structure_snapshot["snapshot_timestamp"] = (
+        spot_meta.get("as_of")
+        or chart_meta.get("bars_as_of")
+        or market_structure_snapshot.get("snapshot_timestamp")
+        or ""
+    )
+    market_structure_snapshot["snapshot_timestamp_label"] = (
+        _format_iso_et_label(market_structure_snapshot.get("snapshot_timestamp")) or "—"
+    )
+
+    if (
+        market_structure_snapshot.get("app_state") == "AFTER_HOURS_VALID"
+        and market_structure_snapshot.get("levels_source") != "unavailable"
+    ):
+        market_structure_snapshot["trade_state"] = "PLANNING_ONLY"
+        market_structure_snapshot["trade_state_label"] = "PLANNING ONLY"
+        market_structure_snapshot["execution_regime"] = "planning_mode_only"
+        market_structure_snapshot["execution_regime_label"] = "Planning mode only"
+        market_structure_snapshot["tradeability"] = "Planning mode only"
+        execution_model.setdefault("playbook", {})
+        execution_model["playbook"]["status"] = "PLANNING_ONLY"
+
+    if market_structure_snapshot.get("levels_source") == "unavailable":
+        market_structure_snapshot["planning_bias"] = "unavailable"
+        market_structure_snapshot["planning_bias_label"] = "Unavailable"
+        market_structure_snapshot["bias"] = "Unavailable"
+        if market_structure_snapshot.get("app_state") == "UNAVAILABLE":
+            market_structure_snapshot["trade_state"] = "UNAVAILABLE"
+            market_structure_snapshot["trade_state_label"] = "UNAVAILABLE"
+
+    payload = {
+        "snapshot": raw_snapshot,
+        "gamma_snapshot": resolved_gamma_snapshot,
+        "quotes": quotes,
+        "spx_quote": resolved_spx_quote,
+        "spx_priority_context": spx_priority_context,
+        "execution_chart": execution_chart,
+        "execution_model": execution_model,
+        "market_structure_snapshot": market_structure_snapshot,
+    }
+    if _market_pulse_playbook_snapshot_valid(payload):
+        _market_pulse_store_playbook_snapshot(now_et, payload)
+        _market_pulse_log(
+            "playbook_snapshot_cached",
+            app_state=market_structure_snapshot.get("app_state"),
+            levels_source=market_structure_snapshot.get("levels_source"),
+            snapshot_timestamp=market_structure_snapshot.get("snapshot_timestamp"),
+        )
+    else:
+        _market_pulse_log(
+            "playbook_snapshot_not_cached",
+            app_state=market_structure_snapshot.get("app_state"),
+            levels_source=market_structure_snapshot.get("levels_source"),
+        )
+    return payload
 
 
 def _market_news_age_seconds(stamp: Any, now_et: datetime) -> int | None:
@@ -3833,6 +5254,7 @@ def _dashboard_daily_brief_viewmodel(
     dashboard_spx: Dict[str, Any],
     dashboard_vix: Dict[str, Any],
     gamma_snapshot: Dict[str, Any],
+    market_structure_snapshot: Optional[Dict[str, Any]] = None,
     news_snapshot: Dict[str, Any],
     today_count: int,
     today_net: float,
@@ -3851,12 +5273,30 @@ def _dashboard_daily_brief_viewmodel(
         except Exception:
             return None
 
-    spot = _num(dashboard_spx.get("price"))
+    structure = dict(market_structure_snapshot or {})
+    spot = _num(structure.get("spot"))
+    if spot is None:
+        spot = _num(dashboard_spx.get("price"))
     change_pct = _num(dashboard_spx.get("pct_change"))
     vix = _num(dashboard_vix.get("price"))
-    gamma_flip = _num(gamma_snapshot.get("gamma_flip"))
-    call_wall = _num(gamma_snapshot.get("call_wall"))
-    put_wall = _num(gamma_snapshot.get("put_wall"))
+    gamma_flip = _num(structure.get("main_flip"))
+    if gamma_flip is None:
+        gamma_flip = _num(gamma_snapshot.get("gamma_flip")) or _num(gamma_snapshot.get("gamma_flip_combined_basket"))
+    local_flip = _num(structure.get("local_flip"))
+    if local_flip is None:
+        local_flip = _num(gamma_snapshot.get("local_flip")) or _num(gamma_snapshot.get("local_flip_aggregated_gamma"))
+    call_wall = _num(structure.get("call_wall"))
+    if call_wall is None:
+        call_wall = _num(gamma_snapshot.get("call_wall")) or _num(gamma_snapshot.get("call_wall_aggregated_gamma"))
+    put_wall = _num(structure.get("put_wall"))
+    if put_wall is None:
+        put_wall = _num(gamma_snapshot.get("put_wall")) or _num(gamma_snapshot.get("put_wall_aggregated_gamma"))
+    next_call_wall = _num(structure.get("next_call_wall"))
+    if next_call_wall is None:
+        next_call_wall = _num(gamma_snapshot.get("next_call_wall")) or _num(gamma_snapshot.get("next_call_wall_above"))
+    next_put_wall = _num(structure.get("next_put_wall"))
+    if next_put_wall is None:
+        next_put_wall = _num(gamma_snapshot.get("next_put_wall")) or _num(gamma_snapshot.get("next_put_wall_below"))
     day_open = _num(dashboard_spx.get("day_open"))
 
     def _macro_event_dt(row: Dict[str, Any]) -> Optional[datetime]:
@@ -3893,6 +5333,112 @@ def _dashboard_daily_brief_viewmodel(
         bias_label = "Two-way / responsive"
         bias_tone = ""
         bias_summary = "Price is inside a mixed zone. Stay selective, shorten hold times, and avoid forcing trend conviction before levels confirm."
+
+    def _nearest_actionable_level() -> Dict[str, Any]:
+        candidates = []
+        for key, label, value, role in (
+            ("local_flip", "Local Flip", local_flip, "pivot"),
+            ("call_wall", "Call Wall", call_wall, "resistance"),
+            ("put_wall", "Put Wall", put_wall, "support"),
+            ("main_flip", "Main Flip", gamma_flip, "pivot"),
+        ):
+            if spot is None or value is None:
+                continue
+            candidates.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "value": float(value),
+                    "role": role,
+                    "distance": abs(float(spot) - float(value)),
+                }
+            )
+        if not candidates:
+            return {"key": "", "label": "Unavailable", "value": None, "role": "unavailable", "distance": None}
+        candidates.sort(key=lambda row: (row["distance"], 0 if row["key"] == "local_flip" else 1 if row["key"] in {"call_wall", "put_wall"} else 2))
+        return candidates[0]
+
+    active_level = _nearest_actionable_level()
+
+    def _market_location_text() -> str:
+        if spot is None:
+            return "Price unavailable."
+        if call_wall is not None and spot > call_wall:
+            return f"Price is above Call Wall {call_wall:.0f} and extended."
+        if put_wall is not None and spot < put_wall:
+            return f"Price is below Put Wall {put_wall:.0f} and breaking down."
+        if local_flip is not None and call_wall is not None and local_flip < spot < call_wall:
+            return f"Price is between Local Flip {local_flip:.0f} and Call Wall {call_wall:.0f}."
+        if put_wall is not None and local_flip is not None and put_wall < spot < local_flip:
+            return f"Price is between Put Wall {put_wall:.0f} and Local Flip {local_flip:.0f}."
+        if gamma_flip is not None and local_flip is not None:
+            low, high = sorted((gamma_flip, local_flip))
+            if low < spot < high:
+                return f"Price is between Main Flip {gamma_flip:.0f} and Local Flip {local_flip:.0f}."
+        if active_level.get("value") is not None:
+            level_value = float(active_level["value"])
+            relation = "at" if abs(float(spot) - level_value) <= 2.0 else "above" if float(spot) > level_value else "below"
+            return f"Price is {relation} {active_level['label']} {level_value:.0f}."
+        return "Price is between levels."
+
+    def _market_condition_text() -> str:
+        active_label = str(active_level.get("label") or "structure")
+        active_value = active_level.get("value")
+        if active_value is not None:
+            if active_level.get("role") == "resistance":
+                return f"Resistance test near {active_label} {float(active_value):.0f}."
+            if active_level.get("role") == "support":
+                return f"Support test near {active_label} {float(active_value):.0f}."
+            return f"Pivot decision near {active_label} {float(active_value):.0f}."
+        return bias_summary
+
+    def _execution_triggers_text() -> str:
+        value = active_level.get("value")
+        label = str(active_level.get("label") or "level")
+        role = str(active_level.get("role") or "")
+        if value is None:
+            return "Wait for a nearby actionable level before defining execution."
+        value_num = float(value)
+        if role == "resistance":
+            cont_target = f"{next_call_wall:.0f}" if next_call_wall is not None else "the next upside extension"
+            return (
+                f"Rejection at {label} {value_num:.0f} can trigger a short. "
+                f"Acceptance above {value_num:.0f} opens continuation long toward {cont_target}."
+            )
+        if role == "support":
+            break_target = f"{next_put_wall:.0f}" if next_put_wall is not None else "the next downside extension"
+            return (
+                f"Bounce at {label} {value_num:.0f} can trigger a long. "
+                f"Breakdown below {value_num:.0f} opens continuation short toward {break_target}."
+            )
+        return (
+            f"Hold above {label} {value_num:.0f} supports longs. "
+            f"Failure back below {value_num:.0f} supports shorts."
+        )
+
+    def _do_not_do_text() -> str:
+        value = active_level.get("value")
+        label = str(active_level.get("label") or "the nearest level")
+        role = str(active_level.get("role") or "")
+        if value is None:
+            return "Do not trade without a nearby validated structure anchor."
+        value_num = float(value)
+        if role == "resistance":
+            return f"Do not buy directly into {label} {value_num:.0f} without clean acceptance."
+        if role == "support":
+            return f"Do not short directly into {label} {value_num:.0f} without clean breakdown."
+        return f"Do not force entries in the middle of the range away from {label} {value_num:.0f}."
+
+    market_condition_default = _market_condition_text()
+    market_location_default = _market_location_text()
+    execution_triggers_default = _execution_triggers_text()
+    do_not_do_default = _do_not_do_text()
+
+    active_level_display = (
+        f"{active_level.get('label')} {float(active_level['value']):.0f} · {str(active_level.get('role') or '').title()}"
+        if active_level.get("value") is not None
+        else "Unavailable"
+    )
 
     if vix is not None and vix >= 22:
         volatility_label = "Elevated vol"
@@ -3935,37 +5481,33 @@ def _dashboard_daily_brief_viewmodel(
 
     key_levels = []
     for label, value, tone in (
+        (str(active_level.get("label") or "Active Level"), active_level.get("value"), "positive" if active_level.get("role") == "support" else "negative" if active_level.get("role") == "resistance" else ""),
+        ("Local Flip", local_flip, ""),
         ("Put Wall", put_wall, "positive"),
-        ("Gamma Flip", gamma_flip, ""),
         ("Call Wall", call_wall, "negative"),
+        ("Main Flip", gamma_flip, ""),
         ("Day Open", day_open, ""),
     ):
         if value is None:
+            continue
+        if any(item.get("label") == label for item in key_levels):
             continue
         key_levels.append({"label": label, "value": f"{value:.0f}", "tone": tone})
     if not key_levels and spot is not None:
         key_levels.append({"label": "Spot", "value": f"{spot:.2f}", "tone": ""})
 
-    default_focus = f"{bias_label}. Respect {volatility_label.lower()} and trade only when SPX confirms around your levels."
-    if gamma_flip is not None:
-        plan_a = f"Primary setup: continuation only if price accepts {'above' if bias_tone == 'positive' else 'below' if bias_tone == 'negative' else 'through'} {gamma_flip:.0f} with risk defined before entry."
-    else:
-        plan_a = "Primary setup: only take the cleanest continuation entry with risk defined before entry."
-    if call_wall is not None and put_wall is not None:
-        plan_b = f"Secondary setup: responsive fade only at edges near {put_wall:.0f} support or {call_wall:.0f} resistance after rejection is obvious."
-    else:
-        plan_b = (
-            "Secondary setup: responsive fade only at obvious extremes after rejection is obvious."
-        )
+    default_focus = market_condition_default
+    plan_a = execution_triggers_default
+    plan_b = market_location_default
     if macro_events:
-        no_trade = f"No trade during or immediately into {macro_events[0]['headline']} unless structure is already resolved and risk is smaller than usual."
+        no_trade = f"{do_not_do_default} Stand down during or immediately into {macro_events[0]['headline']} unless structure is already resolved and risk is smaller than usual."
     else:
-        no_trade = "No trade if the tape goes stale, structure is mixed, or your invalidation is not obvious before entry."
+        no_trade = do_not_do_default
 
-    focus = str(saved.get("focus") or default_focus).strip() or default_focus
-    plan_a_value = str(saved.get("plan_a") or plan_a).strip() or plan_a
-    plan_b_value = str(saved.get("plan_b") or plan_b).strip() or plan_b
-    no_trade_value = str(saved.get("no_trade") or no_trade).strip() or no_trade
+    market_condition_value = str(saved.get("focus") or default_focus).strip() or default_focus
+    execution_triggers_value = str(saved.get("plan_a") or plan_a).strip() or plan_a
+    market_location_value = str(saved.get("plan_b") or plan_b).strip() or plan_b
+    do_not_do_value = str(saved.get("no_trade") or no_trade).strip() or no_trade
 
     status_label = "Pre-market prep"
     if _market_pulse_market_hours(now_et):
@@ -3980,23 +5522,32 @@ def _dashboard_daily_brief_viewmodel(
         "bias_summary": bias_summary,
         "volatility_label": volatility_label,
         "status_label": status_label,
-        "focus": focus,
-        "plan_a": plan_a_value,
-        "plan_b": plan_b_value,
-        "no_trade": no_trade_value,
+        "focus": market_condition_value,
+        "plan_a": execution_triggers_value,
+        "plan_b": market_location_value,
+        "no_trade": do_not_do_value,
+        "market_condition": market_condition_value,
+        "market_location": market_location_value,
+        "active_level_name": str(active_level.get("label") or "Unavailable"),
+        "active_level_value": active_level.get("value"),
+        "active_level_role": str(active_level.get("role") or "unavailable"),
+        "active_level_display": active_level_display,
+        "execution_triggers": execution_triggers_value,
+        "do_not_do": do_not_do_value,
+        "risk_posture": f"{bias_label} · {volatility_label}",
         "key_levels": key_levels,
         "macro_events": macro_events,
         "headline": (
-            f"{bias_label} · {volatility_label}"
+            f"{market_condition_default} · {volatility_label}"
             + (f" · Today {app_runtime.money(today_net)}" if today_count else "")
         ),
-        "summary": bias_summary,
+        "summary": market_location_default,
         "cta_label": "Trade Gate" if today_count == 0 else "Add Trade",
         "source_label": "Manually tuned" if is_tuned else "Auto-generated",
         "source_detail": (
             "Using your saved brief edits for this day."
             if is_tuned
-            else "Generated from live SPX, VIX, gamma structure, and macro context."
+            else "Generated from live SPX, nearest actionable gamma level, and macro context."
         ),
         "is_tuned": is_tuned,
     }
@@ -4128,11 +5679,71 @@ def _dashboard_decision_viewmodel(
     dashboard_vix: Dict[str, Any],
     gamma_strip: Optional[Dict[str, Any]] = None,
     execution_model: Optional[Dict[str, Any]] = None,
+    market_structure_snapshot: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     def _trust_value(field: str, default: Any = "") -> Any:
         if isinstance(data_trust, dict):
             return data_trust.get(field, default)
         return getattr(data_trust, field, default)
+
+    structure = dict(market_structure_snapshot or {})
+    if structure:
+        trade_state = str(structure.get("trade_state") or "UNAVAILABLE").strip().upper()
+        bias = str(
+            structure.get("bias")
+            or structure.get("planning_bias_label")
+            or structure.get("bias_context")
+            or "Unavailable"
+        ).strip() or "Unavailable"
+        posture_summary = str(
+            structure.get("plan_note")
+            or structure.get("execution_regime_label")
+            or structure.get("gamma_regime_subtitle")
+            or daily_brief.get("headline")
+            or ""
+        ).strip()
+        tone_map = {
+            "READY": "positive",
+            "WAIT": "warning",
+            "NO_TRADE": "negative",
+            "PLANNING_ONLY": "warning",
+            "UNAVAILABLE": "negative",
+        }
+        risk_map = {
+            "READY": "Normal size",
+            "WAIT": "Reduced size",
+            "NO_TRADE": "No trade / stand down",
+            "PLANNING_ONLY": "Planning only",
+            "UNAVAILABLE": "No trade / stand down",
+        }
+        status_map = {
+            "READY": "Ready if trigger confirms",
+            "WAIT": "Wait for cleaner structure",
+            "NO_TRADE": "No clean trade right now",
+            "PLANNING_ONLY": "After-hours planning only",
+            "UNAVAILABLE": "Stand down until structure is valid",
+        }
+        return {
+            "bias": bias,
+            "plan": str(structure.get("best_look") or daily_brief.get("plan_a") or "Wait").strip(),
+            "risk_size": risk_map.get(trade_state, "No trade / stand down"),
+            "status": str(structure.get("trade_state_label") or trade_state.replace("_", " ")).strip(),
+            "status_tone": tone_map.get(trade_state, "negative"),
+            "trade_gate": str(
+                structure.get("required_trigger")
+                or structure.get("invalidation")
+                or daily_brief.get("no_trade")
+                or "Wait"
+            ).strip(),
+            "risk_posture_title": risk_posture_title,
+            "risk_posture_detail": risk_posture_detail,
+            "gamma_strip": gamma_strip or {"entries": [], "headline": "Structure unavailable"},
+            "posture_summary": posture_summary,
+            "playbook_status": str(structure.get("trade_state_label") or trade_state.replace("_", " ")).strip(),
+            "playbook_score": None,
+            "playbook_grade": structure.get("regime_confidence_label"),
+            "local_bias_state": str(structure.get("bias_state") or "unknown"),
+        }
 
     model = dict(execution_model or {})
     macro = dict(model.get("macro_regime") or {})
@@ -4215,9 +5826,122 @@ def _dashboard_decision_viewmodel(
 
 def _dashboard_gamma_strip_viewmodel(
     *,
-    execution_model: Optional[Dict[str, Any]],
-    gamma_snapshot: Dict[str, Any],
+    execution_model: Optional[Dict[str, Any]] = None,
+    gamma_snapshot: Optional[Dict[str, Any]] = None,
+    market_structure_snapshot: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    def _dashboard_gamma_regime_short_label(value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized in {"positive", "positive gamma"}:
+            return "POSITIVE"
+        if normalized in {"negative", "negative gamma"}:
+            return "NEGATIVE"
+        if normalized in {"neutral", "neutral gamma"}:
+            return "NEUTRAL"
+        if normalized in {"unconfirmed"}:
+            return "UNCONFIRMED"
+        if normalized in {"unavailable", "regime unavailable"}:
+            return "UNAVAILABLE"
+        return str(value or "UNAVAILABLE").strip().upper() or "UNAVAILABLE"
+
+    structure = dict(market_structure_snapshot or {})
+    if structure:
+        def _fmt_level(value: Any) -> str:
+            if isinstance(value, (int, float)):
+                return f"{float(value):.0f}"
+            return "--"
+
+        gamma_status = str(structure.get("gamma_data_status") or "").strip().lower()
+        levels_source = str(structure.get("levels_source") or "").strip().lower()
+        regime_value = _dashboard_gamma_regime_short_label(
+            str(structure.get("gamma_regime_label") or structure.get("gamma_regime") or "Regime Unavailable")
+        )
+        regime_state = str(structure.get("gamma_regime") or "").strip().lower()
+        regime_tone = (
+            "positive" if regime_state == "positive"
+            else "negative" if regime_state == "negative"
+            else "warning" if regime_state in {"neutral", "unconfirmed"}
+            else "info"
+        )
+
+        if levels_source == "unavailable":
+            state = "unavailable"
+            status_text = (
+                str(structure.get("gamma_regime_subtitle") or "").strip()
+                or str(structure.get("levels_source_label") or "Gamma unavailable").strip()
+                or "Gamma context unavailable"
+            )
+        elif gamma_status in {"stale_but_usable", "partial"} or levels_source in {"last_valid_snapshot", "stale_snapshot"}:
+            state = "stale"
+            session_label = str(structure.get("session_mode_label") or "").strip()
+            source_label = str(structure.get("levels_source_label") or "").strip()
+            ts_label = (
+                str(structure.get("last_valid_snapshot_time_label") or "").strip()
+                or str(structure.get("snapshot_timestamp_label") or "").strip()
+            )
+            parts = [part for part in (session_label, source_label, ts_label) if part and part != "—"]
+            status_text = " · ".join(parts) or "Using last valid structure"
+        elif gamma_status in {"fresh_valid"} and levels_source == "live_session_snapshot":
+            state = "live"
+            session_label = str(structure.get("session_mode_label") or "").strip()
+            regime_subtitle = str(structure.get("gamma_regime_subtitle") or "").strip()
+            parts = [part for part in (session_label, regime_subtitle) if part]
+            status_text = " · ".join(parts) or "Live gamma snapshot"
+        else:
+            state = "loading"
+            status_text = "Loading gamma context..."
+
+        items = [
+            {
+                "key": "regime",
+                "label": "Gamma Regime",
+                "value": regime_value,
+                "emphasis": "strong",
+                "tone": regime_tone,
+                "glow": regime_tone in {"positive", "negative"},
+            },
+            {
+                "key": "main_flip",
+                "label": "Main Flip",
+                "value": _fmt_level(structure.get("main_flip")),
+                "emphasis": "strong",
+                "tone": "info",
+                "glow": False,
+            },
+            {
+                "key": "local_flip",
+                "label": "Local Flip",
+                "value": _fmt_level(structure.get("local_flip")),
+                "emphasis": "quiet",
+                "tone": "",
+                "glow": False,
+            },
+            {
+                "key": "call_wall",
+                "label": "Call Wall",
+                "value": _fmt_level(structure.get("call_wall")),
+                "emphasis": "medium",
+                "tone": "negative",
+                "glow": False,
+            },
+            {
+                "key": "put_wall",
+                "label": "Put Wall",
+                "value": _fmt_level(structure.get("put_wall")),
+                "emphasis": "medium",
+                "tone": "positive",
+                "glow": False,
+            },
+        ]
+        return {
+            "headline": "Gamma structure",
+            "entries": items,
+            "state": state,
+            "status_text": status_text or "Gamma context unavailable",
+            "updated_label": str(structure.get("snapshot_timestamp_label") or "").strip(),
+        }
+
+    gamma_snapshot = dict(gamma_snapshot or {})
     def _fmt_level(value: Any, *, key: str = "") -> str:
         if isinstance(value, (int, float)):
             return f"{float(value):.0f}"
@@ -5284,11 +7008,19 @@ def dashboard():
         execution_chart=dashboard_execution_chart,
         spx_priority_context=spx_priority_context,
     )
+    playbook_snapshot = get_or_build_market_pulse_snapshot(
+        force_refresh=False,
+        now_et=now_et,
+        preloaded_gamma_snapshot=gamma_snapshot,
+        preloaded_macro_events=list(news_snapshot.get("macro_events") or []),
+    )
+    dashboard_market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     daily_brief = _dashboard_daily_brief_viewmodel(
         now_et=now_et,
         dashboard_spx=dashboard_spx,
         dashboard_vix=dashboard_vix,
         gamma_snapshot=gamma_snapshot,
+        market_structure_snapshot=dashboard_market_structure_snapshot,
         news_snapshot=news_snapshot,
         today_count=today_count,
         today_net=today_net,
@@ -5380,8 +7112,7 @@ def dashboard():
         data_trust=data_trust,
     )
     gamma_strip = _dashboard_gamma_strip_viewmodel(
-        execution_model=dashboard_execution_model,
-        gamma_snapshot=gamma_snapshot,
+        market_structure_snapshot=dashboard_market_structure_snapshot,
     )
     decision_panel = _dashboard_decision_viewmodel(
         daily_brief=daily_brief,
@@ -5392,6 +7123,7 @@ def dashboard():
         dashboard_vix=dashboard_vix,
         gamma_strip=gamma_strip,
         execution_model=dashboard_execution_model,
+        market_structure_snapshot=dashboard_market_structure_snapshot,
     )
     pace_card = _dashboard_pace_viewmodel(
         proj,
@@ -5457,6 +7189,7 @@ def dashboard():
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
         dashboard_execution_model=dashboard_execution_model,
+        dashboard_market_structure_snapshot=dashboard_market_structure_snapshot,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
         snapshot_bar=snapshot_bar,
@@ -5518,17 +7251,24 @@ def stream_market():
                     {"key": "put_wall", "value": current_gamma_snapshot.get("put_wall_aggregated_gamma")},
                 ],
             }
+            cached_playbook = _market_pulse_cached_playbook_snapshot(now_et)
+            if not isinstance(cached_playbook, dict):
+                cached_playbook = get_or_build_market_pulse_snapshot(
+                    force_refresh=False,
+                    now_et=now_et,
+                    preloaded_gamma_snapshot=current_gamma_snapshot,
+                )
             current_execution_model = _market_pulse_execution_model(
                 spx_quote=current_spx_quote,
                 gamma_snapshot=current_gamma_snapshot,
                 execution_chart=current_execution_chart,
                 spx_priority_context={"metrics": {}},
             )
+            current_structure_snapshot = dict((cached_playbook or {}).get("market_structure_snapshot") or {})
             payload["gamma_map"] = current_gamma_snapshot
             payload["execution_model"] = current_execution_model
             payload["dashboard_gamma"] = _dashboard_gamma_strip_viewmodel(
-                execution_model=current_execution_model,
-                gamma_snapshot=current_gamma_snapshot,
+                market_structure_snapshot=current_structure_snapshot,
             )
             payload["server_ts"] = app_runtime.now_iso()
             yield f"data: {json.dumps(payload)}\\n\\n"
@@ -5628,7 +7368,6 @@ def stream_options_panel():
 def market_pulse_page():
     from mccain_capital.services import gamma_map_service
     from mccain_capital.services import market_pulse_runtime
-    from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
 
     if auth_enabled() and not is_authenticated():
@@ -5662,18 +7401,6 @@ def market_pulse_page():
         or "—"
     )
     quotes = _market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
-    if not current_app.config.get("TESTING"):
-        try:
-            live_snapshot = market_worker.get_market_snapshot()
-            live_series = dict(live_snapshot.get("series") or {})
-            for q in quotes:
-                symbol = str(q.get("symbol") or "")
-                series = live_series.get(symbol)
-                if isinstance(series, list) and len(series) >= 8:
-                    q["mini_series"] = [float(v) for v in series if isinstance(v, (int, float))]
-            quotes = _market_pulse_enrich_quotes(quotes, now_et)
-        except Exception:
-            pass
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
     try:
@@ -5729,21 +7456,20 @@ def market_pulse_page():
         # Backward-compatible fallback for older zero-arg call sites used in tests
         # and lightweight overrides.
         news_snapshot = _market_news_snapshot()
-    spx_priority_context = build_spx_priority_context(
-        spx_quote=spx_quote, gamma_snapshot=gamma_snapshot
-    )
-    execution_chart = _market_pulse_execution_chart_viewmodel(
-        spx_quote=spx_quote,
-        gamma_snapshot=gamma_snapshot,
-        macro_events=list(news_snapshot.get("macro_events") or []),
+    playbook_snapshot = get_or_build_market_pulse_snapshot(
+        force_refresh=False,
         now_et=now_et,
+        preloaded_snapshot=snapshot,
+        preloaded_gamma_snapshot=gamma_snapshot,
+        preloaded_quotes=quotes,
+        preloaded_macro_events=list(news_snapshot.get("macro_events") or []),
     )
-    execution_model = _market_pulse_execution_model(
-        spx_quote=spx_quote,
-        gamma_snapshot=gamma_snapshot,
-        execution_chart=execution_chart,
-        spx_priority_context=spx_priority_context,
-    )
+    gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or gamma_snapshot)
+    spx_quote = dict(playbook_snapshot.get("spx_quote") or spx_quote)
+    spx_priority_context = dict(playbook_snapshot.get("spx_priority_context") or {})
+    execution_chart = dict(playbook_snapshot.get("execution_chart") or {})
+    execution_model = dict(playbook_snapshot.get("execution_model") or {})
+    market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     execution_chart_payload = {**execution_chart, "execution_model": execution_model}
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)
@@ -5793,6 +7519,7 @@ def market_pulse_page():
         execution_chart=execution_chart,
         execution_chart_payload=execution_chart_payload,
         execution_model=execution_model,
+        market_structure_snapshot=market_structure_snapshot,
         gamma_csv_href=gamma_csv_href,
         gamma_png_href=gamma_png_href,
         options_contracts=options_contracts,
@@ -5855,12 +7582,84 @@ def hero_bars_api():
 
 
 def hero_levels_api():
-    from mccain_capital.services import tradier_hero_chart_service as hero_service
-
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
-    symbol = str(request.args.get("symbol") or hero_service.DEFAULT_SYMBOL).strip().upper()
-    return jsonify(hero_service.get_hero_levels(symbol=symbol))
+    symbol = str(request.args.get("symbol") or "SPX").strip().upper()
+    now_et = app_runtime.now_et()
+    playbook_snapshot = get_or_build_market_pulse_snapshot(force_refresh=False, now_et=now_et)
+    gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or {})
+    quotes = list(playbook_snapshot.get("quotes") or [])
+    spx_quote = next(
+        (
+            q
+            for q in quotes
+            if str(q.get("symbol") or q.get("label") or "").upper() == symbol
+        ),
+        dict(playbook_snapshot.get("spx_quote") or {}),
+    )
+    execution_chart = dict(playbook_snapshot.get("execution_chart") or {})
+    execution_model = dict(playbook_snapshot.get("execution_model") or {})
+    structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
+    return jsonify(
+        {
+            "symbol": symbol,
+            "as_of": structure_snapshot.get("snapshot_timestamp") or app_runtime.now_iso(),
+            "spot": structure_snapshot.get("spot"),
+            "session_mode": structure_snapshot.get("session_mode"),
+            "session_mode_label": structure_snapshot.get("session_mode_label"),
+            "levels_source": structure_snapshot.get("levels_source"),
+            "levels_source_label": structure_snapshot.get("levels_source_label"),
+            "gamma_data_status": structure_snapshot.get("gamma_data_status"),
+            "gamma_data_status_label": structure_snapshot.get("gamma_data_status_label"),
+            "main_flip": structure_snapshot.get("main_flip"),
+            "local_flip": structure_snapshot.get("local_flip"),
+            "call_wall": structure_snapshot.get("call_wall"),
+            "put_wall": structure_snapshot.get("put_wall"),
+            "next_call_wall": structure_snapshot.get("next_call_wall"),
+            "next_put_wall": structure_snapshot.get("next_put_wall"),
+            "gamma_regime": structure_snapshot.get("gamma_regime"),
+            "gamma_regime_label": structure_snapshot.get("gamma_regime_label"),
+            "gamma_regime_subtitle": structure_snapshot.get("gamma_regime_subtitle"),
+            "regime_confidence": structure_snapshot.get("regime_confidence"),
+            "regime_confidence_label": structure_snapshot.get("regime_confidence_label"),
+            "execution_regime": structure_snapshot.get("execution_regime"),
+            "execution_regime_label": structure_snapshot.get("execution_regime_label"),
+            "planning_bias": structure_snapshot.get("planning_bias"),
+            "planning_bias_label": structure_snapshot.get("planning_bias_label"),
+            "bias_state": structure_snapshot.get("bias_state"),
+            "bias_context": structure_snapshot.get("bias_context"),
+            "bias_label": structure_snapshot.get("bias_label"),
+            "bias": structure_snapshot.get("bias"),
+            "tradeability": structure_snapshot.get("tradeability"),
+            "app_state": structure_snapshot.get("app_state"),
+            "app_state_label": structure_snapshot.get("app_state_label"),
+            "spot_meta": structure_snapshot.get("spot_meta"),
+            "spot_source_short_label": structure_snapshot.get("spot_source_short_label"),
+            "local_flip_meta": structure_snapshot.get("local_flip_meta"),
+            "level_meta": structure_snapshot.get("level_meta"),
+            "gamma_regime_meta": structure_snapshot.get("gamma_regime_meta"),
+            "chart_meta": structure_snapshot.get("chart_meta"),
+            "session": structure_snapshot.get("session"),
+            "state": structure_snapshot.get("trade_state"),
+            "trade_state_label": structure_snapshot.get("trade_state_label"),
+            "current_read": structure_snapshot.get("current_read"),
+            "pullback_level": structure_snapshot.get("pullback_level"),
+            "next_destination": structure_snapshot.get("next_destination"),
+            "plan_note": structure_snapshot.get("plan_note"),
+            "best_look": structure_snapshot.get("best_look"),
+            "required_trigger": structure_snapshot.get("required_trigger"),
+            "invalidation": structure_snapshot.get("invalidation"),
+            "provider": str(spx_quote.get("provider") or "market_snapshot"),
+            "snapshot_timestamp": structure_snapshot.get("snapshot_timestamp"),
+            "snapshot_timestamp_label": structure_snapshot.get("snapshot_timestamp_label"),
+            "last_valid_snapshot_time": structure_snapshot.get("last_valid_snapshot_time"),
+            "last_valid_snapshot_time_label": structure_snapshot.get("last_valid_snapshot_time_label"),
+            "last_valid_snapshot_usable": structure_snapshot.get("last_valid_snapshot_usable"),
+            "last_valid_snapshot_reason": structure_snapshot.get("last_valid_snapshot_reason"),
+            "last_valid_snapshot_age_seconds": structure_snapshot.get("last_valid_snapshot_age_seconds"),
+            "posture_summary": execution_model.get("posture_summary") or "",
+        }
+    )
 
 
 def hero_stream_session_api():

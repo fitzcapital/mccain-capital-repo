@@ -162,6 +162,7 @@
     "next_call_wall",
     "next_put_wall",
   ];
+  const HERO_REQUIRED_LEVEL_KEYS = ["local_flip", "call_wall", "put_wall"];
 
   const asNum = (value) => {
     const numeric = Number(value);
@@ -179,6 +180,54 @@
   const setText = (id, value) => {
     const node = document.getElementById(id);
     if (node) node.textContent = String(value ?? "");
+  };
+
+  const setToneVariant = (id, variants, active) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    variants.forEach((variant) => node.classList.remove(variant));
+    if (active) node.classList.add(active);
+  };
+
+  const fmtCompactLevel = (value, digits = 0, fallback = "—") => {
+    const numeric = asNum(value);
+    return numeric === null ? fallback : fmt(numeric, digits);
+  };
+
+  const updateHeaderSummary = (levels) => {
+    const gammaState = String(levels.gamma_regime || "").toLowerCase();
+    const biasState = String(levels.bias_state || "").toLowerCase();
+    const spot = fmt(levels.spot, 2);
+    const snapshotLabel = String(levels.last_valid_snapshot_time_label || levels.snapshot_timestamp_label || "—");
+    const spotSourceLabel = String(levels?.spot_meta?.source_label || "Last Valid Session");
+    const localFlip = levels.local_flip === null || levels.local_flip === undefined
+      ? "—"
+      : fmtCompactLevel(levels.local_flip, 0);
+    setText(
+      "marketPulseHeaderSubline",
+      `Main Flip ${fmtCompactLevel(levels.main_flip, 0)} | Local Flip ${localFlip} | CW ${fmtCompactLevel(levels.call_wall, 0)} | PW ${fmtCompactLevel(levels.put_wall, 0)}`
+    );
+    setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel} • SPX ${spot}`);
+    setText("marketPulseHeaderGammaLabel", levels.gamma_regime_label || "REGIME UNAVAILABLE");
+    setText("marketPulseHeaderGammaSub", levels.gamma_regime_subtitle || "Gamma snapshot unavailable");
+    setText("marketPulseHeaderBiasPrimary", levels.bias_context || levels.planning_bias_label || "Awaiting valid structure");
+    setText("marketPulseHeaderBiasSecondary", levels.bias_label || "WAIT");
+
+    setToneVariant(
+      "marketPulseHeaderGammaCard",
+      ["is-positive", "is-negative", "is-neutral"],
+      gammaState === "positive" ? "is-positive" : gammaState === "negative" ? "is-negative" : "is-neutral",
+    );
+    setToneVariant(
+      "marketPulseHeaderBiasCard",
+      ["is-positive", "is-negative", "is-neutral"],
+      biasState === "above_local" ? "is-positive" : biasState === "below_local" ? "is-negative" : "is-neutral",
+    );
+
+    const aboveNode = document.getElementById("marketPulseHeaderBiasAbove");
+    const belowNode = document.getElementById("marketPulseHeaderBiasBelow");
+    if (aboveNode) aboveNode.classList.toggle("is-active", biasState === "above_local");
+    if (belowNode) belowNode.classList.toggle("is-active", biasState === "below_local");
   };
 
   const setSpotTrendTone = (trend) => {
@@ -238,7 +287,7 @@
 
   const sanitizeLevelsPayload = (payload) => {
     if (!payload || typeof payload !== "object") return null;
-    for (const key of HERO_LEVEL_KEYS) {
+    for (const key of HERO_REQUIRED_LEVEL_KEYS) {
       if (!isValidHeroLevel(payload[key])) {
         return null;
       }
@@ -479,20 +528,22 @@
 
   const renderSummary = (levels) => {
     // /api/hero/levels already derives read, pullback, destination, and trade state.
-    const state = String(levels.state || "WATCH").replaceAll("_", " ");
+    const state = String(levels.trade_state_label || levels.state || "WATCH").replaceAll("_", " ");
     const currentRead = String(levels.current_read || "Await structure");
     const stateNote = String(levels.state_note || levels.plan_note || "Wait for clean structure.");
     const headline = `${state} — ${currentRead}`.toUpperCase();
 
+    updateHeaderSummary(levels);
     setText("marketPulseHeroSpot", fmt(levels.spot, 2));
-    setText("marketPulseHeroGamma", levels.gamma_regime_label || "Unavailable");
-    setText("marketPulseHeroBias", levels.bias || "Unavailable");
-    setText("marketPulseHeroTradeability", levels.tradeability || "Unavailable");
-    setText("marketPulseHeroSession", levels.session || "Unavailable");
+    setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || "SPX Spot");
+    setText("marketPulseHeroGamma", levels.gamma_regime_label || "Regime Unavailable");
+    setText("marketPulseHeroBias", levels.planning_bias_label || levels.bias || "Awaiting valid structure");
+    setText("marketPulseHeroTradeability", levels.execution_regime_label || levels.tradeability || "Reduced confidence · structure first");
+    setText("marketPulseHeroSession", levels.session || "Closed · No confidence");
     setText("marketPulseHeroMacroFlip", fmt(levels.main_flip, 0));
 
     setText("marketPulseHeroRailContext", levels.plan_note || "Execution map pending.");
-    setText("marketPulseHeroRailSummary", levels.current_read || "Local Flip is the intraday decision line.");
+    setText("marketPulseHeroRailSummary", levels.current_read || "Awaiting valid structure");
     setText("marketPulseHeroChartStateRead", currentRead);
     setText("marketPulseHeroChartStateAction", stateNote);
     setText("marketPulseHeroChartBanner", headline);
@@ -508,7 +559,7 @@
     setText("marketPulseHeroTradeState", state);
     setText("marketPulseHeroBestLook", levels.best_look || "Wait for cleaner structure");
     setText("marketPulseHeroRequiredTrigger", levels.required_trigger || "Confirmation required");
-    setText("marketPulseHeroInvalidation", levels.invalidation || "Wait for live structure");
+    setText("marketPulseHeroInvalidation", levels.invalidation || "Awaiting valid structure");
     setText("marketPulseHeroStateNote", levels.plan_note || "Awaiting market posture.");
   };
 

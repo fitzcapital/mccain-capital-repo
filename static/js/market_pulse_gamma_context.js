@@ -1755,10 +1755,8 @@
         : `Bearish below Local Flip ${formatNumber(input.localFlip, 0)}`;
 
     setText("marketPulseHeroSpot", formatNumber(input.spot, 2));
-    setText("marketPulseHeroGamma", String(derived.dealerRegime || "Unavailable").replace(" / ", " · "));
     setText("marketPulseHeroBias", biasLine);
     setText("marketPulseHeroTradeability", `${derived.tradeability.label} · ${derived.tradeability.score}/10`);
-    setText("marketPulseHeroSession", derived.dealerRegime.includes("Negative") ? "Fast tape · confirmation required" : `${derived.sessionWindowState} · ${derived.volatilityState}`);
     setText("marketPulseHeroMacroFlip", formatNumber(input.gammaFlip, 0));
     setText("marketPulseHeroRailContext", (model && model.posture_summary) || executionPlan.subline);
     setText("marketPulseHeroRailSummary", executionPlan.locationLine || executionPlan.subline);

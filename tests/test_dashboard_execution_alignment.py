@@ -160,3 +160,62 @@ def test_dashboard_gamma_strip_shows_no_local_band_label_for_null_local_flip():
     )
     entry_map = {entry["key"]: entry["value"] for entry in strip["entries"]}
     assert entry_map["local_flip"] == "None in local band"
+
+
+def test_dashboard_decision_prefers_market_structure_snapshot_over_execution_model():
+    model = _execution_model(
+        spot=6610,
+        main_flip=6500,
+        local_flip=6590,
+        call_wall=6690,
+        put_wall=6450,
+        raw_net_gamma=10,
+    )
+    panel = core._dashboard_decision_viewmodel(
+        daily_brief={"plan_a": "ignored", "no_trade": "ignored", "headline": "brief"},
+        risk_posture_title="Reduced size",
+        risk_posture_detail="Use less size",
+        data_trust={"tone": "positive"},
+        readiness={"pct": 100.0},
+        dashboard_vix={"price": 14.0},
+        gamma_strip={"entries": [], "state": "stale", "status_text": "ok"},
+        execution_model=model,
+        market_structure_snapshot={
+            "trade_state": "PLANNING_ONLY",
+            "trade_state_label": "PLANNING ONLY",
+            "bias": "Bullish above Local Flip 6593",
+            "best_look": "Buy dip above Local Flip",
+            "required_trigger": "Next live session dip-hold above Local Flip",
+            "plan_note": "After-hours planning from the last valid session snapshot.",
+            "regime_confidence_label": "Low confidence",
+            "bias_state": "bullish_above_local_flip",
+        },
+    )
+    assert panel["bias"] == "Bullish above Local Flip 6593"
+    assert panel["risk_size"] == "Planning only"
+    assert panel["status"] == "PLANNING ONLY"
+    assert panel["plan"] == "Buy dip above Local Flip"
+
+
+def test_dashboard_gamma_strip_prefers_market_structure_snapshot():
+    strip = core._dashboard_gamma_strip_viewmodel(
+        market_structure_snapshot={
+            "gamma_data_status": "partial",
+            "levels_source": "last_valid_snapshot",
+            "gamma_regime": "unconfirmed",
+            "gamma_regime_label": "Unconfirmed",
+            "session_mode_label": "After Hours",
+            "levels_source_label": "Last valid snapshot",
+            "last_valid_snapshot_time_label": "Tue Apr 07 4:00 PM ET",
+            "main_flip": 6785.0,
+            "local_flip": 6593.0,
+            "call_wall": 6600.0,
+            "put_wall": 6575.0,
+        }
+    )
+    entry_map = {entry["key"]: entry["value"] for entry in strip["entries"]}
+    assert strip["state"] == "stale"
+    assert "After Hours" in strip["status_text"]
+    assert entry_map["regime"] == "UNCONFIRMED"
+    assert entry_map["main_flip"] == "6785"
+    assert entry_map["local_flip"] == "6593"
