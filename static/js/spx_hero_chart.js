@@ -19,6 +19,13 @@
   const streamUrl = String(host.dataset.streamUrl || "/api/hero/stream-session");
   const symbol = String(host.dataset.symbol || "SPX");
   const interval = String(host.dataset.interval || "5min");
+  const HERO_CHART_TIMEZONE = "America/New_York";
+  const HERO_TIME_AXIS_FORMATTER = new Intl.DateTimeFormat("en-US", {
+    timeZone: HERO_CHART_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
   const HERO_CHART_THEME = {
     background: "#06111F",
     panel: "#0B1D33",
@@ -34,6 +41,12 @@
     bear: "#C23B57",
     bearBorder: "#E25574",
     bearWick: "#F06A88",
+    bullMuted: "rgba(15, 163, 127, 0.56)",
+    bullBorderMuted: "rgba(25, 201, 151, 0.62)",
+    bullWickMuted: "rgba(34, 211, 166, 0.58)",
+    bearMuted: "rgba(194, 59, 87, 0.52)",
+    bearBorderMuted: "rgba(226, 85, 116, 0.60)",
+    bearWickMuted: "rgba(240, 106, 136, 0.58)",
     spx: "#63B3FF",
     current: "#C23B57",
     cw: "#C85A72",
@@ -94,13 +107,26 @@
       barSpacing: 7.5,
       fixLeftEdge: false,
       lockVisibleTimeRangeOnResize: true,
+      tickMarkFormatter: (time) => HERO_TIME_AXIS_FORMATTER.format(new Date(Number(time) * 1000)),
     },
     localization: {
       locale: "en-US",
       priceFormatter: (value) => Number(value).toFixed(2),
+      timeFormatter: (time) => HERO_TIME_AXIS_FORMATTER.format(new Date(Number(time) * 1000)),
     },
     handleScroll: true,
     handleScale: true,
+  });
+
+  const priorSessionSeries = chart.addCandlestickSeries({
+    upColor: HERO_CHART_THEME.bullMuted,
+    downColor: HERO_CHART_THEME.bearMuted,
+    wickUpColor: HERO_CHART_THEME.bullWickMuted,
+    wickDownColor: HERO_CHART_THEME.bearWickMuted,
+    borderUpColor: HERO_CHART_THEME.bullBorderMuted,
+    borderDownColor: HERO_CHART_THEME.bearBorderMuted,
+    lastValueVisible: false,
+    priceLineVisible: false,
   });
 
   const candleSeries = chart.addCandlestickSeries({
@@ -163,6 +189,7 @@
     "next_put_wall",
   ];
   const HERO_REQUIRED_LEVEL_KEYS = ["local_flip", "call_wall", "put_wall"];
+  const OFF_CHART_LEVEL_PCT = 0.018;
 
   const asNum = (value) => {
     const numeric = Number(value);
@@ -335,6 +362,7 @@
       if (high !== null) prices.push(high);
       if (low !== null) prices.push(low);
     });
+    const spot = asNum(levels?.spot);
     [
       levels?.spot,
       levels?.local_flip,
@@ -342,9 +370,15 @@
       levels?.put_wall,
       levels?.next_call_wall,
       levels?.next_put_wall,
+      levels?.main_flip,
     ].forEach((value) => {
       const numeric = asNum(value);
-      if (numeric !== null) prices.push(numeric);
+      if (numeric === null) return;
+      if (spot !== null) {
+        const pctDistance = Math.abs(numeric - spot) / Math.max(Math.abs(spot), 1);
+        if (pctDistance > OFF_CHART_LEVEL_PCT) return;
+      }
+      prices.push(numeric);
     });
     if (!prices.length) {
       clearFrameBounds();
@@ -395,8 +429,12 @@
       barSpacing: 7.5,
     });
     if (fitContent || !initialized) {
+      const requestedVisibleBars = Math.max(
+        Number(lastBarsPayload.visible_window_bars) || 0,
+        Math.min(bars.length, 30),
+      );
       const visibleBars = Math.max(
-        Math.min(bars.length + LEFT_SCROLL_BUFFER_BARS, DEFAULT_VISIBLE_BARS),
+        Math.min(bars.length + LEFT_SCROLL_BUFFER_BARS, requestedVisibleBars + LEFT_SCROLL_BUFFER_BARS),
         Math.min(bars.length, 30),
       );
       chart.timeScale().setVisibleLogicalRange({
@@ -530,37 +568,32 @@
     // /api/hero/levels already derives read, pullback, destination, and trade state.
     const state = String(levels.trade_state_label || levels.state || "WATCH").replaceAll("_", " ");
     const currentRead = String(levels.current_read || "Await structure");
-    const stateNote = String(levels.state_note || levels.plan_note || "Wait for clean structure.");
-    const headline = `${state} — ${currentRead}`.toUpperCase();
+    const headline = `${state} - ${currentRead}`.toUpperCase();
 
     updateHeaderSummary(levels);
     setText("marketPulseHeroSpot", fmt(levels.spot, 2));
     setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || "SPX Spot");
     setText("marketPulseHeroGamma", levels.gamma_regime_label || "Regime Unavailable");
-    setText("marketPulseHeroBias", levels.planning_bias_label || levels.bias || "Awaiting valid structure");
+    setText("marketPulseHeroBias", levels.current_read || levels.bias_context || levels.bias_label || "Awaiting structure");
     setText("marketPulseHeroTradeability", levels.execution_regime_label || levels.tradeability || "Reduced confidence · structure first");
     setText("marketPulseHeroSession", levels.session || "Closed · No confidence");
     setText("marketPulseHeroMacroFlip", fmt(levels.main_flip, 0));
 
-    setText("marketPulseHeroRailContext", levels.plan_note || "Execution map pending.");
+    setText("marketPulseHeroTopState", `STATE: ${currentRead}`);
+    setText("marketPulseHeroTopMode", `MODE: ${state}`);
     setText("marketPulseHeroRailSummary", levels.current_read || "Awaiting valid structure");
-    setText("marketPulseHeroChartStateRead", currentRead);
-    setText("marketPulseHeroChartStateAction", stateNote);
     setText("marketPulseHeroChartBanner", headline);
-    setText("marketPulseHeroChartBannerSub", stateNote);
 
     setText("marketPulseHeroRailFootState", currentRead);
     setText("marketPulseHeroPullbackLevel", levels.pullback_level || "Awaiting level");
     setText("marketPulseHeroDestinationInline", levels.next_destination || "Awaiting next test");
 
     setStateChip("marketPulseHeroStateContext", levels.state);
-    setStateChip("marketPulseHeroChartStateChip", levels.state);
     setStateChip("marketPulseHeroStateChip", levels.state);
     setText("marketPulseHeroTradeState", state);
     setText("marketPulseHeroBestLook", levels.best_look || "Wait for cleaner structure");
     setText("marketPulseHeroRequiredTrigger", levels.required_trigger || "Confirmation required");
     setText("marketPulseHeroInvalidation", levels.invalidation || "Awaiting valid structure");
-    setText("marketPulseHeroStateNote", levels.plan_note || "Awaiting market posture.");
   };
 
   const updateBars = async ({ fitContent = false } = {}) => {
@@ -597,9 +630,18 @@
       })
       .filter((bar) => Number.isFinite(bar.time));
 
-    candleSeries.setData(candles);
+    const previousSessionBarCount = Math.max(0, Number(payload.previous_session_bar_count) || 0);
+    const currentSessionBarCount = Math.max(0, Number(payload.current_session_bar_count) || 0);
+    const boundedPreviousCount = Math.min(previousSessionBarCount, candles.length);
+    const boundedCurrentCount = Math.min(currentSessionBarCount, Math.max(0, candles.length - boundedPreviousCount));
+    const splitIndex = boundedCurrentCount > 0 ? boundedPreviousCount : candles.length;
+    const priorCandles = candles.slice(0, splitIndex);
+    const currentCandles = candles.slice(splitIndex);
+
+    priorSessionSeries.setData(currentCandles.length ? priorCandles : []);
+    candleSeries.setData(currentCandles.length ? currentCandles : candles);
     volumeSeries.setData(volume);
-    setSpotTrendTone(detectShortTermTrend(candles));
+    setSpotTrendTone(detectShortTermTrend(currentCandles.length ? currentCandles : candles));
     lastBarsPayload = {
       ...payload,
       bars: candles,

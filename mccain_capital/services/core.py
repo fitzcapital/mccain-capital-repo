@@ -59,7 +59,7 @@ from mccain_capital.services.viewmodels import (
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
 from mccain_capital.services.gamma_context_service import build_spx_priority_context
-from mccain_capital.services.market_feed_service import build_market_feed_snapshot
+from mccain_capital.services.twitter_feed_service import build_twitter_feed_snapshot
 
 MULTIPLIER = 100
 DEFAULT_STOP_PCT = 20.0
@@ -3769,6 +3769,115 @@ def _market_pulse_display_context_viewmodel(
     }
 
 
+def _market_pulse_trigger_validation_viewmodel(
+    *,
+    session_mode: str,
+    trade_state: str,
+    gamma_regime: str,
+    planning_bias: Dict[str, str],
+    local_bias: Dict[str, Any],
+    playbook: Dict[str, Any],
+    display_context: Dict[str, str],
+) -> Dict[str, Any]:
+    """Return trigger checklist copy from the same backend playbook contract.
+
+    This keeps Action / Trade Context and Trigger Validation on one source of
+    truth instead of letting the frontend improvise different setup language.
+    """
+
+    planning_mode = session_mode in {"after_hours", "premarket", "closed"} or trade_state == "PLANNING_ONLY"
+    local_state = str(local_bias.get("state") or "").strip().lower()
+    planning_state = str(planning_bias.get("planning_bias") or "").strip().lower()
+    playbook_status = str(playbook.get("status") or "").strip().upper()
+    plan_note = str(display_context.get("plan_note") or playbook.get("why") or "Awaiting market posture.").strip()
+    required_trigger = str(display_context.get("required_trigger") or playbook.get("need") or "Confirmation required").strip()
+
+    if planning_mode:
+        manual_label = "Manual confirmation required"
+        header_line = "After-hours context is valid, but entry confirmation belongs to the next live session."
+        status_line = "PLANNING ONLY — NEXT LIVE TRIGGER REQUIRED"
+        status_badge = "PLANNING"
+    elif playbook_status == "READY":
+        manual_label = "Context ready — trigger not confirmed"
+        header_line = "Location is usable, but the trader still has to confirm the trigger."
+        status_line = "NO TRIGGER YET — WAIT FOR CONFIRMATION"
+        status_badge = "WAITING"
+    elif playbook_status == "CAUTION":
+        manual_label = "Waiting for manual confirmation"
+        header_line = "The context exists, but the setup still needs trader confirmation."
+        status_line = "CAUTION — WAIT FOR CLEANER EDGE"
+        status_badge = "CAUTION"
+    elif playbook_status == "WATCH":
+        manual_label = "Waiting for manual confirmation"
+        header_line = "The idea is valid on watch, but the trigger is still trader-verified."
+        status_line = "WATCHLIST — TRIGGER STILL REQUIRED"
+        status_badge = "WATCH"
+    else:
+        manual_label = "No trigger yet"
+        header_line = "No trigger = no trade. The system has context, but the trader still needs the setup to print."
+        status_line = "NO TRIGGER — NO TRADE"
+        status_badge = "NO TRIGGER"
+
+    if planning_state == "above_call_wall_extension_risk":
+        sweep_line = "Need pullback into Call Wall before any continuation long is valid."
+        reclaim_line = "Need Call Wall to hold on retest after the pullback."
+        reversal_line = "Need a 5m reversal or continuation only after Call Wall confirms."
+    elif planning_state == "below_put_wall_breakdown_risk":
+        sweep_line = "Need reclaim failure or continuation under Put Wall before any short is valid."
+        reclaim_line = "Need Put Wall to reject or fail cleanly on retest."
+        reversal_line = "Need a 5m continuation trigger after Put Wall confirms."
+    elif local_state == "above_local" or planning_state == "bullish_above_local_flip":
+        sweep_line = "Need sweep into support or Local Flip before the long exists."
+        reclaim_line = "Need reclaim back above the working level after the sweep."
+        reversal_line = "Need 5m 2-2 up / 3-1-2 continuation before the long is valid."
+    elif local_state == "below_local" or planning_state == "bearish_below_local_flip":
+        sweep_line = "Need pop into resistance or Local Flip before the short exists."
+        reclaim_line = "Need failed reclaim back under the working level after the pop."
+        reversal_line = "Need 5m 2-2 down / 3-1-2 continuation before the short is valid."
+    else:
+        sweep_line = "Need interaction into the working level before entry is considered."
+        reclaim_line = "Wait for the level to prove itself after the interaction."
+        reversal_line = "A clean 5m reversal or continuation trigger still has to print."
+
+    if planning_mode:
+        sweep_line = f"Next live session: {sweep_line[0].lower() + sweep_line[1:]}"
+        reclaim_line = f"Next live session: {reclaim_line[0].lower() + reclaim_line[1:]}"
+        reversal_line = f"Next live session: {reversal_line[0].lower() + reversal_line[1:]}"
+
+    volume_line = (
+        "Fast tape is active. Cash-session participation is mandatory."
+        if gamma_regime == "negative"
+        else "Require real participation before calling the move valid."
+    )
+
+    return {
+        "manual_label": manual_label,
+        "status_badge": status_badge,
+        "header_line": header_line,
+        "status_line": status_line,
+        "footer_line": plan_note,
+        "items": {
+            "sweep": {
+                "line": sweep_line,
+                "active": False,
+            },
+            "reclaim": {
+                "line": reclaim_line,
+                "active": False,
+            },
+            "reversal": {
+                "line": reversal_line,
+                "active": False,
+            },
+            "volume": {
+                "line": volume_line,
+                "active": False,
+            },
+        },
+        "required_trigger": required_trigger,
+    }
+
+
 def _market_pulse_execution_regime_viewmodel(
     *,
     session_mode: str,
@@ -4071,6 +4180,15 @@ def _market_pulse_structure_snapshot(
         or gamma_snapshot.get("asof")
         or ""
     )
+    trigger_validation = _market_pulse_trigger_validation_viewmodel(
+        session_mode=session_mode,
+        trade_state=trade_state,
+        gamma_regime=regime["gamma_regime"],
+        planning_bias=planning_bias,
+        local_bias=execution_model.get("local_bias") or {},
+        playbook=playbook,
+        display_context=display_context,
+    )
 
     return {
         "spot": levels.get("spot"),
@@ -4102,6 +4220,11 @@ def _market_pulse_structure_snapshot(
         "trade_state": trade_state,
         "trade_state_label": trade_state_label,
         "trade_state_tone": playbook.get("tone") or "warn",
+        "context_grade": playbook.get("grade"),
+        "context_score": playbook.get("score"),
+        "context_score_pct": playbook.get("score_pct"),
+        "context_tone": playbook.get("tone") or "warn",
+        "context_status": playbook.get("status") or "WATCH",
         # Preserve current UI fields while feeding them from the unified snapshot.
         "tradeability": execution_regime["execution_regime_label"],
         "session": f"{session_mode_label} · {confidence_label}",
@@ -4112,6 +4235,7 @@ def _market_pulse_structure_snapshot(
         "best_look": display_context["best_look"],
         "required_trigger": display_context["required_trigger"],
         "invalidation": display_context["invalidation"],
+        "trigger_validation": trigger_validation,
         "snapshot_timestamp": snapshot_timestamp,
         "snapshot_timestamp_label": _format_iso_et_label(snapshot_timestamp) or "—",
         "last_valid_snapshot_time": last_valid_snapshot_time,
@@ -5117,14 +5241,7 @@ def _dedupe_market_news_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return list(deduped.values())
 
 
-def _market_news_snapshot(
-    *,
-    now_et: Optional[datetime] = None,
-    quotes: Optional[List[Dict[str, Any]]] = None,
-    context: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    now_et = now_et or app_runtime.now_et()
-
+def _market_news_macro_events(now_et: datetime) -> List[Dict[str, Any]]:
     macro_overlay = _forex_factory_usd_week_events(now_et.date())
     macro_events = []
     for event in list(macro_overlay.get("events") or [])[:6]:
@@ -5142,8 +5259,24 @@ def _market_news_snapshot(
                 "why": str(event.get("tooltip") or "Calendar event"),
             }
         )
+    return macro_events
 
-    feed_snapshot = build_market_feed_snapshot(now_et=now_et, quotes=quotes, context=context)
+
+def _market_news_snapshot(
+    *,
+    now_et: Optional[datetime] = None,
+    quotes: Optional[List[Dict[str, Any]]] = None,
+    context: Optional[Dict[str, Any]] = None,
+    market_structure_snapshot: Optional[Dict[str, Any]] = None,
+    macro_events: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    now_et = now_et or app_runtime.now_et()
+    macro_events = list(macro_events or _market_news_macro_events(now_et))
+
+    feed_snapshot = build_twitter_feed_snapshot(
+        now_et=now_et,
+        market_structure_snapshot=market_structure_snapshot,
+    )
     result = {
         "available": bool(feed_snapshot.get("top_items") or macro_events),
         "source_note": str(feed_snapshot.get("source_note") or ""),
@@ -5217,9 +5350,17 @@ def _load_dashboard_milestone_settings() -> Dict[str, Any]:
 
 def _load_dashboard_pace_settings() -> Dict[str, Any]:
     custom_daily = float(app_runtime.get_setting_float("dashboard_pace_daily", 0.0) or 0.0)
+    target_date_raw = str(app_runtime.get_setting_value("dashboard_projection_target_date", "") or "")
+    target_date = ""
+    if target_date_raw:
+        try:
+            target_date = date.fromisoformat(target_date_raw).isoformat()
+        except ValueError:
+            target_date = ""
     return {
         "custom_daily": max(0.0, custom_daily),
         "custom_enabled": custom_daily > 0.0,
+        "target_date": target_date,
     }
 
 
@@ -5844,12 +5985,34 @@ def _dashboard_gamma_strip_viewmodel(
             return "UNAVAILABLE"
         return str(value or "UNAVAILABLE").strip().upper() or "UNAVAILABLE"
 
+    def _num(value: Any) -> Optional[float]:
+        try:
+            if value is None or str(value).strip() == "":
+                return None
+            return float(value)
+        except Exception:
+            return None
+
     structure = dict(market_structure_snapshot or {})
     if structure:
+        spot = _num(structure.get("spot"))
+
         def _fmt_level(value: Any) -> str:
             if isinstance(value, (int, float)):
                 return f"{float(value):.0f}"
             return "--"
+
+        def _fmt_level_with_distance(value: Any) -> str:
+            numeric = _num(value)
+            if numeric is None:
+                return "--"
+            base = f"{numeric:.0f}"
+            if spot is None:
+                return base
+            delta = numeric - spot
+            if abs(delta) < 0.5:
+                return f"{base} (0)"
+            return f"{base} ({delta:+.0f})"
 
         gamma_status = str(structure.get("gamma_data_status") or "").strip().lower()
         levels_source = str(structure.get("levels_source") or "").strip().lower()
@@ -5901,34 +6064,50 @@ def _dashboard_gamma_strip_viewmodel(
                 "glow": regime_tone in {"positive", "negative"},
             },
             {
+                "key": "local_flip",
+                "label": "Local Flip",
+                "value": _fmt_level(structure.get("local_flip")),
+                "emphasis": "strong",
+                "tone": "",
+                "glow": True,
+            },
+            {
+                "key": "next_call_wall",
+                "label": "NCW",
+                "value": _fmt_level(structure.get("next_call_wall")),
+                "emphasis": "strong",
+                "tone": "negative",
+                "glow": True,
+            },
+            {
+                "key": "next_put_wall",
+                "label": "NPW",
+                "value": _fmt_level(structure.get("next_put_wall")),
+                "emphasis": "strong",
+                "tone": "positive",
+                "glow": True,
+            },
+            {
                 "key": "main_flip",
                 "label": "Main Flip",
                 "value": _fmt_level(structure.get("main_flip")),
-                "emphasis": "strong",
+                "emphasis": "quiet",
                 "tone": "info",
                 "glow": False,
             },
             {
-                "key": "local_flip",
-                "label": "Local Flip",
-                "value": _fmt_level(structure.get("local_flip")),
-                "emphasis": "quiet",
-                "tone": "",
-                "glow": False,
-            },
-            {
                 "key": "call_wall",
-                "label": "Call Wall",
+                "label": "CW",
                 "value": _fmt_level(structure.get("call_wall")),
-                "emphasis": "medium",
+                "emphasis": "quiet",
                 "tone": "negative",
                 "glow": False,
             },
             {
                 "key": "put_wall",
-                "label": "Put Wall",
+                "label": "PW",
                 "value": _fmt_level(structure.get("put_wall")),
-                "emphasis": "medium",
+                "emphasis": "quiet",
                 "tone": "positive",
                 "glow": False,
             },
@@ -5942,6 +6121,7 @@ def _dashboard_gamma_strip_viewmodel(
         }
 
     gamma_snapshot = dict(gamma_snapshot or {})
+    spot = _num(levels.get("spot")) if 'levels' in locals() else None
     def _fmt_level(value: Any, *, key: str = "") -> str:
         if isinstance(value, (int, float)):
             return f"{float(value):.0f}"
@@ -5953,9 +6133,23 @@ def _dashboard_gamma_strip_viewmodel(
             return "None in local band"
         return "--"
 
+    def _fmt_level_with_distance(value: Any, *, key: str = "") -> str:
+        if not isinstance(value, (int, float)):
+            return _fmt_level(value, key=key)
+        numeric = float(value)
+        base = f"{numeric:.0f}"
+        if spot is None:
+            return base
+        delta = numeric - spot
+        if abs(delta) < 0.5:
+            return f"{base} (0)"
+        return f"{base} ({delta:+.0f})"
+
     model = dict(execution_model or {})
     macro = dict(model.get("macro_regime") or {})
     levels = dict(model.get("levels") or {})
+    if spot is None:
+        spot = _num(levels.get("spot")) or _num(levels.get("price"))
     snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
     snapshot_label = str(gamma_snapshot.get("snapshot_status_label") or "").strip()
     snapshot_detail = str(gamma_snapshot.get("snapshot_status_detail") or "").strip()
@@ -6008,34 +6202,50 @@ def _dashboard_gamma_strip_viewmodel(
             "glow": regime_tone in {"positive", "negative"},
         },
         {
-            "key": "main_flip",
-            "label": "Main Flip",
-            "value": _fmt_level(levels.get("main_flip"), key="main_flip"),
-            "emphasis": "strong",
-            "tone": "info",
-            "glow": False,
-        },
-        {
             "key": "local_flip",
             "label": "Local Flip",
             "value": _fmt_level(levels.get("local_flip"), key="local_flip"),
-            "emphasis": "quiet",
+            "emphasis": "strong",
             "tone": "",
             "glow": False,
         },
         {
+            "key": "next_call_wall",
+            "label": "NCW",
+            "value": _fmt_level(levels.get("next_call_wall"), key="next_call_wall"),
+            "emphasis": "strong",
+            "tone": "negative",
+            "glow": False,
+        },
+        {
+            "key": "next_put_wall",
+            "label": "NPW",
+            "value": _fmt_level(levels.get("next_put_wall"), key="next_put_wall"),
+            "emphasis": "strong",
+            "tone": "positive",
+            "glow": False,
+        },
+        {
+            "key": "main_flip",
+            "label": "Main Flip",
+            "value": _fmt_level(levels.get("main_flip"), key="main_flip"),
+            "emphasis": "quiet",
+            "tone": "info",
+            "glow": False,
+        },
+        {
             "key": "call_wall",
-            "label": "Call Wall",
+            "label": "CW",
             "value": _fmt_level(levels.get("call_wall"), key="call_wall"),
-            "emphasis": "medium",
+            "emphasis": "quiet",
             "tone": "negative",
             "glow": False,
         },
         {
             "key": "put_wall",
-            "label": "Put Wall",
+            "label": "PW",
             "value": _fmt_level(levels.get("put_wall"), key="put_wall"),
-            "emphasis": "medium",
+            "emphasis": "quiet",
             "tone": "positive",
             "glow": False,
         },
@@ -6063,6 +6273,19 @@ def _advance_market_sessions(start_day: date, sessions: int) -> date:
     return cursor
 
 
+def _market_sessions_between(start_day: date, target_day: date) -> int:
+    """Count future market sessions after start_day through target_day."""
+    if target_day <= start_day:
+        return 0
+    cursor = start_day
+    sessions = 0
+    while cursor < target_day:
+        cursor += timedelta(days=1)
+        if _is_market_session(cursor):
+            sessions += 1
+    return sessions
+
+
 def _dashboard_pace_viewmodel(
     proj: Dict[str, Any],
     milestone: Dict[str, Any],
@@ -6075,6 +6298,7 @@ def _dashboard_pace_viewmodel(
     custom_enabled = bool(pace_settings.get("custom_enabled")) and custom_daily > 0.0
     applied_avg = custom_daily if custom_enabled else live_avg
     base_balance = float(proj.get("base_balance") or 0.0)
+    target_date_input = str(pace_settings.get("target_date") or "").strip()
     nodes: List[Dict[str, Any]] = []
     for key, label in (("p5", "5D"), ("p10", "10D"), ("p20", "20D")):
         row = dict(proj.get(key) or {})
@@ -6093,6 +6317,43 @@ def _dashboard_pace_viewmodel(
                 "tone": "positive" if est_pnl > 0 else "negative" if est_pnl < 0 else "neutral",
             }
         )
+    target_projection: Dict[str, Any] = {
+        "configured": False,
+        "input": target_date_input,
+        "label": "Choose a date",
+        "sessions": 0,
+        "est_pnl": app_runtime.money(0.0),
+        "est_balance": app_runtime.money(base_balance),
+        "target_date_full": "",
+        "tone": "neutral",
+        "detail": "Set a target date to see the projected profit by that session.",
+    }
+    if target_date_input:
+        try:
+            target_day = date.fromisoformat(target_date_input)
+            target_sessions = _market_sessions_between(anchor_day, target_day)
+            target_est_pnl = applied_avg * target_sessions
+            target_est_balance = base_balance + target_est_pnl
+            target_projection = {
+                "configured": True,
+                "input": target_date_input,
+                "label": target_day.strftime("%b %d"),
+                "sessions": target_sessions,
+                "est_pnl": app_runtime.money(target_est_pnl),
+                "est_balance": app_runtime.money(target_est_balance),
+                "target_date_full": target_day.strftime("%a, %b %d, %Y"),
+                "tone": "positive"
+                if target_est_pnl > 0
+                else "negative"
+                if target_est_pnl < 0
+                else "neutral",
+                "detail": (
+                    f"{target_sessions} trading sessions at "
+                    f"{app_runtime.money(applied_avg)}/day."
+                ),
+            }
+        except ValueError:
+            target_projection["input"] = ""
     note = "Use for pacing, not certainty."
     milestone_eta = ""
     if applied_avg > 0.0:
@@ -6139,6 +6400,7 @@ def _dashboard_pace_viewmodel(
         "trading_day_label": "Trading-day projections only",
         "note": note,
         "nodes": nodes,
+        "target": target_projection,
     }
 
 
@@ -6355,12 +6617,22 @@ def dashboard_brief_update():
 def dashboard_pace_update():
     pace_reset = str(request.form.get("pace_reset") or "").strip() == "1"
     custom_daily = app_runtime.parse_float(request.form.get("dashboard_pace_daily") or "") or 0.0
+    target_date = str(request.form.get("dashboard_projection_target_date") or "").strip()
     if pace_reset or custom_daily <= 0.0:
         app_runtime.set_setting_value("dashboard_pace_daily", "")
         flash("Forward pace reset to live trading pace.", "success")
     else:
         app_runtime.set_setting_value("dashboard_pace_daily", f"{max(0.0, custom_daily):.2f}")
         flash("Forward pace updated.", "success")
+    if target_date:
+        try:
+            target_iso = date.fromisoformat(target_date).isoformat()
+        except ValueError:
+            target_iso = ""
+            flash("Projection target date was ignored because it was not a valid date.", "warning")
+        app_runtime.set_setting_value("dashboard_projection_target_date", target_iso)
+    else:
+        app_runtime.set_setting_value("dashboard_projection_target_date", "")
 
     y = str(request.form.get("y") or "").strip()
     m = str(request.form.get("m") or "").strip()
@@ -7450,19 +7722,14 @@ def market_pulse_page():
         if isinstance(q, dict) and str(q.get("label") or q.get("symbol") or "").strip()
     }
     context = _market_pulse_context(quotes)
-    try:
-        news_snapshot = _market_news_snapshot(now_et=now_et, quotes=quotes, context=context)
-    except TypeError:
-        # Backward-compatible fallback for older zero-arg call sites used in tests
-        # and lightweight overrides.
-        news_snapshot = _market_news_snapshot()
+    macro_events = _market_news_macro_events(now_et)
     playbook_snapshot = get_or_build_market_pulse_snapshot(
         force_refresh=False,
         now_et=now_et,
         preloaded_snapshot=snapshot,
         preloaded_gamma_snapshot=gamma_snapshot,
         preloaded_quotes=quotes,
-        preloaded_macro_events=list(news_snapshot.get("macro_events") or []),
+        preloaded_macro_events=list(macro_events or []),
     )
     gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or gamma_snapshot)
     spx_quote = dict(playbook_snapshot.get("spx_quote") or spx_quote)
@@ -7470,6 +7737,18 @@ def market_pulse_page():
     execution_chart = dict(playbook_snapshot.get("execution_chart") or {})
     execution_model = dict(playbook_snapshot.get("execution_model") or {})
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
+    try:
+        news_snapshot = _market_news_snapshot(
+            now_et=now_et,
+            quotes=quotes,
+            context=context,
+            market_structure_snapshot=market_structure_snapshot,
+            macro_events=macro_events,
+        )
+    except TypeError:
+        # Backward-compatible fallback for older zero-arg call sites used in tests
+        # and lightweight overrides.
+        news_snapshot = _market_news_snapshot()
     execution_chart_payload = {**execution_chart, "execution_model": execution_model}
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)
@@ -7549,7 +7828,14 @@ def market_pulse_page():
 def market_pulse_news_feed_api():
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
-    news_snapshot = _market_news_snapshot()
+    now_et = app_runtime.now_et()
+    playbook_snapshot = get_or_build_market_pulse_snapshot(force_refresh=False, now_et=now_et)
+    market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
+    news_snapshot = _market_news_snapshot(
+        now_et=now_et,
+        market_structure_snapshot=market_structure_snapshot,
+        macro_events=_market_news_macro_events(now_et),
+    )
     items = list(news_snapshot.get("pulse_feed_items") or [])
     feed_snapshot = dict(news_snapshot.get("market_feed_snapshot") or {})
     return jsonify(
@@ -7567,6 +7853,7 @@ def market_pulse_news_feed_api():
             "tracked_accounts": list(news_snapshot.get("pulse_feed_accounts") or []),
             "sources_monitored": list(feed_snapshot.get("sources_monitored") or news_snapshot.get("pulse_feed_accounts") or []),
             "now_summary": dict(feed_snapshot.get("now_summary") or {}),
+            "flow_summary": dict(feed_snapshot.get("flow_summary") or {}),
         }
     )
 
@@ -7631,6 +7918,11 @@ def hero_levels_api():
             "bias_label": structure_snapshot.get("bias_label"),
             "bias": structure_snapshot.get("bias"),
             "tradeability": structure_snapshot.get("tradeability"),
+            "context_grade": structure_snapshot.get("context_grade"),
+            "context_score": structure_snapshot.get("context_score"),
+            "context_score_pct": structure_snapshot.get("context_score_pct"),
+            "context_tone": structure_snapshot.get("context_tone"),
+            "context_status": structure_snapshot.get("context_status"),
             "app_state": structure_snapshot.get("app_state"),
             "app_state_label": structure_snapshot.get("app_state_label"),
             "spot_meta": structure_snapshot.get("spot_meta"),
@@ -7649,6 +7941,7 @@ def hero_levels_api():
             "best_look": structure_snapshot.get("best_look"),
             "required_trigger": structure_snapshot.get("required_trigger"),
             "invalidation": structure_snapshot.get("invalidation"),
+            "trigger_validation": structure_snapshot.get("trigger_validation"),
             "provider": str(spx_quote.get("provider") or "market_snapshot"),
             "snapshot_timestamp": structure_snapshot.get("snapshot_timestamp"),
             "snapshot_timestamp_label": structure_snapshot.get("snapshot_timestamp_label"),

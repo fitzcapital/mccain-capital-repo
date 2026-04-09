@@ -207,152 +207,150 @@ def strat_page():
         </article>
       </section>
 
-      <section class="stratSectionCard stratGammaSection stratSectionSecondary stratLabSection" id="stratSection-gamma" data-strat-section="gamma">
+      <section class="stratSectionCard stratGammaMasterSection stratSectionSecondary stratLabSection" id="stratSection-gamma" data-strat-section="gamma">
         <div class="stratSectionHeader">
           <div>
-            <div class="pill">⚡ Gamma / GEX Context</div>
-            <h3>Gamma behavior changes how Strat setups actually respond.</h3>
-            <div class="meta">Same candle. Different dealer regime. Different trade quality.</div>
+            <div class="pill">⚡ Gamma Environment</div>
+            <h3>The same Strat setup behaves differently depending on the dealer environment.</h3>
+            <div class="meta">Use gamma to judge follow-through quality, reversal odds, and how much confirmation the setup really needs.</div>
           </div>
-          <div class="stratSectionBadge">Context Engine</div>
+          <div class="stratSectionBadge">Execution Context</div>
         </div>
-        <div class="stratGammaGrid">
-          <article class="stratGammaCard tone-positive">
-            <div class="stratGammaIcon">🟢</div>
-            <h4>Positive Gamma</h4>
-            <p><b>Plain English:</b> movement is more responsive and often mean-reverting around levels.</p>
-            <ul>
-              <li><b>Behavior:</b> dips can bounce, rips can fade.</li>
-              <li><b>Takeaway:</b> don’t chase far from structure.</li>
-              <li><b>Mistake:</b> treating positive gamma as automatic bullish direction.</li>
-              <li><b>Scenario:</b> 2-2 reversals at support can clean up.</li>
-            </ul>
-          </article>
-          <article class="stratGammaCard tone-negative">
-            <div class="stratGammaIcon">🔴</div>
-            <h4>Negative Gamma</h4>
-            <p><b>Plain English:</b> movement can expand and failed reversals get punished faster.</p>
-            <ul>
-              <li><b>Behavior:</b> momentum stretches and volatility bites harder.</li>
-              <li><b>Takeaway:</b> respect continuation pressure.</li>
-              <li><b>Mistake:</b> buying every dip because it looks extended.</li>
-              <li><b>Scenario:</b> failed bounces below resistance can unwind quickly.</li>
-            </ul>
-          </article>
-          <article class="stratGammaCard tone-caution">
-            <div class="stratGammaIcon">🟠</div>
-            <h4>Gamma Flip</h4>
-            <p><b>Plain English:</b> the broad behavior line where tape character can change and edge usually drops.</p>
-            <ul>
-              <li><b>Behavior:</b> mixed price action and false starts.</li>
-              <li><b>Takeaway:</b> wait for confirmation near the flip.</li>
-              <li><b>Mistake:</b> treating flip-zone action like clean direction.</li>
-              <li><b>Scenario:</b> reclaim attempts often need proof before size increases.</li>
-            </ul>
-          </article>
-          <article class="stratGammaCard tone-call">
-            <div class="stratGammaIcon">🔺</div>
-            <h4>Call Wall</h4>
-            <p><b>Plain English:</b> an overhead pressure zone that often matters as resistance or slowdown.</p>
-            <ul>
-              <li><b>Behavior:</b> price can reject, compress, or hesitate.</li>
-              <li><b>Takeaway:</b> don’t chase directly into the wall.</li>
-              <li><b>Mistake:</b> assuming it always rejects.</li>
-              <li><b>Scenario:</b> continuation into the wall often needs trim logic or proof.</li>
-            </ul>
-          </article>
-          <article class="stratGammaCard tone-put">
-            <div class="stratGammaIcon">🟩</div>
-            <h4>Put Wall</h4>
-            <p><b>Plain English:</b> a support-like area that can stabilize price or matter sharply if lost.</p>
-            <ul>
-              <li><b>Behavior:</b> bounces can form here, but breaks can matter fast.</li>
-              <li><b>Takeaway:</b> support matters only if price responds.</li>
-              <li><b>Mistake:</b> buying blindly because the wall exists.</li>
-              <li><b>Scenario:</b> buy dips only when response confirms.</li>
-            </ul>
-          </article>
-        </div>
-      </section>
 
-      <section class="stratSectionCard stratFusionSection stratSectionSecondary">
-        <div class="stratSectionHeader">
-          <div>
-            <div class="pill">🧠 Strat + Gamma Together</div>
-            <h3>Same pattern, different environment, different outcome quality.</h3>
-            <div class="meta">Use context to decide whether a setup is clean, conditional, or dangerous.</div>
-          </div>
-        </div>
-        <div class="stratScenarioGrid">
-          <article class="stratScenarioCard tone-positive">
-            <h4>2-2 reversal in positive gamma</h4>
-            <div class="stratScenarioBody">Cleaner at support. Better for responsive fades and disciplined buy-dip logic.</div>
-          </article>
-          <article class="stratScenarioCard tone-negative">
-            <h4>2-2 reversal in negative gamma</h4>
-            <div class="stratScenarioBody">More dangerous against momentum. Needs stronger level quality and sharper confirmation.</div>
-          </article>
-          <article class="stratScenarioCard tone-cyan">
-            <h4>Continuation above flip</h4>
-            <div class="stratScenarioBody">Pullbacks are cleaner if local support and continuity hold after reclaim.</div>
-          </article>
-          <article class="stratScenarioCard tone-danger">
-            <h4>Failed bounce below flip</h4>
-            <div class="stratScenarioBody">Sell-rip logic improves when the bounce cannot reclaim local structure.</div>
-          </article>
-        </div>
-        <div class="stratIfThenRail">
-          <div class="stratIfThenCard"><b>If</b> below flip + failed bounce + reversal trigger <b>then</b> sell rip bias.</div>
-          <div class="stratIfThenCard"><b>If</b> above flip + pullback holds + continuation trigger <b>then</b> buy dip bias.</div>
-          <div class="stratIfThenCard"><b>If</b> near the flip + mixed candles <b>then</b> wait for resolution.</div>
-        </div>
-      </section>
-
-      <section class="stratCard stratChecklistCard">
-        <div class="stratChecklistTop">
-          <div>
-            <h3 class="stratChecklistTitle">✅ Pre-Trade Checklist</h3>
-            <div class="meta stack6">Saved locally. Use it as a readiness gate.</div>
-          </div>
-          <div class="stratProgress">
-            <div class="stratProgressBlock">
-              <div class="stratProgressBar"><div id="stratProgressFill" class="stratProgressFill"></div></div>
-              <div id="stratProgressText" class="stratProgressText">0/6 complete</div>
+        <div class="stratGammaOverviewGrid">
+          <article class="stratGammaOverviewCard tone-positive">
+            <div class="stratGammaOverviewTop">
+              <div class="stratGammaIcon">🟢</div>
+              <div>
+                <h4>Positive Gamma</h4>
+                <div class="stratGammaOverviewKicker">Controlled / mean-reverting tape</div>
+              </div>
             </div>
-            <div class="stratReadinessState" id="stratReadinessState">Not Ready</div>
+            <p>Dealers tend to dampen moves more. Price often responds to levels instead of running cleanly through them.</p>
+            <div class="stratGammaOverviewNote"><b>What price tends to do:</b> chop, pin, fade, reclaim, stall.</div>
+            <div class="stratGammaOverviewNote"><b>What this means for Strat:</b> 2-2 reversals and failed moves can clean up, but breakouts need cleaner location and real confirmation.</div>
+          </article>
+
+          <article class="stratGammaOverviewCard tone-negative">
+            <div class="stratGammaOverviewTop">
+              <div class="stratGammaIcon">🔴</div>
+              <div>
+                <h4>Negative Gamma</h4>
+                <div class="stratGammaOverviewKicker">Expansion / momentum tape</div>
+              </div>
+            </div>
+            <p>Moves can travel faster and fail harder. If momentum gets traction, continuation often matters more than hoping for reversion.</p>
+            <div class="stratGammaOverviewNote"><b>What price tends to do:</b> trend, accelerate, overshoot, punish late fades.</div>
+            <div class="stratGammaOverviewNote"><b>What this means for Strat:</b> breakouts and continuity can run, but weak reversals fail fast unless the level is real and the trigger is sharp.</div>
+          </article>
+
+          <article class="stratGammaOverviewCard tone-caution">
+            <div class="stratGammaOverviewTop">
+              <div class="stratGammaIcon">🟠</div>
+              <div>
+                <h4>Gamma Flip</h4>
+                <div class="stratGammaOverviewKicker">Behavior transition zone</div>
+              </div>
+            </div>
+            <p>This is where tape character can change and edge often degrades. You can still trade it, but you need proof rather than a clean story.</p>
+            <div class="stratGammaOverviewNote"><b>What price tends to do:</b> false starts, mixed candles, weak follow-through.</div>
+            <div class="stratGammaOverviewNote"><b>What this means for Strat:</b> reduce anticipation, wait for the reclaim or rejection to actually hold, and size down if the market is still indecisive.</div>
+          </article>
+
+          <article class="stratGammaOverviewCard tone-call">
+            <div class="stratGammaOverviewTop">
+              <div class="stratGammaIcon">🧱</div>
+              <div>
+                <h4>Walls Matter</h4>
+                <div class="stratGammaOverviewKicker">Call wall / put wall behavior</div>
+              </div>
+            </div>
+            <p>Walls tell you where continuation can stall and where reversals can actually matter. They are not magic, but they are better than guessing.</p>
+            <div class="stratGammaOverviewNote"><b>Call wall:</b> breakouts into it can stall in positive gamma and need stronger proof in negative gamma.</div>
+            <div class="stratGammaOverviewNote"><b>Put wall:</b> bounces matter only if buyers respond; if the wall breaks in negative gamma, continuation risk increases fast.</div>
+          </article>
+        </div>
+
+        <div class="stratGammaCompareShell">
+          <div class="stratGammaSubhead">
+            <div>
+              <h4>Same Setup, Different Environment</h4>
+              <div class="meta">This is the big idea: pattern name stays the same, but expected quality changes with gamma.</div>
+            </div>
+          </div>
+          <div class="stratGammaCompareGrid">
+            <article class="stratGammaCompareCard tone-positive">
+              <div class="stratGammaCompareEyebrow">2-2 reversal · Positive Gamma</div>
+              <div class="stratGammaCompareTitle">Responsive mean-reversion setup</div>
+              <div class="stratGammaCompareBody">At support or the local flip, the failed push can reverse cleanly because the tape is more controlled. You still want location, but you can trust the level response more.</div>
+              <div class="stratGammaCompareFooter"><b>Execution read:</b> fade with confirmation, don't chase after the first push away from the level.</div>
+            </article>
+
+            <article class="stratGammaCompareCard tone-negative">
+              <div class="stratGammaCompareEyebrow">2-2 reversal · Negative Gamma</div>
+              <div class="stratGammaCompareTitle">Needs sharper proof or it can fail fast</div>
+              <div class="stratGammaCompareBody">The same 2-2 can look attractive and still get steamrolled if momentum is active. If the trigger is weak or the level is sloppy, continuation can overwhelm the reversal quickly.</div>
+              <div class="stratGammaCompareFooter"><b>Execution read:</b> demand rejection plus follow-through and use tighter discipline on size and invalidation.</div>
+            </article>
+
+            <article class="stratGammaCompareCard tone-cyan">
+              <div class="stratGammaCompareEyebrow">Breakout / continuity · Positive Gamma</div>
+              <div class="stratGammaCompareTitle">Breakouts can stall without real expansion</div>
+              <div class="stratGammaCompareBody">A clean 2-1-2 or 3-1-2 above support can still fail if it runs directly into a wall or extended location. Positive gamma often rewards buying pullbacks better than chasing the initial break.</div>
+              <div class="stratGammaCompareFooter"><b>Execution read:</b> don’t overpay for the breakout; wait for reclaim, hold, or pullback acceptance.</div>
+            </article>
+
+            <article class="stratGammaCompareCard tone-danger">
+              <div class="stratGammaCompareEyebrow">Breakout / failed bounce · Negative Gamma</div>
+              <div class="stratGammaCompareTitle">Continuation and failure both carry more force</div>
+              <div class="stratGammaCompareBody">Above the flip, breakouts can actually run. Below the flip, a failed bounce or failed broadening formation can accelerate lower because the tape is less forgiving.</div>
+              <div class="stratGammaCompareFooter"><b>Execution read:</b> respect momentum, especially when continuity agrees and the bounce cannot reclaim structure.</div>
+            </article>
           </div>
         </div>
 
-        <div class="checklist stack10">
-          <label class="checkRow">
-            <input type="checkbox" class="strat-check" data-key="level" />
-            <div class="checkText"><b>Location:</b> price is at a decision area, not dead center.</div>
-          </label>
-          <label class="checkRow">
-            <input type="checkbox" class="strat-check" data-key="htf" />
-            <div class="checkText"><b>HTF intent:</b> higher timeframe agrees or the fade is clearly level-based.</div>
-          </label>
-          <label class="checkRow">
-            <input type="checkbox" class="strat-check" data-key="structure" />
-            <div class="checkText"><b>Structure:</b> box, range, walls, or flip context is mapped.</div>
-          </label>
-          <label class="checkRow">
-            <input type="checkbox" class="strat-check" data-key="trigger" />
-            <div class="checkText"><b>Trigger:</b> the pattern has confirmation, not anticipation.</div>
-          </label>
-          <label class="checkRow">
-            <input type="checkbox" class="strat-check" data-key="risk" />
-            <div class="checkText"><b>Risk:</b> invalidation is real, size is fixed, premium cap is respected.</div>
-          </label>
-          <label class="checkRow">
-            <input type="checkbox" class="strat-check" data-key="plan" />
-            <div class="checkText"><b>Plan:</b> target, stop, and no-revenge rule are set before entry.</div>
-          </label>
+        <div class="stratGammaRulesShell">
+          <div class="stratGammaSubhead">
+            <div>
+              <h4>Gamma-Aware Execution Notes</h4>
+              <div class="meta">Use these as live trading rules, not as abstract market theory.</div>
+            </div>
+          </div>
+          <div class="stratGammaRulesGrid">
+            <div class="stratGammaRuleCard"><b>Positive gamma:</b> demand clean location and don’t overpay for breakouts. Reversion usually beats blind chase.</div>
+            <div class="stratGammaRuleCard"><b>Negative gamma:</b> respect momentum and tighten risk because failed entries can accelerate immediately.</div>
+            <div class="stratGammaRuleCard"><b>Reversals:</b> a 2-2 near support in positive gamma is not the same quality as a 2-2 fading trend in negative gamma.</div>
+            <div class="stratGammaRuleCard"><b>Continuity:</b> when timeframe continuity lines up with negative gamma, breakout follow-through quality improves.</div>
+            <div class="stratGammaRuleCard"><b>Walls and flip:</b> these levels change whether a setup is responsive, conditional, or dangerous.</div>
+            <div class="stratGammaRuleCard"><b>Stop discipline:</b> gamma changes how fast price can move, so the same candle pattern may need very different risk tolerance.</div>
+          </div>
         </div>
 
-        <div class="stratActions">
-          <button class="btn" type="button" onclick="stratChecklistClear()">🧹 Clear</button>
-          <button class="btn primary" type="button" onclick="window.location.href='/market-pulse?refresh=1'">⚡ Open Market Pulse</button>
+        <div class="stratGammaCheatShell">
+          <div class="stratGammaSubhead">
+            <div>
+              <h4>Quick Read / Cheat Sheet</h4>
+              <div class="meta">Fast scan for how local flip location and gamma combine.</div>
+            </div>
+          </div>
+          <div class="stratGammaCheatGrid">
+            <div class="stratGammaCheatCard tone-positive">
+              <div class="stratGammaCheatTitle">Above LF + Positive Gamma</div>
+              <div class="stratGammaCheatBody">Controlled bullish. Buy dips carefully. Expect better level response than runaway continuation.</div>
+            </div>
+            <div class="stratGammaCheatCard tone-caution">
+              <div class="stratGammaCheatTitle">Below LF + Positive Gamma</div>
+              <div class="stratGammaCheatBody">Weak but more contained. Reversion is possible, but only if support actually responds.</div>
+            </div>
+            <div class="stratGammaCheatCard tone-cyan">
+              <div class="stratGammaCheatTitle">Above LF + Negative Gamma</div>
+              <div class="stratGammaCheatBody">Unstable bullish. Breakout prone. Continuation can work, but sloppy pullbacks get punished fast.</div>
+            </div>
+            <div class="stratGammaCheatCard tone-danger">
+              <div class="stratGammaCheatTitle">Below LF + Negative Gamma</div>
+              <div class="stratGammaCheatBody">Bearish acceleration risk. Failed bounces and weak reclaim attempts can unwind quickly.</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -528,15 +526,10 @@ def strat_page():
         } catch (_err) {
           state = {};
         }
-        state.checklist = state.checklist || {};
         state.quiz = state.quiz || {};
         state.activeModule = state.activeModule || "gamma";
         state.glossaryTerm = state.glossaryTerm || "gamma";
 
-        const checks = Array.from(document.querySelectorAll(".strat-check"));
-        const progressFill = document.getElementById("stratProgressFill");
-        const progressText = document.getElementById("stratProgressText");
-        const readinessState = document.getElementById("stratReadinessState");
         const heroProgressFill = document.getElementById("stratHeroProgressFill");
         const heroProgressPct = document.getElementById("stratHeroProgressPct");
         const heroDrillScore = document.getElementById("stratHeroDrillScore");
@@ -558,12 +551,6 @@ def strat_page():
           }
         }
 
-        function checklistTotals(){
-          const total = checks.length;
-          const done = checks.filter((cb) => cb.checked).length;
-          return { total, done };
-        }
-
         function quizTotals(){
           const total = quizQuestions.length;
           let correct = 0;
@@ -576,40 +563,15 @@ def strat_page():
           return { total, correct };
         }
 
-        function readinessLabel(done, total){
-          if (!total || done === 0) return "Not Ready";
-          if (done === total) return "Ready to Review";
-          if (done >= Math.max(4, total - 1)) return "Building";
-          return "Not Ready";
-        }
-
         function syncHeroProgress(){
-          const { total, done } = checklistTotals();
           const quiz = quizTotals();
-          const conceptTotal = total + quiz.total + Object.keys(glossary).length;
-          const conceptDone = done + quiz.correct + (state.glossaryTerm ? 1 : 0);
+          const conceptTotal = quiz.total + Object.keys(glossary).length;
+          const conceptDone = quiz.correct + (state.glossaryTerm ? 1 : 0);
           const pct = conceptTotal ? Math.round((conceptDone / conceptTotal) * 100) : 0;
           if (heroProgressFill) heroProgressFill.style.width = pct + "%";
           if (heroProgressPct) heroProgressPct.textContent = pct + "%";
           if (heroDrillScore) heroDrillScore.textContent = `${quiz.correct}/${quiz.total}`;
           if (learningMeterText) learningMeterText.textContent = `${conceptDone} / ${conceptTotal} concepts`;
-        }
-
-        function syncChecklist(){
-          const { total, done } = checklistTotals();
-          const pct = total ? Math.round((done / total) * 100) : 0;
-          if (progressFill) progressFill.style.width = pct + "%";
-          if (progressText) progressText.textContent = `${done}/${total} complete`;
-          if (readinessState) {
-            const label = readinessLabel(done, total);
-            readinessState.textContent = label;
-            readinessState.dataset.state = label.toLowerCase().replace(/\s+/g, "-");
-          }
-          checks.forEach((cb) => {
-            const row = cb.closest(".checkRow");
-            if (row) row.classList.toggle("checked", cb.checked);
-          });
-          syncHeroProgress();
         }
 
         function syncModule(){
@@ -672,16 +634,6 @@ def strat_page():
           syncHeroProgress();
         }
 
-        checks.forEach((cb) => {
-          const key = cb.getAttribute("data-key");
-          cb.checked = !!state.checklist[key];
-          cb.addEventListener("change", () => {
-            state.checklist[key] = cb.checked;
-            persist();
-            syncChecklist();
-          });
-        });
-
         moduleButtons.forEach((button) => {
           button.addEventListener("click", () => {
             state.activeModule = button.getAttribute("data-strat-module") || "gamma";
@@ -709,14 +661,6 @@ def strat_page():
           });
         });
 
-        window.stratChecklistClear = function(){
-          state.checklist = {};
-          persist();
-          checks.forEach((cb) => { cb.checked = false; });
-          syncChecklist();
-        };
-
-        syncChecklist();
         syncModule();
         syncGlossary();
         syncQuiz();

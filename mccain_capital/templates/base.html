@@ -8,6 +8,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <meta name="csrf-token" content="{{ csrf_token }}"/>
   <title>{{ title }}</title>
+  <script>
+    (() => {
+      try {
+        if (window.localStorage && window.localStorage.getItem("mc_font_mode") === "hand") {
+          document.documentElement.setAttribute("data-font-mode", "hand");
+        }
+      } catch (_err) {
+        // Keep the default app font if localStorage is blocked.
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-tape-20260317a">
 </head>
 
@@ -407,6 +418,7 @@
               <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             {% endif %}
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
+            <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
             {% if auth_enabled %}
               <div class="hr"></div>
@@ -618,6 +630,7 @@
               <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             {% endif %}
             <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
+            <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}
               {% if authenticated %}
@@ -657,10 +670,6 @@
       <button id="mobileDockMenuBtn" class="btn mobileDockItem mobileDockMenu" type="button" aria-expanded="false" onclick="openDrawer()"><span class="mobileDockLabel">Menu</span></button>
     </nav>
 
-    <div class="tiny footerTip">
-      Tip: Keep your journal precise. Your edge compounds through consistency.
-      <span class="kbd">Ctrl</span> + <span class="kbd">K</span> focuses search.
-    </div>
   </div>
 <script>
   (function(){

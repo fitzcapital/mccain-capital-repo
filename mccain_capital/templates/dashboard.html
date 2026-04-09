@@ -37,6 +37,7 @@
 {% set tape_delayed = (dashboard_spx_state == 'Delayed' or dashboard_vix_state == 'Delayed') and not tape_live %}
 {% set tape_status_label = 'Live Feed' if tape_live else 'Delayed Feed' if tape_delayed else 'Feed Standby' %}
 {% set dashboard_default_mode = 'live' if tape_live else 'pre' %}
+{% set snapshot_primary = snapshot_bar.entries[:4] %}
 
 <div
   class="dashboardModeShell"
@@ -44,8 +45,8 @@
   data-dashboard-mode="{{ dashboard_default_mode }}"
   data-dashboard-default-mode="{{ dashboard_default_mode }}"
 >
-<div class="dashboardSnapshotBar">
-  {% for item in snapshot_bar.entries %}
+<div class="dashboardSnapshotBar dashboardSnapshotBar-primary">
+  {% for item in snapshot_primary %}
     <div class="dashboardSnapshotCard{% if item.tone %} is-{{ item.tone }}{% endif %}">
       <span class="dashboardSnapshotLabel">{{ item.label }}</span>
       <strong{% if item.tone == 'positive' %} class="metaGreen"{% elif item.tone == 'negative' %} class="metaRed"{% endif %}>{{ item.value }}</strong>
@@ -168,17 +169,34 @@
           aria-label="Gamma structure context"
           data-gamma-state="{{ decision_panel.gamma_strip.state }}"
         >
-          {% for item in decision_panel.gamma_strip.entries %}
-            <div
-              class="dashboardGammaChip dashboardGammaChip-{{ item.emphasis }}{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.glow %} has-glow{% endif %}"
-              id="dashboardGammaChip-{{ item.key }}"
-              data-gamma-key="{{ item.key }}"
-              data-gamma-tone="{{ item.tone }}"
-            >
-              <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ item.label }}</span>
-              <strong class="dashboardGammaChipValue" id="dashboardGammaValue-{{ item.key }}">{{ item.value }}</strong>
-            </div>
-          {% endfor %}
+          {% set execution_keys = ['regime', 'local_flip', 'next_call_wall', 'next_put_wall'] %}
+          {% set structure_keys = ['main_flip', 'call_wall', 'put_wall'] %}
+          <div class="dashboardGammaStripRow dashboardGammaStripRow-execution" aria-label="Execution levels">
+            {% for item in decision_panel.gamma_strip.entries if item.key in execution_keys %}
+              <div
+                class="dashboardGammaChip dashboardGammaChip-{{ item.emphasis }} dashboardGammaChip-execution{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.glow %} has-glow{% endif %}"
+                id="dashboardGammaChip-{{ item.key }}"
+                data-gamma-key="{{ item.key }}"
+                data-gamma-tone="{{ item.tone }}"
+              >
+                <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ item.label }}</span>
+                <strong class="dashboardGammaChipValue" id="dashboardGammaValue-{{ item.key }}">{{ item.value }}</strong>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="dashboardGammaStripRow dashboardGammaStripRow-structure" aria-label="Structural levels">
+            {% for item in decision_panel.gamma_strip.entries if item.key in structure_keys %}
+              <div
+                class="dashboardGammaChip dashboardGammaChip-{{ item.emphasis }} dashboardGammaChip-structure{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.glow %} has-glow{% endif %}"
+                id="dashboardGammaChip-{{ item.key }}"
+                data-gamma-key="{{ item.key }}"
+                data-gamma-tone="{{ item.tone }}"
+              >
+                <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ item.label }}</span>
+                <strong class="dashboardGammaChipValue" id="dashboardGammaValue-{{ item.key }}">{{ item.value }}</strong>
+              </div>
+            {% endfor %}
+          </div>
         </div>
         <div class="dashboardGammaMeta{% if decision_panel.gamma_strip.state == 'stale' %} is-stale{% elif decision_panel.gamma_strip.state == 'loading' %} is-loading{% elif decision_panel.gamma_strip.state == 'unavailable' %} is-unavailable{% endif %}" id="dashboardGammaMeta">
           {{ decision_panel.gamma_strip.status_text }}
@@ -725,7 +743,7 @@
             data-status-line3="{{ today_count }} trades tracked"
             data-status-tags="Risk||Guardrail Aware"
           >
-            <div class="dashboardStatusOrbCircle">
+            <div class="dashboardStatusOrbCircle{% if risk_short|length > 3 %} is-long{% endif %}">
               <strong>{{ risk_short }}</strong>
             </div>
             <div class="dashboardStatusOrbLabel">Risk</div>
@@ -1237,13 +1255,41 @@
             />
             <div class="dashboardProjectionHint tiny">{{ pace_card.trading_day_label }}</div>
           </div>
+          <div class="dashboardProjectionField">
+            <label for="dashboardProjectionTargetDate">Target date</label>
+            <input
+              id="dashboardProjectionTargetDate"
+              type="date"
+              name="dashboard_projection_target_date"
+              value="{{ pace_card.target.input }}"
+            />
+            <div class="dashboardProjectionHint tiny">Projects profit through that date</div>
+          </div>
           <div class="dashboardProjectionActions">
-            <button class="btn primary" type="submit">Project Pace</button>
+            <button class="btn primary" type="submit">Save Projection</button>
             <button class="btn" type="submit" name="pace_reset" value="1">Use Live Pace</button>
           </div>
         </div>
       </form>
     </details>
+    {% if pace_card.target.configured %}
+      <div class="dashboardProjectionTarget {% if pace_card.target.tone == 'positive' %}is-positive{% elif pace_card.target.tone == 'negative' %}is-negative{% endif %}" title="{{ pace_card.target.target_date_full }}">
+        <div class="dashboardProjectionTargetHead">
+          <div>
+            <span>Target Date</span>
+            <strong>{{ pace_card.target.label }}</strong>
+          </div>
+          <div>
+            <span>Projected Profit</span>
+            <strong>{{ pace_card.target.est_pnl }}</strong>
+          </div>
+        </div>
+        <div class="dashboardProjectionTargetMeta">
+          <span>{{ pace_card.target.est_balance }} projected balance</span>
+          <span>{{ pace_card.target.detail }}</span>
+        </div>
+      </div>
+    {% endif %}
     {% if pace_card.nodes %}
       <div class="dashboardProjectionTimeline">
         {% for node in pace_card.nodes %}

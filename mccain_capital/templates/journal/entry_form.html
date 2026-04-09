@@ -106,9 +106,19 @@
         </div>
 
         <div class="stack12">
+          <label>Lesson</label>
+          <input
+            name="lesson"
+            value="{{ values.get('lesson','') }}"
+            placeholder="One clear lesson for the journal feed and weekly review."
+          >
+          <div class="tiny stack8">This is the main takeaway shown on the journal feed. Keep it short and specific.</div>
+        </div>
+
+        <div class="stack12">
           <label>Main Notes</label>
           <textarea name="notes" placeholder="What I saw:\n\nWhat I did:\n\nNext time:">{{ values.get('notes','') }}</textarea>
-          <div class="tiny stack8">Use short blocks like <b>What I saw</b>, <b>What I did</b>, and <b>Next time</b> so the journal feed can render the lesson cleanly.</div>
+          <div class="tiny stack8">Use short blocks like <b>What I saw</b>, <b>What I did</b>, and <b>Next time</b> to keep the full context readable. Older entries still fall back to this text if Lesson is blank.</div>
         </div>
       </div>
     </div>

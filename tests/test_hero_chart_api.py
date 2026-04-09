@@ -1,5 +1,68 @@
+from datetime import datetime
+
 from mccain_capital.services import core
 from mccain_capital.services import tradier_hero_chart_service as hero_service
+from mccain_capital import runtime as app_runtime
+
+
+def test_get_intraday_bars_filters_spx_to_regular_session_after_hours(monkeypatch):
+    now_et = datetime(2026, 4, 8, 17, 0, 0, tzinfo=app_runtime.TZ)
+    monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
+
+    rows = [
+        {"ts": "2026-04-08T15:55:00-04:00", "open": 6780, "high": 6784, "low": 6779, "close": 6782, "volume": 100},
+        {"ts": "2026-04-08T16:05:00-04:00", "open": 6782, "high": 6786, "low": 6781, "close": 6785, "volume": 100},
+    ]
+    prior_rows = [
+        {"ts": "2026-04-07T15:55:00-04:00", "open": 6768, "high": 6772, "low": 6767, "close": 6770, "volume": 100},
+    ]
+
+    monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: rows)
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: prior_rows,
+    )
+
+    payload = hero_service.get_intraday_bars(symbol="SPX", interval="5min")
+
+    assert payload["time_zone"] == "America/New_York"
+    assert len(payload["bars"]) == 2
+    assert payload["previous_session_bar_count"] == 1
+    assert payload["current_session_bar_count"] == 1
+    assert payload["bars"][0]["close"] == 6770
+    assert payload["bars"][1]["close"] == 6782
+    assert payload["bars"][0]["time"] != int(now_et.replace(hour=16, minute=5, second=0, microsecond=0).timestamp())
+
+
+def test_get_intraday_bars_open_session_returns_prior_plus_current(monkeypatch):
+    now_et = datetime(2026, 4, 8, 10, 5, 0, tzinfo=app_runtime.TZ)
+    monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
+
+    rows = [
+        {"ts": "2026-04-08T09:35:00-04:00", "open": 6770, "high": 6773, "low": 6768, "close": 6772, "volume": 100},
+        {"ts": "2026-04-08T09:40:00-04:00", "open": 6772, "high": 6775, "low": 6771, "close": 6774, "volume": 100},
+    ]
+    prior_rows = [
+        {"ts": "2026-04-07T15:50:00-04:00", "open": 6758, "high": 6761, "low": 6757, "close": 6760, "volume": 100},
+        {"ts": "2026-04-07T15:55:00-04:00", "open": 6760, "high": 6764, "low": 6759, "close": 6763, "volume": 100},
+    ]
+
+    monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: rows)
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: prior_rows,
+    )
+
+    payload = hero_service.get_intraday_bars(symbol="SPX", interval="5min")
+
+    assert len(payload["bars"]) == 4
+    assert payload["previous_session_bar_count"] == 2
+    assert payload["current_session_bar_count"] == 2
+    assert payload["bars"][0]["close"] == 6760
+    assert payload["bars"][-1]["close"] == 6774
+    assert payload["visible_window_bars"] == 4
 
 
 def test_hero_levels_api_uses_service_payload(client, monkeypatch):
@@ -76,6 +139,8 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
             "opening_session_mode": True,
             "live_session_bar_count": 2,
             "opening_threshold": 10,
+            "previous_session_bar_count": 2,
+            "current_session_bar_count": 1,
         },
     )
 
@@ -87,3 +152,5 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
     assert payload["bars"][0]["close"] == 1.5
     assert payload["opening_session_mode"] is True
     assert payload["live_session_bar_count"] == 2
+    assert payload["previous_session_bar_count"] == 2
+    assert payload["current_session_bar_count"] == 1

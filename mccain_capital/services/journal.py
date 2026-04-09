@@ -227,6 +227,7 @@ def new_entry():
         entry_date = (f.get("entry_date") or today_iso()).strip()
         pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
+        lesson = (f.get("lesson") or "").strip()
         linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
@@ -265,7 +266,7 @@ def new_entry():
                 "notes": notes,
                 "entry_type": entry_type,
                 "template_payload": _entry_template_payload(
-                    template_notes, screenshot_paths, screenshot_note
+                    template_notes, screenshot_paths, screenshot_note, lesson
                 ),
             }
         )
@@ -290,6 +291,7 @@ def new_entry():
         "grade": (request.args.get("grade") or "").strip(),
         "mood": (request.args.get("mood") or "").strip(),
         "pnl": (request.args.get("pnl") or "").strip(),
+        "lesson": (request.args.get("lesson") or "").strip(),
         "notes": (request.args.get("notes") or "").strip(),
         "template_notes": (request.args.get("template_notes") or "").strip(),
         "capture_screenshot_path": (request.args.get("capture_screenshot_path") or "").strip(),
@@ -351,6 +353,7 @@ def edit_entry(entry_id: int):
         entry_date = (f.get("entry_date") or today_iso()).strip()
         pnl = parse_float(f.get("pnl", ""))
         notes = (f.get("notes") or "").strip()
+        lesson = (f.get("lesson") or "").strip()
         linked_ids = _linked_trade_ids_from_form(entry_date, f)
         entry_type = (f.get("entry_type") or "post_market").strip()
         template_notes = (f.get("template_notes") or "").strip()
@@ -391,7 +394,7 @@ def edit_entry(entry_id: int):
                 "notes": notes,
                 "entry_type": entry_type,
                 "template_payload": _entry_template_payload(
-                    template_notes, screenshot_paths, screenshot_note
+                    template_notes, screenshot_paths, screenshot_note, lesson
                 ),
             },
         )
@@ -403,6 +406,7 @@ def edit_entry(entry_id: int):
     if values.get("pnl") is None:
         values["pnl"] = ""
     payload = _safe_template_payload(values.get("template_payload"))
+    values["lesson"] = str(payload.get("lesson") or "").strip()
     values["template_notes"] = payload.get("template_notes", "")
     capture_paths = _capture_paths_from_payload(payload)
     values["capture_screenshot_path"] = str(capture_paths[0] if capture_paths else "").strip()
@@ -451,9 +455,11 @@ def journal_capture_asset(name: str):
 
 
 def _entry_template_payload(
-    template_notes: str, screenshot_paths: List[str], screenshot_note: str = ""
+    template_notes: str, screenshot_paths: List[str], screenshot_note: str = "", lesson: str = ""
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"template_notes": template_notes}
+    if lesson:
+        payload["lesson"] = lesson
     clean_paths = _merge_capture_paths([], screenshot_paths)
     if clean_paths:
         payload["capture_screenshot_path"] = clean_paths[0]
@@ -650,8 +656,10 @@ def _enrich_journal_entry(entry: Dict[str, Any]) -> None:
     outcome_key = _outcome_key(entry.get("pnl"))
     outcome_label = {"win": "Win", "loss": "Loss", "flat": "Scratch"}[outcome_key]
     mistake_tags = _extract_mistake_tags(entry)
+    template_payload = _safe_template_payload(entry.get("template_payload"))
     lesson_text = (
-        _first_section_value(entry, ("lesson", "improvement", "next time"))
+        str(template_payload.get("lesson") or "").strip()
+        or _first_section_value(entry, ("lesson", "improvement", "next time"))
         or _first_section_value(entry, ("mistake", "rule", "error"))
         or str(entry.get("note_plain") or "").strip()
     )

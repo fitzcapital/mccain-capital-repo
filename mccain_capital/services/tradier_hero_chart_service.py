@@ -30,6 +30,7 @@ LEVEL_UNAVAILABLE = "Unavailable"
 OPENING_SESSION_BAR_THRESHOLD = 10
 OPENING_SESSION_CARRYOVER_MINUTES = 390
 OPENING_SESSION_RIGHT_OFFSET_BARS = 6
+HERO_CHART_TIMEZONE = "America/New_York"
 
 
 def _as_float(value: Any) -> Optional[float]:
@@ -141,6 +142,57 @@ def _bars_for_session_day(
             continue
         out.append(dict(bar))
     return out
+
+
+def _regular_session_bars_for_anchor_day(
+    *,
+    current_bars: List[Dict[str, Any]],
+    prior_bars: List[Dict[str, Any]],
+    anchor_day: date,
+) -> List[Dict[str, Any]]:
+    """Return the best available cash-session-only bar set for the hero chart.
+
+    SPX does not have actionable extended-hours trading for this view, so the
+    hero chart should always anchor to regular-session bars in New York market
+    time. Prefer the current session day when it has regular bars; otherwise
+    fall back to the prior valid trading session.
+    """
+
+    current_regular = _bars_for_session_day(current_bars, session_day=anchor_day, regular_only=True)
+    if current_regular:
+        return current_regular
+    prior_session_day = _previous_trading_day(anchor_day)
+    return _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=True)
+
+
+def _two_session_regular_bars(
+    *,
+    current_bars: List[Dict[str, Any]],
+    prior_bars: List[Dict[str, Any]],
+    anchor_day: date,
+) -> Dict[str, Any]:
+    """Return exactly the prior regular session plus the current regular session.
+
+    The hero chart is an execution view, not a multi-day replay. We keep one
+    prior day for gap/session context and the current session for live decision
+    making. When the current regular session has not started yet, the payload
+    falls back to the prior regular session only.
+    """
+
+    prior_session_day = _previous_trading_day(anchor_day)
+    prior_regular = _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=True)
+    current_regular = _bars_for_session_day(current_bars, session_day=anchor_day, regular_only=True)
+    combined = [dict(bar) for bar in prior_regular] + [dict(bar) for bar in current_regular]
+    if not combined:
+        combined = list(current_regular or prior_regular)
+    return {
+        "bars": combined,
+        "previous_session_bar_count": len(prior_regular),
+        "current_session_bar_count": len(current_regular),
+        "previous_session_day": prior_session_day.isoformat() if prior_regular else "",
+        "current_session_day": anchor_day.isoformat() if current_regular else "",
+        "visible_window_bars": len(combined),
+    }
 
 
 def _opening_session_carryover_bars(
@@ -257,10 +309,12 @@ def get_intraday_bars(symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTE
         "carryover_bar_count": 0,
         "visible_window_bars": len(normalized_current),
         "right_offset_bars": OPENING_SESSION_RIGHT_OFFSET_BARS,
+        "time_zone": HERO_CHART_TIMEZONE,
+        "previous_session_bar_count": 0,
+        "current_session_bar_count": 0,
+        "previous_session_day": "",
+        "current_session_day": "",
     }
-
-    if _session_phase(now_et) != "open" or not normalized_current:
-        return payload
 
     try:
         prior_rows = market_data_service.get_prior_session_intraday(symbol_name, anchor_session_day=now_et.date())
@@ -268,12 +322,32 @@ def get_intraday_bars(symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTE
         LOGGER.warning("hero chart prior-session fetch failed for %s: %s", symbol_name, exc)
         prior_rows = []
     normalized_prior = normalize_tradier_timesales(list(prior_rows or []), interval=interval)
-    framing = _opening_session_carryover_bars(
+
+    if _session_phase(now_et) != "open":
+        two_session_payload = _two_session_regular_bars(
+            current_bars=normalized_current,
+            prior_bars=normalized_prior,
+            anchor_day=now_et.date(),
+        )
+        payload.update(two_session_payload)
+        return payload
+
+    if not normalized_current:
+        payload.update(
+            _two_session_regular_bars(
+                current_bars=[],
+                prior_bars=normalized_prior,
+                anchor_day=now_et.date(),
+            )
+        )
+        return payload
+
+    framing = _two_session_regular_bars(
         current_bars=normalized_current,
         prior_bars=normalized_prior,
-        session_day=now_et.date(),
-        interval=interval,
+        anchor_day=now_et.date(),
     )
+    framing["live_session_bar_count"] = framing.get("current_session_bar_count", 0)
     payload.update(framing)
     return payload
 

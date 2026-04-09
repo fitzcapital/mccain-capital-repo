@@ -127,10 +127,10 @@ def create_app():
             resp.headers.setdefault(
                 "Content-Security-Policy",
                 "default-src 'self'; img-src 'self' data: https:; "
-                "script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://cdn.plot.ly; "
+                "script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://cdn.plot.ly https://platform.twitter.com https://cdn.syndication.twimg.com https://abs.twimg.com https://elfsightcdn.com https://*.elfsight.com; "
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-                "font-src 'self' https://fonts.gstatic.com; connect-src 'self'; "
-                "frame-src 'self' https://s.tradingview.com https://www.tradingview.com; "
+                "font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://platform.twitter.com https://syndication.twitter.com https://cdn.syndication.twimg.com https://cdn.syndication.twitter.com https://abs.twimg.com https://elfsightcdn.com https://*.elfsight.com; "
+                "frame-src 'self' https://s.tradingview.com https://www.tradingview.com https://platform.twitter.com https://syndication.twitter.com https://twitter.com https://x.com https://cdn.syndication.twimg.com https://elfsightcdn.com https://*.elfsight.com; "
                 "frame-ancestors 'self'",
             )
             return resp

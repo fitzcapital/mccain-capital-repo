@@ -35,7 +35,7 @@
 {% set location = execution_model.location if execution_model else {} %}
 {% set playbook = execution_model.playbook if execution_model else {} %}
 {% set distance_rows = execution_model.distance_rows if execution_model else [] %}
-{% set feed_snapshot = market_feed_snapshot or {} %}
+{% set trigger_validation = structure_snapshot.get('trigger_validation') or {} %}
 {% set gamma_positive = macro_regime.state == 'positive' %}
 {% set gamma_neutral = macro_regime.state == 'neutral' %}
 {% set bias_context = local_bias.context or 'LOCAL BIAS' %}
@@ -52,7 +52,10 @@
         <h2 class="pageTitle">SPX PLAYBOOK</h2>
         <div class="marketPulseHeaderSubline" id="marketPulseHeaderSubline">Main Flip {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }} | Local Flip {{ local_flip_label }} | CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }} | PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</div>
         <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }} • SPX {{ spx_price_label }}</div>
-        <div class="marketPulsePlaybookMeta tiny muted marketPulseClampLine">{{ structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</div>
+        <div class="marketPulsePlaybookMeta marketPulsePlaybookCompactMeta tiny muted">
+          <span>STATE: {{ structure_snapshot.get('current_read') or location.zone or 'Awaiting structure' }}</span>
+          <span>MODE: {{ trade_state_label }}</span>
+        </div>
       </div>
       <div class="marketPulseGammaStateCard {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard">
         <div class="marketPulseGammaStateTop">
@@ -134,7 +137,8 @@
   <div class="toolbar">
     <div class="pillRow marketPulseExecutionHeroTopline">
       <span class="pill">SPX Execution Hero</span>
-      <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailContext">{{ structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Execution map pending.') }}</span>
+      <span class="marketPulseExecutionHeroTopState" id="marketPulseHeroTopState">STATE: {{ structure_snapshot.get('current_read') or location.zone or 'Awaiting structure' }}</span>
+      <span class="marketPulseExecutionHeroTopState" id="marketPulseHeroTopMode">MODE: {{ trade_state_label }}</span>
       <button class="trendChip marketPulseLegendButton" type="button" data-open-modal="marketPulseLevelsModal">More</button>
     </div>
     <div class="marketPulseExecutionHeroGrid">
@@ -154,7 +158,7 @@
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Bias</span>
-            <strong id="marketPulseHeroBias">{{ structure_snapshot.get('planning_bias_label') or local_bias.title or local_bias.label or 'Unavailable' }}</strong>
+            <strong id="marketPulseHeroBias">{{ structure_snapshot.get('current_read') or local_bias.context or local_bias.label or 'Unavailable' }}</strong>
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Tradeability</span>
@@ -178,13 +182,7 @@
         </div>
         <div class="marketPulseExecutionHeroChartShell">
           <div class="marketPulseExecutionHeroChartBanner">
-            <div class="marketPulseExecutionHeroChartStateStrip">
-              <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroChartStateChip">{{ trade_state_label }}</span>
-              <span class="marketPulseExecutionHeroChartStateRead" id="marketPulseHeroChartStateRead">{{ location.zone or 'Awaiting structure' }}</span>
-              <span class="marketPulseExecutionHeroChartStateAction" id="marketPulseHeroChartStateAction">{{ playbook.best_look or 'Wait for cleaner structure' }}</span>
-            </div>
-            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ trade_state_label }} — Awaiting execution state</div>
-            <div class="marketPulseExecutionHeroChartBannerSub" id="marketPulseHeroChartBannerSub">{{ execution_model.posture_summary if execution_model else 'Execution levels pending.' }}</div>
+            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ trade_state_label }} - {{ structure_snapshot.get('current_read') or location.zone or 'Awaiting structure' }}</div>
           </div>
           {# NCW / NPW come from gamma_snapshot.next_call_wall_above / next_put_wall_below when available. #}
           <div
@@ -246,10 +244,6 @@
             <div class="tiny muted">Invalidation</div>
             <strong id="marketPulseHeroInvalidation">{{ playbook.need or 'Wait for live structure' }}</strong>
           </div>
-        </div>
-        <div class="marketPulseExecutionHeroDecisionNote">
-          <span class="tiny muted">Plan Note</span>
-          <strong id="marketPulseHeroStateNote">{{ execution_model.posture_summary if execution_model else 'Awaiting market posture.' }}</strong>
         </div>
       </section>
     </div>
@@ -355,38 +349,38 @@
     <div class="toolbar" id="spxPriorityCard">
       <div class="pillRow marketPulseExecutionPanelTopline">
         <span class="pill">Action / Trade Context</span>
-        <span class="marketPulseTradeabilityBadge tone-{{ playbook.tone or 'warn' }}" id="marketPulseTradeabilityBadge">{{ playbook.status or 'WATCH' }}</span>
+        <span class="marketPulseTradeabilityBadge tone-{{ structure_snapshot.get('context_tone') or playbook.tone or 'warn' }}" id="marketPulseTradeabilityBadge">{{ trigger_validation.get('status_badge') or structure_snapshot.get('trade_state_label') or playbook.status or 'WATCH' }}</span>
       </div>
       <div class="marketPulseTradeContextLead" id="marketPulseActionLead">{{ playbook.why or execution_model.posture_summary or 'Execution context pending.' }}</div>
       <div class="marketPulseTradeabilityMetaRow marketPulseTradeabilityMetaRow-compact">
         <div class="marketPulseTradeabilityMeta">
-          <div class="tiny muted">Grade</div>
-          <strong id="marketPulseTradeabilityGrade">{{ playbook.grade or '—' }}</strong>
+          <div class="tiny muted">Context Grade</div>
+          <strong id="marketPulseTradeabilityGrade">{{ structure_snapshot.get('context_grade') or playbook.grade or '—' }}</strong>
         </div>
         <div class="marketPulseTradeabilityMeta marketPulseTradeabilityScoreBlock">
-          <div class="tiny muted">Score</div>
-          <strong><span id="marketPulseTradeabilityScore">{{ playbook.score or 0 }}</span><span class="tiny muted">/100</span></strong>
+          <div class="tiny muted">Context Score</div>
+          <strong><span id="marketPulseTradeabilityScore">{{ structure_snapshot.get('context_score') or playbook.score or 0 }}</span><span class="tiny muted">/100</span></strong>
           <div class="marketPulseTradeabilityBar" aria-hidden="true">
-            <span class="marketPulseTradeabilityBarFill tone-{{ playbook.tone or 'warn' }}" id="marketPulseTradeabilityBarFill" style="width: {{ playbook.score_pct or 0 }}%;"></span>
+            <span class="marketPulseTradeabilityBarFill tone-{{ structure_snapshot.get('context_tone') or playbook.tone or 'warn' }}" id="marketPulseTradeabilityBarFill" style="width: {{ structure_snapshot.get('context_score_pct') or playbook.score_pct or 0 }}%;"></span>
           </div>
         </div>
       </div>
       <div class="marketPulsePlaybookGrid marketPulsePlaybookGrid-context">
         <div class="marketPulsePlaybookCell">
-          <div class="tiny muted">Best Look</div>
-          <strong id="marketPulseBestLook">{{ playbook.best_look or 'Wait for cleaner structure' }}</strong>
+          <div class="tiny muted">Setup Bias</div>
+          <strong id="marketPulseBestLook">{{ structure_snapshot.get('best_look') or playbook.best_look or 'Wait for cleaner structure' }}</strong>
         </div>
         <div class="marketPulsePlaybookCell">
-          <div class="tiny muted">Avoid</div>
-          <strong id="marketPulseAvoid">{{ playbook.avoid or 'Avoid forcing entries' }}</strong>
+          <div class="tiny muted">Execution Status</div>
+          <strong id="marketPulseExecutionStatus">{{ trigger_validation.get('manual_label') or trigger_validation.get('header_line') or 'Waiting for manual confirmation' }}</strong>
         </div>
         <div class="marketPulsePlaybookCell">
-          <div class="tiny muted">Need</div>
-          <strong id="marketPulseNeed">{{ playbook.need or 'Need confirmation' }}</strong>
+          <div class="tiny muted">Required Trigger</div>
+          <strong id="marketPulseNeed">{{ structure_snapshot.get('required_trigger') or playbook.need or 'Need confirmation' }}</strong>
         </div>
         <div class="marketPulsePlaybookCell">
-          <div class="tiny muted">If / Then</div>
-          <strong id="marketPulseIfThen">{{ playbook.need or 'If the level confirms, act. If not, wait.' }}</strong>
+          <div class="tiny muted">Stand Down If</div>
+          <strong id="marketPulseIfThen">{{ structure_snapshot.get('invalidation') or playbook.avoid or 'If the level confirms, act. If not, wait.' }}</strong>
         </div>
       </div>
       <div class="marketPulseExecutionPanelFooter marketPulseExecutionPanelFooter-compact">
@@ -418,42 +412,42 @@
 <section class="card stack12 marketPulseSection marketPulseTriggerValidationShell">
   <div class="toolbar">
     <div class="pillRow marketPulseTriggerTopline">
-      <span class="pill">Trigger Validation</span>
-      <span class="tiny muted marketPulseClampLine" id="marketPulseTriggerHeaderLine">No trigger = no trade.</span>
+      <span class="pill">Execution Checklist</span>
+      <span class="tiny muted marketPulseClampLine" id="marketPulseTriggerHeaderLine">{{ trigger_validation.get('manual_label') or 'Manual confirmation required' }}</span>
     </div>
     <div class="marketPulseTriggerChecklist">
-      <div class="marketPulseTriggerItem" id="marketPulseTriggerSweep">
+      <div class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('sweep', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerSweep">
         <span class="marketPulseTriggerDot" aria-hidden="true"></span>
         <div class="marketPulseTriggerCopy">
-          <strong>Sweep detected</strong>
-          <span id="marketPulseTriggerSweepLine">Need sweep into the working level before entry is considered.</span>
+          <strong>Sweep into level</strong>
+          <span id="marketPulseTriggerSweepLine">{{ trigger_validation.get('items', {}).get('sweep', {}).get('line') or 'Need sweep into the working level before entry is considered.' }}</span>
         </div>
       </div>
-      <div class="marketPulseTriggerItem" id="marketPulseTriggerReclaim">
+      <div class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('reclaim', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerReclaim">
         <span class="marketPulseTriggerDot" aria-hidden="true"></span>
         <div class="marketPulseTriggerCopy">
-          <strong>Reclaim confirmed</strong>
-          <span id="marketPulseTriggerReclaimLine">Wait for the level to prove itself after the interaction.</span>
+          <strong>Failed reclaim / rejection</strong>
+          <span id="marketPulseTriggerReclaimLine">{{ trigger_validation.get('items', {}).get('reclaim', {}).get('line') or 'Wait for the level to prove itself after the interaction.' }}</span>
         </div>
       </div>
-      <div class="marketPulseTriggerItem" id="marketPulseTriggerReversal">
+      <div class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('reversal', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerReversal">
         <span class="marketPulseTriggerDot" aria-hidden="true"></span>
         <div class="marketPulseTriggerCopy">
-          <strong>2-2 reversal</strong>
-          <span id="marketPulseTriggerReversalLine">A clean 5m reversal or continuation trigger still has to print.</span>
+          <strong>2-2 reversal printed</strong>
+          <span id="marketPulseTriggerReversalLine">{{ trigger_validation.get('items', {}).get('reversal', {}).get('line') or 'A clean 5m reversal or continuation trigger still has to print.' }}</span>
         </div>
       </div>
-      <div class="marketPulseTriggerItem" id="marketPulseTriggerVolume">
+      <div class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('volume', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerVolume">
         <span class="marketPulseTriggerDot" aria-hidden="true"></span>
         <div class="marketPulseTriggerCopy">
-          <strong>Volume confirmation</strong>
-          <span id="marketPulseTriggerVolumeLine">Require real participation before calling the move valid.</span>
+          <strong>Volume confirms move</strong>
+          <span id="marketPulseTriggerVolumeLine">{{ trigger_validation.get('items', {}).get('volume', {}).get('line') or 'Require real participation before calling the move valid.' }}</span>
         </div>
       </div>
     </div>
     <div class="marketPulseTriggerFooter" id="marketPulseTriggerFooter">
-      <strong id="marketPulseTriggerStatus">NO TRIGGER — NO TRADE</strong>
-      <span id="marketPulseTriggerFooterLine">Trigger wiring is placeholder-only here; live booleans can be mapped into these same rows later.</span>
+      <strong id="marketPulseTriggerStatus">{{ trigger_validation.get('status_line') or 'NO TRIGGER — NO TRADE' }}</strong>
+      <span id="marketPulseTriggerFooterLine">{{ trigger_validation.get('footer_line') or 'Awaiting market posture.' }}</span>
     </div>
   </div>
 </section>
@@ -534,137 +528,67 @@
 <details class="marketPulseFold marketPulseSection researchOnly">
   <summary class="marketPulseFoldSummary">
     <span class="pill">Market Feed</span>
-    <span class="tiny muted">Macro, policy, and flow drivers.</span>
+    <span class="tiny muted">Real-time market commentary from curated sources.</span>
   </summary>
 <section class="marketPulseNewsSection">
-  <section class="card stack12 marketPulseNewsFeedShell">
+  <section class="card stack12 marketPulseNewsFeedShell marketPulseNewsFeedShell-stream">
     <div class="toolbar">
-      <div class="marketPulseNewsHeader">
-        <div>
-          <div class="pill">Market Pulse Feed</div>
-          <div class="supportLead">Latest macro, market, and company drivers.</div>
+      <div class="marketPulseWireHeader marketPulseWireHeader-stream">
+        <div class="marketPulseWireHeaderCopy">
+          <div class="pill">Commentary Sources</div>
+          <div class="supportLead">Open the fastest curated market commentary directly on X.</div>
         </div>
-        <div class="marketPulseNewsControls">
-          <span class="trendChip {% if feed_snapshot.status == 'degraded' %}warn{% elif feed_snapshot.status == 'error' %}negative{% elif feed_snapshot.status == 'quiet' %}info{% else %}positive{% endif %}" id="marketPulseFeedLiveChip">{{ (feed_snapshot.status or ('live' if news_available else 'quiet'))|upper }}</span>
-          <span class="trendChip info" id="marketPulseFeedRefreshChip">Auto 60s</span>
-          <button class="btn" id="marketPulseFeedHighToggle" type="button" aria-pressed="false">High Impact</button>
+        <div class="marketPulseWireHeaderMeta marketPulseWireHeaderMeta-stream">
+          <span class="feed-status-chip is-live" id="marketPulseFeedLiveChip">
+            <span class="feed-status-dot" aria-hidden="true"></span>
+            <span class="feed-status-label">Direct</span>
+          </span>
         </div>
       </div>
-      <div class="marketPulseFeedFilters" role="tablist" aria-label="Market Pulse feed filters">
-        <button class="marketPulseFeedFilter is-active" type="button" data-feed-filter="all" aria-pressed="true">All</button>
-        <button class="marketPulseFeedFilter" type="button" data-feed-filter="macro" aria-pressed="false">Macro</button>
-        <button class="marketPulseFeedFilter" type="button" data-feed-filter="market" aria-pressed="false">Market</button>
-        <button class="marketPulseFeedFilter" type="button" data-feed-filter="company" aria-pressed="false">Company</button>
-        <button class="marketPulseFeedFilter" type="button" data-feed-filter="high" aria-pressed="false">High Impact</button>
-      </div>
-      <div class="marketPulseFeedScroller" id="marketPulseFeedScroller">
-        {% if pulse_feed_items %}
-          {% for item in pulse_feed_items[:5] %}
-            {% set item_category = item.category_label or item.category or 'Market' %}
-            <div class="marketPulseFeedItem"
-                 data-feed-impact="{{ (item.impact or 'low')|lower }}"
-                 data-feed-category="{{ (item.category or item_category)|lower|replace(' ', '-') }}"
-                 data-feed-headline="{{ item.headline or '' }}"
-                 data-feed-summary="{{ item.summary or item.why or '' }}"
-                 data-feed-source="{{ item.source_label or item.source or 'Source' }}"
-                 data-feed-time="{{ item.published_label or 'Just now' }}"
-                 data-feed-url="{{ item.url or '' }}"
-                 data-feed-impact-label="{{ item.impact_label or item.impact or 'LOW' }}"
-                 data-feed-relevance="{{ item.summary or item.why or '' }}">
-              <div class="marketPulseFeedRow">
-                <span class="marketPulseFeedStamp">{{ item.published_label or 'Just now' }}</span>
-                <span class="marketPulseFeedSource">{{ item.source_label or item.source or 'Source' }}</span>
-                <span class="trendChip{% if item.impact == 'high' %} negative{% elif item.impact == 'medium' %} warn{% else %} info{% endif %}">{{ item.impact_label or item.impact|upper }}</span>
-                <span class="trendChip{% if item.category in ['macro', 'policy', 'high_impact'] %} negative{% elif item.category == 'company' %} warn{% else %} info{% endif %}">{{ item_category }}</span>
+      <div class="live-x-panel">
+        <div class="live-x-grid live-x-grid--launcher">
+          <section class="live-x-source">
+            <div class="live-x-source__header">
+              <div class="live-x-source__meta">
+                <strong>Kobeissi Letter</strong>
+                <span>@KobeissiLetter</span>
               </div>
-              <button class="marketPulseFeedHeadlineButton" type="button">
-                <span class="marketPulseFeedHeadline">{{ item.headline }}</span>
-              </button>
-              <div class="tiny muted marketPulseFeedWhy">{{ item.summary or item.why }}</div>
+              <div class="live-x-source__actions">
+                <span class="live-x-source__pill">Open on X</span>
+                <a class="live-x-source__link" href="https://twitter.com/KobeissiLetter" target="_blank" rel="noopener noreferrer" aria-label="Open Kobeissi Letter on X">↗</a>
+              </div>
             </div>
-          {% endfor %}
-        {% else %}
-          <div class="chartEmpty marketPulseFeedEmpty">
-            <div class="chartEmptyTitle">No major market drivers in the current refresh window</div>
-            <div class="chartEmptySub">Monitoring tracked sources for fresh catalysts.</div>
-            <div class="marketPulseFeedTrackedRow">
-              {% for handle in (feed_snapshot.sources_monitored or pulse_feed_accounts) %}
-                <span class="trendChip">{{ handle }}</span>
-              {% endfor %}
+            <div class="live-x-launcher">
+              <p class="live-x-launcher__text">Best for macro, policy, and cross-asset commentary. Open the source directly for the freshest posts, threads, and live updates.</p>
+              <div class="live-x-launcher__actions">
+                <a class="live-x-launcher__button" href="https://twitter.com/KobeissiLetter" target="_blank" rel="noopener noreferrer">Open Kobeissi Letter</a>
+              </div>
             </div>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </section>
-
-  <section class="marketPulseNewsSide">
-    <div class="card supportCard subtleCard marketPulseNowPanel">
-      <div class="toolbar">
-      <div class="pill">Now</div>
-        <div class="marketPulseNowGrid">
-          <div class="marketPulseNowItem">
-            <div class="tiny muted">SPX Focus</div>
-            <strong id="marketPulseNowFocus">{{ feed_snapshot.now_summary.spx_focus if feed_snapshot.now_summary else context.headline_note }}</strong>
-          </div>
-          <div class="marketPulseNowItem">
-            <div class="tiny muted">Leadership</div>
-            <strong id="marketPulseNowLeadership">{{ feed_snapshot.now_summary.leadership if feed_snapshot.now_summary else context.leadership }}</strong>
-          </div>
-          <div class="marketPulseNowItem">
-            <div class="tiny muted">Weakness</div>
-            <strong id="marketPulseNowWeakness">{{ feed_snapshot.now_summary.weakness if feed_snapshot.now_summary else (watch_ns.laggard ~ (' ' ~ ('%+.2f'|format(watch_ns.laggard_move)) ~ '%' if watch_ns.laggard_move is not none else '')) }}</strong>
-          </div>
-          <div class="marketPulseNowItem">
-            <div class="tiny muted">Feed State</div>
-            <strong id="marketPulseFeedStateLead">{% if feed_snapshot.status == 'degraded' %}RSS feed degraded{% elif feed_snapshot.status == 'error' %}RSS feed unavailable{% elif feed_snapshot.status == 'quiet' %}Quiet window{% else %}RSS feed live{% endif %}</strong>
-            <div class="marketPulseNowSub" id="marketPulseFeedStateBody">{{ feed_snapshot.now_summary.feed_state if feed_snapshot.now_summary else (news_source_note or source_note) }}</div>
-          </div>
+          </section>
+          <section class="live-x-source">
+            <div class="live-x-source__header">
+              <div class="live-x-source__meta">
+                <strong>Unusual Whales</strong>
+                <span>@unusual_whales</span>
+              </div>
+              <div class="live-x-source__actions">
+                <span class="live-x-source__pill">Open on X</span>
+                <a class="live-x-source__link" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X">↗</a>
+              </div>
+            </div>
+            <div class="live-x-launcher">
+              <p class="live-x-launcher__text">Best for options flow, positioning, and single-name tape context. Open the source directly when you need current commentary.</p>
+              <div class="live-x-launcher__actions">
+                <a class="live-x-launcher__button" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open Unusual Whales</a>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
   </section>
-  </section>
+</section>
 </details>
-
-<dialog id="marketPulseFeedModal" class="marketPulseModal">
-  <div class="marketPulseModalCard">
-    <div class="marketPulseModalHead">
-      <div>
-        <div class="pill">Headline</div>
-        <div class="supportLead" id="marketPulseFeedModalHeadline">—</div>
-      </div>
-      <button class="btn" type="button" data-close-modal="marketPulseFeedModal">Close</button>
-    </div>
-    <div class="marketPulseModalBody">
-      <div class="marketPulseModalGrid">
-        <div class="marketPulseModalField">
-          <div class="tiny muted">Time</div>
-          <strong id="marketPulseFeedModalTime">—</strong>
-        </div>
-        <div class="marketPulseModalField">
-          <div class="tiny muted">Source</div>
-          <strong id="marketPulseFeedModalSource">—</strong>
-        </div>
-        <div class="marketPulseModalField">
-          <div class="tiny muted">Impact</div>
-          <strong id="marketPulseFeedModalImpact">—</strong>
-        </div>
-        <div class="marketPulseModalField">
-          <div class="tiny muted">Category</div>
-          <strong id="marketPulseFeedModalCategory">—</strong>
-        </div>
-      </div>
-      <div class="marketPulseModalField">
-        <div class="tiny muted">Relevance</div>
-        <div class="supportBody" id="marketPulseFeedModalSummary">—</div>
-      </div>
-      <div class="marketPulseFeedActionRow">
-        <a class="btn" href="#" id="marketPulseFeedModalLink" target="_blank" rel="noopener">Open Source</a>
-      </div>
-    </div>
-  </div>
-</dialog>
 
 <dialog id="marketPulseReplayModal" class="marketPulseModal">
   <div class="marketPulseModalCard">
@@ -835,28 +759,8 @@
   const mobileFoldQuery = window.matchMedia("(max-width: 430px)");
   const mobileFolds = Array.from(document.querySelectorAll(".marketPulseMobileFold[data-mobile-default='closed']"));
   const pulseTabs = Array.from(document.querySelectorAll("[data-pulse-tab]"));
-  const feedScroller = document.getElementById("marketPulseFeedScroller");
-  const feedStateLead = document.getElementById("marketPulseFeedStateLead");
-  const feedStateBody = document.getElementById("marketPulseFeedStateBody");
-  const feedFilterButtons = Array.from(document.querySelectorAll("[data-feed-filter]"));
-  const feedHighToggle = document.getElementById("marketPulseFeedHighToggle");
-  const feedRefreshChip = document.getElementById("marketPulseFeedRefreshChip");
-  const feedLiveChip = document.getElementById("marketPulseFeedLiveChip");
-  const feedModal = document.getElementById("marketPulseFeedModal");
-  const feedModalHeadline = document.getElementById("marketPulseFeedModalHeadline");
-  const feedModalTime = document.getElementById("marketPulseFeedModalTime");
-  const feedModalSource = document.getElementById("marketPulseFeedModalSource");
-  const feedModalImpact = document.getElementById("marketPulseFeedModalImpact");
-  const feedModalCategory = document.getElementById("marketPulseFeedModalCategory");
-  const feedModalSummary = document.getElementById("marketPulseFeedModalSummary");
-  const feedModalLink = document.getElementById("marketPulseFeedModalLink");
-  const nowFocus = document.getElementById("marketPulseNowFocus");
-  const nowLeadership = document.getElementById("marketPulseNowLeadership");
-  const nowWeakness = document.getElementById("marketPulseNowWeakness");
   const modalOpenButtons = Array.from(document.querySelectorAll("[data-open-modal]"));
   const modalCloseButtons = Array.from(document.querySelectorAll("[data-close-modal]"));
-  let feedFilter = "all";
-  let latestFeedPayload = null;
   if (!guardMeta) return;
   const storageGet = (key) => {
     try {
@@ -995,170 +899,6 @@
     });
   });
 
-  const openFeedHeadline = (dataset) => {
-    if (!feedModal || typeof feedModal.showModal !== "function" || !dataset) return;
-    if (feedModalHeadline) feedModalHeadline.textContent = dataset.feedHeadline || "Headline";
-    if (feedModalTime) feedModalTime.textContent = dataset.feedTime || "—";
-    if (feedModalSource) feedModalSource.textContent = dataset.feedSource || "Source";
-    if (feedModalImpact) feedModalImpact.textContent = dataset.feedImpactLabel || "LOW";
-    if (feedModalCategory) feedModalCategory.textContent = String(dataset.feedCategory || "market").replace(/-/g, " ");
-    if (feedModalSummary) feedModalSummary.textContent = dataset.feedRelevance || dataset.feedSummary || "No summary available.";
-    if (feedModalLink) {
-      const href = dataset.feedUrl || "";
-      feedModalLink.href = href || "#";
-      feedModalLink.hidden = !href;
-    }
-    feedModal.showModal();
-  };
-
-  const buildFeedItem = (item) => {
-    const card = document.createElement("div");
-    card.className = "marketPulseFeedItem";
-    const categoryLabel = String(item.category_label || item.category || "Market");
-    card.dataset.feedImpact = String(item.impact || "low").toLowerCase();
-    card.dataset.feedCategory = String(item.category || categoryLabel).toLowerCase().replace(/\s+/g, "-");
-    card.dataset.feedHeadline = String(item.headline || "");
-    card.dataset.feedSummary = String(item.summary || "");
-    card.dataset.feedSource = String(item.source_label || item.source || "Source");
-    card.dataset.feedTime = String(item.published_label || "Just now");
-    card.dataset.feedUrl = String(item.url || "");
-    card.dataset.feedImpactLabel = String(item.impact_label || item.impact || "LOW");
-    card.dataset.feedRelevance = String(item.summary || "");
-
-    const top = document.createElement("div");
-    top.className = "marketPulseFeedRow";
-    const impact = document.createElement("span");
-    impact.className = `trendChip${item.impact === "high" ? " negative" : item.impact === "medium" ? " warn" : " info"}`;
-    impact.textContent = item.impact_label || "LOW";
-    const time = document.createElement("span");
-    time.className = "marketPulseFeedStamp";
-    time.textContent = item.published_label || "Just now";
-    const handle = document.createElement("span");
-    handle.className = "marketPulseFeedSource";
-    handle.textContent = item.source_label || item.source || "Source";
-    const category = document.createElement("span");
-    category.className = `trendChip${["macro", "policy", "high_impact"].includes(String(item.category || "").toLowerCase()) ? " negative" : String(item.category || "").toLowerCase() === "company" ? " warn" : " info"}`;
-    category.textContent = categoryLabel;
-    top.append(time, handle, impact, category);
-
-    const headlineButton = document.createElement("button");
-    headlineButton.type = "button";
-    headlineButton.className = "marketPulseFeedHeadlineButton";
-    const headline = document.createElement("span");
-    headline.className = "supportLead marketPulseFeedHeadline";
-    headline.textContent = item.headline || "Market headline";
-    headlineButton.appendChild(headline);
-    headlineButton.addEventListener("click", () => openFeedHeadline(card.dataset));
-
-    const why = document.createElement("div");
-    why.className = "tiny muted marketPulseFeedWhy";
-    why.textContent = item.summary || "";
-
-    card.append(top, headlineButton, why);
-    return card;
-  };
-
-  const buildFeedEmpty = (trackedAccounts = []) => {
-    const empty = document.createElement("div");
-    empty.className = "chartEmpty marketPulseFeedEmpty";
-    empty.innerHTML = '<div class="chartEmptyTitle">No major market drivers in the current refresh window</div><div class="chartEmptySub">Monitoring tracked sources for fresh catalysts.</div>';
-    if (Array.isArray(trackedAccounts) && trackedAccounts.length) {
-      const row = document.createElement("div");
-      row.className = "marketPulseFeedTrackedRow";
-      trackedAccounts.forEach((handle) => {
-        const chip = document.createElement("span");
-        chip.className = "trendChip";
-        chip.textContent = String(handle || "").trim();
-        if (chip.textContent) row.appendChild(chip);
-      });
-      empty.appendChild(row);
-    }
-    return empty;
-  };
-
-  const filteredFeedItems = (payload) => {
-    const items = Array.isArray(payload && payload.items) ? payload.items : [];
-    if (feedFilter === "high") {
-      return items.filter((item) => String(item.impact || "").toLowerCase() === "high");
-    }
-    if (feedFilter === "macro") {
-      return items.filter((item) => ["macro", "policy", "high_impact"].includes(String(item.category || "").toLowerCase()));
-    }
-    if (feedFilter === "company") {
-      return items.filter((item) => ["company"].includes(String(item.category || "").toLowerCase()));
-    }
-    if (feedFilter === "market") {
-      return items.filter((item) => ["market"].includes(String(item.category || "").toLowerCase()));
-    }
-    return items;
-  };
-
-  const syncFeedFilterUi = () => {
-    feedFilterButtons.forEach((button) => {
-      const active = button.dataset.feedFilter === feedFilter;
-      button.classList.toggle("is-active", active);
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-    });
-    if (feedHighToggle) {
-      const active = feedFilter === "high";
-      feedHighToggle.setAttribute("aria-pressed", active ? "true" : "false");
-      feedHighToggle.classList.toggle("is-active", active);
-    }
-  };
-
-  const renderFeed = (payload) => {
-    if (!feedScroller || !payload || !Array.isArray(payload.items)) return;
-    latestFeedPayload = payload;
-    syncFeedFilterUi();
-    const visibleItems = filteredFeedItems(payload);
-    feedScroller.innerHTML = "";
-    if (!visibleItems.length) {
-      feedScroller.appendChild(buildFeedEmpty(payload.sources_monitored || payload.tracked_accounts || []));
-    } else {
-      visibleItems.slice(0, 5).forEach((item) => feedScroller.appendChild(buildFeedItem(item)));
-    }
-    if (feedLiveChip) {
-      const status = String(payload.status || (payload.available ? "live" : "quiet")).toLowerCase();
-      feedLiveChip.textContent = status.toUpperCase();
-      feedLiveChip.className = `trendChip ${status === "live" ? "positive" : status === "degraded" ? "warn" : status === "error" ? "negative" : "info"}`.trim();
-    }
-    if (feedStateLead) {
-      const status = String(payload.status || (payload.available ? "live" : "quiet")).toLowerCase();
-      feedStateLead.textContent = status === "live"
-        ? "RSS feed live"
-        : status === "degraded"
-          ? "RSS feed degraded"
-          : status === "error"
-            ? "RSS feed unavailable"
-            : "Quiet window";
-    }
-    if (feedStateBody) {
-      feedStateBody.textContent = (payload.now_summary && payload.now_summary.feed_state) || payload.source_note || "Feed state unavailable.";
-    }
-    if (nowFocus && payload.now_summary && payload.now_summary.spx_focus) nowFocus.textContent = payload.now_summary.spx_focus;
-    if (nowLeadership && payload.now_summary && payload.now_summary.leadership) nowLeadership.textContent = payload.now_summary.leadership;
-    if (nowWeakness && payload.now_summary && payload.now_summary.weakness) nowWeakness.textContent = payload.now_summary.weakness;
-    if (feedRefreshChip) {
-      feedRefreshChip.textContent = `Auto 60s${payload.fetched_at ? " • synced" : ""}`;
-    }
-  };
-
-  const refreshFeed = async () => {
-    try {
-      const response = await fetch("/api/market-pulse/news", {
-        method: "GET",
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: { "Accept": "application/json" },
-      });
-      if (!response.ok) return;
-      const payload = await response.json();
-      if (payload && payload.ok) renderFeed(payload);
-    } catch (_err) {
-      // Keep the current feed if refresh fails.
-    }
-  };
-
   const settleBoot = () => {
     if (bootSettled) return;
     bootSettled = true;
@@ -1181,23 +921,6 @@
 
   pulseTabs.forEach((tab) => {
     tab.addEventListener("click", () => activatePulseTab(tab.dataset.pulseTab || "data-health"));
-  });
-  feedFilterButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      feedFilter = button.dataset.feedFilter || "all";
-      if (latestFeedPayload) renderFeed(latestFeedPayload);
-    });
-  });
-  if (feedHighToggle) {
-    feedHighToggle.addEventListener("click", () => {
-      feedFilter = feedFilter === "high" ? "all" : "high";
-      if (latestFeedPayload) renderFeed(latestFeedPayload);
-    });
-  }
-
-  document.querySelectorAll(".marketPulseFeedItem[data-feed-headline]").forEach((item) => {
-    const trigger = item.querySelector(".marketPulseFeedHeadlineButton");
-    if (trigger) trigger.addEventListener("click", () => openFeedHeadline(item.dataset));
   });
 
   mobileFolds.forEach((fold) => {
@@ -1263,8 +986,5 @@
     chartReady = true;
     settleBoot();
   }, 2200);
-
-  window.setTimeout(refreshFeed, 800);
-  window.setInterval(refreshFeed, 60000);
 })();
 </script>

@@ -1324,13 +1324,15 @@ def test_market_pulse_empty_state_uses_consistent_feed_copy(client, monkeypatch)
     resp = client.get("/market-pulse", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Awaiting feed" in body
-    assert "Awaiting first tick" in body
+    assert "Commentary Sources" in body
+    assert "Open the fastest curated market commentary directly on X." in body
+    assert "Open Kobeissi Letter" in body
+    assert "Open Unusual Whales" in body
+    assert "https://twitter.com/KobeissiLetter" in body
+    assert "https://twitter.com/unusual_whales" in body
     assert "No trend" in body
     assert "Awaiting contract rows." in body
     assert "Fallback Snapshot" in body
-    assert "No major market drivers in the current refresh window" in body
-    assert "Monitoring tracked sources for fresh catalysts." in body
 
 
 def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
@@ -1427,11 +1429,12 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
     resp = client.get("/market-pulse", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "FOMC minutes point to higher rates sensitivity" in body
-    assert "Treasury yields climb as SPX futures fade" in body
-    assert "Nvidia extends leadership while Tesla lags" in body
-    assert "Broad risk-on" in body
-    assert "TSLA -5.4%" in body
+    assert "Commentary Sources" in body
+    assert "Open the fastest curated market commentary directly on X." in body
+    assert "Open Kobeissi Letter" in body
+    assert "Open Unusual Whales" in body
+    assert "https://twitter.com/KobeissiLetter" in body
+    assert "https://twitter.com/unusual_whales" in body
 
 
 def test_calculator_shows_projected_balances_for_stop_and_target(client):

@@ -1769,7 +1769,6 @@
     setText("marketPulseHeroBestLook", hero.bestLook);
     setText("marketPulseHeroInvalidation", hero.invalidation);
     setText("marketPulseHeroRequiredTrigger", hero.trigger);
-    setText("marketPulseHeroStateNote", hero.note);
 
     const stateChip = document.getElementById("marketPulseHeroStateChip");
     const stateContext = document.getElementById("marketPulseHeroStateContext");
@@ -1782,7 +1781,8 @@
     updateHeroRail(input, derived);
   };
 
-  const updateTriggerValidation = (heroState, derived) => {
+  const updateTriggerValidation = (heroState, derived, triggerValidation = null) => {
+    const backendItems = (triggerValidation && triggerValidation.items) || {};
     const nearLong = derived.aboveOrBelowLocalFlip === "above";
     const nearShort = derived.aboveOrBelowLocalFlip === "below";
     const setItem = (id, lineId, text, active = false) => {
@@ -1791,15 +1791,40 @@
       setText(lineId, text);
     };
 
-    // Placeholder structure for future live trigger booleans. Wire real signals into these rows later.
-    setItem("marketPulseTriggerSweep", "marketPulseTriggerSweepLine", nearLong ? "Need sweep into support or Local Flip before the long exists." : nearShort ? "Need pop into resistance or Local Flip before the short exists." : "Need sweep into the working level before entry is considered.");
-    setItem("marketPulseTriggerReclaim", "marketPulseTriggerReclaimLine", nearLong ? "Need reclaim back above the working level after the sweep." : nearShort ? "Need failed reclaim back under the working level after the pop." : "Wait for the level to prove itself after the interaction.");
-    setItem("marketPulseTriggerReversal", "marketPulseTriggerReversalLine", nearLong ? "Need 5m 2-2 up / 3-1-2 continuation before the long is valid." : nearShort ? "Need 5m 2-2 down / 3-1-2 continuation before the short is valid." : "A clean 5m reversal or continuation trigger still has to print.");
-    setItem("marketPulseTriggerVolume", "marketPulseTriggerVolumeLine", String(derived.dealerRegime || "").toLowerCase().includes("negative") ? "Fast tape is active. Volume confirmation is mandatory." : "Require real participation before calling the move valid.");
+    setItem(
+      "marketPulseTriggerSweep",
+      "marketPulseTriggerSweepLine",
+      String(backendItems.sweep?.line || (nearLong ? "Need sweep into support or Local Flip before the long exists." : nearShort ? "Need pop into resistance or Local Flip before the short exists." : "Need sweep into the working level before entry is considered.")),
+      Boolean(backendItems.sweep?.active)
+    );
+    setItem(
+      "marketPulseTriggerReclaim",
+      "marketPulseTriggerReclaimLine",
+      String(backendItems.reclaim?.line || (nearLong ? "Need reclaim back above the working level after the sweep." : nearShort ? "Need failed reclaim back under the working level after the pop." : "Wait for the level to prove itself after the interaction.")),
+      Boolean(backendItems.reclaim?.active)
+    );
+    setItem(
+      "marketPulseTriggerReversal",
+      "marketPulseTriggerReversalLine",
+      String(backendItems.reversal?.line || (nearLong ? "Need 5m 2-2 up / 3-1-2 continuation before the long is valid." : nearShort ? "Need 5m 2-2 down / 3-1-2 continuation before the short is valid." : "A clean 5m reversal or continuation trigger still has to print.")),
+      Boolean(backendItems.reversal?.active)
+    );
+    setItem(
+      "marketPulseTriggerVolume",
+      "marketPulseTriggerVolumeLine",
+      String(backendItems.volume?.line || (String(derived.dealerRegime || "").toLowerCase().includes("negative") ? "Fast tape is active. Volume confirmation is mandatory." : "Require real participation before calling the move valid.")),
+      Boolean(backendItems.volume?.active)
+    );
 
-    setText("marketPulseTriggerHeaderLine", heroState.state === "READY" ? "Ready location, but still trigger-gated." : heroState.state === "BLOCKED" ? "Blocked until a real edge appears." : "No trigger = no trade.");
-    setText("marketPulseTriggerStatus", heroState.state === "BLOCKED" ? "BLOCKED — WAIT FOR EDGE" : heroState.state === "READY" ? "READY LOCATION — TRIGGER STILL REQUIRED" : "NO TRIGGER — NO TRADE");
-    setText("marketPulseTriggerFooterLine", heroState.note);
+    setText(
+      "marketPulseTriggerHeaderLine",
+      String(triggerValidation?.header_line || (heroState.state === "READY" ? "Ready location, but still trigger-gated." : heroState.state === "BLOCKED" ? "Blocked until a real edge appears." : "No trigger = no trade."))
+    );
+    setText(
+      "marketPulseTriggerStatus",
+      String(triggerValidation?.status_line || (heroState.state === "BLOCKED" ? "BLOCKED — WAIT FOR EDGE" : heroState.state === "READY" ? "READY LOCATION — TRIGGER STILL REQUIRED" : "NO TRIGGER — NO TRADE"))
+    );
+    setText("marketPulseTriggerFooterLine", String(triggerValidation?.footer_line || heroState.note));
   };
 
   const updateTapeSummary = (prices) => {
@@ -1956,8 +1981,13 @@
     const executionPlan = buildExecutionPlan(input, derived);
     const model = (base && base.execution_model) || {};
     const modelPlaybook = (model && model.playbook) || {};
-    const modelTone = String(modelPlaybook.tone || "");
-    const modelStatus = String(modelPlaybook.status || "");
+    const structureSnapshot = ((base && base.market_structure_snapshot) || base || {});
+    const backendTriggerValidation =
+      (structureSnapshot || {}).trigger_validation
+      || (base && base.trigger_validation)
+      || null;
+    const modelTone = String(structureSnapshot.context_tone || modelPlaybook.tone || "");
+    const modelStatus = String(structureSnapshot.context_status || modelPlaybook.status || "");
     const triggerState = buildTriggerState(executionPlan.trigger, executionPlan.tone);
     const snapshotNarrative = (((base || {}).gamma_snapshot || {}).narrative) || {};
     const bullets = Array.isArray(snapshotNarrative.auto_read) && snapshotNarrative.auto_read.length
@@ -2007,25 +2037,25 @@
     setText("spxPriorityDealerRegime", derived.dealerRegime);
     setText("spxPriorityVolatilityState", derived.volatilityState);
     setText("spxPriorityStructureType", derived.structureType);
-    const tradeabilityScore100 = clamp(Math.round(asNum(modelPlaybook.score) || 0), 0, 100);
+    const tradeabilityScore100 = clamp(Math.round(asNum(structureSnapshot.context_score) || asNum(modelPlaybook.score) || 0), 0, 100);
     const toneClass = modelTone === "positive" ? "tone-positive" : modelTone === "negative" ? "tone-negative" : "tone-warn";
-    const bestLook = String(modelPlaybook.best_look || "Wait for cleaner structure");
-    const whyLine = String(modelPlaybook.why || (model && model.posture_summary) || "Context is mixed.");
-    const avoidLine = String(modelPlaybook.avoid || "Avoid forcing entries");
-    const needLine = String(modelPlaybook.need || "Need confirmation");
-    const ifThenLine = buildIfThenLine(input, derived);
+    const bestLook = String(structureSnapshot.best_look || modelPlaybook.best_look || "Wait for cleaner structure");
+    const whyLine = String(modelPlaybook.why || structureSnapshot.plan_note || (model && model.posture_summary) || "Context is mixed.");
+    const executionStatusLine = String(backendTriggerValidation?.manual_label || backendTriggerValidation?.header_line || "Waiting for manual confirmation");
+    const needLine = String(structureSnapshot.required_trigger || modelPlaybook.need || "Need confirmation");
+    const ifThenLine = String(structureSnapshot.invalidation || modelPlaybook.avoid || buildIfThenLine(input, derived));
     const heroState = computeHeroState(input, derived, executionPlan);
 
     updateStructureZoneBar(input, derived, model);
     updateExecutionHero(input, derived, executionPlan, model);
-    updateTriggerValidation(heroState, derived);
+    updateTriggerValidation(heroState, derived, backendTriggerValidation);
 
     setText("marketPulseTradeabilityScore", `${tradeabilityScore100}`);
-    setText("marketPulseTradeabilityGrade", String(modelPlaybook.grade || gradeTradeability(tradeabilityScore100)));
+    setText("marketPulseTradeabilityGrade", String(structureSnapshot.context_grade || modelPlaybook.grade || gradeTradeability(tradeabilityScore100)));
     setText("marketPulseActionLead", whyLine);
     setText("marketPulseBestLook", bestLook);
     setText("marketPulseEnvironment", whyLine);
-    setText("marketPulseAvoid", avoidLine);
+    setText("marketPulseExecutionStatus", executionStatusLine);
     setText("marketPulseNeed", needLine);
     setText("marketPulseIfThen", ifThenLine);
     const scoreFill = document.getElementById("marketPulseTradeabilityBarFill");
@@ -2041,9 +2071,16 @@
       card.classList.add(modelTone === "positive" ? "tradeRead-tradeable" : modelStatus === "CAUTION" || modelStatus === "WATCH" ? "tradeRead-conditional" : "tradeRead-stand-down");
     }
     if (chip) {
-      chip.textContent = modelStatus || "WATCH";
+      const statusBadge = String(backendTriggerValidation?.status_badge || modelStatus || "WATCH");
+      chip.textContent = statusBadge;
       chip.classList.remove("tone-positive", "tone-warn", "tone-negative");
-      chip.classList.add(toneClass);
+      chip.classList.add(
+        statusBadge.includes("NO TRIGGER") || statusBadge.includes("UNAVAILABLE")
+          ? "tone-negative"
+          : statusBadge.includes("WAIT") || statusBadge.includes("PLAN") || statusBadge.includes("CAUTION") || statusBadge.includes("WATCH")
+            ? "tone-warn"
+            : toneClass
+      );
     }
 
     setText("spxPriorityTradeabilityScore", `${derived.tradeability.score}/10 · ${derived.tradeability.label}`);

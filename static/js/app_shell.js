@@ -406,12 +406,17 @@
 
   function initThemeAndGuided() {
     const themeMigrationKey = "mc_theme_v3";
+    const fontModeKey = "mc_font_mode";
     const themeOrder = ["galaxy", "obsidian", "black", "nebula"];
     const themeLabels = {
       galaxy: "Theme: Midnight Galaxy",
       obsidian: "Theme: True Dark",
       black: "Theme: Midnight",
       nebula: "Theme: Nebula",
+    };
+    const fontLabels = {
+      clean: "Font: Clean",
+      hand: "Font: Architects",
     };
 
     const syncThemeButtons = (theme) => {
@@ -424,6 +429,22 @@
       const normalized = themeOrder.includes(theme) ? theme : "galaxy";
       body.setAttribute("data-theme", normalized);
       syncThemeButtons(normalized);
+    };
+
+    const syncFontButtons = (mode) => {
+      const label = fontLabels[mode] || fontLabels.clean;
+      qsa("[data-font-toggle-label]").forEach((btn) => {
+        btn.textContent = label;
+        btn.setAttribute("aria-pressed", mode === "hand" ? "true" : "false");
+      });
+    };
+
+    const applyFontMode = (mode) => {
+      const normalized = mode === "hand" ? "hand" : "clean";
+      doc.documentElement.setAttribute("data-font-mode", normalized);
+      body.setAttribute("data-font-mode", normalized);
+      syncFontButtons(normalized);
+      storageSet(fontModeKey, normalized);
     };
 
     const applyGuidedHighlights = (enabled) => {
@@ -468,6 +489,11 @@
       setGuidedMode(!body.classList.contains("guidedMode"));
     };
 
+    window.toggleAppFont = () => {
+      const current = doc.documentElement.getAttribute("data-font-mode") === "hand" ? "hand" : "clean";
+      applyFontMode(current === "hand" ? "clean" : "hand");
+    };
+
     if (storageGet(themeMigrationKey) !== "1") {
       const savedTheme = storageGet("mc_theme");
       if (!savedTheme) {
@@ -477,6 +503,7 @@
     }
 
     applyTheme(storageGet("mc_theme") || "galaxy");
+    applyFontMode(storageGet(fontModeKey) || doc.documentElement.getAttribute("data-font-mode") || "clean");
     const savedGuide = storageGet("mc_guided_mode");
     const firstRunSeen = storageGet("mc_guided_seen");
     if (savedGuide === "1") setGuidedMode(true);

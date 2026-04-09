@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -17,12 +18,16 @@ SETUP_PATH = os.environ.get("VISUAL_SMOKE_SETUP_PATH", "/setup")
 BOOTSTRAP_USERNAME = str(os.environ.get("VISUAL_SMOKE_BOOTSTRAP_USERNAME") or "").strip()
 BOOTSTRAP_PASSWORD = os.environ.get("VISUAL_SMOKE_BOOTSTRAP_PASSWORD") or ""
 REQUIRE_AUTH = os.environ.get("VISUAL_SMOKE_REQUIRE_AUTH", "0") == "1"
+SESSION_COOKIE = os.environ.get("VISUAL_SMOKE_SESSION_COOKIE") or ""
+SESSION_COOKIE_NAME = os.environ.get("VISUAL_SMOKE_SESSION_COOKIE_NAME") or "session"
+FONT_MODE = os.environ.get("VISUAL_SMOKE_FONT_MODE") or ""
 
 SCENARIOS = [
     ("desktop-dashboard", "/dashboard", {"width": 1600, "height": 1000}, None),
     ("desktop-market-pulse", "/market-pulse?refresh=1", {"width": 1600, "height": 1100}, None),
     ("desktop-trades", "/trades", {"width": 1600, "height": 1100}, None),
     ("desktop-journal", "/journal", {"width": 1600, "height": 1000}, None),
+    ("desktop-weekly-review", "/journal/review/weekly", {"width": 1600, "height": 1000}, None),
     ("desktop-calculator", "/calculator", {"width": 1600, "height": 1000}, None),
     ("desktop-analytics", "/analytics?tab=performance", {"width": 1600, "height": 1100}, None),
     ("mobile-dashboard-390x844", "/dashboard", {"width": 390, "height": 844}, None),
@@ -35,6 +40,7 @@ SCENARIOS = [
     ("mobile-market-pulse-390x844", "/market-pulse?refresh=1", {"width": 390, "height": 844}, None),
     ("mobile-trades-390x844", "/trades", {"width": 390, "height": 844}, None),
     ("mobile-journal-390x844", "/journal", {"width": 390, "height": 844}, None),
+    ("mobile-weekly-review-390x844", "/journal/review/weekly", {"width": 390, "height": 844}, None),
     ("mobile-calculator-390x844", "/calculator", {"width": 390, "height": 844}, None),
     ("mobile-analytics-390x844", "/analytics?tab=performance", {"width": 390, "height": 844}, None),
     ("mobile-calendar-393x852", "/calendar", {"width": 393, "height": 852}, None),
@@ -106,6 +112,9 @@ def _bootstrap_auth(context) -> None:
 
 
 def _authenticate_context(context, *, name: str) -> None:
+    if SESSION_COOKIE:
+        return
+
     username_value = _auth_username()
     password_value = _auth_password()
     if not username_value or not password_value:
@@ -136,8 +145,50 @@ def _authenticate_context(context, *, name: str) -> None:
         page.close()
 
 
+def _add_session_cookie(context) -> None:
+    if not SESSION_COOKIE:
+        return
+
+    host = urlparse(BASE_URL).hostname or "127.0.0.1"
+    context.add_cookies(
+        [
+            {
+                "name": SESSION_COOKIE_NAME,
+                "value": SESSION_COOKIE,
+                "domain": host,
+                "path": "/",
+                "httpOnly": True,
+                "sameSite": "Lax",
+            }
+        ]
+    )
+
+
+def _add_font_mode(context) -> None:
+    if FONT_MODE not in {"clean", "hand"}:
+        return
+    context.add_init_script(
+        f"""
+        (() => {{
+          const mode = {FONT_MODE!r};
+          try {{
+            window.localStorage.setItem("mc_font_mode", mode);
+            document.documentElement.setAttribute("data-font-mode", mode);
+          }} catch (_err) {{}}
+        }})();
+        """,
+    )
+
+
+def _expected_screenshots() -> list[Path]:
+    return [OUT_DIR / f"{name}.png" for name, *_ in SCENARIOS]
+
+
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for path in _expected_screenshots():
+        path.unlink(missing_ok=True)
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         desktop = browser.new_context(viewport={"width": 1600, "height": 1100})
@@ -151,8 +202,13 @@ def main() -> int:
                 "Mobile/15E148 Safari/604.1"
             ),
         )
+        _add_session_cookie(desktop)
+        _add_session_cookie(mobile)
+        _add_font_mode(desktop)
+        _add_font_mode(mobile)
 
-        _bootstrap_auth(desktop)
+        if not SESSION_COOKIE:
+            _bootstrap_auth(desktop)
         _authenticate_context(desktop, name="desktop")
         _authenticate_context(mobile, name="mobile")
 
@@ -165,9 +221,10 @@ def main() -> int:
 
         browser.close()
 
-    created = sorted(OUT_DIR.glob("*.png"))
-    if len(created) != len(SCENARIOS):
-        raise RuntimeError(f"Expected {len(SCENARIOS)} screenshots, found {len(created)}")
+    created = _expected_screenshots()
+    missing = [p.name for p in created if not p.exists()]
+    if missing:
+        raise RuntimeError(f"Missing expected screenshots: {', '.join(missing)}")
     too_small = [p.name for p in created if p.stat().st_size < 15_000]
     if too_small:
         raise RuntimeError(f"Screenshots unexpectedly small: {', '.join(too_small)}")

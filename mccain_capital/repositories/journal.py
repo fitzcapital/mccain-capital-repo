@@ -37,10 +37,10 @@ def fetch_entries(q: str = "", d: str = "") -> List[object]:
 
     if q:
         where.append(
-            "(notes LIKE ? OR market LIKE ? OR setup LIKE ? OR grade LIKE ? OR mood LIKE ?)"
+            "(notes LIKE ? OR template_payload LIKE ? OR market LIKE ? OR setup LIKE ? OR grade LIKE ? OR mood LIKE ?)"
         )
         like = f"%{q}%"
-        params.extend([like, like, like, like, like])
+        params.extend([like, like, like, like, like, like])
 
     if where:
         sql += " WHERE " + " AND ".join(where)

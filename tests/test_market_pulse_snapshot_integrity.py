@@ -193,3 +193,8 @@ def test_structure_snapshot_after_hours_uses_planning_labels_not_unknown():
     assert snapshot["bias_label"] == "EXTENSION RISK"
     assert snapshot["current_read"] == "Above Call Wall"
     assert snapshot["plan_note"].startswith("Closed-session planning:")
+    assert snapshot["trigger_validation"]["manual_label"] == "Manual confirmation required"
+    assert snapshot["trigger_validation"]["status_badge"] == "PLANNING"
+    assert snapshot["trigger_validation"]["status_line"] == "PLANNING ONLY — NEXT LIVE TRIGGER REQUIRED"
+    assert "Call Wall" in snapshot["trigger_validation"]["items"]["sweep"]["line"]
+    assert snapshot["trigger_validation"]["items"]["volume"]["active"] is False

@@ -203,6 +203,30 @@ def test_new_entry_can_auto_link_all_trades_for_day(client):
     assert len(linked) == 2
 
 
+def test_journal_feed_prefers_saved_lesson_field(client):
+    repo.ensure_journal_schema()
+    resp = client.post(
+        "/journal/new",
+        data={
+            "entry_date": "2026-04-08",
+            "market": "SPX / VIX 21.19",
+            "setup": "Context Review",
+            "grade": "A",
+            "mood": "Calm",
+            "pnl": "813.00",
+            "entry_type": "trade_debrief",
+            "lesson": "Wait for confirmation before pressing size.",
+            "template_notes": "Planned levels and invalidation.",
+            "notes": "What I saw:\nSeller pressure faded.\n\nWhat I did:\nStayed patient.\n\nNext time:\nPress only after confirmation.",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Lesson" in body
+    assert "Wait for confirmation before pressing size." in body
+
+
 def test_legacy_new_entry_route_still_works(client):
     resp = client.get("/new", follow_redirects=False)
     assert resp.status_code == 200
