@@ -2,7 +2,8 @@
 {% set gamma_snapshot_status = gamma_snapshot.get('snapshot_status') or 'invalid' %}
 {% set gamma_snapshot_status_tone = 'positive' if gamma_snapshot_status == 'healthy' else 'warn' if gamma_snapshot_status in ['degraded', 'stale'] else 'negative' %}
 {% set structure_snapshot = market_structure_snapshot or {} %}
-{% set spx_price_label = '%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is not none else '—' %}
+{% set playbook = playbook_view or {} %}
+{% set spx_price_label = playbook.get('spot_label') or ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is not none else '—') %}
 {% set market_closed = execution_chart.mode != 'live_session' %}
 {% set model_levels = {
   'spot': structure_snapshot.get('spot'),
@@ -21,28 +22,33 @@
 {% set next_put_wall_num = structure_snapshot.get('next_put_wall') if structure_snapshot.get('next_put_wall') is number else none %}
 {% set spot_num = model_levels.spot if model_levels.spot is number else (spx_quote.get('price') if spx_quote.get('price') is number else none) %}
 {% set macro_regime = {
-  'state': structure_snapshot.get('gamma_regime') or 'unavailable',
-  'title': structure_snapshot.get('gamma_regime_label') or 'REGIME UNAVAILABLE',
-  'subtitle': structure_snapshot.get('gamma_regime_subtitle') or 'Gamma snapshot unavailable',
+  'state': playbook.get('gamma_regime') or structure_snapshot.get('gamma_regime') or 'unavailable',
+  'title': playbook.get('gamma_regime_label') or structure_snapshot.get('gamma_regime_label') or 'REGIME UNAVAILABLE',
+  'subtitle': playbook.get('regime_reason_label') or structure_snapshot.get('gamma_regime_reason_label') or structure_snapshot.get('gamma_regime_subtitle') or 'Gamma snapshot unavailable',
 } %}
 {% set local_bias = {
-  'state': structure_snapshot.get('bias_state') or 'neutral',
-  'title': structure_snapshot.get('bias_context') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
-  'label': structure_snapshot.get('bias_label') or 'WAIT',
-  'context': structure_snapshot.get('bias_context') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
-  'action': structure_snapshot.get('bias') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
+  'state': playbook.get('bias_state') or structure_snapshot.get('bias_state') or 'neutral',
+  'title': playbook.get('location_label') or structure_snapshot.get('bias_context') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
+  'label': playbook.get('bias_short_label') or structure_snapshot.get('bias_label') or 'WAIT',
+  'context': playbook.get('location_label') or structure_snapshot.get('bias_context') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
+  'action': playbook.get('bias_label') or structure_snapshot.get('bias') or structure_snapshot.get('planning_bias_label') or 'Awaiting valid structure',
 } %}
-{% set location = execution_model.location if execution_model else {} %}
-{% set playbook = execution_model.playbook if execution_model else {} %}
-{% set distance_rows = execution_model.distance_rows if execution_model else [] %}
+{% set location = {
+  'zone': playbook.get('structure_zone_label') or structure_snapshot.get('current_read') or (execution_model.location.zone if execution_model else 'Awaiting structure'),
+  'nearest_level_name': playbook.get('nearest_level_name') or (execution_model.location.nearest_level_name if execution_model else ''),
+  'distance_points': playbook.get('nearest_level_distance') if playbook.get('nearest_level_distance') is number else (execution_model.location.distance_points if execution_model else none),
+  'status': playbook.get('structure_status_label') or (execution_model.location.status if execution_model else 'Awaiting structure'),
+  'read': playbook.get('action_context_label') or structure_snapshot.get('best_look') or (execution_model.location.read if execution_model else 'Awaiting valid structure'),
+} %}
+{% set distance_rows = playbook.get('distance_rows') or (execution_model.distance_rows if execution_model else []) %}
 {% set trigger_validation = structure_snapshot.get('trigger_validation') or {} %}
 {% set gamma_positive = macro_regime.state == 'positive' %}
 {% set gamma_neutral = macro_regime.state == 'neutral' %}
 {% set bias_context = local_bias.context or 'LOCAL BIAS' %}
 {% set bias_label = local_bias.label or 'WAIT' %}
-{% set trade_state_label = structure_snapshot.get('trade_state_label') or playbook.status or 'WAIT' %}
-{% set hero_tradeability_label = structure_snapshot.get('execution_regime_label') or structure_snapshot.get('tradeability') or playbook.status or 'WAIT' %}
-{% set hero_session_label = structure_snapshot.get('session') or macro_regime.subtitle or 'Confirmation required' %}
+{% set trade_state_label = playbook.get('trade_state_label') or structure_snapshot.get('trade_state_label') or 'WAIT' %}
+{% set hero_tradeability_label = playbook.get('tradeability_label') or structure_snapshot.get('execution_regime_label') or structure_snapshot.get('tradeability') or 'WAIT' %}
+{% set hero_session_label = playbook.get('session_summary_label') or structure_snapshot.get('session') or macro_regime.subtitle or 'Confirmation required' %}
 
 <div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact">
   <div class="toolbar">
@@ -53,8 +59,8 @@
         <div class="marketPulseHeaderSubline" id="marketPulseHeaderSubline">Main Flip {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }} | Local Flip {{ local_flip_label }} | CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }} | PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</div>
         <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }} • SPX {{ spx_price_label }}</div>
         <div class="marketPulsePlaybookMeta marketPulsePlaybookCompactMeta tiny muted">
-          <span>STATE: {{ structure_snapshot.get('current_read') or location.zone or 'Awaiting structure' }}</span>
-          <span>MODE: {{ trade_state_label }}</span>
+          <span>STATE: {{ playbook.get('state_strip_label') or structure_snapshot.get('current_read') or location.zone or 'Awaiting structure' }}</span>
+          <span>MODE: {{ playbook.get('mode_strip_label') or trade_state_label }}</span>
         </div>
       </div>
       <div class="marketPulseGammaStateCard {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard">
@@ -90,8 +96,8 @@
     <span>Source Health</span>
     <span>Tape Drivers</span>
     <span>Loading Market Pulse</span>
-    <span id="marketPulseSetupHeadline">{{ structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
-    <span id="marketPulseTradeReadState">{{ playbook.status or 'WATCH' }}</span>
+    <span id="marketPulseSetupHeadline">{{ playbook.get('context_lead_label') or structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
+    <span id="marketPulseTradeReadState">{{ playbook.get('trade_state_label') or 'WAIT' }}</span>
     <span>{{ gamma_quality.summary if gamma_quality else '' }}</span>
     <span>{{ gamma_snapshot.get('source_effective_timestamp_note') or '' }}</span>
     <span>Fetch-time freshness proxy</span>
@@ -145,7 +151,7 @@
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-state" aria-label="Market state">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">State Summary</span>
-          <span class="trendChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateContext">{{ trade_state_label }}</span>
+          <span class="trendChip tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseHeroStateContext">{{ trade_state_label }}</span>
         </div>
         <div class="marketPulseExecutionHeroMetrics">
           <div class="marketPulseExecutionHeroMetric is-spot" id="marketPulseHeroSpotCard">
@@ -158,7 +164,7 @@
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Bias</span>
-            <strong id="marketPulseHeroBias">{{ structure_snapshot.get('current_read') or local_bias.context or local_bias.label or 'Unavailable' }}</strong>
+            <strong id="marketPulseHeroBias">{{ playbook.get('bias_label') or local_bias.action or 'Unavailable' }}</strong>
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Tradeability</span>
@@ -178,11 +184,11 @@
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-rail" aria-label="Execution rail">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">SPX Hero Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
-          <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ structure_snapshot.get('current_read') or location.read or 'Awaiting valid structure' }}</span>
+          <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ playbook.get('action_context_label') or location.read or 'Awaiting valid structure' }}</span>
         </div>
         <div class="marketPulseExecutionHeroChartShell">
           <div class="marketPulseExecutionHeroChartBanner">
-            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ trade_state_label }} - {{ structure_snapshot.get('current_read') or location.zone or 'Awaiting structure' }}</div>
+            <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ playbook.get('hero_title_label') or (trade_state_label ~ ' - ' ~ (structure_snapshot.get('current_read') or location.zone or 'Awaiting structure')) }}</div>
           </div>
           {# NCW / NPW come from gamma_snapshot.next_call_wall_above / next_put_wall_below when available. #}
           <div
@@ -209,15 +215,15 @@
         <div class="marketPulseExecutionHeroRailFooter marketPulseExecutionHeroRailFooter-map">
           <div class="marketPulseExecutionHeroRailFootCell">
             <span class="tiny muted">Current Read</span>
-            <strong id="marketPulseHeroRailFootState">{{ location.zone or 'Awaiting structure' }}</strong>
+            <strong id="marketPulseHeroRailFootState">{{ playbook.get('structure_read', {}).get('current_read_label') or location.zone or 'Awaiting structure' }}</strong>
           </div>
           <div class="marketPulseExecutionHeroRailFootCell">
             <span class="tiny muted">Pullback Level</span>
-            <strong id="marketPulseHeroPullbackLevel">{{ '%.0f'|format(local_flip_num) if local_flip_num is not none else 'Awaiting level' }}</strong>
+            <strong id="marketPulseHeroPullbackLevel">{{ playbook.get('structure_read', {}).get('pullback_level_label') or ('%.0f'|format(local_flip_num) if local_flip_num is not none else 'Awaiting level') }}</strong>
           </div>
           <div class="marketPulseExecutionHeroRailFootCell">
             <span class="tiny muted">Next Destination</span>
-            <strong id="marketPulseHeroDestinationInline">{{ location.nearest_level_name or 'Awaiting next test' }}</strong>
+            <strong id="marketPulseHeroDestinationInline">{{ playbook.get('structure_read', {}).get('next_destination_label') or location.nearest_level_name or 'Awaiting next test' }}</strong>
           </div>
         </div>
       </section>
@@ -225,7 +231,7 @@
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-decision" aria-label="Execution decision box">
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">Trade State</span>
-          <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.tone or 'warn' }}" id="marketPulseHeroStateChip">{{ trade_state_label }}</span>
+          <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseHeroStateChip">{{ trade_state_label }}</span>
         </div>
         <div class="marketPulseExecutionHeroDecisionGrid">
           <div class="marketPulseExecutionHeroDecisionLead">
@@ -234,15 +240,15 @@
           </div>
           <div class="marketPulseExecutionHeroDecisionCell">
             <div class="tiny muted">Best Look</div>
-            <strong id="marketPulseHeroBestLook">{{ playbook.best_look or 'Wait for cleaner structure' }}</strong>
+            <strong id="marketPulseHeroBestLook">{{ playbook.get('plan_label') or structure_snapshot.get('best_look') or 'Wait for cleaner structure' }}</strong>
           </div>
           <div class="marketPulseExecutionHeroDecisionCell">
             <div class="tiny muted">Required Trigger</div>
-            <strong id="marketPulseHeroRequiredTrigger">{{ playbook.need or 'Confirmation required' }}</strong>
+            <strong id="marketPulseHeroRequiredTrigger">{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Confirmation required' }}</strong>
           </div>
           <div class="marketPulseExecutionHeroDecisionCell">
             <div class="tiny muted">Invalidation</div>
-            <strong id="marketPulseHeroInvalidation">{{ playbook.need or 'Wait for live structure' }}</strong>
+            <strong id="marketPulseHeroInvalidation">{{ playbook.get('invalidation_label') or structure_snapshot.get('invalidation') or 'Wait for live structure' }}</strong>
           </div>
         </div>
       </section>
@@ -324,7 +330,7 @@
       </div>
       <div class="marketPulseDistanceGrid">
         {% for row in distance_rows %}
-          <div class="marketPulseDistanceItem tone-{{ playbook.tone or 'warn' }}{% if row.value is not number %} is-unavailable{% endif %}">
+          <div class="marketPulseDistanceItem tone-{{ playbook.get('context_tone') or 'warn' }}{% if row.value is not number %} is-unavailable{% endif %}">
             <div class="marketPulseDistanceTop">
               <span class="tiny muted">{% if row.direction == 'down' %}↓{% elif row.direction == 'up' %}↑{% else %}•{% endif %} {{ row.label }}</span>
               <strong>
@@ -344,47 +350,47 @@
     </div>
   </section>
 
-  {% set playbook_state_class = 'tradeRead-tradeable' if playbook.tone == 'positive' else 'tradeRead-conditional' if playbook.tone == 'warn' and playbook.status != 'NO TRADE' else 'tradeRead-stand-down' %}
+  {% set playbook_state_class = 'tradeRead-tradeable' if playbook.get('trade_state') == 'ready' and not playbook.get('ui_flags', {}).get('suppress_aggressive_copy') else 'tradeRead-conditional' if playbook.get('trade_state') in ['wait', 'planning_only', 'ready'] else 'tradeRead-stand-down' %}
   <section id="marketPulseTradeReadCard" class="card stack12 marketPulseSection spxPriorityShell marketPulseActionableCard marketPulseTradeContextCard {{ spx_priority_tone }} {{ playbook_state_class }}">
     <div class="toolbar" id="spxPriorityCard">
       <div class="pillRow marketPulseExecutionPanelTopline">
         <span class="pill">Action / Trade Context</span>
-        <span class="marketPulseTradeabilityBadge tone-{{ structure_snapshot.get('context_tone') or playbook.tone or 'warn' }}" id="marketPulseTradeabilityBadge">{{ trigger_validation.get('status_badge') or structure_snapshot.get('trade_state_label') or playbook.status or 'WATCH' }}</span>
+        <span class="marketPulseTradeabilityBadge tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseTradeabilityBadge">{{ playbook.get('execution_status_badge') or trigger_validation.get('status_badge') or structure_snapshot.get('trade_state_label') or 'WATCH' }}</span>
       </div>
-      <div class="marketPulseTradeContextLead" id="marketPulseActionLead">{{ playbook.why or execution_model.posture_summary or 'Execution context pending.' }}</div>
+      <div class="marketPulseTradeContextLead" id="marketPulseActionLead">{{ playbook.get('context_lead_label') or execution_model.posture_summary or 'Execution context pending.' }}</div>
       <div class="marketPulseTradeabilityMetaRow marketPulseTradeabilityMetaRow-compact">
         <div class="marketPulseTradeabilityMeta">
           <div class="tiny muted">Context Grade</div>
-          <strong id="marketPulseTradeabilityGrade">{{ structure_snapshot.get('context_grade') or playbook.grade or '—' }}</strong>
+          <strong id="marketPulseTradeabilityGrade">{{ playbook.get('context_grade') or structure_snapshot.get('context_grade') or '—' }}</strong>
         </div>
         <div class="marketPulseTradeabilityMeta marketPulseTradeabilityScoreBlock">
           <div class="tiny muted">Context Score</div>
-          <strong><span id="marketPulseTradeabilityScore">{{ structure_snapshot.get('context_score') or playbook.score or 0 }}</span><span class="tiny muted">/100</span></strong>
+          <strong><span id="marketPulseTradeabilityScore">{{ playbook.get('context_score') or structure_snapshot.get('context_score') or 0 }}</span><span class="tiny muted">/100</span></strong>
           <div class="marketPulseTradeabilityBar" aria-hidden="true">
-            <span class="marketPulseTradeabilityBarFill tone-{{ structure_snapshot.get('context_tone') or playbook.tone or 'warn' }}" id="marketPulseTradeabilityBarFill" style="width: {{ structure_snapshot.get('context_score_pct') or playbook.score_pct or 0 }}%;"></span>
+            <span class="marketPulseTradeabilityBarFill tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseTradeabilityBarFill" style="width: {{ playbook.get('context_score') or structure_snapshot.get('context_score_pct') or 0 }}%;"></span>
           </div>
         </div>
       </div>
       <div class="marketPulsePlaybookGrid marketPulsePlaybookGrid-context">
         <div class="marketPulsePlaybookCell">
           <div class="tiny muted">Setup Bias</div>
-          <strong id="marketPulseBestLook">{{ structure_snapshot.get('best_look') or playbook.best_look or 'Wait for cleaner structure' }}</strong>
+          <strong id="marketPulseBestLook">{{ playbook.get('action_context_label') or structure_snapshot.get('best_look') or 'Wait for cleaner structure' }}</strong>
         </div>
         <div class="marketPulsePlaybookCell">
           <div class="tiny muted">Execution Status</div>
-          <strong id="marketPulseExecutionStatus">{{ trigger_validation.get('manual_label') or trigger_validation.get('header_line') or 'Waiting for manual confirmation' }}</strong>
+          <strong id="marketPulseExecutionStatus">{{ playbook.get('execution_status_label') or trigger_validation.get('manual_label') or trigger_validation.get('header_line') or 'Waiting for manual confirmation' }}</strong>
         </div>
         <div class="marketPulsePlaybookCell">
           <div class="tiny muted">Required Trigger</div>
-          <strong id="marketPulseNeed">{{ structure_snapshot.get('required_trigger') or playbook.need or 'Need confirmation' }}</strong>
+          <strong id="marketPulseNeed">{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Need confirmation' }}</strong>
         </div>
         <div class="marketPulsePlaybookCell">
           <div class="tiny muted">Stand Down If</div>
-          <strong id="marketPulseIfThen">{{ structure_snapshot.get('invalidation') or playbook.avoid or 'If the level confirms, act. If not, wait.' }}</strong>
+          <strong id="marketPulseIfThen">{{ playbook.get('invalidation_label') or structure_snapshot.get('invalidation') or 'If the level confirms, act. If not, wait.' }}</strong>
         </div>
       </div>
       <div class="marketPulseExecutionPanelFooter marketPulseExecutionPanelFooter-compact">
-        <span class="tiny marketPulseClampLine" id="spxPriorityFooterMeta">{{ structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
+        <span class="tiny marketPulseClampLine" id="spxPriorityFooterMeta">{{ playbook.get('context_footer_label') or structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
       </div>
       <div id="spxPrioritySpotPanel" hidden></div>
       <div id="spxPriorityPriceLabel" hidden>{{ execution_chart.price_label or 'Live Price' }}</div>
@@ -399,7 +405,7 @@
       <div id="spxPriorityTradeabilityLine" hidden>—</div>
       <div id="spxPrioritySessionRange" hidden>—</div>
       <div id="spxPriorityVWAP" hidden>—</div>
-      <div id="marketPulseEnvironment" hidden>{{ playbook.why or execution_model.posture_summary }}</div>
+      <div id="marketPulseEnvironment" hidden>{{ playbook.get('context_lead_label') or execution_model.posture_summary }}</div>
       <div id="spxPriorityNarrative" hidden></div>
       <div id="spxPriorityWarningBadges" hidden></div>
       <div id="spxPriorityReversalFit" hidden>—</div>
@@ -659,13 +665,13 @@
       </div>
       <div class="marketPulseModalStat">
         <span class="tiny muted">State</span>
-        <strong>{{ playbook.status or '—' }}</strong>
+        <strong>{{ playbook.get('trade_state_label') or '—' }}</strong>
       </div>
       <div class="marketPulseModalStat">
         <span class="tiny muted">Edge</span>
-        <strong>{{ playbook.best_look or '—' }}</strong>
+        <strong>{{ playbook.get('plan_label') or '—' }}</strong>
       </div>
-      <div class="marketPulseModalNarrative">{{ playbook.why or execution_model.posture_summary or execution_chart.summary }}</div>
+      <div class="marketPulseModalNarrative">{{ playbook.get('context_lead_label') or execution_model.posture_summary or execution_chart.summary }}</div>
     </div>
   </div>
 </dialog>

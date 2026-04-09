@@ -1,6 +1,7 @@
 from datetime import datetime
 from datetime import timedelta
 
+from mccain_capital.services import core
 from mccain_capital.services import tradier_hero_chart_service as svc
 
 
@@ -95,3 +96,58 @@ def test_opening_session_carryover_disables_once_threshold_is_met():
     assert payload["live_session_bar_count"] == 10
     assert payload["carryover_bar_count"] == 0
     assert len(payload["bars"]) == 10
+
+
+def test_get_hero_levels_uses_shared_snapshot_regime_without_reclassification(monkeypatch):
+    now_et = datetime(2026, 4, 8, 18, 0, 0, tzinfo=svc.app_runtime.TZ)
+    monkeypatch.setattr(svc.app_runtime, "now_et", lambda: now_et)
+    monkeypatch.setattr(
+        core,
+        "get_or_build_market_pulse_snapshot",
+        lambda force_refresh=False, now_et=None: {
+            "quotes": [{"symbol": "SPX", "provider": "market_snapshot"}],
+            "spx_quote": {"symbol": "SPX", "provider": "market_snapshot"},
+            "execution_model": {"posture_summary": "Shared snapshot summary"},
+            "market_structure_snapshot": {
+                "snapshot_timestamp": "2026-04-08T15:55:00-04:00",
+                "spot": 6782.81,
+                "gamma_regime": "negative",
+                "gamma_regime_label": "Negative Gamma",
+                "gamma_regime_subtitle": "Trend / momentum active",
+                "regime_confidence": "high",
+                "regime_confidence_label": "High confidence",
+                "levels_source": "live_session_snapshot",
+                "levels_source_label": "Live session snapshot",
+                "gamma_data_status": "fresh_valid",
+                "gamma_data_status_label": "Fresh valid",
+                "session_mode": "regular",
+                "session_mode_label": "Regular",
+                "main_flip": 6805.0,
+                "local_flip": 6805.0,
+                "call_wall": 6775.0,
+                "put_wall": 6525.0,
+                "next_call_wall": 6785.0,
+                "next_put_wall": 6575.0,
+                "bias": "Above Call Wall · extension risk toward 6785",
+                "tradeability": "Trend momentum active",
+                "session": "Regular · High confidence",
+                "trade_state": "PLANNING_ONLY",
+                "trade_state_label": "PLANNING ONLY",
+                "current_read": "Above Call Wall",
+                "pullback_level": "CW 6775",
+                "next_destination": "NCW 6785",
+                "plan_note": "Wait for pullback into Call Wall",
+                "best_look": "Wait for pullback into Call Wall",
+                "required_trigger": "Next live session retest and hold at Call Wall",
+                "invalidation": "CW 6775",
+            },
+        },
+    )
+
+    payload = svc.get_hero_levels(symbol="SPX")
+
+    assert payload["gamma_regime"] == "negative"
+    assert payload["gamma_regime_label"] == "Negative Gamma"
+    assert payload["pullback_level"] == "CW 6775"
+    assert payload["provider"] == "market_snapshot"
+    assert payload["posture_summary"] == "Shared snapshot summary"

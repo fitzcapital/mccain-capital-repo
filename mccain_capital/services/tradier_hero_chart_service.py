@@ -457,74 +457,98 @@ def derive_hero_state(
     }
 
 
-def get_hero_levels(symbol: str = DEFAULT_SYMBOL) -> Dict[str, Any]:
-    quote = get_live_quote(symbol)
-    gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+def get_hero_levels(
+    symbol: str = DEFAULT_SYMBOL,
+    *,
+    playbook_snapshot: Optional[Dict[str, Any]] = None,
+    now_et: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    resolved_symbol = str(symbol or DEFAULT_SYMBOL).strip().upper() or DEFAULT_SYMBOL
+    current_now = now_et or app_runtime.now_et()
 
-    price = _as_float(quote.get("price"))
-    main_flip = _as_float(gamma_snapshot.get("gamma_flip_combined_basket"))
-    local_flip = _as_float(
-        gamma_snapshot.get("local_flip_aggregated_gamma")
-        if gamma_snapshot.get("local_flip_aggregated_gamma") is not None
-        else gamma_snapshot.get("local_flip")
+    if playbook_snapshot is None:
+        from mccain_capital.services import core
+
+        playbook_snapshot = core.get_or_build_market_pulse_snapshot(
+            force_refresh=False,
+            now_et=current_now,
+        )
+
+    snapshot = dict(playbook_snapshot or {})
+    quotes = list(snapshot.get("quotes") or [])
+    spx_quote = next(
+        (
+            q
+            for q in quotes
+            if str(q.get("symbol") or q.get("label") or "").upper() == resolved_symbol
+        ),
+        dict(snapshot.get("spx_quote") or {}),
     )
-    call_wall = _as_float(gamma_snapshot.get("call_wall_aggregated_gamma"))
-    put_wall = _as_float(gamma_snapshot.get("put_wall_aggregated_gamma"))
-    next_call_wall = _as_float(gamma_snapshot.get("next_call_wall_above"))
-    next_put_wall = _as_float(gamma_snapshot.get("next_put_wall_below"))
-
-    regime_text = str(gamma_snapshot.get("regime") or "").strip()
-    regime_lower = regime_text.lower()
-    if "negative" in regime_lower:
-        gamma_regime = "negative"
-        gamma_regime_label = "Negative Gamma"
-    elif "positive" in regime_lower:
-        gamma_regime = "positive"
-        gamma_regime_label = "Positive Gamma"
-    elif "neutral" in regime_lower or "flip" in regime_lower:
-        gamma_regime = "neutral"
-        gamma_regime_label = regime_text or "Flip Zone"
-    else:
-        raw_net_gamma = _as_float(gamma_snapshot.get("net_gex"))
-        gamma_regime = "positive" if raw_net_gamma is not None and raw_net_gamma >= 0 else "negative"
-        gamma_regime_label = "Positive Gamma" if gamma_regime == "positive" else "Negative Gamma"
-
-    state_payload = derive_hero_state(price, local_flip, call_wall, put_wall, next_call_wall, next_put_wall)
-    now_et = app_runtime.now_et()
-    session = _session_label(now_et, gamma_regime_label)
+    structure_snapshot = dict(snapshot.get("market_structure_snapshot") or {})
 
     return {
-        "symbol": str(symbol or DEFAULT_SYMBOL).strip().upper() or DEFAULT_SYMBOL,
-        "as_of": str(quote.get("as_of") or now_et.isoformat()),
-        "spot": price,
-        "main_flip": main_flip,
-        "local_flip": local_flip,
-        "call_wall": call_wall,
-        "put_wall": put_wall,
-        "next_call_wall": next_call_wall,
-        "next_put_wall": next_put_wall,
-        "gamma_regime": gamma_regime,
-        "gamma_regime_label": gamma_regime_label,
-        "bias": _bias_label(price, local_flip),
-        "tradeability": _tradeability_label(gamma_regime_label, state_payload["state"]),
-        "session": session,
-        "state": state_payload["state"],
-        "current_read": state_payload["current_read"],
-        "pullback_level": state_payload["pullback_level"],
-        "next_destination": state_payload["next_destination"],
-        "plan_note": state_payload["plan_note"],
-        "best_look": state_payload["best_look"],
-        "required_trigger": state_payload["required_trigger"],
-        "invalidation": state_payload["invalidation"],
-        # Compact chart banner copy for the top strip.
-        "state_headline": state_payload["state"].replace("_", " "),
-        "state_read": state_payload["current_read"],
-        "state_note": (
-            f"Wait for pullback into {state_payload['pullback_level'].split(' ', 1)[1]}"
-            if state_payload["state"] == "NO_TRADE" and str(state_payload["pullback_level"]).startswith("CW ")
-            else state_payload["plan_note"]
-        ),
-        "provider": str(quote.get("provider") or "tradier"),
+        "symbol": resolved_symbol,
+        "as_of": structure_snapshot.get("snapshot_timestamp") or app_runtime.now_iso(),
+        "spot": structure_snapshot.get("spot"),
+        "session_mode": structure_snapshot.get("session_mode"),
+        "session_mode_label": structure_snapshot.get("session_mode_label"),
+        "levels_source": structure_snapshot.get("levels_source"),
+        "levels_source_label": structure_snapshot.get("levels_source_label"),
+        "gamma_data_status": structure_snapshot.get("gamma_data_status"),
+        "gamma_data_status_label": structure_snapshot.get("gamma_data_status_label"),
+        "main_flip": structure_snapshot.get("main_flip"),
+        "local_flip": structure_snapshot.get("local_flip"),
+        "call_wall": structure_snapshot.get("call_wall"),
+        "put_wall": structure_snapshot.get("put_wall"),
+        "next_call_wall": structure_snapshot.get("next_call_wall"),
+        "next_put_wall": structure_snapshot.get("next_put_wall"),
+        "gamma_regime": structure_snapshot.get("gamma_regime"),
+        "gamma_regime_label": structure_snapshot.get("gamma_regime_label"),
+        "gamma_regime_subtitle": structure_snapshot.get("gamma_regime_subtitle"),
+        "regime_confidence": structure_snapshot.get("regime_confidence"),
+        "regime_confidence_label": structure_snapshot.get("regime_confidence_label"),
+        "execution_regime": structure_snapshot.get("execution_regime"),
+        "execution_regime_label": structure_snapshot.get("execution_regime_label"),
+        "planning_bias": structure_snapshot.get("planning_bias"),
+        "planning_bias_label": structure_snapshot.get("planning_bias_label"),
+        "bias_state": structure_snapshot.get("bias_state"),
+        "bias_context": structure_snapshot.get("bias_context"),
+        "bias_label": structure_snapshot.get("bias_label"),
+        "bias": structure_snapshot.get("bias"),
+        "tradeability": structure_snapshot.get("tradeability"),
+        "context_grade": structure_snapshot.get("context_grade"),
+        "context_score": structure_snapshot.get("context_score"),
+        "context_score_pct": structure_snapshot.get("context_score_pct"),
+        "context_tone": structure_snapshot.get("context_tone"),
+        "context_status": structure_snapshot.get("context_status"),
+        "app_state": structure_snapshot.get("app_state"),
+        "app_state_label": structure_snapshot.get("app_state_label"),
+        "spot_meta": structure_snapshot.get("spot_meta"),
+        "spot_source_short_label": structure_snapshot.get("spot_source_short_label"),
+        "local_flip_meta": structure_snapshot.get("local_flip_meta"),
+        "level_meta": structure_snapshot.get("level_meta"),
+        "gamma_regime_meta": structure_snapshot.get("gamma_regime_meta"),
+        "chart_meta": structure_snapshot.get("chart_meta"),
+        "session": structure_snapshot.get("session"),
+        "state": structure_snapshot.get("trade_state"),
+        "trade_state_label": structure_snapshot.get("trade_state_label"),
+        "current_read": structure_snapshot.get("current_read"),
+        "pullback_level": structure_snapshot.get("pullback_level"),
+        "next_destination": structure_snapshot.get("next_destination"),
+        "plan_note": structure_snapshot.get("plan_note"),
+        "best_look": structure_snapshot.get("best_look"),
+        "required_trigger": structure_snapshot.get("required_trigger"),
+        "invalidation": structure_snapshot.get("invalidation"),
+        "trigger_validation": structure_snapshot.get("trigger_validation"),
+        "provider": str(spx_quote.get("provider") or "market_snapshot"),
+        "snapshot_timestamp": structure_snapshot.get("snapshot_timestamp"),
+        "snapshot_timestamp_label": structure_snapshot.get("snapshot_timestamp_label"),
+        "last_valid_snapshot_time": structure_snapshot.get("last_valid_snapshot_time"),
+        "last_valid_snapshot_time_label": structure_snapshot.get("last_valid_snapshot_time_label"),
+        "last_valid_snapshot_usable": structure_snapshot.get("last_valid_snapshot_usable"),
+        "last_valid_snapshot_reason": structure_snapshot.get("last_valid_snapshot_reason"),
+        "last_valid_snapshot_age_seconds": structure_snapshot.get("last_valid_snapshot_age_seconds"),
+        "posture_summary": dict(snapshot.get("execution_model") or {}).get("posture_summary") or "",
     }
 
 

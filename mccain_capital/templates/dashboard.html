@@ -181,6 +181,9 @@
               >
                 <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ item.label }}</span>
                 <strong class="dashboardGammaChipValue" id="dashboardGammaValue-{{ item.key }}">{{ item.value }}</strong>
+                {% if item.detail %}
+                  <span class="dashboardGammaChipDetail" id="dashboardGammaDetail-{{ item.key }}">{{ item.detail }}</span>
+                {% endif %}
               </div>
             {% endfor %}
           </div>

@@ -345,10 +345,13 @@
       const now = new Date();
       const timeStr = new Intl.DateTimeFormat("en-US", {
         timeZone: "America/New_York",
-        hour: "2-digit",
+        hour: "numeric",
         minute: "2-digit",
-        second: "2-digit",
         hour12: true,
+      }).format(now);
+      const secondsPart = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        second: "2-digit",
       }).format(now);
       const weekday = new Intl.DateTimeFormat("en-US", {
         timeZone: "America/New_York",
@@ -360,44 +363,43 @@
         minute: "2-digit",
         hour12: false,
       }).format(now).split(":");
-      const nyMinutes = (Number(hm[0] || 0) * 60) + Number(hm[1] || 0);
+      const nySeconds =
+        (Number(hm[0] || 0) * 3600) +
+        (Number(hm[1] || 0) * 60) +
+        Number(secondsPart || 0);
+      const formatDuration = (secondsUntil) => {
+        const totalMinutes = Math.max(1, Math.ceil(Number(secondsUntil || 0) / 60));
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+        if (hours > 0) return `${hours}h`;
+        return `${minutes}m`;
+      };
       const clock = doc.getElementById("etClock");
-      const mode = doc.getElementById("modePill");
-      const modeLabel = doc.getElementById("sessionStateLabel");
-      if (clock) clock.textContent = `${timeStr} ET`;
-      if (mode) {
+      const statusClock = doc.getElementById("marketStatusClock");
+      const countdown = doc.getElementById("marketStatusCountdown");
+      if (clock) clock.textContent = timeStr;
+      if (statusClock) {
         const isWeekend = weekday === "Sat" || weekday === "Sun";
-        mode.classList.remove(
-          "modeStateWeekend",
-          "modeStatePre",
-          "modeStateTrading",
-          "modeStatePost",
-          "modeStateLoading"
-        );
-        let modeText = "Weekend";
-        let modeTitle = "US market is closed for the weekend";
-        if (isWeekend) {
-          modeText = "Weekend";
-          mode.classList.add("modeStateWeekend");
-        } else if (nyMinutes < 570) {
-          modeText = "Pre-Market";
-          modeTitle = "US market is closed before the regular session opens at 9:30 AM ET";
-          mode.classList.add("modeStatePre");
-        } else if (nyMinutes < 960) {
-          modeText = "Market Open";
-          modeTitle = "US market is open (9:30 AM - 4:00 PM ET)";
-          mode.classList.add("modeStateTrading");
-        } else {
-          modeText = "After Hours";
-          modeTitle = "US market is closed after the regular session ends at 4:00 PM ET";
-          mode.classList.add("modeStatePost");
+        const marketOpenSeconds = 9 * 3600 + 30 * 60;
+        const marketCloseSeconds = 16 * 3600;
+        let state = "closed";
+        let statusText = "Closed";
+        let modeTitle = "US regular market session is closed";
+        if (!isWeekend && nySeconds < marketOpenSeconds) {
+          state = "premarket";
+          statusText = `Opens in ${formatDuration(marketOpenSeconds - nySeconds)}`;
+          modeTitle = "US regular session opens at 9:30 AM ET";
+        } else if (!isWeekend && nySeconds < marketCloseSeconds) {
+          state = "open";
+          statusText = `${formatDuration(marketCloseSeconds - nySeconds)} to close`;
+          modeTitle = "US regular market is open until 4:00 PM ET";
         }
-        if (modeLabel) {
-          modeLabel.textContent = modeText;
-        } else {
-          mode.textContent = modeText;
-        }
-        mode.title = modeTitle;
+        statusClock.classList.remove("is-loading", "is-open", "is-premarket", "is-closed");
+        statusClock.classList.add(`is-${state}`);
+        statusClock.dataset.marketState = state;
+        statusClock.title = `${timeStr} ET · ${statusText}. ${modeTitle}.`;
+        if (countdown) countdown.textContent = statusText;
       }
     } catch (err) {
       console.error(err);

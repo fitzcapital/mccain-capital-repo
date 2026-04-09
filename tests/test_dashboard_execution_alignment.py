@@ -204,6 +204,7 @@ def test_dashboard_gamma_strip_prefers_market_structure_snapshot():
             "levels_source": "last_valid_snapshot",
             "gamma_regime": "unconfirmed",
             "gamma_regime_label": "Unconfirmed",
+            "gamma_regime_reason_label": "Last valid structure",
             "session_mode_label": "After Hours",
             "levels_source_label": "Last valid snapshot",
             "last_valid_snapshot_time_label": "Tue Apr 07 4:00 PM ET",
@@ -216,6 +217,37 @@ def test_dashboard_gamma_strip_prefers_market_structure_snapshot():
     entry_map = {entry["key"]: entry["value"] for entry in strip["entries"]}
     assert strip["state"] == "stale"
     assert "After Hours" in strip["status_text"]
+    regime_entry = next(entry for entry in strip["entries"] if entry["key"] == "regime")
     assert entry_map["regime"] == "UNCONFIRMED"
+    assert regime_entry["detail"] == "Last valid structure"
     assert entry_map["main_flip"] == "6785"
     assert entry_map["local_flip"] == "6593"
+
+
+def test_dashboard_decision_prefers_canonical_playbook_view():
+    panel = core._dashboard_decision_viewmodel(
+        daily_brief={"plan_a": "fallback plan", "no_trade": "fallback gate", "headline": "brief"},
+        risk_posture_title="Reduced size",
+        risk_posture_detail="Use less size",
+        data_trust={"tone": "positive"},
+        readiness={"pct": 100.0},
+        dashboard_vix={"price": 15.0},
+        playbook_view={
+            "trade_state": "planning_only",
+            "trade_state_label": "PLANNING ONLY",
+            "bias_state": "conditional_bullish",
+            "bias_label": "Conditional bullish above Local Flip 6815",
+            "plan_label": "Buy dips above Local Flip only if next session confirms",
+            "trade_gate_label": "Next live session dip-hold above Local Flip",
+            "risk_label": "Planning only",
+            "context_lead_label": "Planning posture is valid, but live confirmation is still required.",
+            "context_score": 52,
+            "context_grade": "D",
+        },
+        gamma_strip={"entries": [], "state": "stale", "status_text": "ok"},
+    )
+    assert panel["bias"] == "Conditional bullish above Local Flip 6815"
+    assert panel["risk_size"] == "Planning only"
+    assert panel["status"] == "PLANNING ONLY"
+    assert panel["plan"] == "Buy dips above Local Flip only if next session confirms"
+    assert panel["trade_gate"] == "Next live session dip-hold above Local Flip"
