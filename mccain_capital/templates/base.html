@@ -298,7 +298,6 @@
           <div class="brandSignature">
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Personal Trading Cockpit</span>
           </div>
-          <div class="sub">Execution, review, and risk control.</div>
         </div>
       </div>
 
@@ -337,7 +336,10 @@
             <div id="marketStatusClock" class="clockPill cockpitPill marketStatusClock is-loading" aria-label="Market status and Eastern time">
               <span class="marketStatusClockDot" aria-hidden="true"></span>
               <span class="marketStatusClockTimeGroup">
-                <span id="etClock" class="clockTime">--:--</span>
+                <span class="marketStatusClockTimeUnit">
+                  <span id="etClock" class="clockTime">--:--</span><span id="etClockSeconds" class="marketStatusClockSeconds">:--</span>
+                </span>
+                <span id="etClockMeridiem" class="marketStatusClockMeridiem">--</span>
                 <span class="marketStatusClockSuffix">ET</span>
               </span>
               <span class="marketStatusClockDivider" aria-hidden="true">·</span>

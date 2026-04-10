@@ -342,63 +342,165 @@
 
   function updateETClock() {
     try {
+      const ET_ZONE = "America/New_York";
       const now = new Date();
-      const timeStr = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }).format(now);
-      const secondsPart = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        second: "2-digit",
-      }).format(now);
-      const weekday = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        weekday: "short",
-      }).format(now);
-      const hm = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(now).split(":");
-      const nySeconds =
-        (Number(hm[0] || 0) * 3600) +
-        (Number(hm[1] || 0) * 60) +
-        Number(secondsPart || 0);
-      const formatDuration = (secondsUntil) => {
+      const nowMs = now.getTime();
+      const getZonedParts = (date, timeZone, formatterOptions = {}) => {
+        const formatter = new Intl.DateTimeFormat("en-US", {
+          timeZone,
+          ...formatterOptions,
+        });
+        return formatter.formatToParts(date).reduce((acc, part) => {
+          if (part.type !== "literal") acc[part.type] = part.value;
+          return acc;
+        }, {});
+      };
+      const getZonedNumericParts = (date, timeZone) => {
+        const raw = getZonedParts(date, timeZone, {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          weekday: "short",
+          hourCycle: "h23",
+        });
+        return {
+          year: Number(raw.year || 0),
+          month: Number(raw.month || 0),
+          day: Number(raw.day || 0),
+          hour: Number(raw.hour || 0),
+          minute: Number(raw.minute || 0),
+          second: Number(raw.second || 0),
+          weekday: String(raw.weekday || ""),
+        };
+      };
+      const zonedDateTimeToUtcMs = (timeZone, year, month, day, hour, minute, second) => {
+        const targetUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+        const zoned = getZonedNumericParts(new Date(targetUtc), timeZone);
+        const zonedAsUtc = Date.UTC(
+          zoned.year,
+          zoned.month - 1,
+          zoned.day,
+          zoned.hour,
+          zoned.minute,
+          zoned.second
+        );
+        return targetUtc + (targetUtc - zonedAsUtc);
+      };
+      const addUtcDays = (year, month, day, offset) => {
+        const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+        date.setUTCDate(date.getUTCDate() + offset);
+        return {
+          year: date.getUTCFullYear(),
+          month: date.getUTCMonth() + 1,
+          day: date.getUTCDate(),
+        };
+      };
+      const getTradingWeekday = (year, month, day) => (
+        getZonedParts(new Date(zonedDateTimeToUtcMs(ET_ZONE, year, month, day, 12, 0, 0)), ET_ZONE, {
+          weekday: "short",
+        }).weekday || ""
+      );
+      const isTradingDayEt = (year, month, day) => {
+        const weekday = getTradingWeekday(year, month, day);
+        return weekday !== "Sat" && weekday !== "Sun";
+      };
+      const formatCountdown = (secondsUntil) => {
         const totalMinutes = Math.max(1, Math.ceil(Number(secondsUntil || 0) / 60));
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
-        if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-        if (hours > 0) return `${hours}h`;
+        if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
         return `${minutes}m`;
       };
+      const findNextTradingOpen = (parts) => {
+        for (let offset = 0; offset < 7; offset += 1) {
+          const candidate = addUtcDays(parts.year, parts.month, parts.day, offset);
+          if (!isTradingDayEt(candidate.year, candidate.month, candidate.day)) continue;
+          const openMs = zonedDateTimeToUtcMs(ET_ZONE, candidate.year, candidate.month, candidate.day, 9, 30, 0);
+          if (openMs > nowMs) {
+            return {
+              ...candidate,
+              openMs,
+              weekday: getTradingWeekday(candidate.year, candidate.month, candidate.day),
+            };
+          }
+        }
+        return null;
+      };
+      const numericParts = getZonedNumericParts(now, ET_ZONE);
+      const hour24 = Number(numericParts.hour || 0);
+      const hour12 = hour24 % 12 || 12;
+      const hourPart = String(hour12);
+      const minutePart = String(numericParts.minute || 0).padStart(2, "0");
+      const secondPart = String(numericParts.second || 0).padStart(2, "0");
+      const meridiemPart = hour24 >= 12 ? "PM" : "AM";
+      const nySeconds =
+        (numericParts.hour * 3600) +
+        (numericParts.minute * 60) +
+        numericParts.second;
       const clock = doc.getElementById("etClock");
+      const clockSeconds = doc.getElementById("etClockSeconds");
+      const clockMeridiem = doc.getElementById("etClockMeridiem");
       const statusClock = doc.getElementById("marketStatusClock");
       const countdown = doc.getElementById("marketStatusCountdown");
-      if (clock) clock.textContent = timeStr;
+      if (clock) clock.textContent = `${hourPart}:${minutePart}`;
+      if (clockSeconds) clockSeconds.textContent = `:${secondPart}`;
+      if (clockMeridiem) clockMeridiem.textContent = meridiemPart;
       if (statusClock) {
-        const isWeekend = weekday === "Sat" || weekday === "Sun";
         const marketOpenSeconds = 9 * 3600 + 30 * 60;
         const marketCloseSeconds = 16 * 3600;
         let state = "closed";
-        let statusText = "Closed";
-        let modeTitle = "US regular market session is closed";
-        if (!isWeekend && nySeconds < marketOpenSeconds) {
-          state = "premarket";
-          statusText = `Opens in ${formatDuration(marketOpenSeconds - nySeconds)}`;
-          modeTitle = "US regular session opens at 9:30 AM ET";
-        } else if (!isWeekend && nySeconds < marketCloseSeconds) {
+        let statusText = "Loading";
+        let modeTitle = "US regular market session timing";
+        const todayIsTradingDay = isTradingDayEt(numericParts.year, numericParts.month, numericParts.day);
+        if (todayIsTradingDay && nySeconds >= marketOpenSeconds && nySeconds < marketCloseSeconds) {
           state = "open";
-          statusText = `${formatDuration(marketCloseSeconds - nySeconds)} to close`;
+          const closeMs = zonedDateTimeToUtcMs(
+            ET_ZONE,
+            numericParts.year,
+            numericParts.month,
+            numericParts.day,
+            16,
+            0,
+            0
+          );
+          statusText = `${formatCountdown((closeMs - nowMs) / 1000)} to close`;
           modeTitle = "US regular market is open until 4:00 PM ET";
+        } else if (todayIsTradingDay && nySeconds < marketOpenSeconds) {
+          state = "premarket";
+          const openMs = zonedDateTimeToUtcMs(
+            ET_ZONE,
+            numericParts.year,
+            numericParts.month,
+            numericParts.day,
+            9,
+            30,
+            0
+          );
+          statusText = `Opens in ${formatCountdown((openMs - nowMs) / 1000)}`;
+          modeTitle = "US regular session opens at 9:30 AM ET";
+        } else {
+          const nextOpen = findNextTradingOpen(numericParts);
+          if (nextOpen) {
+            const tomorrow = addUtcDays(numericParts.year, numericParts.month, numericParts.day, 1);
+            const showDayLabel = !todayIsTradingDay
+              || nextOpen.year !== tomorrow.year
+              || nextOpen.month !== tomorrow.month
+              || nextOpen.day !== tomorrow.day;
+            statusText = showDayLabel
+              ? `Opens ${nextOpen.weekday} in ${formatCountdown((nextOpen.openMs - nowMs) / 1000)}`
+              : `Opens in ${formatCountdown((nextOpen.openMs - nowMs) / 1000)}`;
+            modeTitle = todayIsTradingDay
+              ? "US regular market is closed until the next session"
+              : "US regular market is closed until the next trading day";
+          }
         }
         statusClock.classList.remove("is-loading", "is-open", "is-premarket", "is-closed");
         statusClock.classList.add(`is-${state}`);
         statusClock.dataset.marketState = state;
-        statusClock.title = `${timeStr} ET · ${statusText}. ${modeTitle}.`;
+        statusClock.title = `${hourPart}:${minutePart}:${secondPart} ${meridiemPart} ET · ${statusText}. ${modeTitle}.`;
         if (countdown) countdown.textContent = statusText;
       }
     } catch (err) {
