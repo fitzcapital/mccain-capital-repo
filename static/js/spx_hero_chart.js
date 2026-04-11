@@ -403,6 +403,7 @@
     if (!lastBarsPayload || !Array.isArray(lastBarsPayload.bars) || !lastBarsPayload.bars.length) return;
     const bars = lastBarsPayload.bars;
     const openingMode = Boolean(lastBarsPayload.opening_session_mode);
+    const sessionTargetBarCount = Math.max(0, Number(lastBarsPayload.session_target_bar_count) || 0);
     if (openingMode) {
       // Hold a stable opening frame with prior-session carryover and right-side
       // breathing room instead of zooming the hero into the first live candle.
@@ -437,9 +438,12 @@
         Math.min(bars.length + LEFT_SCROLL_BUFFER_BARS, requestedVisibleBars + LEFT_SCROLL_BUFFER_BARS),
         Math.min(bars.length, 30),
       );
+      const targetTo = sessionTargetBarCount > 0
+        ? Math.max((bars.length - 1) + DEFAULT_RIGHT_OFFSET_BARS, sessionTargetBarCount - 1)
+        : (bars.length - 1) + DEFAULT_RIGHT_OFFSET_BARS;
       chart.timeScale().setVisibleLogicalRange({
-        from: Math.max(-LEFT_SCROLL_BUFFER_BARS, bars.length - visibleBars - LEFT_SCROLL_BUFFER_BARS),
-        to: (bars.length - 1) + DEFAULT_RIGHT_OFFSET_BARS,
+        from: Math.max(-LEFT_SCROLL_BUFFER_BARS, targetTo - visibleBars + 1 - LEFT_SCROLL_BUFFER_BARS),
+        to: targetTo,
       });
     }
   };

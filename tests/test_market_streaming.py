@@ -1,8 +1,10 @@
 from collections import deque
 from datetime import date
+from datetime import datetime
 
 from mccain_capital.services import market_data_service
 from mccain_capital.services import market_worker
+from mccain_capital import runtime as app_runtime
 
 
 class _FakeStreamResponse:
@@ -175,6 +177,40 @@ def test_get_intraday_uses_short_lived_curve_cache(monkeypatch):
     assert len(first) == 25
     assert first == second
     assert first is not second
+
+
+def test_get_intraday_uses_market_worker_series_points_when_tradier_empty(monkeypatch):
+    monkeypatch.setattr(market_data_service, "_INTRADAY_CURVE_CACHE", {})
+    monkeypatch.setattr(
+        app_runtime,
+        "now_et",
+        lambda: datetime(2026, 4, 10, 9, 37, 0, tzinfo=app_runtime.TZ),
+    )
+    monkeypatch.setattr(market_data_service, "_tradier_intraday_rows", lambda symbol: [])
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "series_points": {
+                "SPX": [
+                    {"ts": "2026-04-10T09:35:05-04:00", "v": 6828.25},
+                    {"ts": "2026-04-10T09:35:40-04:00", "v": 6829.10},
+                    {"ts": "2026-04-10T09:36:08-04:00", "v": 6830.50},
+                ]
+            }
+        },
+    )
+
+    rows = market_data_service.get_intraday("SPX")
+
+    assert len(rows) == 2
+    assert rows[0]["ts"] == "2026-04-10T09:35:00-04:00"
+    assert rows[0]["open"] == 6828.25
+    assert rows[0]["high"] == 6829.10
+    assert rows[0]["low"] == 6828.25
+    assert rows[0]["close"] == 6829.10
+    assert rows[1]["ts"] == "2026-04-10T09:36:00-04:00"
+    assert rows[1]["close"] == 6830.50
 
 
 def test_get_prior_session_intraday_uses_short_lived_curve_cache(monkeypatch):

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 import html
 import json
+import logging
 import re
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -12,12 +13,15 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from mccain_capital import runtime as app_runtime
 
+LOGGER = logging.getLogger(__name__)
+
 RSS_TIMEOUT_SECONDS = 2.0
 CACHE_TTL_SECONDS = 60
 DEFAULT_LIMIT = 15
 MAX_SOURCE_ITEMS = 10
 MAX_ITEM_AGE_HOURS = 48
 LAST_SUCCESS_MAX_AGE_HOURS = 24
+TWITTER_FEED_MAX_WORKERS = 2
 
 TWITTER_RSS_SOURCES: Tuple[Dict[str, str], ...] = (
     {
@@ -486,16 +490,24 @@ def build_twitter_feed_snapshot(
 
     items: List[Dict[str, Any]] = []
     failed_sources: List[str] = []
-
-    with ThreadPoolExecutor(max_workers=len(TWITTER_RSS_SOURCES)) as pool:
-        futures = {
-            pool.submit(_fetch_source_items, source, now_et, structure): source
-            for source in TWITTER_RSS_SOURCES
-        }
-        for future in as_completed(futures):
-            source = futures[future]
+    max_workers = max(1, min(TWITTER_FEED_MAX_WORKERS, len(TWITTER_RSS_SOURCES)))
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(_fetch_source_items, source, now_et, structure): source
+                for source in TWITTER_RSS_SOURCES
+            }
+            for future in as_completed(futures):
+                source = futures[future]
+                try:
+                    items.extend(list(future.result() or []))
+                except Exception:
+                    failed_sources.append(source["source"])
+    except RuntimeError as exc:
+        LOGGER.warning("twitter feed thread pool unavailable; falling back to sequential fetch: %s", exc)
+        for source in TWITTER_RSS_SOURCES:
             try:
-                items.extend(list(future.result() or []))
+                items.extend(list(_fetch_source_items(source, now_et, structure) or []))
             except Exception:
                 failed_sources.append(source["source"])
 

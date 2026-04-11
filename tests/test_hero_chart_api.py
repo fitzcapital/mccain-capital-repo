@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from mccain_capital.services import core
 from mccain_capital.services import tradier_hero_chart_service as hero_service
@@ -35,7 +35,7 @@ def test_get_intraday_bars_filters_spx_to_regular_session_after_hours(monkeypatc
     assert payload["bars"][0]["time"] != int(now_et.replace(hour=16, minute=5, second=0, microsecond=0).timestamp())
 
 
-def test_get_intraday_bars_open_session_returns_prior_plus_current(monkeypatch):
+def test_get_intraday_bars_opening_session_returns_prior_plus_current(monkeypatch):
     now_et = datetime(2026, 4, 8, 10, 5, 0, tzinfo=app_runtime.TZ)
     monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
 
@@ -60,9 +60,79 @@ def test_get_intraday_bars_open_session_returns_prior_plus_current(monkeypatch):
     assert len(payload["bars"]) == 4
     assert payload["previous_session_bar_count"] == 2
     assert payload["current_session_bar_count"] == 2
+    assert payload["opening_session_mode"] is True
     assert payload["bars"][0]["close"] == 6760
     assert payload["bars"][-1]["close"] == 6774
-    assert payload["visible_window_bars"] == 4
+    assert payload["visible_window_bars"] > 4
+
+
+def test_get_intraday_bars_regular_session_prefers_today_only_after_opening_window(monkeypatch):
+    now_et = datetime(2026, 4, 8, 11, 5, 0, tzinfo=app_runtime.TZ)
+    monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
+
+    rows = []
+    start = datetime(2026, 4, 8, 9, 30, 0, tzinfo=app_runtime.TZ)
+    for index in range(10):
+        rows.append(
+            {
+                "ts": (start + timedelta(minutes=index * 5)).isoformat(),
+                "open": 6770 + index,
+                "high": 6772 + index,
+                "low": 6768 + index,
+                "close": 6771 + index,
+                "volume": 100,
+            }
+        )
+    prior_rows = [
+        {"ts": "2026-04-07T15:50:00-04:00", "open": 6758, "high": 6761, "low": 6757, "close": 6760, "volume": 100},
+        {"ts": "2026-04-07T15:55:00-04:00", "open": 6760, "high": 6764, "low": 6759, "close": 6763, "volume": 100},
+    ]
+
+    monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: rows)
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: prior_rows,
+    )
+
+    payload = hero_service.get_intraday_bars(symbol="SPX", interval="5min")
+
+    assert payload["opening_session_mode"] is False
+    assert payload["previous_session_bar_count"] == 0
+    assert payload["current_session_bar_count"] == 10
+    assert payload["session_target_bar_count"] == 79
+    assert len(payload["bars"]) == 10
+    assert payload["bars"][0]["close"] == 6771
+    assert payload["bars"][-1]["close"] == 6780
+
+
+def test_get_intraday_bars_open_session_uses_live_quote_when_intraday_missing(monkeypatch):
+    now_et = datetime(2026, 4, 10, 9, 41, 0, tzinfo=app_runtime.TZ)
+    monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
+
+    prior_rows = [
+        {"ts": "2026-04-09T15:50:00-04:00", "open": 6828, "high": 6831, "low": 6826, "close": 6829, "volume": 100},
+        {"ts": "2026-04-09T15:55:00-04:00", "open": 6829, "high": 6830, "low": 6823, "close": 6824, "volume": 100},
+    ]
+
+    monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: [])
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: prior_rows,
+    )
+    monkeypatch.setattr(
+        hero_service,
+        "get_live_quote",
+        lambda symbol="SPX": {"symbol": symbol, "price": 6832.5, "pct_change": 0.1, "provider": "tradier", "reason": "tradier_live", "as_of": "2026-04-10T13:41:00+00:00"},
+    )
+
+    payload = hero_service.get_intraday_bars(symbol="SPX", interval="5min")
+
+    assert len(payload["bars"]) == 3
+    assert payload["previous_session_bar_count"] == 2
+    assert payload["current_session_bar_count"] == 1
+    assert payload["bars"][-1]["close"] == 6832.5
 
 
 def test_hero_levels_api_uses_service_payload(client, monkeypatch):
@@ -94,15 +164,15 @@ def test_hero_levels_api_uses_service_payload(client, monkeypatch):
                 "gamma_regime_subtitle": "Trend / momentum active",
                 "regime_confidence": "high",
                 "regime_confidence_label": "High confidence",
-                "execution_regime": "trend_momentum_active",
-                "execution_regime_label": "Trend momentum active",
+                "execution_regime": "full_mode",
+                "execution_regime_label": "FULL_MODE",
                 "planning_bias": "above_call_wall_extension_risk",
                 "planning_bias_label": "Above Call Wall · extension risk toward 6620",
                 "bias_state": "above_local",
                 "bias_context": "ABOVE LOCAL FLIP",
                 "bias_label": "BUY DIPS",
                 "bias": "Above Call Wall · extension risk toward 6620",
-                "tradeability": "Trend momentum active",
+                "tradeability": "FULL_MODE",
                 "session": "Regular · High confidence",
                 "trade_state": "NO_TRADE",
                 "trade_state_label": "NO TRADE",

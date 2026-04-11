@@ -389,6 +389,66 @@ def _tradier_intraday_rows_for_date(symbol: str, session_day: date) -> List[Dict
     return _tradier_intraday_rows_for_window(symbol, start_et, end_et)
 
 
+def _stream_intraday_rows_for_date(symbol: str, session_day: date) -> List[Dict[str, Any]]:
+    """Build minute OHLC rows from the in-process market worker cache.
+
+    Tradier can occasionally return no current-session SPX timesales even while
+    quotes/streaming are live. When that happens, the hero chart should prefer
+    same-day stream points over falling straight back to the prior session.
+    """
+
+    try:
+        from mccain_capital.services import market_worker
+    except Exception:
+        return []
+
+    try:
+        snapshot = market_worker.get_market_snapshot()
+    except Exception:
+        return []
+
+    symbol_key = str(symbol or "").strip().upper()
+    raw_points = ((snapshot.get("series_points") or {}).get(symbol_key) or [])
+    if not isinstance(raw_points, list) or not raw_points:
+        return []
+
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for point in raw_points:
+        if not isinstance(point, dict):
+            continue
+        value = _safe_float(point.get("v"))
+        raw_ts = str(point.get("ts") or "").strip()
+        if value is None or not raw_ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=app_runtime.TZ)
+        dt_et = dt.astimezone(app_runtime.TZ)
+        if dt_et.date() != session_day:
+            continue
+        bucket_dt = dt_et.replace(second=0, microsecond=0)
+        bucket_key = bucket_dt.isoformat(timespec="seconds")
+        current = buckets.get(bucket_key)
+        if current is None:
+            buckets[bucket_key] = {
+                "ts": bucket_key,
+                "open": float(value),
+                "high": float(value),
+                "low": float(value),
+                "close": float(value),
+                "volume": 0.0,
+            }
+            continue
+        current["high"] = max(float(current["high"]), float(value))
+        current["low"] = min(float(current["low"]), float(value))
+        current["close"] = float(value)
+
+    return [buckets[key] for key in sorted(buckets.keys())]
+
+
 def _massive_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
     key = _massive_api_key()
     if not key:
@@ -737,6 +797,16 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
         return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
     if tradier_rows:
         return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
+    now_et = app_runtime.now_et()
+    session_day = now_et.date()
+    session_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    if now_et < session_open:
+        session_day = _previous_trading_day(session_day)
+    stream_rows = _stream_intraday_rows_for_date(symbol, session_day)
+    if len(stream_rows) >= 5:
+        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, stream_rows)
+    if stream_rows:
+        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, stream_rows)
     return []
 
 

@@ -129,7 +129,7 @@ def test_get_hero_levels_uses_shared_snapshot_regime_without_reclassification(mo
                 "next_call_wall": 6785.0,
                 "next_put_wall": 6575.0,
                 "bias": "Above Call Wall · extension risk toward 6785",
-                "tradeability": "Trend momentum active",
+                "tradeability": "FULL_MODE",
                 "session": "Regular · High confidence",
                 "trade_state": "PLANNING_ONLY",
                 "trade_state_label": "PLANNING ONLY",

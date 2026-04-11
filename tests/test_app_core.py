@@ -809,6 +809,25 @@ def test_candle_opens_uses_titled_march_backup_events(monkeypatch):
     assert "FOMC Press Conference" in march_18_titles
 
 
+def test_candle_opens_uses_titled_april_next_week_backup_events(monkeypatch):
+    monkeypatch.setattr(core_service, "get_forex_factory_month_feed", lambda: [])
+    monkeypatch.setattr(core_service, "get_forex_factory_feed", lambda: [])
+    monkeypatch.setattr(core_service, "get_forex_factory_next_week_feed", lambda: [])
+    out = core_service._forex_factory_usd_window_events(
+        core_service.date(2026, 4, 12), core_service.date(2026, 4, 18)
+    )
+    assert bool(out.get("fallback_used"))
+    assert int(out.get("fallback_count") or 0) >= 10
+    event_days = set((out.get("events_by_day") or {}).keys())
+    for expected in ("2026-04-13", "2026-04-14", "2026-04-15", "2026-04-16"):
+        assert expected in event_days
+    april_14_titles = [
+        row["title"] for row in (out.get("events_by_day") or {}).get("2026-04-14", [])
+    ]
+    assert "Core PPI m/m" in april_14_titles
+    assert "PPI m/m" in april_14_titles
+
+
 def test_candle_opens_sorts_events_by_actual_timestamp(monkeypatch):
     monkeypatch.setattr(
         core_service,

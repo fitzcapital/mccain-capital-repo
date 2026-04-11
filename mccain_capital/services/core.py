@@ -245,6 +245,21 @@ USD_CALENDAR_FALLBACK_EVENTS: Tuple[Tuple[str, str, str], ...] = (
     ("2026-03-25T08:30:00-04:00", "Medium", "Export Price Index m/m"),
     ("2026-03-26T08:30:00-04:00", "High", "Unemployment Claims"),
     ("2026-03-31T10:00:00-04:00", "High", "JOLTS Job Openings"),
+    ("2026-04-13T10:00:00-04:00", "Medium", "Existing Home Sales"),
+    ("2026-04-13T14:00:00-04:00", "Medium", "Federal Budget Balance"),
+    ("2026-04-14T08:00:00-04:00", "Medium", "NFIB Small Business Index"),
+    ("2026-04-14T08:15:00-04:00", "Medium", "ADP Weekly Employment Change"),
+    ("2026-04-14T08:30:00-04:00", "High", "Core PPI m/m"),
+    ("2026-04-14T08:30:00-04:00", "High", "PPI m/m"),
+    ("2026-04-15T08:30:00-04:00", "Medium", "Empire State Manufacturing Index"),
+    ("2026-04-15T08:30:00-04:00", "Medium", "Import Prices m/m"),
+    ("2026-04-15T10:00:00-04:00", "Medium", "NAHB Housing Market Index"),
+    ("2026-04-15T10:30:00-04:00", "Medium", "Crude Oil Inventories"),
+    ("2026-04-15T14:00:00-04:00", "High", "Beige Book"),
+    ("2026-04-16T08:30:00-04:00", "High", "Philly Fed Manufacturing Index"),
+    ("2026-04-16T08:30:00-04:00", "High", "Unemployment Claims"),
+    ("2026-04-16T09:15:00-04:00", "Medium", "Capacity Utilization Rate"),
+    ("2026-04-16T09:15:00-04:00", "Medium", "Industrial Production m/m"),
 )
 
 
@@ -908,6 +923,9 @@ def _market_pulse_resolve_spot_snapshot(
     gamma_spot = _market_pulse_positive_float(
         gamma_snapshot.get("spot") if gamma_snapshot.get("spot") is not None else gamma_snapshot.get("spot_price_used")
     )
+    gamma_spot_source = str(gamma_snapshot.get("spot_source") or "").strip().lower()
+    gamma_spot_source_label = str(gamma_snapshot.get("spot_source_label") or "").strip() or "Last Valid Snapshot"
+    gamma_build_status = str(gamma_snapshot.get("build_status") or "").strip().lower()
     gamma_as_of = str(
         gamma_snapshot.get("spot_source_timestamp")
         or gamma_snapshot.get("last_successful_compute")
@@ -933,6 +951,8 @@ def _market_pulse_resolve_spot_snapshot(
                 "freshness_status": "live" if quote_band == "live" else "stale",
                 "confidence": "high" if quote_band == "live" else "medium",
                 "state": "LIVE_SESSION",
+                "spot_is_fallback": False,
+                "fallback_reason": "",
             }
         )
     if quote_price is not None:
@@ -945,6 +965,12 @@ def _market_pulse_resolve_spot_snapshot(
                 "freshness_status": "stale" if session_mode != "regular" or quote_band != "live" else "live",
                 "confidence": "medium" if session_mode != "regular" else "high",
                 "state": "AFTER_HOURS_VALID" if session_mode != "regular" else "LIVE_SESSION",
+                "spot_is_fallback": session_mode != "regular" or quote_band != "live",
+                "fallback_reason": (
+                    "Using the most recent trusted SPX session quote."
+                    if session_mode != "regular" or quote_band != "live"
+                    else ""
+                ),
             }
         )
     if official_close is not None:
@@ -957,18 +983,32 @@ def _market_pulse_resolve_spot_snapshot(
                 "freshness_status": "stale",
                 "confidence": "medium",
                 "state": "AFTER_HOURS_VALID" if session_mode != "regular" else "LIVE_SESSION",
+                "spot_is_fallback": True,
+                "fallback_reason": "Using official prior close as the SPX anchor.",
             }
         )
     if gamma_spot is not None:
         candidates.append(
             {
                 "value": gamma_spot,
-                "source": "last_good_snapshot",
-                "source_label": "Last Good Snapshot",
+                "source": gamma_spot_source or "last_valid_snapshot",
+                "source_label": gamma_spot_source_label,
                 "as_of": gamma_as_of,
                 "freshness_status": "stale",
-                "confidence": "low",
-                "state": "AFTER_HOURS_VALID" if session_mode != "regular" else "LIVE_SESSION",
+                "confidence": (
+                    "high"
+                    if gamma_build_status == "live_valid" and gamma_spot_source == "live_quote" and session_mode == "regular"
+                    else "medium"
+                    if gamma_build_status == "fallback_valid"
+                    else "low"
+                ),
+                "state": (
+                    "LIVE_SESSION"
+                    if gamma_build_status == "live_valid" and gamma_spot_source == "live_quote" and session_mode == "regular"
+                    else "AFTER_HOURS_VALID"
+                ),
+                "spot_is_fallback": gamma_build_status != "live_valid" or gamma_spot_source != "live_quote",
+                "fallback_reason": str(gamma_snapshot.get("fallback_reason") or ""),
             }
         )
     if last_good_value is not None:
@@ -981,6 +1021,8 @@ def _market_pulse_resolve_spot_snapshot(
                 "freshness_status": "stale",
                 "confidence": "low",
                 "state": "AFTER_HOURS_VALID" if session_mode != "regular" else "LIVE_SESSION",
+                "spot_is_fallback": True,
+                "fallback_reason": "Using the last cached playbook snapshot anchor.",
             }
         )
 
@@ -1006,6 +1048,8 @@ def _market_pulse_resolve_spot_snapshot(
         "freshness_status": "unavailable",
         "confidence": "none",
         "state": "UNAVAILABLE",
+        "spot_is_fallback": False,
+        "fallback_reason": "",
     }
 
 
@@ -1262,8 +1306,6 @@ def _market_pulse_apply_resolved_levels(
     out["next_call_wall_above"] = dict(level_meta.get("next_call_wall") or {}).get("value")
     out["next_put_wall_below"] = dict(level_meta.get("next_put_wall") or {}).get("value")
     out["local_flip_found"] = dict(level_meta.get("local_flip") or {}).get("value") is not None
-    regime_meta = dict(gamma_resolution.get("gamma_regime_meta") or {})
-    out["regime"] = regime_meta.get("label")
     out["resolved_gamma_data_status"] = str(gamma_resolution.get("gamma_data_status") or "")
     return out
 
@@ -1276,9 +1318,11 @@ def _market_pulse_apply_resolved_spot(
     out["price"] = spot_resolution.get("value")
     if spot_resolution.get("as_of"):
         out["asof"] = spot_resolution.get("as_of")
-        out["as_of"] = spot_resolution.get("as_of")
+    out["as_of"] = spot_resolution.get("as_of")
     out["spot_source"] = spot_resolution.get("source")
     out["spot_source_label"] = spot_resolution.get("source_label")
+    out["spot_is_fallback"] = bool(spot_resolution.get("spot_is_fallback"))
+    out["fallback_reason"] = str(spot_resolution.get("fallback_reason") or "")
     return out
 
 
@@ -3545,8 +3589,12 @@ def _market_pulse_gamma_data_status(
     level_count: int,
 ) -> str:
     snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
+    build_status = str(gamma_snapshot.get("build_status") or "").strip().lower()
     regime_text = str(gamma_snapshot.get("regime") or "").strip().lower()
     has_regime = regime_text not in {"", "unavailable", "invalid", "unknown"}
+
+    if build_status == "fallback_valid":
+        return "fallback_valid" if level_count >= 4 and has_regime else "partial"
 
     # Treat snapshot health first, then downgrade based on structural completeness.
     if snapshot_status == "healthy":
@@ -3558,63 +3606,208 @@ def _market_pulse_gamma_data_status(
     return "invalid"
 
 
+def _market_pulse_gamma_regime_state(
+    gamma_snapshot: Dict[str, Any],
+    *,
+    gamma_data_status: str,
+    session_mode: str,
+    levels: Dict[str, Any],
+    next_call_wall: Any,
+    next_put_wall: Any,
+) -> Dict[str, Any]:
+    regime_text = str(gamma_snapshot.get("regime") or "").strip().lower()
+    has_regime = regime_text not in {"", "unavailable", "invalid", "unknown", "unconfirmed"}
+    effective_session = "regular" if session_mode == "stale" else session_mode
+    spot = _market_pulse_positive_float(
+        levels.get("spot")
+        if isinstance(levels.get("spot"), (int, float))
+        else gamma_snapshot.get("spot_price_used")
+        if isinstance(gamma_snapshot.get("spot_price_used"), (int, float))
+        else gamma_snapshot.get("spot")
+    )
+    main_flip = _market_pulse_positive_float(levels.get("main_flip"))
+    local_flip = _market_pulse_positive_float(levels.get("local_flip"))
+    call_wall = _market_pulse_positive_float(levels.get("call_wall"))
+    put_wall = _market_pulse_positive_float(levels.get("put_wall"))
+    next_call = _market_pulse_positive_float(next_call_wall)
+    next_put = _market_pulse_positive_float(next_put_wall)
+    level_count = sum(
+        1
+        for value in (main_flip, local_flip, call_wall, put_wall, next_call, next_put)
+        if value is not None
+    )
+    has_primary_wall = call_wall is not None or put_wall is not None
+    intraday_session = effective_session in {"premarket", "regular"}
+
+    if gamma_data_status == "invalid":
+        state = {
+            "regime_status": "unavailable",
+            "board_status": "Unavailable",
+            "confidence": "none",
+            "missing_reason": "no_usable_snapshot",
+            "level_count": level_count,
+        }
+    elif gamma_data_status in {"fresh_valid", "fallback_valid", "stale_but_usable"} and has_regime:
+        state = {
+            "regime_status": "confirmed",
+            "board_status": "Complete",
+            "confidence": "high",
+            "missing_reason": "",
+            "level_count": level_count,
+        }
+    elif not intraday_session:
+        state = {
+            "regime_status": "unconfirmed",
+            "board_status": "Partial",
+            "confidence": "low",
+            "missing_reason": "waiting_on_intraday_session",
+            "level_count": level_count,
+        }
+    elif not has_regime:
+        state = {
+            "regime_status": "unconfirmed",
+            "board_status": "Partial",
+            "confidence": "low",
+            "missing_reason": "waiting_on_regime",
+            "level_count": level_count,
+        }
+    elif spot is None:
+        state = {
+            "regime_status": "unconfirmed",
+            "board_status": "Partial",
+            "confidence": "low",
+            "missing_reason": "waiting_on_spot_anchor",
+            "level_count": level_count,
+        }
+    elif main_flip is None:
+        state = {
+            "regime_status": "unconfirmed",
+            "board_status": "Partial",
+            "confidence": "low",
+            "missing_reason": "waiting_on_main_flip",
+            "level_count": level_count,
+        }
+    elif not has_primary_wall:
+        state = {
+            "regime_status": "unconfirmed",
+            "board_status": "Partial",
+            "confidence": "low",
+            "missing_reason": "waiting_on_wall_structure",
+            "level_count": level_count,
+        }
+    elif level_count < 3:
+        state = {
+            "regime_status": "unconfirmed",
+            "board_status": "Partial",
+            "confidence": "low",
+            "missing_reason": "waiting_on_core_levels",
+            "level_count": level_count,
+        }
+    else:
+        state = {
+            "regime_status": "provisional",
+            "board_status": "Partial",
+            "confidence": "medium",
+            "missing_reason": "",
+            "level_count": level_count,
+        }
+
+    _market_pulse_log(
+        "gamma_regime_state",
+        session_mode=session_mode,
+        effective_session=effective_session,
+        gamma_data_status=gamma_data_status,
+        spot=spot,
+        regime=regime_text,
+        main_flip=main_flip,
+        local_flip=local_flip,
+        call_wall=call_wall,
+        put_wall=put_wall,
+        validated_level_count=level_count,
+        gamma_regime_state=state.get("regime_status"),
+        gamma_regime_confidence=state.get("confidence"),
+        gamma_board_status=state.get("board_status"),
+        gamma_regime_missing_reason=state.get("missing_reason"),
+    )
+    return state
+
+
 def _market_pulse_gamma_regime_viewmodel(
     gamma_snapshot: Dict[str, Any],
     *,
     gamma_data_status: str,
+    regime_status: str = "",
+    missing_reason: str = "",
 ) -> Dict[str, str]:
     regime_text = str(gamma_snapshot.get("regime") or "").strip()
-    regime_lower = regime_text.lower()
-    raw_net_gamma = (
-        float(gamma_snapshot.get("net_gex"))
-        if isinstance(gamma_snapshot.get("net_gex"), (int, float))
-        else float(gamma_snapshot.get("net_gex_total"))
-        if isinstance(gamma_snapshot.get("net_gex_total"), (int, float))
-        else None
-    )
+    regime_lower = regime_text.lower().replace("-", "_").replace(" ", "_")
+    normalized_regime_status = str(regime_status or "").strip().lower()
+    if not normalized_regime_status:
+        normalized_regime_status = (
+            "unavailable"
+            if gamma_data_status == "invalid"
+            else "unconfirmed"
+            if gamma_data_status == "partial"
+            else "confirmed"
+        )
 
-    if gamma_data_status == "invalid":
+    if gamma_data_status == "invalid" or normalized_regime_status == "unavailable":
         return {
             "gamma_regime": "unavailable",
             "gamma_regime_label": "Regime Unavailable",
-            "gamma_regime_subtitle": "Gamma snapshot unavailable",
+            "gamma_regime_subtitle": "No usable gamma snapshot",
         }
-    if gamma_data_status == "partial":
+
+    if normalized_regime_status == "unconfirmed":
+        subtitle = {
+            "waiting_on_spot_anchor": "Waiting on spot anchor",
+            "waiting_on_regime": "Waiting on regime",
+            "waiting_on_main_flip": "Waiting on main flip",
+            "waiting_on_wall_structure": "Waiting on wall structure",
+            "waiting_on_core_levels": "Waiting on core levels",
+            "waiting_on_intraday_session": "Gamma board incomplete",
+        }.get(missing_reason, "Gamma board incomplete")
         return {
             "gamma_regime": "unconfirmed",
             "gamma_regime_label": "Unconfirmed",
-            "gamma_regime_subtitle": "Gamma board incomplete",
+            "gamma_regime_subtitle": subtitle,
+        }
+
+    provisional_prefix = "Provisional " if normalized_regime_status == "provisional" else ""
+    provisional_subtitle = (
+        "Core levels present · medium confidence"
+        if normalized_regime_status == "provisional"
+        else None
+    )
+    if "strong_negative" in regime_lower:
+        return {
+            "gamma_regime": "negative",
+            "gamma_regime_label": f"{provisional_prefix}Negative Gamma",
+            "gamma_regime_subtitle": provisional_subtitle or "Strong trend / momentum active",
         }
     if "negative" in regime_lower:
         return {
             "gamma_regime": "negative",
-            "gamma_regime_label": "Negative Gamma",
-            "gamma_regime_subtitle": "Trend / momentum active",
+            "gamma_regime_label": f"{provisional_prefix}Negative Gamma",
+            "gamma_regime_subtitle": provisional_subtitle or "Trend / momentum active",
+        }
+    if "strong_positive" in regime_lower:
+        return {
+            "gamma_regime": "positive",
+            "gamma_regime_label": f"{provisional_prefix}Positive Gamma",
+            "gamma_regime_subtitle": provisional_subtitle or "Strong mean reversion / pinning active",
         }
     if "positive" in regime_lower:
         return {
             "gamma_regime": "positive",
-            "gamma_regime_label": "Positive Gamma",
-            "gamma_regime_subtitle": "Mean reversion active",
+            "gamma_regime_label": f"{provisional_prefix}Positive Gamma",
+            "gamma_regime_subtitle": provisional_subtitle or "Mean reversion active",
         }
     if "neutral" in regime_lower or "flip" in regime_lower:
         return {
             "gamma_regime": "neutral",
-            "gamma_regime_label": "Neutral Gamma",
-            "gamma_regime_subtitle": "Mixed dealer structure",
-        }
-    if raw_net_gamma is not None:
-        if abs(raw_net_gamma) < 1e-9:
-            return {
-                "gamma_regime": "neutral",
-                "gamma_regime_label": "Neutral Gamma",
-                "gamma_regime_subtitle": "Mixed dealer structure",
-            }
-        is_positive = raw_net_gamma > 0
-        return {
-            "gamma_regime": "positive" if is_positive else "negative",
-            "gamma_regime_label": "Positive Gamma" if is_positive else "Negative Gamma",
-            "gamma_regime_subtitle": "Mean reversion active" if is_positive else "Trend / momentum active",
+            "gamma_regime_label": f"{provisional_prefix}Neutral Gamma",
+            "gamma_regime_subtitle": provisional_subtitle or "Mixed dealer structure",
         }
     return {
         "gamma_regime": "unconfirmed",
@@ -3630,18 +3823,30 @@ def _market_pulse_gamma_reason_label(
     levels_source: str,
     structure_invariant_status: str,
     structure_invariant_issues: Optional[List[str]] = None,
+    regime_status: str = "",
+    missing_reason: str = "",
 ) -> str:
     issues = [str(issue or "").strip().lower() for issue in (structure_invariant_issues or []) if str(issue or "").strip()]
     primary_issue = issues[0] if issues else ""
 
     if levels_source == "last_valid_snapshot":
         return "Last valid structure"
+    if levels_source == "prior_close_fallback":
+        return "Prior close anchor"
+    if levels_source == "last_valid_snapshot_fallback":
+        return "Last valid snapshot anchor"
+    if levels_source == "last_valid_quote_fallback":
+        return "Last valid session quote"
+    if levels_source == "fallback_snapshot":
+        return "Fallback spot anchor"
     if gamma_data_status == "invalid":
         if primary_issue == "wall_order_invalid":
             return "Wall order invalid"
         if primary_issue == "local_flip_outside_wall_span":
             return "Local flip outside walls"
         return "Gamma unavailable"
+    if gamma_data_status == "fallback_valid":
+        return "Reduced confidence"
     if gamma_data_status == "partial":
         if structure_invariant_status == "soft_invalid":
             if set(issues) >= {"next_call_wall_not_above_call_wall", "next_put_wall_not_below_put_wall"}:
@@ -3651,6 +3856,16 @@ def _market_pulse_gamma_reason_label(
             if primary_issue == "next_put_wall_not_below_put_wall":
                 return "Next put wall invalid"
             return "Soft downgrade"
+        if regime_status == "provisional":
+            return "Intraday usable"
+        if missing_reason == "waiting_on_main_flip":
+            return "Waiting on main flip"
+        if missing_reason == "waiting_on_wall_structure":
+            return "Waiting on wall structure"
+        if missing_reason == "waiting_on_core_levels":
+            return "Waiting on core levels"
+        if missing_reason == "waiting_on_spot_anchor":
+            return "Waiting on spot anchor"
         return "Partial board" if gamma_regime == "unconfirmed" else "Reduced confidence"
     if gamma_data_status == "stale_but_usable" and levels_source == "stale_snapshot":
         return "Stale but usable"
@@ -3661,9 +3876,20 @@ def _market_pulse_regime_confidence(
     *,
     session_mode: str,
     gamma_data_status: str,
+    regime_status: str = "",
 ) -> str:
+    if regime_status == "confirmed":
+        return "high"
+    if regime_status == "provisional":
+        return "medium"
+    if regime_status == "unconfirmed":
+        return "low"
+    if regime_status == "unavailable":
+        return "none"
     if gamma_data_status == "fresh_valid":
         return "high" if session_mode == "regular" else "medium"
+    if gamma_data_status == "fallback_valid":
+        return "low"
     if gamma_data_status == "stale_but_usable":
         return "medium" if session_mode == "regular" else "low"
     if gamma_data_status == "partial":
@@ -3677,9 +3903,16 @@ def _market_pulse_levels_source(
     execution_chart: Dict[str, Any],
     gamma_data_status: str,
     level_count: int,
+    spot_source: str = "",
 ) -> str:
     if level_count <= 0:
         return "unavailable"
+    if gamma_data_status == "fallback_valid":
+        return {
+            "prior_close": "prior_close_fallback",
+            "last_valid_snapshot": "last_valid_snapshot_fallback",
+            "last_valid_quote": "last_valid_quote_fallback",
+        }.get(str(spot_source or "").strip().lower(), "fallback_snapshot")
     if gamma_data_status == "stale_but_usable":
         return "stale_snapshot"
     if session_mode == "regular" and str(execution_chart.get("mode") or "") == "live_session" and gamma_data_status == "fresh_valid":
@@ -4028,50 +4261,50 @@ def _market_pulse_execution_regime_viewmodel(
         if levels_source in {"last_valid_snapshot", "stale_snapshot", "live_session_snapshot"}:
             return {
                 "execution_regime": "planning_mode_only",
-                "execution_regime_label": "Planning mode only",
+                "execution_regime_label": "PLANNING_ONLY",
             }
         return {
-            "execution_regime": "reduced_confidence_structure_first",
-            "execution_regime_label": "Reduced confidence · structure first",
+            "execution_regime": "planning_mode_only",
+            "execution_regime_label": "PLANNING_ONLY",
         }
     if session_mode == "closed":
         if levels_source != "unavailable":
             return {
                 "execution_regime": "planning_mode_only",
-                "execution_regime_label": "Planning mode only",
+                "execution_regime_label": "PLANNING_ONLY",
             }
         return {
-            "execution_regime": "reduced_confidence_structure_first",
-            "execution_regime_label": "Reduced confidence · structure first",
+            "execution_regime": "planning_mode_only",
+            "execution_regime_label": "PLANNING_ONLY",
         }
     if gamma_data_status in {"invalid", "partial"} or levels_source == "unavailable":
         return {
-            "execution_regime": "reduced_confidence_structure_first",
-            "execution_regime_label": "Reduced confidence · structure first",
+            "execution_regime": "planning_mode_only",
+            "execution_regime_label": "PLANNING_ONLY",
         }
     if planning_bias == "above_call_wall_extension_risk":
         return {
-            "execution_regime": "expansion_risk",
-            "execution_regime_label": "Expansion risk",
+            "execution_regime": "full_mode",
+            "execution_regime_label": "FULL_MODE",
         }
     if planning_bias == "below_put_wall_breakdown_risk":
         return {
-            "execution_regime": "breakdown_risk",
-            "execution_regime_label": "Breakdown risk",
+            "execution_regime": "full_mode",
+            "execution_regime_label": "FULL_MODE",
         }
     if gamma_regime == "negative":
         return {
-            "execution_regime": "trend_momentum_active",
-            "execution_regime_label": "Trend momentum active",
+            "execution_regime": "full_mode",
+            "execution_regime_label": "FULL_MODE",
         }
     if gamma_regime == "positive":
         return {
-            "execution_regime": "mean_reversion_active",
-            "execution_regime_label": "Mean reversion active",
+            "execution_regime": "scalp_mode",
+            "execution_regime_label": "SCALP_MODE",
         }
     return {
-        "execution_regime": "mixed_structure_first",
-        "execution_regime_label": "Mixed structure first",
+        "execution_regime": "planning_mode_only",
+        "execution_regime_label": "PLANNING_ONLY",
     }
 
 
@@ -4218,9 +4451,35 @@ def _market_pulse_structure_snapshot(
         effective_gamma_data_status = "partial"
     elif session_mode in {"after_hours", "premarket", "closed"} and raw_snapshot_invalid:
         effective_gamma_data_status = "invalid"
+    _market_pulse_log(
+        "gamma_regime_input",
+        session_mode=session_mode,
+        gamma_data_status=effective_gamma_data_status,
+        snapshot_status=str(gamma_snapshot.get("snapshot_status") or ""),
+        build_status=str(gamma_snapshot.get("build_status") or ""),
+        spot=levels.get("spot"),
+        regime=str(gamma_snapshot.get("regime") or ""),
+        main_flip=levels.get("main_flip"),
+        local_flip=levels.get("local_flip"),
+        call_wall=levels.get("call_wall"),
+        put_wall=levels.get("put_wall"),
+        next_call_wall=next_call_wall,
+        next_put_wall=next_put_wall,
+        validated_level_count=level_count,
+    )
+    regime_state = _market_pulse_gamma_regime_state(
+        gamma_snapshot,
+        gamma_data_status=effective_gamma_data_status,
+        session_mode=session_mode,
+        levels=levels,
+        next_call_wall=next_call_wall,
+        next_put_wall=next_put_wall,
+    )
     regime = _market_pulse_gamma_regime_viewmodel(
         gamma_snapshot,
         gamma_data_status=effective_gamma_data_status,
+        regime_status=str(regime_state.get("regime_status") or ""),
+        missing_reason=str(regime_state.get("missing_reason") or ""),
     )
     if planning_fallback_active:
         regime = {
@@ -4228,11 +4487,19 @@ def _market_pulse_structure_snapshot(
             "gamma_regime_label": "Unconfirmed",
             "gamma_regime_subtitle": "Using last valid session structure",
         }
+        regime_state = {
+            "regime_status": "unconfirmed",
+            "board_status": "Partial",
+            "confidence": "low",
+            "missing_reason": "using_last_valid_session_structure",
+            "level_count": level_count,
+        }
     levels_source = _market_pulse_levels_source(
         session_mode=session_mode,
         execution_chart=execution_chart,
         gamma_data_status=effective_gamma_data_status,
         level_count=level_count,
+        spot_source=str(gamma_snapshot.get("spot_source") or ""),
     )
     if planning_fallback_active:
         levels_source = "last_valid_snapshot"
@@ -4241,6 +4508,7 @@ def _market_pulse_structure_snapshot(
     regime_confidence = _market_pulse_regime_confidence(
         session_mode=session_mode,
         gamma_data_status=effective_gamma_data_status,
+        regime_status=str(regime_state.get("regime_status") or ""),
     )
     planning_bias = _market_pulse_planning_bias_viewmodel(
         spot=levels.get("spot"),
@@ -4295,14 +4563,37 @@ def _market_pulse_structure_snapshot(
         "live_session_snapshot": "Live session snapshot",
         "last_valid_snapshot": "Last valid snapshot",
         "stale_snapshot": "Stale snapshot",
+        "fallback_snapshot": "Fallback spot anchor",
+        "prior_close_fallback": "Prior close fallback",
+        "last_valid_snapshot_fallback": "Last valid snapshot fallback",
+        "last_valid_quote_fallback": "Last valid quote fallback",
         "unavailable": "Unavailable",
     }.get(levels_source, "Unavailable")
     gamma_data_status_label = {
         "fresh_valid": "Fresh valid",
+        "fallback_valid": "Fallback Build",
         "stale_but_usable": "Stale but usable",
         "partial": "Partial",
         "invalid": "Invalid",
     }.get(effective_gamma_data_status, "Invalid")
+    gamma_regime_state = str(regime_state.get("regime_status") or "unavailable")
+    gamma_board_status = str(regime_state.get("board_status") or "Unavailable")
+    gamma_regime_confidence = {
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "none": "Invalid",
+    }.get(regime_confidence, "Invalid")
+
+    gamma_reason_label = _market_pulse_gamma_reason_label(
+        gamma_regime=regime["gamma_regime"],
+        gamma_data_status=effective_gamma_data_status,
+        levels_source=levels_source,
+        structure_invariant_status=str(gamma_snapshot.get("structure_invariant_status") or ""),
+        structure_invariant_issues=list(gamma_snapshot.get("structure_invariant_issues") or []),
+        regime_status=gamma_regime_state,
+        missing_reason=str(regime_state.get("missing_reason") or ""),
+    )
 
     snapshot_timestamp = (
         gamma_snapshot.get("last_successful_compute")
@@ -4336,9 +4627,16 @@ def _market_pulse_structure_snapshot(
         "levels_source_label": levels_source_label,
         "gamma_data_status": effective_gamma_data_status,
         "gamma_data_status_label": gamma_data_status_label,
+        "gamma_regime_state": gamma_regime_state,
+        "gamma_board_status": gamma_board_status,
+        "gamma_regime_confidence": gamma_regime_confidence,
+        "gamma_regime_missing_reason": str(regime_state.get("missing_reason") or ""),
+        "build_status": gamma_snapshot.get("build_status"),
+        "build_confidence": gamma_snapshot.get("build_confidence"),
         "gamma_regime": regime["gamma_regime"],
         "gamma_regime_label": regime["gamma_regime_label"],
         "gamma_regime_subtitle": regime["gamma_regime_subtitle"],
+        "gamma_regime_reason_label": gamma_reason_label,
         "regime_confidence": regime_confidence,
         "regime_confidence_label": confidence_label,
         "execution_regime": execution_regime["execution_regime"],
@@ -4448,7 +4746,7 @@ def _build_playbook_view_model(
     ).strip()
     execution_regime = _normalize_key(structure.get("execution_regime") or "reduced_confidence_structure_first")
     execution_regime_label = str(
-        structure.get("execution_regime_label") or "Reduced confidence · structure first"
+        structure.get("execution_regime_label") or "PLANNING_ONLY"
     ).strip()
     regime_confidence = _normalize_key(structure.get("regime_confidence") or "none")
     regime_confidence_label = str(structure.get("regime_confidence_label") or "No confidence").strip()
@@ -4462,7 +4760,14 @@ def _build_playbook_view_model(
         snapshot_mode = "planning_only"
     elif levels_source == "unavailable":
         snapshot_mode = "degraded"
-    elif gamma_data_status in {"partial", "invalid"} or levels_source in {"stale_snapshot", "last_valid_snapshot"}:
+    elif gamma_data_status in {"fallback_valid", "partial", "invalid"} or levels_source in {
+        "stale_snapshot",
+        "last_valid_snapshot",
+        "fallback_snapshot",
+        "prior_close_fallback",
+        "last_valid_snapshot_fallback",
+        "last_valid_quote_fallback",
+    }:
         snapshot_mode = "stale" if levels_source != "unavailable" else "degraded"
     else:
         snapshot_mode = "live"
@@ -4908,18 +5213,8 @@ def get_or_build_market_pulse_snapshot(
     market_structure_snapshot["chart_meta"] = chart_meta
     market_structure_snapshot["levels_source"] = gamma_resolution.get("levels_source") or market_structure_snapshot.get("levels_source")
     market_structure_snapshot["gamma_data_status"] = gamma_resolution.get("gamma_data_status") or market_structure_snapshot.get("gamma_data_status")
-    market_structure_snapshot["gamma_regime"] = dict(gamma_resolution.get("gamma_regime_meta") or {}).get("value") or market_structure_snapshot.get("gamma_regime")
-    market_structure_snapshot["gamma_regime_label"] = dict(gamma_resolution.get("gamma_regime_meta") or {}).get("label") or market_structure_snapshot.get("gamma_regime_label")
-    market_structure_snapshot["gamma_regime_subtitle"] = dict(gamma_resolution.get("gamma_regime_meta") or {}).get("subtitle") or market_structure_snapshot.get("gamma_regime_subtitle")
     market_structure_snapshot["structure_invariant_status"] = gamma_resolution.get("structure_invariant_status") or market_structure_snapshot.get("structure_invariant_status")
     market_structure_snapshot["structure_invariant_issues"] = list(gamma_resolution.get("structure_invariant_issues") or market_structure_snapshot.get("structure_invariant_issues") or [])
-    market_structure_snapshot["gamma_regime_reason_label"] = _market_pulse_gamma_reason_label(
-        gamma_regime=str(market_structure_snapshot.get("gamma_regime") or ""),
-        gamma_data_status=str(market_structure_snapshot.get("gamma_data_status") or ""),
-        levels_source=str(market_structure_snapshot.get("levels_source") or ""),
-        structure_invariant_status=str(market_structure_snapshot.get("structure_invariant_status") or ""),
-        structure_invariant_issues=list(market_structure_snapshot.get("structure_invariant_issues") or []),
-    )
     market_structure_snapshot["main_flip"] = resolved_levels.get("main_flip")
     market_structure_snapshot["local_flip"] = resolved_levels.get("local_flip")
     market_structure_snapshot["call_wall"] = resolved_levels.get("call_wall")
@@ -4938,10 +5233,66 @@ def get_or_build_market_pulse_snapshot(
         f"{market_structure_snapshot.get('regime_confidence_label') or 'No confidence'}"
     )
     market_structure_snapshot["spot_source_label"] = spot_meta.get("source_label") or "Unavailable"
+    market_structure_snapshot["spot_source"] = spot_meta.get("source") or ""
+    market_structure_snapshot["spot_is_fallback"] = bool(spot_meta.get("spot_is_fallback"))
+    market_structure_snapshot["fallback_reason"] = spot_meta.get("fallback_reason") or ""
     market_structure_snapshot["spot_source_short_label"] = (
         "SPX Spot"
         if spot_meta.get("source") == "live"
         else f"Spot · {spot_meta.get('source_label') or 'Unavailable'}"
+    )
+    merged_regime_state = _market_pulse_gamma_regime_state(
+        resolved_gamma_snapshot,
+        gamma_data_status=str(market_structure_snapshot.get("gamma_data_status") or ""),
+        session_mode=session_mode,
+        levels={
+            "spot": market_structure_snapshot.get("spot"),
+            "main_flip": market_structure_snapshot.get("main_flip"),
+            "local_flip": market_structure_snapshot.get("local_flip"),
+            "call_wall": market_structure_snapshot.get("call_wall"),
+            "put_wall": market_structure_snapshot.get("put_wall"),
+        },
+        next_call_wall=market_structure_snapshot.get("next_call_wall"),
+        next_put_wall=market_structure_snapshot.get("next_put_wall"),
+    )
+    merged_regime = _market_pulse_gamma_regime_viewmodel(
+        resolved_gamma_snapshot,
+        gamma_data_status=str(market_structure_snapshot.get("gamma_data_status") or ""),
+        regime_status=str(merged_regime_state.get("regime_status") or ""),
+        missing_reason=str(merged_regime_state.get("missing_reason") or ""),
+    )
+    merged_confidence = _market_pulse_regime_confidence(
+        session_mode=session_mode,
+        gamma_data_status=str(market_structure_snapshot.get("gamma_data_status") or ""),
+        regime_status=str(merged_regime_state.get("regime_status") or ""),
+    )
+    market_structure_snapshot["gamma_regime_state"] = str(merged_regime_state.get("regime_status") or "unavailable")
+    market_structure_snapshot["gamma_board_status"] = str(merged_regime_state.get("board_status") or "Unavailable")
+    market_structure_snapshot["gamma_regime_confidence"] = {
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "none": "Invalid",
+    }.get(merged_confidence, "Invalid")
+    market_structure_snapshot["gamma_regime_missing_reason"] = str(merged_regime_state.get("missing_reason") or "")
+    market_structure_snapshot["gamma_regime"] = merged_regime.get("gamma_regime") or market_structure_snapshot.get("gamma_regime")
+    market_structure_snapshot["gamma_regime_label"] = merged_regime.get("gamma_regime_label") or market_structure_snapshot.get("gamma_regime_label")
+    market_structure_snapshot["gamma_regime_subtitle"] = merged_regime.get("gamma_regime_subtitle") or market_structure_snapshot.get("gamma_regime_subtitle")
+    market_structure_snapshot["regime_confidence"] = merged_confidence
+    market_structure_snapshot["regime_confidence_label"] = {
+        "high": "High confidence",
+        "medium": "Medium confidence",
+        "low": "Low confidence",
+        "none": "No confidence",
+    }.get(merged_confidence, "No confidence")
+    market_structure_snapshot["gamma_regime_reason_label"] = _market_pulse_gamma_reason_label(
+        gamma_regime=str(market_structure_snapshot.get("gamma_regime") or ""),
+        gamma_data_status=str(market_structure_snapshot.get("gamma_data_status") or ""),
+        levels_source=str(market_structure_snapshot.get("levels_source") or ""),
+        structure_invariant_status=str(market_structure_snapshot.get("structure_invariant_status") or ""),
+        structure_invariant_issues=list(market_structure_snapshot.get("structure_invariant_issues") or []),
+        regime_status=str(market_structure_snapshot.get("gamma_regime_state") or ""),
+        missing_reason=str(market_structure_snapshot.get("gamma_regime_missing_reason") or ""),
     )
     market_structure_snapshot["chart_state"] = chart_meta.get("chart_state")
     market_structure_snapshot["bars_source"] = chart_meta.get("bars_source")
@@ -4970,8 +5321,8 @@ def get_or_build_market_pulse_snapshot(
         market_structure_snapshot["trade_state"] = "PLANNING_ONLY"
         market_structure_snapshot["trade_state_label"] = "PLANNING ONLY"
         market_structure_snapshot["execution_regime"] = "planning_mode_only"
-        market_structure_snapshot["execution_regime_label"] = "Planning mode only"
-        market_structure_snapshot["tradeability"] = "Planning mode only"
+        market_structure_snapshot["execution_regime_label"] = "PLANNING_ONLY"
+        market_structure_snapshot["tradeability"] = "PLANNING_ONLY"
         execution_model.setdefault("playbook", {})
         execution_model["playbook"]["status"] = "PLANNING_ONLY"
 
@@ -6636,7 +6987,14 @@ def _dashboard_gamma_strip_viewmodel(
                 or str(structure.get("levels_source_label") or "Gamma unavailable").strip()
                 or "Gamma context unavailable"
             )
-        elif gamma_status in {"stale_but_usable", "partial"} or levels_source in {"last_valid_snapshot", "stale_snapshot"}:
+        elif gamma_status in {"fallback_valid", "stale_but_usable", "partial"} or levels_source in {
+            "last_valid_snapshot",
+            "stale_snapshot",
+            "fallback_snapshot",
+            "prior_close_fallback",
+            "last_valid_snapshot_fallback",
+            "last_valid_quote_fallback",
+        }:
             state = "stale"
             session_label = str(structure.get("session_mode_label") or "").strip()
             source_label = str(structure.get("levels_source_label") or "").strip()

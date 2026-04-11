@@ -118,3 +118,34 @@ def test_twitter_feed_never_returns_empty_without_cache(monkeypatch):
     assert snapshot["items"]
     assert snapshot["top_items"]
     assert snapshot["items"][0]["handle"] in {"@KobeissiLetter", "@unusual_whales"}
+
+
+def test_twitter_feed_falls_back_to_sequential_fetch_when_thread_pool_unavailable(monkeypatch):
+    now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
+    _reset_cache(monkeypatch)
+
+    class _BrokenThreadPool:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(svc, "ThreadPoolExecutor", _BrokenThreadPool)
+    monkeypatch.setattr(
+        svc,
+        "_fetch_url_bytes",
+        lambda url: _rss_xml(
+            {
+                "title": "Dealer gamma remains supportive into the open",
+                "link": f"https://example.com/{url.rsplit('/', 2)[-2]}",
+                "description": "SPX holds near the local flip.",
+                "pubDate": _fmt_pub(now - timedelta(minutes=2)),
+            }
+        ),
+    )
+
+    snapshot = svc.build_twitter_feed_snapshot(
+        now_et=now,
+        market_structure_snapshot={"planning_bias": "bullish_above_local_flip"},
+    )
+
+    assert snapshot["status"] == "live"
+    assert len(snapshot["items"]) == 2

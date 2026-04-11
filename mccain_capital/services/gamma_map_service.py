@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import date
 from datetime import datetime
+from datetime import timedelta
 from datetime import timezone
 import json
+import logging
 import os
 import re
 import threading
@@ -41,8 +44,10 @@ CSV_FILENAME = "gamma_data.csv"
 PNG_FILENAME = "gamma_map.png"
 DEFAULT_CONTRACT_MULTIPLIER = 100
 DEFAULT_GEX_SCALER = 0.01
-DEFAULT_GAMMA_REGIME_POSITIVE_THRESHOLD = 50_000_000.0
-DEFAULT_GAMMA_REGIME_NEGATIVE_THRESHOLD = -50_000_000.0
+DEFAULT_GAMMA_REGIME_POSITIVE_THRESHOLD = 10_000_000_000.0
+DEFAULT_GAMMA_REGIME_NEGATIVE_THRESHOLD = -10_000_000_000.0
+DEFAULT_GAMMA_REGIME_STRONG_POSITIVE_THRESHOLD = 40_000_000_000.0
+DEFAULT_GAMMA_REGIME_STRONG_NEGATIVE_THRESHOLD = -40_000_000_000.0
 DEFAULT_LOCAL_FLIP_SPOT_PCT_BAND = 0.02
 DEFAULT_LOCAL_FLIP_STRIKE_WINDOW = 21
 SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
@@ -54,9 +59,11 @@ GAMMA_REFRESH_MODE = str(os.environ.get("MARKET_PULSE_REFRESH_MODE") or "in_proc
 EOD_GAMMA_NOTIFY_ENABLED = os.environ.get("EOD_GAMMA_NOTIFY_ENABLED", "1") == "1"
 EOD_GAMMA_NOTIFY_TIME_ET = (os.environ.get("EOD_GAMMA_NOTIFY_TIME_ET") or "17:10").strip()
 EOD_GAMMA_NOTIFY_END_ET = (os.environ.get("EOD_GAMMA_NOTIFY_END_ET") or "19:30").strip()
+COLD_CACHE_BOOTSTRAP_RETRY_SECONDS = 15
 
 _LOCK = threading.Lock()
 _STARTED = False
+LOGGER = logging.getLogger(__name__)
 _DEFAULT_FIELD_LABELS: Dict[str, str] = {
     "spot": "Spot (raw market data)",
     "gamma_flip_combined_basket": "Gamma Flip (combined basket)",
@@ -73,6 +80,9 @@ _RUNTIME_STATE: Dict[str, Any] = {
     "last_refresh_ms": 0,
     "status": "waiting",
     "cache_status": "cold",
+    "bootstrap_in_progress": False,
+    "last_bootstrap_attempted_at": "",
+    "last_bootstrap_failed_at": "",
 }
 
 _COMPACT_TICKER = re.compile(r"^(?:O:)?(SPXW|SPX)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
@@ -110,16 +120,28 @@ def _json_clone(value: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(json.dumps(value))
 
 
+def _parse_runtime_iso(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
 def _source_stale_threshold_seconds(now_et: Optional[datetime] = None) -> int:
     return max(300, int(_gamma_poll_seconds(now_et) * 2))
 
 
-def _gamma_regime_thresholds() -> Tuple[float, float]:
+def _gamma_regime_thresholds() -> Tuple[float, float, float, float]:
     """Return the business thresholds for classifying the gamma regime.
 
     Values inside the band are treated as neutral:
     - positive if net_gex_total > positive_threshold
     - negative if net_gex_total < negative_threshold
+    - strong_positive if net_gex_total > strong_positive_threshold
+    - strong_negative if net_gex_total < strong_negative_threshold
     - neutral otherwise
     """
 
@@ -131,15 +153,44 @@ def _gamma_regime_thresholds() -> Tuple[float, float]:
         os.environ.get("GAMMA_REGIME_NEGATIVE_THRESHOLD")
         or app_runtime.get_setting_value("gamma_regime_negative_threshold", "")
     )
+    strong_positive_raw = (
+        os.environ.get("GAMMA_REGIME_STRONG_POSITIVE_THRESHOLD")
+        or app_runtime.get_setting_value("gamma_regime_strong_positive_threshold", "")
+    )
+    strong_negative_raw = (
+        os.environ.get("GAMMA_REGIME_STRONG_NEGATIVE_THRESHOLD")
+        or app_runtime.get_setting_value("gamma_regime_strong_negative_threshold", "")
+    )
     positive = float(_safe_float(positive_raw) or DEFAULT_GAMMA_REGIME_POSITIVE_THRESHOLD)
     negative = float(_safe_float(negative_raw) or DEFAULT_GAMMA_REGIME_NEGATIVE_THRESHOLD)
+    strong_positive = float(
+        _safe_float(strong_positive_raw) or DEFAULT_GAMMA_REGIME_STRONG_POSITIVE_THRESHOLD
+    )
+    strong_negative = float(
+        _safe_float(strong_negative_raw) or DEFAULT_GAMMA_REGIME_STRONG_NEGATIVE_THRESHOLD
+    )
     if positive < 0:
         positive = abs(positive)
     if negative > 0:
         negative = -abs(negative)
     if negative >= positive:
         negative = -abs(positive)
-    return (positive, negative)
+    if strong_positive < positive:
+        strong_positive = positive
+    if strong_negative > negative:
+        strong_negative = negative
+    if strong_negative >= strong_positive:
+        strong_negative = -abs(strong_positive)
+    return (positive, negative, strong_positive, strong_negative)
+
+
+def _gamma_regime_direction(regime: str) -> str:
+    regime_key = str(regime or "").strip().lower()
+    if "positive" in regime_key:
+        return "positive"
+    if "negative" in regime_key:
+        return "negative"
+    return "neutral"
 
 
 def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
@@ -215,6 +266,267 @@ def _safe_int(v: Any) -> int:
         return int(float(v or 0))
     except Exception:
         return 0
+
+
+def _observed_fixed_holiday(year: int, month: int, day_num: int) -> date:
+    holiday = date(year, month, day_num)
+    if holiday.weekday() == 5:
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:
+        return holiday + timedelta(days=1)
+    return holiday
+
+
+def _nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> date:
+    first = date(year, month, 1)
+    delta = (weekday - first.weekday()) % 7
+    return first + timedelta(days=delta + ((n - 1) * 7))
+
+
+def _last_weekday_of_month(year: int, month: int, weekday: int) -> date:
+    if month == 12:
+        cursor = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        cursor = date(year, month + 1, 1) - timedelta(days=1)
+    while cursor.weekday() != weekday:
+        cursor -= timedelta(days=1)
+    return cursor
+
+
+def _easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    weekday_offset = (32 + (2 * e) + (2 * i) - h - k) % 7
+    m = (a + (11 * h) + (22 * weekday_offset)) // 451
+    month = (h + weekday_offset - (7 * m) + 114) // 31
+    day_num = ((h + weekday_offset - (7 * m) + 114) % 31) + 1
+    return date(year, month, day_num)
+
+
+def _market_holiday_name(day: date) -> str:
+    easter = _easter_sunday(day.year)
+    holidays = {
+        _observed_fixed_holiday(day.year, 1, 1): "New Years Day",
+        _nth_weekday_of_month(day.year, 1, 0, 3): "Martin Luther King Jr. Day",
+        _nth_weekday_of_month(day.year, 2, 0, 3): "Presidents Day",
+        easter - timedelta(days=2): "Good Friday",
+        _last_weekday_of_month(day.year, 5, 0): "Memorial Day",
+        _observed_fixed_holiday(day.year, 6, 19): "Juneteenth",
+        _observed_fixed_holiday(day.year, 7, 4): "Independence Day",
+        _nth_weekday_of_month(day.year, 9, 0, 1): "Labor Day",
+        _nth_weekday_of_month(day.year, 11, 3, 4): "Thanksgiving",
+        _observed_fixed_holiday(day.year, 12, 25): "Christmas Day",
+    }
+    return holidays.get(day, "")
+
+
+def _gamma_builder_session_mode(now_et: datetime) -> str:
+    current = now_et.astimezone(app_runtime.TZ)
+    if current.weekday() >= 5:
+        return "weekend"
+    if _market_holiday_name(current.date()):
+        return "holiday"
+    minutes = current.hour * 60 + current.minute
+    if 570 <= minutes < 960:
+        return "rth"
+    if 240 <= minutes < 570:
+        return "premarket"
+    if 960 <= minutes < 1200:
+        return "after_hours"
+    return "closed"
+
+
+def _spx_prior_close_anchor(
+    spot_snapshot: Dict[str, Any],
+    *,
+    now_et: datetime,
+) -> Tuple[Optional[float], str]:
+    raw = dict(spot_snapshot.get("raw") or {})
+    for key in ("prev_close", "previous_close", "prior_close", "close"):
+        value = _safe_float(raw.get(key))
+        if value is not None:
+            return value, str(
+                raw.get("prev_close_as_of")
+                or raw.get("prior_close_as_of")
+                or raw.get("as_of")
+                or spot_snapshot.get("source_timestamp")
+                or _now_iso()
+            )
+
+    prior_rows = market_data_service.get_prior_session_intraday("SPX", anchor_session_day=now_et.date())
+    if prior_rows:
+        last_row = prior_rows[-1] if isinstance(prior_rows[-1], dict) else {}
+        value = _safe_float(last_row.get("close"))
+        if value is not None:
+            return value, str(last_row.get("ts") or spot_snapshot.get("source_timestamp") or _now_iso())
+    return None, ""
+
+
+def _market_pulse_spx_quote_anchor() -> Dict[str, Any]:
+    try:
+        from mccain_capital.services import core as core_service
+
+        payload = core_service._market_pulse_snapshot(force_refresh=False)
+        quotes = list(payload.get("quotes") or [])
+        spx_quote = next(
+            (
+                q
+                for q in quotes
+                if str(q.get("label") or q.get("symbol") or "").strip().upper() == "SPX"
+            ),
+            {},
+        )
+        return dict(spx_quote or {})
+    except Exception:
+        return {}
+
+
+def _resolve_spx_anchor(
+    *,
+    spot_snapshot: Dict[str, Any],
+    current_snapshot: Optional[Dict[str, Any]],
+    now_et: datetime,
+) -> Dict[str, Any]:
+    session_mode = _gamma_builder_session_mode(now_et)
+    live_value = _safe_float(spot_snapshot.get("value"))
+    live_timestamp = str(spot_snapshot.get("source_timestamp") or _now_iso())
+    trusted_snapshot = _json_clone(current_snapshot or {}) if _snapshot_is_trustworthy(current_snapshot or {}) else {}
+    trusted_spot = _safe_float(trusted_snapshot.get("spot_price_used"))
+    trusted_timestamp = str(
+        trusted_snapshot.get("spot_source_timestamp")
+        or trusted_snapshot.get("last_successful_compute")
+        or trusted_snapshot.get("computed_at")
+        or ""
+    )
+    trusted_source = str(trusted_snapshot.get("spot_source") or "").strip().lower()
+    trusted_is_fallback = bool(trusted_snapshot.get("spot_is_fallback"))
+    prior_close_value, prior_close_timestamp = _spx_prior_close_anchor(spot_snapshot, now_et=now_et)
+    last_valid_quote = _market_pulse_spx_quote_anchor()
+    last_valid_quote_value = _safe_float(last_valid_quote.get("price"))
+    last_valid_quote_timestamp = str(
+        last_valid_quote.get("asof")
+        or last_valid_quote.get("as_of")
+        or spot_snapshot.get("source_timestamp")
+        or _now_iso()
+    )
+
+    if live_value is not None:
+        return {
+            "spot_price": float(live_value),
+            "spot_source": "live_quote",
+            "spot_source_label": "Live SPX Quote",
+            "spot_timestamp": live_timestamp,
+            "spot_is_fallback": False,
+            "fallback_reason": "",
+            "build_confidence": "high" if session_mode == "rth" else "reduced",
+            "build_status": "live_valid" if session_mode == "rth" else "fallback_valid",
+            "session_mode": session_mode,
+            "state": "LIVE_SESSION" if session_mode == "rth" else "AFTER_HOURS_VALID",
+        }
+
+    if session_mode == "rth":
+        if last_valid_quote_value is not None:
+            return {
+                "spot_price": float(last_valid_quote_value),
+                "spot_source": "last_valid_quote",
+                "spot_source_label": "Last Valid Session Quote",
+                "spot_timestamp": last_valid_quote_timestamp,
+                "spot_is_fallback": True,
+                "fallback_reason": "Direct SPX quote unavailable; using the most recent trusted session quote.",
+                "build_confidence": "reduced",
+                "build_status": "fallback_valid",
+                "session_mode": session_mode,
+                "state": "AFTER_HOURS_VALID",
+            }
+        return {
+            "spot_price": None,
+            "spot_source": "none",
+            "spot_source_label": "Unavailable",
+            "spot_timestamp": live_timestamp,
+            "spot_is_fallback": False,
+            "fallback_reason": "Live SPX quote unavailable during regular session.",
+            "build_confidence": "invalid",
+            "build_status": "invalid",
+            "session_mode": session_mode,
+            "state": "UNAVAILABLE",
+        }
+
+    if trusted_spot is not None and not trusted_is_fallback and trusted_source in {"live_quote", "last_valid_quote", ""}:
+        return {
+            "spot_price": float(trusted_spot),
+            "spot_source": "last_valid_quote",
+            "spot_source_label": "Last Valid Session Quote",
+            "spot_timestamp": trusted_timestamp or live_timestamp,
+            "spot_is_fallback": True,
+            "fallback_reason": "Live SPX quote unavailable; using the most recent trusted session quote.",
+            "build_confidence": "reduced",
+            "build_status": "fallback_valid",
+            "session_mode": session_mode,
+            "state": "AFTER_HOURS_VALID",
+        }
+
+    if last_valid_quote_value is not None:
+        return {
+            "spot_price": float(last_valid_quote_value),
+            "spot_source": "last_valid_quote",
+            "spot_source_label": "Last Valid Session Quote",
+            "spot_timestamp": last_valid_quote_timestamp,
+            "spot_is_fallback": True,
+            "fallback_reason": "Live SPX quote unavailable; using the most recent trusted session quote.",
+            "build_confidence": "reduced",
+            "build_status": "fallback_valid",
+            "session_mode": session_mode,
+            "state": "AFTER_HOURS_VALID",
+        }
+
+    if prior_close_value is not None:
+        return {
+            "spot_price": float(prior_close_value),
+            "spot_source": "prior_close",
+            "spot_source_label": "Prior Close Anchor",
+            "spot_timestamp": prior_close_timestamp or live_timestamp,
+            "spot_is_fallback": True,
+            "fallback_reason": "Live SPX quote unavailable; using prior close anchor.",
+            "build_confidence": "reduced",
+            "build_status": "fallback_valid",
+            "session_mode": session_mode,
+            "state": "AFTER_HOURS_VALID",
+        }
+
+    if trusted_spot is not None:
+        return {
+            "spot_price": float(trusted_spot),
+            "spot_source": "last_valid_snapshot",
+            "spot_source_label": "Last Valid Snapshot Anchor",
+            "spot_timestamp": trusted_timestamp or live_timestamp,
+            "spot_is_fallback": True,
+            "fallback_reason": "Live SPX quote unavailable; using the last valid gamma snapshot anchor.",
+            "build_confidence": "reduced",
+            "build_status": "fallback_valid",
+            "session_mode": session_mode,
+            "state": "AFTER_HOURS_VALID",
+        }
+
+    return {
+        "spot_price": None,
+        "spot_source": "none",
+        "spot_source_label": "Unavailable",
+        "spot_timestamp": live_timestamp,
+        "spot_is_fallback": False,
+        "fallback_reason": "No trusted SPX anchor was available for this session.",
+        "build_confidence": "invalid",
+        "build_status": "invalid",
+        "session_mode": session_mode,
+        "state": "UNAVAILABLE",
+    }
 
 
 def _local_flip_spot_pct_band() -> float:
@@ -338,6 +650,13 @@ def _boundary_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     payload["snapshot_status_detail"] = str(
         warning_state.get("snapshot_status_detail") or "No trustworthy gamma calculation is available."
     )
+    payload["build_status"] = str(payload.get("build_status") or "invalid")
+    payload["build_confidence"] = str(payload.get("build_confidence") or "invalid")
+    payload["spot_source"] = str(payload.get("spot_source") or "")
+    payload["spot_source_label"] = str(payload.get("spot_source_label") or "")
+    payload["spot_is_fallback"] = bool(payload.get("spot_is_fallback"))
+    payload["fallback_reason"] = str(payload.get("fallback_reason") or "")
+    payload["session_mode"] = str(payload.get("session_mode") or "")
     payload["gamma_flip"] = payload.get("gamma_flip_combined_basket")
     payload["local_flip"] = payload.get("local_flip_aggregated_gamma")
     payload["call_wall"] = payload.get("call_wall_aggregated_gamma")
@@ -397,8 +716,15 @@ def _internal_invalid_snapshot(
         ),
         "spot": None,
         "spot_price_used": None,
+        "spot_source": "none",
+        "spot_source_label": "Unavailable",
         "spot_source_name": "",
         "spot_source_timestamp": now_iso,
+        "spot_is_fallback": False,
+        "fallback_reason": reason,
+        "build_confidence": "invalid",
+        "build_status": "invalid",
+        "session_mode": "",
         "contract_multiplier": DEFAULT_CONTRACT_MULTIPLIER,
         "total_rows_before_filter": 0,
         "total_rows_after_filter": 0,
@@ -502,6 +828,8 @@ def _stale_snapshot_from_last_good(
     badges.append("Stale Snapshot")
     narrative["warning_badges"] = list(dict.fromkeys(badges))
     stale_snapshot["narrative"] = narrative
+    stale_snapshot["build_status"] = str(stale_snapshot.get("build_status") or "fallback_valid")
+    stale_snapshot["build_confidence"] = str(stale_snapshot.get("build_confidence") or "reduced")
     return coerce_validated_snapshot(stale_snapshot)
 
 
@@ -518,6 +846,22 @@ def _tradier_api_key() -> str:
     return (os.environ.get("TRADIER_API_KEY") or "").strip() or str(
         app_runtime.get_setting_value("tradier_api_key", "") or ""
     ).strip()
+
+
+def _load_cached_gamma_csv() -> Tuple[pd.DataFrame, str, str]:
+    csv_path = app_runtime.upload_path(CSV_FILENAME)
+    if not os.path.exists(csv_path):
+        return pd.DataFrame(), "", ""
+    try:
+        cached = pd.read_csv(csv_path)
+    except Exception:
+        return pd.DataFrame(), "", ""
+    try:
+        timestamp = datetime.fromtimestamp(os.path.getmtime(csv_path), tz=timezone.utc).isoformat(timespec="seconds")
+    except Exception:
+        timestamp = _now_iso()
+    cached.attrs["contracts_seen"] = int(len(cached.index))
+    return cached, csv_path, timestamp
 
 
 def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -736,19 +1080,31 @@ def load_gamma_source(expiries: Optional[List[str]] = None) -> Dict[str, Any]:
         basket = [today, _next_trading_day_iso(today)]
     raw = fetch_spx_chain_for_expiries(basket)
     fetch_timestamp = _now_iso()
+    source_file_path = ""
+    source_effective_timestamp = fetch_timestamp
+    source_effective_timestamp_source = "fetch_fallback"
+    source_effective_timestamp_note = "Exchange-native chain timestamp unavailable; using fetch timestamp."
+    if raw.empty:
+        cached_raw, cached_path, cached_timestamp = _load_cached_gamma_csv()
+        if not cached_raw.empty:
+            raw = cached_raw
+            source_file_path = cached_path
+            source_effective_timestamp = cached_timestamp or fetch_timestamp
+            source_effective_timestamp_source = "fetch_fallback"
+            source_effective_timestamp_note = "Using cached gamma_data.csv because live chain fetch returned no rows."
     return {
         "raw": raw.copy(),
         "requested_expiries": basket,
         # Tradier chain payloads do not expose a trustworthy exchange-native chain
         # timestamp here, so effective freshness explicitly falls back to fetch time.
         "source_fetch_timestamp": fetch_timestamp,
-        "source_effective_timestamp": fetch_timestamp,
-        "source_effective_timestamp_source": "fetch_fallback",
-        "source_effective_timestamp_note": "Exchange-native chain timestamp unavailable; using fetch timestamp.",
+        "source_effective_timestamp": source_effective_timestamp,
+        "source_effective_timestamp_source": source_effective_timestamp_source,
+        "source_effective_timestamp_note": source_effective_timestamp_note,
         "exchange_timestamp_available": False,
-        "source_timestamp": fetch_timestamp,
-        "contracts_seen": int(raw.attrs.get("contracts_seen") or 0),
-        "source_file_path": "",
+        "source_timestamp": source_effective_timestamp,
+        "contracts_seen": int(raw.attrs.get("contracts_seen") or len(raw.index) or 0),
+        "source_file_path": source_file_path,
     }
 
 
@@ -1038,12 +1394,29 @@ def classify_gamma_regime(
     *,
     positive_threshold: Optional[float] = None,
     negative_threshold: Optional[float] = None,
+    strong_positive_threshold: Optional[float] = None,
+    strong_negative_threshold: Optional[float] = None,
 ) -> str:
-    configured_positive, configured_negative = _gamma_regime_thresholds()
+    (
+        configured_positive,
+        configured_negative,
+        configured_strong_positive,
+        configured_strong_negative,
+    ) = _gamma_regime_thresholds()
     upper = float(configured_positive if positive_threshold is None else positive_threshold)
     lower = float(configured_negative if negative_threshold is None else negative_threshold)
+    strong_upper = float(
+        configured_strong_positive if strong_positive_threshold is None else strong_positive_threshold
+    )
+    strong_lower = float(
+        configured_strong_negative if strong_negative_threshold is None else strong_negative_threshold
+    )
+    if net_gex_total >= strong_upper:
+        return "strong_positive"
     if net_gex_total > upper:
         return "positive"
+    if net_gex_total <= strong_lower:
+        return "strong_negative"
     if net_gex_total < lower:
         return "negative"
     return "neutral"
@@ -1377,11 +1750,12 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
 
 def build_summary(levels: Dict[str, Any], spot: float, net_gex: float) -> Dict[str, Any]:
     regime = classify_gamma_regime(float(net_gex))
+    regime_direction = _gamma_regime_direction(regime)
     gamma_flip = _safe_float(levels.get("gamma_flip"))
 
-    if regime == "positive" and gamma_flip is not None and float(spot) >= gamma_flip:
+    if regime_direction == "positive" and gamma_flip is not None and float(spot) >= gamma_flip:
         bias = "buy_dips_above_flip"
-    elif regime == "negative" and gamma_flip is not None and float(spot) <= gamma_flip:
+    elif regime_direction == "negative" and gamma_flip is not None and float(spot) <= gamma_flip:
         bias = "sell_rips_below_flip"
     else:
         bias = "neutral_chop"
@@ -1411,6 +1785,7 @@ def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     warnings = [str(item) for item in warning_state.get("warnings") or []]
     spot = _safe_float(snapshot.get("spot_price_used"))
     regime = str(snapshot.get("regime") or "unavailable")
+    regime_direction = _gamma_regime_direction(regime)
     gamma_flip = _safe_float(snapshot.get("gamma_flip_combined_basket"))
     call_wall = _safe_float(snapshot.get("call_wall_aggregated_gamma"))
     put_wall = _safe_float(snapshot.get("put_wall_aggregated_gamma"))
@@ -1464,25 +1839,25 @@ def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     distance_to_call = None if call_wall is None else float(call_wall) - float(spot)
     distance_to_put = None if put_wall is None else float(spot) - float(put_wall)
 
-    if regime == "negative" and gamma_flip is not None and spot < gamma_flip:
+    if regime_direction == "negative" and gamma_flip is not None and spot < gamma_flip:
         what_matters = (
             f"Negative gamma below the combined-basket flip ({gamma_flip:.0f}) keeps downside expansion risk active."
         )
         trader_live_quote = "Expect faster directional moves and weaker mean reversion until price reclaims the flip."
         trade_bias = "Sell failed rallies and demand clean acceptance back above the flip before trusting stabilization."
-    elif regime == "negative" and gamma_flip is not None and spot > gamma_flip:
+    elif regime_direction == "negative" and gamma_flip is not None and spot > gamma_flip:
         what_matters = (
             f"Negative gamma with spot above the flip ({gamma_flip:.0f}) leaves squeeze conditions live if buyers hold acceptance."
         )
         trader_live_quote = "Upside can extend quickly, but failed acceptance above the flip can reverse sharply."
         trade_bias = "Respect upside squeeze risk while spot is above the flip; avoid shorting strength without rejection."
-    elif regime == "positive" and gamma_flip is not None and spot >= gamma_flip:
+    elif regime_direction == "positive" and gamma_flip is not None and spot >= gamma_flip:
         what_matters = (
             f"Positive gamma above the combined-basket flip ({gamma_flip:.0f}) favors a more contained, mean-reverting tape."
         )
         trader_live_quote = "Expect stronger pinning behavior unless price is accepted through a major wall."
         trade_bias = "Favor fade setups into stretched moves unless a wall breaks with clear acceptance."
-    elif regime == "positive" and gamma_flip is not None and spot < gamma_flip:
+    elif regime_direction == "positive" and gamma_flip is not None and spot < gamma_flip:
         what_matters = (
             f"Positive gamma remains in place, but spot is below the flip ({gamma_flip:.0f}), so local downside can stay unstable until reclaimed."
         )
@@ -1520,11 +1895,17 @@ def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         snapshot.get("gamma_range_estimate")
     )
     source_meta = dict(snapshot.get("source_metadata") or {})
+    fallback_reason = str(snapshot.get("fallback_reason") or "").strip()
+    spot_source_label = str(snapshot.get("spot_source_label") or "").strip()
     environment_bits = [
         f"Included expiries: {', '.join(str(exp) for exp in source_meta.get('included_expiries') or []) or 'none'}."
     ]
     if gamma_range_estimate is not None:
         environment_bits.append(f"{GAMMA_RANGE_LABEL}: +/- {gamma_range_estimate:.1f} points.")
+    if bool(snapshot.get("spot_is_fallback")) and spot_source_label:
+        environment_bits.append(f"Spot anchor: {spot_source_label}.")
+    if fallback_reason:
+        environment_bits.append(fallback_reason)
     if not bool(source_meta.get("exchange_timestamp_available")):
         environment_bits.append("Freshness basis: fetch-time proxy.")
     environment_note = " ".join(environment_bits)
@@ -1550,8 +1931,15 @@ def assemble_market_pulse_snapshot(
     exchange_timestamp_available: bool = False,
     source_file_path: str,
     spot_price: float,
+    spot_source: str,
+    spot_source_label: str,
     spot_source_name: str,
     spot_source_timestamp: str,
+    spot_is_fallback: bool = False,
+    fallback_reason: str = "",
+    build_confidence: str = "high",
+    build_status: str = "live_valid",
+    session_mode: str = "rth",
     contracts_seen: int,
     contract_multiplier: int = DEFAULT_CONTRACT_MULTIPLIER,
 ) -> Dict[str, Any]:
@@ -1568,6 +1956,10 @@ def assemble_market_pulse_snapshot(
     )
     warnings = list(validated["warnings"]) + list(selected["warnings"])
     stale_flags = list(validated["stale_flags"]) + list(selected["stale_flags"])
+    if bool(spot_is_fallback):
+        stale_flags.append("fallback_spot_anchor")
+        if str(spot_source or "").strip():
+            stale_flags.append(f"spot_anchor_{str(spot_source).strip().lower()}")
     selected_rows = selected["rows"]
     if selected_rows.empty:
         warnings.append("Combined near-dated basket is empty after validation.")
@@ -1647,8 +2039,15 @@ def assemble_market_pulse_snapshot(
         ),
         "spot": float(spot_price),
         "spot_price_used": float(spot_price),
+        "spot_source": str(spot_source or ""),
+        "spot_source_label": str(spot_source_label or ""),
         "spot_source_name": str(spot_source_name or ""),
         "spot_source_timestamp": str(spot_source_timestamp or computed_at),
+        "spot_is_fallback": bool(spot_is_fallback),
+        "fallback_reason": str(fallback_reason or ""),
+        "build_confidence": str(build_confidence or "high"),
+        "build_status": str(build_status or "live_valid"),
+        "session_mode": str(session_mode or ""),
         "contract_multiplier": int(contract_multiplier),
         "total_rows_before_filter": int(validated["total_rows_before_filter"]),
         "total_rows_after_filter": int(len(selected_rows.index)),
@@ -1759,16 +2158,28 @@ def get_or_build_market_pulse_snapshot(force_refresh: bool = False) -> Dict[str,
             or "Exchange-native chain timestamp unavailable; using fetch timestamp."
         ),
     )
+    now_et = app_runtime.now_et()
     spot_snapshot = market_data_service.get_price_snapshot("SPX")
-    spot = _safe_float(spot_snapshot.get("value"))
+    anchor = _resolve_spx_anchor(
+        spot_snapshot=spot_snapshot,
+        current_snapshot=current_snapshot,
+        now_et=now_et,
+    )
+    spot = _safe_float(anchor.get("spot_price"))
     if spot is None:
         if _snapshot_is_trustworthy(current_snapshot):
             return _stale_snapshot_from_last_good(
                 current_snapshot,
-                reason="Stale Snapshot: showing last known good values because SPX spot was unavailable for refresh.",
+                reason=str(
+                    anchor.get("fallback_reason")
+                    or "Stale Snapshot: showing last known good values because SPX spot was unavailable for refresh."
+                ),
             )
         return _internal_invalid_snapshot(
-            reason="Invalid Snapshot: SPX spot unavailable for gamma build.",
+            reason=str(
+                anchor.get("fallback_reason")
+                or "Invalid Snapshot: SPX spot unavailable for gamma build."
+            ),
             source_metadata=source_metadata,
             current_snapshot=current_snapshot,
         )
@@ -1787,8 +2198,15 @@ def get_or_build_market_pulse_snapshot(force_refresh: bool = False) -> Dict[str,
         exchange_timestamp_available=bool(source.get("exchange_timestamp_available")),
         source_file_path=str(source.get("source_file_path") or ""),
         spot_price=float(spot),
+        spot_source=str(anchor.get("spot_source") or ""),
+        spot_source_label=str(anchor.get("spot_source_label") or ""),
         spot_source_name=str(spot_snapshot.get("source_name") or ""),
-        spot_source_timestamp=str(spot_snapshot.get("source_timestamp") or ""),
+        spot_source_timestamp=str(anchor.get("spot_timestamp") or spot_snapshot.get("source_timestamp") or ""),
+        spot_is_fallback=bool(anchor.get("spot_is_fallback")),
+        fallback_reason=str(anchor.get("fallback_reason") or ""),
+        build_confidence=str(anchor.get("build_confidence") or "invalid"),
+        build_status=str(anchor.get("build_status") or "invalid"),
+        session_mode=str(anchor.get("session_mode") or ""),
         contracts_seen=int(source.get("contracts_seen") or 0),
         contract_multiplier=DEFAULT_CONTRACT_MULTIPLIER,
     )
@@ -2054,14 +2472,62 @@ def start_gamma_worker_once() -> None:
     t.start()
 
 
+def _bootstrap_gamma_snapshot_on_cold_cache() -> Optional[Dict[str, Any]]:
+    now_utc = datetime.now(timezone.utc)
+    with _LOCK:
+        if _CACHE:
+            return _json_clone(_CACHE)
+        if bool(_RUNTIME_STATE.get("bootstrap_in_progress")):
+            LOGGER.info("gamma cold cache bootstrap skipped: refresh already in progress")
+            return None
+        last_failed_at = _parse_runtime_iso(_RUNTIME_STATE.get("last_bootstrap_failed_at"))
+        if last_failed_at is not None:
+            age_seconds = max(0.0, (now_utc - last_failed_at.astimezone(timezone.utc)).total_seconds())
+            if age_seconds < COLD_CACHE_BOOTSTRAP_RETRY_SECONDS:
+                LOGGER.info(
+                    "gamma cold cache bootstrap skipped: last failure %.1fs ago",
+                    age_seconds,
+                )
+                return None
+        _RUNTIME_STATE["bootstrap_in_progress"] = True
+        _RUNTIME_STATE["last_bootstrap_attempted_at"] = now_utc.isoformat(timespec="seconds")
+
+    LOGGER.info("gamma cold cache detected; starting synchronous bootstrap refresh")
+    try:
+        snapshot = run_gamma_refresh_once()
+    except Exception as exc:
+        LOGGER.exception("gamma cold cache bootstrap failed")
+        with _LOCK:
+            _RUNTIME_STATE["bootstrap_in_progress"] = False
+            _RUNTIME_STATE["last_bootstrap_failed_at"] = _now_iso()
+            _RUNTIME_STATE["last_error"] = str(exc)
+        return None
+
+    LOGGER.info(
+        "gamma cold cache bootstrap succeeded status=%s build_status=%s",
+        str(snapshot.get("snapshot_status") or ""),
+        str(snapshot.get("build_status") or ""),
+    )
+    with _LOCK:
+        _RUNTIME_STATE["bootstrap_in_progress"] = False
+        _RUNTIME_STATE["last_bootstrap_failed_at"] = ""
+        return _json_clone(_CACHE)
+
+
 def get_gamma_snapshot() -> Dict[str, Any]:
     with _LOCK:
         snapshot = _json_clone(_CACHE)
         runtime_state = dict(_RUNTIME_STATE)
     if not snapshot:
-        snapshot = _internal_invalid_snapshot(
-            reason="Invalid Snapshot: gamma levels unavailable until the first successful refresh."
-        )
+        bootstrap_snapshot = _bootstrap_gamma_snapshot_on_cold_cache()
+        with _LOCK:
+            snapshot = _json_clone(_CACHE) if _CACHE else dict(bootstrap_snapshot or {})
+            runtime_state = dict(_RUNTIME_STATE)
+        if not snapshot:
+            LOGGER.info("gamma cold cache bootstrap did not yield a usable snapshot")
+            snapshot = _internal_invalid_snapshot(
+                reason="Invalid Snapshot: gamma levels unavailable until the first successful refresh."
+            )
     else:
         try:
             snapshot = coerce_validated_snapshot(snapshot)

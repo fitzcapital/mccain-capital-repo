@@ -254,8 +254,15 @@ class MarketPulseSnapshotModel(BaseModel):
     warning_state: GammaWarningState
     spot: Optional[float] = None
     spot_price_used: Optional[float] = None
+    spot_source: str = ""
+    spot_source_label: str = ""
     spot_source_name: str = ""
     spot_source_timestamp: str = ""
+    spot_is_fallback: bool = False
+    fallback_reason: str = ""
+    build_confidence: Literal["high", "reduced", "invalid"] = "invalid"
+    build_status: Literal["live_valid", "fallback_valid", "invalid"] = "invalid"
+    session_mode: str = ""
     contract_multiplier: int
     total_rows_before_filter: int
     total_rows_after_filter: int

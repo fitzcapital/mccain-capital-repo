@@ -113,6 +113,11 @@ def _interval_minutes(interval: str) -> int:
     return 5 if str(interval or DEFAULT_INTERVAL).strip().lower() == "5min" else 1
 
 
+def _regular_session_target_bar_count(interval: str) -> int:
+    interval_minutes = max(1, _interval_minutes(interval))
+    return int(390 / interval_minutes) + 1
+
+
 def _is_regular_session_dt(dt: datetime) -> bool:
     if int(dt.weekday()) >= 5:
         return False
@@ -170,6 +175,7 @@ def _two_session_regular_bars(
     current_bars: List[Dict[str, Any]],
     prior_bars: List[Dict[str, Any]],
     anchor_day: date,
+    interval: str = DEFAULT_INTERVAL,
 ) -> Dict[str, Any]:
     """Return exactly the prior regular session plus the current regular session.
 
@@ -192,6 +198,7 @@ def _two_session_regular_bars(
         "previous_session_day": prior_session_day.isoformat() if prior_regular else "",
         "current_session_day": anchor_day.isoformat() if current_regular else "",
         "visible_window_bars": len(combined),
+        "session_target_bar_count": _regular_session_target_bar_count(interval) if current_regular else 0,
     }
 
 
@@ -220,6 +227,11 @@ def _opening_session_carryover_bars(
             "carryover_bar_count": 0,
             "visible_window_bars": len(current_regular or current_bars),
             "right_offset_bars": OPENING_SESSION_RIGHT_OFFSET_BARS,
+            "previous_session_bar_count": 0,
+            "current_session_bar_count": live_count,
+            "previous_session_day": "",
+            "current_session_day": session_day.isoformat() if current_regular else "",
+            "session_target_bar_count": _regular_session_target_bar_count(interval) if current_regular else 0,
         }
 
     prior_session_day = _previous_trading_day(session_day)
@@ -234,7 +246,36 @@ def _opening_session_carryover_bars(
         "carryover_bar_count": len(carryover),
         "visible_window_bars": max(len(combined), threshold + len(carryover) + OPENING_SESSION_RIGHT_OFFSET_BARS),
         "right_offset_bars": OPENING_SESSION_RIGHT_OFFSET_BARS,
+        "previous_session_bar_count": len(carryover),
+        "current_session_bar_count": live_count,
+        "previous_session_day": prior_session_day.isoformat() if carryover else "",
+        "current_session_day": session_day.isoformat() if current_regular else "",
+        "session_target_bar_count": _regular_session_target_bar_count(interval) if current_regular else 0,
     }
+
+
+def _synthetic_quote_bar(
+    *,
+    price: Optional[float],
+    now_et: datetime,
+    interval: str,
+) -> List[Dict[str, Any]]:
+    numeric = _as_float(price)
+    if numeric is None or numeric <= 0:
+        return []
+    interval_minutes = max(1, _interval_minutes(interval))
+    floored_minute = now_et.minute - (now_et.minute % interval_minutes)
+    bucket_dt = now_et.replace(minute=floored_minute, second=0, microsecond=0)
+    return [
+        {
+            "time": int(bucket_dt.timestamp()),
+            "open": numeric,
+            "high": numeric,
+            "low": numeric,
+            "close": numeric,
+            "volume": 0.0,
+        }
+    ]
 
 
 def normalize_tradier_timesales(
@@ -314,6 +355,7 @@ def get_intraday_bars(symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTE
         "current_session_bar_count": 0,
         "previous_session_day": "",
         "current_session_day": "",
+        "session_target_bar_count": 0,
     }
 
     try:
@@ -328,26 +370,30 @@ def get_intraday_bars(symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTE
             current_bars=normalized_current,
             prior_bars=normalized_prior,
             anchor_day=now_et.date(),
+            interval=interval,
         )
         payload.update(two_session_payload)
         return payload
 
     if not normalized_current:
+        quote_price = _as_float(get_live_quote(symbol_name).get("price"))
+        synthetic_current = _synthetic_quote_bar(price=quote_price, now_et=now_et, interval=interval)
         payload.update(
             _two_session_regular_bars(
-                current_bars=[],
+                current_bars=synthetic_current,
                 prior_bars=normalized_prior,
                 anchor_day=now_et.date(),
+                interval=interval,
             )
         )
         return payload
 
-    framing = _two_session_regular_bars(
+    framing = _opening_session_carryover_bars(
         current_bars=normalized_current,
         prior_bars=normalized_prior,
-        anchor_day=now_et.date(),
+        session_day=now_et.date(),
+        interval=interval,
     )
-    framing["live_session_bar_count"] = framing.get("current_session_bar_count", 0)
     payload.update(framing)
     return payload
 

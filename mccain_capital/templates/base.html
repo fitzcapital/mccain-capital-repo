@@ -298,6 +298,7 @@
           <div class="brandSignature">
             <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Personal Trading Cockpit</span>
           </div>
+          <div class="sub">Execution, review, and risk control.</div>
         </div>
       </div>
 
@@ -305,18 +306,20 @@
         <div class="headerInfoCluster">
           {% if top_notice or (active != 'auth' and tw and tw.show_banner) %}
             <div class="topNoticeRow">
-              {% if top_notice.href %}
-                <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
-                  <span class="topNoticeSignal" aria-hidden="true"></span>
-                  {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
-                  <span class="topNoticeText">{{ top_notice.text }}</span>
-                </a>
-              {% else %}
-                <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
-                  <span class="topNoticeSignal" aria-hidden="true"></span>
-                  {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
-                  <span class="topNoticeText">{{ top_notice.text }}</span>
-                </div>
+              {% if top_notice %}
+                {% if top_notice.href %}
+                  <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
+                    <span class="topNoticeSignal" aria-hidden="true"></span>
+                    {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
+                    <span class="topNoticeText">{{ top_notice.text }}</span>
+                  </a>
+                {% else %}
+                  <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
+                    <span class="topNoticeSignal" aria-hidden="true"></span>
+                    {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
+                    <span class="topNoticeText">{{ top_notice.text }}</span>
+                  </div>
+                {% endif %}
               {% endif %}
               {% if active != 'auth' and tw and tw.show_banner %}
                 <div class="tradingWindowPillGroup">
@@ -336,9 +339,7 @@
             <div id="marketStatusClock" class="clockPill cockpitPill marketStatusClock is-loading" aria-label="Market status and Eastern time">
               <span class="marketStatusClockDot" aria-hidden="true"></span>
               <span class="marketStatusClockTimeGroup">
-                <span class="marketStatusClockTimeUnit">
-                  <span id="etClock" class="clockTime">--:--</span><span id="etClockSeconds" class="marketStatusClockSeconds">:--</span>
-                </span>
+                <span id="etClock" class="clockTime">--:--</span>
                 <span id="etClockMeridiem" class="marketStatusClockMeridiem">--</span>
                 <span class="marketStatusClockSuffix">ET</span>
               </span>
@@ -425,7 +426,7 @@
             {% endif %}
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: New Galaxy</button>
             {% if auth_enabled %}
               <div class="hr"></div>
               {% if authenticated %}
@@ -635,7 +636,7 @@
             {% else %}
               <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             {% endif %}
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: New Galaxy</button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}

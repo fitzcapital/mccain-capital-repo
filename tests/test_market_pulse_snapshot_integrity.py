@@ -30,6 +30,45 @@ def _cached_snapshot(
     }
 
 
+def _execution_model(
+    *,
+    spot=6612.25,
+    main_flip=6785.0,
+    local_flip=6593.0,
+    call_wall=6600.0,
+    put_wall=6575.0,
+    best_look="Buy dips above Local Flip",
+):
+    return {
+        "levels": {
+            "spot": spot,
+            "main_flip": main_flip,
+            "local_flip": local_flip,
+            "call_wall": call_wall,
+            "put_wall": put_wall,
+        },
+        "local_bias": {
+            "state": "unknown",
+            "title": "LOCAL FLIP UNKNOWN",
+            "label": "WAIT",
+            "context": "LOCAL FLIP UNKNOWN",
+        },
+        "location": {
+            "zone": "Inside Range",
+            "nearest_level_name": "Call Wall",
+            "status": "Inside Range",
+        },
+        "playbook": {
+            "status": "WAIT",
+            "tone": "warn",
+            "best_look": best_look,
+            "need": "Confirmation at the nearest level",
+            "why": "Core levels are usable for intraday planning.",
+        },
+        "posture_summary": "Core levels are usable for intraday planning.",
+    }
+
+
 def test_after_hours_spot_prefers_official_close_over_zero():
     spot = core._market_pulse_resolve_spot_snapshot(
         session_mode="after_hours",
@@ -218,7 +257,7 @@ def test_canonical_playbook_view_softens_copy_for_unconfirmed_planning_bias():
             "context_grade": "D",
             "context_score": 52,
             "context_tone": "warn",
-            "tradeability": "Planning mode only",
+            "tradeability": "PLANNING_ONLY",
         },
         execution_model={
             "neutral_band_local": 2.5,
@@ -365,3 +404,133 @@ def test_structure_snapshot_after_hours_uses_planning_labels_not_unknown():
     assert snapshot["trigger_validation"]["status_line"] == "PLANNING ONLY — NEXT LIVE TRIGGER REQUIRED"
     assert "Call Wall" in snapshot["trigger_validation"]["items"]["sweep"]["line"]
     assert snapshot["trigger_validation"]["items"]["volume"]["active"] is False
+
+
+def test_structure_snapshot_promotes_partial_regular_board_to_provisional_regime():
+    snapshot = core._market_pulse_structure_snapshot(
+        spx_quote={"price": 6832.5, "asof": "2026-04-10T09:37:54-04:00"},
+        gamma_snapshot={
+            "snapshot_status": "healthy",
+            "regime": "Negative Gamma",
+            "spot_price_used": 6832.5,
+            "gamma_flip_combined_basket": 6985.0,
+            "local_flip_aggregated_gamma": 6770.0,
+            "call_wall_aggregated_gamma": 6850.0,
+            "put_wall_aggregated_gamma": None,
+            "next_call_wall_above": None,
+            "next_put_wall_below": None,
+        },
+        execution_chart={"mode": "live_session", "summary": "Live session"},
+        execution_model=_execution_model(
+            spot=6832.5,
+            main_flip=6985.0,
+            local_flip=6770.0,
+            call_wall=6850.0,
+            put_wall=None,
+            best_look="Sell rips near resistance",
+        ),
+        now_et=datetime.fromisoformat("2026-04-10T09:37:54-04:00"),
+    )
+    assert snapshot["gamma_data_status"] == "partial"
+    assert snapshot["gamma_regime_state"] == "provisional"
+    assert snapshot["gamma_board_status"] == "Partial"
+    assert snapshot["gamma_regime"] == "negative"
+    assert snapshot["gamma_regime_label"] == "Provisional Negative Gamma"
+    assert snapshot["gamma_regime_subtitle"] == "Core levels present · medium confidence"
+    assert snapshot["gamma_regime_confidence"] == "Medium"
+    assert snapshot["regime_confidence"] == "medium"
+    assert snapshot["gamma_regime_reason_label"] == "Intraday usable"
+
+
+def test_structure_snapshot_partial_board_missing_main_flip_stays_unconfirmed():
+    snapshot = core._market_pulse_structure_snapshot(
+        spx_quote={"price": 6832.5, "asof": "2026-04-10T09:37:54-04:00"},
+        gamma_snapshot={
+            "snapshot_status": "healthy",
+            "regime": "Positive Gamma",
+            "spot_price_used": 6832.5,
+            "gamma_flip_combined_basket": None,
+            "local_flip_aggregated_gamma": 6770.0,
+            "call_wall_aggregated_gamma": 6850.0,
+            "put_wall_aggregated_gamma": 6755.0,
+            "next_call_wall_above": None,
+            "next_put_wall_below": None,
+        },
+        execution_chart={"mode": "live_session", "summary": "Live session"},
+        execution_model=_execution_model(
+            spot=6832.5,
+            main_flip=None,
+            local_flip=6770.0,
+            call_wall=6850.0,
+            put_wall=6755.0,
+        ),
+        now_et=datetime.fromisoformat("2026-04-10T09:37:54-04:00"),
+    )
+    assert snapshot["gamma_data_status"] == "partial"
+    assert snapshot["gamma_regime_state"] == "unconfirmed"
+    assert snapshot["gamma_regime"] == "unconfirmed"
+    assert snapshot["gamma_regime_label"] == "Unconfirmed"
+    assert snapshot["gamma_regime_subtitle"] == "Waiting on main flip"
+    assert snapshot["gamma_regime_reason_label"] == "Waiting on main flip"
+    assert snapshot["gamma_regime_missing_reason"] == "waiting_on_main_flip"
+    assert snapshot["gamma_regime_confidence"] == "Low"
+
+
+def test_structure_snapshot_fresh_valid_board_remains_confirmed():
+    snapshot = core._market_pulse_structure_snapshot(
+        spx_quote={"price": 6832.5, "asof": "2026-04-10T09:37:54-04:00"},
+        gamma_snapshot={
+            "snapshot_status": "healthy",
+            "regime": "Strong Positive Gamma",
+            "spot_price_used": 6832.5,
+            "gamma_flip_combined_basket": 6815.0,
+            "local_flip_aggregated_gamma": 6815.0,
+            "call_wall_aggregated_gamma": 6850.0,
+            "put_wall_aggregated_gamma": 6755.0,
+            "next_call_wall_above": 6880.0,
+            "next_put_wall_below": 6725.0,
+        },
+        execution_chart={"mode": "live_session", "summary": "Live session"},
+        execution_model=_execution_model(
+            spot=6832.5,
+            main_flip=6815.0,
+            local_flip=6815.0,
+            call_wall=6850.0,
+            put_wall=6755.0,
+        ),
+        now_et=datetime.fromisoformat("2026-04-10T09:37:54-04:00"),
+    )
+    assert snapshot["gamma_data_status"] == "fresh_valid"
+    assert snapshot["gamma_regime_state"] == "confirmed"
+    assert snapshot["gamma_board_status"] == "Complete"
+    assert snapshot["gamma_regime"] == "positive"
+    assert snapshot["gamma_regime_label"] == "Positive Gamma"
+    assert snapshot["gamma_regime_subtitle"] == "Strong mean reversion / pinning active"
+    assert snapshot["gamma_regime_confidence"] == "High"
+
+
+def test_apply_resolved_levels_preserves_raw_regime_direction():
+    out = core._market_pulse_apply_resolved_levels(
+        {
+            "regime": "Positive Gamma",
+            "gamma_flip_combined_basket": 6815.0,
+        },
+        {
+            "gamma_data_status": "partial",
+            "gamma_regime_meta": {
+                "value": "unconfirmed",
+                "label": "Unconfirmed",
+                "subtitle": "Gamma board incomplete",
+            },
+            "level_meta": {
+                "main_flip": {"value": 6815.0},
+                "local_flip": {"value": 6815.0},
+                "call_wall": {"value": 6850.0},
+                "put_wall": {"value": 6755.0},
+                "next_call_wall": {"value": None},
+                "next_put_wall": {"value": None},
+            },
+        },
+    )
+    assert out["regime"] == "Positive Gamma"
+    assert out["resolved_gamma_data_status"] == "partial"

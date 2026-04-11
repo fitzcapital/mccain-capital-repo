@@ -529,6 +529,7 @@ def strat_page():
         state.quiz = state.quiz || {};
         state.activeModule = state.activeModule || "gamma";
         state.glossaryTerm = state.glossaryTerm || "gamma";
+        state.glossarySeen = Array.isArray(state.glossarySeen) ? state.glossarySeen : [];
 
         const heroProgressFill = document.getElementById("stratHeroProgressFill");
         const heroProgressPct = document.getElementById("stratHeroProgressPct");
@@ -563,10 +564,21 @@ def strat_page():
           return { total, correct };
         }
 
+        function markGlossarySeen(term){
+          const key = String(term || "").trim();
+          if (!key || !glossary[key]) return false;
+          if (!state.glossarySeen.includes(key)) {
+            state.glossarySeen.push(key);
+            return true;
+          }
+          return false;
+        }
+
         function syncHeroProgress(){
           const quiz = quizTotals();
           const conceptTotal = quiz.total + Object.keys(glossary).length;
-          const conceptDone = quiz.correct + (state.glossaryTerm ? 1 : 0);
+          const glossarySeenCount = state.glossarySeen.filter((term) => !!glossary[term]).length;
+          const conceptDone = quiz.correct + glossarySeenCount;
           const pct = conceptTotal ? Math.round((conceptDone / conceptTotal) * 100) : 0;
           if (heroProgressFill) heroProgressFill.style.width = pct + "%";
           if (heroProgressPct) heroProgressPct.textContent = pct + "%";
@@ -594,6 +606,7 @@ def strat_page():
 
         function syncGlossary(){
           const active = state.glossaryTerm || "gamma";
+          if (markGlossarySeen(active)) persist();
           glossaryButtons.forEach((button) => {
             button.classList.toggle("is-active", button.getAttribute("data-term") === active);
           });
@@ -645,6 +658,7 @@ def strat_page():
         glossaryButtons.forEach((button) => {
           button.addEventListener("click", () => {
             state.glossaryTerm = button.getAttribute("data-term") || "gamma";
+            markGlossarySeen(state.glossaryTerm);
             persist();
             syncGlossary();
           });
