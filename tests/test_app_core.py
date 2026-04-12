@@ -87,6 +87,28 @@ def test_strategies_page_uses_playbook_workflow_surface(client):
     assert "Playbook Rule" in body
 
 
+def test_playbook_page_renders_trading_doctrine_surface(client):
+    resp = client.get("/playbook", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "The Fitz Capital Trading Doctrine" in body
+    assert "Mindset, execution, and market-reading principles built for repeatable performance." in body
+    assert "Five Non-Negotiables" in body
+    assert "Before You Click" in body
+    assert "Mindset Doctrine" in body
+    assert "Execution Doctrine" in body
+    assert "Market Reading Doctrine" in body
+
+
+def test_strat_page_tracks_modules_in_learning_progress_and_includes_deeper_training_notes(client):
+    resp = client.get("/strat", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "0 / 23 concepts" in body
+    assert "Think in probabilities." in body
+    assert "Effort vs result:" in body
+
+
 def test_strategy_mutations_flash_feedback(client):
     created = client.post(
         "/strategies/new",
@@ -1024,6 +1046,7 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"Core Tape" in resp.data
     assert b"SPX" in resp.data
     assert b"TSLA" in resp.data
+    assert b'"quotes_map"' in resp.data
     assert b"marketPulseStreamStatus" in resp.data
     assert b"Tradier Live Quote" in resp.data
     assert b"Yahoo Fallback" in resp.data

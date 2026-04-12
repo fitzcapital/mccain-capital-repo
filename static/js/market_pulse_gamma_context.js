@@ -869,6 +869,37 @@
     const spxTick = prices.SPX || prices["^GSPC"] || null;
     const vixTick = prices.VIX || prices["^VIX"] || null;
 
+    const nextQuotesMap = {
+      ...((current || {}).quotes_map || {}),
+    };
+    Object.entries(prices || {}).forEach(([symbol, tick]) => {
+      const key = String(symbol || "").toUpperCase();
+      if (!key || !tick || typeof tick !== "object") return;
+      const existing = { ...(nextQuotesMap[key] || {}) };
+      const nextQuote = { ...existing };
+      const tickPrice = asNum(tick.price);
+      const tickPct = asNum(tick.pct_change ?? tick.change_pct);
+      const tickChange = asNum(tick.change);
+      if (tickPrice !== null) nextQuote.price = tickPrice;
+      if (tickPct !== null) nextQuote.change_pct = tickPct;
+      if (tickChange !== null) nextQuote.change = tickChange;
+      if (typeof tick.as_of === "string" && tick.as_of) {
+        nextQuote.as_of = tick.as_of;
+        nextQuote.asof = tick.as_of;
+      }
+      if (typeof tick.provider === "string" && tick.provider) nextQuote.provider = tick.provider;
+      if (typeof tick.reason === "string" && tick.reason) {
+        nextQuote.reason = tick.reason;
+        nextQuote.data_reason = tick.reason;
+      }
+      nextQuote.symbol = String(nextQuote.symbol || key).toUpperCase();
+      nextQuote.label = String(nextQuote.label || nextQuote.symbol || key).toUpperCase();
+      nextQuote.data_state = deriveDataState(nextQuote);
+      nextQuote.data_status_label = dataStateLabel(nextQuote.data_state);
+      nextQuote.source_badge_label = sourceBadgeLabel(nextQuote);
+      nextQuotesMap[key] = nextQuote;
+    });
+
     const nextSpx = { ...(current.spx_quote || {}) };
     if (spxTick && typeof spxTick === "object") {
       const tickPrice = asNum(spxTick.price);
@@ -920,6 +951,7 @@
         ...((current || {}).series_points || {}),
         ...(seriesPoints || {}),
       },
+      quotes_map: nextQuotesMap,
       gamma_snapshot: nextGammaSnapshot,
       execution_model: patchExecutionModelForStream(
         payload.execution_model || current.execution_model,
@@ -931,9 +963,13 @@
     tapeCards.forEach((card) => {
       const symbol = String(card.dataset.symbol || "").toUpperCase();
       if (!symbol) return;
-      applyTapeCardUpdate(card, prices[symbol] || {}, seriesPoints[symbol] || []);
+      applyTapeCardUpdate(
+        card,
+        nextQuotesMap[symbol] || {},
+        seriesPoints[symbol] || (((current || {}).series_points || {})[symbol]) || []
+      );
     });
-    updateTapeSummary(prices);
+    updateTapeSummary(nextQuotesMap);
     dispatchStreamStatus(
       "Live stream on",
       buildTickPingLabel(
@@ -1827,7 +1863,7 @@
     setText("marketPulseTriggerFooterLine", String(triggerValidation?.footer_line || heroState.note));
   };
 
-  const updateTapeSummary = (prices) => {
+  const updateTapeSummary = (quotesBySymbol) => {
     const tracked = tapeCards
       .map((card) => String(card.dataset.symbol || "").toUpperCase())
       .filter(Boolean);
@@ -1838,8 +1874,8 @@
     let biggestMove = null;
 
     tracked.forEach((symbol) => {
-      const quote = ((prices || {})[symbol] || {});
-      const pct = asNum(quote.pct_change);
+      const quote = ((quotesBySymbol || {})[symbol] || {});
+      const pct = asNum(quote.pct_change ?? quote.change_pct);
       const price = asNum(quote.price);
       if (price === null || pct === null) {
         missing += 1;

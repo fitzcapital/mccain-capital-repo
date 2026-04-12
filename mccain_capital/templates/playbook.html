@@ -1,0 +1,158 @@
+<section class="playbookHero card">
+  <div class="toolbar">
+    <div class="playbookHeroInner">
+      <div class="playbookHeroCopy">
+        <div class="pill">Playbook</div>
+        <h1 class="playbookHeroTitle">The Fitz Capital Trading Doctrine</h1>
+        <p class="playbookHeroSub">Mindset, execution, and market-reading principles built for repeatable performance.</p>
+        <div class="playbookJumpRow">
+          {% for link in sidebar.jump_links %}
+            <a class="trendChip playbookJumpChip" href="{{ link.href }}">{{ link.label }}</a>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="playbookHeroSignal card">
+        <div class="toolbar">
+          <div class="playbookSignalEyebrow">Operating Standard</div>
+          <div class="playbookSignalLead">Calm. Defined. Repeatable.</div>
+          <div class="playbookSignalBody">This page is the standing doctrine for how trades are seen, executed, and reviewed inside the Fitz Capital process.</div>
+        </div>
+      </div>
+    </div>
+    <div class="playbookSummaryGrid">
+      {% for card in summary_cards %}
+        <article class="playbookSummaryCard tone-{{ card.tone }}">
+          <div class="playbookSummaryLabel">{{ card.label }}</div>
+          <div class="playbookSummaryBody">{{ card.body }}</div>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="playbookLayout">
+  <div class="playbookMainColumn">
+    {% for section in doctrine_sections %}
+      <section id="{{ section.id }}" class="playbookDoctrinePanel card tone-{{ section.tone }}">
+        <div class="toolbar">
+          <div class="playbookDoctrineHead">
+            <div>
+              <div class="pill">{{ section.eyebrow }}</div>
+              <h2 class="playbookDoctrineTitle">{{ section.title }}</h2>
+              <p class="playbookDoctrineIntro">{{ section.intro }}</p>
+            </div>
+          </div>
+
+          {% if section.quick_tiles %}
+            <div class="playbookQuickTileGrid">
+              {% for tile in section.quick_tiles %}
+                <div class="playbookQuickTile">{{ tile }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <div class="playbookDoctrineGrid">
+            {% for block in section.blocks %}
+              <article class="playbookDoctrineCard">
+                <div class="playbookDoctrineCardTop">
+                  <h3>{{ block.title }}</h3>
+                </div>
+                {% if block.kind == "bullets" or block.kind == "checklist" %}
+                  <ul class="playbookList {% if block.kind == 'checklist' %}is-checklist{% endif %}">
+                    {% for item in block["items"] %}
+                      <li>{{ item }}</li>
+                    {% endfor %}
+                  </ul>
+                {% elif block.kind == "signals" %}
+                  <div class="playbookSignalGrid">
+                    {% for item in block["items"] %}
+                      <span class="trendChip playbookSignalChip">{{ item }}</span>
+                    {% endfor %}
+                  </div>
+                {% elif block.kind == "steps" %}
+                  <ol class="playbookStepList">
+                    {% for item in block["items"] %}
+                      <li>{{ item }}</li>
+                    {% endfor %}
+                  </ol>
+                {% elif block.kind == "quotes" %}
+                  <div class="playbookQuoteStack">
+                    {% for item in block["items"] %}
+                      <div class="playbookQuoteCard">{{ item }}</div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </article>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    {% endfor %}
+
+    <section class="playbookFooterGrid">
+      <article class="card playbookReflectionCard">
+        <div class="toolbar">
+          <div class="pill">Daily Reflection Prompt</div>
+          <h2 class="playbookFooterTitle">Close the day with process, not emotion.</h2>
+          <ul class="playbookList is-checklist">
+            {% for prompt in reflection_prompts %}
+              <li>{{ prompt }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </article>
+
+      <article class="card playbookReminderCard">
+        <div class="toolbar">
+          <div class="pill">Doctrine Reminder</div>
+          <div class="playbookReminderLead">If the trade is not clear, it is already wrong for your process.</div>
+          <div class="playbookReminderBody">Pass on confusion. Protect capital, attention, and confidence. The clean trade always matters more than the available trade.</div>
+        </div>
+      </article>
+    </section>
+  </div>
+
+  <aside class="playbookSidebar">
+    <div class="playbookSidebarSticky">
+      <section class="card playbookUtilityCard playbookUtilityCard-gold">
+        <div class="toolbar">
+          <div class="pill">Today’s Reminder</div>
+          <div class="playbookUtilityLead">“{{ sidebar.reminder }}”</div>
+        </div>
+      </section>
+
+      <section class="card playbookUtilityCard">
+        <div class="toolbar">
+          <div class="pill">Five Non-Negotiables</div>
+          <ul class="playbookList is-tight">
+            {% for item in sidebar.non_negotiables %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+
+      <section class="card playbookUtilityCard playbookUtilityCard-warn">
+        <div class="toolbar">
+          <div class="pill">Before You Click</div>
+          <ul class="playbookList is-tight is-checklist">
+            {% for item in sidebar.before_click %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+
+      <section class="card playbookUtilityCard">
+        <div class="toolbar">
+          <div class="pill">Jump Links</div>
+          <div class="playbookSidebarLinks">
+            {% for link in sidebar.jump_links %}
+              <a class="btn playbookSidebarLink" href="{{ link.href }}">{{ link.label }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    </div>
+  </aside>
+</section>

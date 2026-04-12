@@ -1676,15 +1676,18 @@ def logout_page():
 
 
 def healthz():
-    return jsonify(
-        {
-            "status": "ok",
-            "app": "mccain-capital",
-            "build": BUILD_MARKER,
-            "ts": now_iso(),
-            "safe_mode": bool(app.config.get("SAFE_MODE")),
-        }
-    )
+    safe_mode = bool(app.config.get("SAFE_MODE"))
+    payload = {
+        "status": "degraded" if safe_mode else "ok",
+        "app": "mccain-capital",
+        "build": BUILD_MARKER,
+        "ts": now_iso(),
+        "safe_mode": safe_mode,
+    }
+    if safe_mode:
+        payload["error"] = str(app.config.get("SAFE_MODE_ERROR") or "safe_mode_enabled")
+        return jsonify(payload), 503
+    return jsonify(payload)
 
 
 def home():
@@ -2167,6 +2170,12 @@ def strat_page():
     from mccain_capital.services import strat as svc
 
     return svc.strat_page()
+
+
+def playbook_page():
+    from mccain_capital.services import playbook as svc
+
+    return svc.playbook_page()
 
 
 def books_open(name: str):

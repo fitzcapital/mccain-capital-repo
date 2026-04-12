@@ -21,3 +21,9 @@ def strategies_delete(sid: int):
 
 def strat_page():
     return svc.strat_page()
+
+
+def playbook_page():
+    from mccain_capital.services import playbook as playbook_svc
+
+    return playbook_svc.playbook_page()

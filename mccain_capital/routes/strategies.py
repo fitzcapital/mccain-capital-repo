@@ -5,6 +5,7 @@ from mccain_capital.handlers import strategies as h
 
 def register(app):
     app.add_url_rule("/strategies", endpoint="strategies_page", view_func=h.strategies_page)
+    app.add_url_rule("/playbook", endpoint="playbook_page", view_func=h.playbook_page, methods=["GET"])
     app.add_url_rule(
         "/strategies/new",
         endpoint="strategies_new",

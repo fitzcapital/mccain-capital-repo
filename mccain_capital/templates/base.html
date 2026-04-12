@@ -368,6 +368,7 @@
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
           <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
           <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
+          <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook">Playbook</a>
           <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
           <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
         </div>
@@ -384,6 +385,7 @@
             <a class="btn {% if request.path == '/ops/trading-window' %}active{% endif %}" href="/ops/trading-window">Trading Window</a>
             <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
+            <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook">Playbook</a>
             <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
             <div class="hr"></div>
             <div class="menuTitle">Review</div>
@@ -411,7 +413,9 @@
             <div class="hr"></div>
             <div class="menuTitle">System</div>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/backups">Auto Backups</a>
-            <a class="btn" href="/admin/backup">Download Backup</a>
+            <form method="post" action="/admin/backup" class="inlineForm">
+              <button class="btn" type="submit">Download Backup</button>
+            </form>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
             <a class="btn" href="/setup">Login Setup</a>
@@ -584,6 +588,7 @@
             <a class="btn {% if request.path == '/ops/trading-window' %}primary{% endif %}" href="/ops/trading-window">Trading Window</a>
             <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>
+            <a class="btn {% if active=='playbook' %}primary{% endif %}" href="/playbook">Playbook</a>
             <a class="btn {% if active=='strategies' %}primary{% endif %}" href="/strategies">Strategies</a>
           </div>
         </section>
@@ -619,7 +624,9 @@
           <div class="drawerSectionTitle">System</div>
           <div class="drawerStack">
             <a class="btn {% if active=='ops' %}primary{% endif %}" href="/ops/backups">Auto Backups</a>
-            <a class="btn" href="/admin/backup">Download Backup</a>
+            <form method="post" action="/admin/backup" class="inlineForm">
+              <button class="btn" type="submit">Download Backup</button>
+            </form>
             <a class="btn" href="/admin/restore">Restore Backup</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
             <a class="btn" href="/setup">Login Setup</a>
@@ -742,6 +749,30 @@
       }
       return originalFetch(input, init);
     };
+  })();
+</script>
+<script>
+  (function initFlashAutoDismiss(){
+    const flashNodes = Array.from(document.querySelectorAll(".flashStack .flashMessage"));
+    if (!flashNodes.length) return;
+
+    flashNodes.forEach((node) => {
+      if (
+        node.classList.contains("is-warn")
+        || node.classList.contains("is-warning")
+        || node.classList.contains("is-danger")
+      ) {
+        return;
+      }
+      window.setTimeout(() => {
+        node.classList.add("is-hiding");
+        window.setTimeout(() => {
+          node.remove();
+          const stack = document.querySelector(".flashStack");
+          if (stack && !stack.children.length) stack.remove();
+        }, 240);
+      }, 4200);
+    });
   })();
 </script>
 <script>

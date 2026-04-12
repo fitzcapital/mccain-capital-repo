@@ -747,7 +747,7 @@
      data-market-hours="{{ '1' if market_hours else '0' }}"
      hidden></div>
 
-<script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'vix_direction': context.get('vix_direction') if context else ''}|tojson }}</script>
+<script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else ''}|tojson }}</script>
 <script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
 <script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>

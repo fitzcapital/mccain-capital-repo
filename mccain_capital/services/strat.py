@@ -45,7 +45,7 @@ def strat_page():
             <div class="stratLearningMeter">
               <div class="stratLearningMeterTop">
                 <span>Learning Progress</span>
-                <strong id="stratLearningMeterText">0 / 14 concepts</strong>
+                <strong id="stratLearningMeterText">0 / 23 concepts</strong>
               </div>
               <div class="stratProgressBar stratProgressBar-hero">
                 <div id="stratHeroProgressFill" class="stratProgressFill"></div>
@@ -141,6 +141,12 @@ def strat_page():
               </div>
             </details>
           </div>
+          <div class="stratAnchorGrid">
+            <div class="stratAnchorTile"><b>Inside bar</b><span>Compression pattern. Best when it pauses at structure instead of floating midrange.</span></div>
+            <div class="stratAnchorTile"><b>Engulfing / pin bar</b><span>Useful only when rejection happens at a real level with room to move.</span></div>
+            <div class="stratAnchorTile"><b>False break</b><span>Strongest when the failed move traps one side and the reclaim holds.</span></div>
+            <div class="stratAnchorTile"><b>Top-down read</b><span>Lower-timeframe trigger improves when higher-timeframe location already matters.</span></div>
+          </div>
         </article>
 
         <article class="stratCard stratCardGlow stratCard-green" id="stratSection-context" data-strat-section="context">
@@ -203,6 +209,22 @@ def strat_page():
           <div class="stratStopBody">
             <div><b>Default rule:</b> your stop goes beyond the level that proves your idea wrong.</div>
             <div class="meta stack6">If the stop cannot fit the plan, the setup does not earn risk.</div>
+          </div>
+        </article>
+
+        <article class="stratCard stratCardGlow stratCard-blue">
+          <div class="stratCardHead">
+            <div>
+              <h3>🧠 Trader Psychology</h3>
+              <div class="meta">Mental rules worth carrying into every setup.</div>
+            </div>
+            <span class="trendChip info">Mindset</span>
+          </div>
+          <div class="stratTruthStack">
+            <div class="stratTruthRow"><span class="stratTruthIcon">🎲</span><div><b>Think in probabilities.</b><span>Any single setup can fail. Your edge lives in the series, not the next trade.</span></div></div>
+            <div class="stratTruthRow"><span class="stratTruthIcon">✍️</span><div><b>Define risk first.</b><span>Entry, invalidation, and size must be known before you click.</span></div></div>
+            <div class="stratTruthRow"><span class="stratTruthIcon">🪑</span><div><b>Sit with clean winners.</b><span>Good trades often feel uncomfortable before they pay. Don’t cut them just to feel safe.</span></div></div>
+            <div class="stratTruthRow"><span class="stratTruthIcon">🧱</span><div><b>Small losses are business.</b><span>The goal is not being right every trade. The goal is keeping error small and repeatable.</span></div></div>
           </div>
         </article>
       </section>
@@ -323,6 +345,21 @@ def strat_page():
             <div class="stratGammaRuleCard"><b>Continuity:</b> when timeframe continuity lines up with negative gamma, breakout follow-through quality improves.</div>
             <div class="stratGammaRuleCard"><b>Walls and flip:</b> these levels change whether a setup is responsive, conditional, or dangerous.</div>
             <div class="stratGammaRuleCard"><b>Stop discipline:</b> gamma changes how fast price can move, so the same candle pattern may need very different risk tolerance.</div>
+          </div>
+        </div>
+
+        <div class="stratGammaRulesShell">
+          <div class="stratGammaSubhead">
+            <div>
+              <h4>Volume + Price Read</h4>
+              <div class="meta">Use volume as confirmation, not decoration.</div>
+            </div>
+          </div>
+          <div class="stratGammaRulesGrid">
+            <div class="stratGammaRuleCard"><b>Effort vs result:</b> big volume with little progress warns that the move is meeting opposing interest.</div>
+            <div class="stratGammaRuleCard"><b>Breakout quality:</b> if price breaks a level without participation, treat the move as fragile until it proves acceptance.</div>
+            <div class="stratGammaRuleCard"><b>Climactic bars:</b> wide spread plus extreme volume near a key level can mark exhaustion, not continuation.</div>
+            <div class="stratGammaRuleCard"><b>Quiet pullbacks:</b> lower-volume retracements often support continuation better than chaotic, high-volume snapbacks.</div>
           </div>
         </div>
 
@@ -495,7 +532,7 @@ def strat_page():
 
     <script>
       (function initStratLab(){
-        const storageKey = "strat_lab_state_v2";
+        const storageKey = "strat_lab_state_v3";
         const glossary = {
           gamma: ["Gamma", "Dealer sensitivity that changes how price often reacts around structure."],
           gex: ["GEX", "Gamma exposure. A way of framing whether dealer positioning may dampen or amplify movement."],
@@ -530,6 +567,7 @@ def strat_page():
         state.activeModule = state.activeModule || "gamma";
         state.glossaryTerm = state.glossaryTerm || "gamma";
         state.glossarySeen = Array.isArray(state.glossarySeen) ? state.glossarySeen : [];
+        state.modulesSeen = Array.isArray(state.modulesSeen) ? state.modulesSeen : [];
 
         const heroProgressFill = document.getElementById("stratHeroProgressFill");
         const heroProgressPct = document.getElementById("stratHeroProgressPct");
@@ -574,11 +612,24 @@ def strat_page():
           return false;
         }
 
+        function markModuleSeen(moduleKey){
+          const key = String(moduleKey || "").trim();
+          if (!key) return false;
+          if (!state.modulesSeen.includes(key)) {
+            state.modulesSeen.push(key);
+            return true;
+          }
+          return false;
+        }
+
         function syncHeroProgress(){
           const quiz = quizTotals();
-          const conceptTotal = quiz.total + Object.keys(glossary).length;
+          const conceptTotal = quiz.total + Object.keys(glossary).length + moduleButtons.length;
           const glossarySeenCount = state.glossarySeen.filter((term) => !!glossary[term]).length;
-          const conceptDone = quiz.correct + glossarySeenCount;
+          const moduleSeenCount = state.modulesSeen.filter((moduleKey) => {
+            return moduleButtons.some((button) => button.getAttribute("data-strat-module") === moduleKey);
+          }).length;
+          const conceptDone = quiz.correct + glossarySeenCount + moduleSeenCount;
           const pct = conceptTotal ? Math.round((conceptDone / conceptTotal) * 100) : 0;
           if (heroProgressFill) heroProgressFill.style.width = pct + "%";
           if (heroProgressPct) heroProgressPct.textContent = pct + "%";
@@ -588,6 +639,7 @@ def strat_page():
 
         function syncModule(){
           const active = state.activeModule || "gamma";
+          if (markModuleSeen(active)) persist();
           moduleButtons.forEach((button) => {
             button.classList.toggle("is-active", button.getAttribute("data-strat-module") === active);
           });
@@ -602,6 +654,7 @@ def strat_page():
               if (section !== target) section.classList.remove("is-focused");
             });
           }
+          syncHeroProgress();
         }
 
         function syncGlossary(){
