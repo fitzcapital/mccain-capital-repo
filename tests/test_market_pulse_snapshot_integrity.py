@@ -534,3 +534,136 @@ def test_apply_resolved_levels_preserves_raw_regime_direction():
     )
     assert out["regime"] == "Positive Gamma"
     assert out["resolved_gamma_data_status"] == "partial"
+
+
+def test_gamma_resolution_infers_next_put_wall_and_keeps_secondary_pair_displayable():
+    payload = core._market_pulse_resolve_gamma_payload(
+        gamma_snapshot={
+            "snapshot_status": "healthy",
+            "last_successful_compute": "2026-04-10T09:37:54-04:00",
+            "regime": "Positive Gamma",
+            "spot_price_used": 6832.5,
+            "gamma_flip_combined_basket": 6815.0,
+            "local_flip_aggregated_gamma": 6815.0,
+            "call_wall_aggregated_gamma": 6850.0,
+            "put_wall_aggregated_gamma": 6755.0,
+            "next_call_wall_above": 6880.0,
+            "next_put_wall_below": None,
+            "gamma_walls_top3": [6880.0, 6725.0, 6700.0],
+            "chart_json": {"gex": {"data": [{"x": [6700.0, 6725.0, 6755.0, 6815.0, 6850.0, 6880.0]}]}},
+        },
+        last_good_snapshot=None,
+        session_mode="regular",
+        now_et=datetime.fromisoformat("2026-04-10T09:37:54-04:00"),
+    )
+    canonical = payload["canonical_structure"]
+    assert canonical["next_call_wall"] == 6880.0
+    assert canonical["next_put_wall"] == 6725.0
+    assert canonical["next_call_wall_source"] == "provider"
+    assert canonical["next_put_wall_source"] == "inferred"
+    assert canonical["next_put_wall_confidence"] in {"high", "medium"}
+    assert canonical["secondary_structure_complete"] is True
+    assert canonical["secondary_structure_displayable"] is True
+    assert canonical["resolution_source"] == "Mixed provider + inferred"
+    assert payload["level_meta"]["next_put_wall"]["value"] == 6725.0
+
+
+def test_gamma_resolution_suppresses_one_sided_secondary_band_when_next_put_is_weak():
+    payload = core._market_pulse_resolve_gamma_payload(
+        gamma_snapshot={
+            "snapshot_status": "healthy",
+            "last_successful_compute": "2026-04-10T09:37:54-04:00",
+            "regime": "Positive Gamma",
+            "spot_price_used": 6832.5,
+            "gamma_flip_combined_basket": 6815.0,
+            "local_flip_aggregated_gamma": 6815.0,
+            "call_wall_aggregated_gamma": 6850.0,
+            "put_wall_aggregated_gamma": 6755.0,
+            "next_call_wall_above": 6880.0,
+            "next_put_wall_below": None,
+            "gamma_walls_top3": [6880.0],
+            "chart_json": {"gex": {"data": [{"x": [6500.0, 6755.0, 6815.0, 6850.0, 6880.0]}]}},
+        },
+        last_good_snapshot=None,
+        session_mode="regular",
+        now_et=datetime.fromisoformat("2026-04-10T09:37:54-04:00"),
+    )
+    canonical = payload["canonical_structure"]
+    assert canonical["next_call_wall"] is None
+    assert canonical["next_put_wall"] is None
+    assert canonical["secondary_structure_complete"] is False
+    assert canonical["secondary_structure_displayable"] is False
+    assert canonical["degraded_reason"] in {
+        "no_trustworthy_next_put_wall_candidate",
+        "heuristic_next_put_wall_not_supported",
+    }
+    assert payload["level_meta"]["next_call_wall"]["value"] is None
+    assert payload["level_meta"]["next_put_wall"]["value"] is None
+
+
+def test_structure_snapshot_exposes_canonical_secondary_metadata():
+    snapshot = core._market_pulse_structure_snapshot(
+        spx_quote={"price": 6832.5, "asof": "2026-04-10T09:37:54-04:00"},
+        gamma_snapshot={
+            "snapshot_status": "healthy",
+            "regime": "Positive Gamma",
+            "spot_price_used": 6832.5,
+            "gamma_flip_combined_basket": 6815.0,
+            "local_flip_aggregated_gamma": 6815.0,
+            "call_wall_aggregated_gamma": 6850.0,
+            "put_wall_aggregated_gamma": 6755.0,
+            "next_call_wall_above": 6880.0,
+            "next_put_wall_below": None,
+            "gamma_walls_top3": [6880.0, 6725.0, 6700.0],
+            "chart_json": {"gex": {"data": [{"x": [6700.0, 6725.0, 6755.0, 6815.0, 6850.0, 6880.0]}]}},
+        },
+        execution_chart={"mode": "live_session", "summary": "Live session"},
+        execution_model=_execution_model(
+            spot=6832.5,
+            main_flip=6815.0,
+            local_flip=6815.0,
+            call_wall=6850.0,
+            put_wall=6755.0,
+        ),
+        now_et=datetime.fromisoformat("2026-04-10T09:37:54-04:00"),
+    )
+    assert snapshot["next_call_wall"] == 6880.0
+    assert snapshot["next_put_wall"] == 6725.0
+    assert snapshot["secondary_structure_displayable"] is True
+    assert snapshot["resolution_source"] == "Mixed provider + inferred"
+
+
+def test_gamma_resolution_uses_grouped_strike_rows_for_secondary_candidate_universe():
+    payload = core._market_pulse_resolve_gamma_payload(
+        gamma_snapshot={
+            "snapshot_status": "healthy",
+            "last_successful_compute": "2026-04-10T09:37:54-04:00",
+            "regime": "Positive Gamma",
+            "spot_price_used": 6832.5,
+            "gamma_flip_combined_basket": 6815.0,
+            "local_flip_aggregated_gamma": 6815.0,
+            "call_wall_aggregated_gamma": 6850.0,
+            "put_wall_aggregated_gamma": 6755.0,
+            "next_call_wall_above": None,
+            "next_put_wall_below": None,
+            "gamma_walls_top3": [6850.0],
+            "chart_json": {"gex": None},
+            "grouped_strike_rows": [
+                {"strike": 6700.0, "put_oi": 400.0, "put_side_gex": 12.0, "net_gex": -12.0},
+                {"strike": 6725.0, "put_oi": 1250.0, "put_side_gex": 28.0, "net_gex": -28.0},
+                {"strike": 6755.0, "put_oi": 1700.0, "put_side_gex": 30.0, "net_gex": -30.0},
+                {"strike": 6815.0, "call_oi": 1400.0, "call_side_gex": 16.0, "net_gex": 16.0},
+                {"strike": 6850.0, "call_oi": 1600.0, "call_side_gex": 24.0, "net_gex": 24.0},
+                {"strike": 6875.0, "call_oi": 900.0, "call_side_gex": 14.0, "net_gex": 14.0},
+            ],
+        },
+        last_good_snapshot=None,
+        session_mode="regular",
+        now_et=datetime.fromisoformat("2026-04-10T09:37:54-04:00"),
+    )
+    canonical = payload["canonical_structure"]
+    ladder = canonical["secondary_candidate_ladder"]
+    assert [row["strike"] for row in ladder] == [6700.0, 6725.0, 6755.0, 6815.0, 6850.0, 6875.0]
+    assert canonical["next_put_wall"] in {6725.0, 6730.0}
+    assert canonical["next_put_wall_source"] == "inferred"
+    assert canonical["secondary_structure_displayable"] is True

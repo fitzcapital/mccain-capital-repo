@@ -1696,7 +1696,9 @@ def test_stream_market_sse_emits_json_payload(client, monkeypatch):
     resp = client.get("/stream/market", follow_redirects=True)
     assert resp.status_code == 200
     assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
+    assert resp.headers.get("X-Accel-Buffering") == "no"
     assert b"data: " in resp.data
+    assert b"stream_ready" in resp.data
     assert b"QQQ" in resp.data
     assert b"options" in resp.data
     assert b"gamma_map" in resp.data

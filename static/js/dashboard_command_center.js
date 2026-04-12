@@ -242,6 +242,53 @@
 
   const gammaCardByKey = (key) => document.getElementById(`dashboardGammaChip-${key}`);
   const gammaValueByKey = (key) => document.getElementById(`dashboardGammaValue-${key}`);
+  const gammaDetailByKey = (key) => document.getElementById(`dashboardGammaDetail-${key}`);
+
+  const formatLevel = (value) => {
+    const numeric = asNum(value);
+    return numeric === null ? "--" : String(Math.round(numeric));
+  };
+
+  const structureToneForKey = (key, structure) => {
+    if (key === "regime") {
+      const regime = String((structure && (structure.gamma_regime || structure.gamma_regime_label)) || "").toLowerCase();
+      if (regime.includes("positive")) return "positive";
+      if (regime.includes("negative")) return "negative";
+      if (regime.includes("neutral") || regime.includes("unconfirmed")) return "info";
+      return "";
+    }
+    if (key === "next_call_wall" || key === "call_wall") return "negative";
+    if (key === "next_put_wall" || key === "put_wall") return "positive";
+    if (key === "main_flip") return "info";
+    return "";
+  };
+
+  const structureGlowForKey = (key, structure) => {
+    if (key === "regime") {
+      const tone = structureToneForKey(key, structure);
+      return tone === "positive" || tone === "negative";
+    }
+    return key === "local_flip" || key === "next_call_wall" || key === "next_put_wall";
+  };
+
+  const structureValueForKey = (key, structure) => {
+    if (!structure || typeof structure !== "object") return "--";
+    if (key === "regime") {
+      return String(structure.gamma_regime_label || structure.gamma_regime || "UNAVAILABLE").toUpperCase();
+    }
+    if (key === "local_flip" && structure.local_flip === null && structure.local_flip_found === false) {
+      return "None in local band";
+    }
+    const fieldMap = {
+      local_flip: "local_flip",
+      next_call_wall: "next_call_wall",
+      next_put_wall: "next_put_wall",
+      main_flip: "main_flip",
+      call_wall: "call_wall",
+      put_wall: "put_wall",
+    };
+    return formatLevel(structure[fieldMap[key]]);
+  };
 
   const applyGammaTone = (node, tone, glow) => {
     if (!node) return;
@@ -252,27 +299,53 @@
     if (glow) node.classList.add("has-glow");
   };
 
-  const updateGammaStrip = (payload) => {
-    if (!gammaStrip || !payload || typeof payload !== "object") return;
-    const state = String(payload.state || "live");
+  const updateGammaStrip = (structure, metaPayload) => {
+    if (!gammaStrip || !structure || typeof structure !== "object") return;
+    const payload = metaPayload && typeof metaPayload === "object" ? metaPayload : {};
+    const state = String(payload.state || (
+      String(structure.levels_source || "").toLowerCase() === "unavailable"
+        ? "unavailable"
+        : ["partial", "stale_but_usable", "fallback_valid"].includes(String(structure.gamma_data_status || "").toLowerCase())
+        || String(structure.levels_source || "").toLowerCase() === "last_valid_snapshot"
+        ? "stale"
+        : "live"
+    ));
     gammaStrip.dataset.gammaState = state;
     gammaStrip.classList.remove("is-live", "is-stale", "is-loading", "is-unavailable");
     gammaStrip.classList.add(`is-${state}`);
     if (gammaMeta) {
-      gammaMeta.textContent = String(payload.status_text || "Gamma context unavailable");
+      gammaMeta.textContent = String(
+        payload.status_text
+          || structure.gamma_regime_reason_label
+          || structure.secondary_structure_degraded_reason
+          || "Gamma context unavailable"
+      );
       gammaMeta.classList.remove("is-stale", "is-loading", "is-unavailable");
       if (state === "stale" || state === "loading" || state === "unavailable") {
         gammaMeta.classList.add(`is-${state}`);
       }
     }
-    const entries = Array.isArray(payload.entries) ? payload.entries : [];
-    entries.forEach((entry) => {
-      const key = String(entry && entry.key || "");
-      if (!key) return;
+    [
+      "regime",
+      "local_flip",
+      "next_call_wall",
+      "next_put_wall",
+      "main_flip",
+      "call_wall",
+      "put_wall",
+    ].forEach((key) => {
       const card = gammaCardByKey(key);
       const valueNode = gammaValueByKey(key);
-      if (valueNode) valueNode.textContent = String(entry.value || "--");
-      applyGammaTone(card, String(entry.tone || ""), Boolean(entry.glow));
+      const detailNode = gammaDetailByKey(key);
+      if (valueNode) valueNode.textContent = structureValueForKey(key, structure);
+      if (detailNode && key === "regime") {
+        detailNode.textContent = String(
+          structure.gamma_regime === "unconfirmed" || structure.gamma_regime === "unavailable"
+            ? (structure.gamma_regime_reason_label || "")
+            : ""
+        );
+      }
+      applyGammaTone(card, structureToneForKey(key, structure), structureGlowForKey(key, structure));
     });
   };
 
@@ -291,7 +364,10 @@
       }
       const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
       const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
-      updateGammaStrip(payload && typeof payload === "object" ? payload.dashboard_gamma : null);
+      updateGammaStrip(
+        payload && typeof payload === "object" ? payload.market_structure_snapshot : null,
+        payload && typeof payload === "object" ? payload.dashboard_gamma : null,
+      );
       rows.forEach((row) => {
         const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
         updateRow(row, prices[symbol] || {}, seriesPoints[symbol] || []);

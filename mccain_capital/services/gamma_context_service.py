@@ -51,14 +51,74 @@ def _safe_float(value: Any) -> Optional[float]:
         return None
 
 
-def _extract_candidate_levels(payload: Dict[str, Any]) -> List[float]:
-    out: List[float] = []
+def _extract_candidate_ladder(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    ladder: Dict[float, Dict[str, Any]] = {}
+
+    def _upsert(
+        strike: Any,
+        *,
+        source: str,
+        abs_gex: Any = None,
+        oi: Any = None,
+        significance_score: Any = None,
+        expiry_basket_membership: str = "approved",
+    ) -> None:
+        parsed = _safe_float(strike)
+        if parsed is None:
+            return
+        key = float(round(parsed, 4))
+        row = ladder.setdefault(
+            key,
+            {
+                "strike": key,
+                "abs_gex": None,
+                "oi": None,
+                "significance_score": None,
+                "expiry_basket_membership": expiry_basket_membership,
+                "sources": [],
+            },
+        )
+        row["expiry_basket_membership"] = expiry_basket_membership or row["expiry_basket_membership"]
+        if source and source not in row["sources"]:
+            row["sources"].append(source)
+        abs_gex_num = _safe_float(abs_gex)
+        if abs_gex_num is not None:
+            row["abs_gex"] = max(abs_gex_num, float(row["abs_gex"] or 0.0))
+        oi_num = _safe_float(oi)
+        if oi_num is not None:
+            row["oi"] = max(oi_num, float(row["oi"] or 0.0))
+        score_num = _safe_float(significance_score)
+        if score_num is not None:
+            row["significance_score"] = max(score_num, float(row["significance_score"] or 0.0))
+
     top3 = payload.get("gamma_walls_top3") or []
     if isinstance(top3, list):
         for value in top3:
-            parsed = _safe_float(value)
-            if parsed is not None:
-                out.append(parsed)
+            _upsert(value, source="gamma_walls_top3")
+
+    grouped_rows = payload.get("grouped_strike_rows") or []
+    if isinstance(grouped_rows, list):
+        for raw_row in grouped_rows:
+            if not isinstance(raw_row, dict):
+                continue
+            call_oi = _safe_float(raw_row.get("call_oi")) or 0.0
+            put_oi = _safe_float(raw_row.get("put_oi")) or 0.0
+            abs_gex = max(
+                abs(_safe_float(raw_row.get("net_gex")) or 0.0),
+                abs(_safe_float(raw_row.get("gex")) or 0.0),
+                abs(_safe_float(raw_row.get("call_gex")) or 0.0),
+                abs(_safe_float(raw_row.get("put_gex")) or 0.0),
+                abs(_safe_float(raw_row.get("call_side_gex")) or 0.0),
+                abs(_safe_float(raw_row.get("put_side_gex")) or 0.0),
+            )
+            significance = abs_gex + max(call_oi, put_oi)
+            _upsert(
+                raw_row.get("strike"),
+                source="grouped_strike_rows",
+                abs_gex=abs_gex,
+                oi=max(call_oi, put_oi),
+                significance_score=significance,
+            )
 
     # Try to recover full strike ladder from chart_json if available.
     chart = (payload.get("chart_json") or {}).get("gex")
@@ -66,14 +126,24 @@ def _extract_candidate_levels(payload: Dict[str, Any]) -> List[float]:
     if isinstance(data, list) and data:
         first_trace = data[0] if isinstance(data[0], dict) else {}
         xs = first_trace.get("x") if isinstance(first_trace, dict) else None
+        ys = first_trace.get("y") if isinstance(first_trace, dict) else None
         if isinstance(xs, list):
-            for value in xs:
-                parsed = _safe_float(value)
-                if parsed is not None:
-                    out.append(parsed)
+            for idx, value in enumerate(xs):
+                trace_gex = None
+                if isinstance(ys, list) and idx < len(ys):
+                    trace_gex = abs(_safe_float(ys[idx]) or 0.0)
+                _upsert(
+                    value,
+                    source="chart_json.gex",
+                    abs_gex=trace_gex,
+                    significance_score=trace_gex,
+                )
 
-    deduped = sorted({round(v, 4) for v in out})
-    return [float(v) for v in deduped]
+    return [ladder[key] for key in sorted(ladder)]
+
+
+def _extract_candidate_levels(payload: Dict[str, Any]) -> List[float]:
+    return [float(row["strike"]) for row in _extract_candidate_ladder(payload)]
 
 
 def classifyProximity(

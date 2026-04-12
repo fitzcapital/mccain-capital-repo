@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from mccain_capital.services import core
 
 
@@ -251,3 +253,57 @@ def test_dashboard_decision_prefers_canonical_playbook_view():
     assert panel["status"] == "PLANNING ONLY"
     assert panel["plan"] == "Buy dips above Local Flip only if next session confirms"
     assert panel["trade_gate"] == "Next live session dip-hold above Local Flip"
+
+
+def test_dashboard_gamma_strip_never_renders_one_sided_secondary_levels():
+    strip = core._dashboard_gamma_strip_viewmodel(
+        market_structure_snapshot={
+            "gamma_data_status": "fresh_valid",
+            "levels_source": "live_session_snapshot",
+            "gamma_regime": "positive",
+            "gamma_regime_label": "Positive Gamma",
+            "gamma_regime_reason_label": "Provider-backed",
+            "session_mode_label": "Regular",
+            "snapshot_timestamp_label": "Fri Apr 10 9:37 AM ET",
+            "spot": 6832.5,
+            "main_flip": 6815.0,
+            "local_flip": 6815.0,
+            "call_wall": 6850.0,
+            "put_wall": 6755.0,
+            "next_call_wall": 6880.0,
+            "next_put_wall": None,
+        }
+    )
+    entry_map = {entry["key"]: entry["value"] for entry in strip["entries"]}
+    assert entry_map["next_call_wall"] == "--"
+    assert entry_map["next_put_wall"] == "--"
+
+
+def test_dashboard_daily_brief_uses_canonical_secondary_structure_only():
+    brief = core._dashboard_daily_brief_viewmodel(
+        now_et=datetime.fromisoformat("2026-04-10T09:37:54-04:00"),
+        dashboard_spx={"price": 6748.0, "pct_change": -0.4, "day_open": 6760.0},
+        dashboard_vix={"price": 18.2},
+        gamma_snapshot={
+            "gamma_flip": 6785.0,
+            "local_flip": 6593.0,
+            "call_wall": 6600.0,
+            "put_wall": 6755.0,
+            "next_call_wall_above": 6880.0,
+            "next_put_wall_below": 6725.0,
+        },
+        market_structure_snapshot={
+            "spot": 6748.0,
+            "main_flip": 6785.0,
+            "local_flip": 6593.0,
+            "call_wall": 6850.0,
+            "put_wall": 6755.0,
+            "next_call_wall": None,
+            "next_put_wall": None,
+            "secondary_structure_displayable": False,
+        },
+        news_snapshot={"macro_events": []},
+        today_count=0,
+        today_net=0.0,
+    )
+    assert "6725" not in brief["execution_triggers"]

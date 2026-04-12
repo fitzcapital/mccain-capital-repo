@@ -28,11 +28,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import (
     abort,
+    Response,
     current_app,
     flash,
     jsonify,
     make_response,
-    Response,
     redirect,
     render_template,
     request,
@@ -58,7 +58,11 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
-from mccain_capital.services.gamma_context_service import build_spx_priority_context
+from mccain_capital.services.gamma_context_service import (
+    _extract_candidate_ladder,
+    _infer_level_step,
+    build_spx_priority_context,
+)
 from mccain_capital.services.twitter_feed_service import build_twitter_feed_snapshot
 
 MULTIPLIER = 100
@@ -851,6 +855,370 @@ def _market_pulse_level_payload(
     }
 
 
+def _market_pulse_secondary_resolution_source_label(
+    next_call_source: str,
+    next_put_source: str,
+) -> str:
+    sources = {
+        str(next_call_source or "").strip().lower(),
+        str(next_put_source or "").strip().lower(),
+    }
+    sources.discard("")
+    sources.discard("unresolved")
+    if not sources:
+        return "Unavailable"
+    if sources == {"provider"}:
+        return "Provider-backed"
+    if sources == {"inferred"}:
+        return "Inferred from strike ladder"
+    return "Mixed provider + inferred"
+
+
+def _market_pulse_normalize_structure_levels(levels: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    return {
+        key: _market_pulse_positive_float(levels.get(key))
+        for key in (
+            "main_flip",
+            "local_flip",
+            "call_wall",
+            "put_wall",
+            "next_call_wall",
+            "next_put_wall",
+            "spot",
+        )
+    }
+
+
+def _market_pulse_secondary_display_state(
+    levels: Dict[str, Any],
+    *,
+    next_call_source: str,
+    next_put_source: str,
+    next_put_confidence: str,
+    degraded_reason: str,
+) -> Dict[str, Any]:
+    next_call = _market_pulse_positive_float(levels.get("next_call_wall"))
+    next_put = _market_pulse_positive_float(levels.get("next_put_wall"))
+    complete = next_call is not None and next_put is not None
+    displayable = complete and next_put_confidence in {"high", "medium"}
+    resolution_source = _market_pulse_secondary_resolution_source_label(
+        next_call_source=next_call_source,
+        next_put_source=next_put_source,
+    )
+    return {
+        "secondary_structure_complete": complete,
+        "secondary_structure_displayable": displayable,
+        "resolution_source": resolution_source,
+        "degraded_reason": "" if displayable else degraded_reason or "secondary_structure_incomplete",
+    }
+
+
+def _market_pulse_infer_next_call_wall(
+    *,
+    call_wall: Optional[float],
+    put_wall: Optional[float],
+    candidates: List[float],
+) -> Dict[str, Any]:
+    if call_wall is None:
+        return {"value": None, "source": "unresolved", "reason": "missing_call_wall"}
+
+    ordered = sorted({float(value) for value in candidates if _market_pulse_positive_float(value) is not None})
+    higher = [value for value in ordered if value > float(call_wall) + 0.001]
+    if higher:
+        candidate = min(higher)
+        gap = candidate - float(call_wall)
+        step = _infer_level_step(call_wall=call_wall, put_wall=put_wall, candidates=ordered)
+        max_gap = max(25.0, min(125.0, float(step) * 4.0))
+        if gap <= max_gap:
+            return {"value": candidate, "source": "inferred", "reason": "candidate_ladder_above_call_wall"}
+
+    if put_wall is None:
+        return {"value": None, "source": "unresolved", "reason": "missing_next_call_wall"}
+
+    step = _infer_level_step(call_wall=call_wall, put_wall=put_wall, candidates=ordered)
+    candidate = float(call_wall) + float(step)
+    gap = candidate - float(call_wall)
+    if gap <= max(25.0, min(125.0, float(step) * 4.0)):
+        return {"value": candidate, "source": "inferred", "reason": "heuristic_spacing_above_call_wall"}
+    return {"value": None, "source": "unresolved", "reason": "missing_next_call_wall"}
+
+
+def _market_pulse_infer_next_put_wall(
+    *,
+    put_wall: Optional[float],
+    call_wall: Optional[float],
+    spot: Optional[float],
+    next_call_wall: Optional[float],
+    candidates: List[float],
+    preferred_candidates: List[float],
+) -> Dict[str, Any]:
+    if put_wall is None:
+        return {
+            "value": None,
+            "source": "unresolved",
+            "confidence": "low",
+            "reason": "missing_put_wall",
+        }
+
+    ordered = sorted({float(value) for value in candidates if _market_pulse_positive_float(value) is not None})
+    lower = [value for value in ordered if value < float(put_wall) - 0.001]
+    if not lower:
+        return {
+            "value": None,
+            "source": "unresolved",
+            "confidence": "low",
+            "reason": "no_put_side_candidates_below_put_wall",
+        }
+
+    step = _infer_level_step(call_wall=call_wall, put_wall=put_wall, candidates=ordered)
+    wall_span = (
+        abs(float(call_wall) - float(put_wall))
+        if call_wall is not None and put_wall is not None
+        else float(step) * 4.0
+    )
+    min_gap = max(5.0, min(15.0, float(step) * 0.65))
+    max_gap = max(25.0, min(150.0, max(float(step) * 4.0, wall_span * 1.5)))
+    cluster_radius = max(5.0, min(20.0, float(step) * 1.1))
+    preferred = {round(float(value), 4) for value in preferred_candidates if _market_pulse_positive_float(value) is not None}
+    expected_gap = float(step)
+    next_call_gap = (
+        float(next_call_wall) - float(call_wall)
+        if next_call_wall is not None and call_wall is not None
+        else None
+    )
+    scored: List[Dict[str, Any]] = []
+    for candidate in sorted(lower, reverse=True):
+        gap = float(put_wall) - float(candidate)
+        if gap <= 0.0 or gap < min_gap or gap > max_gap:
+            continue
+        if spot is not None and abs(float(spot) - float(candidate)) > max(abs(float(spot) - float(put_wall)) + max_gap, max_gap * 2.0):
+            continue
+        neighbor_support = sum(
+            1
+            for other in lower
+            if other != candidate and abs(float(other) - float(candidate)) <= cluster_radius
+        )
+        gap_alignment = 1.0 - min(1.0, abs(gap - expected_gap) / max(expected_gap, 1.0))
+        score = gap_alignment
+        if round(float(candidate), 4) in preferred:
+            score += 1.5
+        if neighbor_support >= 1:
+            score += 1.0
+        if neighbor_support >= 2:
+            score += 0.5
+        asymmetry_penalty = 0.0
+        if next_call_gap is not None and next_call_gap > 0:
+            ratio = max(gap, next_call_gap) / max(min(gap, next_call_gap), 1.0)
+            if ratio > 3.0:
+                asymmetry_penalty = 0.75
+            elif ratio > 2.25:
+                asymmetry_penalty = 0.35
+        score -= asymmetry_penalty
+        if score < 1.0:
+            continue
+        confidence = "medium"
+        if neighbor_support >= 1 and (round(float(candidate), 4) in preferred or gap_alignment >= 0.6):
+            confidence = "high"
+        scored.append(
+            {
+                "value": float(candidate),
+                "score": score,
+                "gap": gap,
+                "neighbor_support": neighbor_support,
+                "preferred": round(float(candidate), 4) in preferred,
+                "confidence": confidence,
+            }
+        )
+
+    if scored:
+        scored.sort(
+            key=lambda row: (
+                row["score"],
+                row["neighbor_support"],
+                1 if row["preferred"] else 0,
+                -abs(row["gap"] - expected_gap),
+            ),
+            reverse=True,
+        )
+        best = scored[0]
+        return {
+            "value": best["value"],
+            "source": "inferred",
+            "confidence": best["confidence"],
+            "reason": "clustered_put_side_candidate" if best["neighbor_support"] else "candidate_ladder_below_put_wall",
+        }
+
+    heuristic = float(put_wall) - float(step)
+    heuristic_gap = float(put_wall) - heuristic
+    if heuristic_gap >= min_gap and heuristic_gap <= max_gap:
+        nearby_support = sum(1 for candidate in lower if abs(float(candidate) - heuristic) <= cluster_radius)
+        if nearby_support >= 1:
+            return {
+                "value": heuristic,
+                "source": "inferred",
+                "confidence": "medium",
+                "reason": "heuristic_spacing_supported_by_put_cluster",
+            }
+        return {
+            "value": None,
+            "source": "unresolved",
+            "confidence": "low",
+            "reason": "heuristic_next_put_wall_not_supported",
+        }
+    return {
+        "value": None,
+        "source": "unresolved",
+        "confidence": "low",
+        "reason": "no_trustworthy_next_put_wall_candidate",
+    }
+
+
+def _market_pulse_secondary_candidate_ladder(gamma_snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
+    approved = []
+    for row in _extract_candidate_ladder(gamma_snapshot):
+        strike = _market_pulse_positive_float(row.get("strike"))
+        if strike is None:
+            continue
+        approved.append(
+            {
+                "strike": strike,
+                "abs_gex": _market_pulse_positive_float(row.get("abs_gex")) or 0.0,
+                "oi": _market_pulse_positive_float(row.get("oi")) or 0.0,
+                "significance_score": _market_pulse_positive_float(row.get("significance_score")) or 0.0,
+                "expiry_basket_membership": str(row.get("expiry_basket_membership") or "approved"),
+                "sources": list(row.get("sources") or []),
+            }
+        )
+    return approved
+
+
+def _market_pulse_resolve_canonical_market_structure(
+    *,
+    levels: Dict[str, Any],
+    gamma_snapshot: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    normalized = _market_pulse_normalize_structure_levels(levels)
+    primary = {
+        key: normalized.get(key)
+        for key in ("main_flip", "local_flip", "call_wall", "put_wall", "spot")
+    }
+    gamma_snapshot = dict(gamma_snapshot or {})
+    call_wall = primary.get("call_wall")
+    put_wall = primary.get("put_wall")
+    spot = primary.get("spot")
+
+    explicit_next_call = _market_pulse_positive_float(normalized.get("next_call_wall"))
+    explicit_next_put = _market_pulse_positive_float(normalized.get("next_put_wall"))
+    provider_next_call = _market_pulse_positive_float(
+        gamma_snapshot.get("next_call_wall_above")
+        if gamma_snapshot.get("next_call_wall_above") is not None
+        else gamma_snapshot.get("next_call_wall")
+    )
+    provider_next_put = _market_pulse_positive_float(
+        gamma_snapshot.get("next_put_wall_below")
+        if gamma_snapshot.get("next_put_wall_below") is not None
+        else gamma_snapshot.get("next_put_wall")
+    )
+    if provider_next_call is not None and call_wall is not None and provider_next_call <= call_wall:
+        provider_next_call = None
+    if provider_next_put is not None and put_wall is not None and provider_next_put >= put_wall:
+        provider_next_put = None
+    candidate_ladder = _market_pulse_secondary_candidate_ladder(gamma_snapshot) if gamma_snapshot else []
+    candidates = [float(row["strike"]) for row in candidate_ladder]
+    preferred_candidates = list(gamma_snapshot.get("gamma_walls_top3") or []) if gamma_snapshot else []
+
+    next_call_value = explicit_next_call
+    next_call_source = "provider" if provider_next_call is not None and explicit_next_call is not None else "mixed" if explicit_next_call is not None else "unresolved"
+    next_call_reason = ""
+    if next_call_value is None:
+        if provider_next_call is not None:
+            next_call_value = provider_next_call
+            next_call_source = "provider"
+            next_call_reason = "provider_next_call_wall"
+        else:
+            inferred_call = _market_pulse_infer_next_call_wall(
+                call_wall=call_wall,
+                put_wall=put_wall,
+                candidates=candidates,
+            )
+            next_call_value = inferred_call.get("value")
+            next_call_source = str(inferred_call.get("source") or "unresolved")
+            next_call_reason = str(inferred_call.get("reason") or "")
+
+    next_put_confidence = "high" if provider_next_put is not None and explicit_next_put is not None else "none"
+    next_put_source = "provider" if provider_next_put is not None and explicit_next_put is not None else "mixed" if explicit_next_put is not None else "unresolved"
+    next_put_reason = ""
+    next_put_value = explicit_next_put
+    if next_put_value is None:
+        if provider_next_put is not None:
+            next_put_value = provider_next_put
+            next_put_source = "provider"
+            next_put_confidence = "high"
+            next_put_reason = "provider_next_put_wall"
+        else:
+            inferred_put = _market_pulse_infer_next_put_wall(
+                put_wall=put_wall,
+                call_wall=call_wall,
+                spot=spot,
+                next_call_wall=next_call_value,
+                candidates=candidates,
+                preferred_candidates=preferred_candidates,
+            )
+            next_put_value = inferred_put.get("value")
+            next_put_source = str(inferred_put.get("source") or "unresolved")
+            next_put_confidence = str(inferred_put.get("confidence") or "low")
+            next_put_reason = str(inferred_put.get("reason") or "")
+
+    degraded_reason = ""
+    if next_call_value is None and next_put_value is None:
+        degraded_reason = next_put_reason or next_call_reason or "secondary_structure_unresolved"
+    elif next_call_value is not None and next_put_value is None:
+        degraded_reason = next_put_reason or "missing_next_put_wall"
+    elif next_call_value is None and next_put_value is not None:
+        degraded_reason = next_call_reason or "missing_next_call_wall"
+    elif next_put_source == "inferred" and next_put_confidence not in {"high", "medium"}:
+        degraded_reason = next_put_reason or "next_put_wall_confidence_too_low"
+
+    secondary_state = _market_pulse_secondary_display_state(
+        {"next_call_wall": next_call_value, "next_put_wall": next_put_value},
+        next_call_source=next_call_source,
+        next_put_source=next_put_source,
+        next_put_confidence=next_put_confidence,
+        degraded_reason=degraded_reason,
+    )
+    if not secondary_state["secondary_structure_displayable"]:
+        # Provider asymmetry is allowed upstream, but the final decision board
+        # must never present one-sided secondary structure as authoritative.
+        next_call_value = None
+        next_put_value = None
+        next_call_source = "unresolved"
+        next_put_source = "unresolved"
+        next_put_confidence = "low" if degraded_reason else "none"
+        secondary_state = _market_pulse_secondary_display_state(
+            {"next_call_wall": next_call_value, "next_put_wall": next_put_value},
+            next_call_source=next_call_source,
+            next_put_source=next_put_source,
+            next_put_confidence=next_put_confidence,
+            degraded_reason=degraded_reason or "secondary_structure_suppressed",
+        )
+
+    return {
+        "main_flip": primary.get("main_flip"),
+        "local_flip": primary.get("local_flip"),
+        "call_wall": call_wall,
+        "put_wall": put_wall,
+        "next_call_wall": next_call_value,
+        "next_put_wall": next_put_value,
+        "next_call_wall_source": next_call_source,
+        "next_put_wall_source": next_put_source,
+        "next_put_wall_confidence": next_put_confidence,
+        "next_call_wall_reason": next_call_reason,
+        "next_put_wall_reason": next_put_reason,
+        "secondary_candidate_ladder": candidate_ladder,
+        **secondary_state,
+    }
+
+
 def _market_pulse_structure_invariant_check(
     *,
     levels: Dict[str, Any],
@@ -1202,6 +1570,20 @@ def _market_pulse_resolve_gamma_payload(
             "validation_status": "invalid",
         }
 
+    canonical_structure = _market_pulse_resolve_canonical_market_structure(
+        levels={
+            **selected_levels,
+            "spot": gamma_snapshot.get("spot_price_used")
+            if gamma_snapshot.get("spot_price_used") is not None
+            else gamma_snapshot.get("spot"),
+        },
+        gamma_snapshot=gamma_snapshot,
+    )
+    selected_levels = {
+        key: canonical_structure.get(key)
+        for key in ("main_flip", "local_flip", "call_wall", "put_wall", "next_call_wall", "next_put_wall")
+    }
+
     level_meta: Dict[str, Dict[str, Any]] = {}
     for key, value in selected_levels.items():
         if use_fallback:
@@ -1234,6 +1616,23 @@ def _market_pulse_resolve_gamma_payload(
             validation_status = "invalid"
             derived_from_session = False
             reason = ",".join(raw_invariants.get("hard_issues") or fallback_invariants.get("hard_issues") or [])
+        if key == "next_call_wall":
+            source = str(canonical_structure.get("next_call_wall_source") or source)
+            validation_status = (
+                "secondary_structure_resolved"
+                if canonical_structure.get("secondary_structure_displayable")
+                else "secondary_structure_suppressed"
+            )
+            reason = str(canonical_structure.get("degraded_reason") or canonical_structure.get("next_call_wall_reason") or reason)
+        elif key == "next_put_wall":
+            source = str(canonical_structure.get("next_put_wall_source") or source)
+            confidence = str(canonical_structure.get("next_put_wall_confidence") or confidence)
+            validation_status = (
+                "secondary_structure_resolved"
+                if canonical_structure.get("secondary_structure_displayable")
+                else "secondary_structure_suppressed"
+            )
+            reason = str(canonical_structure.get("degraded_reason") or canonical_structure.get("next_put_wall_reason") or reason)
         level_meta[key] = _market_pulse_level_payload(
             value=value,
             source=source,
@@ -1290,6 +1689,7 @@ def _market_pulse_resolve_gamma_payload(
         "selected_as_of": gamma_regime_meta.get("as_of") or gamma_as_of,
         "structure_invariant_status": selected_invariants.get("status"),
         "structure_invariant_issues": list(selected_invariants.get("issues") or []),
+        "canonical_structure": canonical_structure,
     }
 
 
@@ -4412,13 +4812,35 @@ def _market_pulse_structure_snapshot(
     now_et: datetime,
 ) -> Dict[str, Any]:
     levels = dict(execution_model.get("levels") or {})
+    canonical_structure = _market_pulse_resolve_canonical_market_structure(
+        levels={
+            "spot": levels.get("spot") if levels.get("spot") is not None else spx_quote.get("price"),
+            "main_flip": levels.get("main_flip"),
+            "local_flip": levels.get("local_flip"),
+            "call_wall": levels.get("call_wall"),
+            "put_wall": levels.get("put_wall"),
+            "next_call_wall": gamma_snapshot.get("next_call_wall_above"),
+            "next_put_wall": gamma_snapshot.get("next_put_wall_below"),
+        },
+        gamma_snapshot=gamma_snapshot,
+    )
+    levels.update(
+        {
+            "main_flip": canonical_structure.get("main_flip"),
+            "local_flip": canonical_structure.get("local_flip"),
+            "call_wall": canonical_structure.get("call_wall"),
+            "put_wall": canonical_structure.get("put_wall"),
+            "next_call_wall": canonical_structure.get("next_call_wall"),
+            "next_put_wall": canonical_structure.get("next_put_wall"),
+        }
+    )
     local_bias = dict(execution_model.get("local_bias") or {})
     playbook = dict(execution_model.get("playbook") or {})
     location = dict(execution_model.get("location") or {})
     raw_snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
     session_mode = _market_pulse_snapshot_session_mode(now_et)
-    next_call_wall = gamma_snapshot.get("next_call_wall_above")
-    next_put_wall = gamma_snapshot.get("next_put_wall_below")
+    next_call_wall = canonical_structure.get("next_call_wall")
+    next_put_wall = canonical_structure.get("next_put_wall")
     level_count = sum(
         1
         for value in (
@@ -4649,6 +5071,15 @@ def _market_pulse_structure_snapshot(
         "put_wall": levels.get("put_wall"),
         "next_call_wall": next_call_wall,
         "next_put_wall": next_put_wall,
+        "next_call_wall_source": canonical_structure.get("next_call_wall_source"),
+        "next_put_wall_source": canonical_structure.get("next_put_wall_source"),
+        "next_put_wall_confidence": canonical_structure.get("next_put_wall_confidence"),
+        "secondary_structure_complete": bool(canonical_structure.get("secondary_structure_complete")),
+        "secondary_structure_displayable": bool(canonical_structure.get("secondary_structure_displayable")),
+        "resolution_source": canonical_structure.get("resolution_source") or "Unavailable",
+        "degraded_reason": canonical_structure.get("degraded_reason") or "",
+        "secondary_structure_resolution_source": canonical_structure.get("resolution_source") or "Unavailable",
+        "secondary_structure_degraded_reason": canonical_structure.get("degraded_reason") or "",
         "bias_state": display_context["bias_state"],
         "bias_context": display_context["bias_context"],
         "bias_label": display_context["bias_label"],
@@ -5018,6 +5449,15 @@ def _build_playbook_view_model(
         "put_wall_label": _fmt_number(put_wall),
         "next_call_wall_label": _fmt_number(next_call_wall, fallback="--"),
         "next_put_wall_label": _fmt_number(next_put_wall, fallback="--"),
+        "next_call_wall_source": str(structure.get("next_call_wall_source") or "unresolved"),
+        "next_put_wall_source": str(structure.get("next_put_wall_source") or "unresolved"),
+        "next_put_wall_confidence": str(structure.get("next_put_wall_confidence") or "none"),
+        "secondary_structure_complete": bool(structure.get("secondary_structure_complete")),
+        "secondary_structure_displayable": bool(structure.get("secondary_structure_displayable")),
+        "resolution_source": str(structure.get("resolution_source") or "Unavailable"),
+        "degraded_reason": str(structure.get("degraded_reason") or ""),
+        "secondary_structure_resolution_source": str(structure.get("secondary_structure_resolution_source") or "Unavailable"),
+        "secondary_structure_degraded_reason": str(structure.get("secondary_structure_degraded_reason") or ""),
         "levels_source": levels_source,
         "gamma_data_status": gamma_data_status,
         "location_state": location_state,
@@ -5221,6 +5661,16 @@ def get_or_build_market_pulse_snapshot(
     market_structure_snapshot["put_wall"] = resolved_levels.get("put_wall")
     market_structure_snapshot["next_call_wall"] = resolved_levels.get("next_call_wall")
     market_structure_snapshot["next_put_wall"] = resolved_levels.get("next_put_wall")
+    canonical_structure = dict(gamma_resolution.get("canonical_structure") or {})
+    market_structure_snapshot["next_call_wall_source"] = str(canonical_structure.get("next_call_wall_source") or "unresolved")
+    market_structure_snapshot["next_put_wall_source"] = str(canonical_structure.get("next_put_wall_source") or "unresolved")
+    market_structure_snapshot["next_put_wall_confidence"] = str(canonical_structure.get("next_put_wall_confidence") or "none")
+    market_structure_snapshot["secondary_structure_complete"] = bool(canonical_structure.get("secondary_structure_complete"))
+    market_structure_snapshot["secondary_structure_displayable"] = bool(canonical_structure.get("secondary_structure_displayable"))
+    market_structure_snapshot["resolution_source"] = str(canonical_structure.get("resolution_source") or "Unavailable")
+    market_structure_snapshot["degraded_reason"] = str(canonical_structure.get("degraded_reason") or "")
+    market_structure_snapshot["secondary_structure_resolution_source"] = str(canonical_structure.get("resolution_source") or "Unavailable")
+    market_structure_snapshot["secondary_structure_degraded_reason"] = str(canonical_structure.get("degraded_reason") or "")
     market_structure_snapshot["session_mode"] = session_mode
     market_structure_snapshot["app_state"] = spot_meta.get("state") if spot_meta.get("value") is not None else "UNAVAILABLE"
     market_structure_snapshot["app_state_label"] = {
@@ -6330,11 +6780,7 @@ def _dashboard_daily_brief_viewmodel(
     if put_wall is None:
         put_wall = _num(gamma_snapshot.get("put_wall")) or _num(gamma_snapshot.get("put_wall_aggregated_gamma"))
     next_call_wall = _num(structure.get("next_call_wall"))
-    if next_call_wall is None:
-        next_call_wall = _num(gamma_snapshot.get("next_call_wall")) or _num(gamma_snapshot.get("next_call_wall_above"))
     next_put_wall = _num(structure.get("next_put_wall"))
-    if next_put_wall is None:
-        next_put_wall = _num(gamma_snapshot.get("next_put_wall")) or _num(gamma_snapshot.get("next_put_wall_below"))
     day_open = _num(dashboard_spx.get("day_open"))
 
     def _macro_event_dt(row: Dict[str, Any]) -> Optional[datetime]:
@@ -6947,6 +7393,14 @@ def _dashboard_gamma_strip_viewmodel(
     else:
         structure = dict(market_structure_snapshot or {})
     if structure:
+        structure = {
+            **structure,
+            **_market_pulse_resolve_canonical_market_structure(
+                levels=structure,
+                gamma_snapshot=gamma_snapshot or {},
+            ),
+        }
+    if structure:
         spot = _num(structure.get("spot"))
 
         def _fmt_level(value: Any) -> str:
@@ -7073,6 +7527,8 @@ def _dashboard_gamma_strip_viewmodel(
                 "glow": False,
             },
         ]
+        # The dashboard only renders display-safe structure. Upstream provider
+        # asymmetry is allowed, but one-sided NCW/NPW is forbidden here.
         return {
             "headline": "Gamma structure",
             "entries": items,
@@ -7109,6 +7565,16 @@ def _dashboard_gamma_strip_viewmodel(
     model = dict(execution_model or {})
     macro = dict(model.get("macro_regime") or {})
     levels = dict(model.get("levels") or {})
+    levels = {
+        **levels,
+        **_market_pulse_resolve_canonical_market_structure(
+            levels={
+                **levels,
+                "spot": levels.get("spot") if levels.get("spot") is not None else spot,
+            },
+            gamma_snapshot=gamma_snapshot,
+        ),
+    }
     if spot is None:
         spot = _num(levels.get("spot")) or _num(levels.get("price"))
     snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
@@ -8164,6 +8630,54 @@ def dashboard():
         enriched["freshness_label_compact"] = f"{state} · {age_compact}"
         return enriched
 
+    def _dashboard_tape_row_viewmodel(
+        symbol: str, quote: Dict[str, Any], descriptor: str = ""
+    ) -> Dict[str, Any]:
+        enriched = dict(quote or {})
+        change_points = (
+            enriched.get("change_points")
+            if enriched.get("change_points") is not None
+            else enriched.get("change")
+        )
+        row_tone = (
+            "up"
+            if isinstance(change_points, (int, float)) and float(change_points) > 0
+            else "down"
+            if isinstance(change_points, (int, float)) and float(change_points) < 0
+            else "flat"
+        )
+        return {
+            "symbol": symbol,
+            "descriptor": descriptor,
+            "row_tone": row_tone,
+            "price_display": (
+                f"{float(enriched['price']):.2f}" if enriched.get("price") is not None else "loading..."
+            ),
+            "pct_change_display": (
+                f"{float(enriched['pct_change']):+.2f}%"
+                if enriched.get("pct_change") is not None
+                else "loading..."
+            ),
+            "change_display": (
+                f"{float(change_points):+.2f}" if isinstance(change_points, (int, float)) else "loading..."
+            ),
+            "change_arrow": "▲" if row_tone == "up" else "▼" if row_tone == "down" else "",
+            "open_display": (
+                f"{float(enriched['day_open']):.2f}"
+                if enriched.get("day_open") is not None
+                else "—"
+            ),
+            "prev_display": (
+                f"{float(enriched['prior_close']):.2f}"
+                if enriched.get("prior_close") is not None
+                else "—"
+            ),
+            "live_display": str(enriched.get("freshness_label_compact") or "—")
+            .replace("Live · ", "")
+            .replace("Delayed · ", "")
+            .replace("Unavailable · ", ""),
+        }
+
     dashboard_spx = _enrich_dashboard_quote("SPX", dashboard_spx)
     dashboard_vix = _enrich_dashboard_quote("VIX", dashboard_vix)
     dashboard_tape_symbols = ["SPX", "VIX", "QQQ", "IWM", "AAPL", "TSLA"]
@@ -8196,6 +8710,14 @@ def dashboard():
             symbol,
             source_quote,
         )
+    dashboard_tape_rows = [
+        _dashboard_tape_row_viewmodel("SPX", dashboard_tape_quotes.get("SPX") or {}, "SPX cash"),
+        _dashboard_tape_row_viewmodel("VIX", dashboard_tape_quotes.get("VIX") or {}, "VIX pulse"),
+    ]
+    dashboard_tape_rows.extend(
+        _dashboard_tape_row_viewmodel(symbol, dashboard_tape_quotes.get(symbol) or {})
+        for symbol in ("QQQ", "IWM", "AAPL", "TSLA")
+    )
     try:
         gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     except Exception:
@@ -8422,6 +8944,7 @@ def dashboard():
         dashboard_spx=dashboard_spx,
         dashboard_vix=dashboard_vix,
         dashboard_tape_quotes=dashboard_tape_quotes,
+        dashboard_tape_rows=dashboard_tape_rows,
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
         dashboard_execution_model=dashboard_execution_model,
@@ -8470,6 +8993,7 @@ def stream_market():
     @stream_with_context
     def generate():
         started_at = time.time()
+        yield f"data: {json.dumps({'server_ts': app_runtime.now_iso(), 'stream_ready': True})}\n\n"
         while True:
             payload = market_worker.get_market_snapshot()
             payload["options"] = options_panel_service.get_options_snapshot()
@@ -8502,8 +9026,11 @@ def stream_market():
                 spx_priority_context={"metrics": {}},
             )
             current_structure_snapshot = dict((cached_playbook or {}).get("market_structure_snapshot") or {})
+            current_playbook_view = dict((cached_playbook or {}).get("playbook_view") or {})
             payload["gamma_map"] = current_gamma_snapshot
             payload["execution_model"] = current_execution_model
+            payload["market_structure_snapshot"] = current_structure_snapshot
+            payload["playbook_view"] = current_playbook_view
             payload["dashboard_gamma"] = _dashboard_gamma_strip_viewmodel(
                 market_structure_snapshot=current_structure_snapshot,
             )
@@ -8533,8 +9060,9 @@ def stream_market():
             time.sleep(interval)
 
     response = Response(generate(), mimetype="text/event-stream")
-    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Connection"] = "keep-alive"
+    response.headers["X-Accel-Buffering"] = "no"
     return response
 
 
@@ -9334,6 +9862,13 @@ def export_json():
     return _legacy().export_json()
 
 
+def _remove_temp_file(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def backup_data():
     stamp = app_runtime.now_et().strftime("%Y%m%d_%H%M%S")
     fd, out_path = tempfile.mkstemp(prefix="mccain_backup_", suffix=".zip")
@@ -9371,12 +9906,14 @@ def backup_data():
         )
     except Exception:
         pass
-    return send_file(
+    response = send_file(
         out_path,
         as_attachment=True,
         download_name=f"mccain_capital_backup_{stamp}.zip",
         mimetype="application/zip",
     )
+    response.call_on_close(lambda: _remove_temp_file(out_path))
+    return response
 
 
 def restore_data():

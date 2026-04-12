@@ -118,6 +118,21 @@ def test_compute_distance_metrics_infers_missing_expected_move_and_next_walls():
     assert metrics["next_put_wall_below"] == 4980
 
 
+def test_extract_candidate_levels_uses_grouped_strike_rows_when_chart_json_missing():
+    levels = svc._extract_candidate_levels(
+        {
+            "gamma_walls_top3": [5150.0],
+            "chart_json": {"gex": None},
+            "grouped_strike_rows": [
+                {"strike": 4975.0, "put_oi": 1200.0, "put_side_gex": 22.0, "net_gex": -22.0},
+                {"strike": 5000.0, "put_oi": 900.0, "put_side_gex": 14.0, "net_gex": -14.0},
+                {"strike": 5150.0, "call_oi": 800.0, "call_side_gex": 18.0, "net_gex": 18.0},
+            ],
+        }
+    )
+    assert levels == [4975.0, 5000.0, 5150.0]
+
+
 def test_format_level_distance():
     assert svc.formatLevelDistance(None) == "—"
     assert svc.formatLevelDistance(0) == "0 pts"
