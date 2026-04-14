@@ -29,9 +29,7 @@ FIXED_LOSS_LIMIT_50K = 50375.0
 SQLITE_BUSY_TIMEOUT_MS = max(1000, int(os.environ.get("SQLITE_BUSY_TIMEOUT_MS", "10000") or 10000))
 SQLITE_SYNCHRONOUS = str(os.environ.get("SQLITE_SYNCHRONOUS", "NORMAL") or "NORMAL").upper()
 SQLITE_JOURNAL_MODE = str(os.environ.get("SQLITE_JOURNAL_MODE", "WAL") or "WAL").upper()
-SETTINGS_CACHE_TTL_SECONDS = max(
-    1.0, float(os.environ.get("SETTINGS_CACHE_TTL_SECONDS", "5") or 5)
-)
+SETTINGS_CACHE_TTL_SECONDS = max(1.0, float(os.environ.get("SETTINGS_CACHE_TTL_SECONDS", "5") or 5))
 _HEADER_HINTS = {
     "date",
     "entry",

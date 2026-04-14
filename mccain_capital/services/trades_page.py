@@ -103,7 +103,9 @@ def _stop_context(row: dict) -> str:
         return f"Stop {money(stop_price)}"
     if stop_pct is not None and stop_pct > 0:
         return f"Stop {stop_pct:.1f}%"
-    if _float_or_none(row.get("planned_risk_dollars")) not in (None, 0) or _float_or_none(row.get("total_spent")) not in (None, 0):
+    if _float_or_none(row.get("planned_risk_dollars")) not in (None, 0) or _float_or_none(
+        row.get("total_spent")
+    ) not in (None, 0):
         return "Stop 20.0%"
     return "Stop n/a"
 
@@ -227,7 +229,9 @@ def _resolve_scope_selection(
     if mode == "current":
         effective_start = account_start
         scope_label = "Current Account"
-        scope_starting_balance = float(account_scope.get("starting_balance") or history_starting_balance)
+        scope_starting_balance = float(
+            account_scope.get("starting_balance") or history_starting_balance
+        )
         detail_parts = [account_label]
         if account_type:
             detail_parts.append(account_type)
@@ -244,9 +248,7 @@ def _resolve_scope_selection(
         if effective_start:
             try:
                 prior_day = prev_trading_day_iso(effective_start)
-                scope_starting_balance = float(
-                    trades_repo.latest_balance_overall(as_of=prior_day)
-                )
+                scope_starting_balance = float(trades_repo.latest_balance_overall(as_of=prior_day))
             except Exception:
                 scope_starting_balance = float(history_starting_balance)
     return {
@@ -290,7 +292,12 @@ def _risk_tier(risk_pct: float | None, cohort_median: float | None) -> str:
             return "High"
         if risk_pct >= 1.0:
             return "Medium"
-    if cohort_median is not None and cohort_median > 0 and risk_pct is not None and risk_pct <= cohort_median * 0.65:
+    if (
+        cohort_median is not None
+        and cohort_median > 0
+        and risk_pct is not None
+        and risk_pct <= cohort_median * 0.65
+    ):
         return "Low"
     if risk_pct is not None and risk_pct <= 0.75:
         return "Low"
@@ -317,15 +324,23 @@ def _trade_bucket_match(row: dict, bucket: str) -> bool:
     if bucket == "missing_stop":
         return missing_stop
     if bucket == "rule_breaks":
-        return row.get("execution_quality_label") == "Rule Break" or bool(str(row.get("rule_break_tags") or "").strip())
+        return row.get("execution_quality_label") == "Rule Break" or bool(
+            str(row.get("rule_break_tags") or "").strip()
+        )
     if bucket == "best_grades":
         return str(row.get("trade_grade") or "") in {"A", "B"}
     if bucket == "worst_grades":
         return str(row.get("trade_grade") or "") in {"D", "F"}
     if bucket == "best_r":
-        return _float_or_none(row.get("r_multiple")) is not None and float(row.get("r_multiple")) >= 1.0
+        return (
+            _float_or_none(row.get("r_multiple")) is not None
+            and float(row.get("r_multiple")) >= 1.0
+        )
     if bucket == "worst_discipline":
-        return row.get("stop_discipline_label") in {"Loss Exceeded Planned Risk", "Stop Missing"} or row.get("execution_quality_label") == "Rule Break"
+        return (
+            row.get("stop_discipline_label") in {"Loss Exceeded Planned Risk", "Stop Missing"}
+            or row.get("execution_quality_label") == "Rule Break"
+        )
     return True
 
 
@@ -337,7 +352,11 @@ def _suggest_setup(row: dict) -> str:
     result_pct = _safe_float(row.get("result_pct"))
     if time_block == "Midday":
         return "Chop"
-    if hold_minutes is not None and hold_minutes <= 6 and (result_pct is not None and abs(result_pct) >= 18):
+    if (
+        hold_minutes is not None
+        and hold_minutes <= 6
+        and (result_pct is not None and abs(result_pct) >= 18)
+    ):
         return "Sweep"
     if session_tag == "Open" and hold_minutes is not None and hold_minutes <= 20:
         return "Reversal"
@@ -460,8 +479,14 @@ def _build_equity_curve(
                 day_r += r_multiple
         cumulative_r += day_r
         peak_r = max(peak_r, cumulative_r)
-        cumulative_pct = ((close_balance - starting_balance) / starting_balance * 100.0) if starting_balance else 0.0
-        peak_pct = ((peak - starting_balance) / starting_balance * 100.0) if starting_balance else 0.0
+        cumulative_pct = (
+            ((close_balance - starting_balance) / starting_balance * 100.0)
+            if starting_balance
+            else 0.0
+        )
+        peak_pct = (
+            ((peak - starting_balance) / starting_balance * 100.0) if starting_balance else 0.0
+        )
         drawdown_pct = ((close_balance - peak) / peak * 100.0) if peak else 0.0
         points.append(
             {
@@ -502,7 +527,9 @@ def _build_setup_performance(setup_scorecards: list[dict], *, limit: int = 5) ->
 
 def _build_time_of_day_performance(rows: list[dict]) -> list[dict]:
     order = ["Open", "Midday", "Power Hour", "After Hours", "Unknown"]
-    grouped: dict[str, dict[str, float]] = defaultdict(lambda: {"net": 0.0, "count": 0.0, "wins": 0.0})
+    grouped: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"net": 0.0, "count": 0.0, "wins": 0.0}
+    )
     for row in rows:
         label = str(row.get("time_block") or "Unknown").strip() or "Unknown"
         net = _safe_float(row.get("net_pl"))
@@ -612,33 +639,94 @@ def _build_stop_respect_by_setup(rows: list[dict], *, limit: int = 6) -> list[di
     for label, values in grouped.items():
         count = int(values["count"] or 0)
         pct_value = (values["respected"] / count * 100.0) if count else 0.0
-        points.append({"label": label, "value": round(pct_value, 1), "count": count, "win_rate": round(pct_value, 1)})
+        points.append(
+            {
+                "label": label,
+                "value": round(pct_value, 1),
+                "count": count,
+                "win_rate": round(pct_value, 1),
+            }
+        )
     points.sort(key=lambda item: (item["value"], item["count"]), reverse=True)
     return points[:limit]
 
 
 def _risk_kpi_strip(rows: list[dict], max_drawdown: float) -> list[dict]:
-    risks = [float(v) for v in (_float_or_none(row.get("risk_dollars")) for row in rows) if v not in (None, 0)]
-    spends = [float(v) for v in (_float_or_none(row.get("total_spent")) for row in rows) if v not in (None, 0)]
-    rs = [float(v) for v in (_float_or_none(row.get("r_multiple")) for row in rows) if v is not None]
-    wins = [float(_safe_float(row.get("net_pl"))) for row in rows if _safe_float(row.get("net_pl")) > 0]
-    losses = [abs(float(_safe_float(row.get("net_pl")))) for row in rows if _safe_float(row.get("net_pl")) < 0]
+    risks = [
+        float(v)
+        for v in (_float_or_none(row.get("risk_dollars")) for row in rows)
+        if v not in (None, 0)
+    ]
+    spends = [
+        float(v)
+        for v in (_float_or_none(row.get("total_spent")) for row in rows)
+        if v not in (None, 0)
+    ]
+    rs = [
+        float(v) for v in (_float_or_none(row.get("r_multiple")) for row in rows) if v is not None
+    ]
+    wins = [
+        float(_safe_float(row.get("net_pl"))) for row in rows if _safe_float(row.get("net_pl")) > 0
+    ]
+    losses = [
+        abs(float(_safe_float(row.get("net_pl"))))
+        for row in rows
+        if _safe_float(row.get("net_pl")) < 0
+    ]
     stop_present_rows = [row for row in rows if row.get("stop_present")]
     stop_respected_count = sum(
-        1 for row in stop_present_rows if str(row.get("stop_discipline_label") or "") in {"Stop Respected", "Within Risk Plan"}
+        1
+        for row in stop_present_rows
+        if str(row.get("stop_discipline_label") or "") in {"Stop Respected", "Within Risk Plan"}
     )
     oversized_count = sum(1 for row in rows if row.get("oversized"))
     return [
-        {"label": "Avg Risk", "value": money(sum(risks) / len(risks)) if risks else "—", "meta": "per trade"},
-        {"label": "Largest Risk", "value": money(max(risks)) if risks else "—", "meta": "largest planned"},
-        {"label": "Avg R", "value": f"{(sum(rs) / len(rs)):.2f}R" if rs else "—", "meta": "average realized"},
-        {"label": "Median R", "value": f"{median(rs):.2f}R" if rs else "—", "meta": "middle result"},
+        {
+            "label": "Avg Risk",
+            "value": money(sum(risks) / len(risks)) if risks else "—",
+            "meta": "per trade",
+        },
+        {
+            "label": "Largest Risk",
+            "value": money(max(risks)) if risks else "—",
+            "meta": "largest planned",
+        },
+        {
+            "label": "Avg R",
+            "value": f"{(sum(rs) / len(rs)):.2f}R" if rs else "—",
+            "meta": "average realized",
+        },
+        {
+            "label": "Median R",
+            "value": f"{median(rs):.2f}R" if rs else "—",
+            "meta": "middle result",
+        },
         {"label": "Max DD", "value": money(max_drawdown), "meta": "equity drawdown"},
-        {"label": "Stop Respected", "value": f"{(stop_respected_count / len(stop_present_rows) * 100.0):.0f}%" if stop_present_rows else "—", "meta": "of trades with stop"},
+        {
+            "label": "Stop Respected",
+            "value": (
+                f"{(stop_respected_count / len(stop_present_rows) * 100.0):.0f}%"
+                if stop_present_rows
+                else "—"
+            ),
+            "meta": "of trades with stop",
+        },
         {"label": "Oversized", "value": str(oversized_count), "meta": "flagged trades"},
-        {"label": "Avg Spend", "value": money(sum(spends) / len(spends)) if spends else "—", "meta": "position spend"},
-        {"label": "Avg Winner", "value": money(sum(wins) / len(wins)) if wins else "—", "meta": "positive trades"},
-        {"label": "Avg Loser", "value": money(sum(losses) / len(losses)) if losses else "—", "meta": "absolute loss"},
+        {
+            "label": "Avg Spend",
+            "value": money(sum(spends) / len(spends)) if spends else "—",
+            "meta": "position spend",
+        },
+        {
+            "label": "Avg Winner",
+            "value": money(sum(wins) / len(wins)) if wins else "—",
+            "meta": "positive trades",
+        },
+        {
+            "label": "Avg Loser",
+            "value": money(sum(losses) / len(losses)) if losses else "—",
+            "meta": "absolute loss",
+        },
     ]
 
 
@@ -665,9 +753,7 @@ def _account_health_strip(
         context_meta = str(resolved_scope.get("account_type") or "").strip() or "Active account"
     elif scope_mode == "custom":
         account_name = "Custom Review Window"
-        start_label = (
-            f"{resolved_scope.get('effective_start') or '…'} → {resolved_scope.get('effective_end') or '…'}"
-        )
+        start_label = f"{resolved_scope.get('effective_start') or '…'} → {resolved_scope.get('effective_end') or '…'}"
         scope_mode_label = "Custom Range"
         context_meta = "Selected date range"
     else:
@@ -677,11 +763,19 @@ def _account_health_strip(
         context_meta = "Full dataset"
     return [
         {"label": "Account Name", "value": account_name, "meta": context_meta},
-        {"label": "Scope Mode", "value": scope_mode_label, "meta": str(resolved_scope.get("detail") or "").strip() or "All visible trades"},
+        {
+            "label": "Scope Mode",
+            "value": scope_mode_label,
+            "meta": str(resolved_scope.get("detail") or "").strip() or "All visible trades",
+        },
         {"label": "Start Date", "value": start_label, "meta": "Scope anchor"},
         {"label": "Net P/L", "value": money(net_pl), "meta": f"{len(rows)} trades in scope"},
         {"label": "Max Drawdown", "value": money(max_drawdown), "meta": "Peak to trough"},
-        {"label": "Current Drawdown", "value": money(current_drawdown), "meta": "Below high-water mark"},
+        {
+            "label": "Current Drawdown",
+            "value": money(current_drawdown),
+            "meta": "Below high-water mark",
+        },
         {"label": "Days Active", "value": str(active_days), "meta": "Trading days in scope"},
     ]
 
@@ -794,7 +888,9 @@ def _trade_insights(
             f"Review coverage is {review_coverage['completion_pct']:.0f}%, which is good enough to trust the setup read."
         )
     if not working:
-        working.append("No durable edge is standing out yet. Keep tagging setups and reviews so the signal can emerge.")
+        working.append(
+            "No durable edge is standing out yet. Keep tagging setups and reviews so the signal can emerge."
+        )
 
     if biggest_leak:
         not_working.append(
@@ -856,9 +952,9 @@ def trades_page():
     active_day = end_date or d or today_iso()
     history_starting_balance = float(get_setting_float("starting_balance", 50000.0))
     account_scope = trades_repo.account_scope_snapshot()
-    account_scope_mode = str(
-        legacy.request.args.get("account_scope_mode", "") or ""
-    ).strip().lower()
+    account_scope_mode = (
+        str(legacy.request.args.get("account_scope_mode", "") or "").strip().lower()
+    )
     resolved_scope = _resolve_scope_selection(
         requested_mode=account_scope_mode,
         start_date=start_date,
@@ -907,16 +1003,15 @@ def trades_page():
         "bucket": str(legacy.request.args.get("bucket", "") or "").strip(),
     }
     advanced_filters_active = any(
-        bool(value)
-        for key, value in extended_filters.items()
-        if key not in {"bucket"}
+        bool(value) for key, value in extended_filters.items() if key not in {"bucket"}
     )
     page = max(1, parse_int(legacy.request.args.get("page") or "1") or 1)
     per = parse_int(legacy.request.args.get("per") or "50") or 50
     per = max(25, min(200, per))
     scope_state = {
         "account_scope": account_scope,
-        "scope_enabled": account_scope_mode in {"current", "custom"} and bool(scope_effective_start),
+        "scope_enabled": account_scope_mode in {"current", "custom"}
+        and bool(scope_effective_start),
         "scope_start": scope_effective_start,
         "scope_starting_balance": float(resolved_scope["starting_balance"]),
         "scope_active": account_scope_mode in {"current", "custom"} and bool(scope_effective_start),
@@ -927,7 +1022,9 @@ def trades_page():
     derived_balances = trades_balance_svc.derived_balance_map(
         as_of=scope_as_of_day,
         start_date=scope_effective_start if scope_state["scope_active"] else "",
-        starting_balance=scope_state["scope_starting_balance"] if scope_state["scope_active"] else None,
+        starting_balance=(
+            scope_state["scope_starting_balance"] if scope_state["scope_active"] else None
+        ),
     )
     for t in trades:
         trade_id = t.get("id")
@@ -963,7 +1060,11 @@ def trades_page():
             continue
         scoped_trades.append(t)
     trades = scoped_trades
-    cohort_risks = [float(t["planned_risk_dollars"]) for t in trades if _float_or_none(t.get("planned_risk_dollars")) not in (None, 0)]
+    cohort_risks = [
+        float(t["planned_risk_dollars"])
+        for t in trades
+        if _float_or_none(t.get("planned_risk_dollars")) not in (None, 0)
+    ]
     risk_median = median(cohort_risks) if cohort_risks else None
     risk_avg = (sum(cohort_risks) / len(cohort_risks)) if cohort_risks else None
     spends = [_float_or_none(t.get("total_spent")) for t in trades]
@@ -988,31 +1089,61 @@ def trades_page():
             continue
         if not _matches_base_review_filters(t, review_filters):
             continue
-        if extended_filters["day_of_week"] and str(t.get("day_of_week") or "") != extended_filters["day_of_week"]:
+        if (
+            extended_filters["day_of_week"]
+            and str(t.get("day_of_week") or "") != extended_filters["day_of_week"]
+        ):
             continue
-        if extended_filters["instrument"] and extended_filters["instrument"].lower() not in str(t.get("ticker") or "").lower():
+        if (
+            extended_filters["instrument"]
+            and extended_filters["instrument"].lower() not in str(t.get("ticker") or "").lower()
+        ):
             continue
-        if extended_filters["side"] and extended_filters["side"].lower() != str(t.get("opt_type") or "").lower():
+        if (
+            extended_filters["side"]
+            and extended_filters["side"].lower() != str(t.get("opt_type") or "").lower()
+        ):
             continue
-        if extended_filters["review_state"] and extended_filters["review_state"].lower() not in str(t.get("review_state", {}).get("label") or "").lower():
+        if (
+            extended_filters["review_state"]
+            and extended_filters["review_state"].lower()
+            not in str(t.get("review_state", {}).get("label") or "").lower()
+        ):
             continue
-        if extended_filters["trade_grade"] and extended_filters["trade_grade"] != str(t.get("trade_grade") or ""):
+        if extended_filters["trade_grade"] and extended_filters["trade_grade"] != str(
+            t.get("trade_grade") or ""
+        ):
             continue
-        if extended_filters["classification"] and extended_filters["classification"] != str(t.get("trade_classification") or ""):
+        if extended_filters["classification"] and extended_filters["classification"] != str(
+            t.get("trade_classification") or ""
+        ):
             continue
         if extended_filters["risk_tier"] and extended_filters["risk_tier"] != t.get("risk_tier"):
             continue
-        if extended_filters["stop_discipline"] and extended_filters["stop_discipline"] != t.get("stop_discipline_label"):
+        if extended_filters["stop_discipline"] and extended_filters["stop_discipline"] != t.get(
+            "stop_discipline_label"
+        ):
             continue
-        if extended_filters["execution_quality"] and extended_filters["execution_quality"] != t.get("execution_quality_label"):
+        if extended_filters["execution_quality"] and extended_filters["execution_quality"] != t.get(
+            "execution_quality_label"
+        ):
             continue
-        if extended_filters["outcome_quality"] and extended_filters["outcome_quality"] != t.get("outcome_label"):
+        if extended_filters["outcome_quality"] and extended_filters["outcome_quality"] != t.get(
+            "outcome_label"
+        ):
             continue
-        if extended_filters["risk_gt"] is not None and (t.get("risk_dollars") is None or float(t.get("risk_dollars")) <= extended_filters["risk_gt"]):
+        if extended_filters["risk_gt"] is not None and (
+            t.get("risk_dollars") is None
+            or float(t.get("risk_dollars")) <= extended_filters["risk_gt"]
+        ):
             continue
-        if extended_filters["risk_pct_gt"] is not None and (t.get("risk_pct") is None or float(t.get("risk_pct")) <= extended_filters["risk_pct_gt"]):
+        if extended_filters["risk_pct_gt"] is not None and (
+            t.get("risk_pct") is None or float(t.get("risk_pct")) <= extended_filters["risk_pct_gt"]
+        ):
             continue
-        if extended_filters["r_lt_zero"] and not (_float_or_none(t.get("r_multiple")) is not None and float(t.get("r_multiple")) < 0):
+        if extended_filters["r_lt_zero"] and not (
+            _float_or_none(t.get("r_multiple")) is not None and float(t.get("r_multiple")) < 0
+        ):
             continue
         if extended_filters["oversized_only"] and not t.get("oversized"):
             continue
@@ -1020,7 +1151,11 @@ def trades_page():
             continue
         if extended_filters["loss_exceeded_only"] and not t.get("loss_exceeded_planned_risk"):
             continue
-        if extended_filters["high_spend_only"] and not (spend_median and _float_or_none(t.get("total_spent")) and float(t.get("total_spent")) > spend_median * 1.6):
+        if extended_filters["high_spend_only"] and not (
+            spend_median
+            and _float_or_none(t.get("total_spent"))
+            and float(t.get("total_spent")) > spend_median * 1.6
+        ):
             continue
         if extended_filters["rule_break_only"] and not str(t.get("rule_break_tags") or "").strip():
             continue
@@ -1071,7 +1206,8 @@ def trades_page():
     setup_scorecards = [
         card
         for card in setup_scorecards
-        if str(card.get("setup") or "").strip() and str(card.get("setup") or "") != "Unlabeled"
+        if str(card.get("setup") or "").strip()
+        and str(card.get("setup") or "") != "Unlabeled"
         and str(card.get("setup") or "") != "Unknown"
     ]
     mistake_costs = analytics_repo.mistake_costs(trades)
@@ -1093,7 +1229,9 @@ def trades_page():
     performance = analytics_repo.performance_metrics(trades, starting_balance=chart_start_balance)
     equity_curve_points = _build_equity_curve(trades, starting_balance=chart_start_balance)
     equity_current_balance = (
-        float(equity_curve_points[-1]["value"]) if equity_curve_points else float(running_balance or 0.0)
+        float(equity_curve_points[-1]["value"])
+        if equity_curve_points
+        else float(running_balance or 0.0)
     )
     equity_peak_balance = max(
         (float(point.get("peak") or 0.0) for point in equity_curve_points),
@@ -1103,7 +1241,9 @@ def trades_page():
         (abs(float(point.get("drawdown") or 0.0)) for point in equity_curve_points),
         default=0.0,
     )
-    current_drawdown = max(0.0, float(equity_peak_balance or 0.0) - float(equity_current_balance or 0.0))
+    current_drawdown = max(
+        0.0, float(equity_peak_balance or 0.0) - float(equity_current_balance or 0.0)
+    )
     max_drawdown_pct = max(
         (abs(float(point.get("drawdown_pct") or 0.0)) for point in equity_curve_points),
         default=0.0,
@@ -1135,7 +1275,9 @@ def trades_page():
     setup_takeaway = _setup_takeaway(setup_performance_points)
     time_takeaway = _time_takeaway(time_of_day_points)
     risk_strip = _risk_kpi_strip(trades, max_drawdown)
-    stop_respected_item = next((item for item in risk_strip if item["label"] == "Stop Respected"), None)
+    stop_respected_item = next(
+        (item for item in risk_strip if item["label"] == "Stop Respected"), None
+    )
     stop_respected_pct = None
     if stop_respected_item:
         try:
@@ -1184,15 +1326,13 @@ def trades_page():
         )
 
     if trades_count == 0:
-        next_action_msg = "Import statement or add first trade, then complete setup/session review tags."
+        next_action_msg = (
+            "Import statement or add first trade, then complete setup/session review tags."
+        )
     elif review_coverage["fully_reviewed"] < trades_count:
-        next_action_msg = (
-            f"Complete structured reviews on {trades_count - review_coverage['fully_reviewed']} trade(s) so the analytics layer stays decision-grade."
-        )
+        next_action_msg = f"Complete structured reviews on {trades_count - review_coverage['fully_reviewed']} trade(s) so the analytics layer stays decision-grade."
     elif biggest_leak:
-        next_action_msg = (
-            f"Review {biggest_leak['tag']} first. It has logged {legacy.money(biggest_leak['loss_cost'])} in preventable loss cost."
-        )
+        next_action_msg = f"Review {biggest_leak['tag']} first. It has logged {legacy.money(biggest_leak['loss_cost'])} in preventable loss cost."
     else:
         next_action_msg = "Review is current. Use Analytics to validate the strongest setup before adding more size."
     if guardrail.get("locked"):
@@ -1227,11 +1367,13 @@ def trades_page():
         StateBadgeViewModel(
             label="Confidence",
             value=(
-                f"{review_coverage['completion_pct']:.0f}% complete"
-                if trades_count
-                else "Stand by"
+                f"{review_coverage['completion_pct']:.0f}% complete" if trades_count else "Stand by"
             ),
-            tone=("healthy" if trades_count and review_coverage["fully_reviewed"] == trades_count else "caution" if trades_count else "neutral"),
+            tone=(
+                "healthy"
+                if trades_count and review_coverage["fully_reviewed"] == trades_count
+                else "caution" if trades_count else "neutral"
+            ),
             title="Trade review tags should be completed before day end.",
         ),
     ]
@@ -1250,36 +1392,46 @@ def trades_page():
         {"label": primary_net_label, "value": money(day_net), "meta": primary_net_sub},
         {
             "label": "Avg R",
-            "value": (f"{(sum(float(t['r_multiple']) for t in trades if _float_or_none(t.get('r_multiple')) is not None) / max(1, len([t for t in trades if _float_or_none(t.get('r_multiple')) is not None]))):.2f}R" if any(_float_or_none(t.get('r_multiple')) is not None for t in trades) else "—"),
+            "value": (
+                f"{(sum(float(t['r_multiple']) for t in trades if _float_or_none(t.get('r_multiple')) is not None) / max(1, len([t for t in trades if _float_or_none(t.get('r_multiple')) is not None]))):.2f}R"
+                if any(_float_or_none(t.get("r_multiple")) is not None for t in trades)
+                else "—"
+            ),
             "meta": "realized R",
         },
         {
             "label": "Profit Factor",
-            "value": (f"{float(performance.get('profit_factor') or 0.0):.2f}" if performance.get("profit_factor") is not None else "—"),
+            "value": (
+                f"{float(performance.get('profit_factor') or 0.0):.2f}"
+                if performance.get("profit_factor") is not None
+                else "—"
+            ),
             "meta": "gross profit / gross loss",
         },
         {
             "label": "Avg Risk",
-            "value": next((item["value"] for item in risk_strip if item["label"] == "Avg Risk"), "—"),
+            "value": next(
+                (item["value"] for item in risk_strip if item["label"] == "Avg Risk"), "—"
+            ),
             "meta": "planned per trade",
         },
         {
             "label": "Avg Winner",
-            "value": next((item["value"] for item in risk_strip if item["label"] == "Avg Winner"), "—"),
+            "value": next(
+                (item["value"] for item in risk_strip if item["label"] == "Avg Winner"), "—"
+            ),
             "meta": "positive trade",
         },
         {
             "label": "Avg Loser",
-            "value": next((item["value"] for item in risk_strip if item["label"] == "Avg Loser"), "—"),
+            "value": next(
+                (item["value"] for item in risk_strip if item["label"] == "Avg Loser"), "—"
+            ),
             "meta": "absolute loss",
         },
     ]
     context_query = urlencode(
-        {
-            key: value
-            for key, value in legacy.request.args.items()
-            if value not in (None, "", [])
-        }
+        {key: value for key, value in legacy.request.args.items() if value not in (None, "", [])}
     )
     base_query = {
         key: value
@@ -1288,11 +1440,7 @@ def trades_page():
     }
     filter_query = urlencode(base_query)
     pagination_query_prefix = (filter_query + "&") if filter_query else ""
-    bucket_base_query = {
-        key: value
-        for key, value in base_query.items()
-        if key != "bucket"
-    }
+    bucket_base_query = {key: value for key, value in base_query.items() if key != "bucket"}
     clear_bucket_query = urlencode(bucket_base_query)
     scope_link_base = {
         key: value
@@ -1316,7 +1464,9 @@ def trades_page():
             end_date=today_iso(),
             scope_preset="custom",
         ),
-        "all": _build_scope_query(account_scope_mode="all", scope_preset=None, start_date=None, end_date=None),
+        "all": _build_scope_query(
+            account_scope_mode="all", scope_preset=None, start_date=None, end_date=None
+        ),
         "current": _build_scope_query(
             account_scope_mode="current",
             scope_preset=None,
@@ -1324,17 +1474,27 @@ def trades_page():
             end_date=None,
         ),
         "custom": _build_scope_query(account_scope_mode="custom"),
-        "7d": _build_scope_query(account_scope_mode="custom", scope_preset="7d", start_date=None, end_date=None),
-        "30d": _build_scope_query(account_scope_mode="custom", scope_preset="30d", start_date=None, end_date=None),
-        "90d": _build_scope_query(account_scope_mode="custom", scope_preset="90d", start_date=None, end_date=None),
-        "ytd": _build_scope_query(account_scope_mode="custom", scope_preset="ytd", start_date=None, end_date=None),
+        "7d": _build_scope_query(
+            account_scope_mode="custom", scope_preset="7d", start_date=None, end_date=None
+        ),
+        "30d": _build_scope_query(
+            account_scope_mode="custom", scope_preset="30d", start_date=None, end_date=None
+        ),
+        "90d": _build_scope_query(
+            account_scope_mode="custom", scope_preset="90d", start_date=None, end_date=None
+        ),
+        "ytd": _build_scope_query(
+            account_scope_mode="custom", scope_preset="ytd", start_date=None, end_date=None
+        ),
     }
     active_filter_chips = []
     active_filter_chips.append({"label": "Scope", "value": resolved_scope["label"]})
     if account_scope_mode == "custom" and start_date and end_date and start_date == end_date:
         active_filter_chips.append({"label": "Date", "value": start_date})
     elif account_scope_mode == "custom" and (start_date or end_date):
-        active_filter_chips.append({"label": "Range", "value": f"{start_date or '…'} → {end_date or '…'}"})
+        active_filter_chips.append(
+            {"label": "Range", "value": f"{start_date or '…'} → {end_date or '…'}"}
+        )
     if q:
         active_filter_chips.append({"label": "Search", "value": q})
     if review_filters.get("setup"):
@@ -1362,7 +1522,9 @@ def trades_page():
         if extended_filters.get(key):
             active_filter_chips.append({"label": label, "value": str(extended_filters[key])})
     if extended_filters.get("bucket"):
-        active_filter_chips.append({"label": "Bucket", "value": str(extended_filters["bucket"]).replace("_", " ").title()})
+        active_filter_chips.append(
+            {"label": "Bucket", "value": str(extended_filters["bucket"]).replace("_", " ").title()}
+        )
     review_queue = _review_queue(trades)
 
     content = legacy.render_template(

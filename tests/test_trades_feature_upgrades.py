@@ -995,7 +995,9 @@ def test_record_admin_audit_falls_back_when_primary_unwritable(monkeypatch, tmp_
     assert rows and rows[-1].get("action") == "auto_backup_config_saved"
 
 
-def test_ops_alert_ack_falls_back_when_primary_notify_history_is_unwritable(client, monkeypatch, tmp_path):
+def test_ops_alert_ack_falls_back_when_primary_notify_history_is_unwritable(
+    client, monkeypatch, tmp_path
+):
     from mccain_capital.services import trades as trades_svc
 
     primary = tmp_path / "blocked" / ".vanquish_notify_history.json"
@@ -1313,7 +1315,9 @@ def test_live_sync_job_can_be_cancelled(client, monkeypatch, tmp_path):
         "Live Sync",
         {"source": "manual_live", "from_date": "2026-03-17", "to_date": "2026-03-17"},
     )
-    trades_svc._update_bg_job(job["id"], status="running", stage="submit_login", message="Logging in.")
+    trades_svc._update_bg_job(
+        job["id"], status="running", stage="submit_login", message="Logging in."
+    )
 
     resp = client.post(f"/trades/sync/job/{job['id']}/cancel", follow_redirects=False)
 
@@ -1562,7 +1566,9 @@ def test_sync_runtime_state_reconciles_stale_jobs_at_startup(monkeypatch, tmp_pa
     assert snapshot["last_status"]["stage"] == "stale"
 
 
-def test_live_workspace_shows_latest_active_sync_job_without_query_param(client, monkeypatch, tmp_path):
+def test_live_workspace_shows_latest_active_sync_job_without_query_param(
+    client, monkeypatch, tmp_path
+):
     from mccain_capital.services import trades as trades_svc
 
     bg_dir = tmp_path / ".bg_jobs"
@@ -1573,7 +1579,9 @@ def test_live_workspace_shows_latest_active_sync_job_without_query_param(client,
         "Live Sync",
         {"source": "manual_live", "from_date": "2026-03-18", "to_date": "2026-03-18"},
     )
-    trades_svc._update_bg_job(job["id"], status="running", stage="generate_statement", message="Generating statement.")
+    trades_svc._update_bg_job(
+        job["id"], status="running", stage="generate_statement", message="Generating statement."
+    )
 
     resp = client.get("/trades/upload/statement?ws=live", follow_redirects=True)
 

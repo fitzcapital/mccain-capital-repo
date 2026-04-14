@@ -150,7 +150,9 @@ def register(app):
         methods=["GET", "POST"],
     )
     app.add_url_rule("/export.json", endpoint="export_json", view_func=h.export_json)
-    app.add_url_rule("/admin/backup", endpoint="backup_data", view_func=h.backup_data, methods=["POST"])
+    app.add_url_rule(
+        "/admin/backup", endpoint="backup_data", view_func=h.backup_data, methods=["POST"]
+    )
     app.add_url_rule(
         "/admin/restore", endpoint="restore_data", view_func=h.restore_data, methods=["GET", "POST"]
     )

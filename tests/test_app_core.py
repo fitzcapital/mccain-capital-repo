@@ -92,7 +92,10 @@ def test_playbook_page_renders_trading_doctrine_surface(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "The Fitz Capital Trading Doctrine" in body
-    assert "Mindset, execution, and market-reading principles built for repeatable performance." in body
+    assert (
+        "Mindset, execution, and market-reading principles built for repeatable performance."
+        in body
+    )
     assert "Five Non-Negotiables" in body
     assert "Before You Click" in body
     assert "Mindset Doctrine" in body
@@ -477,7 +480,10 @@ def test_dashboard_brief_uses_true_intraday_day_open(client, monkeypatch):
                     for i in range(50)
                 ],
                 "VIX": [
-                    {"ts": f"2026-03-17T14:{30 + (i % 30):02d}:00+00:00", "v": 20.1 - (0.01 * float(i))}
+                    {
+                        "ts": f"2026-03-17T14:{30 + (i % 30):02d}:00+00:00",
+                        "v": 20.1 - (0.01 * float(i)),
+                    }
                     for i in range(50)
                 ],
             },
@@ -520,7 +526,9 @@ def test_dashboard_brief_uses_true_intraday_day_open(client, monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        market_data_service, "get_prior_session_intraday", lambda _symbol, anchor_session_day=None: []
+        market_data_service,
+        "get_prior_session_intraday",
+        lambda _symbol, anchor_session_day=None: [],
     )
     monkeypatch.setattr(
         market_data_service,
@@ -775,7 +783,7 @@ def test_trading_window_settings_page_renders_form(client):
     assert resp.status_code == 200
     assert b"Session Guardrail Settings" in resp.data
     assert b'input type="time" name="tw_done_by_et"' in resp.data
-    assert b'tw_hard_stop_et' not in resp.data
+    assert b"tw_hard_stop_et" not in resp.data
 
 
 def test_candle_opens_news_includes_placeholder_weeks(monkeypatch):
@@ -2173,7 +2181,9 @@ def test_market_pulse_renders_stale_snapshot_banner(client, monkeypatch):
             "call_wall_gamma_per_point": 125000000.0,
             "put_wall_gamma_per_point": 114000000.0,
             "gamma_walls_top3": [5150.0],
-            "warnings": ["Stale Snapshot: showing last known good values because the latest refresh failed."],
+            "warnings": [
+                "Stale Snapshot: showing last known good values because the latest refresh failed."
+            ],
             "stale_flags": ["stale_snapshot"],
             "void_zone": {"start": None, "end": None},
             "bias": "buy_dips_above_flip",

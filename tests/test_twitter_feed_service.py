@@ -29,7 +29,9 @@ def test_twitter_feed_classifies_and_aligns_to_structure(monkeypatch):
                     else "Dealer gamma positioning keeps SPX near call wall and QQQ pinned near resistance."
                 ),
                 "url": f"https://x.com/{kwargs['username']}/status/1",
-                "createdAt": (now - timedelta(minutes=5 if kwargs["username"] == "unusual_whales" else 3)).isoformat(),
+                "createdAt": (
+                    now - timedelta(minutes=5 if kwargs["username"] == "unusual_whales" else 3)
+                ).isoformat(),
             }
         ],
     )
@@ -83,7 +85,10 @@ def test_twitter_feed_uses_cache_when_fetch_fails(monkeypatch):
     )
     assert second["status"] == "delayed"
     assert second["items"]
-    assert second["source_note"] == "Partial twitterapi.io sync. Showing the latest good posts by source."
+    assert (
+        second["source_note"]
+        == "Partial twitterapi.io sync. Showing the latest good posts by source."
+    )
 
 
 def test_twitter_feed_never_returns_empty_without_cache(monkeypatch):
@@ -201,6 +206,7 @@ def test_twitter_feed_cools_down_source_after_429(monkeypatch):
     state = second["source_states"]["unusual_whales"]
     assert state["last_status_code"] == 429
     assert state["cooldown_until"]
+
 
 def test_twitter_feed_uses_last_good_payload_for_single_source(monkeypatch):
     now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)

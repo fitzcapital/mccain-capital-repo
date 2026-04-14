@@ -178,7 +178,11 @@ def _bootstrap_browser_session(
         try:
             mark(
                 "browser_boot",
-                "Starting Chromium session." if attempt == 1 else "Retrying Chromium session bootstrap.",
+                (
+                    "Starting Chromium session."
+                    if attempt == 1
+                    else "Retrying Chromium session bootstrap."
+                ),
             )
             browser = playwright.chromium.launch(headless=headless, args=launch_args)
             context = browser.new_context(
@@ -198,9 +202,7 @@ def _bootstrap_browser_session(
             return browser, context, page, tracing_enabled, debug_dir
         except Exception as e:
             last_error = str(e).strip() or e.__class__.__name__
-            warnings.append(
-                f"Browser bootstrap attempt {attempt} failed: {last_error}."
-            )
+            warnings.append(f"Browser bootstrap attempt {attempt} failed: {last_error}.")
             _safe_close(context)
             _safe_close(browser)
             if attempt < 2:

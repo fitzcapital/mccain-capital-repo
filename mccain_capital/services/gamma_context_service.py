@@ -78,7 +78,9 @@ def _extract_candidate_ladder(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "sources": [],
             },
         )
-        row["expiry_basket_membership"] = expiry_basket_membership or row["expiry_basket_membership"]
+        row["expiry_basket_membership"] = (
+            expiry_basket_membership or row["expiry_basket_membership"]
+        )
         if source and source not in row["sources"]:
             row["sources"].append(source)
         abs_gex_num = _safe_float(abs_gex)

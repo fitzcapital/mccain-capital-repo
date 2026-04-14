@@ -34,9 +34,7 @@ TRACKED_SOURCES: Tuple[Dict[str, str], ...] = (
     },
 )
 
-SOURCE_BY_USERNAME = {
-    str(source["username"]).strip().lower(): source for source in TRACKED_SOURCES
-}
+SOURCE_BY_USERNAME = {str(source["username"]).strip().lower(): source for source in TRACKED_SOURCES}
 
 IMPACT_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
 RELEVANCE_WEIGHTS = {"actionable_now": 3, "watch": 2, "context_only": 1}
@@ -126,7 +124,9 @@ def _normalize_source_store(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]
         state["last_good_payload"] = [
             row for row in list(state.get("last_good_payload") or []) if isinstance(row, dict)
         ]
-        state["last_good_count"] = int(state.get("last_good_count") or len(state["last_good_payload"]))
+        state["last_good_count"] = int(
+            state.get("last_good_count") or len(state["last_good_payload"])
+        )
         sources[username] = state
     return {"sources": sources}
 
@@ -340,11 +340,29 @@ def _contains_any(text: str, phrases: Iterable[str]) -> bool:
 
 def _classify_category(text: str) -> str:
     lowered = text.lower()
-    if _contains_any(lowered, ("fed", "cpi", "ppi", "inflation", "jobs", "payroll", "yield", "treasury", "fomc")):
+    if _contains_any(
+        lowered, ("fed", "cpi", "ppi", "inflation", "jobs", "payroll", "yield", "treasury", "fomc")
+    ):
         return "macro"
-    if _contains_any(lowered, ("tariff", "trump", "sanction", "government", "white house", "policy", "congress", "geopolitical", "war")):
+    if _contains_any(
+        lowered,
+        (
+            "tariff",
+            "trump",
+            "sanction",
+            "government",
+            "white house",
+            "policy",
+            "congress",
+            "geopolitical",
+            "war",
+        ),
+    ):
         return "policy"
-    if _contains_any(lowered, ("gamma", "dealer", "positioning", "options flow", "0dte", "call wall", "put wall", "flip")):
+    if _contains_any(
+        lowered,
+        ("gamma", "dealer", "positioning", "options flow", "0dte", "call wall", "put wall", "flip"),
+    ):
         return "flow"
     if _contains_any(lowered, ("earnings", "guidance", "ceo", "stock", "shares")):
         return "company"
@@ -355,17 +373,59 @@ def _classify_category(text: str) -> str:
 
 def _classify_impact(text: str) -> str:
     lowered = text.lower()
-    if _contains_any(lowered, ("breaking", "fed", "fomc", "cpi", "ppi", "inflation", "yield", "war", "tariff", "geopolitical", "sanction", "jobs", "payroll")):
+    if _contains_any(
+        lowered,
+        (
+            "breaking",
+            "fed",
+            "fomc",
+            "cpi",
+            "ppi",
+            "inflation",
+            "yield",
+            "war",
+            "tariff",
+            "geopolitical",
+            "sanction",
+            "jobs",
+            "payroll",
+        ),
+    ):
         return "high"
-    if _contains_any(lowered, ("earnings", "upgrade", "downgrade", "positioning", "options", "dealer", "gamma")):
+    if _contains_any(
+        lowered, ("earnings", "upgrade", "downgrade", "positioning", "options", "dealer", "gamma")
+    ):
         return "medium"
     return "low"
 
 
 def _classify_market_bias(text: str) -> str:
     lowered = text.lower()
-    bullish_terms = ("cooling inflation", "cuts", "rally", "soft landing", "buying", "bid", "easing", "disinflation", "breakout", "squeeze")
-    bearish_terms = ("hot inflation", "yields rising", "hawkish", "selloff", "risk-off", "breakdown", "recession", "tariff", "war", "higher yields", "dump")
+    bullish_terms = (
+        "cooling inflation",
+        "cuts",
+        "rally",
+        "soft landing",
+        "buying",
+        "bid",
+        "easing",
+        "disinflation",
+        "breakout",
+        "squeeze",
+    )
+    bearish_terms = (
+        "hot inflation",
+        "yields rising",
+        "hawkish",
+        "selloff",
+        "risk-off",
+        "breakdown",
+        "recession",
+        "tariff",
+        "war",
+        "higher yields",
+        "dump",
+    )
     bullish_hits = sum(1 for phrase in bullish_terms if phrase in lowered)
     bearish_hits = sum(1 for phrase in bearish_terms if phrase in lowered)
     if bullish_hits > bearish_hits:
@@ -377,9 +437,24 @@ def _classify_market_bias(text: str) -> str:
 
 def _classify_volatility_bias(text: str) -> str:
     lowered = text.lower()
-    if _contains_any(lowered, ("breaking", "uncertainty", "war", "tariff", "volatility", "headline risk", "selloff", "risk-off")):
+    if _contains_any(
+        lowered,
+        (
+            "breaking",
+            "uncertainty",
+            "war",
+            "tariff",
+            "volatility",
+            "headline risk",
+            "selloff",
+            "risk-off",
+        ),
+    ):
         return "higher"
-    if _contains_any(lowered, ("calm", "easing", "stabilization", "stabilising", "soft landing", "cooling", "contained")):
+    if _contains_any(
+        lowered,
+        ("calm", "easing", "stabilization", "stabilising", "soft landing", "cooling", "contained"),
+    ):
         return "lower"
     return "neutral"
 
@@ -388,7 +463,9 @@ def _trade_relevance(category: str, impact: str, symbols: List[str], text: str) 
     lowered = text.lower()
     if impact == "high" and category in {"macro", "policy", "flow"}:
         return "actionable_now"
-    if symbols or _contains_any(lowered, ("spx", "qqq", "vix", "fed", "gamma", "call wall", "put wall", "flip")):
+    if symbols or _contains_any(
+        lowered, ("spx", "qqq", "vix", "fed", "gamma", "call wall", "put wall", "flip")
+    ):
         return "watch"
     return "context_only"
 
@@ -563,7 +640,10 @@ def _normalize_actor_item(
         "symbols_label": ", ".join(symbols) if symbols else "None",
     }
     normalized.update(_gamma_alignment(normalized, structure))
-    if normalized["alignment"] == "conflicted" and normalized["trade_relevance"] == "actionable_now":
+    if (
+        normalized["alignment"] == "conflicted"
+        and normalized["trade_relevance"] == "actionable_now"
+    ):
         normalized["trade_relevance"] = "watch"
         normalized["trade_relevance_label"] = _relevance_label("watch")
     return normalized
@@ -595,7 +675,9 @@ def _summarize_volatility(items: List[Dict[str, Any]]) -> str:
 def _summarize_gamma_alignment(items: List[Dict[str, Any]], structure: Dict[str, Any]) -> str:
     aligned = sum(1 for item in items if item.get("alignment") == "aligned")
     conflicted = sum(1 for item in items if item.get("alignment") == "conflicted")
-    gamma_regime = str(structure.get("gamma_regime_label") or structure.get("gamma_regime") or "Unconfirmed").strip()
+    gamma_regime = str(
+        structure.get("gamma_regime_label") or structure.get("gamma_regime") or "Unconfirmed"
+    ).strip()
     if aligned > conflicted:
         return f"Supportive · {gamma_regime}"
     if conflicted > aligned:
@@ -614,7 +696,9 @@ def _summarize_tradeability(structure: Dict[str, Any]) -> str:
     return f"{tradeability} · {planning_bias}" if planning_bias else tradeability or "Planning only"
 
 
-def _now_summary(items: List[Dict[str, Any]], structure: Dict[str, Any], status: str) -> Dict[str, str]:
+def _now_summary(
+    items: List[Dict[str, Any]], structure: Dict[str, Any], status: str
+) -> Dict[str, str]:
     if not items:
         return {
             "spx_focus": "No fresh source flow yet",
@@ -631,7 +715,9 @@ def _now_summary(items: List[Dict[str, Any]], structure: Dict[str, Any], status:
 
 
 def _fallback_seed_items(now_et: datetime, structure: Dict[str, Any]) -> List[Dict[str, Any]]:
-    planning_bias = str(structure.get("planning_bias_label") or "Hold to the shared gamma plan").strip()
+    planning_bias = str(
+        structure.get("planning_bias_label") or "Hold to the shared gamma plan"
+    ).strip()
     seed_texts = (
         {
             "source": "Unusual Whales",
@@ -680,7 +766,9 @@ def _dedupe_items(items: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any
     for item in items:
         key = (str(item.get("handle") or ""), str(item.get("text") or "").lower())
         prior = deduped.get(key)
-        if prior is None or str(item.get("published_at") or "") > str(prior.get("published_at") or ""):
+        if prior is None or str(item.get("published_at") or "") > str(
+            prior.get("published_at") or ""
+        ):
             deduped[key] = item
     return sorted(deduped.values(), key=_sort_key, reverse=True)[:limit]
 
@@ -836,7 +924,11 @@ def _build_combined_snapshot_from_store(
             unavailable_sources += 1
         if state.get("last_error") or state.get("cooldown_until"):
             any_error = True
-        if payload and not _source_is_stale(state, now_et) and not _source_in_cooldown(state, now_et):
+        if (
+            payload
+            and not _source_is_stale(state, now_et)
+            and not _source_in_cooldown(state, now_et)
+        ):
             any_live = True
 
     if items:
@@ -851,7 +943,9 @@ def _build_combined_snapshot_from_store(
             source_note = "Using cached twitterapi.io snapshot while the latest sync is delayed."
     else:
         status = "delayed"
-        source_note = "twitterapi.io sync delayed. Using backup flow shell until the next valid sync."
+        source_note = (
+            "twitterapi.io sync delayed. Using backup flow shell until the next valid sync."
+        )
         items = _fallback_seed_items(now_et, structure)[: max(2, min(limit, 4))]
 
     source_states_public = {}

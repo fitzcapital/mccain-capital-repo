@@ -62,6 +62,7 @@ def _tm_dict() -> dict:
     """Return trades module __dict__ at call time (supports test monkeypatching)."""
     try:
         import mccain_capital.services.trades as _tm  # noqa: PLC0415
+
         return _tm.__dict__
     except ImportError:
         return {}
@@ -79,7 +80,9 @@ def _notify_history_paths(for_read: bool = True) -> List[str]:
     else:
         primary = str(app_runtime.upload_path(".vanquish_notify_history.json"))
 
-    fallback = os.path.join(tempfile.gettempdir(), "mccain-capital", ".vanquish_notify_history.json")
+    fallback = os.path.join(
+        tempfile.gettempdir(), "mccain-capital", ".vanquish_notify_history.json"
+    )
     ordered = (primary, fallback)
     if for_read and os.path.isfile(fallback):
         ordered = (fallback, primary)
@@ -123,6 +126,7 @@ def _save_notify_history(state: Dict[str, Any]) -> None:
 def _safe_write_json_local(path: str, payload: Any) -> None:
     """Local copy of _safe_write_json for when the trades module is not available."""
     import threading  # noqa: PLC0415
+
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp_path = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
@@ -261,9 +265,7 @@ def _signed_headers(body: bytes, event_type: str, ts: str) -> Dict[str, str]:
         "X-McCain-Timestamp": ts,
     }
     if webhook_secret:
-        digest = hmac.new(
-            str(webhook_secret).encode("utf-8"), body, hashlib.sha256
-        ).hexdigest()
+        digest = hmac.new(str(webhook_secret).encode("utf-8"), body, hashlib.sha256).hexdigest()
         headers["X-McCain-Signature"] = f"sha256={digest}"
     return headers
 

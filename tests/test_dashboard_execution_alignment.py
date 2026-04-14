@@ -89,12 +89,28 @@ def test_dashboard_decision_missing_snapshot_degrades_to_unavailable():
         data_trust={"tone": "positive"},
         readiness={"pct": 100.0},
         dashboard_vix={"price": 16.0},
-        gamma_strip={"entries": [], "state": "unavailable", "status_text": "Invalid snapshot: gamma levels unavailable"},
+        gamma_strip={
+            "entries": [],
+            "state": "unavailable",
+            "status_text": "Invalid snapshot: gamma levels unavailable",
+        },
         execution_model={
             "macro_regime": {"state": "unknown", "title": "REGIME UNKNOWN"},
             "local_bias": {"state": "unknown"},
-            "levels": {"spot": 6582.0, "main_flip": None, "local_flip": None, "call_wall": None, "put_wall": None},
-            "playbook": {"status": "NO TRADE", "tone": "negative", "best_look": "Wait", "avoid": "Avoid force", "need": "Need valid data"},
+            "levels": {
+                "spot": 6582.0,
+                "main_flip": None,
+                "local_flip": None,
+                "call_wall": None,
+                "put_wall": None,
+            },
+            "playbook": {
+                "status": "NO TRADE",
+                "tone": "negative",
+                "best_look": "Wait",
+                "avoid": "Avoid force",
+                "need": "Need valid data",
+            },
             "posture_summary": "Invalid snapshot: gamma levels unavailable",
         },
     )

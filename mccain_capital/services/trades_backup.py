@@ -63,6 +63,7 @@ def _auto_backup_config_path() -> str:
     # Also check trades module so monkeypatch in tests can override.
     try:
         import mccain_capital.services.trades as _trades_mod
+
         override = _trades_mod.__dict__.get("AUTO_BACKUP_CONFIG_PATH") or AUTO_BACKUP_CONFIG_PATH
     except ImportError:
         override = AUTO_BACKUP_CONFIG_PATH
@@ -72,6 +73,7 @@ def _auto_backup_config_path() -> str:
 def _auto_backup_dir() -> str:
     try:
         import mccain_capital.services.trades as _trades_mod
+
         override = _trades_mod.__dict__.get("AUTO_BACKUP_DIR") or AUTO_BACKUP_DIR
     except ImportError:
         override = AUTO_BACKUP_DIR
@@ -81,6 +83,7 @@ def _auto_backup_dir() -> str:
 def _auto_backup_lock_path() -> str:
     try:
         import mccain_capital.services.trades as _trades_mod
+
         override = _trades_mod.__dict__.get("AUTO_BACKUP_LOCK_PATH") or AUTO_BACKUP_LOCK_PATH
     except ImportError:
         override = AUTO_BACKUP_LOCK_PATH
@@ -118,6 +121,7 @@ def _load_auto_backup_config() -> Dict[str, Any]:
     # Look up through trades module so monkeypatch on trades_svc works in tests.
     try:
         import mccain_capital.services.trades as _tm
+
         _paths_fn = _tm.__dict__.get("_auto_backup_config_paths") or _auto_backup_config_paths
     except ImportError:
         _paths_fn = _auto_backup_config_paths
@@ -154,6 +158,7 @@ def _save_auto_backup_config(cfg: Dict[str, Any]) -> bool:
     # Look up function through trades module so monkeypatch on trades_svc works in tests.
     try:
         import mccain_capital.services.trades as _tm
+
         _paths_fn = _tm.__dict__.get("_auto_backup_config_paths") or _auto_backup_config_paths
         _write_fn = _tm.__dict__.get("_safe_write_json") or _safe_write_json
     except ImportError:

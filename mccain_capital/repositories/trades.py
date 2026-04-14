@@ -66,9 +66,12 @@ def clean_setup_label(raw: Any) -> str:
 
 
 def setup_display_label(row: Dict[str, Any]) -> str:
-    return clean_setup_label(
-        row.get("setup_tag") or row.get("strategy_label") or row.get("resolved_setup_tag") or ""
-    ) or "Unknown"
+    return (
+        clean_setup_label(
+            row.get("setup_tag") or row.get("strategy_label") or row.get("resolved_setup_tag") or ""
+        )
+        or "Unknown"
+    )
 
 
 def normalize_trade_source(row: Dict[str, Any]) -> str:
@@ -439,7 +442,9 @@ def upsert_trade_review(
     if planned_risk_dollars not in (None, ""):
         risk_dollars_val = abs(float(planned_risk_dollars))
     reviewed_stop_val = None if reviewed_stop_price in (None, "") else float(reviewed_stop_price)
-    reviewed_target_val = None if reviewed_target_price in (None, "") else float(reviewed_target_price)
+    reviewed_target_val = (
+        None if reviewed_target_price in (None, "") else float(reviewed_target_price)
+    )
     reviewed_risk_dollars_val = None
     if reviewed_risk_dollars not in (None, ""):
         reviewed_risk_dollars_val = abs(float(reviewed_risk_dollars))

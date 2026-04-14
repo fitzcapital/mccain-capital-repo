@@ -185,7 +185,9 @@ def _two_session_regular_bars(
     """
 
     prior_session_day = _previous_trading_day(anchor_day)
-    prior_regular = _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=True)
+    prior_regular = _bars_for_session_day(
+        prior_bars, session_day=prior_session_day, regular_only=True
+    )
     current_regular = _bars_for_session_day(current_bars, session_day=anchor_day, regular_only=True)
     combined = [dict(bar) for bar in prior_regular] + [dict(bar) for bar in current_regular]
     if not combined:
@@ -197,7 +199,9 @@ def _two_session_regular_bars(
         "previous_session_day": prior_session_day.isoformat() if prior_regular else "",
         "current_session_day": anchor_day.isoformat() if current_regular else "",
         "visible_window_bars": len(combined),
-        "session_target_bar_count": _regular_session_target_bar_count(interval) if current_regular else 0,
+        "session_target_bar_count": (
+            _regular_session_target_bar_count(interval) if current_regular else 0
+        ),
     }
 
 
@@ -215,7 +219,9 @@ def _opening_session_carryover_bars(
         1,
         int(OPENING_SESSION_CARRYOVER_MINUTES / max(1, _interval_minutes(interval))),
     )
-    current_regular = _bars_for_session_day(current_bars, session_day=session_day, regular_only=True)
+    current_regular = _bars_for_session_day(
+        current_bars, session_day=session_day, regular_only=True
+    )
     live_count = len(current_regular)
     if live_count <= 0 or live_count >= threshold:
         return {
@@ -230,11 +236,15 @@ def _opening_session_carryover_bars(
             "current_session_bar_count": live_count,
             "previous_session_day": "",
             "current_session_day": session_day.isoformat() if current_regular else "",
-            "session_target_bar_count": _regular_session_target_bar_count(interval) if current_regular else 0,
+            "session_target_bar_count": (
+                _regular_session_target_bar_count(interval) if current_regular else 0
+            ),
         }
 
     prior_session_day = _previous_trading_day(session_day)
-    prior_regular = _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=True)
+    prior_regular = _bars_for_session_day(
+        prior_bars, session_day=prior_session_day, regular_only=True
+    )
     carryover = prior_regular[-carryover_target:] if prior_regular else []
     combined = [dict(bar) for bar in carryover] + [dict(bar) for bar in current_regular]
     return {
@@ -243,13 +253,17 @@ def _opening_session_carryover_bars(
         "live_session_bar_count": live_count,
         "opening_threshold": threshold,
         "carryover_bar_count": len(carryover),
-        "visible_window_bars": max(len(combined), threshold + len(carryover) + OPENING_SESSION_RIGHT_OFFSET_BARS),
+        "visible_window_bars": max(
+            len(combined), threshold + len(carryover) + OPENING_SESSION_RIGHT_OFFSET_BARS
+        ),
         "right_offset_bars": OPENING_SESSION_RIGHT_OFFSET_BARS,
         "previous_session_bar_count": len(carryover),
         "current_session_bar_count": live_count,
         "previous_session_day": prior_session_day.isoformat() if carryover else "",
         "current_session_day": session_day.isoformat() if current_regular else "",
-        "session_target_bar_count": _regular_session_target_bar_count(interval) if current_regular else 0,
+        "session_target_bar_count": (
+            _regular_session_target_bar_count(interval) if current_regular else 0
+        ),
     }
 
 
@@ -330,7 +344,9 @@ def normalize_tradier_timesales(
     return bars
 
 
-def get_intraday_bars(symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTERVAL) -> Dict[str, Any]:
+def get_intraday_bars(
+    symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTERVAL
+) -> Dict[str, Any]:
     try:
         rows = market_data_service.get_intraday(symbol)
     except Exception as exc:
@@ -358,7 +374,9 @@ def get_intraday_bars(symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTE
     }
 
     try:
-        prior_rows = market_data_service.get_prior_session_intraday(symbol_name, anchor_session_day=now_et.date())
+        prior_rows = market_data_service.get_prior_session_intraday(
+            symbol_name, anchor_session_day=now_et.date()
+        )
     except Exception as exc:
         LOGGER.warning("hero chart prior-session fetch failed for %s: %s", symbol_name, exc)
         prior_rows = []
@@ -376,7 +394,9 @@ def get_intraday_bars(symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTE
 
     if not normalized_current:
         quote_price = _as_float(get_live_quote(symbol_name).get("price"))
-        synthetic_current = _synthetic_quote_bar(price=quote_price, now_et=now_et, interval=interval)
+        synthetic_current = _synthetic_quote_bar(
+            price=quote_price, now_et=now_et, interval=interval
+        )
         payload.update(
             _two_session_regular_bars(
                 current_bars=synthetic_current,
@@ -454,7 +474,11 @@ def derive_hero_state(
             "plan_note": "Above call wall. Momentum can continue, but the only valid long is a confirmed retest.",
             "best_look": "Wait for pullback into Call Wall",
             "required_trigger": "Sweep + reclaim + 2-2 + volume",
-            "invalidation": _format_level("Lose LF", local_flip) if local_flip is not None else _format_level("Lose CW", call_wall),
+            "invalidation": (
+                _format_level("Lose LF", local_flip)
+                if local_flip is not None
+                else _format_level("Lose CW", call_wall)
+            ),
         }
 
     if local_flip is not None and call_wall is not None and local_flip < price <= call_wall:
@@ -475,9 +499,7 @@ def derive_hero_state(
         destination = (
             _format_level("PW", put_wall)
             if put_wall is not None and price > put_wall
-            else _format_level("NPW", npw)
-            if npw is not None
-            else "Downside expansion"
+            else _format_level("NPW", npw) if npw is not None else "Downside expansion"
         )
         return {
             "state": state,
@@ -592,7 +614,9 @@ def get_hero_levels(
         "last_valid_snapshot_time_label": structure_snapshot.get("last_valid_snapshot_time_label"),
         "last_valid_snapshot_usable": structure_snapshot.get("last_valid_snapshot_usable"),
         "last_valid_snapshot_reason": structure_snapshot.get("last_valid_snapshot_reason"),
-        "last_valid_snapshot_age_seconds": structure_snapshot.get("last_valid_snapshot_age_seconds"),
+        "last_valid_snapshot_age_seconds": structure_snapshot.get(
+            "last_valid_snapshot_age_seconds"
+        ),
         "posture_summary": dict(snapshot.get("execution_model") or {}).get("posture_summary") or "",
     }
 

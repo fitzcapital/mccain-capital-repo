@@ -7,17 +7,16 @@ from urllib.parse import urlencode
 
 from mccain_capital.repositories import analytics as analytics_repo
 from mccain_capital.services import market_data_service
-from mccain_capital.services.trade_review_scoring import compute_trade_review_foundation, grade_from_score
+from mccain_capital.services.trade_review_scoring import (
+    compute_trade_review_foundation,
+    grade_from_score,
+)
 from mccain_capital.services import trades as legacy
 
 
 def _trade_back_query() -> str:
     return urlencode(
-        {
-            key: value
-            for key, value in legacy.request.args.items()
-            if value not in (None, "", [])
-        }
+        {key: value for key, value in legacy.request.args.items() if value not in (None, "", [])}
     )
 
 
@@ -49,7 +48,11 @@ def _intraday_points_for_day(symbol: str, day: str) -> list[dict]:
             dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
         except ValueError:
             continue
-        dt_et = dt.astimezone(legacy.app_runtime.TZ) if dt.tzinfo else dt.replace(tzinfo=legacy.app_runtime.TZ)
+        dt_et = (
+            dt.astimezone(legacy.app_runtime.TZ)
+            if dt.tzinfo
+            else dt.replace(tzinfo=legacy.app_runtime.TZ)
+        )
         if dt_et.date().isoformat() != day:
             continue
         points.append(
@@ -97,8 +100,16 @@ def _trade_replay_payload(trade: dict, review: dict) -> dict:
         entry_price = legacy.parse_float(str(trade.get("entry_price") or ""))
         exit_price = legacy.parse_float(str(trade.get("exit_price") or ""))
         series = [
-            {"label": str(trade.get("entry_time") or "Entry"), "minute": entry_minute, "close": float(entry_price or 0)},
-            {"label": str(trade.get("exit_time") or "Exit"), "minute": exit_minute, "close": float(exit_price or entry_price or 0)},
+            {
+                "label": str(trade.get("entry_time") or "Entry"),
+                "minute": entry_minute,
+                "close": float(entry_price or 0),
+            },
+            {
+                "label": str(trade.get("exit_time") or "Exit"),
+                "minute": exit_minute,
+                "close": float(exit_price or entry_price or 0),
+            },
         ]
     return {
         "mode": mode,
@@ -363,7 +374,9 @@ def trades_review(trade_id: int):
         )
         legacy.flash("Trade review saved.", "success")
         if f.get("back_to_trades") == "1":
-            return legacy.redirect(f"/trades?{back_query}" if back_query else legacy.url_for("trades_page"))
+            return legacy.redirect(
+                f"/trades?{back_query}" if back_query else legacy.url_for("trades_page")
+            )
         review_href = f"/trades/review/{trade_id}"
         if back_query:
             review_href += f"?{back_query}"

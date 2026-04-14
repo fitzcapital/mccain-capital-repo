@@ -293,7 +293,9 @@ class MarketPulseSnapshotModel(BaseModel):
     gamma_range_low: Optional[float] = None
     next_call_wall_above: Optional[float] = None
     next_put_wall_below: Optional[float] = None
-    void_zone: Dict[str, Optional[float]] = Field(default_factory=lambda: {"start": None, "end": None})
+    void_zone: Dict[str, Optional[float]] = Field(
+        default_factory=lambda: {"start": None, "end": None}
+    )
     bias: str
     cache_status: str
     refresh_mode: RefreshMode = RefreshMode.IN_PROCESS

@@ -8,9 +8,31 @@ from mccain_capital.runtime import db, now_iso
 def _seed_trades():
     rows = [
         ("2026-01-02", "9:35 AM", 100.0, 50100.0, "ORB", "Open", 88, "", "", 100.0),
-        ("2026-01-02", "10:20 AM", -50.0, 50050.0, "Fade", "Open", 62, "late-entry", "late-entry", 50.0),
+        (
+            "2026-01-02",
+            "10:20 AM",
+            -50.0,
+            50050.0,
+            "Fade",
+            "Open",
+            62,
+            "late-entry",
+            "late-entry",
+            50.0,
+        ),
         ("2026-01-03", "11:10 AM", 200.0, 50250.0, "ORB", "Midday", 91, "", "", 100.0),
-        ("2026-01-03", "2:40 PM", -25.0, 50225.0, "Scalp", "Power Hour", 55, "oversized", "oversized", 25.0),
+        (
+            "2026-01-03",
+            "2:40 PM",
+            -25.0,
+            50225.0,
+            "Scalp",
+            "Power Hour",
+            55,
+            "oversized",
+            "oversized",
+            25.0,
+        ),
         ("2026-01-04", "3:05 PM", 0.0, 50225.0, "ORB", "Power Hour", 70, "", "", None),
     ]
     with db() as conn:

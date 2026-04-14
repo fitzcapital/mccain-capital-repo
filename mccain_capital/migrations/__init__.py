@@ -337,13 +337,19 @@ def _migration_0008_trade_review_workflow(conn: sqlite3.Connection) -> None:
     if "reviewed_risk_percent" not in review_cols:
         conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_risk_percent REAL DEFAULT NULL")
     if "reviewed_execution_quality" not in review_cols:
-        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_execution_quality TEXT DEFAULT ''")
+        conn.execute(
+            "ALTER TABLE trade_reviews ADD COLUMN reviewed_execution_quality TEXT DEFAULT ''"
+        )
     if "reviewed_sizing_quality" not in review_cols:
         conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_sizing_quality TEXT DEFAULT ''")
     if "reviewed_stop_discipline" not in review_cols:
-        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_stop_discipline TEXT DEFAULT ''")
+        conn.execute(
+            "ALTER TABLE trade_reviews ADD COLUMN reviewed_stop_discipline TEXT DEFAULT ''"
+        )
     if "reviewed_within_plan" not in review_cols:
-        conn.execute("ALTER TABLE trade_reviews ADD COLUMN reviewed_within_plan INTEGER DEFAULT NULL")
+        conn.execute(
+            "ALTER TABLE trade_reviews ADD COLUMN reviewed_within_plan INTEGER DEFAULT NULL"
+        )
     if "manual_grade_score" not in review_cols:
         conn.execute("ALTER TABLE trade_reviews ADD COLUMN manual_grade_score INTEGER DEFAULT NULL")
     if "manual_grade_letter" not in review_cols:

@@ -408,7 +408,7 @@ def _stream_intraday_rows_for_date(symbol: str, session_day: date) -> List[Dict[
         return []
 
     symbol_key = str(symbol or "").strip().upper()
-    raw_points = ((snapshot.get("series_points") or {}).get(symbol_key) or [])
+    raw_points = (snapshot.get("series_points") or {}).get(symbol_key) or []
     if not isinstance(raw_points, list) or not raw_points:
         return []
 

@@ -11,9 +11,30 @@ def _ts(year: int, month: int, day: int, hour: int, minute: int) -> int:
 
 def test_normalize_tradier_timesales_aggregates_to_five_minute_bars():
     rows = [
-        {"ts": "2026-04-06T09:31:00-04:00", "open": 6600.0, "high": 6601.0, "low": 6599.5, "close": 6600.5, "volume": 100},
-        {"ts": "2026-04-06T09:34:00-04:00", "open": 6600.5, "high": 6602.0, "low": 6600.0, "close": 6601.5, "volume": 150},
-        {"ts": "2026-04-06T09:36:00-04:00", "open": 6601.5, "high": 6603.0, "low": 6601.0, "close": 6602.5, "volume": 200},
+        {
+            "ts": "2026-04-06T09:31:00-04:00",
+            "open": 6600.0,
+            "high": 6601.0,
+            "low": 6599.5,
+            "close": 6600.5,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-06T09:34:00-04:00",
+            "open": 6600.5,
+            "high": 6602.0,
+            "low": 6600.0,
+            "close": 6601.5,
+            "volume": 150,
+        },
+        {
+            "ts": "2026-04-06T09:36:00-04:00",
+            "open": 6601.5,
+            "high": 6603.0,
+            "low": 6601.0,
+            "close": 6602.5,
+            "volume": 200,
+        },
     ]
 
     bars = svc.normalize_tradier_timesales(rows)
@@ -47,12 +68,40 @@ def test_derive_hero_state_below_put_wall_uses_next_put_wall():
 
 def test_opening_session_carryover_prepends_prior_session_context():
     current_bars = [
-        {"time": _ts(2026, 4, 7, 9, 30), "open": 6600, "high": 6602, "low": 6598, "close": 6601, "volume": 1000},
-        {"time": _ts(2026, 4, 7, 9, 35), "open": 6601, "high": 6603, "low": 6600, "close": 6602, "volume": 1100},
+        {
+            "time": _ts(2026, 4, 7, 9, 30),
+            "open": 6600,
+            "high": 6602,
+            "low": 6598,
+            "close": 6601,
+            "volume": 1000,
+        },
+        {
+            "time": _ts(2026, 4, 7, 9, 35),
+            "open": 6601,
+            "high": 6603,
+            "low": 6600,
+            "close": 6602,
+            "volume": 1100,
+        },
     ]
     prior_bars = [
-        {"time": _ts(2026, 4, 6, 14, 30), "open": 6560, "high": 6561, "low": 6558, "close": 6559, "volume": 900},
-        {"time": _ts(2026, 4, 6, 14, 35), "open": 6559, "high": 6560, "low": 6557, "close": 6558, "volume": 850},
+        {
+            "time": _ts(2026, 4, 6, 14, 30),
+            "open": 6560,
+            "high": 6561,
+            "low": 6558,
+            "close": 6559,
+            "volume": 900,
+        },
+        {
+            "time": _ts(2026, 4, 6, 14, 35),
+            "open": 6559,
+            "high": 6560,
+            "low": 6557,
+            "close": 6558,
+            "volume": 850,
+        },
     ]
 
     payload = svc._opening_session_carryover_bars(

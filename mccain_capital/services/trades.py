@@ -404,7 +404,10 @@ def _latest_active_sync_job() -> Dict[str, Any]:
     if not candidates:
         return {}
     candidates.sort(
-        key=lambda item: _parse_iso_epoch(str(item.get("updated_at") or item.get("created_at") or "")) or 0.0,
+        key=lambda item: _parse_iso_epoch(
+            str(item.get("updated_at") or item.get("created_at") or "")
+        )
+        or 0.0,
         reverse=True,
     )
     return candidates[0]
@@ -1347,8 +1350,6 @@ def _load_system_activity(limit: int, category: str = "all") -> List[Dict[str, A
             }
         )
     return out
-
-
 
 
 def _new_import_batch_id(prefix: str = "imp") -> str:
@@ -3094,7 +3095,11 @@ def _execute_sync_job(
             if cancel_event.is_set() or _sync_job_cancelled(job["id"]):
                 return
             duration_sec = round(max(0.0, time.time() - started), 2)
-            status = "debug_only" if run.get("debug_only") else ("success" if run.get("ok") else "failed")
+            status = (
+                "debug_only"
+                if run.get("debug_only")
+                else ("success" if run.get("ok") else "failed")
+            )
             stage = str(
                 run.get("stage")
                 or ("capture_statement_html" if run.get("debug_only") else "")
@@ -3107,7 +3112,9 @@ def _execute_sync_job(
                 "inserted": int(run.get("inserted") or 0),
                 "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
                 "statement_file": (
-                    _debug_relative(run.get("statement_path", "")) if run.get("statement_path") else ""
+                    _debug_relative(run.get("statement_path", ""))
+                    if run.get("statement_path")
+                    else ""
                 ),
             }
             _record_import_batch(
@@ -3141,17 +3148,29 @@ def _execute_sync_job(
                 duration_sec=duration_sec,
                 summary=summary,
                 result_summary=_build_action_result_summary(
-                    tone=("success" if run.get("ok") else ("warning" if run.get("debug_only") else "danger")),
+                    tone=(
+                        "success"
+                        if run.get("ok")
+                        else ("warning" if run.get("debug_only") else "danger")
+                    ),
                     title=(
                         "Live Sync Complete"
                         if run.get("ok")
-                        else ("Debug Capture Complete" if run.get("debug_only") else "Live Sync Failed")
+                        else (
+                            "Debug Capture Complete"
+                            if run.get("debug_only")
+                            else "Live Sync Failed"
+                        )
                     ),
                     happened=str(run.get("message") or _sync_stage_label(stage)),
                     changed=(
                         f"Imported {int(run.get('inserted') or 0)} trade(s) into the execution log."
                         if run.get("ok")
-                        else ("No trade import was committed." if not run.get("debug_only") else "Captured artifacts only; no import was committed.")
+                        else (
+                            "No trade import was committed."
+                            if not run.get("debug_only")
+                            else "Captured artifacts only; no import was committed."
+                        )
                     ),
                     warnings=[str(x) for x in (run.get("warns") or [])],
                     next_action=(
@@ -3166,14 +3185,31 @@ def _execute_sync_job(
                     ],
                     actions=(
                         [
-                            {"label": "Open Imported Trades", "href": f"/trades?d={to_date}", "kind": "primary"},
-                            {"label": "Analyze Session", "href": f"/analytics?tab=performance&start={from_date}&end={to_date}"},
-                            {"label": "Journal This Session", "href": f"/journal/new?d={to_date}&entry_type=trade_debrief&link_all_day=1"},
+                            {
+                                "label": "Open Imported Trades",
+                                "href": f"/trades?d={to_date}",
+                                "kind": "primary",
+                            },
+                            {
+                                "label": "Analyze Session",
+                                "href": f"/analytics?tab=performance&start={from_date}&end={to_date}",
+                            },
+                            {
+                                "label": "Journal This Session",
+                                "href": f"/journal/new?d={to_date}&entry_type=trade_debrief&link_all_day=1",
+                            },
                         ]
                         if run.get("ok")
                         else [
-                            {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
-                            {"label": "Open Reconcile", "href": "/trades/upload/statement?ws=reconcile"},
+                            {
+                                "label": "Open Live Sync",
+                                "href": "/trades/upload/statement?ws=live",
+                                "kind": "primary",
+                            },
+                            {
+                                "label": "Open Reconcile",
+                                "href": "/trades/upload/statement?ws=reconcile",
+                            },
                         ]
                     ),
                 ),
@@ -3204,7 +3240,14 @@ def _execute_sync_job(
             stage=stage,
             message=fail_message,
             duration_sec=duration_sec,
-            summary={"message": fail_message, "warn_count": 0, "error_count": 1, "inserted": 0, "artifacts_rel": [], "statement_file": ""},
+            summary={
+                "message": fail_message,
+                "warn_count": 0,
+                "error_count": 1,
+                "inserted": 0,
+                "artifacts_rel": [],
+                "statement_file": "",
+            },
             result_summary=_build_action_result_summary(
                 tone="danger",
                 title="Live Sync Failed",
@@ -3212,7 +3255,11 @@ def _execute_sync_job(
                 changed="No sync result was committed because the background worker terminated early.",
                 next_action="Return to the Live Sync workspace, retry the run, and inspect any captured diagnostics.",
                 actions=[
-                    {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
+                    {
+                        "label": "Open Live Sync",
+                        "href": "/trades/upload/statement?ws=live",
+                        "kind": "primary",
+                    },
                     {"label": "Open Ops Alerts", "href": "/ops/alerts"},
                 ],
             ),
@@ -3237,7 +3284,9 @@ def ensure_sync_dispatcher_started(app) -> None:
     with _SYNC_DISPATCH_THREAD_LOCK:
         if _SYNC_DISPATCH_THREAD_STARTED:
             return
-        t = threading.Thread(target=_sync_dispatch_loop, args=(app,), daemon=True, name="sync-job-dispatcher")
+        t = threading.Thread(
+            target=_sync_dispatch_loop, args=(app,), daemon=True, name="sync-job-dispatcher"
+        )
         t.start()
         _SYNC_DISPATCH_THREAD_STARTED = True
 
@@ -3313,7 +3362,14 @@ def _start_sync_job(
             stage=stage,
             message=fail_message,
             duration_sec=0.0,
-            summary={"message": fail_message, "warn_count": 0, "error_count": 1, "inserted": 0, "artifacts_rel": [], "statement_file": ""},
+            summary={
+                "message": fail_message,
+                "warn_count": 0,
+                "error_count": 1,
+                "inserted": 0,
+                "artifacts_rel": [],
+                "statement_file": "",
+            },
             result_summary=_build_action_result_summary(
                 tone="danger",
                 title="Live Sync Failed",
@@ -3321,7 +3377,11 @@ def _start_sync_job(
                 changed="The sync job could not be handed off to the background dispatcher.",
                 next_action="Retry once load settles. If it repeats, inspect app resource limits.",
                 actions=[
-                    {"label": "Open Live Sync", "href": "/trades/upload/statement?ws=live", "kind": "primary"},
+                    {
+                        "label": "Open Live Sync",
+                        "href": "/trades/upload/statement?ws=live",
+                        "kind": "primary",
+                    },
                     {"label": "Open Ops Alerts", "href": "/ops/alerts"},
                 ],
             ),

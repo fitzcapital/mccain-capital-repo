@@ -10,11 +10,32 @@ def test_get_intraday_bars_filters_spx_to_regular_session_after_hours(monkeypatc
     monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
 
     rows = [
-        {"ts": "2026-04-08T15:55:00-04:00", "open": 6780, "high": 6784, "low": 6779, "close": 6782, "volume": 100},
-        {"ts": "2026-04-08T16:05:00-04:00", "open": 6782, "high": 6786, "low": 6781, "close": 6785, "volume": 100},
+        {
+            "ts": "2026-04-08T15:55:00-04:00",
+            "open": 6780,
+            "high": 6784,
+            "low": 6779,
+            "close": 6782,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-08T16:05:00-04:00",
+            "open": 6782,
+            "high": 6786,
+            "low": 6781,
+            "close": 6785,
+            "volume": 100,
+        },
     ]
     prior_rows = [
-        {"ts": "2026-04-07T15:55:00-04:00", "open": 6768, "high": 6772, "low": 6767, "close": 6770, "volume": 100},
+        {
+            "ts": "2026-04-07T15:55:00-04:00",
+            "open": 6768,
+            "high": 6772,
+            "low": 6767,
+            "close": 6770,
+            "volume": 100,
+        },
     ]
 
     monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: rows)
@@ -32,7 +53,9 @@ def test_get_intraday_bars_filters_spx_to_regular_session_after_hours(monkeypatc
     assert payload["current_session_bar_count"] == 1
     assert payload["bars"][0]["close"] == 6770
     assert payload["bars"][1]["close"] == 6782
-    assert payload["bars"][0]["time"] != int(now_et.replace(hour=16, minute=5, second=0, microsecond=0).timestamp())
+    assert payload["bars"][0]["time"] != int(
+        now_et.replace(hour=16, minute=5, second=0, microsecond=0).timestamp()
+    )
 
 
 def test_get_intraday_bars_opening_session_returns_prior_plus_current(monkeypatch):
@@ -40,12 +63,40 @@ def test_get_intraday_bars_opening_session_returns_prior_plus_current(monkeypatc
     monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
 
     rows = [
-        {"ts": "2026-04-08T09:35:00-04:00", "open": 6770, "high": 6773, "low": 6768, "close": 6772, "volume": 100},
-        {"ts": "2026-04-08T09:40:00-04:00", "open": 6772, "high": 6775, "low": 6771, "close": 6774, "volume": 100},
+        {
+            "ts": "2026-04-08T09:35:00-04:00",
+            "open": 6770,
+            "high": 6773,
+            "low": 6768,
+            "close": 6772,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-08T09:40:00-04:00",
+            "open": 6772,
+            "high": 6775,
+            "low": 6771,
+            "close": 6774,
+            "volume": 100,
+        },
     ]
     prior_rows = [
-        {"ts": "2026-04-07T15:50:00-04:00", "open": 6758, "high": 6761, "low": 6757, "close": 6760, "volume": 100},
-        {"ts": "2026-04-07T15:55:00-04:00", "open": 6760, "high": 6764, "low": 6759, "close": 6763, "volume": 100},
+        {
+            "ts": "2026-04-07T15:50:00-04:00",
+            "open": 6758,
+            "high": 6761,
+            "low": 6757,
+            "close": 6760,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-07T15:55:00-04:00",
+            "open": 6760,
+            "high": 6764,
+            "low": 6759,
+            "close": 6763,
+            "volume": 100,
+        },
     ]
 
     monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: rows)
@@ -84,8 +135,22 @@ def test_get_intraday_bars_regular_session_prefers_today_only_after_opening_wind
             }
         )
     prior_rows = [
-        {"ts": "2026-04-07T15:50:00-04:00", "open": 6758, "high": 6761, "low": 6757, "close": 6760, "volume": 100},
-        {"ts": "2026-04-07T15:55:00-04:00", "open": 6760, "high": 6764, "low": 6759, "close": 6763, "volume": 100},
+        {
+            "ts": "2026-04-07T15:50:00-04:00",
+            "open": 6758,
+            "high": 6761,
+            "low": 6757,
+            "close": 6760,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-07T15:55:00-04:00",
+            "open": 6760,
+            "high": 6764,
+            "low": 6759,
+            "close": 6763,
+            "volume": 100,
+        },
     ]
 
     monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: rows)
@@ -111,8 +176,22 @@ def test_get_intraday_bars_open_session_uses_live_quote_when_intraday_missing(mo
     monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
 
     prior_rows = [
-        {"ts": "2026-04-09T15:50:00-04:00", "open": 6828, "high": 6831, "low": 6826, "close": 6829, "volume": 100},
-        {"ts": "2026-04-09T15:55:00-04:00", "open": 6829, "high": 6830, "low": 6823, "close": 6824, "volume": 100},
+        {
+            "ts": "2026-04-09T15:50:00-04:00",
+            "open": 6828,
+            "high": 6831,
+            "low": 6826,
+            "close": 6829,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-09T15:55:00-04:00",
+            "open": 6829,
+            "high": 6830,
+            "low": 6823,
+            "close": 6824,
+            "volume": 100,
+        },
     ]
 
     monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: [])
@@ -124,7 +203,14 @@ def test_get_intraday_bars_open_session_uses_live_quote_when_intraday_missing(mo
     monkeypatch.setattr(
         hero_service,
         "get_live_quote",
-        lambda symbol="SPX": {"symbol": symbol, "price": 6832.5, "pct_change": 0.1, "provider": "tradier", "reason": "tradier_live", "as_of": "2026-04-10T13:41:00+00:00"},
+        lambda symbol="SPX": {
+            "symbol": symbol,
+            "price": 6832.5,
+            "pct_change": 0.1,
+            "provider": "tradier",
+            "reason": "tradier_live",
+            "as_of": "2026-04-10T13:41:00+00:00",
+        },
     )
 
     payload = hero_service.get_intraday_bars(symbol="SPX", interval="5min")
@@ -205,7 +291,9 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
         lambda symbol="SPX", interval="5min": {
             "symbol": symbol,
             "interval": interval,
-            "bars": [{"time": 1712601900, "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 1200}],
+            "bars": [
+                {"time": 1712601900, "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 1200}
+            ],
             "opening_session_mode": True,
             "live_session_bar_count": 2,
             "opening_threshold": 10,

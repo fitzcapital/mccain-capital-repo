@@ -35,7 +35,14 @@ def test_market_feed_fetch_and_normalize_success(monkeypatch):
     now = datetime(2026, 4, 5, 10, 0, tzinfo=app_runtime.TZ)
     _reset(
         monkeypatch,
-        [{"key": "reuters", "label": "Reuters", "url": "https://example.com/reuters.xml", "default_category": "market"}],
+        [
+            {
+                "key": "reuters",
+                "label": "Reuters",
+                "url": "https://example.com/reuters.xml",
+                "default_category": "market",
+            }
+        ],
     )
     monkeypatch.setattr(
         svc,
@@ -64,8 +71,18 @@ def test_market_feed_deduplicates_similar_headlines_preferring_higher_quality(mo
     _reset(
         monkeypatch,
         [
-            {"key": "reuters", "label": "Reuters", "url": "https://example.com/r.xml", "default_category": "market"},
-            {"key": "marketwatch", "label": "MarketWatch", "url": "https://example.com/m.xml", "default_category": "market"},
+            {
+                "key": "reuters",
+                "label": "Reuters",
+                "url": "https://example.com/r.xml",
+                "default_category": "market",
+            },
+            {
+                "key": "marketwatch",
+                "label": "MarketWatch",
+                "url": "https://example.com/m.xml",
+                "default_category": "market",
+            },
         ],
     )
 
@@ -99,7 +116,14 @@ def test_market_feed_high_impact_keyword_scoring(monkeypatch):
     now = datetime(2026, 4, 5, 10, 0, tzinfo=app_runtime.TZ)
     _reset(
         monkeypatch,
-        [{"key": "fed", "label": "Federal Reserve", "url": "https://example.com/fed.xml", "default_category": "policy"}],
+        [
+            {
+                "key": "fed",
+                "label": "Federal Reserve",
+                "url": "https://example.com/fed.xml",
+                "default_category": "policy",
+            }
+        ],
     )
     monkeypatch.setattr(
         svc,
@@ -123,7 +147,14 @@ def test_market_feed_stale_item_score_decays(monkeypatch):
     now = datetime(2026, 4, 5, 10, 0, tzinfo=app_runtime.TZ)
     _reset(
         monkeypatch,
-        [{"key": "reuters", "label": "Reuters", "url": "https://example.com/stale.xml", "default_category": "market"}],
+        [
+            {
+                "key": "reuters",
+                "label": "Reuters",
+                "url": "https://example.com/stale.xml",
+                "default_category": "market",
+            }
+        ],
     )
     monkeypatch.setattr(
         svc,
@@ -151,7 +182,14 @@ def test_market_feed_quiet_window_state(monkeypatch):
     now = datetime(2026, 4, 5, 10, 0, tzinfo=app_runtime.TZ)
     _reset(
         monkeypatch,
-        [{"key": "marketwatch", "label": "MarketWatch", "url": "https://example.com/quiet.xml", "default_category": "market"}],
+        [
+            {
+                "key": "marketwatch",
+                "label": "MarketWatch",
+                "url": "https://example.com/quiet.xml",
+                "default_category": "market",
+            }
+        ],
     )
     monkeypatch.setattr(
         svc,
@@ -175,8 +213,18 @@ def test_market_feed_degraded_when_one_source_fails(monkeypatch):
     _reset(
         monkeypatch,
         [
-            {"key": "reuters", "label": "Reuters", "url": "https://example.com/live.xml", "default_category": "market"},
-            {"key": "nasdaq", "label": "Nasdaq", "url": "https://example.com/fail.xml", "default_category": "market"},
+            {
+                "key": "reuters",
+                "label": "Reuters",
+                "url": "https://example.com/live.xml",
+                "default_category": "market",
+            },
+            {
+                "key": "nasdaq",
+                "label": "Nasdaq",
+                "url": "https://example.com/fail.xml",
+                "default_category": "market",
+            },
         ],
     )
 

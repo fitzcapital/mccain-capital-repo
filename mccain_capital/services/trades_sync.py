@@ -275,9 +275,7 @@ def trades_sync_auto_run_now():
     cfg = legacy._load_auto_sync_config()
     auto_password = legacy._get_auto_sync_password(cfg)
     if not cfg.get("username") or not auto_password:
-        message = (
-            "Auto sync credentials are missing. Save username and password in the Live Sync workspace first."
-        )
+        message = "Auto sync credentials are missing. Save username and password in the Live Sync workspace first."
         if _wants_async_json():
             return _json_error(message)
         flash(

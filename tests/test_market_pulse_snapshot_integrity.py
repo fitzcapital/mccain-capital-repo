@@ -72,7 +72,12 @@ def _execution_model(
 def test_after_hours_spot_prefers_official_close_over_zero():
     spot = core._market_pulse_resolve_spot_snapshot(
         session_mode="after_hours",
-        spx_quote={"price": None, "change_pct": None, "prior_session_series": [{"close": 6588.75}], "asof": "2026-04-07T16:01:00-04:00"},
+        spx_quote={
+            "price": None,
+            "change_pct": None,
+            "prior_session_series": [{"close": 6588.75}],
+            "asof": "2026-04-07T16:01:00-04:00",
+        },
         gamma_snapshot={},
         now_et=datetime.fromisoformat("2026-04-07T18:15:00-04:00"),
         last_good_snapshot=None,
@@ -200,30 +205,39 @@ def test_soft_invariant_failure_sanitizes_bad_next_wall_and_downgrades_board():
 
 
 def test_gamma_reason_label_explains_partial_and_fallback_states():
-    assert core._market_pulse_gamma_reason_label(
-        gamma_regime="unconfirmed",
-        gamma_data_status="partial",
-        levels_source="live_session_snapshot",
-        structure_invariant_status="ok",
-        structure_invariant_issues=[],
-    ) == "Partial board"
-    assert core._market_pulse_gamma_reason_label(
-        gamma_regime="unconfirmed",
-        gamma_data_status="partial",
-        levels_source="last_valid_snapshot",
-        structure_invariant_status="ok",
-        structure_invariant_issues=[],
-    ) == "Last valid structure"
-    assert core._market_pulse_gamma_reason_label(
-        gamma_regime="unconfirmed",
-        gamma_data_status="partial",
-        levels_source="live_session_snapshot",
-        structure_invariant_status="soft_invalid",
-        structure_invariant_issues=[
-            "next_call_wall_not_above_call_wall",
-            "next_put_wall_not_below_put_wall",
-        ],
-    ) == "Next walls sanitized"
+    assert (
+        core._market_pulse_gamma_reason_label(
+            gamma_regime="unconfirmed",
+            gamma_data_status="partial",
+            levels_source="live_session_snapshot",
+            structure_invariant_status="ok",
+            structure_invariant_issues=[],
+        )
+        == "Partial board"
+    )
+    assert (
+        core._market_pulse_gamma_reason_label(
+            gamma_regime="unconfirmed",
+            gamma_data_status="partial",
+            levels_source="last_valid_snapshot",
+            structure_invariant_status="ok",
+            structure_invariant_issues=[],
+        )
+        == "Last valid structure"
+    )
+    assert (
+        core._market_pulse_gamma_reason_label(
+            gamma_regime="unconfirmed",
+            gamma_data_status="partial",
+            levels_source="live_session_snapshot",
+            structure_invariant_status="soft_invalid",
+            structure_invariant_issues=[
+                "next_call_wall_not_above_call_wall",
+                "next_put_wall_not_below_put_wall",
+            ],
+        )
+        == "Next walls sanitized"
+    )
 
 
 def test_canonical_playbook_view_softens_copy_for_unconfirmed_planning_bias():
@@ -322,32 +336,38 @@ def test_execution_chart_reuses_last_valid_session_bars_after_close():
 
 
 def test_playbook_snapshot_valid_rejects_zero_and_unavailable():
-    assert core._market_pulse_playbook_snapshot_valid(
-        {
-            "market_structure_snapshot": {
-                "app_state": "UNAVAILABLE",
-                "spot_meta": {"value": None},
-                "levels_source": "unavailable",
+    assert (
+        core._market_pulse_playbook_snapshot_valid(
+            {
+                "market_structure_snapshot": {
+                    "app_state": "UNAVAILABLE",
+                    "spot_meta": {"value": None},
+                    "levels_source": "unavailable",
+                }
             }
-        }
-    ) is False
+        )
+        is False
+    )
 
 
 def test_playbook_snapshot_valid_rejects_invariant_violations():
-    assert core._market_pulse_playbook_snapshot_valid(
-        {
-            "market_structure_snapshot": {
-                "app_state": "AFTER_HOURS_VALID",
-                "spot_meta": {"value": 6612.25},
-                "levels_source": "last_valid_snapshot",
-                "level_meta": {
-                    "call_wall": {"value": 6575.0},
-                    "put_wall": {"value": 6600.0},
-                    "local_flip": {"value": 6593.0},
-                },
+    assert (
+        core._market_pulse_playbook_snapshot_valid(
+            {
+                "market_structure_snapshot": {
+                    "app_state": "AFTER_HOURS_VALID",
+                    "spot_meta": {"value": 6612.25},
+                    "levels_source": "last_valid_snapshot",
+                    "level_meta": {
+                        "call_wall": {"value": 6575.0},
+                        "put_wall": {"value": 6600.0},
+                        "local_flip": {"value": 6593.0},
+                    },
+                }
             }
-        }
-    ) is False
+        )
+        is False
+    )
 
 
 def test_structure_snapshot_after_hours_uses_planning_labels_not_unknown():
@@ -401,7 +421,10 @@ def test_structure_snapshot_after_hours_uses_planning_labels_not_unknown():
     assert snapshot["plan_note"].startswith("Closed-session planning:")
     assert snapshot["trigger_validation"]["manual_label"] == "Manual confirmation required"
     assert snapshot["trigger_validation"]["status_badge"] == "PLANNING"
-    assert snapshot["trigger_validation"]["status_line"] == "PLANNING ONLY — NEXT LIVE TRIGGER REQUIRED"
+    assert (
+        snapshot["trigger_validation"]["status_line"]
+        == "PLANNING ONLY — NEXT LIVE TRIGGER REQUIRED"
+    )
     assert "Call Wall" in snapshot["trigger_validation"]["items"]["sweep"]["line"]
     assert snapshot["trigger_validation"]["items"]["volume"]["active"] is False
 
@@ -550,7 +573,9 @@ def test_gamma_resolution_infers_next_put_wall_and_keeps_secondary_pair_displaya
             "next_call_wall_above": 6880.0,
             "next_put_wall_below": None,
             "gamma_walls_top3": [6880.0, 6725.0, 6700.0],
-            "chart_json": {"gex": {"data": [{"x": [6700.0, 6725.0, 6755.0, 6815.0, 6850.0, 6880.0]}]}},
+            "chart_json": {
+                "gex": {"data": [{"x": [6700.0, 6725.0, 6755.0, 6815.0, 6850.0, 6880.0]}]}
+            },
         },
         last_good_snapshot=None,
         session_mode="regular",
@@ -615,7 +640,9 @@ def test_structure_snapshot_exposes_canonical_secondary_metadata():
             "next_call_wall_above": 6880.0,
             "next_put_wall_below": None,
             "gamma_walls_top3": [6880.0, 6725.0, 6700.0],
-            "chart_json": {"gex": {"data": [{"x": [6700.0, 6725.0, 6755.0, 6815.0, 6850.0, 6880.0]}]}},
+            "chart_json": {
+                "gex": {"data": [{"x": [6700.0, 6725.0, 6755.0, 6815.0, 6850.0, 6880.0]}]}
+            },
         },
         execution_chart={"mode": "live_session", "summary": "Live session"},
         execution_model=_execution_model(

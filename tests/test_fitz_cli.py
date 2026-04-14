@@ -21,7 +21,9 @@ def test_main_dispatches_status_command(monkeypatch: pytest.MonkeyPatch):
     assert calls == ["status"]
 
 
-def test_clean_defaults_to_dry_run(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+def test_clean_defaults_to_dry_run(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
     monkeypatch.setattr(fitz_cli, "_find_mole_binary", lambda: "/opt/homebrew/bin/mo")
     calls: list[list[str]] = []
     monkeypatch.setattr(

@@ -83,7 +83,9 @@ def _enrich_analytics_row(row: Dict[str, Any]) -> Dict[str, Any]:
         enriched.get("review_note"),
     ]
     complete_count = sum(1 for part in completeness_parts if part not in (None, "", []))
-    enriched["review_completion_pct"] = int(round((complete_count / len(completeness_parts)) * 100.0))
+    enriched["review_completion_pct"] = int(
+        round((complete_count / len(completeness_parts)) * 100.0)
+    )
     return enriched
 
 

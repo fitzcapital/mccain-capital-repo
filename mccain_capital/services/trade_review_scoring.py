@@ -175,7 +175,11 @@ def compute_trade_review_foundation(
     exit_price = _float_or_none(row.get("exit_price"))
 
     implicit_stop = False
-    if stop_price in (None, 0) and stop_pct in (None, 0) and (planned_risk not in (None, 0) or spend_value not in (None, 0)):
+    if (
+        stop_price in (None, 0)
+        and stop_pct in (None, 0)
+        and (planned_risk not in (None, 0) or spend_value not in (None, 0))
+    ):
         stop_pct = 20.0
         implicit_stop = True
 
@@ -196,11 +200,17 @@ def compute_trade_review_foundation(
     )
 
     oversized = bool(
-        (planned_risk and risk_avg and planned_risk > max(risk_avg * 1.45, (risk_median or risk_avg) * 1.35))
+        (
+            planned_risk
+            and risk_avg
+            and planned_risk > max(risk_avg * 1.45, (risk_median or risk_avg) * 1.35)
+        )
         or (risk_pct and risk_pct >= 2.0)
         or (spend_value and spend_median and spend_value > spend_median * 1.6)
     )
-    undersized = bool(planned_risk and risk_median and risk_median > 0 and planned_risk < (risk_median * 0.55))
+    undersized = bool(
+        planned_risk and risk_median and risk_median > 0 and planned_risk < (risk_median * 0.55)
+    )
 
     auto_stop_discipline = "Stop Missing"
     if stop_present and loss_exceeded:
@@ -363,7 +373,9 @@ def compute_trade_review_foundation(
     final_score = manual_grade_score if manual_grade_score is not None else auto_score
     final_grade = manual_grade_letter if manual_grade_letter else auto_grade
     classification_override = _normalize_choice(row.get("classification_override"))
-    classification = classification_override or classification_from_grade(final_grade, outcome_label)
+    classification = classification_override or classification_from_grade(
+        final_grade, outcome_label
+    )
 
     review_checks = [
         bool(setup_label and setup_label != "Unknown"),
@@ -375,7 +387,12 @@ def compute_trade_review_foundation(
         bool(entry_reviewed or exit_reviewed or execution_grade or reviewed_execution_quality),
         bool(final_grade),
         classification not in {"", "Unclassified"},
-        bool(size_note_present or reviewed_sizing_quality or reviewed_stop_discipline or reviewed_within_plan is not None),
+        bool(
+            size_note_present
+            or reviewed_sizing_quality
+            or reviewed_stop_discipline
+            or reviewed_within_plan is not None
+        ),
     ]
     review_pct = int(round((sum(1 for item in review_checks if item) / len(review_checks)) * 100.0))
     review_label, review_tone = _review_state(review_pct)
@@ -398,7 +415,9 @@ def compute_trade_review_foundation(
         }
         for key, label, max_points in GRADE_COMPONENTS
     ]
-    strongest_components = sorted(breakdown_items, key=lambda item: (item["score"] / item["max"]), reverse=True)[:2]
+    strongest_components = sorted(
+        breakdown_items, key=lambda item: (item["score"] / item["max"]), reverse=True
+    )[:2]
     weakest_components = sorted(breakdown_items, key=lambda item: (item["score"] / item["max"]))[:2]
 
     return {

@@ -55,7 +55,9 @@ SPOT_TIMESTAMP_DRIFT_SECONDS = 120
 GAMMA_RANGE_LABEL = "Gamma Range Estimate (wall-based)"
 GAMMA_STATUS_INVALID_LABEL = "Invalid Snapshot: gamma levels unavailable"
 LOCAL_FLIP_NONE_LABEL = "None in local band"
-GAMMA_REFRESH_MODE = str(os.environ.get("MARKET_PULSE_REFRESH_MODE") or "in_process").strip().lower()
+GAMMA_REFRESH_MODE = (
+    str(os.environ.get("MARKET_PULSE_REFRESH_MODE") or "in_process").strip().lower()
+)
 EOD_GAMMA_NOTIFY_ENABLED = os.environ.get("EOD_GAMMA_NOTIFY_ENABLED", "1") == "1"
 EOD_GAMMA_NOTIFY_TIME_ET = (os.environ.get("EOD_GAMMA_NOTIFY_TIME_ET") or "17:10").strip()
 EOD_GAMMA_NOTIFY_END_ET = (os.environ.get("EOD_GAMMA_NOTIFY_END_ET") or "19:30").strip()
@@ -145,22 +147,18 @@ def _gamma_regime_thresholds() -> Tuple[float, float, float, float]:
     - neutral otherwise
     """
 
-    positive_raw = (
-        os.environ.get("GAMMA_REGIME_POSITIVE_THRESHOLD")
-        or app_runtime.get_setting_value("gamma_regime_positive_threshold", "")
-    )
-    negative_raw = (
-        os.environ.get("GAMMA_REGIME_NEGATIVE_THRESHOLD")
-        or app_runtime.get_setting_value("gamma_regime_negative_threshold", "")
-    )
-    strong_positive_raw = (
-        os.environ.get("GAMMA_REGIME_STRONG_POSITIVE_THRESHOLD")
-        or app_runtime.get_setting_value("gamma_regime_strong_positive_threshold", "")
-    )
-    strong_negative_raw = (
-        os.environ.get("GAMMA_REGIME_STRONG_NEGATIVE_THRESHOLD")
-        or app_runtime.get_setting_value("gamma_regime_strong_negative_threshold", "")
-    )
+    positive_raw = os.environ.get(
+        "GAMMA_REGIME_POSITIVE_THRESHOLD"
+    ) or app_runtime.get_setting_value("gamma_regime_positive_threshold", "")
+    negative_raw = os.environ.get(
+        "GAMMA_REGIME_NEGATIVE_THRESHOLD"
+    ) or app_runtime.get_setting_value("gamma_regime_negative_threshold", "")
+    strong_positive_raw = os.environ.get(
+        "GAMMA_REGIME_STRONG_POSITIVE_THRESHOLD"
+    ) or app_runtime.get_setting_value("gamma_regime_strong_positive_threshold", "")
+    strong_negative_raw = os.environ.get(
+        "GAMMA_REGIME_STRONG_NEGATIVE_THRESHOLD"
+    ) or app_runtime.get_setting_value("gamma_regime_strong_negative_threshold", "")
     positive = float(_safe_float(positive_raw) or DEFAULT_GAMMA_REGIME_POSITIVE_THRESHOLD)
     negative = float(_safe_float(negative_raw) or DEFAULT_GAMMA_REGIME_NEGATIVE_THRESHOLD)
     strong_positive = float(
@@ -361,12 +359,16 @@ def _spx_prior_close_anchor(
                 or _now_iso()
             )
 
-    prior_rows = market_data_service.get_prior_session_intraday("SPX", anchor_session_day=now_et.date())
+    prior_rows = market_data_service.get_prior_session_intraday(
+        "SPX", anchor_session_day=now_et.date()
+    )
     if prior_rows:
         last_row = prior_rows[-1] if isinstance(prior_rows[-1], dict) else {}
         value = _safe_float(last_row.get("close"))
         if value is not None:
-            return value, str(last_row.get("ts") or spot_snapshot.get("source_timestamp") or _now_iso())
+            return value, str(
+                last_row.get("ts") or spot_snapshot.get("source_timestamp") or _now_iso()
+            )
     return None, ""
 
 
@@ -398,7 +400,11 @@ def _resolve_spx_anchor(
     session_mode = _gamma_builder_session_mode(now_et)
     live_value = _safe_float(spot_snapshot.get("value"))
     live_timestamp = str(spot_snapshot.get("source_timestamp") or _now_iso())
-    trusted_snapshot = _json_clone(current_snapshot or {}) if _snapshot_is_trustworthy(current_snapshot or {}) else {}
+    trusted_snapshot = (
+        _json_clone(current_snapshot or {})
+        if _snapshot_is_trustworthy(current_snapshot or {})
+        else {}
+    )
     trusted_spot = _safe_float(trusted_snapshot.get("spot_price_used"))
     trusted_timestamp = str(
         trusted_snapshot.get("spot_source_timestamp")
@@ -459,7 +465,11 @@ def _resolve_spx_anchor(
             "state": "UNAVAILABLE",
         }
 
-    if trusted_spot is not None and not trusted_is_fallback and trusted_source in {"live_quote", "last_valid_quote", ""}:
+    if (
+        trusted_spot is not None
+        and not trusted_is_fallback
+        and trusted_source in {"live_quote", "last_valid_quote", ""}
+    ):
         return {
             "spot_price": float(trusted_spot),
             "spot_source": "last_valid_quote",
@@ -580,7 +590,9 @@ def _source_metadata_payload(
             "source_effective_timestamp": str(
                 source_effective_timestamp or source_fetch_timestamp or _now_iso()
             ),
-            "source_effective_timestamp_source": str(source_effective_timestamp_source or "unknown"),
+            "source_effective_timestamp_source": str(
+                source_effective_timestamp_source or "unknown"
+            ),
             "source_effective_timestamp_note": str(source_effective_timestamp_note or ""),
             "exchange_timestamp_available": bool(exchange_timestamp_available),
         }
@@ -606,17 +618,22 @@ def _warning_state_payload(
         detail = "One expiry is missing, so levels are computed from a partial combined basket."
     elif status == SnapshotStatus.STALE:
         label = "Stale Snapshot: showing last known good values"
-        detail = stale_reason or "A fresh trusted basket is unavailable, so the last validated snapshot is being served."
+        detail = (
+            stale_reason
+            or "A fresh trusted basket is unavailable, so the last validated snapshot is being served."
+        )
     else:
         label = GAMMA_STATUS_INVALID_LABEL
         detail = stale_reason or "No trustworthy gamma calculation is available."
     return GammaWarningState.model_validate(
         {
-        "warnings": list(dict.fromkeys(str(item) for item in warnings if str(item).strip())),
-        "stale_flags": list(dict.fromkeys(str(item) for item in stale_flags if str(item).strip())),
-        "snapshot_status": status.value,
-        "snapshot_status_label": label,
-        "snapshot_status_detail": detail,
+            "warnings": list(dict.fromkeys(str(item) for item in warnings if str(item).strip())),
+            "stale_flags": list(
+                dict.fromkeys(str(item) for item in stale_flags if str(item).strip())
+            ),
+            "snapshot_status": status.value,
+            "snapshot_status_label": label,
+            "snapshot_status_detail": detail,
         }
     ).model_dump(mode="json")
 
@@ -648,7 +665,8 @@ def _boundary_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         warning_state.get("snapshot_status_label") or GAMMA_STATUS_INVALID_LABEL
     )
     payload["snapshot_status_detail"] = str(
-        warning_state.get("snapshot_status_detail") or "No trustworthy gamma calculation is available."
+        warning_state.get("snapshot_status_detail")
+        or "No trustworthy gamma calculation is available."
     )
     payload["build_status"] = str(payload.get("build_status") or "invalid")
     payload["build_confidence"] = str(payload.get("build_confidence") or "invalid")
@@ -691,7 +709,10 @@ def _internal_invalid_snapshot(
     now_iso = _now_iso()
     prior = _json_clone(current_snapshot or {})
     source_meta = dict(source_metadata or prior.get("source_metadata") or {})
-    requested_expiries = list(source_meta.get("requested_expiries") or [app_runtime.today_iso(), _next_trading_day_iso(app_runtime.today_iso())])
+    requested_expiries = list(
+        source_meta.get("requested_expiries")
+        or [app_runtime.today_iso(), _next_trading_day_iso(app_runtime.today_iso())]
+    )
     source_meta.setdefault("requested_expiries", requested_expiries)
     source_meta.setdefault("included_expiries", [])
     source_meta.setdefault("missing_expiries", list(requested_expiries))
@@ -699,7 +720,9 @@ def _internal_invalid_snapshot(
     source_meta.setdefault("source_fetch_timestamp", now_iso)
     source_meta.setdefault("source_effective_timestamp", now_iso)
     source_meta.setdefault("source_effective_timestamp_source", "unknown")
-    source_meta.setdefault("source_effective_timestamp_note", "Exchange-native options chain timestamp unavailable.")
+    source_meta.setdefault(
+        "source_effective_timestamp_note", "Exchange-native options chain timestamp unavailable."
+    )
     source_meta.setdefault("exchange_timestamp_available", False)
     payload = {
         "asof": now_iso,
@@ -857,7 +880,9 @@ def _load_cached_gamma_csv() -> Tuple[pd.DataFrame, str, str]:
     except Exception:
         return pd.DataFrame(), "", ""
     try:
-        timestamp = datetime.fromtimestamp(os.path.getmtime(csv_path), tz=timezone.utc).isoformat(timespec="seconds")
+        timestamp = datetime.fromtimestamp(os.path.getmtime(csv_path), tz=timezone.utc).isoformat(
+            timespec="seconds"
+        )
     except Exception:
         timestamp = _now_iso()
     cached.attrs["contracts_seen"] = int(len(cached.index))
@@ -1083,7 +1108,9 @@ def load_gamma_source(expiries: Optional[List[str]] = None) -> Dict[str, Any]:
     source_file_path = ""
     source_effective_timestamp = fetch_timestamp
     source_effective_timestamp_source = "fetch_fallback"
-    source_effective_timestamp_note = "Exchange-native chain timestamp unavailable; using fetch timestamp."
+    source_effective_timestamp_note = (
+        "Exchange-native chain timestamp unavailable; using fetch timestamp."
+    )
     if raw.empty:
         cached_raw, cached_path, cached_timestamp = _load_cached_gamma_csv()
         if not cached_raw.empty:
@@ -1091,7 +1118,9 @@ def load_gamma_source(expiries: Optional[List[str]] = None) -> Dict[str, Any]:
             source_file_path = cached_path
             source_effective_timestamp = cached_timestamp or fetch_timestamp
             source_effective_timestamp_source = "fetch_fallback"
-            source_effective_timestamp_note = "Using cached gamma_data.csv because live chain fetch returned no rows."
+            source_effective_timestamp_note = (
+                "Using cached gamma_data.csv because live chain fetch returned no rows."
+            )
     return {
         "raw": raw.copy(),
         "requested_expiries": basket,
@@ -1209,11 +1238,7 @@ def validate_gamma_source(
         stale_flags.append("stale_gamma_source")
 
     available_expiries = sorted(
-        {
-            str(expiry).strip()
-            for expiry in out["expiration"].tolist()
-            if str(expiry).strip()
-        }
+        {str(expiry).strip() for expiry in out["expiration"].tolist() if str(expiry).strip()}
     )
     return {
         "rows": out.sort_values(["expiration", "strike"]).reset_index(drop=True),
@@ -1244,7 +1269,9 @@ def select_expiry_basket(
     }
     included_expiries = [expiry for expiry in basket if expiry in available]
     missing_expiries = [expiry for expiry in basket if expiry not in available]
-    filtered = raw[raw["expiration"].astype(str).isin(basket)].copy() if not raw.empty else raw.copy()
+    filtered = (
+        raw[raw["expiration"].astype(str).isin(basket)].copy() if not raw.empty else raw.copy()
+    )
     warnings: List[str] = []
     stale_flags: List[str] = []
     if missing_expiries:
@@ -1278,7 +1305,9 @@ def compute_row_gex(
     oi_value = float(_safe_float(open_interest) or 0.0)
     spot_value = float(_safe_float(spot_price) or 0.0)
     sign = 1.0 if str(option_type or "").lower().startswith("c") else -1.0
-    return gamma_value * oi_value * float(contract_multiplier) * (spot_value**2) * float(scaler) * sign
+    return (
+        gamma_value * oi_value * float(contract_multiplier) * (spot_value**2) * float(scaler) * sign
+    )
 
 
 def compute_exposures(
@@ -1406,10 +1435,14 @@ def classify_gamma_regime(
     upper = float(configured_positive if positive_threshold is None else positive_threshold)
     lower = float(configured_negative if negative_threshold is None else negative_threshold)
     strong_upper = float(
-        configured_strong_positive if strong_positive_threshold is None else strong_positive_threshold
+        configured_strong_positive
+        if strong_positive_threshold is None
+        else strong_positive_threshold
     )
     strong_lower = float(
-        configured_strong_negative if strong_negative_threshold is None else strong_negative_threshold
+        configured_strong_negative
+        if strong_negative_threshold is None
+        else strong_negative_threshold
     )
     if net_gex_total >= strong_upper:
         return "strong_positive"
@@ -1573,9 +1606,7 @@ def compute_local_gamma_flip(
     band_points = abs(float(spot)) * max(0.0, band_pct)
     band_min = float(spot) - band_points
     band_max = float(spot) + band_points
-    local_window = ordered[
-        (ordered["strike"] >= band_min) & (ordered["strike"] <= band_max)
-    ].copy()
+    local_window = ordered[(ordered["strike"] >= band_min) & (ordered["strike"] <= band_max)].copy()
     window_mode = "spot_pct_band"
     if len(local_window.index) < 2:
         local_window = (
@@ -1801,7 +1832,10 @@ def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         warning_badges.append("Missing next expiry")
     if gamma_flip is None:
         warning_badges.append("No valid gamma flip")
-    if "stale_gamma_source" in stale_flags or str(warning_state.get("snapshot_status") or "") == SnapshotStatus.STALE.value:
+    if (
+        "stale_gamma_source" in stale_flags
+        or str(warning_state.get("snapshot_status") or "") == SnapshotStatus.STALE.value
+    ):
         warning_badges.append("Source stale")
     if "spot_source_mismatch" in stale_flags:
         warning_badges.append("Spot mismatch")
@@ -1809,7 +1843,9 @@ def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         warning_badges.append("Invalid Snapshot")
 
     if warnings:
-        what_matters = "Gamma model is degraded. Use level interaction cautiously until warnings clear."
+        what_matters = (
+            "Gamma model is degraded. Use level interaction cautiously until warnings clear."
+        )
         trader_live_quote = "Data quality warning: combined-basket gamma is available, but one or more inputs are stale or incomplete."
         trade_bias = "Reduce confidence and anchor decisions to confirmed price response at the displayed levels."
         environment_note = "Warnings: " + " · ".join(warnings[:3])
@@ -1840,33 +1876,33 @@ def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     distance_to_put = None if put_wall is None else float(spot) - float(put_wall)
 
     if regime_direction == "negative" and gamma_flip is not None and spot < gamma_flip:
-        what_matters = (
-            f"Negative gamma below the combined-basket flip ({gamma_flip:.0f}) keeps downside expansion risk active."
-        )
+        what_matters = f"Negative gamma below the combined-basket flip ({gamma_flip:.0f}) keeps downside expansion risk active."
         trader_live_quote = "Expect faster directional moves and weaker mean reversion until price reclaims the flip."
         trade_bias = "Sell failed rallies and demand clean acceptance back above the flip before trusting stabilization."
     elif regime_direction == "negative" and gamma_flip is not None and spot > gamma_flip:
-        what_matters = (
-            f"Negative gamma with spot above the flip ({gamma_flip:.0f}) leaves squeeze conditions live if buyers hold acceptance."
+        what_matters = f"Negative gamma with spot above the flip ({gamma_flip:.0f}) leaves squeeze conditions live if buyers hold acceptance."
+        trader_live_quote = (
+            "Upside can extend quickly, but failed acceptance above the flip can reverse sharply."
         )
-        trader_live_quote = "Upside can extend quickly, but failed acceptance above the flip can reverse sharply."
         trade_bias = "Respect upside squeeze risk while spot is above the flip; avoid shorting strength without rejection."
     elif regime_direction == "positive" and gamma_flip is not None and spot >= gamma_flip:
-        what_matters = (
-            f"Positive gamma above the combined-basket flip ({gamma_flip:.0f}) favors a more contained, mean-reverting tape."
+        what_matters = f"Positive gamma above the combined-basket flip ({gamma_flip:.0f}) favors a more contained, mean-reverting tape."
+        trader_live_quote = (
+            "Expect stronger pinning behavior unless price is accepted through a major wall."
         )
-        trader_live_quote = "Expect stronger pinning behavior unless price is accepted through a major wall."
-        trade_bias = "Favor fade setups into stretched moves unless a wall breaks with clear acceptance."
+        trade_bias = (
+            "Favor fade setups into stretched moves unless a wall breaks with clear acceptance."
+        )
     elif regime_direction == "positive" and gamma_flip is not None and spot < gamma_flip:
-        what_matters = (
-            f"Positive gamma remains in place, but spot is below the flip ({gamma_flip:.0f}), so local downside can stay unstable until reclaimed."
-        )
+        what_matters = f"Positive gamma remains in place, but spot is below the flip ({gamma_flip:.0f}), so local downside can stay unstable until reclaimed."
         trader_live_quote = "The tape can stabilize quickly if price regains the flip; until then, support tests matter more."
         trade_bias = "Stay selective until spot reclaims the flip or clearly responds at support."
     else:
         what_matters = "No valid combined-basket gamma flip was found in the aggregated strike map."
         trader_live_quote = "The engine is withholding regime-transition certainty because no sign change was present."
-        trade_bias = "Trade the walls and raw price confirmation rather than assuming a flip-driven regime."
+        trade_bias = (
+            "Trade the walls and raw price confirmation rather than assuming a flip-driven regime."
+        )
         warning_badges.append("No valid gamma flip")
 
     if distance_to_call is not None and distance_to_call >= 0 and distance_to_call <= 15:
@@ -1884,16 +1920,16 @@ def _build_narrative(snapshot: Dict[str, Any]) -> Dict[str, Any]:
 
     if top_positive:
         auto_read.append(
-            "Top positive gamma strikes: " + ", ".join(f"{float(level):.0f}" for level in top_positive[:3])
+            "Top positive gamma strikes: "
+            + ", ".join(f"{float(level):.0f}" for level in top_positive[:3])
         )
     if top_negative:
         auto_read.append(
-            "Top negative gamma strikes: " + ", ".join(f"{float(level):.0f}" for level in top_negative[:3])
+            "Top negative gamma strikes: "
+            + ", ".join(f"{float(level):.0f}" for level in top_negative[:3])
         )
 
-    gamma_range_estimate = _safe_float(
-        snapshot.get("gamma_range_estimate")
-    )
+    gamma_range_estimate = _safe_float(snapshot.get("gamma_range_estimate"))
     source_meta = dict(snapshot.get("source_metadata") or {})
     fallback_reason = str(snapshot.get("fallback_reason") or "").strip()
     spot_source_label = str(snapshot.get("spot_source_label") or "").strip()
@@ -2074,8 +2110,12 @@ def assemble_market_pulse_snapshot(
         "nearest_positive_gamma_above_spot": levels.get("nearest_positive_gamma_above_spot"),
         "nearest_negative_gamma_below_spot": levels.get("nearest_negative_gamma_below_spot"),
         "gamma_range_estimate": gamma_range_estimate,
-        "gamma_range_high": (float(spot_price) + gamma_range_estimate) if gamma_range_estimate is not None else None,
-        "gamma_range_low": (float(spot_price) - gamma_range_estimate) if gamma_range_estimate is not None else None,
+        "gamma_range_high": (
+            (float(spot_price) + gamma_range_estimate) if gamma_range_estimate is not None else None
+        ),
+        "gamma_range_low": (
+            (float(spot_price) - gamma_range_estimate) if gamma_range_estimate is not None else None
+        ),
         "next_call_wall_above": levels.get("next_call_wall_above"),
         "next_put_wall_below": levels.get("next_put_wall_below"),
         "void_zone": levels.get("void_zone") or {"start": None, "end": None},
@@ -2115,7 +2155,9 @@ def should_refresh_snapshot(
 ) -> bool:
     if force_refresh:
         return True
-    asof_raw = str(current_snapshot.get("computed_at") or current_snapshot.get("asof") or "").strip()
+    asof_raw = str(
+        current_snapshot.get("computed_at") or current_snapshot.get("asof") or ""
+    ).strip()
     if not asof_raw:
         return True
     try:
@@ -2149,9 +2191,15 @@ def get_or_build_market_pulse_snapshot(force_refresh: bool = False) -> Dict[str,
         included_expiries=[],
         missing_expiries=list(source.get("requested_expiries") or []),
         source_file_path=str(source.get("source_file_path") or ""),
-        source_fetch_timestamp=str(source.get("source_fetch_timestamp") or source.get("source_timestamp") or _now_iso()),
-        source_effective_timestamp=str(source.get("source_effective_timestamp") or source.get("source_timestamp") or _now_iso()),
-        source_effective_timestamp_source=str(source.get("source_effective_timestamp_source") or "unknown"),
+        source_fetch_timestamp=str(
+            source.get("source_fetch_timestamp") or source.get("source_timestamp") or _now_iso()
+        ),
+        source_effective_timestamp=str(
+            source.get("source_effective_timestamp") or source.get("source_timestamp") or _now_iso()
+        ),
+        source_effective_timestamp_source=str(
+            source.get("source_effective_timestamp_source") or "unknown"
+        ),
         exchange_timestamp_available=bool(source.get("exchange_timestamp_available")),
         source_effective_timestamp_note=str(
             source.get("source_effective_timestamp_note")
@@ -2188,9 +2236,15 @@ def get_or_build_market_pulse_snapshot(force_refresh: bool = False) -> Dict[str,
         raw=source["raw"],
         requested_expiries=list(source["requested_expiries"] or []),
         source_timestamp=str(source["source_timestamp"] or _now_iso()),
-        source_fetch_timestamp=str(source.get("source_fetch_timestamp") or source.get("source_timestamp") or _now_iso()),
-        source_effective_timestamp=str(source.get("source_effective_timestamp") or source.get("source_timestamp") or _now_iso()),
-        source_effective_timestamp_source=str(source.get("source_effective_timestamp_source") or "unknown"),
+        source_fetch_timestamp=str(
+            source.get("source_fetch_timestamp") or source.get("source_timestamp") or _now_iso()
+        ),
+        source_effective_timestamp=str(
+            source.get("source_effective_timestamp") or source.get("source_timestamp") or _now_iso()
+        ),
+        source_effective_timestamp_source=str(
+            source.get("source_effective_timestamp_source") or "unknown"
+        ),
         source_effective_timestamp_note=str(
             source.get("source_effective_timestamp_note")
             or "Exchange-native chain timestamp unavailable; using fetch timestamp."
@@ -2201,7 +2255,9 @@ def get_or_build_market_pulse_snapshot(force_refresh: bool = False) -> Dict[str,
         spot_source=str(anchor.get("spot_source") or ""),
         spot_source_label=str(anchor.get("spot_source_label") or ""),
         spot_source_name=str(spot_snapshot.get("source_name") or ""),
-        spot_source_timestamp=str(anchor.get("spot_timestamp") or spot_snapshot.get("source_timestamp") or ""),
+        spot_source_timestamp=str(
+            anchor.get("spot_timestamp") or spot_snapshot.get("source_timestamp") or ""
+        ),
         spot_is_fallback=bool(anchor.get("spot_is_fallback")),
         fallback_reason=str(anchor.get("fallback_reason") or ""),
         build_confidence=str(anchor.get("build_confidence") or "invalid"),
@@ -2432,15 +2488,24 @@ def run_gamma_refresh_once() -> Dict[str, Any]:
         if snapshot_status == SnapshotStatus.STALE.value
         else ("invalid" if snapshot_status == SnapshotStatus.INVALID.value else "ok")
     )
-    cache_status = "last_good" if snapshot_status == SnapshotStatus.STALE.value else str(
-        snapshot.get("cache_status") or ("invalid" if snapshot_status == SnapshotStatus.INVALID.value else "fresh")
+    cache_status = (
+        "last_good"
+        if snapshot_status == SnapshotStatus.STALE.value
+        else str(
+            snapshot.get("cache_status")
+            or ("invalid" if snapshot_status == SnapshotStatus.INVALID.value else "fresh")
+        )
     )
     with _LOCK:
         _CACHE.clear()
         _CACHE.update(_json_clone(snapshot))
-        _RUNTIME_STATE["last_attempted_at"] = str(snapshot.get("computed_at") or snapshot.get("asof") or "")
+        _RUNTIME_STATE["last_attempted_at"] = str(
+            snapshot.get("computed_at") or snapshot.get("asof") or ""
+        )
         _RUNTIME_STATE["last_error"] = str((snapshot.get("diagnostics") or {}).get("error") or "")
-        _RUNTIME_STATE["last_refresh_ms"] = int(((snapshot.get("diagnostics") or {}).get("refresh_ms")) or 0)
+        _RUNTIME_STATE["last_refresh_ms"] = int(
+            ((snapshot.get("diagnostics") or {}).get("refresh_ms")) or 0
+        )
         _RUNTIME_STATE["status"] = runtime_status
         _RUNTIME_STATE["cache_status"] = cache_status
     if snapshot_status in {SnapshotStatus.HEALTHY.value, SnapshotStatus.DEGRADED.value}:
@@ -2482,7 +2547,9 @@ def _bootstrap_gamma_snapshot_on_cold_cache() -> Optional[Dict[str, Any]]:
             return None
         last_failed_at = _parse_runtime_iso(_RUNTIME_STATE.get("last_bootstrap_failed_at"))
         if last_failed_at is not None:
-            age_seconds = max(0.0, (now_utc - last_failed_at.astimezone(timezone.utc)).total_seconds())
+            age_seconds = max(
+                0.0, (now_utc - last_failed_at.astimezone(timezone.utc)).total_seconds()
+            )
             if age_seconds < COLD_CACHE_BOOTSTRAP_RETRY_SECONDS:
                 LOGGER.info(
                     "gamma cold cache bootstrap skipped: last failure %.1fs ago",
@@ -2537,7 +2604,9 @@ def get_gamma_snapshot() -> Dict[str, Any]:
                 current_snapshot=snapshot,
             )
 
-    snapshot["cache_status"] = str(runtime_state.get("cache_status") or snapshot.get("cache_status") or "cold")
+    snapshot["cache_status"] = str(
+        runtime_state.get("cache_status") or snapshot.get("cache_status") or "cold"
+    )
     snapshot["diagnostics"] = dict(snapshot.get("diagnostics") or {})
     snapshot["diagnostics"]["status"] = str(
         runtime_state.get("status") or snapshot["diagnostics"].get("status") or "waiting"
@@ -2556,9 +2625,14 @@ def get_gamma_snapshot() -> Dict[str, Any]:
             snapshot,
             reason="Stale Snapshot: showing last known good values because the latest refresh failed.",
         )
-    elif snapshot["diagnostics"].get("status") == "invalid" and not _snapshot_is_trustworthy(snapshot):
+    elif snapshot["diagnostics"].get("status") == "invalid" and not _snapshot_is_trustworthy(
+        snapshot
+    ):
         snapshot = _internal_invalid_snapshot(
-            reason=str(snapshot["diagnostics"].get("error") or "Invalid Snapshot: gamma levels unavailable."),
+            reason=str(
+                snapshot["diagnostics"].get("error")
+                or "Invalid Snapshot: gamma levels unavailable."
+            ),
             current_snapshot=snapshot,
         )
     return _boundary_snapshot(snapshot)

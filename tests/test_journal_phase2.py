@@ -267,7 +267,9 @@ def test_plain_new_entry_skips_heavy_market_context(client, monkeypatch):
     monkeypatch.setattr(
         journal_service,
         "_debrief_market_context",
-        lambda _entry_date: (_ for _ in ()).throw(AssertionError("plain new entry should not load market context")),
+        lambda _entry_date: (_ for _ in ()).throw(
+            AssertionError("plain new entry should not load market context")
+        ),
     )
 
     resp = client.get("/journal/new?d=2026-03-18", follow_redirects=True)
@@ -347,7 +349,9 @@ def test_debrief_market_context_falls_back_to_vix_quote(monkeypatch):
         },
     )
     monkeypatch.setattr(core_service, "_market_pulse_enrich_quotes", lambda quotes, _now: quotes)
-    monkeypatch.setattr(core_service, "_market_pulse_context", lambda _quotes: {"structure": "Responsive"})
+    monkeypatch.setattr(
+        core_service, "_market_pulse_context", lambda _quotes: {"structure": "Responsive"}
+    )
     monkeypatch.setattr(core_service, "_market_news_snapshot", lambda: {"macro_events": []})
     monkeypatch.setattr(gamma_map_service, "get_gamma_snapshot", lambda: {})
     monkeypatch.setattr(

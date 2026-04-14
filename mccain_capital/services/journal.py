@@ -672,10 +672,13 @@ def _enrich_journal_entry(entry: Dict[str, Any]) -> None:
         "lesson": _shorten_text(lesson_text, 84),
     }
     structured_sections = _structured_journal_sections(entry)
-    note_preview = next(
-        (section.get("body") for section in structured_sections if section.get("body")),
-        str(entry.get("note_plain") or "").strip(),
-    ) or ""
+    note_preview = (
+        next(
+            (section.get("body") for section in structured_sections if section.get("body")),
+            str(entry.get("note_plain") or "").strip(),
+        )
+        or ""
+    )
     entry["grade_display"] = grade_display
     entry["grade_tone"] = _grade_tone(grade_display)
     entry["outcome_key"] = outcome_key
@@ -713,12 +716,18 @@ def _build_journal_insights(entries: List[Dict[str, Any]]) -> List[Dict[str, str
     if not entries:
         return []
     setup_counter = Counter(
-        str(entry.get("setup") or "").strip() for entry in entries if str(entry.get("setup") or "").strip()
+        str(entry.get("setup") or "").strip()
+        for entry in entries
+        if str(entry.get("setup") or "").strip()
     )
     mood_counter = Counter(
-        str(entry.get("mood") or "").strip() for entry in entries if str(entry.get("mood") or "").strip()
+        str(entry.get("mood") or "").strip()
+        for entry in entries
+        if str(entry.get("mood") or "").strip()
     )
-    mistake_counter = Counter(tag for entry in entries for tag in list(entry.get("mistake_tags") or []))
+    mistake_counter = Counter(
+        tag for entry in entries for tag in list(entry.get("mistake_tags") or [])
+    )
     top_setup = setup_counter.most_common(1)[0][0] if setup_counter else "Unlabeled"
     top_mood = mood_counter.most_common(1)[0][0] if mood_counter else "Neutral"
     top_mistake = mistake_counter.most_common(1)[0][0] if mistake_counter else "No repeated mistake"

@@ -57,7 +57,9 @@ RSS_SOURCES: Tuple[Dict[str, Any], ...] = (
     {
         "key": "yahoo_bundle",
         "label": "Yahoo Finance",
-        "url": YAHOO_BUNDLE_RSS_URL + "?" + urllib.parse.urlencode({"s": YAHOO_BUNDLE_SYMBOLS, "region": "US", "lang": "en-US"}),
+        "url": YAHOO_BUNDLE_RSS_URL
+        + "?"
+        + urllib.parse.urlencode({"s": YAHOO_BUNDLE_SYMBOLS, "region": "US", "lang": "en-US"}),
         "source_quality": 10,
         "default_category": "market",
         "group": "market",
@@ -282,9 +284,35 @@ def _categorize_item(text: str, default_category: str) -> str:
     high_hits, _ = _keyword_hits(text, HIGH_IMPACT_KEYWORDS)
     market_hits, market_score = _keyword_hits(text, MARKET_KEYWORDS)
     company_hits, company_score = _keyword_hits(text, COMPANY_KEYWORDS)
-    if any(term in text.lower() for term in ("fed", "powell", "fomc", "treasury", "rates", "yield", "policy", "tariff", "white house")):
+    if any(
+        term in text.lower()
+        for term in (
+            "fed",
+            "powell",
+            "fomc",
+            "treasury",
+            "rates",
+            "yield",
+            "policy",
+            "tariff",
+            "white house",
+        )
+    ):
         return "policy"
-    if high_hits and any(term in text.lower() for term in ("cpi", "ppi", "inflation", "jobs", "payrolls", "gdp", "retail sales", "consumer sentiment", "ism")):
+    if high_hits and any(
+        term in text.lower()
+        for term in (
+            "cpi",
+            "ppi",
+            "inflation",
+            "jobs",
+            "payrolls",
+            "gdp",
+            "retail sales",
+            "consumer sentiment",
+            "ism",
+        )
+    ):
         return "macro"
     if company_score > market_score:
         return "company"
@@ -409,11 +437,20 @@ def _normalize_feed_item(row: Dict[str, Any], *, now_et: datetime) -> Dict[str, 
     }
 
 
-def _fetch_source_rows(source_cfg: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
+def _fetch_source_rows(
+    source_cfg: Dict[str, Any]
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[str]]:
     try:
         xml_body = _fetch_url_bytes(str(source_cfg.get("url") or ""))
         items = _extract_items(xml_body)
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ET.ParseError, ValueError):
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        OSError,
+        ET.ParseError,
+        ValueError,
+    ):
         return source_cfg, [], "fetch_failed"
 
     rows: List[Dict[str, Any]] = []
@@ -466,21 +503,42 @@ def _dedupe_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _watch_strip_summary(quotes: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
-    rows = [row for row in list(quotes or []) if isinstance(row, dict) and str(row.get("label") or "").strip()]
+    rows = [
+        row
+        for row in list(quotes or [])
+        if isinstance(row, dict) and str(row.get("label") or "").strip()
+    ]
     breadth_rows = [
-        row for row in rows
+        row
+        for row in rows
         if str(row.get("label") or "").strip().upper() in MARKET_WATCH_BREADTH_SYMBOLS
     ]
-    advancers = sum(1 for row in breadth_rows if isinstance(row.get("change_pct"), (int, float)) and float(row.get("change_pct")) > 0)
-    decliners = sum(1 for row in breadth_rows if isinstance(row.get("change_pct"), (int, float)) and float(row.get("change_pct")) < 0)
+    advancers = sum(
+        1
+        for row in breadth_rows
+        if isinstance(row.get("change_pct"), (int, float)) and float(row.get("change_pct")) > 0
+    )
+    decliners = sum(
+        1
+        for row in breadth_rows
+        if isinstance(row.get("change_pct"), (int, float)) and float(row.get("change_pct")) < 0
+    )
     positive = sorted(
         [row for row in breadth_rows if isinstance(row.get("change_pct"), (int, float))],
         key=lambda row: float(row.get("change_pct") or 0),
         reverse=True,
     )
-    leaders = [str(row.get("label") or "—") for row in positive if float(row.get("change_pct") or 0) > 0][:3]
-    laggard = next((row for row in reversed(positive) if float(row.get("change_pct") or 0) < 0), None)
-    risk_tone = "Broad Risk-On" if advancers > decliners + 2 else "Risk-Off" if decliners > advancers + 2 else "Mixed Tape"
+    leaders = [
+        str(row.get("label") or "—") for row in positive if float(row.get("change_pct") or 0) > 0
+    ][:3]
+    laggard = next(
+        (row for row in reversed(positive) if float(row.get("change_pct") or 0) < 0), None
+    )
+    risk_tone = (
+        "Broad Risk-On"
+        if advancers > decliners + 2
+        else "Risk-Off" if decliners > advancers + 2 else "Mixed Tape"
+    )
     return {
         "breadth": f"{advancers}/{decliners}",
         "risk_tone": risk_tone,
@@ -493,7 +551,12 @@ def _watch_strip_summary(quotes: Optional[List[Dict[str, Any]]]) -> Dict[str, An
     }
 
 
-def _now_summary(*, quotes: Optional[List[Dict[str, Any]]], context: Optional[Dict[str, Any]], snapshot: Dict[str, Any]) -> Dict[str, str]:
+def _now_summary(
+    *,
+    quotes: Optional[List[Dict[str, Any]]],
+    context: Optional[Dict[str, Any]],
+    snapshot: Dict[str, Any],
+) -> Dict[str, str]:
     strip = _watch_strip_summary(quotes)
     quote_rows = [row for row in list(quotes or []) if isinstance(row, dict)]
     laggard = None
@@ -510,8 +573,12 @@ def _now_summary(*, quotes: Optional[List[Dict[str, Any]]], context: Optional[Di
         else "Monitoring tracked RSS sources"
     )
     return {
-        "spx_focus": str(context.get("headline_note") or "Watching SPX and leadership rotation.").strip(),
-        "leadership": str(strip.get("risk_tone") or context.get("leadership") or "Mixed tape").strip(),
+        "spx_focus": str(
+            context.get("headline_note") or "Watching SPX and leadership rotation."
+        ).strip(),
+        "leadership": str(
+            strip.get("risk_tone") or context.get("leadership") or "Mixed tape"
+        ).strip(),
         "weakness": (
             f"{laggard.get('label')} {float(laggard.get('change_pct') or 0):+.2f}%"
             if laggard is not None and isinstance(laggard.get("change_pct"), (int, float))
@@ -557,9 +624,7 @@ def build_market_feed_snapshot(
             raw_items.extend(rows)
 
     normalized = [
-        _normalize_feed_item(row, now_et=now_et)
-        for row in raw_items
-        if isinstance(row, dict)
+        _normalize_feed_item(row, now_et=now_et) for row in raw_items if isinstance(row, dict)
     ]
     fresh_items = [
         item
@@ -570,21 +635,33 @@ def build_market_feed_snapshot(
     deduped.sort(
         key=lambda item: (
             -int(item.get("score") or 0),
-            0 if str(item.get("impact") or "") == "high" else 1 if str(item.get("impact") or "") == "medium" else 2,
+            (
+                0
+                if str(item.get("impact") or "") == "high"
+                else 1 if str(item.get("impact") or "") == "medium" else 2
+            ),
             int(item.get("age_minutes") or 99999),
         )
     )
 
-    high_impact_items = [item for item in deduped if str(item.get("impact") or "") == "high"][:MAX_VISIBLE_ITEMS]
-    market_items = [item for item in deduped if str(item.get("category") or "") == "market"][:MAX_VISIBLE_ITEMS]
-    company_items = [item for item in deduped if str(item.get("category") or "") == "company"][:MAX_VISIBLE_ITEMS]
+    high_impact_items = [item for item in deduped if str(item.get("impact") or "") == "high"][
+        :MAX_VISIBLE_ITEMS
+    ]
+    market_items = [item for item in deduped if str(item.get("category") or "") == "market"][
+        :MAX_VISIBLE_ITEMS
+    ]
+    company_items = [item for item in deduped if str(item.get("category") or "") == "company"][
+        :MAX_VISIBLE_ITEMS
+    ]
     top_items = deduped[:MAX_VISIBLE_ITEMS]
 
     if failures and top_items:
         status = "degraded"
     elif failures and not top_items:
         status = "error"
-    elif top_items and max(int(item.get("score") or 0) for item in top_items) < QUIET_SCORE_THRESHOLD:
+    elif (
+        top_items and max(int(item.get("score") or 0) for item in top_items) < QUIET_SCORE_THRESHOLD
+    ):
         status = "quiet"
     elif top_items:
         status = "live"

@@ -385,7 +385,13 @@ def test_snapshot_atomicity_keeps_last_good_snapshot_on_bad_recompute(monkeypatc
     monkeypatch.setattr(
         svc,
         "_RUNTIME_STATE",
-        {"last_attempted_at": "", "last_error": "", "last_refresh_ms": 0, "status": "waiting", "cache_status": "cold"},
+        {
+            "last_attempted_at": "",
+            "last_error": "",
+            "last_refresh_ms": 0,
+            "status": "waiting",
+            "cache_status": "cold",
+        },
     )
     monkeypatch.setattr(
         svc.market_data_service,
@@ -486,7 +492,10 @@ def test_stale_source_without_last_good_returns_invalid_snapshot(monkeypatch):
 
     assert snapshot["snapshot_status"] == SnapshotStatus.INVALID.value
     assert snapshot["gamma_flip"] is None
-    assert "stale" in snapshot["snapshot_status_label"].lower() or "invalid" in snapshot["snapshot_status_label"].lower()
+    assert (
+        "stale" in snapshot["snapshot_status_label"].lower()
+        or "invalid" in snapshot["snapshot_status_label"].lower()
+    )
 
 
 def test_pydantic_validation_rejects_missing_required_timestamp():
@@ -600,7 +609,9 @@ def test_fetch_spx_chain_for_expiries_does_not_fallback_when_tradier_is_empty(mo
     monkeypatch.setattr(
         svc,
         "_massive_json",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("polygon fallback should not run")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("polygon fallback should not run")
+        ),
     )
     monkeypatch.setattr(
         svc,

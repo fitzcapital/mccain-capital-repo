@@ -271,7 +271,9 @@ def _setting_text(key: str, default: str = "") -> str:
     return str(get_setting_value(key, default) or "").strip()
 
 
-def _resolve_window_times(start_text: str, done_text: str, stop_text: str = "") -> tuple[str, str, str]:
+def _resolve_window_times(
+    start_text: str, done_text: str, stop_text: str = ""
+) -> tuple[str, str, str]:
     start_min = _parse_hhmm_minutes(start_text)
     done_min = _parse_hhmm_minutes(done_text)
     stop_min = _parse_hhmm_minutes(stop_text)
@@ -298,7 +300,10 @@ def save_trading_window_settings(form: Mapping[str, Any]) -> dict[str, Any]:
     enabled = str(form.get("tw_enabled") or "") in {"1", "true", "on", "yes"}
     test_mode = str(form.get("tw_test_mode") or "") in {"1", "true", "on", "yes"}
     try:
-        upcoming_notice_minutes = int(str(form.get("tw_upcoming_notice_minutes") or "").strip() or TRADING_WINDOW_UPCOMING_NOTICE_MINUTES)
+        upcoming_notice_minutes = int(
+            str(form.get("tw_upcoming_notice_minutes") or "").strip()
+            or TRADING_WINDOW_UPCOMING_NOTICE_MINUTES
+        )
     except ValueError:
         upcoming_notice_minutes = TRADING_WINDOW_UPCOMING_NOTICE_MINUTES
     upcoming_notice_minutes = max(0, min(240, upcoming_notice_minutes))
@@ -337,7 +342,10 @@ def get_trading_window_state() -> dict[str, Any]:
     start_et, done_by_et, hard_stop_et = _resolve_window_times(
         _setting_text("trading_window_start_et", TRADING_WINDOW_DEFAULTS["start_et"]),
         _setting_text("trading_window_done_by_et", TRADING_WINDOW_DEFAULTS["done_by_et"]),
-        _setting_text("trading_window_hard_stop_et", _setting_text("trading_window_done_by_et", TRADING_WINDOW_DEFAULTS["done_by_et"])),
+        _setting_text(
+            "trading_window_hard_stop_et",
+            _setting_text("trading_window_done_by_et", TRADING_WINDOW_DEFAULTS["done_by_et"]),
+        ),
     )
 
     test_mode = _setting_bool("trading_window_test_mode", False)
@@ -375,7 +383,9 @@ def get_trading_window_state() -> dict[str, Any]:
     start_min = _parse_hhmm_minutes(start_et) or 0
     done_min = _parse_hhmm_minutes(done_by_et) or (start_min + 120)
     upcoming_notice_minutes = app_runtime.parse_int(
-        _setting_text("trading_window_upcoming_notice_minutes", str(TRADING_WINDOW_UPCOMING_NOTICE_MINUTES))
+        _setting_text(
+            "trading_window_upcoming_notice_minutes", str(TRADING_WINDOW_UPCOMING_NOTICE_MINUTES)
+        )
     )
     if upcoming_notice_minutes is None:
         upcoming_notice_minutes = TRADING_WINDOW_UPCOMING_NOTICE_MINUTES
@@ -440,7 +450,9 @@ def get_trading_window_state() -> dict[str, Any]:
 
     progress_pct = 0.0
     if done_min > start_min:
-        progress_pct = max(0.0, min(100.0, ((now_min - start_min) / (done_min - start_min)) * 100.0))
+        progress_pct = max(
+            0.0, min(100.0, ((now_min - start_min) / (done_min - start_min)) * 100.0)
+        )
 
     return {
         "enabled": enabled,

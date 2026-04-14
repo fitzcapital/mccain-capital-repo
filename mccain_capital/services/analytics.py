@@ -716,7 +716,9 @@ def _compact_breakdown(
         "empty": False,
         "labels": [str(item["label"]) for item in top],
         "series": [float(item["value"]) for item in top],
-        "center_primary": str(int(round(total))) if abs(total - round(total)) < 1e-9 else f"{total:.1f}",
+        "center_primary": (
+            str(int(round(total))) if abs(total - round(total)) < 1e-9 else f"{total:.1f}"
+        ),
         "center_secondary": total_label,
         "dominant": dominant,
         "empty_title": empty_title,
@@ -806,15 +808,15 @@ def _serialize_analytics_payload(context: Dict[str, Any]) -> Dict[str, Any]:
     expectancy_progress = _progress_value(50.0 + ((expectancy / expectancy_scale) * 50.0))
     drawdown_now = float(dd.get("current_drawdown") or 0.0)
     max_drawdown = float(dd.get("max_drawdown") or 0.0)
-    control_progress = _progress_value(
-        100.0 - ((drawdown_now / max(max_drawdown, 250.0)) * 100.0)
-    )
+    control_progress = _progress_value(100.0 - ((drawdown_now / max(max_drawdown, 250.0)) * 100.0))
     review_progress = _progress_value(float(review_coverage.get("completion_pct") or 0.0))
     trust_score = _progress_value(
         100.0 - ((integrity_issue_count / max(1.0, float(max(total_trades, 1) * 3))) * 100.0)
     )
     corr_value = corr.get("r")
-    corr_progress = 50.0 if corr_value is None else _progress_value(50.0 + (float(corr_value) * 50.0))
+    corr_progress = (
+        50.0 if corr_value is None else _progress_value(50.0 + (float(corr_value) * 50.0))
+    )
     profit_factor_value = perf.get("profit_factor")
     profit_factor_display = (
         f"{float(profit_factor_value):.2f}" if profit_factor_value is not None else "∞"
@@ -843,7 +845,10 @@ def _serialize_analytics_payload(context: Dict[str, Any]) -> Dict[str, Any]:
     )
     mistake_breakdown = _compact_breakdown(
         [
-            {"label": str(row.get("tag") or "").replace("-", " ").title(), "value": row.get("count")}
+            {
+                "label": str(row.get("tag") or "").replace("-", " ").title(),
+                "value": row.get("count"),
+            }
             for row in mistake_cost_rows
         ],
         label_key="label",
@@ -853,9 +858,7 @@ def _serialize_analytics_payload(context: Dict[str, Any]) -> Dict[str, Any]:
         empty_title="No mistakes logged",
         empty_detail="Review tags are clean in this range. Keep logging behavior drift when it shows up.",
     )
-    benchmark_has_data = any(
-        str(row.get("ticker") or "").strip().upper() == "SPX" for row in rows
-    )
+    benchmark_has_data = any(str(row.get("ticker") or "").strip().upper() == "SPX" for row in rows)
     scope_label = ""
     if scope and scope.get("enabled") and scope_mode == "active":
         scope_label = str(scope.get("start_date") or "")
@@ -906,7 +909,9 @@ def _serialize_analytics_payload(context: Dict[str, Any]) -> Dict[str, Any]:
             "risk_control": {
                 "progress": control_progress,
                 "center": (
-                    "Healthy" if drawdown_now <= 0 else "Caution" if drawdown_now < max(max_drawdown * 0.5, 150.0) else "Stress"
+                    "Healthy"
+                    if drawdown_now <= 0
+                    else "Caution" if drawdown_now < max(max_drawdown * 0.5, 150.0) else "Stress"
                 ),
                 "subtitle": "Risk control state",
                 "footnote": f"Live DD {money(drawdown_now)}",
@@ -947,7 +952,11 @@ def _serialize_analytics_payload(context: Dict[str, Any]) -> Dict[str, Any]:
             "data_trust_href": str(data_trust.primary_href or ""),
             "data_trust_label": str(data_trust.primary_label or ""),
             "day_title": day_story["title"],
-            "day_lines": [day_story["pnl_driver"], day_story["risk_driver"], day_story["edge_driver"]],
+            "day_lines": [
+                day_story["pnl_driver"],
+                day_story["risk_driver"],
+                day_story["edge_driver"],
+            ],
             "sizing_regime": sizing["regime"],
             "sizing_action": sizing["action"],
             "sizing_note": sizing["note"],
@@ -981,7 +990,9 @@ def _serialize_analytics_payload(context: Dict[str, Any]) -> Dict[str, Any]:
             },
             "review_spark": _daily_review_completion_series(rows),
             "trust_spark": _daily_trust_series(rows),
-            "edge_spark": [{"x": point["x"], "y": point["y"]} for point in _series_points(expectancy_series)],
+            "edge_spark": [
+                {"x": point["x"], "y": point["y"]} for point in _series_points(expectancy_series)
+            ],
         },
         "micro": {
             "review": {
@@ -1019,7 +1030,7 @@ def _build_analytics_context(args: Any) -> Dict[str, Any]:
             "mistake_tag": args.get("mistake_tag", ""),
         }
     )
-    expectancy_granularity = ((args.get("expectancy_granularity") or "monthly").strip().lower())
+    expectancy_granularity = (args.get("expectancy_granularity") or "monthly").strip().lower()
     if expectancy_granularity not in {"monthly", "weekly"}:
         expectancy_granularity = "monthly"
     tab = (args.get("tab") or "performance").strip().lower()
