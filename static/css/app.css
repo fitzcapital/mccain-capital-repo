@@ -1820,13 +1820,34 @@ body{
 }
 .notifDropdownFooter .btn{
   min-height:32px;
-  padding:6px 10px;
   border-radius:10px;
-  font-size:11px;
+}
+.notifFooterIconBtn{
+  width:34px;
+  min-width:34px;
+  padding:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  color:rgba(225, 239, 255, .88);
+}
+.notifFooterIconBtn svg{
+  width:15px;
+  height:15px;
+}
+.notifFooterIconBtn:hover{
+  color:#f5fbff;
 }
 .notifClearBtn{
   border-color:rgba(255, 120, 150, .35);
   color:#ffdce6;
+}
+.notifManageBtn{
+  border-color:rgba(120, 170, 220, .24);
+}
+.notifViewAll{
+  border-color:rgba(132, 214, 194, .26);
+  color:rgba(184, 244, 226, .9);
 }
 .notifItem{
   padding:10px 12px;
@@ -12343,10 +12364,12 @@ body.marketPulseReady .marketPulseSection{
   overflow:hidden;
 }
 .marketFeedRow__headline{
-  display:-webkit-box;
-  -webkit-box-orient:vertical;
-  -webkit-line-clamp:2;
-  overflow:hidden;
+  display:block;
+  overflow:visible;
+  white-space:normal;
+  text-wrap:pretty;
+  -webkit-line-clamp:unset;
+  -webkit-box-orient:initial;
 }
 .marketFeedDock{
   margin-top:14px;
@@ -19552,6 +19575,93 @@ html[data-font-mode="hand"] body .dashboardProjectionForm .dashboardProjectionHi
 
 .page-dashboard .dashboardDecisionHead{
   margin-bottom:2px;
+}
+
+.page-dashboard .dashboardDecisionHeadActions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.page-dashboard .dashboardDecisionRefreshBtn{
+  display:grid;
+  place-items:center;
+  width:32px;
+  height:32px;
+  padding:0;
+  border-radius:999px;
+  border:1px solid rgba(158, 195, 255, .18);
+  background:rgba(8, 16, 30, .5);
+  color:rgba(219, 235, 255, .86);
+  box-shadow:none;
+  cursor:pointer;
+  transition:transform .18s ease, border-color .18s ease, color .18s ease, opacity .18s ease;
+}
+
+.page-dashboard .dashboardDecisionRefreshBtn:hover{
+  transform:rotate(20deg);
+  border-color:rgba(158, 195, 255, .3);
+  color:#f5fbff;
+}
+
+.page-dashboard .dashboardDecisionRefreshBtn:disabled{
+  opacity:.56;
+  cursor:wait;
+}
+
+.page-dashboard .dashboardDecisionRefreshBtn svg{
+  width:14px;
+  height:14px;
+}
+
+.page-dashboard .dashboardTapeHeaderStatus{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.page-dashboard .dashboardTapeRefreshBtn{
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  padding:0;
+  border-radius:999px;
+  border:1px solid rgba(158, 195, 255, .16);
+  background:rgba(8, 16, 30, .42);
+  color:rgba(219, 235, 255, .82);
+  box-shadow:none;
+  cursor:pointer;
+  transition:transform .18s ease, border-color .18s ease, color .18s ease, opacity .18s ease;
+}
+
+.page-dashboard .dashboardTapeRefreshBtn:hover{
+  transform:rotate(20deg);
+  border-color:rgba(158, 195, 255, .28);
+  color:#f5fbff;
+}
+
+.page-dashboard .dashboardTapeRefreshBtn:disabled{
+  opacity:.56;
+  cursor:wait;
+}
+
+.page-dashboard .dashboardTapeRefreshBtn svg{
+  width:13px;
+  height:13px;
+}
+
+.page-dashboard .dashboardDecisionRefreshBtn.is-loading svg{
+  animation:dashboardPlanningSpin .9s linear infinite;
+}
+
+.page-dashboard .dashboardTapeRefreshBtn.is-loading svg{
+  animation:dashboardPlanningSpin .9s linear infinite;
+}
+
+@keyframes dashboardPlanningSpin{
+  from{ transform:rotate(0deg); }
+  to{ transform:rotate(360deg); }
 }
 
 .page-dashboard .dashboardDecisionLabel,
@@ -38175,6 +38285,109 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 .page-dashboard #advancedDashboardWidgets{
   min-width:0;
   overflow:visible;
+}
+
+.page-dashboard .dashboardProjectSection,
+.page-dashboard .dashboardCalendarSection{
+  content-visibility:auto;
+  contain-intrinsic-size:900px;
+}
+
+.page-dashboard .dashboardCalendarLazy{
+  min-height:96px;
+}
+
+.page-dashboard .dashboardCalendarLazyPlaceholder{
+  display:grid;
+  place-items:center;
+  min-height:96px;
+  padding:18px 20px;
+  border:1px dashed rgba(158, 195, 255, 0.16);
+  border-radius:18px;
+  background:rgba(7, 13, 26, 0.38);
+  color:rgba(216, 230, 255, 0.74);
+}
+
+.page-dashboard .dashboardCalendarLazyPlaceholder.is-loading{
+  color:rgba(216, 230, 255, 0.82);
+}
+
+.page-dashboard .dashboardCalendarLazyPlaceholder.is-error{
+  color:rgba(255, 205, 205, 0.88);
+  border-color:rgba(255, 129, 129, 0.24);
+}
+
+@media (max-width: 900px){
+  .page-dashboard .wrap,
+  .page-dashboard .dashboardModeShell,
+  .page-dashboard .dashboardPrimaryBand,
+  .page-dashboard .dashboardHero,
+  .page-dashboard .dashboardPriorityCard,
+  .page-dashboard .dashboardCoreTapeCard,
+  .page-dashboard .dashboardSupportFold,
+  .page-dashboard .dashboardMilestoneCard,
+  .page-dashboard .dashboardStatusDetailCard,
+  .page-dashboard .summaryPanel,
+  .page-dashboard .dashboardProjectionCard,
+  .page-dashboard .dashboardSnapshotCard,
+  .page-dashboard #advancedDashboardWidgets,
+  .page-dashboard .dashboardHealthSurface,
+  .page-dashboard .dashboardStatusOrb,
+  .page-dashboard .dashboardStatusOrbCard{
+    box-shadow:none !important;
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+    filter:none !important;
+  }
+
+  .page-dashboard .card::before,
+  .page-dashboard .card::after,
+  .page-dashboard .dashboardHero::before,
+  .page-dashboard .dashboardHero::after,
+  .page-dashboard .dashboardPriorityCard::before,
+  .page-dashboard .dashboardPriorityCard::after,
+  .page-dashboard .dashboardCoreTapeCard::before,
+  .page-dashboard .dashboardCoreTapeCard::after,
+  .page-dashboard .dashboardSupportFold::before,
+  .page-dashboard .dashboardSupportFold::after,
+  .page-dashboard .summaryPanel::before,
+  .page-dashboard .summaryPanel::after,
+  .page-dashboard .dashboardProjectionCard::before,
+  .page-dashboard .dashboardProjectionCard::after,
+  .page-dashboard .dashboardMilestoneCard::before,
+  .page-dashboard .dashboardMilestoneCard::after,
+  .page-dashboard .dashboardStatusDetailCard::before,
+  .page-dashboard .dashboardStatusDetailCard::after{
+    display:none !important;
+    content:none !important;
+  }
+
+  .page-dashboard .dashboardModeShell,
+  .page-dashboard .dashboardPrimaryBand,
+  .page-dashboard .dashboardHero,
+  .page-dashboard .dashboardPriorityCard,
+  .page-dashboard .dashboardCoreTapeCard,
+  .page-dashboard .dashboardSupportFold,
+  .page-dashboard .summaryPanel,
+  .page-dashboard .dashboardProjectionCard,
+  .page-dashboard .dashboardSnapshotCard,
+  .page-dashboard #advancedDashboardWidgets{
+    background-image:none !important;
+  }
+
+  .page-dashboard .dashboardProjectSection,
+  .page-dashboard .dashboardCalendarSection,
+  .page-dashboard .dashboardProjectionCard,
+  .page-dashboard .summaryPanel{
+    contain:layout paint style;
+  }
+
+  .page-dashboard .dashboardStage,
+  .page-dashboard .dashboardCoreTapeRow,
+  .page-dashboard .dashboardDecisionGrid,
+  .page-dashboard .dashboardAnalyticsCluster{
+    gap:12px;
+  }
 }
 
 .page-dashboard .dashboardCoreTapeStat,

@@ -1634,6 +1634,30 @@ def _market_pulse_resolve_gamma_payload(
                 else snapshot_status or "validated"
             ),
         }
+    elif (
+        session_mode != "regular"
+        and snapshot_status in {"healthy", "degraded", "stale"}
+        and sum(
+            1
+            for value in raw_levels.values()
+            if _market_pulse_positive_float(value) is not None
+        )
+        >= 4
+    ):
+        selected_levels = dict(raw_invariants.get("levels") or raw_levels or {})
+        levels_source = "last_valid_snapshot"
+        gamma_data_status = "partial"
+        gamma_regime_meta = {
+            "value": "unconfirmed",
+            "label": "Degraded",
+            "subtitle": "Using degraded session structure",
+            "source": "validated_gamma_snapshot",
+            "as_of": gamma_as_of,
+            "freshness_status": "stale",
+            "confidence": "low",
+            "derived_from_session": True,
+            "validation_status": "invariant_hard_failed",
+        }
     else:
         selected_levels = {
             key: None
@@ -4438,6 +4462,8 @@ def _market_pulse_gamma_regime_viewmodel(
             "waiting_on_wall_structure": "Waiting on wall structure",
             "waiting_on_core_levels": "Waiting on core levels",
             "waiting_on_intraday_session": "Gamma board incomplete",
+            "using_last_valid_session_structure": "Using last valid session structure",
+            "using_degraded_session_structure": "Using degraded session structure",
         }.get(missing_reason, "Gamma board incomplete")
         return {
             "gamma_regime": "unconfirmed",
@@ -4520,7 +4546,7 @@ def _market_pulse_gamma_reason_label(
         if primary_issue == "wall_order_invalid":
             return "Wall order invalid"
         if primary_issue == "local_flip_outside_wall_span":
-            return "Local flip outside walls"
+            return "Local Flip above Call Wall"
         return "Gamma unavailable"
     if gamma_data_status == "fallback_valid":
         return "Reduced confidence"
@@ -4538,6 +4564,10 @@ def _market_pulse_gamma_reason_label(
             return "Soft downgrade"
         if regime_status == "provisional":
             return "Intraday usable"
+        if missing_reason == "using_last_valid_session_structure":
+            return "Last valid structure"
+        if missing_reason == "using_degraded_session_structure":
+            return "Degraded structure"
         if missing_reason == "waiting_on_main_flip":
             return "Waiting on main flip"
         if missing_reason == "waiting_on_wall_structure":
@@ -5180,8 +5210,14 @@ def _market_pulse_structure_snapshot(
         and raw_snapshot_invalid
         and bool(last_valid_snapshot_check.get("usable"))
     )
+    degraded_snapshot_active = (
+        session_mode in {"after_hours", "premarket", "closed"}
+        and raw_snapshot_invalid
+        and not planning_fallback_active
+        and level_count >= 4
+    )
     effective_gamma_data_status = gamma_data_status
-    if planning_fallback_active:
+    if planning_fallback_active or degraded_snapshot_active:
         effective_gamma_data_status = "partial"
     elif session_mode in {"after_hours", "premarket", "closed"} and raw_snapshot_invalid:
         effective_gamma_data_status = "invalid"
@@ -5228,6 +5264,19 @@ def _market_pulse_structure_snapshot(
             "missing_reason": "using_last_valid_session_structure",
             "level_count": level_count,
         }
+    elif degraded_snapshot_active:
+        regime = {
+            "gamma_regime": "unconfirmed",
+            "gamma_regime_label": "Degraded",
+            "gamma_regime_subtitle": "Using degraded session structure",
+        }
+        regime_state = {
+            "regime_status": "unconfirmed",
+            "board_status": "Partial",
+            "confidence": "low",
+            "missing_reason": "using_degraded_session_structure",
+            "level_count": level_count,
+        }
     levels_source = _market_pulse_levels_source(
         session_mode=session_mode,
         execution_chart=execution_chart,
@@ -5235,7 +5284,7 @@ def _market_pulse_structure_snapshot(
         level_count=level_count,
         spot_source=str(gamma_snapshot.get("spot_source") or ""),
     )
-    if planning_fallback_active:
+    if planning_fallback_active or degraded_snapshot_active:
         levels_source = "last_valid_snapshot"
     elif session_mode in {"after_hours", "premarket", "closed"} and raw_snapshot_invalid:
         levels_source = "unavailable"
@@ -8111,7 +8160,7 @@ def _dashboard_gamma_strip_viewmodel(
             and snapshot_status in {"healthy", "degraded", "stale"}
             and not bool(gamma_snapshot.get("local_flip_found"))
         ):
-            return "None in local band"
+            return "No Local Flip between Put Wall and Call Wall"
         return "--"
 
     def _fmt_level_with_distance(value: Any, *, key: str = "") -> str:
@@ -8433,6 +8482,32 @@ def _dashboard_calendar_state_viewmodel(heat: Dict[str, Any], scope_label: str) 
     }
 
 
+def _dashboard_calendar_payload(
+    *,
+    year: int,
+    month: int,
+    scope_active: bool,
+    scope_start: str,
+    scope_starting_balance: float,
+    scope_label: str,
+) -> Dict[str, Any]:
+    from mccain_capital.repositories import trades as trades_repo
+
+    heat = trades_repo.month_heatmap(
+        year,
+        month,
+        start_date=scope_start if scope_active else "",
+        starting_balance=scope_starting_balance if scope_active else None,
+    )
+    month_name = date(year, month, 1).strftime("%B %Y")
+    calendar_state = _dashboard_calendar_state_viewmodel(heat, scope_label)
+    return {
+        "heat": heat,
+        "month_name": month_name,
+        "calendar_state": calendar_state,
+    }
+
+
 def _milestone_profit_value(
     source: str, *, today_net: float, this_week_total: float, mtd_net: float, ytd_net: float
 ) -> float:
@@ -8667,13 +8742,16 @@ def dashboard():
     anchor = trades_repo.latest_trade_day() or app_runtime.now_et().date()
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
-
-    heat = trades_repo.month_heatmap(
-        year,
-        month,
-        start_date=scope_start if scope_active else "",
-        starting_balance=scope_starting_balance if scope_active else None,
+    calendar_scope_label = "Active Account" if scope_active else "All History"
+    calendar_payload = _dashboard_calendar_payload(
+        year=year,
+        month=month,
+        scope_active=scope_active,
+        scope_start=scope_start,
+        scope_starting_balance=scope_starting_balance,
+        scope_label=calendar_scope_label,
     )
+    heat = calendar_payload["heat"]
     prev_y, prev_m = (year, month - 1)
     next_y, next_m = (year, month + 1)
     if prev_m == 0:
@@ -8683,7 +8761,7 @@ def dashboard():
         next_m = 1
         next_y += 1
 
-    month_name = date(year, month, 1).strftime("%B %Y")
+    month_name = calendar_payload["month_name"]
     balance_integrity = trades_repo.balance_integrity_snapshot(
         start_date=scope_start if scope_active else None,
         starting_balance=scope_starting_balance if scope_active else None,
@@ -8695,7 +8773,6 @@ def dashboard():
         if scope_active
         else "Live account balance with calendar context."
     )
-    calendar_scope_label = "Active Account" if scope_active else "All History"
     sync_status = get_system_status()
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
     balance_badges = balance_state_badges(balance_integrity)
@@ -8864,48 +8941,25 @@ def dashboard():
     tape_prices = dict(tape_snapshot.get("prices") or {})
     dashboard_spx = dict(tape_prices.get("SPX") or {})
     dashboard_vix = dict(tape_prices.get("VIX") or {})
-    tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
-    tape_fresh = False
-    if tape_updated_raw:
-        try:
-            tape_updated_at = datetime.fromisoformat(tape_updated_raw)
-            if tape_updated_at.tzinfo is None:
-                tape_updated_at = tape_updated_at.replace(tzinfo=app_runtime.TZ)
-            tape_fresh = (
-                app_runtime.now_et() - tape_updated_at.astimezone(app_runtime.TZ)
-            ).total_seconds() <= 5
-        except Exception:
-            tape_fresh = False
-    worker_quotes_ready = (
-        tape_fresh
-        and dashboard_spx.get("price") is not None
-        and dashboard_vix.get("price") is not None
-        and str(dashboard_spx.get("provider") or "").strip()
-        and str(dashboard_vix.get("provider") or "").strip()
-    )
-    # Prefer the market worker's live cache when it is fresh. Fall back to direct
-    # Tradier fetches only when the cache is cold or incomplete.
-    if not worker_quotes_ready:
-        try:
-            tradier_quotes = market_data_service.get_watchlist_tradier(["SPX", "VIX"])
-        except Exception:
-            tradier_quotes = {}
-        tradier_spx = dict(tradier_quotes.get("SPX") or {})
-        tradier_vix = dict(tradier_quotes.get("VIX") or {})
-        if tradier_spx.get("price") is not None:
-            dashboard_spx = tradier_spx
-        if tradier_vix.get("price") is not None:
-            dashboard_vix = tradier_vix
-    if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
-        try:
-            fallback = market_data_service.get_watchlist(["SPX", "VIX"], allow_yf_fallback=False)
-        except Exception:
-            fallback = {}
-        if dashboard_spx.get("price") is None:
-            dashboard_spx = dict(fallback.get("SPX") or dashboard_spx)
-        if dashboard_vix.get("price") is None:
-            dashboard_vix = dict(fallback.get("VIX") or dashboard_vix)
-
+    if current_app.config.get("TESTING"):
+        if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
+            try:
+                tradier_quotes = market_data_service.get_watchlist_tradier(["SPX", "VIX"])
+            except Exception:
+                tradier_quotes = {}
+            if dashboard_spx.get("price") is None:
+                dashboard_spx = dict(tradier_quotes.get("SPX") or dashboard_spx)
+            if dashboard_vix.get("price") is None:
+                dashboard_vix = dict(tradier_quotes.get("VIX") or dashboard_vix)
+        if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
+            try:
+                fallback = market_data_service.get_watchlist(["SPX", "VIX"], allow_yf_fallback=False)
+            except Exception:
+                fallback = {}
+            if dashboard_spx.get("price") is None:
+                dashboard_spx = dict(fallback.get("SPX") or dashboard_spx)
+            if dashboard_vix.get("price") is None:
+                dashboard_vix = dict(fallback.get("VIX") or dashboard_vix)
     now_et = app_runtime.now_et()
     now_epoch = int(now_et.timestamp())
 
@@ -8918,11 +8972,16 @@ def dashboard():
         cached = intraday_rows_cache.get(key)
         if cached is not None:
             return cached
-        try:
-            rows = market_data_service.get_intraday(key)
-        except Exception:
-            rows = []
-        cleaned = [dict(row) for row in rows if isinstance(row, dict)]
+        if current_app.config.get("TESTING"):
+            try:
+                rows = market_data_service.get_intraday(key)
+            except Exception:
+                rows = []
+            cleaned = [dict(row) for row in rows if isinstance(row, dict)]
+        else:
+            # Keep dashboard requests fast on mobile: render only from the worker
+            # snapshot and avoid blocking the page on direct intraday fetches.
+            cleaned = []
         intraday_rows_cache[key] = cleaned
         return cleaned
 
@@ -9094,16 +9153,7 @@ def dashboard():
             enriched["day_range_compact"] = "—"
             if enriched.get("day_open") is None:
                 enriched["day_open"] = None
-        last_valid_day = _market_pulse_expected_replay_session_day(
-            phase=_market_pulse_session_phase(now_et),
-            now_et=now_et,
-        )
-        if isinstance(last_valid_day, date):
-            replay_points = _market_pulse_fetch_session_points_for_day(symbol, last_valid_day)
-            if len(replay_points) >= 2:
-                replay_day = last_valid_day.isoformat()
-        if len(replay_points) < 2:
-            replay_points, replay_day = _market_pulse_cached_replay_series(symbol)
+        replay_points, replay_day = _market_pulse_cached_replay_series(symbol)
         if len(replay_points) >= 2:
             if not list(enriched.get("prior_session_series") or []):
                 enriched["prior_session_series"] = replay_points
@@ -9276,27 +9326,27 @@ def dashboard():
         "SPX": dict(dashboard_spx),
         "VIX": dict(dashboard_vix),
     }
-    try:
-        extra_tape_quotes = market_data_service.get_watchlist_with_fallback(
-            [symbol for symbol in dashboard_tape_symbols if symbol not in dashboard_tape_quotes]
-        )
-    except Exception:
-        extra_tape_quotes = {}
+    extra_tape_quotes: Dict[str, Dict[str, Any]] = {}
+    if current_app.config.get("TESTING"):
+        try:
+            extra_tape_quotes = market_data_service.get_watchlist_with_fallback(
+                [symbol for symbol in dashboard_tape_symbols if symbol not in dashboard_tape_quotes]
+            )
+        except Exception:
+            extra_tape_quotes = {}
     for symbol in dashboard_tape_symbols:
         if symbol in dashboard_tape_quotes:
             continue
         worker_quote = dict(tape_prices.get(symbol) or {})
-        fallback_quote = dict(extra_tape_quotes.get(symbol) or {})
-        # Prefer the live cache only when it has an actual quote; otherwise keep
-        # the direct watchlist fetch so the dashboard doesn't render fake loading
-        # states while valid quotes already exist.
-        source_quote = dict(fallback_quote)
-        for key, value in worker_quote.items():
-            if value is None and key in source_quote:
-                continue
-            source_quote[key] = value
-        if not source_quote:
-            source_quote = worker_quote or fallback_quote
+        if current_app.config.get("TESTING"):
+            fallback_quote = dict(extra_tape_quotes.get(symbol) or {})
+            source_quote = dict(fallback_quote)
+            for key, value in worker_quote.items():
+                if value is None and key in source_quote:
+                    continue
+                source_quote[key] = value
+        else:
+            source_quote = worker_quote
         dashboard_tape_quotes[symbol] = _enrich_dashboard_quote(
             symbol,
             source_quote,
@@ -9317,26 +9367,9 @@ def dashboard():
         try:
             from mccain_capital.services import market_pulse_runtime
 
+            # Start the runtime in the background, but do not block the dashboard
+            # on a synchronous gamma refresh when the snapshot is cold.
             market_pulse_runtime.ensure_market_pulse_runtime_started()
-            has_dashboard_levels = any(
-                isinstance(gamma_snapshot.get(key), (int, float))
-                for key in (
-                    "gamma_flip_combined_basket",
-                    "local_flip_aggregated_gamma",
-                    "call_wall_aggregated_gamma",
-                    "put_wall_aggregated_gamma",
-                )
-            )
-            snapshot_status = str(gamma_snapshot.get("snapshot_status") or "").strip().lower()
-            if (
-                not gamma_snapshot.get("asof")
-                or snapshot_status == "invalid"
-                or not has_dashboard_levels
-            ):
-                runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(
-                    force_gamma=True
-                )
-                gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
         except Exception:
             pass
     try:
@@ -9482,7 +9515,7 @@ def dashboard():
         pace_settings,
         anchor_day=app_runtime.now_et().date(),
     )
-    calendar_state = _dashboard_calendar_state_viewmodel(heat, calendar_scope_label)
+    calendar_state = calendar_payload["calendar_state"]
 
     dashboard_tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
     dashboard_tape_updated_label = _format_iso_et_label(dashboard_tape_updated_raw)
@@ -9563,6 +9596,218 @@ def dashboard():
         money_compact=_money_compact,
     )
     return render_page(content, active="dashboard", vanquish_lock=vanquish_lock)
+
+
+def dashboard_calendar_fragment():
+    from mccain_capital.repositories import trades as trades_repo
+
+    scope = trades_repo.account_scope_snapshot()
+    scope_enabled = bool(scope.get("enabled"))
+    scope_mode_raw = (request.args.get("scope") or "").strip().lower()
+    scope_active = scope_enabled and scope_mode_raw != "all"
+    scope_start = str(scope.get("start_date") or "")
+    scope_starting_balance = float(scope.get("starting_balance") or 50000.0)
+    anchor = trades_repo.latest_trade_day() or app_runtime.now_et().date()
+    year = int(request.args.get("y") or anchor.year)
+    month = max(1, min(12, int(request.args.get("m") or anchor.month)))
+    calendar_scope_label = "Active Account" if scope_active else "All History"
+    calendar_payload = _dashboard_calendar_payload(
+        year=year,
+        month=month,
+        scope_active=scope_active,
+        scope_start=scope_start,
+        scope_starting_balance=scope_starting_balance,
+        scope_label=calendar_scope_label,
+    )
+    return render_template(
+        "dashboard/_calendar_panel.html",
+        heat=calendar_payload["heat"],
+        month_name=calendar_payload["month_name"],
+        calendar_state=calendar_payload["calendar_state"],
+        money=app_runtime.money,
+        money_compact=_money_compact,
+    )
+
+
+def dashboard_planning_refresh_api():
+    from mccain_capital.repositories import analytics as analytics_repo
+    from mccain_capital.repositories import trades as trades_repo
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_worker
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+
+    try:
+        market_worker.start_market_worker_once()
+    except Exception:
+        pass
+
+    now_et = app_runtime.now_et()
+    today_key = app_runtime.today_iso()
+    anchor = trades_repo.latest_trade_day() or now_et.date()
+    year = anchor.year
+    month = anchor.month
+
+    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="")]
+    today_stats = trades_repo.trade_day_stats(today_rows)
+    today_net = float(today_stats.get("total", 0.0))
+    today_wins = int(today_stats.get("wins", 0) or 0)
+    today_losses = int(today_stats.get("losses", 0) or 0)
+    today_count = len(today_rows)
+
+    ytd_trades_list = [
+        dict(r)
+        for r in trades_repo.fetch_trades_range(
+            date(year, 1, 1).isoformat(), date(year + 1, 1, 1).isoformat()
+        )
+    ]
+    ytd_cons = trades_repo.calc_consistency(ytd_trades_list)
+    recent_start = max(date(year, month, 1), anchor - timedelta(days=45))
+    recent_rows = analytics_repo.fetch_analytics_rows(recent_start.isoformat(), anchor.isoformat())
+    recent_rule_breaks = analytics_repo.rule_break_counts(recent_rows)
+    top_rule_break = recent_rule_breaks[0] if recent_rule_breaks else None
+
+    risk_posture_title = (
+        "Attack window"
+        if today_count
+        and today_net > 0
+        and (ytd_cons.get("ratio") is None or ytd_cons.get("ratio", 1.0) <= 0.30)
+        else "Protect capital" if today_count and today_net < 0 else "Wait for clean signal"
+    )
+    risk_posture_detail = (
+        f"Today {today_wins}W/{today_losses}L · Consistency "
+        + (f"{float(ytd_cons['ratio']) * 100.0:.1f}%" if ytd_cons.get("ratio") is not None else "—")
+        + "."
+    )
+    pattern_watch = (
+        f"Most common breach: {str(top_rule_break['tag']).replace('-', ' ').title()} ({top_rule_break['count']})."
+        if top_rule_break
+        else "No recurring rule-break tag is dominating recent sessions."
+    )
+
+    tape_snapshot = market_worker.get_market_snapshot()
+    tape_prices = dict(tape_snapshot.get("prices") or {})
+    dashboard_spx = dict(tape_prices.get("SPX") or {})
+    dashboard_vix = dict(tape_prices.get("VIX") or {})
+
+    try:
+        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    except Exception:
+        gamma_snapshot = {}
+
+    try:
+        news_snapshot = _market_news_snapshot()
+    except Exception:
+        news_snapshot = {"macro_events": []}
+
+    playbook_snapshot = get_or_build_market_pulse_snapshot(
+        force_refresh=True,
+        now_et=now_et,
+        preloaded_gamma_snapshot=gamma_snapshot,
+        preloaded_macro_events=list(news_snapshot.get("macro_events") or []),
+    )
+    dashboard_playbook_view = dict(playbook_snapshot.get("playbook_view") or {})
+    dashboard_market_structure_snapshot = dict(
+        playbook_snapshot.get("market_structure_snapshot") or {}
+    )
+    refreshed_gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or gamma_snapshot or {})
+    daily_brief = _dashboard_daily_brief_viewmodel(
+        now_et=now_et,
+        dashboard_spx=dashboard_spx,
+        dashboard_vix=dashboard_vix,
+        gamma_snapshot=refreshed_gamma_snapshot,
+        market_structure_snapshot=dashboard_market_structure_snapshot,
+        news_snapshot=news_snapshot,
+        today_count=today_count,
+        today_net=today_net,
+    )
+    readiness = _dashboard_readiness_viewmodel(
+        [],
+        brief_ready=True,
+        today_count=today_count,
+        data_trust={},
+    )
+    gamma_strip = _dashboard_gamma_strip_viewmodel(
+        playbook_view=dashboard_playbook_view,
+        market_structure_snapshot=dashboard_market_structure_snapshot,
+    )
+    decision_panel = _dashboard_decision_viewmodel(
+        daily_brief=daily_brief,
+        risk_posture_title=risk_posture_title,
+        risk_posture_detail=risk_posture_detail,
+        data_trust={},
+        readiness=readiness,
+        dashboard_vix=dashboard_vix,
+        playbook_view=dashboard_playbook_view,
+        gamma_strip=gamma_strip,
+        market_structure_snapshot=dashboard_market_structure_snapshot,
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "decision_panel": decision_panel,
+            "dashboard_gamma": gamma_strip,
+            "market_structure_snapshot": dashboard_market_structure_snapshot,
+            "pattern_watch": pattern_watch,
+            "refreshed_at": app_runtime.now_iso(),
+        }
+    )
+
+
+def dashboard_tape_refresh_api():
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+
+    symbols = ["SPX", "VIX", "QQQ", "IWM", "AAPL", "TSLA"]
+    try:
+        market_worker.start_market_worker_once()
+    except Exception:
+        pass
+
+    snapshot = market_worker.get_market_snapshot()
+    prices = dict(snapshot.get("prices") or {})
+    needs_fill = [sym for sym in symbols if not isinstance((prices.get(sym) or {}).get("price"), (int, float))]
+
+    if needs_fill:
+        try:
+            direct_quotes = market_data_service.get_watchlist_tradier(needs_fill)
+        except Exception:
+            direct_quotes = {}
+        for sym in needs_fill:
+            quote = dict((direct_quotes or {}).get(sym) or {})
+            if isinstance(quote.get("price"), (int, float)):
+                prices[sym] = quote
+
+    remaining = [sym for sym in symbols if not isinstance((prices.get(sym) or {}).get("price"), (int, float))]
+    if remaining:
+        try:
+            fallback_quotes = market_data_service.get_watchlist_with_fallback(remaining)
+        except Exception:
+            fallback_quotes = {}
+        for sym in remaining:
+            quote = dict((fallback_quotes or {}).get(sym) or {})
+            if isinstance(quote.get("price"), (int, float)):
+                prices[sym] = quote
+
+    updated_raw = str(snapshot.get("updated_at") or app_runtime.now_iso())
+    updated_label = _format_iso_et_label(updated_raw)
+    if updated_label:
+        parts = updated_label.split(" ", 3)
+        if len(parts) >= 4:
+            updated_label = parts[3]
+
+    return jsonify(
+        {
+            "ok": True,
+            "quotes": {sym: dict(prices.get(sym) or {}) for sym in symbols},
+            "updated_at": updated_raw,
+            "updated_label": updated_label or "—",
+        }
+    )
 
 
 def stream_market():

@@ -103,6 +103,24 @@ def register(app):
         view_func=h.dashboard_pace_update,
         methods=["POST"],
     )
+    app.add_url_rule(
+        "/dashboard/calendar-fragment",
+        endpoint="dashboard_calendar_fragment",
+        view_func=h.dashboard_calendar_fragment,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/api/dashboard/planning",
+        endpoint="dashboard_planning_refresh_api",
+        view_func=h.dashboard_planning_refresh_api,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        "/api/dashboard/tape",
+        endpoint="dashboard_tape_refresh_api",
+        view_func=h.dashboard_tape_refresh_api,
+        methods=["GET"],
+    )
     app.add_url_rule("/candle-opens", endpoint="candle_opens_page", view_func=h.candle_opens_page)
     app.add_url_rule("/analytics", endpoint="analytics_page", view_func=h.analytics_page)
     app.add_url_rule(

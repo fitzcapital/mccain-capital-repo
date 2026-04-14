@@ -8,7 +8,7 @@
   };
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-  const LOCAL_FLIP_NONE_LABEL = "None in local band";
+  const LOCAL_FLIP_NONE_LABEL = "No Local Flip between Put Wall and Call Wall";
   const abs = (value) => {
     const n = asNum(value);
     return n === null ? null : Math.abs(n);

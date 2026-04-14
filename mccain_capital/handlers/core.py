@@ -57,6 +57,18 @@ def dashboard():
     return svc.dashboard()
 
 
+def dashboard_calendar_fragment():
+    return svc.dashboard_calendar_fragment()
+
+
+def dashboard_planning_refresh_api():
+    return svc.dashboard_planning_refresh_api()
+
+
+def dashboard_tape_refresh_api():
+    return svc.dashboard_tape_refresh_api()
+
+
 def market_pulse_page():
     return svc.market_pulse_page()
 

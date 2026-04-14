@@ -15,7 +15,7 @@
 {% set main_flip_num = model_levels.main_flip if model_levels.main_flip is number else none %}
 {% set local_flip_num = model_levels.local_flip if model_levels.local_flip is number else none %}
 {% set local_flip_missing_in_band = gamma_snapshot_status in ['healthy', 'degraded', 'stale'] and not gamma_snapshot.get('local_flip_found') %}
-{% set local_flip_label = '%.0f'|format(local_flip_num) if local_flip_num is not none else ('None in local band' if local_flip_missing_in_band else '—') %}
+{% set local_flip_label = '%.0f'|format(local_flip_num) if local_flip_num is not none else ('No Local Flip between Put Wall and Call Wall' if local_flip_missing_in_band else '—') %}
 {% set call_wall_num = model_levels.call_wall if model_levels.call_wall is number else none %}
 {% set put_wall_num = model_levels.put_wall if model_levels.put_wall is number else none %}
 {% set next_call_wall_num = structure_snapshot.get('next_call_wall') if structure_snapshot.get('next_call_wall') is number else none %}
@@ -335,7 +335,7 @@
               <span class="tiny muted">{% if row.direction == 'down' %}↓{% elif row.direction == 'up' %}↑{% else %}•{% endif %} {{ row.label }}</span>
               <strong>
                 {% if row.key == 'main_flip' %}<span id="spxPriorityDistanceFlip">{{ '%.1f pts'|format(row.value) if row.value is number else '—' }}</span>
-                {% elif row.key == 'local_flip' %}<span id="spxPriorityDistanceLocal">{{ '%.1f pts'|format(row.value) if row.value is number else ('None in local band' if local_flip_missing_in_band else '—') }}</span>
+                {% elif row.key == 'local_flip' %}<span id="spxPriorityDistanceLocal">{{ '%.1f pts'|format(row.value) if row.value is number else ('No Local Flip between Put Wall and Call Wall' if local_flip_missing_in_band else '—') }}</span>
                 {% elif row.key == 'call_wall' %}<span id="spxPriorityDistanceCall">{{ '%.1f pts'|format(row.value) if row.value is number else '—' }}</span>
                 {% elif row.key == 'put_wall' %}<span id="spxPriorityDistancePut">{{ '%.1f pts'|format(row.value) if row.value is number else '—' }}</span>
                 {% else %}{{ '%.1f pts'|format(row.value) if row.value is number else '—' }}{% endif %}

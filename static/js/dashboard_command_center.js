@@ -1,16 +1,19 @@
-(function () {
-  const preview = document.getElementById("calendarPreview");
-  const title = document.getElementById("calendarPreviewTitle");
-  const status = document.getElementById("calendarPreviewStatus");
-  const net = document.getElementById("previewNet");
-  const trades = document.getElementById("previewTrades");
-  const record = document.getElementById("previewRecord");
-  const balance = document.getElementById("previewBalance");
-  const open = document.getElementById("calendarPreviewOpen");
-  const close = document.getElementById("calendarPreviewClose");
+function initCalendarPreview(root = document) {
+  if (!root || root.dataset?.calendarPreviewBound === "1") return;
+  const preview = root.querySelector("#calendarPreview");
+  const title = root.querySelector("#calendarPreviewTitle");
+  const status = root.querySelector("#calendarPreviewStatus");
+  const net = root.querySelector("#previewNet");
+  const trades = root.querySelector("#previewTrades");
+  const record = root.querySelector("#previewRecord");
+  const balance = root.querySelector("#previewBalance");
+  const open = root.querySelector("#calendarPreviewOpen");
+  const close = root.querySelector("#calendarPreviewClose");
   if (!preview || !title || !status || !net || !trades || !record || !balance || !open || !close) return;
 
-  const buttons = Array.from(document.querySelectorAll(".dayPreviewButton"));
+  const buttons = Array.from(root.querySelectorAll(".dayPreviewButton"));
+  if (!buttons.length) return;
+
   const clearActive = () => {
     buttons.forEach((node) => {
       node.setAttribute("aria-pressed", "false");
@@ -39,6 +42,62 @@
     clearActive();
     preview.hidden = true;
   });
+
+  if (root.dataset) {
+    root.dataset.calendarPreviewBound = "1";
+  }
+}
+
+(function () {
+  const details = document.getElementById("advancedDashboardWidgets");
+  const lazyShell = document.getElementById("dashboardCalendarLazy");
+  if (!details || !lazyShell) return;
+
+  let loading = false;
+
+  const setPlaceholder = (message, tone = "info") => {
+    lazyShell.innerHTML = `
+      <div class="dashboardCalendarLazyPlaceholder is-${tone}">
+        <div class="tiny stack8 line15">${message}</div>
+      </div>
+    `;
+  };
+
+  const loadCalendar = async () => {
+    if (loading || lazyShell.dataset.loaded === "1") return;
+    const endpoint = details.dataset.calendarEndpoint;
+    if (!endpoint) return;
+    loading = true;
+    lazyShell.dataset.loading = "1";
+    setPlaceholder("Loading calendar…", "loading");
+    try {
+      const response = await fetch(endpoint, {
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      lazyShell.innerHTML = await response.text();
+      lazyShell.dataset.loaded = "1";
+      initCalendarPreview(lazyShell);
+    } catch (_error) {
+      setPlaceholder("Calendar could not load. Collapse and reopen to retry.", "error");
+    } finally {
+      loading = false;
+      delete lazyShell.dataset.loading;
+    }
+  };
+
+  details.addEventListener("toggle", () => {
+    if (details.open) {
+      void loadCalendar();
+    }
+  });
+
+  if (details.open) {
+    void loadCalendar();
+  }
 })();
 
 (function () {
@@ -51,8 +110,17 @@
   );
   const statusNode = document.getElementById("dashboardTapeStreamStatus");
   const updatedNode = document.getElementById("dashboardTapeUpdatedAt");
+  const tapeCard = document.querySelector(".dashboardCoreTapeCard");
+  const tapeRefreshBtn = document.getElementById("dashboardTapeRefreshBtn");
   const gammaStrip = document.getElementById("dashboardGammaStrip");
   const gammaMeta = document.getElementById("dashboardGammaMeta");
+  const decisionCard = document.querySelector(".dashboardDecisionCard");
+  const decisionRefreshBtn = document.getElementById("dashboardPlanningRefreshBtn");
+  const decisionStatusChip = document.getElementById("dashboardDecisionStatusChip");
+  const decisionBiasValue = document.getElementById("dashboardDecisionBiasValue");
+  const decisionRiskValue = document.getElementById("dashboardDecisionRiskValue");
+  const decisionPlanValue = document.getElementById("dashboardDecisionPlanValue");
+  const decisionTradeGateValue = document.getElementById("dashboardDecisionTradeGateValue");
   if (!rows.length || !statusNode || !updatedNode) return;
 
   let freshTimer = null;
@@ -240,6 +308,22 @@
     updatedNode.textContent = detail;
   };
 
+  const tapeHasRenderableValues = () => rows.some((row) => {
+    const lastNode = row.querySelector('[data-role="last"]');
+    return hasMeaningfulText(lastNode) && String(lastNode.textContent || "").trim().toLowerCase() !== "loading...";
+  });
+
+  const applyTapeSnapshot = (quotes, updatedLabel) => {
+    const payload = quotes && typeof quotes === "object" ? quotes : {};
+    rows.forEach((row) => {
+      const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
+      updateRow(row, payload[symbol] || {}, []);
+    });
+    if (updatedLabel && updatedNode) {
+      updatedNode.textContent = updatedLabel;
+    }
+  };
+
   const gammaCardByKey = (key) => document.getElementById(`dashboardGammaChip-${key}`);
   const gammaValueByKey = (key) => document.getElementById(`dashboardGammaValue-${key}`);
   const gammaDetailByKey = (key) => document.getElementById(`dashboardGammaDetail-${key}`);
@@ -277,7 +361,7 @@
       return String(structure.gamma_regime_label || structure.gamma_regime || "UNAVAILABLE").toUpperCase();
     }
     if (key === "local_flip" && structure.local_flip === null && structure.local_flip_found === false) {
-      return "None in local band";
+      return "No Local Flip between Put Wall and Call Wall";
     }
     const fieldMap = {
       local_flip: "local_flip",
@@ -297,6 +381,36 @@
     if (tone === "negative") node.classList.add("is-negative");
     if (tone === "info") node.classList.add("is-info");
     if (glow) node.classList.add("has-glow");
+  };
+
+  const truncateText = (value, max) => {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    return text.length > max ? `${text.slice(0, Math.max(0, max - 1)).trim()}…` : text;
+  };
+
+  const updateDecisionPanel = (panel) => {
+    if (!panel || typeof panel !== "object") return;
+    if (decisionBiasValue) decisionBiasValue.textContent = String(panel.bias || "Unavailable");
+    if (decisionRiskValue) decisionRiskValue.textContent = String(panel.risk_size || "Unavailable");
+    if (decisionPlanValue) {
+      const fullPlan = String(panel.plan || "Wait");
+      decisionPlanValue.textContent = truncateText(fullPlan, 88);
+      decisionPlanValue.title = fullPlan;
+    }
+    if (decisionTradeGateValue) {
+      const fullGate = String(panel.trade_gate || "Wait");
+      decisionTradeGateValue.textContent = truncateText(fullGate, 74);
+      decisionTradeGateValue.title = fullGate;
+    }
+    if (decisionStatusChip) {
+      const tone = String(panel.status_tone || "").toLowerCase();
+      decisionStatusChip.textContent = String(panel.status || "Unavailable");
+      decisionStatusChip.classList.remove("positive", "negative", "warning", "info");
+      if (["positive", "negative", "warning", "info"].includes(tone)) {
+        decisionStatusChip.classList.add(tone);
+      }
+    }
   };
 
   const updateGammaStrip = (structure, metaPayload) => {
@@ -401,6 +515,78 @@
 
   setStreamStatus("Connecting", "waiting for first tick…");
   connect();
+
+  if (tapeCard && tapeRefreshBtn) {
+    const endpoint = String(tapeCard.dataset.refreshEndpoint || "").trim();
+    const setTapeRefreshState = (loading) => {
+      tapeRefreshBtn.disabled = !!loading;
+      tapeRefreshBtn.classList.toggle("is-loading", !!loading);
+      tapeRefreshBtn.setAttribute("aria-busy", loading ? "true" : "false");
+    };
+    const refreshTape = async () => {
+      if (!endpoint || tapeRefreshBtn.disabled) return;
+      setTapeRefreshState(true);
+      try {
+        const response = await fetch(endpoint, {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload || payload.ok === false) {
+          throw new Error("tape_refresh_failed");
+        }
+        applyTapeSnapshot(payload.quotes || {}, payload.updated_label || "");
+        if (tapeHasRenderableValues()) {
+          setStreamStatus("Live", payload.updated_label || "just now");
+        }
+      } catch (_error) {
+        // Keep existing rows/status if the manual refresh fails.
+      } finally {
+        setTapeRefreshState(false);
+      }
+    };
+    tapeRefreshBtn.addEventListener("click", () => {
+      void refreshTape();
+    });
+    if (!tapeHasRenderableValues()) {
+      window.setTimeout(() => {
+        if (!tapeHasRenderableValues()) {
+          void refreshTape();
+        }
+      }, 650);
+    }
+  }
+
+  if (decisionCard && decisionRefreshBtn) {
+    const endpoint = String(decisionCard.dataset.refreshEndpoint || "").trim();
+    const setRefreshState = (loading) => {
+      decisionRefreshBtn.disabled = !!loading;
+      decisionRefreshBtn.classList.toggle("is-loading", !!loading);
+      decisionRefreshBtn.setAttribute("aria-busy", loading ? "true" : "false");
+    };
+    decisionRefreshBtn.addEventListener("click", async () => {
+      if (!endpoint || decisionRefreshBtn.disabled) return;
+      setRefreshState(true);
+      try {
+        const response = await fetch(endpoint, {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload || payload.ok === false) {
+          throw new Error("planning_refresh_failed");
+        }
+        updateDecisionPanel(payload.decision_panel || {});
+        updateGammaStrip(payload.market_structure_snapshot || null, payload.dashboard_gamma || null);
+      } catch (_error) {
+        // Keep the current planning state visible if the manual refresh fails.
+      } finally {
+        setRefreshState(false);
+      }
+    });
+  }
 })();
 
 (function () {
