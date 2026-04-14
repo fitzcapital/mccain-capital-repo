@@ -57,12 +57,17 @@
 
 <div class="dashboardStage">
   <div class="dashboardStageColumn dashboardStageLead">
-  <section class="dashboardStageSection dashboardStageCommand">
+  <div class="dashboardPrimaryBand">
+  <section class="dashboardStageSection dashboardStageCommand dashboardPrimarySection">
     <div class="dashboardStepLabel">Prepare</div>
     <div class="dashboardHero card pageHero heroCard">
       <div class="toolbar">
         <div class="dashboardHeroHead">
           <div>
+            <div class="dashboardPrimaryBandHeader">
+              <span class="dashboardPrimaryBandEyebrow">Operating Zone</span>
+              <span class="dashboardPrimaryBandSubhead">State, decision, and brief aligned in one pass.</span>
+            </div>
             <div class="pill">🎛️ Command Center</div>
             <h2 class="pageTitle">{{ hero_title }}</h2>
             <div class="dashboardLead stack8">{{ hero_lead }}</div>
@@ -97,7 +102,7 @@
               </div>
               <div class="rightActions dashboardHeroPrimaryActions">
                 <a class="btn primary" href="{{ focus_href }}">{{ focus_cta }}</a>
-                <a class="btn" href="/market-pulse?refresh=1">Pulse</a>
+                <a class="btn" href="#daily-brief-card">Brief</a>
               </div>
             </div>
             <details class="dashboardCommandFold"{% if command_fold_open %} open{% endif %}>
@@ -135,7 +140,7 @@
 
   </section>
 
-  <section class="dashboardStageSection dashboardStagePlan">
+  <section class="dashboardStageSection dashboardStagePlan dashboardPrimarySection">
     <div class="dashboardPriorityGrid">
       <div class="dashboardStepLabel">Plan</div>
       <div class="card primaryCard dashboardPriorityCard dashboardDecisionCard"><div class="toolbar">
@@ -404,6 +409,7 @@
     </div>
   </section>
   </div>
+  </div>
 
   <div class="dashboardStageColumn dashboardStageSide">
   <section class="dashboardStageSection dashboardStageMonitor">
@@ -478,13 +484,13 @@
 	      {% endif %}
 	    {% endfor %}
 
-	    <details class="syncDetails dashboardFoldSection dashboardSupportFold" data-dashboard-optional="support-fold"{% if badge_meta.critical %} open{% endif %}>
-	      <summary>
+	    <div class="dashboardHealthSurface">
+	      <div class="dashboardSupportHeader">
 	        <span class="dashboardStepLabel dashboardStepLabel-inline">Review</span>
 	        <span class="dashboardFoldTitle">Session Support &amp; Health</span>
 	        <span class="tiny muted">Open for milestone, pacing, balance, and data trust.</span>
-	      </summary>
-	      <div class="dashboardFoldBody dashboardHealthGrid session-health-grid">
+	      </div>
+	      <div class="dashboardHealthGrid session-health-grid">
 	        {% set milestone_pct = '%.1f'|format(milestone.overall_progress_pct) %}
 	        {% set milestone_balance_remaining = (milestone.target_balance|float - overall_balance|float) if milestone.has_balance_goal else 0 %}
 	        <div class="card primaryCard milestoneCard mobileKeep dashboardMilestoneCard dashboardHealthMilestone"><div class="toolbar">
@@ -599,6 +605,7 @@
         {% set pattern_short = 'TAG' if 'Most common breach' in pattern_watch else 'CLR' %}
         {% set today_net_meta = 'Green' if today_net > 0 else 'Red' if today_net < 0 else 'Flat' %}
         {% set record_meta = 'No trades' if today_count == 0 else today_wins ~ 'W / ' ~ today_losses ~ 'L' %}
+        {% set scope_meta = 'Active acct' if scope_short == 'ACT' else 'All history' %}
         {% set pace_meta = 'On track' if 'projects' in payout_focus else 'Need sample' %}
         {% set risk_meta = 'Clean only' if 'Wait' in risk_posture_title else 'Reduce' if 'Protect' in risk_posture_title else 'Attack' %}
         {% set pattern_meta = 'No breaks' if pattern_short == 'CLEAR' else 'Watch tag' %}
@@ -663,14 +670,14 @@
             data-status-title="{% if scope_short == 'ACT' %}Active Account{% else %}Account Scope{% endif %}"
             data-status-primary="{% if scope_short == 'ACT' %}Active{% else %}All{% endif %}"
             data-status-line1="{{ account_scope.start_date if account_scope and account_scope.enabled and scope_mode == 'active' else 'Legacy + current' }}"
-            data-status-line2="{{ account_scope.label if account_scope and account_scope.label and scope_mode == 'active' else 'Millions' if scope_short == 'ACT' else 'All history' }}"
+            data-status-line2="{{ account_scope.label if account_scope and account_scope.label and scope_mode == 'active' else scope_meta }}"
             data-status-line3="Current session scope loaded"
           >
             <div class="dashboardStatusOrbCircle">
               <strong>{{ scope_short }}</strong>
             </div>
             <div class="dashboardStatusOrbLabel">Scope</div>
-            <div class="dashboardStatusOrbMeta">{{ account_scope.label if account_scope and account_scope.label and scope_mode == 'active' else 'Millions' if scope_short == 'ACT' else 'All history' }}</div>
+            <div class="dashboardStatusOrbMeta">{{ scope_meta }}</div>
           </button>
 
           <button
@@ -835,7 +842,7 @@
 	          </div>
 	        </div>
 	      </div>
-	    </details>
+	    </div>
 	  </section>
 	</div>
   </div>
@@ -1008,6 +1015,10 @@
 {% if performance_actual_pct > 100 %}{% set performance_actual_pct = 100 %}{% endif %}
 
 <div class="dashboardStepLabel">Project</div>
+<div class="dashboardProjectHeader">
+  <span class="dashboardProjectEyebrow">Reference Deck</span>
+  <span class="dashboardProjectSubhead">Performance and pace stay available, but they should not compete with the live operating zone.</span>
+</div>
 <div class="dashboardAnalyticsCluster dashboardProjectGrid">
   <div class="card primaryCard summaryPanel dashboardAnalyticsPrimary"><div class="toolbar">
     <div class="calendarHead">

@@ -18106,16 +18106,40 @@ body.modalOpen{
   }
 }
 
-/* Session Support open-state layout: keep this after legacy dashboard rules. */
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid{
+.page-dashboard .dashboardHealthSurface{
   display:grid;
-  grid-template-columns:minmax(0, 1fr);
-  gap:10px;
-  align-items:start;
-  margin-top:10px;
+  gap:12px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > *{
+.page-dashboard .dashboardSupportHeader{
+  display:grid;
+  grid-template-columns:120px minmax(0, 1fr) minmax(220px, 1.1fr);
+  gap:16px;
+  align-items:start;
+}
+
+.page-dashboard .dashboardSupportHeader .dashboardStepLabel-inline{
+  margin-top:4px;
+}
+
+.page-dashboard .dashboardSupportHeader .dashboardFoldTitle{
+  line-height:1.04;
+}
+
+.page-dashboard .dashboardSupportHeader .tiny.muted{
+  display:block;
+  line-height:1.28;
+}
+
+/* Session Support layout: keep this after legacy dashboard rules. */
+.page-dashboard .dashboardHealthSurface .session-health-grid{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr);
+  gap:0;
+  align-items:start;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid > *{
   grid-column:1;
   width:100%;
   min-width:0;
@@ -18123,214 +18147,247 @@ body.modalOpen{
   align-self:start;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthMilestone,
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthRiskCard,
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthTrustCard{
-  overflow:hidden;
-  box-sizing:border-box;
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthRiskCard,
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthKpiStrip,
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthTrustCard,
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthBottomRow{
+  margin-top:14px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthKpiStrip{
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthKpiStrip{
   display:grid;
-  grid-template-columns:repeat(6, minmax(0, 1fr));
-  gap:7px;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
   justify-content:stretch;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthBottomRow{
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthBottomRow{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:10px;
+  gap:14px;
   align-items:stretch;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthRiskCard{
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthRiskCard{
   min-height:0;
-  gap:5px;
-  padding:9px 12px;
+  gap:8px;
   align-content:start;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusDetailSection{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailSection{
   font-size:9px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusDetailTitle{
-  font-size:16px;
-  line-height:1.02;
-}
-
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusDetailPrimary{
-  font-size:14px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailTitle{
+  font-size:17px;
   line-height:1.08;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusDetailLines{
-  gap:2px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailPrimary{
+  font-size:14px;
+  line-height:1.18;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusDetailLine{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailLines{
+  gap:4px;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailLine{
   font-size:10.5px;
-  line-height:1.24;
+  line-height:1.3;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusDetailTags{
-  gap:5px;
-  margin-top:1px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailTags{
+  gap:6px;
+  margin-top:4px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-milestone-body{
+.page-dashboard .dashboardHealthSurface .session-health-grid .profit-milestone-body{
   display:grid;
   grid-template-columns:140px minmax(0, 1fr);
-  gap:14px;
+  gap:18px;
   align-items:center;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-details{
+.page-dashboard .dashboardHealthSurface .session-health-grid .profit-details{
   display:flex;
   flex-direction:column;
-  gap:6px;
+  gap:9px;
   min-width:0;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-footer{
+.page-dashboard .dashboardHealthSurface .session-health-grid .profit-footer{
   display:flex;
   justify-content:space-between;
-  align-items:center;
-  gap:12px;
+  align-items:flex-start;
+  gap:16px;
   flex-wrap:wrap;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-footer .dashboardMilestoneMeta{
+.page-dashboard .dashboardHealthSurface .session-health-grid .profit-footer .dashboardMilestoneMeta{
   flex:1 1 280px;
   min-width:0;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-footer .dashboardMilestoneControls{
+.page-dashboard .dashboardHealthSurface .session-health-grid .profit-footer .dashboardMilestoneControls{
   display:inline-grid;
   flex:0 0 auto;
   width:auto;
-  max-width:min(100%, 208px);
+  max-width:min(100%, 220px);
   min-width:0;
   align-self:start;
   justify-self:start;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-footer .dashboardMilestoneControls > summary{
+.page-dashboard .dashboardHealthSurface .session-health-grid .profit-footer .dashboardMilestoneControls > summary{
   width:auto;
   min-width:0;
-  min-height:32px;
-  padding-inline:18px;
+  min-height:36px;
+  padding-inline:20px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusOrb{
-  min-height:88px;
-  gap:3px;
-  padding:6px 6px 5px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrb{
+  min-height:92px;
+  gap:4px;
+  padding:10px 8px 8px;
+  border-color:rgba(255,255,255,.04);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.008), rgba(255,255,255,.002)),
+    rgba(5, 11, 21, .22);
+  box-shadow:none;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusOrbCircle{
-  width:46px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle{
+  width:48px;
+  box-shadow:none;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusOrbLabel{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbLabel{
   line-height:1;
+  font-size:10px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardStatusOrbMeta{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbMeta{
   font-size:9px;
-  line-height:1.02;
+  line-height:1.12;
+  white-space:normal;
+  text-overflow:clip;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthTrustCard > summary{
-  padding:8px 12px;
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthTrustCard > summary{
+  display:grid;
+  grid-template-columns:minmax(0, 220px) minmax(0, 1fr);
+  gap:14px;
+  align-items:start;
+  padding:2px 0 10px;
   line-height:1.15;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dataTrustTitle{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dataTrustTitle{
   line-height:1.02;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dataTrustSummary{
-  line-height:1.18;
+.page-dashboard .dashboardHealthSurface .session-health-grid .dataTrustSummary{
+  line-height:1.28;
+  color:rgba(214, 226, 243, .68);
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .statusBadgeStrip{
-  gap:6px;
-  padding:0 12px 8px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .statusBadgeStrip{
+  gap:8px;
+  padding:0 0 4px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .statusBadge{
+.page-dashboard .dashboardHealthSurface .session-health-grid .statusBadge{
   padding:5px 7px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .showcaseCard{
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseCard{
   display:flex;
   flex-direction:column;
   height:100%;
-  padding:11px 12px 12px;
+  padding:12px 12px 12px;
+  border-color:rgba(255,255,255,.04);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.01), rgba(255,255,255,.003)),
+    rgba(6, 11, 21, .26);
+  box-shadow:none;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .showcaseHead{
-  gap:6px;
-  margin-bottom:4px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseHead{
+  gap:8px;
+  margin-bottom:6px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .showcaseValue{
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseValue{
   margin-top:0;
-  line-height:.92;
+  line-height:.95;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .showcaseMeta{
-  margin-top:4px;
-  line-height:1.2;
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseMeta{
+  margin-top:6px;
+  line-height:1.26;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .showcasePulse{
-  margin-top:7px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcasePulse{
+  margin-top:10px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardMilestoneTop,
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthMilestone .toolbar{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestoneTop,
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthMilestone .toolbar{
   gap:10px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardMilestoneSecondary{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestoneSecondary{
   line-height:1.22;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardMilestoneProgressMeta{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestoneProgressMeta{
   gap:6px 12px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardMilestoneBottom{
-  padding-top:8px;
-  gap:8px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestoneBottom{
+  padding-top:12px;
+  gap:12px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardMilestoneMeta{
-  gap:8px;
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestoneMeta{
+  gap:12px;
 }
 
-.page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .dashboardMilestoneMetaItem{
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestoneMetaItem{
   gap:3px;
 }
 
 @media (max-width: 1180px){
-  .page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthKpiStrip{
+  .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthKpiStrip{
     grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .page-dashboard .dashboardSupportHeader{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .page-dashboard .dashboardSupportHeader .dashboardStepLabel-inline{
+    grid-column:1 / -1;
+    margin-top:0;
   }
 }
 
 @media (max-width: 760px){
-  .page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-milestone-body,
-  .page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthKpiStrip,
-  .page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid > .dashboardHealthBottomRow{
+  .page-dashboard .dashboardHealthSurface .session-health-grid .profit-milestone-body,
+  .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthKpiStrip,
+  .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthBottomRow{
     grid-template-columns:1fr;
   }
 
-  .page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-footer .dashboardMilestoneMeta,
-  .page-dashboard .dashboardSupportFold .dashboardFoldBody.session-health-grid .profit-footer .dashboardMilestoneControls{
+  .page-dashboard .dashboardSupportHeader,
+  .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthTrustCard > summary{
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+
+  .page-dashboard .dashboardHealthSurface .session-health-grid .profit-footer .dashboardMilestoneMeta,
+  .page-dashboard .dashboardHealthSurface .session-health-grid .profit-footer .dashboardMilestoneControls{
     flex-basis:100%;
     width:100%;
     max-width:none;
@@ -33719,50 +33776,52 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardBriefCard{
-  opacity:.72;
-  border-color:rgba(var(--tone-info-rgb), .10) !important;
+  opacity:.84;
+  border-color:rgba(var(--tone-info-rgb), .11) !important;
   box-shadow:
     inset 0 0 0 1px rgba(174, 230, 255, .03),
-    0 8px 14px rgba(0,0,0,.08) !important;
+    0 10px 18px rgba(0,0,0,.10) !important;
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardBriefSignalRow .trendChip,
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardBriefPrimaryActions .btn,
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardBriefMoreInfo,
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] #daily-brief-card .syncDetails{
-  opacity:.62;
+  opacity:.72;
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardCoreTapeCard{
-  border-color:rgba(var(--tone-info-rgb), .18);
+  opacity:.74;
+  border-color:rgba(var(--tone-info-rgb), .11);
   background:
-    radial-gradient(132% 128% at 100% 0%, rgba(var(--tone-info-rgb), .09), transparent 54%),
-    linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,.006)),
-    rgba(6, 12, 22, .90);
+    radial-gradient(132% 128% at 100% 0%, rgba(var(--tone-info-rgb), .05), transparent 52%),
+    linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,.004)),
+    rgba(6, 12, 22, .78);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.05),
-    0 20px 38px rgba(0,0,0,.24),
-    0 0 24px rgba(var(--tone-info-rgb), .08);
+    inset 0 1px 0 rgba(255,255,255,.035),
+    0 12px 22px rgba(0,0,0,.14),
+    0 0 14px rgba(var(--tone-info-rgb), .04);
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardCoreTapeCard .v{
-  color:#f6fbff;
-  text-shadow:0 0 20px rgba(var(--tone-info-rgb), .10);
+  color:#edf7ff;
+  text-shadow:none;
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardSupportFold{
-  opacity:.68;
+  opacity:.58;
   border-color:rgba(255,255,255,.06);
   box-shadow:none;
+  filter:saturate(.82);
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardMilestoneCard,
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardSignalCard-risk{
-  opacity:.90;
-  border-color:rgba(var(--tone-info-rgb), .12);
+  opacity:.72;
+  border-color:rgba(var(--tone-info-rgb), .08);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.04),
-    0 10px 18px rgba(0,0,0,.12);
+    inset 0 1px 0 rgba(255,255,255,.03),
+    0 8px 14px rgba(0,0,0,.10);
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardSignalCard-pattern,
@@ -33776,23 +33835,23 @@ textarea:focus-visible{
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardAnalyticsPrimary,
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardProjectionCard,
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] #advancedDashboardWidgets{
-  opacity:.58;
-  border-color:rgba(255,255,255,.07);
+  opacity:.50;
+  border-color:rgba(255,255,255,.05);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.025),
-    0 8px 16px rgba(0,0,0,.10);
-  filter:saturate(.88);
+    inset 0 1px 0 rgba(255,255,255,.02),
+    0 6px 12px rgba(0,0,0,.08);
+  filter:saturate(.78);
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardAnalyticsPrimary .btn,
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardProjectionCard .btn,
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] #advancedDashboardWidgets .btn{
-  opacity:.74;
+  opacity:.64;
   box-shadow:none;
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] [data-dashboard-optional]{
-  opacity:.56;
+  opacity:.46;
 }
 
 .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] [data-dashboard-optional][open]{
@@ -34111,6 +34170,47 @@ textarea:focus-visible{
   gap:18px;
 }
 
+.page-dashboard .dashboardPrimaryBand{
+  display:grid;
+  gap:14px;
+  padding:14px;
+  border:1px solid rgba(163, 231, 255, .10);
+  border-radius:28px;
+  background:
+    radial-gradient(circle at top left, rgba(83, 215, 255, .10), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.008)),
+    rgba(4, 10, 21, .58);
+  box-shadow:
+    0 28px 52px rgba(0,0,0,.26),
+    inset 0 0 0 1px rgba(255,255,255,.03);
+}
+
+.page-dashboard .dashboardPrimarySection{
+  margin:0;
+}
+
+.page-dashboard .dashboardPrimaryBandHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+.page-dashboard .dashboardPrimaryBandEyebrow{
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:rgba(168, 224, 244, .82);
+}
+
+.page-dashboard .dashboardPrimaryBandSubhead{
+  font-size:11px;
+  line-height:1.35;
+  color:rgba(209, 223, 239, .54);
+}
+
 .page-dashboard .dashboardStepLabel{
   margin-bottom:6px;
   color:rgba(220, 233, 247, .56);
@@ -34119,20 +34219,21 @@ textarea:focus-visible{
 
 .page-dashboard .dashboardHero{
   margin-bottom:0;
+  border-color:rgba(112, 219, 255, .16);
   box-shadow:
-    0 18px 36px rgba(0,0,0,.24),
-    0 0 18px rgba(83,215,255,.06),
+    0 24px 42px rgba(0,0,0,.26),
+    0 0 20px rgba(83,215,255,.08),
     inset 0 0 0 1px rgba(144, 231, 255, .05),
-    inset 0 0 24px rgba(74, 158, 255, .04);
+    inset 0 0 30px rgba(74, 158, 255, .05);
 }
 
 .page-dashboard .dashboardPriorityGrid > .dashboardDecisionCard{
   border-color:rgba(241, 196, 90, .18) !important;
   box-shadow:
-    0 28px 56px rgba(0,0,0,.32),
-    0 0 26px rgba(241, 196, 90, .08),
+    0 22px 42px rgba(0,0,0,.24),
+    0 0 18px rgba(241, 196, 90, .06),
     inset 0 0 0 1px rgba(255,255,255,.05),
-    inset 0 0 38px rgba(83, 215, 255, .04);
+    inset 0 0 28px rgba(83, 215, 255, .03);
 }
 
 .page-dashboard .dashboardDecisionCard > .toolbar{
@@ -34141,9 +34242,25 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardBriefCard{
+  border-color:rgba(144, 231, 255, .10);
   box-shadow:
     inset 0 0 0 1px rgba(174, 230, 255, .05),
-    0 10px 18px rgba(0,0,0,.12) !important;
+    0 12px 22px rgba(0,0,0,.14) !important;
+}
+
+.page-dashboard .dashboardBriefPrimaryActions{
+  grid-template-columns:minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
+}
+
+.page-dashboard .dashboardBriefSignalRow .trendChip,
+.page-dashboard .dashboardHeroPriorityMeta .trendChip,
+.page-dashboard .dashboardBriefMetaStrong .trendChip{
+  opacity:.84;
+}
+
+.page-dashboard .dashboardGammaChipDetail,
+.page-dashboard .dashboardBriefSignalText{
+  color:rgba(214, 226, 243, .56);
 }
 
 .page-dashboard .dashboardCoreTapeCard{
@@ -34209,6 +34326,29 @@ textarea:focus-visible{
   margin-top:0;
 }
 
+.page-dashboard .dashboardProjectHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:-2px 0 10px;
+}
+
+.page-dashboard .dashboardProjectEyebrow{
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:rgba(185, 210, 232, .72);
+}
+
+.page-dashboard .dashboardProjectSubhead{
+  max-width:56ch;
+  font-size:10.5px;
+  line-height:1.34;
+  color:rgba(212, 224, 238, .48);
+}
+
 .page-dashboard .showcaseCard{
   padding:11px 12px;
   border-color:rgba(255,255,255,.045);
@@ -34224,42 +34364,47 @@ textarea:focus-visible{
 
 .page-dashboard .dashboardAnalyticsCluster{
   grid-template-columns:minmax(0, 1.12fr) minmax(250px, .74fr);
-  gap:16px;
+  gap:14px;
   margin:0;
   align-items:start;
 }
 
 .page-dashboard .summaryPanel .toolbar,
 .page-dashboard .dashboardProjectionCard .toolbar{
-  padding:12px 13px;
-  gap:8px;
+  padding:11px 12px;
+  gap:7px;
 }
 
 .page-dashboard .summaryLead{
   max-width:34ch;
   font-size:10px;
   line-height:1.32;
-  color:rgba(214, 226, 243, .60);
+  color:rgba(214, 226, 243, .52);
 }
 
 .page-dashboard .summaryBalance{
   margin-top:4px;
-  font-size:34px;
+  font-size:30px;
 }
 
 .page-dashboard .dashboardPerformanceBoard{
-  gap:7px;
+  gap:6px;
   margin-top:8px;
-  padding:9px 10px;
+  padding:8px 9px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,.003)),
+    rgba(6, 11, 21, .42);
+  border:1px solid rgba(255,255,255,.04);
+  box-shadow:none;
 }
 
 .page-dashboard .dashboardPerformanceTiles{
-  gap:6px;
+  gap:5px;
 }
 
 .page-dashboard .dashboardPerformanceTile{
-  min-height:54px;
-  padding:6px 7px;
+  min-height:48px;
+  padding:5px 6px;
 }
 
 .page-dashboard .dashboardBalanceProgressWrap{
@@ -34268,23 +34413,27 @@ textarea:focus-visible{
 }
 
 .page-dashboard .summaryChip{
-  padding:7px 9px;
+  padding:6px 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,.004)),
+    rgba(7, 12, 22, .34);
+  box-shadow:none;
 }
 
 .page-dashboard .summaryChip strong{
-  font-size:15px;
+  font-size:14px;
 }
 
 .page-dashboard .summaryGrid{
-  gap:10px;
+  gap:8px;
 }
 
 .page-dashboard .summaryStat{
-  padding:8px 9px;
+  padding:7px 8px;
 }
 
 .page-dashboard .summaryStat .v{
-  font-size:16px;
+  font-size:15px;
 }
 
 .page-dashboard .summaryPanel .syncDetails{
@@ -34299,30 +34448,32 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardProjectionCard{
-  border-color:rgba(83, 215, 255, .09);
+  border-color:rgba(83, 215, 255, .07);
   box-shadow:
-    0 10px 20px rgba(0,0,0,.16),
-    0 0 22px rgba(83, 215, 255, .04),
+    0 8px 16px rgba(0,0,0,.12),
+    0 0 14px rgba(83, 215, 255, .03),
     inset 0 0 0 1px rgba(170, 236, 255, .03);
 }
 
 .page-dashboard .dashboardProjectionHero{
-  gap:6px;
-  padding:10px 11px;
-  box-shadow:
-    0 0 18px rgba(83, 215, 255, .05);
+  gap:5px;
+  padding:9px 10px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,.004)),
+    rgba(7, 12, 22, .38);
+  box-shadow:none;
 }
 
 .page-dashboard .dashboardProjectionHeroValue{
-  font-size:clamp(26px, 2.5vw, 36px);
+  font-size:clamp(23px, 2.2vw, 32px);
 }
 
 .page-dashboard .dashboardProjectionHeroValue small{
-  font-size:12px;
+  font-size:11px;
 }
 
 .page-dashboard .dashboardProjectionHeroCopy{
-  font-size:10.5px;
+  font-size:10px;
   line-height:1.32;
 }
 
@@ -34342,21 +34493,24 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardProjectionTimeline{
-  gap:8px;
+  gap:6px;
 }
 
 .page-dashboard .dashboardProjectionNode{
   gap:4px;
-  padding:8px 9px;
+  padding:7px 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,.004)),
+    rgba(6, 11, 21, .32);
   box-shadow:none;
 }
 
 .page-dashboard .dashboardProjectionNode strong{
-  font-size:17px;
+  font-size:16px;
 }
 
 .page-dashboard .dashboardProjectionNode small{
-  font-size:10px;
+  font-size:9.5px;
   line-height:1.26;
 }
 
@@ -34409,8 +34563,20 @@ textarea:focus-visible{
     gap:14px;
   }
 
+  .page-dashboard .dashboardPrimaryBand{
+    padding:12px;
+    gap:12px;
+    border-radius:24px;
+  }
+
   .page-dashboard .dashboardAnalyticsCluster{
     gap:14px;
+  }
+
+  .page-dashboard .dashboardProjectHeader{
+    flex-direction:column;
+    align-items:flex-start;
+    margin-bottom:8px;
   }
 
   .page-dashboard .showcaseGrid{
@@ -34451,6 +34617,17 @@ textarea:focus-visible{
   .page-dashboard .dashboardSnapshotCard{
     min-width:0;
     padding:9px 10px;
+  }
+
+  .page-dashboard .dashboardPrimaryBand{
+    padding:10px;
+    border-radius:20px;
+  }
+
+  .page-dashboard .dashboardPrimaryBandHeader{
+    flex-direction:column;
+    align-items:flex-start;
+    margin-bottom:8px;
   }
 
   .page-dashboard .dashboardSnapshotCard strong{
