@@ -444,10 +444,11 @@
   function initThemeAndGuided() {
     const themeMigrationKey = "mc_theme_v4";
     const fontModeKey = "mc_font_mode";
-    const themeOrder = ["new-galaxy", "wallpaper-galaxy", "galaxy", "obsidian", "black", "nebula"];
+    const themeOrder = ["new-galaxy", "wallpaper-galaxy", "cosmic-flare", "galaxy", "obsidian", "black", "nebula"];
     const themeLabels = {
       "new-galaxy": "Theme: New Galaxy",
       "wallpaper-galaxy": "Theme: Wallpaper Galaxy",
+      "cosmic-flare": "Theme: Cosmic Flare",
       galaxy: "Theme: Midnight Galaxy",
       obsidian: "Theme: True Dark",
       black: "Theme: Midnight",

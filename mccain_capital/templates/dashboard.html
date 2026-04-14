@@ -493,11 +493,12 @@
 	      <div class="dashboardHealthGrid session-health-grid">
 	        {% set milestone_pct = '%.1f'|format(milestone.overall_progress_pct) %}
 	        {% set milestone_balance_remaining = (milestone.target_balance|float - overall_balance|float) if milestone.has_balance_goal else 0 %}
+          {% set milestone_heading = milestone.name if (milestone.name or '')|lower != 'profit milestone' else 'Current target progress' %}
 	        <div class="card primaryCard milestoneCard mobileKeep dashboardMilestoneCard dashboardHealthMilestone"><div class="toolbar">
 	          <div class="dashboardMilestoneTop">
 	            <div class="dashboardMilestoneHead">
 	              <div class="pill">Profit Milestone</div>
-	              <div class="supportLead">{{ milestone.name }}</div>
+	              <div class="supportLead">{{ milestone_heading }}</div>
 	            </div>
 	            <div class="dashboardMilestoneMission profit-milestone-body">
 	              <div class="dashboardMilestoneRing" style="--milestone-pct: {{ milestone_pct }}%">

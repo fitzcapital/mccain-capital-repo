@@ -969,7 +969,9 @@
     if (streamFreshness) streamFreshness.textContent = freshness;
   };
 
-  if (window.location.search.includes("refresh=1")) {
+  const hadServerRefresh = window.location.search.includes("refresh=1");
+
+  if (hadServerRefresh) {
     window.requestAnimationFrame(() => {
       try {
         const url = new URL(window.location.href);
@@ -1364,10 +1366,11 @@
     });
   };
 
-  const refreshFeedInPlace = async () => {
+  const refreshFeedInPlace = async (forceRefresh = true) => {
     setFeedRefreshState(true);
     try {
-      const response = await fetch(`/api/market-pulse/news?refresh=1&mode=${currentFeedMode}`, { cache: "no-store" });
+      const refreshFlag = forceRefresh ? "1" : "0";
+      const response = await fetch(`/api/market-pulse/news?refresh=${refreshFlag}&mode=${currentFeedMode}`, { cache: "no-store" });
       const data = await response.json();
       if (!data || data.ok === false) return;
       const items = Array.isArray(data.items) ? data.items : [];
@@ -1398,9 +1401,6 @@
   const initialItems = currentFeedItems;
   renderFeedLayout(initialItems);
   updateUnreadBadge(initialItems);
-  syncNotifications(initialItems);
-  storeNotificationOverrides(initialItems);
-  refreshFeedInPlace();
   document.addEventListener("click", (event) => {
     const refreshTrigger = event.target.closest("[data-market-feed-refresh='1']");
     if (refreshTrigger) {

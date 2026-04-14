@@ -7553,6 +7553,182 @@ body{
         inset 0 0 18px rgba(255,108,176,.12) !important;
     }
 
+    body[data-theme="cosmic-flare"]{
+      --accent-rgb:106,220,255;
+      --accent-soft-rgb:255,170,88;
+      --text:#fff8f3;
+      --muted:#d8d3eb;
+      --gold:#ffd79f;
+      --panel:#12091d;
+      --panel2:#090411;
+      --surface:#1d1231;
+      --surface2:#2c1a42;
+      background:
+        radial-gradient(980px 620px at 18% 30%, rgba(86,210,255,.30), transparent 50%),
+        radial-gradient(1180px 760px at 86% 6%, rgba(255,182,94,.42), transparent 46%),
+        radial-gradient(820px 560px at 62% 24%, rgba(255,112,54,.28), transparent 50%),
+        radial-gradient(820px 640px at 22% 70%, rgba(102,78,255,.22), transparent 58%),
+        linear-gradient(180deg, #08030d 0%, #12071d 36%, #170a23 62%, #05030a 100%);
+      background-color:#09040d;
+    }
+    body[data-theme="cosmic-flare"]::before{
+      background:
+        radial-gradient(2.3px 2.3px at 4% 12%, rgba(255,248,244,.94), transparent 68%),
+        radial-gradient(1.7px 1.7px at 10% 28%, rgba(132,228,255,.82), transparent 70%),
+        radial-gradient(1.5px 1.5px at 15% 20%, rgba(255,216,170,.78), transparent 72%),
+        radial-gradient(2.2px 2.2px at 23% 9%, rgba(255,255,255,.86), transparent 68%),
+        radial-gradient(1.4px 1.4px at 29% 24%, rgba(193,236,255,.68), transparent 72%),
+        radial-gradient(1.8px 1.8px at 36% 15%, rgba(255,191,132,.78), transparent 70%),
+        radial-gradient(1.9px 1.9px at 43% 23%, rgba(146,224,255,.74), transparent 70%),
+        radial-gradient(2px 2px at 51% 11%, rgba(255,255,255,.74), transparent 68%),
+        radial-gradient(1.6px 1.6px at 58% 27%, rgba(171,214,255,.70), transparent 72%),
+        radial-gradient(1.8px 1.8px at 66% 16%, rgba(255,193,119,.80), transparent 70%),
+        radial-gradient(2.1px 2.1px at 74% 8%, rgba(255,246,238,.90), transparent 68%),
+        radial-gradient(1.6px 1.6px at 81% 23%, rgba(138,220,255,.74), transparent 72%),
+        radial-gradient(1.8px 1.8px at 88% 13%, rgba(255,171,123,.76), transparent 70%),
+        radial-gradient(1.4px 1.4px at 95% 22%, rgba(255,255,255,.70), transparent 72%),
+        radial-gradient(760px 340px at 18% 36%, rgba(94,214,255,.22), transparent 72%),
+        radial-gradient(980px 420px at 82% 8%, rgba(255,182,92,.24), transparent 70%),
+        radial-gradient(760px 300px at 64% 24%, rgba(255,102,58,.16), transparent 72%);
+      opacity:.97;
+      animation: ambientFloat 30s ease-in-out infinite alternate;
+    }
+    body[data-theme="cosmic-flare"]::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      z-index:0;
+      background:
+        radial-gradient(460px 300px at 26% 28%, rgba(96,225,255,.20), transparent 72%),
+        radial-gradient(620px 420px at 76% 14%, rgba(255,190,98,.24), transparent 72%),
+        radial-gradient(520px 340px at 70% 42%, rgba(255,108,58,.18), transparent 74%),
+        radial-gradient(520px 380px at 34% 76%, rgba(121,88,255,.16), transparent 74%);
+      filter:blur(20px);
+      opacity:.86;
+      animation: ambientFloat 36s ease-in-out infinite alternate-reverse;
+    }
+    body[data-theme="cosmic-flare"] .brandText::before{
+      width:340px;
+      height:96px;
+      background:
+        radial-gradient(circle, rgba(102,222,255,.24), transparent 52%),
+        radial-gradient(circle at 72% 38%, rgba(255,190,100,.26), transparent 54%),
+        radial-gradient(circle at 58% 62%, rgba(255,116,68,.18), transparent 56%);
+      filter:blur(22px);
+      opacity:.98;
+    }
+    body[data-theme="cosmic-flare"] .topbar{
+      border-color: rgba(152,217,255,.34);
+      background:
+        linear-gradient(180deg, rgba(255,182,102,.14), rgba(255,182,102,.03) 30%, rgba(0,0,0,0) 82%),
+        linear-gradient(135deg, rgba(102,216,255,.12), rgba(0,0,0,0) 38%),
+        linear-gradient(135deg, rgba(255,110,62,.12), rgba(0,0,0,0) 60%),
+        rgba(15,8,27,.80);
+      box-shadow:
+        0 18px 40px rgba(0,0,0,.60),
+        0 0 0 1px rgba(160,219,255,.08),
+        inset 0 1px 0 rgba(255,245,238,.10),
+        inset 0 0 44px rgba(255,168,84,.06);
+      backdrop-filter: blur(22px) saturate(142%);
+    }
+    body[data-theme="cosmic-flare"] .card,
+    body[data-theme="cosmic-flare"] .stat,
+    body[data-theme="cosmic-flare"] .metric,
+    body[data-theme="cosmic-flare"] .insightCard,
+    body[data-theme="cosmic-flare"] .showcaseCard{
+      border-color: rgba(151,215,255,.24);
+      background:
+        linear-gradient(180deg, rgba(255,178,96,.11), rgba(255,178,96,0) 26%, rgba(0,0,0,0) 100%),
+        linear-gradient(135deg, rgba(102,216,255,.10), rgba(0,0,0,0) 38%),
+        linear-gradient(135deg, rgba(255,110,60,.12), rgba(0,0,0,0) 58%),
+        rgba(16,10,31,.74);
+      box-shadow:
+        0 16px 34px rgba(0,0,0,.58),
+        0 0 0 1px rgba(150,214,255,.04),
+        inset 0 1px 0 rgba(255,247,242,.08),
+        inset 0 0 38px rgba(255,182,92,.04);
+      backdrop-filter: blur(18px) saturate(138%);
+    }
+    body[data-theme="cosmic-flare"] .btn{
+      border-color: rgba(150,214,255,.28);
+      background:
+        linear-gradient(180deg, rgba(255,176,98,.09), rgba(255,176,98,.02)),
+        linear-gradient(135deg, rgba(100,214,255,.11), rgba(0,0,0,0) 44%);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 0 0 1px rgba(150,214,255,.05);
+    }
+    body[data-theme="cosmic-flare"] .btn.primary,
+    body[data-theme="cosmic-flare"] .clockPill,
+    body[data-theme="cosmic-flare"] .pill{
+      border-color: rgba(156,221,255,.40);
+      background:
+        linear-gradient(180deg, rgba(255,186,108,.14), rgba(255,186,108,.04)),
+        linear-gradient(135deg, rgba(103,219,255,.12), rgba(0,0,0,0) 52%),
+        rgba(51,61,128,.14);
+      color:#fffaf5;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 0 18px rgba(255,174,94,.12);
+    }
+    body[data-theme="cosmic-flare"] .btn.active{
+      border-color: rgba(160,224,255,.54);
+      background:
+        linear-gradient(180deg, rgba(255,198,128,.18), rgba(255,198,128,.06)),
+        linear-gradient(135deg, rgba(104,220,255,.14), rgba(0,0,0,0) 54%);
+      box-shadow:
+        0 0 0 1px rgba(160,224,255,.16),
+        0 0 30px rgba(255,168,82,.18),
+        inset 0 1px 0 rgba(255,255,255,.12);
+    }
+    body[data-theme="cosmic-flare"] h1{
+      color:#fffaf7;
+      text-shadow:
+        0 0 10px rgba(255,255,255,.12),
+        0 0 28px rgba(255,186,104,.22),
+        0 0 54px rgba(102,216,255,.16);
+    }
+    body[data-theme="cosmic-flare"] .nav .btn.active::after{
+      background: rgba(255,196,126,.94);
+      box-shadow: 0 0 12px rgba(255,196,126,.40);
+    }
+    body[data-theme="cosmic-flare"] .themeToggle{
+      border-color: rgba(155,220,255,.36);
+      background:
+        linear-gradient(180deg, rgba(255,188,112,.12), rgba(255,188,112,.04)),
+        rgba(100,216,255,.10);
+    }
+    body[data-theme="cosmic-flare"] .moreMenu,
+    body[data-theme="cosmic-flare"] .quickPanel,
+    body[data-theme="cosmic-flare"] .drawer,
+    body[data-theme="cosmic-flare"] .mobileDock{
+      background:
+        linear-gradient(180deg, rgba(255,178,98,.10), rgba(255,178,98,.02)),
+        linear-gradient(135deg, rgba(100,214,255,.12), rgba(0,0,0,0) 42%),
+        linear-gradient(135deg, rgba(255,110,60,.10), rgba(0,0,0,0) 62%),
+        rgba(10,8,25,.90);
+      border-color: rgba(150,214,255,.24);
+      backdrop-filter: blur(20px) saturate(142%);
+      box-shadow: 0 16px 36px rgba(0,0,0,.60);
+    }
+    body[data-theme="cosmic-flare"] .glow-green{
+      border-color: rgba(116,255,204,.82) !important;
+      box-shadow:
+        0 0 20px rgba(92,255,204,.42),
+        0 0 50px rgba(106,220,255,.18),
+        0 0 90px rgba(92,255,204,.12),
+        inset 0 0 18px rgba(92,255,204,.12) !important;
+    }
+    body[data-theme="cosmic-flare"] .glow-red{
+      border-color: rgba(255,152,108,.82) !important;
+      box-shadow:
+        0 0 20px rgba(255,132,92,.42),
+        0 0 50px rgba(255,196,112,.18),
+        0 0 90px rgba(255,132,92,.12),
+        inset 0 0 18px rgba(255,132,92,.12) !important;
+    }
+
     body[data-theme="galaxy"]{
       --accent-rgb:104,193,255;
       --accent-soft-rgb:84,238,210;
@@ -17498,6 +17674,288 @@ body.modalOpen{
   }
 }
 
+/* Shared visual-system polish pass.
+   Keep this last so it smooths cross-page drift instead of competing with older rules. */
+.toolbar{
+  gap:10px;
+}
+
+.card > .toolbar,
+.supportCard > .toolbar,
+.showcaseCard > .toolbar,
+.pageHero > .toolbar,
+.workspaceHero > .toolbar{
+  gap:10px;
+  align-items:flex-start;
+}
+
+.btn{
+  min-height:38px;
+  padding:10px 13px;
+  font-size:12.5px;
+  line-height:1.12;
+  font-weight:700;
+  letter-spacing:.005em;
+  border-color:rgba(255,255,255,.13);
+}
+
+.btn.primary{
+  border-color:rgba(var(--accent-rgb),.34);
+}
+
+.pill{
+  min-height:24px;
+  padding:4px 10px;
+  font-size:9.5px;
+  line-height:1.08;
+  letter-spacing:.11em;
+}
+
+.pageTitle,
+.workspaceHero .pageTitle,
+.pageHero .pageTitle{
+  line-height:1;
+  letter-spacing:-.025em;
+}
+
+.pageSub,
+.pageHero .pageSub,
+.workspaceHero .pageSub,
+.supportBody{
+  line-height:1.42;
+  color:rgba(214, 226, 243, .72);
+}
+
+.supportLead{
+  line-height:1.14;
+  letter-spacing:-.01em;
+}
+
+.showcaseCard{
+  border-radius:16px;
+}
+
+.showcaseMeta{
+  line-height:1.28;
+}
+
+.page-dashboard .dashboardStepLabel,
+.page-dashboard .dashboardStepLabel-inline,
+.page-market-pulse .dashboardStepLabel,
+.page-market-pulse .dashboardStepLabel-inline{
+  opacity:.88;
+  letter-spacing:.15em;
+}
+
+/* Final A-track page alignment for Trades and Analytics. */
+.page-trades .pageHero .toolbar,
+.page-analytics .analyticsHeroCard .toolbar,
+.page-analytics .analyticsSupportCard > .toolbar,
+.page-analytics .analyticsMicroCard > .toolbar,
+.page-analytics .analyticsChartCard > .toolbar,
+.page-analytics .analyticsKpiCard > .toolbar{
+  gap:10px;
+}
+
+.page-trades .pageTitle,
+.page-analytics .pageTitle{
+  line-height:1;
+  letter-spacing:-.028em;
+}
+
+.page-trades .pageHero .summaryLead,
+.page-analytics .pageHero .summaryLead,
+.page-analytics .analyticsSectionLead,
+.page-analytics .analyticsCardLead{
+  line-height:1.38;
+  color:rgba(214, 226, 243, .74);
+}
+
+.page-trades .workspaceHeroActionBar{
+  gap:8px;
+  margin-top:6px;
+  padding:8px 10px;
+  border-radius:13px;
+}
+
+.page-trades .workspaceHeroPriorityText{
+  font-size:10.5px;
+  line-height:1.22;
+}
+
+.page-trades .workspaceHeroPrimaryActions{
+  gap:8px;
+}
+
+.page-trades .workspaceHeroPrimaryActions .btn{
+  min-height:32px;
+  padding:6px 10px;
+  font-size:11.5px;
+}
+
+.page-trades .supportLead,
+.page-analytics .supportLead{
+  line-height:1.12;
+}
+
+.page-trades .supportBody,
+.page-analytics .supportBody{
+  line-height:1.38;
+  color:rgba(214, 226, 243, .72);
+}
+
+.page-trades .tradesFilterPanel .toolbar,
+.page-analytics .analyticsCommandDeck > .toolbar{
+  gap:12px;
+}
+
+.page-trades .tradesFilterShortcuts,
+.page-analytics .analyticsBriefGrid{
+  gap:8px;
+}
+
+.page-analytics .analyticsBriefItem{
+  padding:12px 12px 11px;
+}
+
+.page-analytics .analyticsBriefKicker{
+  letter-spacing:.1em;
+}
+
+/* Final right-rail support overrides: keep these last so generic dashboard/display rules
+   cannot re-expand support metrics or trust summaries. */
+.page-dashboard .dashboardHealthSurface .dashboardSupportHeader{
+  grid-template-columns:auto minmax(0, 1fr);
+  gap:10px 16px;
+  align-items:start;
+}
+
+.page-dashboard .dashboardHealthSurface .dashboardSupportHeader .dashboardStepLabel-inline{
+  grid-row:1;
+  margin-top:2px;
+}
+
+.page-dashboard .dashboardHealthSurface .dashboardSupportHeader .dashboardFoldTitle{
+  max-width:11ch;
+  line-height:.98;
+}
+
+.page-dashboard .dashboardHealthSurface .dashboardSupportHeader .tiny.muted{
+  grid-column:2;
+  max-width:24ch;
+  line-height:1.18;
+  color:rgba(214, 226, 243, .74);
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthKpiStrip{
+  gap:12px;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrb{
+  min-height:78px;
+  padding:8px 8px 8px;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle{
+  display:grid;
+  align-items:center;
+  justify-items:center;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle strong{
+  display:block;
+  margin:0 auto;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbMeta{
+  font-size:8.5px;
+  line-height:1.42;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthTrustCard > summary{
+  gap:4px;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dataTrustTitle{
+  font-size:10px;
+  letter-spacing:.1em;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dataTrustSummary{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  white-space:normal;
+  overflow:hidden;
+  text-overflow:clip;
+  font-size:10.5px;
+  line-height:1.24;
+  max-width:none;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthBottomRow{
+  gap:12px;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseCard{
+  min-width:0;
+  padding:12px 12px 11px;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseHead{
+  gap:7px;
+  margin-bottom:5px;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseValue,
+html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .session-health-grid .showcaseValue{
+  display:block;
+  max-width:100%;
+  margin-top:0;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:clip;
+  word-break:normal;
+  overflow-wrap:normal;
+  font-size:clamp(20px, 2.15vw, 29px) !important;
+  line-height:1.2 !important;
+  letter-spacing:-.055em;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseMeta{
+  margin-top:5px;
+  font-size:10.5px;
+  line-height:1.24;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcasePulse{
+  margin-top:8px;
+}
+
+@media (max-width: 1180px){
+  .page-dashboard .dashboardHealthSurface .dashboardSupportHeader{
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+
+  .page-dashboard .dashboardHealthSurface .dashboardSupportHeader .dashboardStepLabel-inline,
+  .page-dashboard .dashboardHealthSurface .dashboardSupportHeader .tiny.muted{
+    grid-column:auto;
+  }
+
+  .page-dashboard .dashboardHealthSurface .dashboardSupportHeader .tiny.muted{
+    max-width:none;
+  }
+
+  .page-dashboard .dashboardHealthSurface .session-health-grid .showcaseValue,
+  html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .session-health-grid .showcaseValue{
+    font-size:clamp(19px, 2.8vw, 27px) !important;
+  }
+}
+
 /* Playbook */
 .page-playbook .wrap{
   max-width:1520px;
@@ -18113,22 +18571,29 @@ body.modalOpen{
 
 .page-dashboard .dashboardSupportHeader{
   display:grid;
-  grid-template-columns:120px minmax(0, 1fr) minmax(220px, 1.1fr);
-  gap:16px;
+  grid-template-columns:120px minmax(0, 1fr);
+  gap:10px 18px;
   align-items:start;
 }
 
 .page-dashboard .dashboardSupportHeader .dashboardStepLabel-inline{
-  margin-top:4px;
+  margin-top:0;
+  align-self:start;
+  grid-row:1 / span 2;
 }
 
 .page-dashboard .dashboardSupportHeader .dashboardFoldTitle{
-  line-height:1.04;
+  line-height:1.02;
+  max-width:12ch;
 }
 
 .page-dashboard .dashboardSupportHeader .tiny.muted{
   display:block;
-  line-height:1.28;
+  line-height:1.22;
+  max-width:28ch;
+  justify-self:start;
+  text-align:left;
+  margin-top:-2px;
 }
 
 /* Session Support layout: keep this after legacy dashboard rules. */
@@ -18157,7 +18622,7 @@ body.modalOpen{
 .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthKpiStrip{
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:12px;
+  gap:10px;
   justify-content:stretch;
 }
 
@@ -18205,14 +18670,14 @@ body.modalOpen{
 .page-dashboard .dashboardHealthSurface .session-health-grid .profit-milestone-body{
   display:grid;
   grid-template-columns:140px minmax(0, 1fr);
-  gap:18px;
+  gap:16px;
   align-items:center;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .profit-details{
   display:flex;
   flex-direction:column;
-  gap:9px;
+  gap:8px;
   min-width:0;
 }
 
@@ -18247,9 +18712,9 @@ body.modalOpen{
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrb{
-  min-height:92px;
-  gap:4px;
-  padding:10px 8px 8px;
+  min-height:84px;
+  gap:3px;
+  padding:8px 8px 7px;
   border-color:rgba(255,255,255,.04);
   background:
     linear-gradient(180deg, rgba(255,255,255,.008), rgba(255,255,255,.002)),
@@ -18258,26 +18723,28 @@ body.modalOpen{
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle{
-  width:48px;
+  width:44px;
   box-shadow:none;
+  place-items:center;
+  text-align:center;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbLabel{
   line-height:1;
-  font-size:10px;
+  font-size:9.5px;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbMeta{
-  font-size:9px;
-  line-height:1.12;
+  font-size:8.5px;
+  line-height:1.48;
   white-space:normal;
   text-overflow:clip;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthTrustCard > summary{
   display:grid;
-  grid-template-columns:minmax(0, 220px) minmax(0, 1fr);
-  gap:14px;
+  grid-template-columns:1fr;
+  gap:6px;
   align-items:start;
   padding:2px 0 10px;
   line-height:1.15;
@@ -18290,6 +18757,11 @@ body.modalOpen{
 .page-dashboard .dashboardHealthSurface .session-health-grid .dataTrustSummary{
   line-height:1.28;
   color:rgba(214, 226, 243, .68);
+  max-width:none;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  overflow:hidden;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .statusBadgeStrip{
@@ -18321,11 +18793,41 @@ body.modalOpen{
 .page-dashboard .dashboardHealthSurface .session-health-grid .showcaseValue{
   margin-top:0;
   line-height:.95;
+  font-size:clamp(21px, 3vw, 35px) !important;
+  max-width:100%;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  letter-spacing:-.04em;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .showcaseMeta{
   margin-top:6px;
   line-height:1.26;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .showcaseCard .trendChip{
+  opacity:.82;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .supportLead{
+  font-size:12px;
+  line-height:1.2;
+  color:rgba(216, 228, 243, .62);
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestonePrimary{
+  font-size:20px;
+  line-height:1;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestoneSecondary{
+  font-size:12px;
+  line-height:1.24;
+  color:rgba(223, 236, 250, .74);
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestoneProgressMeta{
+  font-size:9px;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .showcasePulse{
@@ -18364,12 +18866,12 @@ body.modalOpen{
   }
 
   .page-dashboard .dashboardSupportHeader{
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:1fr;
+    gap:8px;
   }
 
   .page-dashboard .dashboardSupportHeader .dashboardStepLabel-inline{
-    grid-column:1 / -1;
-    margin-top:0;
+    grid-row:auto;
   }
 }
 
@@ -29252,7 +29754,7 @@ textarea:focus-visible{
 
 .page-dashboard .dashboardStatusOrbCircle strong{
   font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
-  font-size:14px;
+  font-size:13px;
   line-height:1;
   letter-spacing:-.04em;
   color:#f5fbff;
