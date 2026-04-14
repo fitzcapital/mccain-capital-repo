@@ -89,6 +89,33 @@ def test_create_app_skips_workers_when_safe_mode(tmp_path: Path, monkeypatch):
     assert getattr(app, "_auto_sync_worker_started", False) is False
 
 
+def test_healthz_reports_safe_mode_as_unhealthy(tmp_path: Path, monkeypatch):
+    db_path = tmp_path / "safe.db"
+    uploads_dir = tmp_path / "uploads"
+    books_dir = tmp_path / "books"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    books_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(core, "DB_PATH", str(db_path))
+    monkeypatch.setattr(core, "UPLOAD_DIR", str(uploads_dir))
+    monkeypatch.setattr(core, "BOOKS_DIR", str(books_dir))
+
+    def boom():
+        raise RuntimeError("db init failed")
+
+    monkeypatch.setattr(core, "init_db", boom)
+
+    app = create_app()
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    resp = client.get("/healthz")
+    assert resp.status_code == 503
+    payload = resp.get_json()
+    assert payload["status"] == "degraded"
+    assert payload["safe_mode"] is True
+
+
 def test_login_page_renders_and_accepts_csrf_token(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "auth.db"
     uploads_dir = tmp_path / "uploads"

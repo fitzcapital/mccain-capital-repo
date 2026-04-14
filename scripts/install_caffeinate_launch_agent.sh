@@ -44,8 +44,8 @@ PLIST
 chmod 644 "${AGENT_PATH}"
 
 /bin/launchctl bootout "gui/$(id -u)" "${AGENT_PATH}" >/dev/null 2>&1 || true
-/bin/launchctl bootstrap "gui/$(id -u)" "${AGENT_PATH}"
 /bin/launchctl enable "gui/$(id -u)/${AGENT_LABEL}" >/dev/null 2>&1 || true
+/bin/launchctl bootstrap "gui/$(id -u)" "${AGENT_PATH}"
 /bin/launchctl kickstart -k "gui/$(id -u)/${AGENT_LABEL}"
 
 echo "Installed ${AGENT_LABEL}"

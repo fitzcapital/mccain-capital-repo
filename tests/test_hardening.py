@@ -1,6 +1,7 @@
 """Hardening regression tests for storage and request security."""
 
 from pathlib import Path
+import tempfile
 
 from mccain_capital import app_core as core
 from mccain_capital import create_app
@@ -69,6 +70,38 @@ def test_csrf_accepts_valid_token(client):
     )
     assert resp.status_code == 302
     assert resp.headers.get("Location", "").endswith("/dashboard")
+
+
+def test_backup_download_requires_post_and_csrf(client):
+    client.application.config["CSRF_ENABLED"] = True
+
+    get_resp = client.get("/admin/backup", follow_redirects=False)
+    assert get_resp.status_code == 405
+
+    post_without_csrf = client.post("/admin/backup", data={}, follow_redirects=False)
+    assert post_without_csrf.status_code == 400
+
+
+def test_backup_download_removes_temp_archive_on_close(app, monkeypatch, tmp_path: Path):
+    from mccain_capital.services import core as core_service
+
+    archive_path = tmp_path / "backup.zip"
+    original_mkstemp = tempfile.mkstemp
+
+    def fake_mkstemp(*args, **kwargs):
+        fd = original_mkstemp(suffix=".zip", dir=str(tmp_path))
+        path = Path(fd[1])
+        path.rename(archive_path)
+        return fd[0], str(archive_path)
+
+    monkeypatch.setattr(core_service.tempfile, "mkstemp", fake_mkstemp)
+
+    with app.test_request_context("/admin/backup", method="POST"):
+        response = core_service.backup_data()
+        assert archive_path.exists()
+        response.close()
+
+    assert not archive_path.exists()
 
 
 def test_sqlite_connection_uses_wal_mode():

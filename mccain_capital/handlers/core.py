@@ -137,6 +137,10 @@ def links_page():
     return svc.links_page()
 
 
+def notifications_test_page():
+    return svc.notifications_test_page()
+
+
 def system_check_page():
     return svc.system_check_page()
 

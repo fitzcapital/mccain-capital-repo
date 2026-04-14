@@ -1216,7 +1216,7 @@ def trades_page():
 
     trades_status_badges = [
         StateBadgeViewModel(
-            label="Workflow",
+            label="Execution + sync",
             value=("Review only" if guardrail.get("locked") else "Execution live"),
             tone=("critical" if guardrail.get("locked") else "healthy"),
             title="Current execution mode for the trades surface.",
@@ -1228,7 +1228,7 @@ def trades_page():
             title="Visible trades in the current date/search filter.",
         ),
         StateBadgeViewModel(
-            label="Review Tags",
+            label="Confidence",
             value=(
                 f"{review_coverage['completion_pct']:.0f}% complete"
                 if trades_count

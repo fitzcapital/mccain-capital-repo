@@ -82,7 +82,7 @@ MARKET_NEWS_RSS_SYMBOL_LIMIT = 5
 MARKET_NEWS_FRESH_SECONDS = 12 * 60 * 60
 MARKET_NEWS_MAX_AGE_SECONDS = 36 * 60 * 60
 WATCHLIST_NEWS_MAX_AGE_SECONDS = 48 * 60 * 60
-MARKET_NEWS_FEED_LIMIT = 8
+MARKET_NEWS_FEED_LIMIT = 50
 MARKET_PULSE_X_FEED_LIMIT = 8
 MARKET_PULSE_X_MIN_RELEVANCE = 6
 MARKET_PULSE_X_PER_ACCOUNT_LIMIT = 2
@@ -93,16 +93,7 @@ MARKET_PULSE_X_RSS_URLS: Tuple[str, ...] = (
     "https://nitter.privacydev.net/{handle}/rss",
 )
 MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
-    {"handle": "KobeissiLetter", "label": "Kobeissi", "lane": "Macro"},
     {"handle": "unusual_whales", "label": "Unusual Whales", "lane": "Options Flow"},
-    {"handle": "DeItaone", "label": "DeItaone", "lane": "Breaking"},
-    {"handle": "realDonaldTrump", "label": "Trump", "lane": "Policy"},
-    {"handle": "WhiteHouse", "label": "White House", "lane": "Policy"},
-    {"handle": "POTUS", "label": "POTUS", "lane": "Policy"},
-    {"handle": "Reuters", "label": "Reuters", "lane": "Breaking"},
-    {"handle": "Bloomberg", "label": "Bloomberg", "lane": "Macro"},
-    {"handle": "WSJ", "label": "WSJ", "lane": "Macro"},
-    {"handle": "politico", "label": "Politico", "lane": "Policy"},
 )
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
@@ -2375,6 +2366,33 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
                 "tracked_count": len(MARKET_PULSE_SYMBOLS),
             },
         }
+
+    # Ensure VIX doesn't disappear when the primary provider misses it.
+    vix_symbol = "^VIX"
+    vix_quote = dict(quotes_by_symbol.get(vix_symbol) or {})
+    if not vix_quote or vix_quote.get("price") in {None, ""}:
+        try:
+            tradier_vix = market_data_service.get_watchlist_tradier(["VIX"])
+            if isinstance(tradier_vix, dict) and tradier_vix.get("VIX"):
+                quotes_by_symbol[vix_symbol] = tradier_vix["VIX"]
+        except Exception:
+            pass
+    vix_quote = dict(quotes_by_symbol.get(vix_symbol) or {})
+    if not vix_quote or vix_quote.get("price") in {None, ""}:
+        try:
+            vix_fallback = market_data_service.get_watchlist([vix_symbol], allow_yf_fallback=True)
+            if isinstance(vix_fallback, dict) and vix_fallback.get(vix_symbol):
+                quotes_by_symbol[vix_symbol] = vix_fallback[vix_symbol]
+        except Exception:
+            pass
+    vix_quote = dict(quotes_by_symbol.get(vix_symbol) or {})
+    if not vix_quote or vix_quote.get("price") in {None, ""}:
+        try:
+            vix_alt = market_data_service.get_watchlist(["VIX"], allow_yf_fallback=True)
+            if isinstance(vix_alt, dict) and vix_alt.get("VIX"):
+                quotes_by_symbol[vix_symbol] = vix_alt["VIX"]
+        except Exception:
+            pass
 
     quotes: List[Dict[str, Any]] = []
     counts = {"live": 0, "delayed": 0, "cached": 0, "missing": 0}
@@ -6616,6 +6634,7 @@ def _market_news_snapshot(
     context: Optional[Dict[str, Any]] = None,
     market_structure_snapshot: Optional[Dict[str, Any]] = None,
     macro_events: Optional[List[Dict[str, Any]]] = None,
+    force_refresh_feed: bool = False,
 ) -> Dict[str, Any]:
     now_et = now_et or app_runtime.now_et()
     macro_events = list(macro_events or _market_news_macro_events(now_et))
@@ -6623,6 +6642,7 @@ def _market_news_snapshot(
     feed_snapshot = build_twitter_feed_snapshot(
         now_et=now_et,
         market_structure_snapshot=market_structure_snapshot,
+        force_refresh=force_refresh_feed,
     )
     result = {
         "available": bool(feed_snapshot.get("top_items") or macro_events),
@@ -8974,6 +8994,7 @@ def dashboard():
 
 def stream_market():
     from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_data_service
     from mccain_capital.services import market_pulse_runtime
     from mccain_capital.services import market_worker
     from mccain_capital.services import options_panel_service
@@ -8996,6 +9017,16 @@ def stream_market():
         yield f"data: {json.dumps({'server_ts': app_runtime.now_iso(), 'stream_ready': True})}\n\n"
         while True:
             payload = market_worker.get_market_snapshot()
+            prices = dict(payload.get("prices") or {})
+            vix_tick = prices.get("VIX") or prices.get("^VIX") or {}
+            if not isinstance(vix_tick, dict) or vix_tick.get("price") in {None, ""}:
+                try:
+                    tradier_vix = market_data_service.get_watchlist_tradier(["VIX"])
+                    if isinstance(tradier_vix, dict) and tradier_vix.get("VIX"):
+                        prices["VIX"] = tradier_vix["VIX"]
+                except Exception:
+                    pass
+            payload["prices"] = prices
             payload["options"] = options_panel_service.get_options_snapshot()
             current_gamma_snapshot = (
                 gamma_snapshot if is_testing else gamma_map_service.get_gamma_snapshot()
@@ -9165,7 +9196,51 @@ def market_pulse_page():
         )
         or "—"
     )
-    quotes = _market_pulse_enrich_quotes(list(snapshot.get("quotes") or []), now_et)
+    raw_quotes = list(snapshot.get("quotes") or [])
+    vix_row = next(
+        (
+            q
+            for q in raw_quotes
+            if str(q.get("label") or q.get("symbol") or "").strip().upper() in {"VIX", "^VIX"}
+        ),
+        None,
+    )
+    vix_debug_reason = ""
+    if not isinstance(vix_row, dict) or vix_row.get("price") in {None, ""}:
+        vix_fallback = None
+        try:
+            tradier_vix = market_data_service.get_watchlist_tradier(["VIX"])
+            if isinstance(tradier_vix, dict) and tradier_vix.get("VIX"):
+                vix_fallback = dict(tradier_vix["VIX"])
+                vix_debug_reason = "tradier"
+        except Exception:
+            vix_fallback = None
+        if not vix_fallback:
+            try:
+                vix_alt = market_data_service.get_watchlist(["^VIX"], allow_yf_fallback=True)
+                if isinstance(vix_alt, dict) and vix_alt.get("^VIX"):
+                    vix_fallback = dict(vix_alt["^VIX"])
+                    vix_debug_reason = "yahoo-^VIX"
+            except Exception:
+                vix_fallback = None
+        if not vix_fallback:
+            try:
+                vix_alt = market_data_service.get_watchlist(["VIX"], allow_yf_fallback=True)
+                if isinstance(vix_alt, dict) and vix_alt.get("VIX"):
+                    vix_fallback = dict(vix_alt["VIX"])
+                    vix_debug_reason = "yahoo-VIX"
+            except Exception:
+                vix_fallback = None
+        if vix_fallback:
+            vix_fallback["label"] = "VIX"
+            vix_fallback["symbol"] = "VIX"
+            if vix_debug_reason:
+                vix_fallback["data_reason"] = f"Market Pulse fallback: {vix_debug_reason}"
+                vix_fallback["provider"] = vix_debug_reason
+            if vix_row and isinstance(vix_row, dict):
+                raw_quotes = [q for q in raw_quotes if q is not vix_row]
+            raw_quotes.append(vix_fallback)
+    quotes = _market_pulse_enrich_quotes(raw_quotes, now_et)
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
     try:
@@ -9323,20 +9398,24 @@ def market_pulse_page():
 def market_pulse_news_feed_api():
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
+    force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    mode = (request.args.get("mode") or "").strip().lower()
     now_et = app_runtime.now_et()
-    playbook_snapshot = get_or_build_market_pulse_snapshot(force_refresh=False, now_et=now_et)
+    playbook_snapshot = get_or_build_market_pulse_snapshot(force_refresh=force_refresh, now_et=now_et)
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     news_snapshot = _market_news_snapshot(
         now_et=now_et,
         market_structure_snapshot=market_structure_snapshot,
         macro_events=_market_news_macro_events(now_et),
+        force_refresh_feed=force_refresh,
     )
-    items = list(news_snapshot.get("pulse_feed_items") or [])
     feed_snapshot = dict(news_snapshot.get("market_feed_snapshot") or {})
+    items = list(news_snapshot.get("pulse_feed_items") or [])
+    raw_items = list(feed_snapshot.get("raw_items") or [])
     return jsonify(
         {
             "ok": True,
-            "items": items[:MARKET_NEWS_FEED_LIMIT],
+            "items": (raw_items if mode == "raw" else items)[:MARKET_NEWS_FEED_LIMIT],
             "status": str(feed_snapshot.get("status") or ("live" if news_snapshot.get("pulse_feed_available") else "quiet")),
             "source_note": str(
                 news_snapshot.get("pulse_feed_source_note")
@@ -9797,6 +9876,11 @@ def links_page():
     vanquish_lock = get_vanquish_profit_lock_state()
     content = render_template("core/links.html", vanquish_lock=vanquish_lock)
     return render_page(content, active="links", vanquish_lock=vanquish_lock)
+
+
+def notifications_test_page():
+    content = render_template("ops/notifications_test.html")
+    return render_page(content, active="ops", title="McCain Capital · Notifications Lab")
 
 
 def vanquish_blocklist_download():

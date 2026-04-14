@@ -119,6 +119,11 @@ def register(app):
     )
     app.add_url_rule("/links", endpoint="links_page", view_func=h.links_page)
     app.add_url_rule(
+        "/ops/notifications-test",
+        endpoint="notifications_test_page",
+        view_func=h.notifications_test_page,
+    )
+    app.add_url_rule(
         "/ops/system-check", endpoint="system_check_page", view_func=h.system_check_page
     )
     app.add_url_rule(
@@ -145,7 +150,7 @@ def register(app):
         methods=["GET", "POST"],
     )
     app.add_url_rule("/export.json", endpoint="export_json", view_func=h.export_json)
-    app.add_url_rule("/admin/backup", endpoint="backup_data", view_func=h.backup_data)
+    app.add_url_rule("/admin/backup", endpoint="backup_data", view_func=h.backup_data, methods=["POST"])
     app.add_url_rule(
         "/admin/restore", endpoint="restore_data", view_func=h.restore_data, methods=["GET", "POST"]
     )

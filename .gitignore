@@ -24,8 +24,12 @@ books/
 podman_data/
 persistent-data/
 persistent-data/playwright-browsers/
+tmp/
+output/
+node_modules/
 
 # OS and cache noise
 *.swp
 *.swo
 .pytest_cache/
+.ruff_cache/

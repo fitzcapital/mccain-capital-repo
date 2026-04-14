@@ -1,0 +1,90 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pill">Notifications Lab</div>
+    <h2 class="pageTitle">Notification Bell Tester</h2>
+    <div class="pageSub">Adjust unread counts and sample items to validate the bell UI.</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="toolbar stack12">
+    <div class="pill">Unread Count</div>
+    <div class="row gap10">
+      <button class="btn" type="button" data-notif-count="0">0</button>
+      <button class="btn" type="button" data-notif-count="5">5</button>
+      <button class="btn" type="button" data-notif-count="12">12</button>
+      <button class="btn" type="button" data-notif-count="20">20</button>
+      <button class="btn" type="button" data-notif-count="50">50</button>
+    </div>
+    <div class="pill">Priority</div>
+    <div class="row gap10">
+      <button class="btn" type="button" data-notif-priority="normal">Normal</button>
+      <button class="btn" type="button" data-notif-priority="high">High</button>
+    </div>
+    <div class="pill">Sample Items</div>
+    <div class="row gap10">
+      <button class="btn" type="button" data-notif-items="basic">Load Sample</button>
+      <button class="btn" type="button" data-notif-items="clear">Clear</button>
+    </div>
+    <div class="tiny muted">Open the bell in the header to validate the dropdown.</div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const COUNT_KEY = "notifUnreadOverride";
+    const HIGH_KEY = "notifHighOverride";
+    const ITEMS_KEY = "notifItemsOverride";
+
+    const setCount = (count) => {
+      localStorage.setItem(COUNT_KEY, String(count));
+      window.dispatchEvent(new StorageEvent("storage", { key: COUNT_KEY }));
+    };
+
+    const setPriority = (level) => {
+      localStorage.setItem(HIGH_KEY, level === "high" ? "1" : "0");
+      window.dispatchEvent(new StorageEvent("storage", { key: HIGH_KEY }));
+    };
+
+    const setItems = (mode) => {
+      if (mode === "clear") {
+        localStorage.removeItem(ITEMS_KEY);
+        window.dispatchEvent(new StorageEvent("storage", { key: ITEMS_KEY }));
+        return;
+      }
+      const now = new Date();
+      const items = [
+        {
+          title: "Macro alert: CPI prints hot",
+          text: "Risk assets reacting to upside inflation surprise.",
+          time_label: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+          priority: "high",
+        },
+        {
+          title: "Rates check",
+          text: "10Y pushing back above 4.5%, watch macro positioning.",
+          time_label: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+          priority: "normal",
+        },
+        {
+          title: "Desk note",
+          text: "Watch VIX compression into the close.",
+          time_label: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+          priority: "normal",
+        },
+      ];
+      localStorage.setItem(ITEMS_KEY, JSON.stringify(items));
+      window.dispatchEvent(new StorageEvent("storage", { key: ITEMS_KEY }));
+    };
+
+    document.querySelectorAll("[data-notif-count]").forEach((btn) => {
+      btn.addEventListener("click", () => setCount(parseInt(btn.dataset.notifCount || "0", 10)));
+    });
+    document.querySelectorAll("[data-notif-priority]").forEach((btn) => {
+      btn.addEventListener("click", () => setPriority(btn.dataset.notifPriority));
+    });
+    document.querySelectorAll("[data-notif-items]").forEach((btn) => {
+      btn.addEventListener("click", () => setItems(btn.dataset.notifItems));
+    });
+  })();
+</script>

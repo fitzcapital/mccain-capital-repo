@@ -287,6 +287,8 @@
     })();
   </script>
   {% set tw = trading_window if trading_window is defined else {} %}
+  {% set notif_unread = notifications_unread_count or 0 %}
+  {% set notif_items = notifications or [] %}
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
@@ -302,40 +304,36 @@
         </div>
       </div>
 
-      <div class="topRight">
-        <div class="headerInfoCluster">
-          {% if top_notice or (active != 'auth' and tw and tw.show_banner) %}
-            <div class="topNoticeRow">
-              {% if top_notice %}
-                {% if top_notice.href %}
-                  <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
-                    <span class="topNoticeSignal" aria-hidden="true"></span>
-                    {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
-                    <span class="topNoticeText">{{ top_notice.text }}</span>
-                  </a>
-                {% else %}
-                  <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
-                    <span class="topNoticeSignal" aria-hidden="true"></span>
-                    {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
-                    <span class="topNoticeText">{{ top_notice.text }}</span>
-                  </div>
-                {% endif %}
-              {% endif %}
-              {% if active != 'auth' and tw and tw.show_banner %}
-                <div class="tradingWindowPillGroup">
-                  <div class="clockPill tradingWindowPill is-{{ tw.pill_tone or 'negative' }}" title="{{ tw.message }}">
-                    <span class="tradingWindowSignal" aria-hidden="true"></span>
-                    <span class="tradingWindowPillLabel">{{ tw.rail_label or tw.state_label }}</span>
-                    <span class="tradingWindowPillMeta">{{ tw.rail_detail or tw.message }}</span>
-                    {% if tw.using_test_clock %}
-                      <span class="tradingWindowTag">Test Mode</span>
-                    {% endif %}
-                  </div>
+        <div class="topRight">
+          <div class="headerInfoCluster">
+          <div class="statusRow">
+            {% if top_notice %}
+              {% if top_notice.href %}
+                <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
+                  <span class="topNoticeSignal" aria-hidden="true"></span>
+                  {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
+                  <span class="topNoticeText">{{ top_notice.text }}</span>
+                </a>
+              {% else %}
+                <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
+                  <span class="topNoticeSignal" aria-hidden="true"></span>
+                  {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
+                  <span class="topNoticeText">{{ top_notice.text }}</span>
                 </div>
               {% endif %}
-            </div>
-          {% endif %}
-          <div class="statusRow">
+            {% endif %}
+            {% if active != 'auth' and tw and tw.show_banner %}
+              <div class="tradingWindowPillGroup">
+                <div class="clockPill tradingWindowPill is-{{ tw.pill_tone or 'negative' }}" title="{{ tw.message }}">
+                  <span class="tradingWindowSignal" aria-hidden="true"></span>
+                  <span class="tradingWindowPillLabel">{{ tw.rail_label or tw.state_label }}</span>
+                  <span class="tradingWindowPillMeta">{{ tw.rail_detail or tw.message }}</span>
+                  {% if tw.using_test_clock %}
+                    <span class="tradingWindowTag">Test Mode</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
             <div id="marketStatusClock" class="clockPill cockpitPill marketStatusClock is-loading" aria-label="Market status and Eastern time">
               <span class="marketStatusClockDot" aria-hidden="true"></span>
               <span class="marketStatusClockTimeGroup">
@@ -345,6 +343,39 @@
               </span>
               <span class="marketStatusClockDivider" aria-hidden="true">·</span>
               <span id="marketStatusCountdown" class="marketStatusClockCountdown">Loading</span>
+            </div>
+            <div class="notifBell">
+              <button class="notifBellButton" id="notifBellButton" type="button" aria-expanded="false" aria-controls="notifDropdown" aria-label="Notifications">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+                <span class="notifBadge{% if not notif_unread %} is-empty{% endif %}" id="notifBellBadge">{{ notif_unread }}</span>
+              </button>
+              <div class="notifDropdown" id="notifDropdown" role="menu" aria-label="Notification list">
+                <div class="notifDropdownHeader">
+                  <span>Notifications</span>
+                  <span class="notifDropdownCount" id="notifDropdownCount">{{ notif_unread }} unread</span>
+                </div>
+                <div class="notifDropdownList" id="notifDropdownList">
+                  {% if notif_items %}
+                    {% for item in notif_items[:8] %}
+                      <div class="notifItem{% if item.priority == 'high' %} is-high{% endif %}">
+                        <div class="notifItemTitle">{{ item.title or 'Market update' }}</div>
+                        <div class="notifItemBody">{{ item.text or item.summary or '' }}</div>
+                        <div class="notifItemTime">{{ item.time_label or item.timestamp_label or item.timestamp or '' }}</div>
+                      </div>
+                    {% endfor %}
+                  {% else %}
+                    <div class="notifEmpty" id="notifDropdownEmpty">No new notifications.</div>
+                  {% endif %}
+                </div>
+                <div class="notifDropdownFooter">
+                  <button class="btn notifClearBtn" id="notifClearBtn" type="button">Clear</button>
+                  <a class="btn notifManageBtn" href="/ops/notifications-test">Manage</a>
+                  <a class="btn notifViewAll" href="/ops/alerts">View All</a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -368,9 +399,6 @@
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
           <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
           <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
-          <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook">Playbook</a>
-          <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
-          <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
         </div>
 
         <div class="menuMore">
@@ -392,6 +420,7 @@
             <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
             <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
             <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
+            <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
             {% if active == 'dashboard' %}
               <div class="hr"></div>
               <div class="menuTitle">Dashboard Mode</div>
@@ -406,6 +435,7 @@
             <div class="menuTitle">Ops</div>
             <a class="btn" href="/trades/upload/statement">Live Upload</a>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
+            <a class="btn" href="/ops/notifications-test">Notifications Lab</a>
             <div class="hr"></div>
             <div class="menuTitle">Business</div>
             <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
@@ -749,6 +779,172 @@
       }
       return originalFetch(input, init);
     };
+  })();
+</script>
+<script>
+  (function initNotifications(){
+    const bellBtn = document.getElementById("notifBellButton");
+    const badge = document.getElementById("notifBellBadge");
+    const dropdown = document.getElementById("notifDropdown");
+    const dropdownCount = document.getElementById("notifDropdownCount");
+    const dropdownList = document.getElementById("notifDropdownList");
+    const dropdownEmpty = document.getElementById("notifDropdownEmpty");
+    const clearBtn = document.getElementById("notifClearBtn");
+    const COUNT_KEY = "notifUnreadOverride";
+    const HIGH_KEY = "notifHighOverride";
+    const ITEMS_KEY = "notifItemsOverride";
+    const LAST_REFRESH_KEY = "notifLastFeedRefresh";
+    if (!bellBtn || !dropdown) return;
+
+    const applyBadgeCount = (count) => {
+      if (!badge) return;
+      const safeCount = Math.max(0, Number.isFinite(count) ? count : 0);
+      badge.textContent = String(safeCount);
+      badge.classList.toggle("is-empty", safeCount <= 0);
+      if (dropdownCount) dropdownCount.textContent = `${safeCount} unread`;
+    };
+
+    const renderItems = (items) => {
+      if (!dropdownList) return;
+      dropdownList.innerHTML = "";
+      if (!items || !items.length) {
+        if (dropdownEmpty) dropdownList.appendChild(dropdownEmpty);
+        else {
+          const empty = document.createElement("div");
+          empty.className = "notifEmpty";
+          empty.textContent = "No new notifications.";
+          dropdownList.appendChild(empty);
+        }
+        return;
+      }
+      (items || []).slice(0, 10).forEach((item) => {
+        const card = document.createElement("div");
+        card.className = `notifItem${item.priority === "high" ? " is-high" : ""}`;
+        const title = document.createElement("div");
+        title.className = "notifItemTitle";
+        title.textContent = item.title || "Market update";
+        const body = document.createElement("div");
+        body.className = "notifItemBody";
+        body.textContent = item.text || item.summary || "";
+        const time = document.createElement("div");
+        time.className = "notifItemTime";
+        time.textContent = item.time_label || item.timestamp_label || item.timestamp || "";
+        card.appendChild(title);
+        card.appendChild(body);
+        card.appendChild(time);
+        dropdownList.appendChild(card);
+      });
+    };
+
+    const applyOverrides = () => {
+      const stored = window.localStorage?.getItem(COUNT_KEY);
+      const count = stored ? parseInt(stored, 10) : (parseInt(badge?.textContent || "0", 10) || 0);
+      applyBadgeCount(count);
+      const high = window.localStorage?.getItem(HIGH_KEY) === "1";
+      badge?.classList.toggle("is-high", high);
+      if (dropdownList) {
+        try {
+          const raw = window.localStorage?.getItem(ITEMS_KEY);
+          const items = raw ? JSON.parse(raw) : null;
+          if (Array.isArray(items)) renderItems(items);
+        } catch (_err) {}
+      }
+    };
+    applyOverrides();
+
+    const clearNotifications = () => {
+      if (!window.localStorage) return;
+      window.localStorage.setItem(COUNT_KEY, "0");
+      window.localStorage.setItem(HIGH_KEY, "0");
+      window.localStorage.setItem(ITEMS_KEY, JSON.stringify([]));
+      applyOverrides();
+    };
+
+    const closeMenu = () => {
+      dropdown.classList.remove("is-open");
+      bellBtn.setAttribute("aria-expanded", "false");
+    };
+    const toggleMenu = (event) => {
+      event.stopPropagation();
+      const next = !dropdown.classList.contains("is-open");
+      dropdown.classList.toggle("is-open", next);
+      bellBtn.setAttribute("aria-expanded", next ? "true" : "false");
+    };
+
+    bellBtn.addEventListener("click", toggleMenu);
+    if (clearBtn) {
+      clearBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        clearNotifications();
+      });
+    }
+    window.addEventListener("storage", (event) => {
+      if (!event.key || ![COUNT_KEY, HIGH_KEY, ITEMS_KEY].includes(event.key)) return;
+      applyOverrides();
+    });
+    document.addEventListener("click", (event) => {
+      if (!dropdown.classList.contains("is-open")) return;
+      if (bellBtn.contains(event.target) || dropdown.contains(event.target)) return;
+      closeMenu();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeMenu();
+    });
+
+    const formatEt = (iso) => {
+      if (!iso) return "";
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) return "";
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).format(dt);
+    };
+
+    const seedFromFeed = async () => {
+      try {
+        const response = await fetch("/api/market-pulse/news?refresh=1&mode=curated", { cache: "no-store" });
+        const payload = await response.json();
+        if (!payload || payload.ok === false) return;
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        const lastSeenRaw = window.localStorage?.getItem("marketFeedLastSeen") || "";
+        const lastSeen = lastSeenRaw ? Date.parse(lastSeenRaw) : 0;
+        const unread = items.filter((item) => {
+          const ts = Date.parse(item.published_at || "");
+          return !Number.isNaN(ts) && ts > lastSeen;
+        }).length;
+        const hasHighUnread = items.some((item) => {
+          const ts = Date.parse(item.published_at || "");
+          return item.impact === "high" && !Number.isNaN(ts) && ts > lastSeen;
+        });
+        const trimmed = items
+          .sort((a, b) => Date.parse(b.published_at || "") - Date.parse(a.published_at || ""))
+          .slice(0, 8)
+          .map((item) => ({
+            title: item.headline || item.text || "Market update",
+            text: item.summary || item.text || "",
+            time_label: item.age_label && item.published_et_label ? `${item.age_label} · ${item.published_et_label}` : (item.published_et_label || formatEt(item.published_at)),
+            priority: item.impact === "high" ? "high" : "normal",
+          }));
+        window.localStorage?.setItem(COUNT_KEY, String(unread));
+        window.localStorage?.setItem(HIGH_KEY, hasHighUnread ? "1" : "0");
+        window.localStorage?.setItem(ITEMS_KEY, JSON.stringify(trimmed));
+        applyOverrides();
+      } catch (_err) {}
+    };
+
+    if (document.body.classList.contains("page-dashboard")) {
+      const last = parseInt(window.localStorage?.getItem(LAST_REFRESH_KEY) || "0", 10);
+      const now = Date.now();
+      if (!Number.isNaN(now) && (now - last) > 120000) {
+        window.localStorage?.setItem(LAST_REFRESH_KEY, String(now));
+        seedFromFeed();
+      }
+    }
   })();
 </script>
 <script>

@@ -18,7 +18,7 @@
     <div>
       <div class="pill">Trading Window</div>
       <div class="pageTitleRow">
-        <h2 class="pageTitle">Session Guardrail Control Panel</h2>
+        <h2 class="pageTitle">Session Guardrail Settings</h2>
       </div>
     </div>
     <div class="actionRow tradingWindowUtilityActions">
@@ -89,7 +89,6 @@
       <form method="post" action="/ops/trading-window" class="tradingWindowForm tradingWindowFormCompact">
         <input type="hidden" name="next" value="/ops/trading-window">
         <input type="hidden" name="tw_enabled" value="{{ '1' if tw.enabled else '0' }}">
-        <input type="hidden" name="tw_hard_stop_et" value="{{ tw.done_by_et }}">
         <input type="hidden" name="tw_test_date" value="{{ tw.test_date }}">
         <input type="hidden" name="tw_test_time_et" value="{{ tw.test_time_et }}">
         <label>
@@ -101,7 +100,7 @@
           <input type="time" name="tw_done_by_et" value="{{ tw.done_by_et }}" required>
         </label>
         <label>
-          Notice
+          Upcoming Notice
           <input type="number" name="tw_upcoming_notice_minutes" value="{{ tw.upcoming_notice_minutes or 60 }}" min="0" max="240" step="5">
         </label>
         <label class="tradingWindowToggle">

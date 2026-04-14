@@ -4,55 +4,35 @@ from mccain_capital import runtime as app_runtime
 from mccain_capital.services import twitter_feed_service as svc
 
 
-def _rss_xml(*items):
-    body = "".join(
-        f"""
-        <item>
-          <title>{item.get('title','')}</title>
-          <link>{item.get('link','')}</link>
-          <description>{item.get('description','')}</description>
-          <pubDate>{item.get('pubDate','')}</pubDate>
-        </item>
-        """
-        for item in items
-    )
-    return f"<rss><channel>{body}</channel></rss>".encode("utf-8")
-
-
-def _fmt_pub(dt):
-    return dt.strftime("%a, %d %b %Y %H:%M:%S GMT")
-
-
 def _reset_cache(monkeypatch):
-    monkeypatch.setattr(svc, "_CACHE", {"fetched_at": None, "payload": None})
+    monkeypatch.setattr(svc, "_CACHE", {"loaded_at": None, "sources": {}})
     monkeypatch.setattr(svc, "_load_disk_cache", lambda: None)
     monkeypatch.setattr(svc, "_save_disk_cache", lambda payload: None)
+    monkeypatch.setattr(svc, "_twitterapi_key", lambda: "test-token")
+    monkeypatch.setattr(svc, "_try_acquire_refresh_lock", lambda username, now_et: True)
+    monkeypatch.setattr(svc, "_release_refresh_lock", lambda username: None)
 
 
 def test_twitter_feed_classifies_and_aligns_to_structure(monkeypatch):
     now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
     _reset_cache(monkeypatch)
 
-    def _fetch(url):
-        if "KobeissiLetter" in url:
-            return _rss_xml(
-                {
-                    "title": "Fed and yields drive SPX lower as traders brace for hotter inflation",
-                    "link": "https://example.com/kobeissi-1",
-                    "description": "CPI, yields, and tariff risk keep pressure on SPX and VIX.",
-                    "pubDate": _fmt_pub(now - timedelta(minutes=5)),
-                }
-            )
-        return _rss_xml(
+    monkeypatch.setattr(
+        svc,
+        "_run_twitterapi_last_tweets",
+        lambda **kwargs: [
             {
-                "title": "Unusual Whales: dealer gamma positioning keeps SPX near call wall",
-                "link": "https://example.com/uw-1",
-                "description": "Options flow remains active with SPX and QQQ pinned near resistance.",
-                "pubDate": _fmt_pub(now - timedelta(minutes=3)),
+                "author": {"userName": kwargs["username"]},
+                "fullText": (
+                    "Fed and yields drive SPX lower as traders brace for hotter inflation."
+                    if kwargs["username"] == "unusual_whales"
+                    else "Dealer gamma positioning keeps SPX near call wall and QQQ pinned near resistance."
+                ),
+                "url": f"https://x.com/{kwargs['username']}/status/1",
+                "createdAt": (now - timedelta(minutes=5 if kwargs["username"] == "unusual_whales" else 3)).isoformat(),
             }
-        )
-
-    monkeypatch.setattr(svc, "_fetch_url_bytes", _fetch)
+        ],
+    )
 
     snapshot = svc.build_twitter_feed_snapshot(
         now_et=now,
@@ -66,7 +46,7 @@ def test_twitter_feed_classifies_and_aligns_to_structure(monkeypatch):
     assert snapshot["status"] == "live"
     assert snapshot["items"]
     first = snapshot["items"][0]
-    assert first["source"] in {"Kobeissi Letter", "Unusual Whales"}
+    assert first["source"] == "Unusual Whales"
     assert first["impact"] in {"high", "medium"}
     assert first["trade_relevance"] in {"actionable_now", "watch"}
     assert snapshot["flow_summary"]["tradeability"].startswith("WAIT")
@@ -77,15 +57,15 @@ def test_twitter_feed_uses_cache_when_fetch_fails(monkeypatch):
     _reset_cache(monkeypatch)
     monkeypatch.setattr(
         svc,
-        "_fetch_url_bytes",
-        lambda url: _rss_xml(
+        "_run_twitterapi_last_tweets",
+        lambda **_: [
             {
-                "title": "Breaking: CPI cools and SPX futures rally",
-                "link": f"https://example.com/{url.rsplit('/', 2)[-2]}",
-                "description": "Macro desks lean risk-on.",
-                "pubDate": _fmt_pub(now - timedelta(minutes=4)),
+                "author": {"userName": "unusual_whales"},
+                "fullText": "Breaking: CPI cools and SPX futures rally.",
+                "url": "https://x.com/unusual_whales/status/11",
+                "createdAt": (now - timedelta(minutes=4)).isoformat(),
             }
-        ),
+        ],
     )
     first = svc.build_twitter_feed_snapshot(
         now_et=now,
@@ -94,20 +74,24 @@ def test_twitter_feed_uses_cache_when_fetch_fails(monkeypatch):
     assert first["status"] == "live"
     assert first["items"]
 
-    monkeypatch.setattr(svc, "_fetch_url_bytes", lambda url: (_ for _ in ()).throw(RuntimeError("down")))
+    monkeypatch.setattr(
+        svc, "_run_twitterapi_last_tweets", lambda **_: (_ for _ in ()).throw(RuntimeError("down"))
+    )
     second = svc.build_twitter_feed_snapshot(
-        now_et=now + timedelta(minutes=2),
+        now_et=now + timedelta(minutes=6),
         market_structure_snapshot={"planning_bias": "bullish_above_local_flip"},
     )
     assert second["status"] == "delayed"
     assert second["items"]
-    assert second["source_note"].lower().startswith("using cached")
+    assert second["source_note"] == "Partial twitterapi.io sync. Showing the latest good posts by source."
 
 
 def test_twitter_feed_never_returns_empty_without_cache(monkeypatch):
     now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
     _reset_cache(monkeypatch)
-    monkeypatch.setattr(svc, "_fetch_url_bytes", lambda url: (_ for _ in ()).throw(RuntimeError("down")))
+    monkeypatch.setattr(
+        svc, "_run_twitterapi_last_tweets", lambda **_: (_ for _ in ()).throw(RuntimeError("down"))
+    )
 
     snapshot = svc.build_twitter_feed_snapshot(
         now_et=now,
@@ -117,29 +101,23 @@ def test_twitter_feed_never_returns_empty_without_cache(monkeypatch):
     assert snapshot["status"] == "delayed"
     assert snapshot["items"]
     assert snapshot["top_items"]
-    assert snapshot["items"][0]["handle"] in {"@KobeissiLetter", "@unusual_whales"}
+    assert snapshot["items"][0]["handle"] == "@unusual_whales"
 
 
-def test_twitter_feed_falls_back_to_sequential_fetch_when_thread_pool_unavailable(monkeypatch):
+def test_twitter_feed_filters_to_tracked_accounts(monkeypatch):
     now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
     _reset_cache(monkeypatch)
-
-    class _BrokenThreadPool:
-        def __init__(self, *args, **kwargs):
-            raise RuntimeError("can't start new thread")
-
-    monkeypatch.setattr(svc, "ThreadPoolExecutor", _BrokenThreadPool)
     monkeypatch.setattr(
         svc,
-        "_fetch_url_bytes",
-        lambda url: _rss_xml(
+        "_run_twitterapi_last_tweets",
+        lambda **kwargs: [
             {
-                "title": "Dealer gamma remains supportive into the open",
-                "link": f"https://example.com/{url.rsplit('/', 2)[-2]}",
-                "description": "SPX holds near the local flip.",
-                "pubDate": _fmt_pub(now - timedelta(minutes=2)),
+                "author": {"userName": "some_random_account"},
+                "fullText": "This should not appear.",
+                "url": "https://x.com/some_random_account/status/4",
+                "createdAt": (now - timedelta(minutes=2)).isoformat(),
             }
-        ),
+        ],
     )
 
     snapshot = svc.build_twitter_feed_snapshot(
@@ -147,5 +125,105 @@ def test_twitter_feed_falls_back_to_sequential_fetch_when_thread_pool_unavailabl
         market_structure_snapshot={"planning_bias": "bullish_above_local_flip"},
     )
 
+    assert snapshot["status"] == "delayed"
+    assert snapshot["items"][0]["handle"] == "@unusual_whales"
+
+
+def test_twitter_feed_normalizes_snake_case_actor_fields(monkeypatch):
+    now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
+    _reset_cache(monkeypatch)
+    monkeypatch.setattr(
+        svc,
+        "_run_twitterapi_last_tweets",
+        lambda **kwargs: [
+            {
+                "author": {"screen_name": kwargs["username"]},
+                "full_text": "Hotter PPI adds pressure to yields and keeps traders defensive.",
+                "url": f"https://x.com/{kwargs['username']}/status/8",
+                "created_at": "Tue Apr 08 13:32:00 +0000 2026",
+            }
+        ],
+    )
+
+    snapshot = svc.build_twitter_feed_snapshot(
+        now_et=now,
+        market_structure_snapshot={"planning_bias": "bearish_below_local_flip"},
+    )
+
     assert snapshot["status"] == "live"
-    assert len(snapshot["items"]) == 2
+    assert len(snapshot["items"]) == 1
+    assert snapshot["items"][0]["handle"] == "@unusual_whales"
+
+
+def test_twitter_feed_top_items_preserves_full_page_feed_limit(monkeypatch):
+    now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
+    _reset_cache(monkeypatch)
+
+    def _fake_fetch(**kwargs):
+        username = kwargs["username"]
+        rows = []
+        for idx in range(24):
+            rows.append(
+                {
+                    "author": {"userName": username},
+                    "text": f"{username} update {idx}",
+                    "url": f"https://x.com/{username}/status/{idx}",
+                    "createdAt": (now - timedelta(minutes=idx)).isoformat(),
+                }
+            )
+        return rows
+
+    monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", _fake_fetch)
+
+    snapshot = svc.build_twitter_feed_snapshot(now_et=now)
+
+    assert snapshot["status"] == "live"
+    assert len(snapshot["top_items"]) == 24
+    assert len(snapshot["items"]) == 24
+
+
+def test_twitter_feed_cools_down_source_after_429(monkeypatch):
+    now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
+    _reset_cache(monkeypatch)
+    calls = {"count": 0}
+
+    def _fake_fetch(**kwargs):
+        calls["count"] += 1
+        raise RuntimeError("HTTP Error 429: Too Many Requests")
+
+    monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", _fake_fetch)
+    first = svc.build_twitter_feed_snapshot(now_et=now)
+    second = svc.build_twitter_feed_snapshot(now_et=now + timedelta(seconds=30))
+
+    assert first["status"] == "delayed"
+    assert second["status"] == "delayed"
+    assert calls["count"] == 1
+    state = second["source_states"]["unusual_whales"]
+    assert state["last_status_code"] == 429
+    assert state["cooldown_until"]
+
+def test_twitter_feed_uses_last_good_payload_for_single_source(monkeypatch):
+    now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
+    _reset_cache(monkeypatch)
+    responses = [
+        {
+            "author": {"userName": "unusual_whales"},
+            "text": "Unusual item",
+            "url": "https://x.com/unusual_whales/status/41",
+            "createdAt": now.isoformat(),
+        }
+    ]
+
+    def _fake_fetch(**kwargs):
+        if isinstance(responses, Exception):
+            raise responses
+        return responses
+
+    monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", _fake_fetch)
+    first = svc.build_twitter_feed_snapshot(now_et=now)
+    responses = RuntimeError("down")
+    second = svc.build_twitter_feed_snapshot(now_et=now + timedelta(minutes=6))
+
+    assert first["status"] == "live"
+    assert second["status"] == "delayed"
+    assert {item["handle"] for item in second["items"]} == {"@unusual_whales"}

@@ -151,7 +151,7 @@ def journal_home():
 
     journal_status_badges = [
         StateBadgeViewModel(
-            label="Entries",
+            label="Capture Pace",
             value=f"{len(entries)} in scope",
             tone=("healthy" if entries else "caution"),
             title="Journal entries visible in the current filter.",

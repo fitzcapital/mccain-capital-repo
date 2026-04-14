@@ -145,6 +145,22 @@ cd /mccain-capital-repo
 
 Open: `http://localhost:5001`
 
+## ☕ Caffeinate LaunchAgent
+
+If you enabled the repo's macOS display-awake helper, it installs this LaunchAgent:
+
+- plist: `~/Library/LaunchAgents/com.mccaincapital.caffeinate.plist`
+
+Commands:
+
+```bash
+./scripts/install_caffeinate_launch_agent.sh   # turn on / re-enable
+./scripts/disable_caffeinate_launch_agent.sh   # turn off, keep plist installed
+./scripts/remove_caffeinate_launch_agent.sh    # turn off and delete plist
+```
+
+`./scripts/stop_caffeinate_for_session.sh` only unloads it for the current login session.
+
 ### Data Persistence
 
 The recommended container flow bind-mounts the repo's real `persistent-data/` into `/data`,

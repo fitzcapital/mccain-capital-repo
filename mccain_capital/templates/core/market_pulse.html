@@ -502,12 +502,14 @@
           {% set watch_state = 'Mixed' %}
           {% set watch_tone = 'neutral' %}
         {% endif %}
-        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}" data-symbol="{{ q.symbol }}">
+        {% set delta_val = q.change_pct if q.change_pct is number else q.change if q.change is number else none %}
+        {% set spark_tone = 'pos' if delta_val is not none and delta_val > 0 else 'neg' if delta_val is not none and delta_val < 0 else 'flat' %}
+        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
           <div class="marketPulseWatchCardTop">
             <div class="k">{{ q.label }}</div>
             <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip">{{ watch_state }}</span>
           </div>
-          <div class="marketMiniSparkWrap" data-role="sparkline">{{ q.sparkline_svg|safe }}</div>
+          <div class="marketMiniSparkWrap tone-{{ watch_tone }} spark-{{ spark_tone }}" data-role="sparkline">{{ q.sparkline_svg|safe }}</div>
           <div class="marketPulseWatchValueRow">
             <div class="v" data-role="price">
               {% if q.price is not none %}
@@ -536,60 +538,126 @@
     <span class="pill">Market Feed</span>
     <span class="tiny muted">Real-time market commentary from curated sources.</span>
   </summary>
-<section class="marketPulseNewsSection">
-  <section class="card stack12 marketPulseNewsFeedShell marketPulseNewsFeedShell-stream">
+{% set whales_items = pulse_feed_items | selectattr('handle', 'equalto', '@unusual_whales') | sort(attribute='published_at', reverse=true) | list %}
+{% set remaining_posts = whales_items if whales_items else [] %}
+{% set commentary_total_count = whales_items|length %}
+{% set feed_snapshot = market_feed_snapshot or {} %}
+{% set feed_status = feed_snapshot.get('status') or ('live' if whales_items else 'delayed') %}
+{% set feed_status_label = 'Live' if feed_status == 'live' else 'Delayed' %}
+{% set feed_status_tone = 'is-live' if feed_status == 'live' else 'is-warn' %}
+{% set feed_updated_label = fetched_at or feed_snapshot.get('updated_at') or 'Awaiting refresh' %}
+{% set feed_mode = request.args.get('feed', 'curated') %}
+<section class="marketPulseNewsSection" id="marketFeedSection">
+  <section class="card stack12 marketPulseNewsFeedShell marketPulseNewsFeedShell-stream marketFeedPanel">
     <div class="toolbar">
-      <div class="marketPulseWireHeader marketPulseWireHeader-stream">
-        <div class="marketPulseWireHeaderCopy">
-          <div class="pill">Commentary Sources</div>
-          <div class="supportLead">Open the fastest curated market commentary directly on X.</div>
+      <div class="marketFeedCommandBar">
+        <div class="marketFeedCommandBar__left">
+          <span class="pill">Market Feed</span>
+          <div class="marketFeedCommandBar__identity">
+            <img class="marketFeedCommand__logo" src="{{ url_for('static', filename='img/unusual-whales.png') }}" alt="Unusual Whales logo">
+            <div>
+              <h3 class="marketFeedCommand__title">Unusual Whales Flow Desk</h3>
+              <div class="marketFeedCommand__sub">Options Flow · Positioning · Single-Name Tape</div>
+            </div>
+          </div>
         </div>
-        <div class="marketPulseWireHeaderMeta marketPulseWireHeaderMeta-stream">
-          <span class="feed-status-chip is-live" id="marketPulseFeedLiveChip">
+        <div class="marketFeedCommandBar__center">
+          <span class="feed-status-chip {{ feed_status_tone }}" id="marketFeedStatusChip">
             <span class="feed-status-dot" aria-hidden="true"></span>
-            <span class="feed-status-label">Direct</span>
+            <span class="feed-status-label" id="marketFeedStatusLabel">{{ feed_status_label }}</span>
           </span>
+          <div class="marketFeedCommand__meta">
+            <span class="marketFeedCommand__metaItem" id="marketFeedUpdated">Updated {{ feed_updated_label }}</span>
+            <span class="marketFeedCommand__metaItem" id="marketFeedCount">{{ commentary_total_count }} posts loaded</span>
+            <span class="marketFeedCommand__metaItem marketFeedCommand__metaItem-note" id="marketFeedSourceNote">{{ pulse_feed_source_note or feed_snapshot.get('source_note') or 'Monitoring provider health' }}</span>
+          </div>
+        </div>
+        <div class="marketFeedCommandBar__right">
+          <a class="btn" id="marketFeedRefreshBtn" href="/market-pulse?refresh=1#marketFeedSection">Refresh Feed</a>
+          <a class="btn" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open on X</a>
         </div>
       </div>
-      <div class="live-x-panel">
-        <div class="live-x-grid live-x-grid--launcher">
-          <section class="live-x-source">
-            <div class="live-x-source__header">
-              <div class="live-x-source__meta">
-                <strong>Kobeissi Letter</strong>
-                <span>@KobeissiLetter</span>
+      <div class="marketFeedTabs" role="tablist">
+        <a class="marketFeedTab{% if feed_mode != 'raw' %} is-active{% endif %}" href="/market-pulse?feed=curated#marketFeedSection">Desk Feed</a>
+        <a class="marketFeedTab{% if feed_mode == 'raw' %} is-active{% endif %}" href="/market-pulse?feed=raw#marketFeedSection">All Posts</a>
+      </div>
+      <div class="marketFeedGrid" id="marketFeedLayout">
+        {% if remaining_posts %}
+          <aside class="marketFeedRail marketFeedRail-left">
+            <div class="marketFeedRail__label">High Impact</div>
+            <div class="marketFeedHighShell" id="marketFeedHighShell">
+              <div class="marketFeedHighShell__head">
+                <div class="marketFeedHighShell__title">Alerts</div>
+                <div class="marketFeedHighShell__count">{{ (whales_items | selectattr('impact', 'equalto', 'high') | list) | length }}</div>
               </div>
-              <div class="live-x-source__actions">
-                <span class="live-x-source__pill">Open on X</span>
-                <a class="live-x-source__link" href="https://twitter.com/KobeissiLetter" target="_blank" rel="noopener noreferrer" aria-label="Open Kobeissi Letter on X">↗</a>
+              <div class="marketFeedHighList">
+                {% for item in whales_items if item.impact == 'high' %}
+                  <article class="marketFeedRow marketFeedRow-high">
+                    <div class="marketFeedRow__meta">
+                      <span class="live-x-feed-item__tag">HIGH</span>
+                      {% set item_rel = item.age_label or item.published_label %}
+                      {% set item_abs = item.published_et_label %}
+                      {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
+                      <span class="marketFeedRow__time" title="{{ item_time }}">{{ item_time }}</span>
+                    </div>
+                    <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
+                    <p class="marketFeedRow__summary">{{ item.summary or item.text }}</p>
+                  </article>
+                {% endfor %}
               </div>
             </div>
-            <div class="live-x-launcher">
-              <p class="live-x-launcher__text">Best for macro, policy, and cross-asset commentary. Open the source directly for the freshest posts, threads, and live updates.</p>
-              <div class="live-x-launcher__actions">
-                <a class="live-x-launcher__button" href="https://twitter.com/KobeissiLetter" target="_blank" rel="noopener noreferrer">Open Kobeissi Letter</a>
+          </aside>
+          <section class="marketFeedRail marketFeedRail-right">
+            <div class="marketFeedRail__label">Live Feed</div>
+            <div class="marketFeedListShell" id="marketFeedListShell">
+              <div class="marketFeedListShell__head">
+                <div class="marketFeedListShell__title">All posts</div>
+                <div class="marketFeedListShell__count" id="marketFeedMoreCount">{{ remaining_posts|length }} posts</div>
+              </div>
+              <div class="marketFeedList" id="marketFeedList">
+                {% for item in remaining_posts %}
+                  <article class="marketFeedRow">
+                    <div class="marketFeedRow__meta">
+                      {% set item_rel = item.age_label or item.published_label %}
+                      {% set item_abs = item.published_et_label %}
+                      {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
+                      <span class="marketFeedRow__time" title="{{ item_time }}">{{ item_time }}</span>
+                    </div>
+                    <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
+                    <p class="marketFeedRow__summary">{{ item.summary or item.text }}</p>
+                    <div class="marketFeedRow__actions">
+                      <a class="marketFeedRow__link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">Open post</a>
+                    </div>
+                  </article>
+                {% endfor %}
               </div>
             </div>
           </section>
-          <section class="live-x-source">
-            <div class="live-x-source__header">
-              <div class="live-x-source__meta">
-                <strong>Unusual Whales</strong>
-                <span>@unusual_whales</span>
-              </div>
-              <div class="live-x-source__actions">
-                <span class="live-x-source__pill">Open on X</span>
-                <a class="live-x-source__link" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X">↗</a>
-              </div>
-            </div>
-            <div class="live-x-launcher">
-              <p class="live-x-launcher__text">Best for options flow, positioning, and single-name tape context. Open the source directly when you need current commentary.</p>
-              <div class="live-x-launcher__actions">
-                <a class="live-x-launcher__button" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open Unusual Whales</a>
-              </div>
+        {% else %}
+          <section class="marketFeedEmpty" id="marketFeedEmpty">
+            <div class="marketFeedEmpty__title">Feed temporarily unavailable</div>
+            <p class="marketFeedEmpty__body">Latest Unusual Whales posts are not available right now. Use refresh for another pull or open the source directly on X.</p>
+            <div class="marketFeedEmpty__actions">
+              <a class="btn" href="/market-pulse?refresh=1#marketFeedSection">Refresh Feed</a>
+              <a class="btn" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open Unusual Whales</a>
             </div>
           </section>
+        {% endif %}
+      </div>
+      <div class="marketFeedDock">
+        <div class="marketFeedDock__identity">
+          <img class="marketFeedDock__logo" src="{{ url_for('static', filename='img/unusual-whales.png') }}" alt="Unusual Whales logo">
+          <div>
+            <div class="marketFeedDock__name">Unusual Whales</div>
+            <div class="marketFeedDock__handle">@unusual_whales</div>
+          </div>
         </div>
+        <div class="marketFeedDock__meta">
+          <span>{{ feed_status_label }}</span>
+          <span>{{ commentary_total_count }} posts</span>
+          <span id="marketFeedSourceHealth">{{ pulse_feed_source_note or feed_snapshot.get('source_note') or 'Monitoring provider health' }}</span>
+        </div>
+        <a class="btn" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open on X</a>
       </div>
     </div>
   </section>
@@ -752,6 +820,7 @@
 <script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>
 <script>
+  window.marketFeedItems = {{ whales_items | tojson | safe }};
 (() => {
   const MODE_KEY = "marketPulseViewMode";
   const modeToggle = document.getElementById("viewModeToggle");
@@ -958,6 +1027,209 @@
       window.location.href = refreshLink.href;
     });
   }
+
+  const feedRefreshBtn = document.getElementById("marketFeedRefreshBtn");
+  const feedLayout = document.getElementById("marketFeedLayout");
+  const feedStatusChip = document.getElementById("marketFeedStatusChip");
+  const feedStatusLabel = document.getElementById("marketFeedStatusLabel");
+  const feedUpdated = document.getElementById("marketFeedUpdated");
+  const feedCount = document.getElementById("marketFeedCount");
+  const feedSourceNote = document.getElementById("marketFeedSourceNote");
+  const feedSourceHealth = document.getElementById("marketFeedSourceHealth");
+  const feedUnreadBadge = document.getElementById("notifBellBadge");
+  const notifList = document.getElementById("notifDropdownList");
+  const notifCount = document.getElementById("notifDropdownCount");
+  const notifEmpty = document.getElementById("notifDropdownEmpty");
+  const FEED_LAST_SEEN_KEY = "marketFeedLastSeen";
+  const NOTIF_COUNT_KEY = "notifUnreadOverride";
+  const NOTIF_HIGH_KEY = "notifHighOverride";
+  const NOTIF_ITEMS_KEY = "notifItemsOverride";
+
+  const escapeHtml = (value) => {
+    const text = String(value || "");
+    return text
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("'", "&#39;");
+  };
+
+  const feedTag = (item, mode) => escapeHtml(mode === "raw" ? "POST" : (item.impact_label || item.category_label || "LIVE"));
+  const feedTimeParts = (item) => {
+    const relative = item.age_label || item.published_label || "";
+    let absolute = item.published_et_label || "";
+    if (!absolute && item.published_at) {
+      const dt = new Date(item.published_at);
+      if (!Number.isNaN(dt.getTime())) {
+        absolute = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/New_York",
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }).format(dt);
+      }
+    }
+    return { relative, absolute };
+  };
+  const feedTime = (item) => {
+    const { relative, absolute } = feedTimeParts(item);
+    const text = relative && absolute ? `${relative} · ${absolute}` : (relative || absolute || "Now");
+    return escapeHtml(text);
+  };
+  const feedTimeTitle = (item) => {
+    const { relative, absolute } = feedTimeParts(item);
+    const text = relative && absolute ? `${relative} · ${absolute}` : (relative || absolute || "Now");
+    return escapeHtml(text);
+  };
+  const feedHeadline = (item) => escapeHtml(item.headline || item.text || "Market update");
+  const feedSummary = (item) => escapeHtml(item.summary || item.text || item.headline || "");
+  const feedUrl = (item) => escapeHtml(item.url || "https://x.com/unusual_whales");
+
+  const readLastSeen = () => {
+    const raw = window.localStorage?.getItem(FEED_LAST_SEEN_KEY);
+    if (!raw) return 0;
+    const parsed = Date.parse(raw);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const writeLastSeen = (iso) => {
+    if (!window.localStorage) return;
+    if (iso) {
+      window.localStorage.setItem(FEED_LAST_SEEN_KEY, iso);
+    }
+  };
+
+  const itemTimestamp = (item) => {
+    const value = Date.parse(item.published_at || "");
+    return Number.isNaN(value) ? 0 : value;
+  };
+
+  const updateUnreadBadge = (items) => {
+    if (!feedUnreadBadge) return;
+    const lastSeen = readLastSeen();
+    const unread = (items || []).filter((item) => itemTimestamp(item) > lastSeen).length;
+    const hasHighUnread = (items || []).some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
+    feedUnreadBadge.textContent = unread > 0 ? String(unread) : "";
+    feedUnreadBadge.classList.toggle("is-empty", unread === 0);
+    feedUnreadBadge.classList.toggle("is-high", hasHighUnread);
+    if (notifCount) notifCount.textContent = `${unread} unread`;
+  };
+
+  const storeNotificationOverrides = (items) => {
+    if (!window.localStorage || !Array.isArray(items)) return;
+    const lastSeen = readLastSeen();
+    const unread = items.filter((item) => itemTimestamp(item) > lastSeen).length;
+    const hasHighUnread = items.some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
+    const trimmed = [...items]
+      .sort((a, b) => itemTimestamp(b) - itemTimestamp(a))
+      .slice(0, 8)
+      .map((item) => ({
+        title: item.headline || item.text || "Market update",
+        text: item.summary || item.text || "",
+        time_label: feedTime(item),
+        priority: item.impact === "high" ? "high" : "normal",
+      }));
+    window.localStorage.setItem(NOTIF_COUNT_KEY, String(unread));
+    window.localStorage.setItem(NOTIF_HIGH_KEY, hasHighUnread ? "1" : "0");
+    window.localStorage.setItem(NOTIF_ITEMS_KEY, JSON.stringify(trimmed));
+  };
+
+  const markSeen = (item) => {
+    const ts = itemTimestamp(item);
+    if (!ts) return;
+    const nextIso = new Date(ts).toISOString();
+    const current = readLastSeen();
+    if (ts > current) {
+      writeLastSeen(nextIso);
+    }
+  };
+
+  const syncNotifications = (items) => {
+    if (!notifList || !Array.isArray(items)) return;
+    const sorted = [...items].sort((a, b) => itemTimestamp(b) - itemTimestamp(a)).slice(0, 8);
+    const lastSeen = readLastSeen();
+    const unread = sorted.filter((item) => itemTimestamp(item) > lastSeen).length;
+    const hasHighUnread = sorted.some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
+    if (feedUnreadBadge) {
+      feedUnreadBadge.textContent = unread > 0 ? String(unread) : "";
+      feedUnreadBadge.classList.toggle("is-empty", unread === 0);
+      feedUnreadBadge.classList.toggle("is-high", hasHighUnread);
+    }
+    if (notifCount) notifCount.textContent = `${unread} unread`;
+    if (!sorted.length) {
+      if (notifEmpty) notifEmpty.style.display = "block";
+      notifList.innerHTML = `<div class="notifEmpty" id="notifDropdownEmpty">No new notifications.</div>`;
+      return;
+    }
+    if (notifEmpty) notifEmpty.style.display = "none";
+    notifList.innerHTML = sorted
+      .map((item) => {
+        const high = item.impact === "high";
+        return `
+        <div class="notifItem${high ? " is-high" : ""}">
+          <div class="notifItemTitle">${feedHeadline(item)}</div>
+          <div class="notifItemBody">${feedSummary(item)}</div>
+          <div class="notifItemTime">${feedTime(item)}</div>
+        </div>`;
+      })
+      .join("");
+    storeNotificationOverrides(sorted);
+  };
+
+  const updateFeedMeta = (data, items) => {
+    const status = String(data.status || (items.length ? "live" : "delayed"));
+    const statusLabel = status === "live" ? "Live" : "Delayed";
+    if (feedStatusChip) {
+      feedStatusChip.classList.toggle("is-live", status === "live");
+      feedStatusChip.classList.toggle("is-warn", status !== "live");
+    }
+    if (feedStatusLabel) feedStatusLabel.textContent = statusLabel;
+    if (feedUpdated) {
+      const updatedAt = data.fetched_at || data.updated_at || "Awaiting refresh";
+      feedUpdated.textContent = `Updated ${updatedAt}`;
+    }
+    if (feedCount) feedCount.textContent = `${items.length} posts loaded`;
+    const sourceNote = data.source_note || "Monitoring provider health";
+    if (feedSourceNote) feedSourceNote.textContent = sourceNote;
+    if (feedSourceHealth) feedSourceHealth.textContent = sourceNote;
+    updateUnreadBadge(items);
+    syncNotifications(items);
+  };
+
+  if (feedRefreshBtn) {
+    feedRefreshBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      showReloadOverlay("Market Pulse Sync", "Requesting fresh market, gamma, and news context…");
+      window.location.href = feedRefreshBtn.href;
+    });
+  }
+
+  const initialItems = Array.isArray(window.marketFeedItems) ? window.marketFeedItems : [];
+  updateUnreadBadge(initialItems);
+  syncNotifications(initialItems);
+  storeNotificationOverrides(initialItems);
+  const readLinks = Array.from(document.querySelectorAll("[data-feed-read='1']"));
+  readLinks.forEach((link) => {
+    link.addEventListener("click", () => {
+      const ts = String(link.getAttribute("data-feed-ts") || "");
+      if (ts) {
+        const parsed = Date.parse(ts);
+        if (!Number.isNaN(parsed)) {
+          const nextIso = new Date(parsed).toISOString();
+          const current = readLastSeen();
+          if (parsed > current) {
+            writeLastSeen(nextIso);
+            updateUnreadBadge(initialItems);
+            syncNotifications(initialItems);
+            storeNotificationOverrides(initialItems);
+          }
+        }
+      }
+    });
+  });
 
   window.addEventListener("market-pulse-stream-status", (event) => {
     const detail = event.detail || {};

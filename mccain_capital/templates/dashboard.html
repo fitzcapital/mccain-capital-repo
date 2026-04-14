@@ -408,7 +408,7 @@
   <div class="dashboardStageColumn dashboardStageSide">
   <section class="dashboardStageSection dashboardStageMonitor">
     <div class="dashboardStepLabel">Monitor</div>
-	    <div class="card primaryCard dashboardTapeMonitor dashboardTapeWatchlist"><div class="toolbar">
+	    <div class="card primaryCard dashboardTapeMonitor dashboardTapeWatchlist dashboardCoreTapeCard"><div class="toolbar">
       <div class="dashboardTapeHeader">
         <div class="dashboardTapeHeaderBrand">
           <div class="dashboardTapeSectionLabel">Live Tape</div>
@@ -420,66 +420,30 @@
       </div>
       <div class="liveTapeWatchTableShell">
         <div class="liveTapeWatchTable">
-        <div class="liveTapeWatchGridRow liveTapeWatchHeaderRow">
+        <div class="liveTapeWatchGridRow liveTapeWatchHeaderRow dashboardCoreTapeRow">
           <div class="liveTapeWatchCell liveTapeWatchCell-icon" aria-hidden="true"></div>
           <div class="liveTapeWatchCell liveTapeWatchCell-symbol">Symbol</div>
           <div class="liveTapeWatchCell liveTapeWatchCell-last">Price</div>
           <div class="liveTapeWatchCell liveTapeWatchCell-chgp">Chg%</div>
         </div>
-        {% set spx_state = (dashboard_spx.get('market_state') or 'Awaiting Feed') %}
-        {% set spx_tone = 'live' if spx_state == 'Live' else 'delayed' if spx_state == 'Delayed' else 'missing' %}
-        {% set spx_change_points = dashboard_spx.get('change_points') if dashboard_spx.get('change_points') is not none else dashboard_spx.get('change') %}
-        {% set spx_prior_close = dashboard_spx.get('prior_close') %}
-        <button type="button" class="liveTapeWatchGridRow liveTapeWatchRow{% if spx_change_points is not none and spx_change_points > 0 %} is-up{% elif spx_change_points is not none and spx_change_points < 0 %} is-down{% else %} is-flat{% endif %}" data-watch-symbol="SPX" aria-expanded="false">
+        {% for row in dashboard_tape_rows %}
+        <button type="button" class="liveTapeWatchGridRow liveTapeWatchRow dashboardCoreTapeRow is-{{ row.row_tone }}" data-watch-symbol="{{ row.symbol }}" aria-expanded="false">
           <div class="liveTapeWatchCell liveTapeWatchCell-icon"><span class="liveTapeWatchDot"></span></div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-symbol"><span class="liveTapeWatchSymbol">SPX</span></div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-last" data-role="last">{% if dashboard_spx.get('price') is not none %}{{ '%.2f'|format(dashboard_spx.get('price')) }}{% else %}loading...{% endif %}</div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-chgp" data-role="chgp">{% if dashboard_spx.get('pct_change') is not none %}{{ '%+.2f'|format(dashboard_spx.get('pct_change')) }}%{% else %}loading...{% endif %}</div>
-        </button>
-        <div class="liveTapeWatchDetail" data-detail-symbol="SPX" hidden>
-          <div class="liveTapeWatchDetailGrid">
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Chg</span><span class="liveTapeWatchDetailValue" data-role="detail-chg">{% if spx_change_points is not none %}{{ '%+.2f'|format(spx_change_points) }}{% else %}loading...{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{% if dashboard_spx.get('day_open') is not none %}{{ '%.2f'|format(dashboard_spx.get('day_open')) }}{% else %}—{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{% if spx_prior_close is not none %}{{ '%.2f'|format(spx_prior_close) }}{% else %}—{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Live</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ (dashboard_spx.get('freshness_label_compact') or '—')|replace('Live · ', '')|replace('Delayed · ', '')|replace('Unavailable · ', '') }}</span></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-symbol">
+            <span class="liveTapeWatchSymbol">{{ row.symbol }}</span>
           </div>
-        </div>
-        {% set vix_state = (dashboard_vix.get('market_state') or 'Awaiting Feed') %}
-        {% set vix_tone = 'live' if vix_state == 'Live' else 'delayed' if vix_state == 'Delayed' else 'missing' %}
-        {% set vix_change_points = dashboard_vix.get('change_points') if dashboard_vix.get('change_points') is not none else dashboard_vix.get('change') %}
-        {% set vix_prior_close = dashboard_vix.get('prior_close') %}
-        <button type="button" class="liveTapeWatchGridRow liveTapeWatchRow{% if vix_change_points is not none and vix_change_points > 0 %} is-up{% elif vix_change_points is not none and vix_change_points < 0 %} is-down{% else %} is-flat{% endif %}" data-watch-symbol="VIX" aria-expanded="false">
-          <div class="liveTapeWatchCell liveTapeWatchCell-icon"><span class="liveTapeWatchDot"></span></div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-symbol"><span class="liveTapeWatchSymbol">VIX</span></div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-last" data-role="last">{% if dashboard_vix.get('price') is not none %}{{ '%.2f'|format(dashboard_vix.get('price')) }}{% else %}loading...{% endif %}</div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-chgp" data-role="chgp">{% if dashboard_vix.get('pct_change') is not none %}{{ '%+.2f'|format(dashboard_vix.get('pct_change')) }}%{% else %}loading...{% endif %}</div>
-        </button>
-        <div class="liveTapeWatchDetail" data-detail-symbol="VIX" hidden>
-          <div class="liveTapeWatchDetailGrid">
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Chg</span><span class="liveTapeWatchDetailValue" data-role="detail-chg">{% if vix_change_points is not none %}{{ '%+.2f'|format(vix_change_points) }}{% else %}loading...{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{% if dashboard_vix.get('day_open') is not none %}{{ '%.2f'|format(dashboard_vix.get('day_open')) }}{% else %}—{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{% if vix_prior_close is not none %}{{ '%.2f'|format(vix_prior_close) }}{% else %}—{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Live</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ (dashboard_vix.get('freshness_label_compact') or '—')|replace('Live · ', '')|replace('Delayed · ', '')|replace('Unavailable · ', '') }}</span></div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-last dashboardCoreTapeStat" data-role="last">{{ row.price_display }}</div>
+          <div class="liveTapeWatchCell liveTapeWatchCell-chgp dashboardCoreTapeStat" data-role="chgp">
+            {% if row.change_arrow %}<span class="liveTapeChangeArrow">{{ row.change_arrow }}</span>{% endif %}
+            <span>{{ row.pct_change_display }}</span>
           </div>
-        </div>
-        {% for symbol in ['QQQ', 'IWM', 'AAPL', 'TSLA'] %}
-        {% set tape_quote = dashboard_tape_quotes.get(symbol) or {} %}
-        {% set tape_state = (tape_quote.get('market_state') or 'Awaiting Feed') %}
-        {% set tape_tone = 'live' if tape_state == 'Live' else 'delayed' if tape_state == 'Delayed' else 'missing' %}
-        {% set tape_change_points = tape_quote.get('change_points') if tape_quote.get('change_points') is not none else tape_quote.get('change') %}
-        {% set tape_prior_close = tape_quote.get('prior_close') %}
-        <button type="button" class="liveTapeWatchGridRow liveTapeWatchRow{% if tape_change_points is not none and tape_change_points > 0 %} is-up{% elif tape_change_points is not none and tape_change_points < 0 %} is-down{% else %} is-flat{% endif %}" data-watch-symbol="{{ symbol }}" aria-expanded="false">
-          <div class="liveTapeWatchCell liveTapeWatchCell-icon"><span class="liveTapeWatchDot"></span></div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-symbol"><span class="liveTapeWatchSymbol">{{ symbol }}</span></div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-last" data-role="last">{% if tape_quote.get('price') is not none %}{{ '%.2f'|format(tape_quote.get('price')) }}{% else %}loading...{% endif %}</div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-chgp" data-role="chgp">{% if tape_quote.get('pct_change') is not none %}{{ '%+.2f'|format(tape_quote.get('pct_change')) }}%{% else %}loading...{% endif %}</div>
         </button>
-        <div class="liveTapeWatchDetail" data-detail-symbol="{{ symbol }}" hidden>
+        <div class="liveTapeWatchDetail" data-detail-symbol="{{ row.symbol }}" hidden>
           <div class="liveTapeWatchDetailGrid">
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Chg</span><span class="liveTapeWatchDetailValue" data-role="detail-chg">{% if tape_change_points is not none %}{{ '%+.2f'|format(tape_change_points) }}{% else %}loading...{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{% if tape_quote.get('day_open') is not none %}{{ '%.2f'|format(tape_quote.get('day_open')) }}{% else %}—{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{% if tape_prior_close is not none %}{{ '%.2f'|format(tape_prior_close) }}{% else %}—{% endif %}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Live</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ (tape_quote.get('freshness_label_compact') or '—')|replace('Live · ', '')|replace('Delayed · ', '')|replace('Unavailable · ', '') }}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Chg</span><span class="liveTapeWatchDetailValue" data-role="detail-chg">{{ row.change_display }}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{{ row.open_display }}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{{ row.prev_display }}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Live</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ row.live_display }}</span></div>
           </div>
         </div>
         {% endfor %}

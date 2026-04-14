@@ -83,38 +83,44 @@
         </form>
       </details>
       <div class="hr"></div>
-      <div class="tableWrap">
-        <table class="tableDense">
-          <thead><tr><th>When</th><th>Event</th><th>Status</th><th>Count</th><th>Message</th><th>Action</th></tr></thead>
-          <tbody>
-          {% for a in alerts %}
-            <tr>
-              <td>{{ a.get('last_seen_at', '—') }}</td>
-              <td><code>{{ a.get('event_type', '—') }}</code></td>
-              <td>{{ (a.get('status') or 'open')|upper }}</td>
-              <td>{{ a.get('count', 1) }}</td>
-              <td class="tiny line16">{{ a.get('message', '') }}</td>
-              <td>
-                {% if a.get('status') != 'resolved' %}
-                  <form method="post" action="/ops/alerts/ack" style="display:inline">
-                    <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
-                    <button class="btn" type="submit">Ack</button>
-                  </form>
-                  <form method="post" action="/ops/alerts/resolve" style="display:inline">
-                    <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
-                    <button class="btn" type="submit">Resolve</button>
-                  </form>
-                {% else %}
-                  <span class="tiny">Resolved by {{ a.get('resolved_by') or '—' }}</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="6">No alerts in this view.</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      <details class="syncDetails stack10 opsFoldTable">
+        <summary>
+          <span>Alert Table</span>
+          <span class="tiny muted">{{ alerts|length }} rows</span>
+        </summary>
+        <div class="tableWrap">
+          <table class="tableDense">
+            <thead><tr><th>When</th><th>Event</th><th>Status</th><th>Count</th><th>Message</th><th>Action</th></tr></thead>
+            <tbody>
+            {% for a in alerts %}
+              <tr>
+                <td>{{ a.get('last_seen_at', '—') }}</td>
+                <td><code>{{ a.get('event_type', '—') }}</code></td>
+                <td>{{ (a.get('status') or 'open')|upper }}</td>
+                <td>{{ a.get('count', 1) }}</td>
+                <td class="tiny line16">{{ a.get('message', '') }}</td>
+                <td>
+                  {% if a.get('status') != 'resolved' %}
+                    <form method="post" action="/ops/alerts/ack" style="display:inline">
+                      <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
+                      <button class="btn" type="submit">Ack</button>
+                    </form>
+                    <form method="post" action="/ops/alerts/resolve" style="display:inline">
+                      <input type="hidden" name="alert_id" value="{{ a.get('id') }}">
+                      <button class="btn" type="submit">Resolve</button>
+                    </form>
+                  {% else %}
+                    <span class="tiny">Resolved by {{ a.get('resolved_by') or '—' }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6">No alerts in this view.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div></div>
 
     <div class="card opsConsoleCard"><div class="toolbar">
@@ -165,23 +171,29 @@
     <div class="card opsConsoleCard"><div class="toolbar">
       <div class="pill">🧾 Admin Timeline</div>
       <div class="workspaceSectionLead">Audit trail for rollback, recompute, backup, and alert-state changes.</div>
-      <div class="tableWrap">
-        <table class="tableDense">
-          <thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Details</th></tr></thead>
-          <tbody>
-          {% for r in audit_rows %}
-            <tr>
-              <td>{{ r.get('at', '—') }}</td>
-              <td><code>{{ r.get('action', '—') }}</code></td>
-              <td>{{ r.get('actor', '—') }}</td>
-              <td class="tiny line16"><code>{{ r.get('details', {})|tojson }}</code></td>
-            </tr>
-          {% else %}
-            <tr><td colspan="4">No admin audit events yet.</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      <details class="syncDetails stack10 opsFoldTable">
+        <summary>
+          <span>Timeline Table</span>
+          <span class="tiny muted">{{ audit_rows|length }} rows</span>
+        </summary>
+        <div class="tableWrap">
+          <table class="tableDense">
+            <thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Details</th></tr></thead>
+            <tbody>
+            {% for r in audit_rows %}
+              <tr>
+                <td>{{ r.get('at', '—') }}</td>
+                <td><code>{{ r.get('action', '—') }}</code></td>
+                <td>{{ r.get('actor', '—') }}</td>
+                <td class="tiny line16"><code>{{ r.get('details', {})|tojson }}</code></td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4">No admin audit events yet.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div></div>
   </div>
 

@@ -28,6 +28,21 @@
   </div>
 </div>
 
+<details class="syncDetails workspaceStatusFold tradesSignalFold">
+  <summary>
+    <span>Execution Signals</span>
+    <span class="tiny muted">Workflow, scope, and review confidence</span>
+  </summary>
+  <div class="statusBadgeStrip">
+    {% for badge in trades_status_badges %}
+      <div class="statusBadge is-{{ badge.tone }}" title="{{ badge.title }}">
+        <span class="statusBadgeLabel">{{ badge.label }}</span>
+        <strong>{{ badge.value }}</strong>
+      </div>
+    {% endfor %}
+  </div>
+</details>
+
 <section class="card primaryCard tradesFilterPanel">
   <div class="toolbar">
     <div class="tradesFilterHead">

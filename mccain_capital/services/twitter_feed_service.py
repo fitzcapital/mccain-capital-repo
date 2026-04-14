@@ -1,42 +1,42 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import errno
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 import html
 import json
 import logging
+import os
 import re
+import urllib.error
+import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from mccain_capital import runtime as app_runtime
 
 LOGGER = logging.getLogger(__name__)
 
-RSS_TIMEOUT_SECONDS = 2.0
-CACHE_TTL_SECONDS = 60
-DEFAULT_LIMIT = 15
-MAX_SOURCE_ITEMS = 10
-MAX_ITEM_AGE_HOURS = 48
-LAST_SUCCESS_MAX_AGE_HOURS = 24
-TWITTER_FEED_MAX_WORKERS = 2
+TWITTERAPI_TIMEOUT_SECONDS = 15.0
+SOURCE_STALE_SECONDS = 60
+COOLDOWN_429_SECONDS = 300
+REFRESH_LOCK_TTL_SECONDS = 20
+DEFAULT_LIMIT = 100
+MAX_ITEM_AGE_HOURS = 96
+TWITTERAPI_BASE_URL = "https://api.twitterapi.io"
 
-TWITTER_RSS_SOURCES: Tuple[Dict[str, str], ...] = (
-    {
-        "source": "Kobeissi Letter",
-        "handle": "@KobeissiLetter",
-        "url": "https://nitter.poast.org/KobeissiLetter/rss",
-        "profile_url": "https://x.com/KobeissiLetter",
-    },
+TRACKED_SOURCES: Tuple[Dict[str, str], ...] = (
     {
         "source": "Unusual Whales",
         "handle": "@unusual_whales",
-        "url": "https://nitter.poast.org/unusual_whales/rss",
+        "username": "unusual_whales",
         "profile_url": "https://x.com/unusual_whales",
     },
 )
+
+SOURCE_BY_USERNAME = {
+    str(source["username"]).strip().lower(): source for source in TRACKED_SOURCES
+}
 
 IMPACT_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
 RELEVANCE_WEIGHTS = {"actionable_now": 3, "watch": 2, "context_only": 1}
@@ -57,11 +57,45 @@ SYMBOL_MAP: Tuple[Tuple[str, str], ...] = (
     (r"\bTNX\b", "TNX"),
 )
 
-_CACHE: Dict[str, Any] = {"fetched_at": None, "payload": None}
+_CACHE: Dict[str, Any] = {"loaded_at": None, "sources": {}}
 
 
 def _cache_file() -> str:
     return app_runtime.upload_path(".twitter_feed_cache.json")
+
+
+def _lock_file(username: str) -> str:
+    return app_runtime.upload_path(f".twitter_feed_{username}.lock")
+
+
+def _default_source_state(source: Dict[str, str]) -> Dict[str, Any]:
+    return {
+        "handle": str(source["handle"]),
+        "username": str(source["username"]),
+        "source": str(source["source"]),
+        "last_success_at": "",
+        "last_attempt_at": "",
+        "cooldown_until": "",
+        "last_status_code": None,
+        "last_error": "",
+        "last_good_payload": [],
+        "last_good_count": 0,
+        "last_raw_payload": [],
+        "last_raw_count": 0,
+    }
+
+
+def _parse_dt(value: Any) -> Optional[datetime]:
+    return _parse_datetime(value)
+
+
+def _format_et_label(dt: Optional[datetime]) -> str:
+    if not dt:
+        return ""
+    try:
+        return dt.astimezone(app_runtime.TZ).strftime("%b %d %I:%M %p ET")
+    except Exception:
+        return ""
 
 
 def _load_disk_cache() -> Optional[Dict[str, Any]]:
@@ -81,6 +115,158 @@ def _save_disk_cache(payload: Dict[str, Any]) -> None:
         return
 
 
+def _normalize_source_store(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    sources: Dict[str, Any] = {}
+    raw_sources = dict((payload or {}).get("sources") or {})
+    for source in TRACKED_SOURCES:
+        username = str(source["username"])
+        existing = dict(raw_sources.get(username) or {})
+        state = _default_source_state(source)
+        state.update(existing)
+        state["last_good_payload"] = [
+            row for row in list(state.get("last_good_payload") or []) if isinstance(row, dict)
+        ]
+        state["last_good_count"] = int(state.get("last_good_count") or len(state["last_good_payload"]))
+        sources[username] = state
+    return {"sources": sources}
+
+
+def _load_source_store() -> Dict[str, Any]:
+    cached_sources = dict(_CACHE.get("sources") or {})
+    if cached_sources:
+        return _normalize_source_store({"sources": cached_sources})
+    disk_payload = _normalize_source_store(_load_disk_cache())
+    _CACHE["loaded_at"] = app_runtime.now_et()
+    _CACHE["sources"] = dict(disk_payload.get("sources") or {})
+    return disk_payload
+
+
+def _save_source_store(store: Dict[str, Any]) -> None:
+    normalized = _normalize_source_store(store)
+    _CACHE["loaded_at"] = app_runtime.now_et()
+    _CACHE["sources"] = dict(normalized.get("sources") or {})
+    _save_disk_cache(normalized)
+
+
+def _tracked_handles() -> List[str]:
+    return [str(source["handle"]) for source in TRACKED_SOURCES]
+
+
+def _twitterapi_key() -> str:
+    return str(
+        os.environ.get("TWITTERAPI_IO_API_KEY")
+        or app_runtime.get_setting_value("twitterapi_io_api_key", "")
+        or ""
+    ).strip()
+
+
+def _try_acquire_refresh_lock(username: str, now_et: datetime) -> bool:
+    path = _lock_file(username)
+    stale_cutoff = now_et - timedelta(seconds=REFRESH_LOCK_TTL_SECONDS)
+    try:
+        if os.path.exists(path):
+            mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=app_runtime.TZ)
+            if mtime <= stale_cutoff:
+                os.remove(path)
+    except OSError:
+        pass
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST:
+            return False
+        raise
+    try:
+        os.write(fd, now_et.isoformat().encode("utf-8"))
+    finally:
+        os.close(fd)
+    return True
+
+
+def _release_refresh_lock(username: str) -> None:
+    try:
+        os.remove(_lock_file(username))
+    except OSError:
+        return
+
+
+def _source_is_stale(state: Dict[str, Any], now_et: datetime) -> bool:
+    last_success_at = _parse_dt(state.get("last_success_at"))
+    if last_success_at is None:
+        return True
+    return (now_et - last_success_at).total_seconds() >= SOURCE_STALE_SECONDS
+
+
+def _source_in_cooldown(state: Dict[str, Any], now_et: datetime) -> bool:
+    cooldown_until = _parse_dt(state.get("cooldown_until"))
+    return bool(cooldown_until and cooldown_until > now_et)
+
+
+def _mark_source_success(
+    state: Dict[str, Any],
+    *,
+    now_et: datetime,
+    items: List[Dict[str, Any]],
+    raw_items: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    state["last_attempt_at"] = now_et.isoformat()
+    state["last_success_at"] = now_et.isoformat()
+    state["cooldown_until"] = ""
+    state["last_status_code"] = 200
+    state["last_error"] = ""
+    state["last_good_payload"] = list(items)
+    state["last_good_count"] = len(items)
+    state["last_raw_payload"] = list(raw_items)
+    state["last_raw_count"] = len(raw_items)
+    return state
+
+
+def _mark_source_failure(
+    state: Dict[str, Any],
+    *,
+    now_et: datetime,
+    status_code: Optional[int],
+    error: str,
+) -> Dict[str, Any]:
+    state["last_attempt_at"] = now_et.isoformat()
+    state["last_status_code"] = status_code
+    state["last_error"] = error
+    if status_code == 429:
+        state["cooldown_until"] = (now_et + timedelta(seconds=COOLDOWN_429_SECONDS)).isoformat()
+    return state
+
+
+def _run_twitterapi_last_tweets(*, username: str, api_key: str) -> List[Dict[str, Any]]:
+    query = urllib.parse.urlencode(
+        {
+            "userName": username,
+            "includeReplies": "false",
+            "count": str(DEFAULT_LIMIT),
+            "limit": str(DEFAULT_LIMIT),
+        }
+    )
+    url = f"{TWITTERAPI_BASE_URL}/twitter/user/last_tweets?{query}"
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={
+            "X-API-Key": api_key,
+            "Accept": "application/json",
+            "User-Agent": "mccain-capital/1.0",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=TWITTERAPI_TIMEOUT_SECONDS) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    if isinstance(payload, dict):
+        data = payload.get("data")
+        if isinstance(data, dict):
+            rows = data.get("tweets") or []
+            return [row for row in rows if isinstance(row, dict)]
+        rows = payload.get("tweets") or []
+        return [row for row in rows if isinstance(row, dict)]
+    return []
+
+
 def _clean_text(value: Any) -> str:
     text = html.unescape(str(value or ""))
     text = re.sub(r"<[^>]+>", " ", text)
@@ -89,7 +275,7 @@ def _clean_text(value: Any) -> str:
     return text
 
 
-def _truncate(value: str, limit: int = 220) -> str:
+def _truncate(value: str, limit: int = 280) -> str:
     text = str(value or "").strip()
     if len(text) <= limit:
         return text
@@ -97,16 +283,28 @@ def _truncate(value: str, limit: int = 220) -> str:
     return f"{trimmed}…"
 
 
-def _parse_pub_date(value: Any) -> Optional[datetime]:
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), tz=app_runtime.TZ)
+        except Exception:
+            return None
     raw = str(value or "").strip()
     if not raw:
         return None
+    if raw.isdigit():
+        try:
+            return datetime.fromtimestamp(float(raw), tz=app_runtime.TZ)
+        except Exception:
+            return None
     try:
-        dt = parsedate_to_datetime(raw)
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(app_runtime.TZ)
     except Exception:
-        return None
+        pass
     try:
-        return dt.astimezone(app_runtime.TZ)
+        return parsedate_to_datetime(raw).astimezone(app_runtime.TZ)
     except Exception:
         return None
 
@@ -125,23 +323,6 @@ def _age_label(published_at: Optional[datetime], now_et: datetime) -> str:
         return f"{hours}h ago"
     days = hours // 24
     return f"{days}d ago"
-
-
-def _fetch_url_bytes(url: str) -> bytes:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "application/rss+xml,application/xml,text/xml,*/*",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=RSS_TIMEOUT_SECONDS) as resp:
-        return resp.read()
-
-
-def _extract_items(xml_body: bytes) -> List[ET.Element]:
-    root = ET.fromstring(xml_body)
-    return list(root.findall(".//item"))
 
 
 def _extract_symbols(text: str) -> List[str]:
@@ -174,7 +355,7 @@ def _classify_category(text: str) -> str:
 
 def _classify_impact(text: str) -> str:
     lowered = text.lower()
-    if _contains_any(lowered, ("breaking", "fed", "fomc", "cpi", "inflation", "yield", "war", "tariff", "geopolitical", "sanction", "jobs", "payroll")):
+    if _contains_any(lowered, ("breaking", "fed", "fomc", "cpi", "ppi", "inflation", "yield", "war", "tariff", "geopolitical", "sanction", "jobs", "payroll")):
         return "high"
     if _contains_any(lowered, ("earnings", "upgrade", "downgrade", "positioning", "options", "dealer", "gamma")):
         return "medium"
@@ -218,8 +399,6 @@ def _planning_direction(structure: Dict[str, Any]) -> str:
         return "bullish"
     if bias in {"bearish_below_local_flip", "below_put_wall_breakdown_risk"}:
         return "bearish"
-    if bias == "neutral_between_levels":
-        return "neutral"
     return "neutral"
 
 
@@ -256,47 +435,120 @@ def _relevance_label(value: str) -> str:
 
 
 def _bias_label(value: str) -> str:
-    return {
-        "bullish": "Bullish",
-        "bearish": "Bearish",
-        "neutral": "Neutral",
-    }.get(value, "Neutral")
+    return {"bullish": "Bullish", "bearish": "Bearish", "neutral": "Neutral"}.get(value, "Neutral")
 
 
 def _vol_label(value: str) -> str:
-    return {
-        "higher": "Higher",
-        "lower": "Lower",
-        "neutral": "Neutral",
-    }.get(value, "Neutral")
+    return {"higher": "Higher", "lower": "Lower", "neutral": "Neutral"}.get(value, "Neutral")
 
 
-def _normalize_rss_item(source: Dict[str, str], row: ET.Element, now_et: datetime, structure: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    title = _clean_text(row.findtext("title"))
-    description = _clean_text(row.findtext("description"))
-    text = _truncate(title or description, limit=280)
+def _actor_username(item: Dict[str, Any]) -> str:
+    author = item.get("author")
+    if isinstance(author, dict):
+        for key in ("userName", "username", "screenName", "screen_name", "handle"):
+            raw = str(author.get(key) or "").strip()
+            if raw:
+                return raw.lstrip("@")
+    for key in ("userName", "username", "screenName", "screen_name", "handle"):
+        raw = str(item.get(key) or "").strip()
+        if raw:
+            return raw.lstrip("@")
+    url = str(item.get("url") or item.get("tweetUrl") or "").strip()
+    match = re.search(r"x\.com/([^/]+)/status/", url)
+    return str((match.group(1) if match else "") or "").strip().lstrip("@")
+
+
+def _actor_text(item: Dict[str, Any]) -> str:
+    for key in ("fullText", "full_text", "text", "tweetText", "content", "description"):
+        text = _clean_text(item.get(key))
+        if text:
+            return _truncate(text)
+    return ""
+
+
+def _actor_url(item: Dict[str, Any], username: str, profile_url: str) -> str:
+    for key in ("url", "tweetUrl", "twitterUrl"):
+        raw = str(item.get(key) or "").strip()
+        if raw:
+            return raw
+    post_id = str(item.get("id") or item.get("tweetId") or "").strip()
+    if username and post_id:
+        return f"https://x.com/{username}/status/{post_id}"
+    return profile_url
+
+
+def _normalize_raw_item(
+    item: Dict[str, Any],
+    *,
+    now_et: datetime,
+    source: Dict[str, str],
+) -> Optional[Dict[str, Any]]:
+    text = _actor_text(item)
     if not text:
         return None
-    published_at = _parse_pub_date(row.findtext("pubDate"))
+    published_at = _parse_datetime(
+        item.get("createdAt")
+        or item.get("created_at")
+        or item.get("timestamp")
+        or item.get("publishedAt")
+        or item.get("timeParsed")
+    )
+    return {
+        "handle": source["handle"],
+        "source": source["source"],
+        "source_label": source["source"],
+        "text": text,
+        "headline": text,
+        "summary": text,
+        "url": _actor_url(item, source["username"], source["profile_url"]),
+        "published_at": published_at.isoformat() if published_at else "",
+        "published_et_label": _format_et_label(published_at),
+        "published_label": _age_label(published_at, now_et),
+        "age_label": _age_label(published_at, now_et),
+        "raw": True,
+    }
+
+
+def _normalize_actor_item(
+    item: Dict[str, Any],
+    *,
+    now_et: datetime,
+    structure: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    username = _actor_username(item).lower()
+    source = SOURCE_BY_USERNAME.get(username)
+    if not source:
+        return None
+    text = _actor_text(item)
+    if not text:
+        return None
+    published_at = _parse_datetime(
+        item.get("createdAt")
+        or item.get("created_at")
+        or item.get("timestamp")
+        or item.get("publishedAt")
+        or item.get("timeParsed")
+    )
     if published_at and (now_et - published_at) > timedelta(hours=MAX_ITEM_AGE_HOURS):
         return None
-    category = _classify_category(f"{title} {description}")
-    impact = _classify_impact(f"{title} {description}")
-    market_bias = _classify_market_bias(f"{title} {description}")
-    volatility_bias = _classify_volatility_bias(f"{title} {description}")
-    symbols = _extract_symbols(f"{title} {description}")
-    trade_relevance = _trade_relevance(category, impact, symbols, f"{title} {description}")
-    item = {
+    category = _classify_category(text)
+    impact = _classify_impact(text)
+    market_bias = _classify_market_bias(text)
+    volatility_bias = _classify_volatility_bias(text)
+    symbols = _extract_symbols(text)
+    trade_relevance = _trade_relevance(category, impact, symbols, text)
+    normalized = {
         "source": source["source"],
         "source_label": source["source"],
         "handle": source["handle"],
         "published_at": published_at.isoformat() if published_at else "",
+        "published_et_label": _format_et_label(published_at),
         "published_label": _age_label(published_at, now_et),
         "age_label": _age_label(published_at, now_et),
         "text": text,
         "headline": text,
-        "summary": description or text,
-        "url": str(row.findtext("link") or source["profile_url"]).strip(),
+        "summary": text,
+        "url": _actor_url(item, source["username"], source["profile_url"]),
         "category": category,
         "category_label": _category_label(category),
         "impact": impact,
@@ -310,22 +562,11 @@ def _normalize_rss_item(source: Dict[str, str], row: ET.Element, now_et: datetim
         "symbols": symbols,
         "symbols_label": ", ".join(symbols) if symbols else "None",
     }
-    item.update(_gamma_alignment(item, structure))
-    if item["alignment"] == "conflicted" and item["trade_relevance"] == "actionable_now":
-        item["trade_relevance"] = "watch"
-        item["trade_relevance_label"] = _relevance_label("watch")
-    return item
-
-
-def _fetch_source_items(source: Dict[str, str], now_et: datetime, structure: Dict[str, Any]) -> List[Dict[str, Any]]:
-    xml_body = _fetch_url_bytes(source["url"])
-    rows = _extract_items(xml_body)
-    items: List[Dict[str, Any]] = []
-    for row in rows[:MAX_SOURCE_ITEMS]:
-        item = _normalize_rss_item(source, row, now_et, structure)
-        if item:
-            items.append(item)
-    return items
+    normalized.update(_gamma_alignment(normalized, structure))
+    if normalized["alignment"] == "conflicted" and normalized["trade_relevance"] == "actionable_now":
+        normalized["trade_relevance"] = "watch"
+        normalized["trade_relevance_label"] = _relevance_label("watch")
+    return normalized
 
 
 def _sort_key(item: Dict[str, Any]) -> Tuple[int, int, str]:
@@ -340,8 +581,7 @@ def _summarize_bias(items: List[Dict[str, Any]]) -> str:
     for item in items:
         bias = str(item.get("market_bias") or "neutral")
         scores[bias] = scores.get(bias, 0) + IMPACT_WEIGHTS.get(str(item.get("impact") or "low"), 1)
-    ranked = max(scores, key=scores.get)
-    return _bias_label(ranked)
+    return _bias_label(max(scores, key=scores.get))
 
 
 def _summarize_volatility(items: List[Dict[str, Any]]) -> str:
@@ -349,8 +589,7 @@ def _summarize_volatility(items: List[Dict[str, Any]]) -> str:
     for item in items:
         bias = str(item.get("volatility_bias") or "neutral")
         scores[bias] = scores.get(bias, 0) + IMPACT_WEIGHTS.get(str(item.get("impact") or "low"), 1)
-    ranked = max(scores, key=scores.get)
-    return _vol_label(ranked)
+    return _vol_label(max(scores, key=scores.get))
 
 
 def _summarize_gamma_alignment(items: List[Dict[str, Any]], structure: Dict[str, Any]) -> str:
@@ -372,9 +611,7 @@ def _summarize_tradeability(structure: Dict[str, Any]) -> str:
         or "Planning only"
     ).strip()
     planning_bias = str(structure.get("planning_bias_label") or "").strip()
-    if planning_bias:
-        return f"{tradeability} · {planning_bias}"
-    return tradeability or "Planning only"
+    return f"{tradeability} · {planning_bias}" if planning_bias else tradeability or "Planning only"
 
 
 def _now_summary(items: List[Dict[str, Any]], structure: Dict[str, Any], status: str) -> Dict[str, str]:
@@ -383,7 +620,7 @@ def _now_summary(items: List[Dict[str, Any]], structure: Dict[str, Any], status:
             "spx_focus": "No fresh source flow yet",
             "leadership": "Macro bias unavailable",
             "weakness": "Volatility unavailable",
-            "feed_state": "Twitter flow sync delayed",
+            "feed_state": "twitterapi.io sync delayed",
         }
     return {
         "spx_focus": f"Macro: {_summarize_bias(items)}",
@@ -397,19 +634,11 @@ def _fallback_seed_items(now_et: datetime, structure: Dict[str, Any]) -> List[Di
     planning_bias = str(structure.get("planning_bias_label") or "Hold to the shared gamma plan").strip()
     seed_texts = (
         {
-            "source": "Kobeissi Letter",
-            "handle": "@KobeissiLetter",
-            "url": "https://x.com/KobeissiLetter",
-            "text": f"Feed delayed. Preserve macro context and keep planning around {planning_bias.lower()}.",
-            "category": "macro",
-            "impact": "medium",
-        },
-        {
             "source": "Unusual Whales",
             "handle": "@unusual_whales",
             "url": "https://x.com/unusual_whales",
-            "text": "Feed delayed. Wait for fresh flow posts before upgrading a setup from context to trigger.",
-            "category": "flow",
+            "text": f"Feed delayed. Preserve macro context and keep planning around {planning_bias.lower()}.",
+            "category": "macro",
             "impact": "medium",
         },
     )
@@ -446,19 +675,228 @@ def _fallback_seed_items(now_et: datetime, structure: Dict[str, Any]) -> List[Di
     return items
 
 
-def _cache_is_fresh(cached_at: Optional[datetime], now_et: datetime) -> bool:
-    if cached_at is None:
-        return False
-    return (now_et - cached_at).total_seconds() <= CACHE_TTL_SECONDS
+def _dedupe_items(items: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    deduped: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for item in items:
+        key = (str(item.get("handle") or ""), str(item.get("text") or "").lower())
+        prior = deduped.get(key)
+        if prior is None or str(item.get("published_at") or "") > str(prior.get("published_at") or ""):
+            deduped[key] = item
+    return sorted(deduped.values(), key=_sort_key, reverse=True)[:limit]
 
 
-def _deserialize_cache(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    if not isinstance(payload, dict):
-        return None
-    items = list(payload.get("items") or [])
-    if not items:
-        return None
-    return payload
+def _sort_raw_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _key(item: Dict[str, Any]) -> int:
+        published = _parse_datetime(
+            item.get("published_at") or item.get("createdAt") or item.get("created_at")
+        )
+        return int(published.timestamp()) if published else 0
+
+    return sorted(items, key=_key, reverse=True)
+
+
+def _source_payload_items(
+    source_state: Dict[str, Any],
+    *,
+    limit: int,
+) -> List[Dict[str, Any]]:
+    return list(source_state.get("last_good_payload") or [])[:limit]
+
+
+def _refresh_source_state(
+    source_state: Dict[str, Any],
+    *,
+    source: Dict[str, str],
+    api_key: str,
+    now_et: datetime,
+    structure: Dict[str, Any],
+    limit: int,
+    force_refresh: bool,
+) -> Dict[str, Any]:
+    username = str(source["username"])
+    source_state["last_attempt_at"] = now_et.isoformat()
+
+    if _source_in_cooldown(source_state, now_et):
+        LOGGER.info(
+            "twitter feed cooldown skip for %s until %s",
+            username,
+            source_state.get("cooldown_until") or "",
+        )
+        return source_state
+
+    if not force_refresh and not _source_is_stale(source_state, now_et):
+        LOGGER.info(
+            "twitter feed cache hit for %s using last success at %s",
+            username,
+            source_state.get("last_success_at") or "",
+        )
+        return source_state
+
+    if not _try_acquire_refresh_lock(username, now_et):
+        LOGGER.info("twitter feed refresh already in progress for %s", username)
+        return source_state
+
+    try:
+        raw_items = _run_twitterapi_last_tweets(username=username, api_key=api_key)
+        raw_normalized = [
+            row
+            for row in (
+                _normalize_raw_item(item, now_et=now_et, source=source) for item in raw_items
+            )
+            if row
+        ]
+        normalized_items = _dedupe_items(
+            [
+                normalized
+                for normalized in (
+                    _normalize_actor_item(raw_item, now_et=now_et, structure=structure)
+                    for raw_item in raw_items
+                )
+                if normalized
+            ],
+            limit,
+        )
+        LOGGER.info(
+            "twitter feed fetch success for %s with %s items",
+            username,
+            len(normalized_items),
+        )
+        return _mark_source_success(
+            source_state,
+            now_et=now_et,
+            items=normalized_items,
+            raw_items=raw_normalized,
+        )
+    except urllib.error.HTTPError as exc:
+        status_code = int(getattr(exc, "code", 0) or 0)
+        error = f"HTTP Error {status_code}: {getattr(exc, 'reason', '')}".strip()
+        if status_code == 429:
+            LOGGER.warning("twitter feed 429 for %s; cooling down source", username)
+        else:
+            LOGGER.warning("twitter feed fetch failed for %s: %s", username, error)
+        return _mark_source_failure(
+            source_state,
+            now_et=now_et,
+            status_code=status_code or None,
+            error=error,
+        )
+    except Exception as exc:
+        error_text = str(exc)
+        status_code = 429 if "429" in error_text else None
+        if status_code == 429:
+            LOGGER.warning("twitter feed 429 for %s; cooling down source", username)
+        else:
+            LOGGER.warning("twitter feed fetch failed for %s: %s", username, error_text)
+        return _mark_source_failure(
+            source_state,
+            now_et=now_et,
+            status_code=status_code,
+            error=error_text,
+        )
+    finally:
+        _release_refresh_lock(username)
+
+
+def _build_combined_snapshot_from_store(
+    *,
+    store: Dict[str, Any],
+    now_et: datetime,
+    structure: Dict[str, Any],
+    limit: int,
+) -> Dict[str, Any]:
+    primary_label = str(TRACKED_SOURCES[0]["source"]) if TRACKED_SOURCES else "Primary source"
+    source_states = dict(store.get("sources") or {})
+    items = _dedupe_items(
+        [
+            row
+            for source in TRACKED_SOURCES
+            for row in _source_payload_items(
+                dict(source_states.get(str(source["username"])) or {}),
+                limit=limit,
+            )
+        ],
+        limit,
+    )
+    raw_items: List[Dict[str, Any]] = []
+    for source in TRACKED_SOURCES:
+        state = dict(source_states.get(str(source["username"])) or {})
+        raw_items.extend(list(state.get("last_raw_payload") or []))
+    raw_items = _sort_raw_items(raw_items)
+
+    any_live = False
+    any_error = False
+    available_sources = 0
+    unavailable_sources = 0
+    for source in TRACKED_SOURCES:
+        state = dict(source_states.get(str(source["username"])) or {})
+        payload = list(state.get("last_good_payload") or [])
+        if payload:
+            available_sources += 1
+        else:
+            unavailable_sources += 1
+        if state.get("last_error") or state.get("cooldown_until"):
+            any_error = True
+        if payload and not _source_is_stale(state, now_et) and not _source_in_cooldown(state, now_et):
+            any_live = True
+
+    if items:
+        if any_error:
+            status = "delayed"
+            source_note = "Partial twitterapi.io sync. Showing the latest good posts by source."
+        elif any_live:
+            status = "live"
+            source_note = f"Live flow sync from twitterapi.io for {primary_label}."
+        else:
+            status = "delayed"
+            source_note = "Using cached twitterapi.io snapshot while the latest sync is delayed."
+    else:
+        status = "delayed"
+        source_note = "twitterapi.io sync delayed. Using backup flow shell until the next valid sync."
+        items = _fallback_seed_items(now_et, structure)[: max(2, min(limit, 4))]
+
+    source_states_public = {}
+    for source in TRACKED_SOURCES:
+        username = str(source["username"])
+        state = dict(source_states.get(username) or _default_source_state(source))
+        source_states_public[username] = {
+            "handle": state.get("handle") or source["handle"],
+            "last_success_at": state.get("last_success_at") or "",
+            "last_attempt_at": state.get("last_attempt_at") or "",
+            "cooldown_until": state.get("cooldown_until") or "",
+            "last_status_code": state.get("last_status_code"),
+            "last_error": state.get("last_error") or "",
+            "last_good_count": int(state.get("last_good_count") or 0),
+        }
+
+    flow_summary = {
+        "macro_bias": _summarize_bias(items),
+        "volatility": _summarize_volatility(items),
+        "gamma_alignment": _summarize_gamma_alignment(items, structure),
+        "tradeability": _summarize_tradeability(structure),
+    }
+    flow_summary["headline"] = (
+        f"Macro: {flow_summary['macro_bias']} | "
+        f"Vol: {flow_summary['volatility']} | "
+        f"Gamma: {flow_summary['gamma_alignment']} -> {flow_summary['tradeability']}"
+    )
+
+    return {
+        "status": status,
+        "feed_state": status,
+        "source_note": source_note,
+        "updated_at": now_et.isoformat(),
+        "sources_monitored": _tracked_handles(),
+        "tracked_accounts": _tracked_handles(),
+        "items": list(items),
+        "top_items": list(items[:limit]),
+        "raw_items": list(raw_items),
+        "available": bool(items),
+        "flow_summary": flow_summary,
+        "now_summary": _now_summary(items, structure, status),
+        "source_states": source_states_public,
+        "available_source_count": available_sources,
+        "unavailable_source_count": unavailable_sources,
+    }
 
 
 def fetch_twitter_feed(
@@ -480,95 +918,32 @@ def build_twitter_feed_snapshot(
     *,
     now_et: Optional[datetime] = None,
     market_structure_snapshot: Optional[Dict[str, Any]] = None,
+    force_refresh: bool = False,
 ) -> Dict[str, Any]:
     now_et = now_et or app_runtime.now_et()
     structure = dict(market_structure_snapshot or {})
-    cached_at = _CACHE.get("fetched_at")
-    cached_payload = _deserialize_cache(dict(_CACHE.get("payload") or {}))
-    if cached_payload and _cache_is_fresh(cached_at, now_et):
-        return dict(cached_payload)
+    store = _load_source_store()
+    api_key = _twitterapi_key()
+    if api_key:
+        sources = dict(store.get("sources") or {})
+        for source in TRACKED_SOURCES:
+            username = str(source["username"])
+            state = dict(sources.get(username) or _default_source_state(source))
+            sources[username] = _refresh_source_state(
+                state,
+                source=source,
+                api_key=api_key,
+                now_et=now_et,
+                structure=structure,
+                limit=limit,
+                force_refresh=force_refresh,
+            )
+        store["sources"] = sources
+        _save_source_store(store)
 
-    items: List[Dict[str, Any]] = []
-    failed_sources: List[str] = []
-    max_workers = max(1, min(TWITTER_FEED_MAX_WORKERS, len(TWITTER_RSS_SOURCES)))
-    try:
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = {
-                pool.submit(_fetch_source_items, source, now_et, structure): source
-                for source in TWITTER_RSS_SOURCES
-            }
-            for future in as_completed(futures):
-                source = futures[future]
-                try:
-                    items.extend(list(future.result() or []))
-                except Exception:
-                    failed_sources.append(source["source"])
-    except RuntimeError as exc:
-        LOGGER.warning("twitter feed thread pool unavailable; falling back to sequential fetch: %s", exc)
-        for source in TWITTER_RSS_SOURCES:
-            try:
-                items.extend(list(_fetch_source_items(source, now_et, structure) or []))
-            except Exception:
-                failed_sources.append(source["source"])
-
-    deduped: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    for item in items:
-        key = (str(item.get("handle") or ""), str(item.get("text") or "").lower())
-        prior = deduped.get(key)
-        if prior is None or str(item.get("published_at") or "") > str(prior.get("published_at") or ""):
-            deduped[key] = item
-
-    sorted_items = sorted(deduped.values(), key=_sort_key, reverse=True)[:limit]
-    status = "live"
-    source_note = "Live flow sync from Kobeissi Letter and Unusual Whales."
-
-    if not sorted_items:
-        cached_items = list(cached_payload.get("items") or [])[:limit] if cached_payload else []
-        disk_cache = _deserialize_cache(dict(_load_disk_cache() or {}))
-        if cached_items:
-            sorted_items = cached_items
-            status = "delayed"
-            source_note = "Using cached Twitter flow snapshot while the latest sync is delayed."
-        elif disk_cache:
-            sorted_items = list(disk_cache.get("items") or [])[:limit]
-            status = "delayed"
-            source_note = "Using cached Twitter flow snapshot while the latest sync is delayed."
-        else:
-            sorted_items = _fallback_seed_items(now_et, structure)[: max(2, min(limit, 4))]
-            status = "delayed"
-            source_note = "Feed sync delayed. Using backup flow shell until the next valid Twitter sync."
-    elif failed_sources:
-        status = "delayed"
-        source_note = "Partial Twitter sync. Showing the latest valid flow from available sources."
-
-    flow_summary = {
-        "macro_bias": _summarize_bias(sorted_items),
-        "volatility": _summarize_volatility(sorted_items),
-        "gamma_alignment": _summarize_gamma_alignment(sorted_items, structure),
-        "tradeability": _summarize_tradeability(structure),
-    }
-    flow_summary["headline"] = (
-        f"Macro: {flow_summary['macro_bias']} | "
-        f"Vol: {flow_summary['volatility']} | "
-        f"Gamma: {flow_summary['gamma_alignment']} -> {flow_summary['tradeability']}"
+    return _build_combined_snapshot_from_store(
+        store=store,
+        now_et=now_et,
+        structure=structure,
+        limit=limit,
     )
-
-    snapshot = {
-        "status": status,
-        "feed_state": status,
-        "source_note": source_note,
-        "updated_at": now_et.isoformat(),
-        "sources_monitored": [source["handle"] for source in TWITTER_RSS_SOURCES],
-        "tracked_accounts": [source["handle"] for source in TWITTER_RSS_SOURCES],
-        "items": list(sorted_items),
-        "top_items": list(sorted_items[: min(5, limit)]),
-        "available": bool(sorted_items),
-        "flow_summary": flow_summary,
-        "now_summary": _now_summary(sorted_items, structure, status),
-    }
-
-    if status == "live":
-        _CACHE["fetched_at"] = now_et
-        _CACHE["payload"] = dict(snapshot)
-        _save_disk_cache(snapshot)
-    return snapshot

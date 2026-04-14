@@ -1366,11 +1366,9 @@ def test_market_pulse_empty_state_uses_consistent_feed_copy(client, monkeypatch)
     resp = client.get("/market-pulse", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Commentary Sources" in body
-    assert "Open the fastest curated market commentary directly on X." in body
-    assert "Open Kobeissi Letter" in body
-    assert "Open Unusual Whales" in body
-    assert "https://twitter.com/KobeissiLetter" in body
+    assert "Market Feed" in body
+    assert "Unusual Whales Flow Desk" in body
+    assert "Refresh Feed" in body
     assert "https://twitter.com/unusual_whales" in body
     assert "No trend" in body
     assert "Awaiting contract rows." in body
@@ -1401,9 +1399,10 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
             "watchlist_items": [],
             "pulse_feed_available": True,
             "pulse_feed_source_note": "RSS feed live",
-            "pulse_feed_accounts": ["Reuters", "Federal Reserve", "Yahoo Finance", "MarketWatch"],
+            "pulse_feed_accounts": ["@unusual_whales"],
             "pulse_feed_items": [
                 {
+                    "handle": "@unusual_whales",
                     "headline": "FOMC minutes point to higher rates sensitivity",
                     "summary": "Macro desks are focused on yields and policy language.",
                     "source_label": "Reuters",
@@ -1415,6 +1414,7 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
                     "category_label": "Macro",
                 },
                 {
+                    "handle": "@unusual_whales",
                     "headline": "Treasury yields climb as SPX futures fade",
                     "summary": "Rates pressure remains the lead market driver.",
                     "source_label": "MarketWatch",
@@ -1425,22 +1425,11 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
                     "category": "market",
                     "category_label": "Market",
                 },
-                {
-                    "headline": "Nvidia extends leadership while Tesla lags",
-                    "summary": "Mega-cap divergence is driving tape selection.",
-                    "source_label": "Yahoo Finance",
-                    "url": "https://example.com/3",
-                    "published_label": "14m ago",
-                    "impact": "medium",
-                    "impact_label": "MED",
-                    "category": "company",
-                    "category_label": "Company",
-                },
             ],
             "market_feed_snapshot": {
                 "status": "live",
                 "source_note": "RSS feed live",
-                "sources_monitored": ["Reuters", "Federal Reserve", "Yahoo Finance", "MarketWatch"],
+                "sources_monitored": ["@unusual_whales"],
                 "now_summary": {
                     "spx_focus": "SPX flat, QQQ slightly strong, small caps leading",
                     "leadership": "Broad risk-on",
@@ -1471,11 +1460,14 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
     resp = client.get("/market-pulse", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Commentary Sources" in body
-    assert "Open the fastest curated market commentary directly on X." in body
-    assert "Open Kobeissi Letter" in body
-    assert "Open Unusual Whales" in body
-    assert "https://twitter.com/KobeissiLetter" in body
+    assert "Market Feed" in body
+    assert "Unusual Whales Flow Desk" in body
+    assert "Options Flow / Positioning / Single-Name Tape" in body
+    assert "FOMC minutes point to higher rates sensitivity" in body
+    assert "Treasury yields climb as SPX futures fade" in body
+    assert "Refresh Feed" in body
+    assert "All posts" in body
+    assert "Open on X" in body
     assert "https://twitter.com/unusual_whales" in body
 
 
