@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import secrets
-import re
 from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional

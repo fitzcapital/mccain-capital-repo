@@ -301,7 +301,6 @@ def _trade_bucket_match(row: dict, bucket: str) -> bool:
     bucket = str(bucket or "").strip().lower()
     if not bucket:
         return True
-    net = _safe_float(row.get("net_pl"))
     classification = str(row.get("trade_classification") or "")
     oversized = bool(row.get("oversized"))
     missing_stop = not bool(row.get("stop_present"))
@@ -1065,8 +1064,6 @@ def trades_page():
     win_rate = float(
         (stats["win_rate"] if isinstance(stats, dict) else getattr(stats, "win_rate", 0.0)) or 0.0
     )
-    wins = int((stats["wins"] if isinstance(stats, dict) else getattr(stats, "wins", 0)) or 0)
-    losses = int((stats["losses"] if isinstance(stats, dict) else getattr(stats, "losses", 0)) or 0)
     trades_count = len(trades)
     avg_net = (day_net / trades_count) if trades_count else 0.0
     review_coverage = analytics_repo.review_coverage(trades)
@@ -1249,17 +1246,6 @@ def trades_page():
     )
     secondary_total_label = "📅 Week Total" if is_day_view else "🏁 All-Time Net"
     secondary_total_value = week_total if is_day_view else all_time_net
-    scope_enabled = bool(account_scope.get("enabled")) if isinstance(account_scope, dict) else bool(getattr(account_scope, "enabled", False))
-    scope_label = (
-        str(account_scope.get("label") or "").strip()
-        if isinstance(account_scope, dict)
-        else str(getattr(account_scope, "label", "") or "").strip()
-    )
-    scope_start_date = (
-        str(account_scope.get("start_date") or "").strip()
-        if isinstance(account_scope, dict)
-        else str(getattr(account_scope, "start_date", "") or "").strip()
-    )
     summary_bar = [
         {"label": primary_net_label, "value": money(day_net), "meta": primary_net_sub},
         {

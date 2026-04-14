@@ -18,7 +18,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from mccain_capital import runtime as app_runtime
-from mccain_capital.services import gamma_map_service
 from mccain_capital.services import market_data_service
 
 LOGGER = logging.getLogger(__name__)

@@ -173,7 +173,6 @@ def compute_trade_review_foundation(
     target_pct = _float_or_none(row.get("target_pct"))
     entry_price = _float_or_none(row.get("entry_price"))
     exit_price = _float_or_none(row.get("exit_price"))
-    qty_value = _float_or_none(row.get("contracts"))
 
     implicit_stop = False
     if stop_price in (None, 0) and stop_pct in (None, 0) and (planned_risk not in (None, 0) or spend_value not in (None, 0)):

@@ -10,7 +10,6 @@ import re
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import (
     db,
     looks_like_header,

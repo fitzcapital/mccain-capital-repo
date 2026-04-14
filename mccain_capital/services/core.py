@@ -58,6 +58,7 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
+from mccain_capital.services import market_data_service
 from mccain_capital.services.gamma_context_service import (
     _extract_candidate_ladder,
     _infer_level_step,
@@ -5607,12 +5608,6 @@ def get_or_build_market_pulse_snapshot(
     session_mode = _market_pulse_snapshot_session_mode(now_et)
     cached_playbook = _market_pulse_cached_playbook_snapshot(now_et)
 
-    provisional_chart = _market_pulse_execution_chart_viewmodel(
-        spx_quote=spx_quote,
-        gamma_snapshot=gamma_snapshot,
-        macro_events=macro_events,
-        now_et=now_et,
-    )
     spot_meta = _market_pulse_resolve_spot_snapshot(
         session_mode=session_mode,
         spx_quote=spx_quote,
@@ -7248,13 +7243,6 @@ def _dashboard_decision_viewmodel(
             "PLANNING_ONLY": "Planning only",
             "UNAVAILABLE": "No trade / stand down",
         }
-        status_map = {
-            "READY": "Ready if trigger confirms",
-            "WAIT": "Wait for cleaner structure",
-            "NO_TRADE": "No clean trade right now",
-            "PLANNING_ONLY": "After-hours planning only",
-            "UNAVAILABLE": "Stand down until structure is valid",
-        }
         return {
             "bias": bias,
             "plan": str(structure.get("best_look") or daily_brief.get("plan_a") or "Wait").strip(),
@@ -7288,7 +7276,6 @@ def _dashboard_decision_viewmodel(
     gamma_state = str(macro.get("state") or "").strip()
     local_state = str(local.get("state") or "").strip()
     playbook_status = str(playbook.get("status") or "").strip()
-    playbook_tone = str(playbook.get("tone") or "").strip()
     snapshot_unavailable = (
         gamma_state in {"", "unknown"}
         or not any(isinstance(levels.get(key), (int, float)) for key in ("main_flip", "call_wall", "put_wall"))
@@ -7558,7 +7545,7 @@ def _dashboard_gamma_strip_viewmodel(
         }
 
     gamma_snapshot = dict(gamma_snapshot or {})
-    spot = _num(levels.get("spot")) if 'levels' in locals() else None
+    spot = _num(gamma_snapshot.get("spot"))
     def _fmt_level(value: Any, *, key: str = "") -> str:
         if isinstance(value, (int, float)):
             return f"{float(value):.0f}"

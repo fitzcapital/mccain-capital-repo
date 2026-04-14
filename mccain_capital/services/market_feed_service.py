@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime
 from difflib import SequenceMatcher
 from email.utils import parsedate_to_datetime
 import hashlib
