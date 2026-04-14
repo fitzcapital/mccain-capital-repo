@@ -502,9 +502,11 @@
           {% set watch_state = 'Mixed' %}
           {% set watch_tone = 'neutral' %}
         {% endif %}
-        {% set delta_val = q.change_pct if q.change_pct is number else q.change if q.change is number else none %}
+        {% set q_change = q.get('change') if q is mapping else none %}
+        {% set q_change_pct = q.get('change_pct') if q is mapping else none %}
+        {% set delta_val = q_change_pct if q_change_pct is number else q_change if q_change is number else none %}
         {% set spark_tone = 'pos' if delta_val is not none and delta_val > 0 else 'neg' if delta_val is not none and delta_val < 0 else 'flat' %}
-        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if q.change > 0 %}glow-green{% elif q.change < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
+        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if q_change is number and q_change > 0 %}glow-green{% elif q_change is number and q_change < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
           <div class="marketPulseWatchCardTop">
             <div class="k">{{ q.label }}</div>
             <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip">{{ watch_state }}</span>
@@ -518,7 +520,15 @@
                 —
               {% endif %}
             </div>
-            <div class="tiny" data-role="change-line">{{ '%+.2f'|format(q.change_pct) }}%</div>
+            <div class="tiny" data-role="change-line">
+              {% if q_change_pct is number %}
+                {{ '%+.2f'|format(q_change_pct) }}%
+              {% elif q_change is number %}
+                {{ '%+.2f'|format(q_change) }}
+              {% else %}
+                —
+              {% endif %}
+            </div>
           </div>
           <div class="tiny muted marketPulseWatchMetaRow">
             <span data-role="market-state">{{ q.market_state }}</span>
@@ -557,7 +567,7 @@
             <img class="marketFeedCommand__logo" src="{{ url_for('static', filename='img/unusual-whales.png') }}" alt="Unusual Whales logo">
             <div>
               <h3 class="marketFeedCommand__title">Unusual Whales Flow Desk</h3>
-              <div class="marketFeedCommand__sub">Options Flow · Positioning · Single-Name Tape</div>
+              <div class="marketFeedCommand__sub">Options Flow / Positioning / Single-Name Tape</div>
             </div>
           </div>
         </div>
@@ -573,11 +583,12 @@
           </div>
         </div>
         <div class="marketFeedCommandBar__right">
-          <button class="marketFeedActionBtn" id="marketFeedRefreshBtn" type="button" aria-label="Refresh feed" title="Refresh feed">
+          <button class="marketFeedActionBtn" id="marketFeedRefreshBtn" type="button" aria-label="Refresh Feed" title="Refresh Feed">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
               <path d="M21 3v6h-6"></path>
             </svg>
+            <span class="srOnly">Refresh Feed</span>
           </button>
           <a class="marketFeedActionBtn marketFeedActionBtn-open" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X" title="Open Unusual Whales on X">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -585,6 +596,7 @@
               <path d="M10 14 19 5"></path>
               <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
             </svg>
+            <span class="srOnly">Open on X</span>
           </a>
         </div>
       </div>
@@ -643,6 +655,7 @@
                           <path d="M10 14 19 5"></path>
                           <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
                         </svg>
+                        <span class="srOnly">Open on X</span>
                       </a>
                     </div>
                   </article>
@@ -655,11 +668,12 @@
             <div class="marketFeedEmpty__title">Feed temporarily unavailable</div>
             <p class="marketFeedEmpty__body">Latest Unusual Whales posts are not available right now. Use refresh for another pull or open the source directly on X.</p>
             <div class="marketFeedEmpty__actions">
-              <button class="marketFeedActionBtn" id="marketFeedEmptyRefreshBtn" type="button" aria-label="Refresh feed" title="Refresh feed">
+              <button class="marketFeedActionBtn" id="marketFeedEmptyRefreshBtn" type="button" aria-label="Refresh Feed" title="Refresh Feed">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
                   <path d="M21 3v6h-6"></path>
                 </svg>
+                <span class="srOnly">Refresh Feed</span>
               </button>
               <a class="marketFeedActionBtn marketFeedActionBtn-open" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X" title="Open Unusual Whales on X">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -667,6 +681,7 @@
                   <path d="M10 14 19 5"></path>
                   <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
                 </svg>
+                <span class="srOnly">Open on X</span>
               </a>
             </div>
           </section>
@@ -691,6 +706,7 @@
             <path d="M10 14 19 5"></path>
             <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
           </svg>
+          <span class="srOnly">Open on X</span>
         </a>
       </div>
     </div>
@@ -1256,11 +1272,12 @@
           <div class="marketFeedEmpty__title">Feed temporarily unavailable</div>
           <p class="marketFeedEmpty__body">Latest Unusual Whales posts are not available right now. Use refresh for another pull or open the source directly on X.</p>
           <div class="marketFeedEmpty__actions">
-            <button class="marketFeedActionBtn" data-market-feed-refresh="1" type="button" aria-label="Refresh feed" title="Refresh feed">
+            <button class="marketFeedActionBtn" data-market-feed-refresh="1" type="button" aria-label="Refresh Feed" title="Refresh Feed">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
                 <path d="M21 3v6h-6"></path>
               </svg>
+              <span class="srOnly">Refresh Feed</span>
             </button>
             <a class="marketFeedActionBtn marketFeedActionBtn-open" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X" title="Open Unusual Whales on X">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1268,6 +1285,7 @@
                 <path d="M10 14 19 5"></path>
                 <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
               </svg>
+              <span class="srOnly">Open on X</span>
             </a>
           </div>
         </section>`;
@@ -1296,6 +1314,7 @@
               <path d="M10 14 19 5"></path>
               <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
             </svg>
+            <span class="srOnly">Open on X</span>
           </a>
         </div>
       </article>`).join("");
