@@ -17674,6 +17674,25 @@ body.modalOpen{
   }
 }
 
+/* Final orb override: keep this at the true end of the file so older dashboard rules
+   cannot shrink the review KPI circles again. */
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle{
+  width:60px !important;
+  box-shadow:none;
+  place-items:center;
+  text-align:center;
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle strong{
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:13px !important;
+  line-height:1;
+  letter-spacing:-.04em;
+  color:#f5fbff;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1, "lnum" 1;
+}
+
 /* Shared visual-system polish pass.
    Keep this last so it smooths cross-page drift instead of competing with older rules. */
 .toolbar{
@@ -17857,9 +17876,20 @@ body.modalOpen{
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle{
+  width:60px;
   display:grid;
   align-items:center;
   justify-items:center;
+}
+
+.page-dashboard .dashboardStatusOrbCircle strong{
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:14px;
+  line-height:1;
+  letter-spacing:-.04em;
+  color:#f5fbff;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1, "lnum" 1;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle strong{
