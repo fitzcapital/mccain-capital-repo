@@ -86,6 +86,12 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 
+__all__ = [
+    "urllib",
+    "_auto_backup_config_paths",
+    "_notify_history_paths",
+]
+
 # Compatibility aliases used by extracted route bodies.
 fetch_trades = repo.fetch_trades
 fetch_trade_reviews_map = repo.fetch_trade_reviews_map
