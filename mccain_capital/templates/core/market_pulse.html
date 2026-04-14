@@ -623,8 +623,22 @@
                       {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
                       <span class="marketFeedRow__time" title="{{ item_time }}">{{ item_time }}</span>
                     </div>
-                    <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
-                    <p class="marketFeedRow__summary">{{ item.summary or item.text }}</p>
+                    <div class="marketFeedRow__head">
+                      <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
+                      <a class="marketFeedRow__link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}" aria-label="Open post on X" title="Open post on X">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M14 5h5v5"></path>
+                          <path d="M10 14 19 5"></path>
+                          <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+                        </svg>
+                        <span class="srOnly">Open on X</span>
+                      </a>
+                    </div>
+                    {% set item_summary = item.summary or item.text %}
+                    {% set item_title = item.headline or item.text %}
+                    {% if item_summary and item_summary|trim|lower != item_title|trim|lower %}
+                      <p class="marketFeedRow__summary">{{ item_summary }}</p>
+                    {% endif %}
                   </article>
                 {% endfor %}
               </div>
@@ -646,18 +660,24 @@
                       {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
                       <span class="marketFeedRow__time" title="{{ item_time }}">{{ item_time }}</span>
                     </div>
-                    <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
-                    <p class="marketFeedRow__summary">{{ item.summary or item.text }}</p>
-                    <div class="marketFeedRow__actions">
-                      <a class="marketFeedRow__link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}" aria-label="Open post on X" title="Open post on X">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                          <path d="M14 5h5v5"></path>
-                          <path d="M10 14 19 5"></path>
-                          <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
-                        </svg>
-                        <span class="srOnly">Open on X</span>
-                      </a>
+                    <div class="marketFeedRow__head">
+                      <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
+                      <div class="marketFeedRow__actions">
+                        <a class="marketFeedRow__link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}" aria-label="Open post on X" title="Open post on X">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M14 5h5v5"></path>
+                            <path d="M10 14 19 5"></path>
+                            <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+                          </svg>
+                          <span class="srOnly">Open on X</span>
+                        </a>
+                      </div>
                     </div>
+                    {% set item_summary = item.summary or item.text %}
+                    {% set item_title = item.headline or item.text %}
+                    {% if item_summary and item_summary|trim|lower != item_title|trim|lower %}
+                      <p class="marketFeedRow__summary">{{ item_summary }}</p>
+                    {% endif %}
                   </article>
                 {% endfor %}
               </div>
@@ -1146,7 +1166,13 @@
     return escapeHtml(text);
   };
   const feedHeadline = (item) => escapeHtml(item.headline || item.text || "Market update");
-  const feedSummary = (item) => escapeHtml(item.summary || item.text || item.headline || "");
+  const feedSummary = (item) => {
+    const headline = String(item?.headline || item?.text || "Market update").trim().toLowerCase();
+    const summary = String(item?.summary || item?.text || item?.headline || "").trim();
+    if (!summary) return "";
+    if (summary.toLowerCase() === headline) return "";
+    return escapeHtml(summary);
+  };
   const feedUrl = (item) => escapeHtml(item.url || "https://x.com/unusual_whales");
   const BADGE_MAX = 99;
   const formatUnreadBadge = (count) => {
@@ -1197,7 +1223,11 @@
       .slice(0, 8)
       .map((item) => ({
         title: item.headline || item.text || "Market update",
-        text: item.summary || item.text || "",
+        text: (() => {
+          const title = String(item.headline || item.text || "Market update").trim().toLowerCase();
+          const summary = String(item.summary || item.text || "").trim();
+          return summary && summary.toLowerCase() !== title ? summary : "";
+        })(),
         time_label: feedTime(item),
         published_at: item.published_at || "",
         url: item.url || "",
@@ -1239,10 +1269,20 @@
     notifList.innerHTML = sorted
       .map((item) => {
         const high = item.impact === "high";
+        const summary = feedSummary(item);
         return `
         <div class="notifItem${high ? " is-high" : ""}">
-          <div class="notifItemTitle">${feedHeadline(item)}</div>
-          <div class="notifItemBody">${feedSummary(item)}</div>
+          <div class="notifItemHead">
+            <div class="notifItemTitle">${feedHeadline(item)}</div>
+            <a class="notifItemLink" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" aria-label="Open post on X" title="Open post on X">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 5h5v5"></path>
+                <path d="M10 14 19 5"></path>
+                <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+              </svg>
+            </a>
+          </div>
+          ${summary ? `<div class="notifItemBody">${summary}</div>` : ""}
           <div class="notifItemTime">${feedTime(item)}</div>
         </div>`;
       })
@@ -1308,17 +1348,8 @@
           <span class="live-x-feed-item__tag">HIGH</span>
           <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
         </div>
-        <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
-        <p class="marketFeedRow__summary">${feedSummary(item)}</p>
-      </article>`).join("");
-    const listHtml = sorted.map((item) => `
-      <article class="marketFeedRow">
-        <div class="marketFeedRow__meta">
-          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
-        </div>
-        <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
-        <p class="marketFeedRow__summary">${feedSummary(item)}</p>
-        <div class="marketFeedRow__actions">
+        <div class="marketFeedRow__head">
+          <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
           <a class="marketFeedRow__link" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}" aria-label="Open post on X" title="Open post on X">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M14 5h5v5"></path>
@@ -1328,6 +1359,27 @@
             <span class="srOnly">Open on X</span>
           </a>
         </div>
+        ${feedSummary(item) ? `<p class="marketFeedRow__summary">${feedSummary(item)}</p>` : ""}
+      </article>`).join("");
+    const listHtml = sorted.map((item) => `
+      <article class="marketFeedRow">
+        <div class="marketFeedRow__meta">
+          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
+        </div>
+        <div class="marketFeedRow__head">
+          <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
+          <div class="marketFeedRow__actions">
+            <a class="marketFeedRow__link" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}" aria-label="Open post on X" title="Open post on X">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 5h5v5"></path>
+                <path d="M10 14 19 5"></path>
+                <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+              </svg>
+              <span class="srOnly">Open on X</span>
+            </a>
+          </div>
+        </div>
+        ${feedSummary(item) ? `<p class="marketFeedRow__summary">${feedSummary(item)}</p>` : ""}
       </article>`).join("");
     feedLayout.innerHTML = `
       <aside class="marketFeedRail marketFeedRail-left">

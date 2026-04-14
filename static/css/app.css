@@ -1834,6 +1834,12 @@ body{
   border:1px solid rgba(120, 160, 210, .14);
   background:rgba(8, 16, 28, .7);
 }
+.notifItemHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:8px;
+}
 .notifItem.is-high{
   border-color:rgba(255, 120, 148, .3);
   box-shadow:0 0 16px rgba(255, 92, 122, .18);
@@ -1842,6 +1848,29 @@ body{
   font-size:.86rem;
   font-weight:700;
   color:#f3f8ff;
+  min-width:0;
+}
+.notifItemLink{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  border-radius:10px;
+  border:1px solid rgba(120, 170, 220, .18);
+  background:rgba(15, 28, 44, .42);
+  color:rgba(150, 206, 246, .86);
+  text-decoration:none;
+}
+.notifItemLink svg{
+  width:14px;
+  height:14px;
+}
+.notifItemLink:hover{
+  border-color:rgba(120, 210, 255, .36);
+  color:#f5fbff;
+  box-shadow:0 0 12px rgba(90, 200, 255, .14);
 }
 .notifItemBody{
   font-size:.78rem;
@@ -12416,6 +12445,12 @@ body.marketPulseReady .marketPulseSection{
 .marketFeedRow__headline:hover{
   color:#ffffff;
 }
+.marketFeedRow__head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
 .marketFeedRow__summary{
   margin:0;
   font-size:.84rem;
@@ -17691,6 +17726,147 @@ body.modalOpen{
   color:#f5fbff;
   font-variant-numeric:tabular-nums;
   font-feature-settings:"tnum" 1, "lnum" 1;
+}
+
+/* Final A-track shared workspace polish */
+.workspaceSectionLead{
+  max-width:58ch;
+  font-size:var(--type-body);
+  line-height:1.38;
+  color:rgba(226, 238, 252, .78);
+}
+
+.page-trades .tradesFilterHead > div:first-child,
+.page-ops .pageHeroHead > div:first-child,
+.page-analytics .replaySupportGrid .supportCard > .toolbar,
+.page-analytics .replaySupportGrid .subtleCard > .toolbar{
+  min-width:0;
+}
+
+.page-trades .tradesFilterPanel .supportLead,
+.page-ops .workspaceSectionLead,
+.page-analytics .replaySupportGrid .supportLead{
+  max-width:56ch;
+  font-size:var(--type-body);
+  line-height:1.38;
+}
+
+.page-trades .tradesFilterPanel .toolbar,
+.page-ops .opsCommandDeck .toolbar,
+.page-ops .opsConsoleCard .toolbar,
+.page-analytics .replaySupportGrid .supportCard > .toolbar{
+  gap:8px;
+}
+
+.page-trades .tradesFilterHead{
+  align-items:flex-start;
+  gap:14px;
+}
+
+.page-trades .tradesFilterShortcuts,
+.page-ops .pageHero .actionRow,
+.page-ops .opsCommandDeck .actionRow{
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.page-trades .tradesFilterShortcuts .btn,
+.page-trades .tradesFilterActions .btn,
+.page-analytics .analyticsFilterActions .btn,
+.page-ops .pageHero .actionRow .btn,
+.page-ops .opsCommandDeck .actionRow .btn{
+  min-height:34px;
+  padding:0 12px;
+  border-radius:12px;
+}
+
+.page-trades .tradesActiveFilters,
+.page-analytics .analyticsFilterMeta{
+  gap:8px;
+}
+
+.page-analytics .metricStrip{
+  gap:10px;
+  margin-top:12px;
+}
+
+.page-analytics .metricStrip .metric{
+  min-width:0;
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid rgba(110, 177, 255, .12);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.008)),
+    rgba(6, 13, 25, .54);
+  box-shadow:inset 0 1px 0 rgba(196, 228, 255, .04);
+}
+
+.page-analytics .metricStrip .metric .label{
+  font-size:var(--type-label);
+  color:rgba(194, 211, 234, .62);
+}
+
+.page-analytics .metricStrip .metric .value{
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:clamp(18px, 2.1vw, 24px);
+  line-height:1.08;
+  letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1, "lnum" 1;
+}
+
+.page-analytics .metricStrip .metric .sub{
+  line-height:1.36;
+  color:rgba(213, 227, 245, .66);
+}
+
+.page-analytics .replaySupportGrid{
+  gap:10px;
+}
+
+.page-analytics .replaySupportGrid .supportCard,
+.page-analytics .replaySupportGrid .subtleCard{
+  background:
+    radial-gradient(120% 130% at 100% 0%, rgba(79, 162, 255, .08), transparent 48%),
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.01)),
+    var(--panel);
+}
+
+.page-analytics .replaySupportGrid .supportBody{
+  line-height:1.38;
+  color:rgba(214, 228, 246, .68);
+}
+
+.page-analytics .replayRailItem{
+  border-radius:16px;
+  padding:12px 14px;
+}
+
+.page-analytics .replayRailItem .supportBody,
+.page-analytics .replayJournalEntry .supportBody{
+  line-height:1.4;
+}
+
+.page-ops .pageHeroHead{
+  align-items:flex-start;
+  gap:14px;
+}
+
+.page-ops .pageHero .pageSub{
+  max-width:60ch;
+}
+
+.page-ops .opsStatusStrip{
+  gap:8px;
+}
+
+.page-ops .opsSafetyGrid .supportCard > .toolbar,
+.page-ops .opsSafetyGrid .subtleCard > .toolbar{
+  min-height:0;
+}
+
+.page-ops .opsFoldTable .tableWrap{
+  margin-top:8px;
 }
 
 /* Shared visual-system polish pass.

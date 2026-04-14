@@ -375,8 +375,23 @@
                   {% if notif_items %}
                     {% for item in notif_items[:8] %}
                       <div class="notifItem{% if item.priority == 'high' %} is-high{% endif %}">
-                        <div class="notifItemTitle">{{ item.title or 'Market update' }}</div>
-                        <div class="notifItemBody">{{ item.text or item.summary or '' }}</div>
+                        <div class="notifItemHead">
+                          <div class="notifItemTitle">{{ item.title or 'Market update' }}</div>
+                          {% if item.url %}
+                            <a class="notifItemLink" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" aria-label="Open post on X" title="Open post on X">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M14 5h5v5"></path>
+                                <path d="M10 14 19 5"></path>
+                                <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+                              </svg>
+                            </a>
+                          {% endif %}
+                        </div>
+                        {% set notif_body = item.text or item.summary or '' %}
+                        {% set notif_title = item.title or 'Market update' %}
+                        {% if notif_body and notif_body|trim|lower != notif_title|trim|lower %}
+                          <div class="notifItemBody">{{ notif_body }}</div>
+                        {% endif %}
                         <div class="notifItemTime">{{ item.time_label or item.timestamp_label or item.timestamp or '' }}</div>
                       </div>
                     {% endfor %}
@@ -854,17 +869,40 @@
       (items || []).slice(0, 10).forEach((item) => {
         const card = document.createElement("div");
         card.className = `notifItem${item.priority === "high" ? " is-high" : ""}`;
+        const head = document.createElement("div");
+        head.className = "notifItemHead";
         const title = document.createElement("div");
         title.className = "notifItemTitle";
         title.textContent = item.title || "Market update";
-        const body = document.createElement("div");
-        body.className = "notifItemBody";
-        body.textContent = item.text || item.summary || "";
+        head.appendChild(title);
+        if (item.url) {
+          const link = document.createElement("a");
+          link.className = "notifItemLink";
+          link.href = item.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.setAttribute("aria-label", "Open post on X");
+          link.setAttribute("title", "Open post on X");
+          link.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 5h5v5"></path>
+              <path d="M10 14 19 5"></path>
+              <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+            </svg>`;
+          head.appendChild(link);
+        }
         const time = document.createElement("div");
         time.className = "notifItemTime";
         time.textContent = item.time_label || item.timestamp_label || item.timestamp || "";
-        card.appendChild(title);
-        card.appendChild(body);
+        card.appendChild(head);
+        const bodyText = String(item.text || item.summary || "").trim();
+        const titleText = String(item.title || "Market update").trim();
+        if (bodyText && bodyText.toLowerCase() !== titleText.toLowerCase()) {
+          const body = document.createElement("div");
+          body.className = "notifItemBody";
+          body.textContent = bodyText;
+          card.appendChild(body);
+        }
         card.appendChild(time);
         dropdownList.appendChild(card);
       });
