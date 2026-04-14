@@ -301,6 +301,16 @@
         <span class="tradesSummaryLabel">Data Trust</span>
         <strong class="tradesSummaryValue">{{ data_trust.status_label }}</strong>
         <span class="tradesSummaryMeta">{{ data_trust.message }}</span>
+        {% if data_trust.primary_href or data_trust.secondary_href %}
+          <span class="tradesSummaryMeta">
+            {% if data_trust.primary_href %}
+              <a href="{{ data_trust.primary_href }}">{{ data_trust.primary_label or 'Primary action' }}</a>
+            {% endif %}
+            {% if data_trust.secondary_href %}
+              <a href="{{ data_trust.secondary_href }}">{{ data_trust.secondary_label or 'Secondary action' }}</a>
+            {% endif %}
+          </span>
+        {% endif %}
       </div>
     </section>
 

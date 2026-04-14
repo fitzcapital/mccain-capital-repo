@@ -9264,6 +9264,9 @@ def dashboard():
             .replace("Live · ", "")
             .replace("Delayed · ", "")
             .replace("Unavailable · ", ""),
+            "gap_display": str(enriched.get("overnight_gap_compact") or "—"),
+            "range_display": str(enriched.get("day_range_compact") or "—"),
+            "source_display": str(enriched.get("source_badge_label") or "—"),
         }
 
     dashboard_spx = _enrich_dashboard_quote("SPX", dashboard_spx)

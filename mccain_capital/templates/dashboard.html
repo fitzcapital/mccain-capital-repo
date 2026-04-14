@@ -431,6 +431,7 @@
           <div class="liveTapeWatchCell liveTapeWatchCell-icon"><span class="liveTapeWatchDot"></span></div>
           <div class="liveTapeWatchCell liveTapeWatchCell-symbol">
             <span class="liveTapeWatchSymbol">{{ row.symbol }}</span>
+            {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
           </div>
           <div class="liveTapeWatchCell liveTapeWatchCell-last dashboardCoreTapeStat" data-role="last">{{ row.price_display }}</div>
           <div class="liveTapeWatchCell liveTapeWatchCell-chgp dashboardCoreTapeStat" data-role="chgp">
@@ -444,6 +445,9 @@
             <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{{ row.open_display }}</span></div>
             <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{{ row.prev_display }}</span></div>
             <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Live</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ row.live_display }}</span></div>
+            <div class="liveTapeWatchDetailItem dashboardGapLine"><span class="liveTapeWatchDetailKey">Gap O/N:</span><span class="liveTapeWatchDetailValue" data-role="detail-gap">{{ row.gap_display }}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Range</span><span class="liveTapeWatchDetailValue" data-role="detail-range">{{ row.range_display }}</span></div>
+            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Source</span><span class="liveTapeWatchDetailValue" data-role="detail-source">{{ row.source_display }}</span></div>
           </div>
         </div>
         {% endfor %}

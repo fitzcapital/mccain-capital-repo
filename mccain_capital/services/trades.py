@@ -7,6 +7,7 @@ import sqlite3
 import json
 import base64
 import hashlib
+import urllib
 import shutil
 import tempfile
 import threading
@@ -54,6 +55,7 @@ from mccain_capital.services import trades_importing as importing
 from mccain_capital.services import vanquish_live_sync
 from mccain_capital.services.trades_backup import (
     _auto_backup_config_path,
+    _auto_backup_config_paths,
     _auto_backup_dir,
     _auto_backup_worker,
     _integrity_health_snapshot,
@@ -70,6 +72,7 @@ from mccain_capital.services.trades_notifications import (
     _bulk_update_alert_status,
     _emit_notification,
     _load_notify_history,
+    _notify_history_paths,
     _parse_iso_epoch,
     _save_notify_history,
     _scan_anomaly_watch,

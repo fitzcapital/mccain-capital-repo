@@ -47,6 +47,9 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0003_import_batches",
             "0004_strategy_links",
             "0005_market_alerts",
+            "0006_trade_review_rich_fields",
+            "0007_trade_source",
+            "0008_trade_review_workflow",
         ]
     finally:
         conn.close()

@@ -17,8 +17,8 @@
         </div>
         <div class="actionRow workspaceHeroPrimaryActions">
           {% if account_scope and account_scope.enabled %}
-            <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active</a>
-            <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All</a>
+            <a class="btn {% if scope_mode == 'active' %}primary{% endif %}" href="{{ scope_active_href }}">Active Account</a>
+            <a class="btn {% if scope_mode == 'all' %}primary{% endif %}" href="{{ scope_all_href }}">All History</a>
             <a class="btn ctaLink" href="/ops/backups">Scope</a>
           {% else %}
             <a class="btn ctaLink" href="/ops/backups">Scope</a>

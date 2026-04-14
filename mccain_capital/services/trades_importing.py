@@ -664,8 +664,10 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
         tags.append("size-heavy")
 
     score = max(35, min(95, int(round(score))))
+    trade_source = str(trade.get("trade_source") or "").strip()
+    setup_tag = trade_source if trade_source in {"Statement Import", "Live Upload"} else "Statement Import"
     return {
-        "setup_tag": "",
+        "setup_tag": setup_tag,
         "session_tag": _infer_session_tag(str(trade.get("entry_time") or "")),
         "checklist_score": score,
         "rule_break_tags": ", ".join(sorted(set(tags))),

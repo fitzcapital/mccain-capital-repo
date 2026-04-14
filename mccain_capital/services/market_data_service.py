@@ -847,11 +847,7 @@ def get_prior_session_intraday(
 def get_watchlist(
     symbols: List[str], *, allow_yf_fallback: bool = True
 ) -> Dict[str, Dict[str, Any]]:
-    return (
-        get_watchlist_with_fallback(symbols)
-        if allow_yf_fallback
-        else get_watchlist_tradier(symbols)
-    )
+    return get_watchlist_tradier(symbols)
 
 
 def get_watchlist_tradier(symbols: List[str]) -> Dict[str, Dict[str, Any]]:

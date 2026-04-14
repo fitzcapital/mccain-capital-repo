@@ -44,10 +44,10 @@ CSV_FILENAME = "gamma_data.csv"
 PNG_FILENAME = "gamma_map.png"
 DEFAULT_CONTRACT_MULTIPLIER = 100
 DEFAULT_GEX_SCALER = 0.01
-DEFAULT_GAMMA_REGIME_POSITIVE_THRESHOLD = 10_000_000_000.0
-DEFAULT_GAMMA_REGIME_NEGATIVE_THRESHOLD = -10_000_000_000.0
-DEFAULT_GAMMA_REGIME_STRONG_POSITIVE_THRESHOLD = 40_000_000_000.0
-DEFAULT_GAMMA_REGIME_STRONG_NEGATIVE_THRESHOLD = -40_000_000_000.0
+DEFAULT_GAMMA_REGIME_POSITIVE_THRESHOLD = 50_000_000.0
+DEFAULT_GAMMA_REGIME_NEGATIVE_THRESHOLD = -50_000_000.0
+DEFAULT_GAMMA_REGIME_STRONG_POSITIVE_THRESHOLD = 100_000_000.0
+DEFAULT_GAMMA_REGIME_STRONG_NEGATIVE_THRESHOLD = -100_000_000.0
 DEFAULT_LOCAL_FLIP_SPOT_PCT_BAND = 0.02
 DEFAULT_LOCAL_FLIP_STRIKE_WINDOW = 21
 SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
@@ -1446,11 +1446,11 @@ def classify_gamma_regime(
     )
     if net_gex_total >= strong_upper:
         return "strong_positive"
-    if net_gex_total > upper:
+    if net_gex_total >= upper:
         return "positive"
     if net_gex_total <= strong_lower:
         return "strong_negative"
-    if net_gex_total < lower:
+    if net_gex_total <= lower:
         return "negative"
     return "neutral"
 
@@ -1967,9 +1967,9 @@ def assemble_market_pulse_snapshot(
     exchange_timestamp_available: bool = False,
     source_file_path: str,
     spot_price: float,
-    spot_source: str,
-    spot_source_label: str,
-    spot_source_name: str,
+    spot_source: str = "",
+    spot_source_label: str = "",
+    spot_source_name: str = "",
     spot_source_timestamp: str,
     spot_is_fallback: bool = False,
     fallback_reason: str = "",
@@ -1979,6 +1979,8 @@ def assemble_market_pulse_snapshot(
     contracts_seen: int,
     contract_multiplier: int = DEFAULT_CONTRACT_MULTIPLIER,
 ) -> Dict[str, Any]:
+    resolved_spot_source = str(spot_source or spot_source_name or "").strip()
+    resolved_spot_source_label = str(spot_source_label or spot_source_name or spot_source or "").strip()
     effective_timestamp = str(source_effective_timestamp or source_timestamp or _now_iso())
     fetch_timestamp = str(source_fetch_timestamp or effective_timestamp or _now_iso())
     validated = validate_gamma_source(
@@ -2075,8 +2077,8 @@ def assemble_market_pulse_snapshot(
         ),
         "spot": float(spot_price),
         "spot_price_used": float(spot_price),
-        "spot_source": str(spot_source or ""),
-        "spot_source_label": str(spot_source_label or ""),
+        "spot_source": resolved_spot_source,
+        "spot_source_label": resolved_spot_source_label,
         "spot_source_name": str(spot_source_name or ""),
         "spot_source_timestamp": str(spot_source_timestamp or computed_at),
         "spot_is_fallback": bool(spot_is_fallback),
