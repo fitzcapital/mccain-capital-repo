@@ -22,6 +22,8 @@ SOURCE_STALE_SECONDS = 60
 COOLDOWN_429_SECONDS = 300
 REFRESH_LOCK_TTL_SECONDS = 20
 DEFAULT_LIMIT = 100
+TWITTERAPI_PAGE_SIZE = 100
+TWITTERAPI_MAX_PAGES = 5
 MAX_ITEM_AGE_HOURS = 96
 TWITTERAPI_BASE_URL = "https://api.twitterapi.io"
 
@@ -236,15 +238,54 @@ def _mark_source_failure(
     return state
 
 
-def _run_twitterapi_last_tweets(*, username: str, api_key: str) -> List[Dict[str, Any]]:
-    query = urllib.parse.urlencode(
-        {
-            "userName": username,
-            "includeReplies": "false",
-            "count": str(DEFAULT_LIMIT),
-            "limit": str(DEFAULT_LIMIT),
-        }
-    )
+def _extract_twitterapi_rows_and_cursor(payload: Any) -> Tuple[List[Dict[str, Any]], str]:
+    if not isinstance(payload, dict):
+        return ([], "")
+
+    possible_blocks = [payload]
+    data = payload.get("data")
+    if isinstance(data, dict):
+        possible_blocks.insert(0, data)
+
+    rows: List[Dict[str, Any]] = []
+    cursor = ""
+    for block in possible_blocks:
+        tweets = block.get("tweets") or block.get("items") or block.get("results") or []
+        if isinstance(tweets, list) and tweets:
+            rows = [row for row in tweets if isinstance(row, dict)]
+            if rows:
+                break
+
+    for block in possible_blocks:
+        for key in (
+            "next_cursor",
+            "nextCursor",
+            "cursor",
+            "continuation_token",
+            "continuationToken",
+        ):
+            value = str(block.get(key) or "").strip()
+            if value:
+                cursor = value
+                break
+        if cursor:
+            break
+
+    return (rows, cursor)
+
+
+def _run_twitterapi_last_tweets_page(
+    *, username: str, api_key: str, limit: int, cursor: str = ""
+) -> Tuple[List[Dict[str, Any]], str]:
+    query_payload = {
+        "userName": username,
+        "includeReplies": "false",
+        "count": str(limit),
+        "limit": str(limit),
+    }
+    if cursor:
+        query_payload["cursor"] = cursor
+    query = urllib.parse.urlencode(query_payload)
     url = f"{TWITTERAPI_BASE_URL}/twitter/user/last_tweets?{query}"
     req = urllib.request.Request(
         url,
@@ -257,14 +298,41 @@ def _run_twitterapi_last_tweets(*, username: str, api_key: str) -> List[Dict[str
     )
     with urllib.request.urlopen(req, timeout=TWITTERAPI_TIMEOUT_SECONDS) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
-    if isinstance(payload, dict):
-        data = payload.get("data")
-        if isinstance(data, dict):
-            rows = data.get("tweets") or []
-            return [row for row in rows if isinstance(row, dict)]
-        rows = payload.get("tweets") or []
-        return [row for row in rows if isinstance(row, dict)]
-    return []
+    return _extract_twitterapi_rows_and_cursor(payload)
+
+
+def _run_twitterapi_last_tweets(*, username: str, api_key: str) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    cursor = ""
+    for _ in range(TWITTERAPI_MAX_PAGES):
+        remaining = max(1, min(TWITTERAPI_PAGE_SIZE, DEFAULT_LIMIT - len(rows)))
+        page_rows, next_cursor = _run_twitterapi_last_tweets_page(
+            username=username,
+            api_key=api_key,
+            limit=remaining,
+            cursor=cursor,
+        )
+        if not page_rows:
+            break
+        page_added = 0
+        for row in page_rows:
+            dedupe_key = str(row.get("id") or row.get("tweetId") or row.get("url") or "").strip()
+            if dedupe_key and dedupe_key in seen_keys:
+                continue
+            if dedupe_key:
+                seen_keys.add(dedupe_key)
+            rows.append(row)
+            page_added += 1
+            if len(rows) >= DEFAULT_LIMIT:
+                return rows[:DEFAULT_LIMIT]
+        if page_added == 0:
+            break
+        next_cursor = str(next_cursor or "").strip()
+        if not next_cursor or next_cursor == cursor:
+            break
+        cursor = next_cursor
+    return rows[:DEFAULT_LIMIT]
 
 
 def _clean_text(value: Any) -> str:

@@ -48,6 +48,9 @@ def register(app):
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)
     app.add_url_rule("/market-pulse", endpoint="market_pulse_page", view_func=h.market_pulse_page)
     app.add_url_rule(
+        "/market-pulse/feed", endpoint="market_pulse_feed_page", view_func=h.market_pulse_feed_page
+    )
+    app.add_url_rule(
         "/api/market-pulse/news",
         endpoint="market_pulse_news_feed_api",
         view_func=h.market_pulse_news_feed_api,

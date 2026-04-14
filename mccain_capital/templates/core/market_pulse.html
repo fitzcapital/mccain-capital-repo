@@ -1146,6 +1146,13 @@
   const feedHeadline = (item) => escapeHtml(item.headline || item.text || "Market update");
   const feedSummary = (item) => escapeHtml(item.summary || item.text || item.headline || "");
   const feedUrl = (item) => escapeHtml(item.url || "https://x.com/unusual_whales");
+  const BADGE_MAX = 99;
+  const formatUnreadBadge = (count) => {
+    const safeCount = Math.max(0, Number.isFinite(count) ? count : 0);
+    if (safeCount <= 0) return "";
+    if (safeCount > BADGE_MAX) return `${BADGE_MAX}+`;
+    return String(safeCount);
+  };
 
   const readLastSeen = () => {
     const raw = window.localStorage?.getItem(FEED_LAST_SEEN_KEY);
@@ -1172,7 +1179,7 @@
     const lastSeen = readLastSeen();
     const unread = (items || []).filter((item) => itemTimestamp(item) > lastSeen).length;
     const hasHighUnread = (items || []).some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
-    feedUnreadBadge.textContent = unread > 0 ? String(unread) : "";
+    feedUnreadBadge.textContent = formatUnreadBadge(unread);
     feedUnreadBadge.classList.toggle("is-empty", unread === 0);
     feedUnreadBadge.classList.toggle("is-high", hasHighUnread);
     if (notifCount) notifCount.textContent = `${unread} unread`;
@@ -1190,6 +1197,8 @@
         title: item.headline || item.text || "Market update",
         text: item.summary || item.text || "",
         time_label: feedTime(item),
+        published_at: item.published_at || "",
+        url: item.url || "",
         priority: item.impact === "high" ? "high" : "normal",
       }));
     window.localStorage.setItem(NOTIF_COUNT_KEY, String(unread));
@@ -1211,10 +1220,10 @@
     if (!notifList || !Array.isArray(items)) return;
     const sorted = [...items].sort((a, b) => itemTimestamp(b) - itemTimestamp(a)).slice(0, 8);
     const lastSeen = readLastSeen();
-    const unread = sorted.filter((item) => itemTimestamp(item) > lastSeen).length;
-    const hasHighUnread = sorted.some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
+    const unread = items.filter((item) => itemTimestamp(item) > lastSeen).length;
+    const hasHighUnread = items.some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
     if (feedUnreadBadge) {
-      feedUnreadBadge.textContent = unread > 0 ? String(unread) : "";
+      feedUnreadBadge.textContent = formatUnreadBadge(unread);
       feedUnreadBadge.classList.toggle("is-empty", unread === 0);
       feedUnreadBadge.classList.toggle("is-high", hasHighUnread);
     }
@@ -1391,6 +1400,7 @@
   updateUnreadBadge(initialItems);
   syncNotifications(initialItems);
   storeNotificationOverrides(initialItems);
+  refreshFeedInPlace();
   document.addEventListener("click", (event) => {
     const refreshTrigger = event.target.closest("[data-market-feed-refresh='1']");
     if (refreshTrigger) {

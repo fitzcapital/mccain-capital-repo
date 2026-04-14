@@ -350,7 +350,7 @@
                   <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path>
                   <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
                 </svg>
-                <span class="notifBadge{% if not notif_unread %} is-empty{% endif %}" id="notifBellBadge">{{ notif_unread }}</span>
+                <span class="notifBadge{% if not notif_unread %} is-empty{% endif %}" id="notifBellBadge">{% if notif_unread > 99 %}99+{% else %}{{ notif_unread }}{% endif %}</span>
               </button>
               <div class="notifDropdown" id="notifDropdown" role="menu" aria-label="Notification list">
                 <div class="notifDropdownHeader">
@@ -387,7 +387,7 @@
                 <div class="notifDropdownFooter">
                   <button class="btn notifClearBtn" id="notifClearBtn" type="button">Clear</button>
                   <a class="btn notifManageBtn" href="/ops/notifications-test">Manage</a>
-                  <a class="btn notifViewAll" href="/ops/alerts">View All</a>
+                  <a class="btn notifViewAll" href="/market-pulse/feed">View All</a>
                 </div>
               </div>
             </div>
@@ -808,12 +808,32 @@
     const COUNT_KEY = "notifUnreadOverride";
     const HIGH_KEY = "notifHighOverride";
     const ITEMS_KEY = "notifItemsOverride";
+    const LAST_SEEN_KEY = "marketFeedLastSeen";
+    const BADGE_MAX = 99;
     if (!bellBtn || !dropdown) return;
+
+    const formatBadgeCount = (count) => {
+      const safeCount = Math.max(0, Number.isFinite(count) ? count : 0);
+      if (safeCount <= 0) return "0";
+      if (safeCount > BADGE_MAX) return `${BADGE_MAX}+`;
+      return String(safeCount);
+    };
+
+    const readLastSeen = () => {
+      const raw = window.localStorage?.getItem(LAST_SEEN_KEY) || "";
+      const parsed = raw ? Date.parse(raw) : 0;
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const itemTimestamp = (item) => {
+      const value = Date.parse(item?.published_at || "");
+      return Number.isNaN(value) ? 0 : value;
+    };
 
     const applyBadgeCount = (count) => {
       if (!badge) return;
       const safeCount = Math.max(0, Number.isFinite(count) ? count : 0);
-      badge.textContent = String(safeCount);
+      badge.textContent = formatBadgeCount(safeCount);
       badge.classList.toggle("is-empty", safeCount <= 0);
       if (dropdownCount) dropdownCount.textContent = `${safeCount} unread`;
     };
@@ -868,9 +888,20 @@
 
     const clearNotifications = () => {
       if (!window.localStorage) return;
+      let latestSeenIso = "";
+      try {
+        const raw = window.localStorage.getItem(ITEMS_KEY);
+        const items = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(items) && items.length) {
+          const newest = items.reduce((maxTs, item) => Math.max(maxTs, itemTimestamp(item)), 0);
+          if (newest > 0) latestSeenIso = new Date(newest).toISOString();
+        }
+      } catch (_err) {}
+      if (latestSeenIso) {
+        window.localStorage.setItem(LAST_SEEN_KEY, latestSeenIso);
+      }
       window.localStorage.setItem(COUNT_KEY, "0");
       window.localStorage.setItem(HIGH_KEY, "0");
-      window.localStorage.setItem(ITEMS_KEY, JSON.stringify([]));
       applyOverrides();
     };
 
@@ -937,20 +968,22 @@
         const lastSeenRaw = window.localStorage?.getItem("marketFeedLastSeen") || "";
         const lastSeen = lastSeenRaw ? Date.parse(lastSeenRaw) : 0;
         const unread = items.filter((item) => {
-          const ts = Date.parse(item.published_at || "");
-          return !Number.isNaN(ts) && ts > lastSeen;
+          const ts = itemTimestamp(item);
+          return ts > lastSeen;
         }).length;
         const hasHighUnread = items.some((item) => {
-          const ts = Date.parse(item.published_at || "");
-          return item.impact === "high" && !Number.isNaN(ts) && ts > lastSeen;
+          const ts = itemTimestamp(item);
+          return item.impact === "high" && ts > lastSeen;
         });
         const trimmed = items
-          .sort((a, b) => Date.parse(b.published_at || "") - Date.parse(a.published_at || ""))
+          .sort((a, b) => itemTimestamp(b) - itemTimestamp(a))
           .slice(0, 8)
           .map((item) => ({
             title: item.headline || item.text || "Market update",
             text: item.summary || item.text || "",
             time_label: item.age_label && item.published_et_label ? `${item.age_label} · ${item.published_et_label}` : (item.published_et_label || formatEt(item.published_at)),
+            published_at: item.published_at || "",
+            url: item.url || "",
             priority: item.impact === "high" ? "high" : "normal",
           }));
         window.localStorage?.setItem(COUNT_KEY, String(unread));
@@ -972,9 +1005,13 @@
       });
     }
 
-    if (document.body.classList.contains("page-dashboard") || window.location.pathname.startsWith("/dashboard")) {
-      seedFromFeed(true);
-    }
+    bellBtn.addEventListener("click", () => {
+      if (dropdown.classList.contains("is-open")) {
+        seedFromFeed(false);
+      }
+    });
+
+    seedFromFeed(false);
   })();
 </script>
 <script>

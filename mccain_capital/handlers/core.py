@@ -61,6 +61,10 @@ def market_pulse_page():
     return svc.market_pulse_page()
 
 
+def market_pulse_feed_page():
+    return svc.market_pulse_feed_page()
+
+
 def market_pulse_news_feed_api():
     return svc.market_pulse_news_feed_api()
 

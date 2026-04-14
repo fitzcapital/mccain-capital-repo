@@ -187,6 +187,32 @@ def test_twitter_feed_top_items_preserves_full_page_feed_limit(monkeypatch):
     assert len(snapshot["items"]) == 24
 
 
+def test_run_twitterapi_last_tweets_paginates_until_limit(monkeypatch):
+    calls = []
+
+    def _fake_page(*, username: str, api_key: str, limit: int, cursor: str = ""):
+        calls.append({"username": username, "limit": limit, "cursor": cursor})
+        if not cursor:
+            rows = [
+                {"id": f"first-{idx}", "url": f"https://x.com/{username}/status/first-{idx}"}
+                for idx in range(20)
+            ]
+            return (rows, "cursor-2")
+        rows = [
+            {"id": f"second-{idx}", "url": f"https://x.com/{username}/status/second-{idx}"}
+            for idx in range(20)
+        ]
+        return (rows, "")
+
+    monkeypatch.setattr(svc, "_run_twitterapi_last_tweets_page", _fake_page)
+
+    rows = svc._run_twitterapi_last_tweets(username="unusual_whales", api_key="test-token")
+
+    assert len(rows) == 40
+    assert calls[0]["cursor"] == ""
+    assert calls[1]["cursor"] == "cursor-2"
+
+
 def test_twitter_feed_cools_down_source_after_429(monkeypatch):
     now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
     _reset_cache(monkeypatch)

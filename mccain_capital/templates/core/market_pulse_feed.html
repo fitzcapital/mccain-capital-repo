@@ -1,0 +1,182 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pill">X Feed Inbox</div>
+    <h2 class="pageTitle">Unusual Whales Feed History</h2>
+    <div class="pageSub">This is the feed-backed notification history for the bell. It is separate from Ops Alerts.</div>
+  </div>
+</div>
+
+<section class="card">
+  <div class="toolbar stack12">
+    <div class="pillRow">
+      <span class="pill">Feed Notifications</span>
+      <span class="tiny muted" id="notifFeedUnreadLabel">0 unread</span>
+      <span class="tiny muted" id="notifFeedMeta">
+        Showing latest {{ feed_limit }} posts{% if tracked_accounts %} · Tracking {{ tracked_accounts|join(', ') }}{% endif %}
+      </span>
+    </div>
+    <div class="row gap10">
+      <button class="btn primary" type="button" id="notifFeedRefreshBtn">Refresh Feed</button>
+      <button class="btn" type="button" id="notifFeedMarkSeenBtn">Mark All Seen</button>
+      <a class="btn" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open on X</a>
+      <a class="btn" href="/market-pulse?refresh=1">Open Market Pulse</a>
+    </div>
+    <div class="tiny muted" id="notifFeedSourceNote">{{ feed_source_note or feed_snapshot.get('source_note') or 'Monitoring the live feed source.' }}</div>
+    <div class="notifDropdownList" id="notifFeedHistoryList">
+      {% if feed_items %}
+        {% for item in feed_items %}
+          {% set item_rel = item.age_label or item.published_label %}
+          {% set item_abs = item.published_et_label %}
+          {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
+          <article class="notifItem{% if item.impact == 'high' %} is-high{% endif %}">
+            <div class="notifItemTitle">{{ item.headline or item.text or 'Market update' }}</div>
+            <div class="notifItemBody">{{ item.summary or item.text or '' }}</div>
+            <div class="notifItemTime">{{ item_time }}</div>
+            <div class="row gap10" style="margin-top:10px">
+              <a class="btn" href="{{ item.url or 'https://twitter.com/unusual_whales' }}" target="_blank" rel="noopener noreferrer">Open Post</a>
+              {% if item.impact == 'high' %}
+                <span class="trendChip negative">High Impact</span>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      {% else %}
+        <div class="notifEmpty" id="notifFeedEmpty">No feed items available right now.</div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<script id="notifFeedSeed" type="application/json">{{ feed_items|tojson }}</script>
+<script>
+  (function initNotificationFeedPage() {
+    const list = document.getElementById("notifFeedHistoryList");
+    const unreadLabel = document.getElementById("notifFeedUnreadLabel");
+    const meta = document.getElementById("notifFeedMeta");
+    const refreshBtn = document.getElementById("notifFeedRefreshBtn");
+    const markSeenBtn = document.getElementById("notifFeedMarkSeenBtn");
+    const seedNode = document.getElementById("notifFeedSeed");
+    const LAST_SEEN_KEY = "marketFeedLastSeen";
+    const COUNT_KEY = "notifUnreadOverride";
+    const HIGH_KEY = "notifHighOverride";
+    const ITEMS_KEY = "notifItemsOverride";
+    const RENDER_LIMIT = 50;
+    const DROPDOWN_LIMIT = 8;
+    const seedItems = (() => {
+      try {
+        return JSON.parse(seedNode?.textContent || "[]");
+      } catch (_err) {
+        return [];
+      }
+    })();
+    let currentItems = Array.isArray(seedItems) ? [...seedItems] : [];
+
+    const escapeHtml = (value) => String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+    const itemTimestamp = (item) => {
+      const value = Date.parse(item?.published_at || "");
+      return Number.isNaN(value) ? 0 : value;
+    };
+
+    const readLastSeen = () => {
+      const raw = window.localStorage?.getItem(LAST_SEEN_KEY) || "";
+      const parsed = raw ? Date.parse(raw) : 0;
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const writeLastSeen = (iso) => {
+      if (!window.localStorage || !iso) return;
+      window.localStorage.setItem(LAST_SEEN_KEY, iso);
+    };
+
+    const syncBellOverrides = (items) => {
+      if (!window.localStorage || !Array.isArray(items)) return;
+      const lastSeen = readLastSeen();
+      const unread = items.filter((item) => itemTimestamp(item) > lastSeen).length;
+      const hasHighUnread = items.some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
+      const trimmed = [...items]
+        .sort((a, b) => itemTimestamp(b) - itemTimestamp(a))
+        .slice(0, DROPDOWN_LIMIT)
+        .map((item) => ({
+          title: item.headline || item.text || "Market update",
+          text: item.summary || item.text || "",
+          time_label: item.age_label && item.published_et_label ? `${item.age_label} · ${item.published_et_label}` : (item.published_et_label || ""),
+          published_at: item.published_at || "",
+          url: item.url || "",
+          priority: item.impact === "high" ? "high" : "normal",
+        }));
+      window.localStorage.setItem(COUNT_KEY, String(unread));
+      window.localStorage.setItem(HIGH_KEY, hasHighUnread ? "1" : "0");
+      window.localStorage.setItem(ITEMS_KEY, JSON.stringify(trimmed));
+      window.dispatchEvent(new StorageEvent("storage", { key: COUNT_KEY }));
+      window.dispatchEvent(new StorageEvent("storage", { key: HIGH_KEY }));
+      window.dispatchEvent(new StorageEvent("storage", { key: ITEMS_KEY }));
+    };
+
+    const feedTime = (item) => {
+      const rel = item.age_label || item.published_label || "";
+      const abs = item.published_et_label || "";
+      return rel && abs ? `${rel} · ${abs}` : (rel || abs || "Now");
+    };
+
+    const render = (items) => {
+      const sorted = [...(items || [])].sort((a, b) => itemTimestamp(b) - itemTimestamp(a)).slice(0, RENDER_LIMIT);
+      currentItems = sorted;
+      const lastSeen = readLastSeen();
+      const unread = sorted.filter((item) => itemTimestamp(item) > lastSeen).length;
+      if (unreadLabel) unreadLabel.textContent = `${unread} unread`;
+      if (meta) meta.textContent = `Showing latest ${sorted.length} posts`;
+      if (!list) return;
+      if (!sorted.length) {
+        list.innerHTML = `<div class="notifEmpty" id="notifFeedEmpty">No feed items available right now.</div>`;
+        syncBellOverrides([]);
+        return;
+      }
+      list.innerHTML = sorted.map((item) => `
+        <article class="notifItem${item.impact === "high" ? " is-high" : ""}">
+          <div class="notifItemTitle">${escapeHtml(item.headline || item.text || "Market update")}</div>
+          <div class="notifItemBody">${escapeHtml(item.summary || item.text || "")}</div>
+          <div class="notifItemTime">${escapeHtml(feedTime(item))}</div>
+          <div class="row gap10" style="margin-top:10px">
+            <a class="btn" href="${escapeHtml(item.url || "https://twitter.com/unusual_whales")}" target="_blank" rel="noopener noreferrer">Open Post</a>
+            ${item.impact === "high" ? '<span class="trendChip negative">High Impact</span>' : ""}
+          </div>
+        </article>
+      `).join("");
+      syncBellOverrides(sorted);
+    };
+
+    const refresh = async (forceRefresh = true) => {
+      if (refreshBtn) refreshBtn.disabled = true;
+      try {
+        const refreshFlag = forceRefresh ? "1" : "0";
+        const response = await fetch(`/api/market-pulse/news?refresh=${refreshFlag}&mode=curated`, { cache: "no-store" });
+        const payload = await response.json();
+        render(Array.isArray(payload?.items) ? payload.items : []);
+      } catch (_err) {
+      } finally {
+        if (refreshBtn) refreshBtn.disabled = false;
+      }
+    };
+
+    if (markSeenBtn) {
+      markSeenBtn.addEventListener("click", () => {
+        const newest = currentItems.reduce((maxTs, item) => Math.max(maxTs, itemTimestamp(item)), 0);
+        if (newest > 0) {
+          writeLastSeen(new Date(newest).toISOString());
+        }
+        render(currentItems);
+      });
+    }
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", () => refresh(true));
+    }
+
+    render(seedItems);
+  })();
+</script>

@@ -1980,7 +1980,9 @@ def assemble_market_pulse_snapshot(
     contract_multiplier: int = DEFAULT_CONTRACT_MULTIPLIER,
 ) -> Dict[str, Any]:
     resolved_spot_source = str(spot_source or spot_source_name or "").strip()
-    resolved_spot_source_label = str(spot_source_label or spot_source_name or spot_source or "").strip()
+    resolved_spot_source_label = str(
+        spot_source_label or spot_source_name or spot_source or ""
+    ).strip()
     effective_timestamp = str(source_effective_timestamp or source_timestamp or _now_iso())
     fetch_timestamp = str(source_fetch_timestamp or effective_timestamp or _now_iso())
     validated = validate_gamma_source(

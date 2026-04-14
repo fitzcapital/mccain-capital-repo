@@ -83,7 +83,7 @@ MARKET_NEWS_RSS_SYMBOL_LIMIT = 5
 MARKET_NEWS_FRESH_SECONDS = 12 * 60 * 60
 MARKET_NEWS_MAX_AGE_SECONDS = 36 * 60 * 60
 WATCHLIST_NEWS_MAX_AGE_SECONDS = 48 * 60 * 60
-MARKET_NEWS_FEED_LIMIT = 50
+MARKET_NEWS_FEED_LIMIT = 100
 MARKET_PULSE_X_FEED_LIMIT = 8
 MARKET_PULSE_X_MIN_RELEVANCE = 6
 MARKET_PULSE_X_PER_ACCOUNT_LIMIT = 2
@@ -9905,6 +9905,7 @@ def market_pulse_page():
             context=context,
             market_structure_snapshot=market_structure_snapshot,
             macro_events=macro_events,
+            force_refresh_feed=force_refresh,
         )
     except TypeError:
         # Backward-compatible fallback for older zero-arg call sites used in tests
@@ -10029,6 +10030,39 @@ def market_pulse_news_feed_api():
             "flow_summary": dict(feed_snapshot.get("flow_summary") or {}),
         }
     )
+
+
+def market_pulse_feed_page():
+    if auth_enabled() and not is_authenticated():
+        return redirect(url_for("login_page"))
+    now_et = app_runtime.now_et()
+    playbook_snapshot = get_or_build_market_pulse_snapshot(force_refresh=False, now_et=now_et)
+    market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
+    news_snapshot = _market_news_snapshot(
+        now_et=now_et,
+        market_structure_snapshot=market_structure_snapshot,
+        macro_events=_market_news_macro_events(now_et),
+        force_refresh_feed=False,
+    )
+    feed_snapshot = dict(news_snapshot.get("market_feed_snapshot") or {})
+    feed_items = list(news_snapshot.get("pulse_feed_items") or [])[:MARKET_NEWS_FEED_LIMIT]
+    content = render_template(
+        "core/market_pulse_feed.html",
+        feed_items=feed_items,
+        feed_snapshot=feed_snapshot,
+        feed_limit=MARKET_NEWS_FEED_LIMIT,
+        feed_source_note=str(
+            news_snapshot.get("pulse_feed_source_note") or news_snapshot.get("source_note") or ""
+        ),
+        tracked_accounts=list(news_snapshot.get("pulse_feed_accounts") or []),
+        feed_fetched_at=str(news_snapshot.get("fetched_at") or ""),
+    )
+    resp = make_response(
+        render_page(content, active="market-pulse", title="McCain Capital · X Feed Inbox")
+    )
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 def hero_bars_api():
