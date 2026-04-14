@@ -573,8 +573,19 @@
           </div>
         </div>
         <div class="marketFeedCommandBar__right">
-          <a class="btn" id="marketFeedRefreshBtn" href="/market-pulse?refresh=1#marketFeedSection">Refresh Feed</a>
-          <a class="btn" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open on X</a>
+          <button class="marketFeedActionBtn" id="marketFeedRefreshBtn" type="button" aria-label="Refresh feed" title="Refresh feed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+              <path d="M21 3v6h-6"></path>
+            </svg>
+          </button>
+          <a class="marketFeedActionBtn marketFeedActionBtn-open" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X" title="Open Unusual Whales on X">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 5h5v5"></path>
+              <path d="M10 14 19 5"></path>
+              <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+            </svg>
+          </a>
         </div>
       </div>
       <div class="marketFeedTabs" role="tablist">
@@ -588,7 +599,7 @@
             <div class="marketFeedHighShell" id="marketFeedHighShell">
               <div class="marketFeedHighShell__head">
                 <div class="marketFeedHighShell__title">Alerts</div>
-                <div class="marketFeedHighShell__count">{{ (whales_items | selectattr('impact', 'equalto', 'high') | list) | length }}</div>
+                <div class="marketFeedHighShell__count" id="marketFeedHighCount">{{ (whales_items | selectattr('impact', 'equalto', 'high') | list) | length }}</div>
               </div>
               <div class="marketFeedHighList">
                 {% for item in whales_items if item.impact == 'high' %}
@@ -626,7 +637,13 @@
                     <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
                     <p class="marketFeedRow__summary">{{ item.summary or item.text }}</p>
                     <div class="marketFeedRow__actions">
-                      <a class="marketFeedRow__link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">Open post</a>
+                      <a class="marketFeedRow__link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}" aria-label="Open post on X" title="Open post on X">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M14 5h5v5"></path>
+                          <path d="M10 14 19 5"></path>
+                          <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+                        </svg>
+                      </a>
                     </div>
                   </article>
                 {% endfor %}
@@ -638,8 +655,19 @@
             <div class="marketFeedEmpty__title">Feed temporarily unavailable</div>
             <p class="marketFeedEmpty__body">Latest Unusual Whales posts are not available right now. Use refresh for another pull or open the source directly on X.</p>
             <div class="marketFeedEmpty__actions">
-              <a class="btn" href="/market-pulse?refresh=1#marketFeedSection">Refresh Feed</a>
-              <a class="btn" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open Unusual Whales</a>
+              <button class="marketFeedActionBtn" id="marketFeedEmptyRefreshBtn" type="button" aria-label="Refresh feed" title="Refresh feed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                  <path d="M21 3v6h-6"></path>
+                </svg>
+              </button>
+              <a class="marketFeedActionBtn marketFeedActionBtn-open" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X" title="Open Unusual Whales on X">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M14 5h5v5"></path>
+                  <path d="M10 14 19 5"></path>
+                  <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+                </svg>
+              </a>
             </div>
           </section>
         {% endif %}
@@ -654,10 +682,16 @@
         </div>
         <div class="marketFeedDock__meta">
           <span>{{ feed_status_label }}</span>
-          <span>{{ commentary_total_count }} posts</span>
+          <span id="marketFeedDockCount">{{ commentary_total_count }} posts</span>
           <span id="marketFeedSourceHealth">{{ pulse_feed_source_note or feed_snapshot.get('source_note') or 'Monitoring provider health' }}</span>
         </div>
-        <a class="btn" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open on X</a>
+        <a class="marketFeedActionBtn marketFeedActionBtn-open" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X" title="Open Unusual Whales on X">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 5h5v5"></path>
+            <path d="M10 14 19 5"></path>
+            <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+          </svg>
+        </a>
       </div>
     </div>
   </section>
@@ -1029,11 +1063,15 @@
   }
 
   const feedRefreshBtn = document.getElementById("marketFeedRefreshBtn");
+  const feedEmptyRefreshBtn = document.getElementById("marketFeedEmptyRefreshBtn");
   const feedLayout = document.getElementById("marketFeedLayout");
   const feedStatusChip = document.getElementById("marketFeedStatusChip");
   const feedStatusLabel = document.getElementById("marketFeedStatusLabel");
   const feedUpdated = document.getElementById("marketFeedUpdated");
   const feedCount = document.getElementById("marketFeedCount");
+  const feedDockCount = document.getElementById("marketFeedDockCount");
+  const feedHighCount = document.getElementById("marketFeedHighCount");
+  const feedMoreCount = document.getElementById("marketFeedMoreCount");
   const feedSourceNote = document.getElementById("marketFeedSourceNote");
   const feedSourceHealth = document.getElementById("marketFeedSourceHealth");
   const feedUnreadBadge = document.getElementById("notifBellBadge");
@@ -1044,6 +1082,11 @@
   const NOTIF_COUNT_KEY = "notifUnreadOverride";
   const NOTIF_HIGH_KEY = "notifHighOverride";
   const NOTIF_ITEMS_KEY = "notifItemsOverride";
+  const currentFeedMode = (() => {
+    const value = new URLSearchParams(window.location.search).get("feed");
+    return value === "raw" ? "raw" : "curated";
+  })();
+  let currentFeedItems = Array.isArray(window.marketFeedItems) ? [...window.marketFeedItems] : [];
 
   const escapeHtml = (value) => {
     const text = String(value || "");
@@ -1106,6 +1149,7 @@
     const value = Date.parse(item.published_at || "");
     return Number.isNaN(value) ? 0 : value;
   };
+  const feedItemsSorted = (items) => [...(items || [])].sort((a, b) => itemTimestamp(b) - itemTimestamp(a));
 
   const updateUnreadBadge = (items) => {
     if (!feedUnreadBadge) return;
@@ -1192,6 +1236,7 @@
       feedUpdated.textContent = `Updated ${updatedAt}`;
     }
     if (feedCount) feedCount.textContent = `${items.length} posts loaded`;
+    if (feedDockCount) feedDockCount.textContent = `${items.length} posts`;
     const sourceNote = data.source_note || "Monitoring provider health";
     if (feedSourceNote) feedSourceNote.textContent = sourceNote;
     if (feedSourceHealth) feedSourceHealth.textContent = sourceNote;
@@ -1199,36 +1244,155 @@
     syncNotifications(items);
   };
 
+  const renderFeedLayout = (items) => {
+    if (!feedLayout) return;
+    const sorted = feedItemsSorted(items);
+    const highItems = sorted.filter((item) => item.impact === "high");
+    if (feedHighCount) feedHighCount.textContent = String(highItems.length);
+    if (feedMoreCount) feedMoreCount.textContent = `${sorted.length} posts`;
+    if (!sorted.length) {
+      feedLayout.innerHTML = `
+        <section class="marketFeedEmpty" id="marketFeedEmpty">
+          <div class="marketFeedEmpty__title">Feed temporarily unavailable</div>
+          <p class="marketFeedEmpty__body">Latest Unusual Whales posts are not available right now. Use refresh for another pull or open the source directly on X.</p>
+          <div class="marketFeedEmpty__actions">
+            <button class="marketFeedActionBtn" data-market-feed-refresh="1" type="button" aria-label="Refresh feed" title="Refresh feed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                <path d="M21 3v6h-6"></path>
+              </svg>
+            </button>
+            <a class="marketFeedActionBtn marketFeedActionBtn-open" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer" aria-label="Open Unusual Whales on X" title="Open Unusual Whales on X">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 5h5v5"></path>
+                <path d="M10 14 19 5"></path>
+                <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+              </svg>
+            </a>
+          </div>
+        </section>`;
+      return;
+    }
+    const highHtml = highItems.map((item) => `
+      <article class="marketFeedRow marketFeedRow-high">
+        <div class="marketFeedRow__meta">
+          <span class="live-x-feed-item__tag">HIGH</span>
+          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
+        </div>
+        <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
+        <p class="marketFeedRow__summary">${feedSummary(item)}</p>
+      </article>`).join("");
+    const listHtml = sorted.map((item) => `
+      <article class="marketFeedRow">
+        <div class="marketFeedRow__meta">
+          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
+        </div>
+        <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
+        <p class="marketFeedRow__summary">${feedSummary(item)}</p>
+        <div class="marketFeedRow__actions">
+          <a class="marketFeedRow__link" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}" aria-label="Open post on X" title="Open post on X">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 5h5v5"></path>
+              <path d="M10 14 19 5"></path>
+              <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"></path>
+            </svg>
+          </a>
+        </div>
+      </article>`).join("");
+    feedLayout.innerHTML = `
+      <aside class="marketFeedRail marketFeedRail-left">
+        <div class="marketFeedRail__label">High Impact</div>
+        <div class="marketFeedHighShell" id="marketFeedHighShell">
+          <div class="marketFeedHighShell__head">
+            <div class="marketFeedHighShell__title">Alerts</div>
+            <div class="marketFeedHighShell__count">${highItems.length}</div>
+          </div>
+          <div class="marketFeedHighList">${highHtml}</div>
+        </div>
+      </aside>
+      <section class="marketFeedRail marketFeedRail-right">
+        <div class="marketFeedRail__label">Live Feed</div>
+        <div class="marketFeedListShell" id="marketFeedListShell">
+          <div class="marketFeedListShell__head">
+            <div class="marketFeedListShell__title">All posts</div>
+            <div class="marketFeedListShell__count">${sorted.length} posts</div>
+          </div>
+          <div class="marketFeedList" id="marketFeedList">${listHtml}</div>
+        </div>
+      </section>`;
+  };
+
+  const setFeedRefreshState = (isLoading) => {
+    const buttons = [
+      feedRefreshBtn,
+      feedEmptyRefreshBtn,
+      ...Array.from(document.querySelectorAll("[data-market-feed-refresh='1']")),
+    ];
+    buttons.forEach((button) => {
+      if (!button) return;
+      button.disabled = !!isLoading;
+      button.classList.toggle("is-loading", !!isLoading);
+      button.setAttribute("aria-busy", isLoading ? "true" : "false");
+    });
+  };
+
+  const refreshFeedInPlace = async () => {
+    setFeedRefreshState(true);
+    try {
+      const response = await fetch(`/api/market-pulse/news?refresh=1&mode=${currentFeedMode}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!data || data.ok === false) return;
+      const items = Array.isArray(data.items) ? data.items : [];
+      currentFeedItems = feedItemsSorted(items);
+      window.marketFeedItems = [...currentFeedItems];
+      renderFeedLayout(currentFeedItems);
+      updateFeedMeta(data, currentFeedItems);
+      storeNotificationOverrides(currentFeedItems);
+    } catch (_err) {
+    } finally {
+      setFeedRefreshState(false);
+    }
+  };
+
   if (feedRefreshBtn) {
     feedRefreshBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      showReloadOverlay("Market Pulse Sync", "Requesting fresh market, gamma, and news context…");
-      window.location.href = feedRefreshBtn.href;
+      refreshFeedInPlace();
+    });
+  }
+  if (feedEmptyRefreshBtn) {
+    feedEmptyRefreshBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      refreshFeedInPlace();
     });
   }
 
-  const initialItems = Array.isArray(window.marketFeedItems) ? window.marketFeedItems : [];
+  const initialItems = currentFeedItems;
+  renderFeedLayout(initialItems);
   updateUnreadBadge(initialItems);
   syncNotifications(initialItems);
   storeNotificationOverrides(initialItems);
-  const readLinks = Array.from(document.querySelectorAll("[data-feed-read='1']"));
-  readLinks.forEach((link) => {
-    link.addEventListener("click", () => {
-      const ts = String(link.getAttribute("data-feed-ts") || "");
-      if (ts) {
-        const parsed = Date.parse(ts);
-        if (!Number.isNaN(parsed)) {
-          const nextIso = new Date(parsed).toISOString();
-          const current = readLastSeen();
-          if (parsed > current) {
-            writeLastSeen(nextIso);
-            updateUnreadBadge(initialItems);
-            syncNotifications(initialItems);
-            storeNotificationOverrides(initialItems);
-          }
-        }
-      }
-    });
+  document.addEventListener("click", (event) => {
+    const refreshTrigger = event.target.closest("[data-market-feed-refresh='1']");
+    if (refreshTrigger) {
+      event.preventDefault();
+      refreshFeedInPlace();
+      return;
+    }
+    const link = event.target.closest("[data-feed-read='1']");
+    if (!link) return;
+    const ts = String(link.getAttribute("data-feed-ts") || "");
+    if (!ts) return;
+    const parsed = Date.parse(ts);
+    if (Number.isNaN(parsed)) return;
+    const nextIso = new Date(parsed).toISOString();
+    const current = readLastSeen();
+    if (parsed > current) {
+      writeLastSeen(nextIso);
+      updateUnreadBadge(currentFeedItems);
+      syncNotifications(currentFeedItems);
+      storeNotificationOverrides(currentFeedItems);
+    }
   });
 
   window.addEventListener("market-pulse-stream-status", (event) => {

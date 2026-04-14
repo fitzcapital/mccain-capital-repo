@@ -1767,9 +1767,43 @@ body{
   color:rgba(196, 220, 248, .9);
   margin-bottom:10px;
 }
+.notifDropdownHeaderMeta{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
 .notifDropdownCount{
   font-size:.7rem;
   color:rgba(140, 200, 255, .8);
+}
+.notifRefreshBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  border-radius:999px;
+  border:1px solid rgba(120, 170, 220, .24);
+  background:rgba(15, 28, 44, .72);
+  color:rgba(182, 224, 255, .92);
+  box-shadow:0 0 12px rgba(80, 160, 255, .12);
+  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease, opacity .18s ease;
+}
+.notifRefreshBtn:hover{
+  border-color:rgba(120, 210, 255, .48);
+  box-shadow:0 0 18px rgba(90, 200, 255, .2);
+  transform:translateY(-1px);
+}
+.notifRefreshBtn:disabled{
+  cursor:wait;
+  opacity:.78;
+}
+.notifRefreshBtn svg{
+  width:14px;
+  height:14px;
+}
+.notifRefreshBtn.is-loading svg{
+  animation:marketSpin .75s linear infinite;
 }
 .notifDropdownList{
   display:grid;
@@ -11950,6 +11984,41 @@ body.marketPulseReady .marketPulseSection{
   min-width:0;
   flex-wrap:wrap;
 }
+.marketFeedActionBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:56px;
+  height:52px;
+  padding:0;
+  border-radius:16px;
+  border:1px solid rgba(120, 170, 220, .24);
+  background:rgba(15, 28, 44, .72);
+  color:rgba(220, 235, 252, .94);
+  box-shadow:0 0 14px rgba(80, 160, 255, .14);
+  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease, opacity .18s ease;
+  text-decoration:none;
+}
+.marketFeedActionBtn:hover{
+  border-color:rgba(120, 210, 255, .48);
+  box-shadow:0 0 18px rgba(90, 200, 255, .22);
+  transform:translateY(-1px);
+}
+.marketFeedActionBtn:disabled{
+  cursor:wait;
+  opacity:.78;
+}
+.marketFeedActionBtn svg{
+  width:19px;
+  height:19px;
+}
+.marketFeedActionBtn-open svg{
+  width:21px;
+  height:21px;
+}
+.marketFeedActionBtn.is-loading svg{
+  animation:marketSpin .75s linear infinite;
+}
 .marketFeedPanel .marketFeedCommand__sub{
   font-size:.82rem;
   color:rgba(174, 200, 230, .78);
@@ -12131,10 +12200,10 @@ body.marketPulseReady .marketPulseSection{
   .marketFeedEmpty__actions{
     width:100%;
   }
-  .marketFeedCommandBar__right .btn,
+  .marketFeedCommandBar__right .marketFeedActionBtn,
   .marketFeedFeatured__actions .btn,
-  .marketFeedEmpty__actions .btn{
-    flex:1 1 auto;
+  .marketFeedEmpty__actions .marketFeedActionBtn{
+    flex:0 0 auto;
   }
 }
 .marketFeedRow-high{
@@ -12185,10 +12254,25 @@ body.marketPulseReady .marketPulseSection{
   display:flex;
 }
 .marketFeedRow__link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:36px;
+  height:36px;
+  border-radius:12px;
+  border:1px solid rgba(120, 170, 220, .18);
+  background:rgba(15, 28, 44, .42);
   color:rgba(150, 206, 246, .86);
   text-decoration:none;
-  font-size:.8rem;
-  font-weight:700;
+}
+.marketFeedRow__link svg{
+  width:18px;
+  height:18px;
+}
+.marketFeedRow__link:hover{
+  border-color:rgba(120, 210, 255, .36);
+  color:#f5fbff;
+  box-shadow:0 0 16px rgba(90, 200, 255, .16);
 }
 .marketFeedEmpty{
   display:grid;
