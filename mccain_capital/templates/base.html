@@ -922,7 +922,10 @@
       canvas.height = 64;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.drawImage(faviconImage, 0, 0, canvas.width, canvas.height);
+      const iconScale = 1.24;
+      const drawSize = canvas.width * iconScale;
+      const drawOffset = (canvas.width - drawSize) / 2;
+      ctx.drawImage(faviconImage, drawOffset, drawOffset, drawSize, drawSize);
       ctx.fillStyle = isHigh ? "#cf2f2f" : "#d64545";
       ctx.beginPath();
       ctx.arc(49, 15, 14, 0, Math.PI * 2);

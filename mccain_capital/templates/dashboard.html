@@ -66,9 +66,8 @@
           <div>
             <div class="dashboardPrimaryBandHeader">
               <span class="dashboardPrimaryBandEyebrow">Operating Zone</span>
-              <span class="dashboardPrimaryBandSubhead">State, decision, and brief aligned in one pass.</span>
+              <span class="dashboardPrimaryBandSubhead">Start with the decision, then use the brief and checklist to support it.</span>
             </div>
-            <div class="pill">🎛️ Command Center</div>
             <h2 class="pageTitle">{{ hero_title }}</h2>
             <div class="dashboardLead stack8">{{ hero_lead }}</div>
             <div class="dashboardReadinessBarCard">
@@ -107,7 +106,7 @@
             </div>
             <details class="dashboardCommandFold"{% if command_fold_open %} open{% endif %}>
               <summary aria-label="Command center controls">
-                <span>Tools</span>
+                <span>Checklist</span>
                 <span class="tiny muted">{{ checklist_ns.done }}/{{ checklist_ns.total }} ready</span>
               </summary>
               <div class="dashboardCommandBody">
@@ -167,6 +166,7 @@
             <span id="dashboardDecisionStatusChip" class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% endif %}">{{ decision_panel.status }}</span>
           </div>
         </div>
+        <div class="dashboardDecisionLead">{{ decision_panel.posture_summary or decision_panel.plan }}</div>
         <div class="dashboardDecisionGrid">
           <div class="dashboardDecisionItem dashboardDecisionItem-bias">
             <span class="dashboardDecisionLabel">Bias</span>
@@ -184,6 +184,11 @@
             <span class="dashboardDecisionLabel">Trade Gate</span>
             <div id="dashboardDecisionTradeGateValue" class="supportBody" title="{{ decision_panel.trade_gate }}">{{ decision_panel.trade_gate|truncate(74, False, '…') }}</div>
           </div>
+        </div>
+        <div class="rightActions dashboardDecisionPrimaryActions">
+          <a class="btn" href="/market-pulse?refresh=1">Open Market Pulse</a>
+          <a class="btn" href="/ops/trading-window">Trade Gate</a>
+          <a class="btn ctaLink" href="/calendar">Calendar</a>
         </div>
         <div
           class="dashboardGammaStrip is-{{ decision_panel.gamma_strip.state }}"
@@ -229,7 +234,7 @@
       </div></div>
       <div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
         <div class="pillRow dashboardBriefSignalRow">
-          <div class="pill">Daily Brief</div>
+          <div class="pill">Brief Context</div>
           <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
           <span class="dashboardBriefSignalText" title="{{ daily_brief.source_detail }}">{{ daily_brief.source_label }}</span>
         </div>
@@ -261,7 +266,7 @@
               </div>
             </div>
           <div class="rightActions dashboardBriefPrimaryActions">
-              <a class="btn primary" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn" href="/market-pulse?refresh=1">Market Pulse</a>
               <a class="btn" href="/ops/trading-window">Trade Gate</a>
               <a class="btn ctaLink" href="/calendar">Open Calendar</a>
           </div>
@@ -387,7 +392,7 @@
               </div>
             </details>
             <div class="rightActions">
-              <a class="btn primary" href="/market-pulse?refresh=1">Market Pulse</a>
+              <a class="btn" href="/market-pulse?refresh=1">Market Pulse</a>
               <a class="btn" href="/ops/trading-window">Trade Gate</a>
               <a class="btn ctaLink" href="/calendar">Open Calendar</a>
             </div>
@@ -516,8 +521,8 @@
 	    <div class="dashboardHealthSurface">
 	      <div class="dashboardSupportHeader">
 	        <span class="dashboardStepLabel dashboardStepLabel-inline">Review</span>
-	        <span class="dashboardFoldTitle">Session Support &amp; Health</span>
-	        <span class="tiny muted">Open for milestone, pacing, balance, and data trust.</span>
+	        <span class="dashboardFoldTitle">Support &amp; Health</span>
+	        <span class="tiny muted">Reference only. Open when milestone, pacing, or trust needs attention.</span>
 	      </div>
 	      <div class="dashboardHealthGrid session-health-grid">
 	        {% set milestone_pct = '%.1f'|format(milestone.overall_progress_pct) %}

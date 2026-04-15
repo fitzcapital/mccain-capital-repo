@@ -16030,22 +16030,22 @@ body.modalOpen{
 }
 
 .page-dashboard .dashboardLead{
-  max-width:52ch;
-  font-size:11px;
-  line-height:1.42;
-  color:rgba(237,244,255,.7);
+  max-width:44ch;
+  font-size:10px;
+  line-height:1.28;
+  color:rgba(237,244,255,.64);
 }
 
 .page-dashboard .dashboardHero .toolbar{
-  padding:12px 13px;
-  gap:9px;
+  padding:11px 12px;
+  gap:8px;
 }
 
 .page-dashboard .dashboardReadinessBarCard{
   display:grid;
-  gap:6px;
-  margin-top:8px;
-  padding:10px 11px;
+  gap:5px;
+  margin-top:6px;
+  padding:9px 10px;
   border-radius:12px;
   border:1px solid rgba(98, 241, 210, .14);
   background:
@@ -16120,8 +16120,8 @@ body.modalOpen{
   display:flex;
   flex-wrap:wrap;
   gap:6px 10px;
-  font-size:10px;
-  line-height:1.24;
+  font-size:9px;
+  line-height:1.2;
   color:rgba(226, 238, 255, .56);
 }
 
@@ -16135,9 +16135,9 @@ body.modalOpen{
   display:grid;
   grid-template-columns:minmax(0, 1.2fr) auto;
   align-items:center;
-  gap:10px 12px;
-  margin-top:8px;
-  padding:9px 10px;
+  gap:8px 10px;
+  margin-top:6px;
+  padding:8px 9px;
   border-radius:12px;
   border:1px solid rgba(255,255,255,.06);
   background:
@@ -16161,8 +16161,8 @@ body.modalOpen{
 }
 
 .page-dashboard .dashboardHeroPriorityText{
-  font-size:11px;
-  line-height:1.34;
+  font-size:10px;
+  line-height:1.28;
   color:rgba(237,244,255,.9);
   overflow-wrap:anywhere;
 }
@@ -16186,9 +16186,9 @@ body.modalOpen{
 }
 
 .page-dashboard .dashboardHeroPrimaryActions .btn{
-  min-height:35px;
-  padding:7px 11px;
-  font-size:11px;
+  min-height:33px;
+  padding:6px 10px;
+  font-size:10px;
   flex:0 1 auto;
   min-width:132px;
   white-space:nowrap;
@@ -16214,9 +16214,9 @@ body.modalOpen{
 }
 
 .page-dashboard .dashboardCommandFold summary{
-  padding:9px 11px;
+  padding:8px 10px;
   border-radius:12px;
-  font-size:11px;
+  font-size:10px;
   color:rgba(229, 242, 255, .82);
   background:rgba(255,255,255,.02);
   border:1px solid rgba(255,255,255,.05);
@@ -16230,8 +16230,27 @@ body.modalOpen{
 }
 
 .page-dashboard .dashboardChecklist{
-  gap:7px;
+  gap:6px;
   grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.page-dashboard .dashboardChecklistItem{
+  gap:3px;
+  padding:10px 11px;
+}
+
+.page-dashboard .dashboardChecklistTitle{
+  font-size:15px;
+  line-height:1.08;
+}
+
+.page-dashboard .dashboardChecklistDetail{
+  font-size:10px;
+  line-height:1.26;
+}
+
+.page-dashboard .dashboardChecklistAction{
+  font-size:9px;
 }
 
 .page-dashboard .dashboardCommandActions{
@@ -18829,13 +18848,15 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 .page-dashboard .dashboardHealthSurface{
   display:grid;
   gap:12px;
+  opacity:.92;
 }
 
 .page-dashboard .dashboardSupportHeader{
   display:grid;
-  grid-template-columns:120px minmax(0, 1fr);
-  gap:10px 18px;
+  grid-template-columns:104px minmax(0, 1fr);
+  gap:8px 14px;
   align-items:start;
+  opacity:.86;
 }
 
 .page-dashboard .dashboardSupportHeader .dashboardStepLabel-inline{
@@ -18846,16 +18867,18 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 
 .page-dashboard .dashboardSupportHeader .dashboardFoldTitle{
   line-height:1.02;
-  max-width:12ch;
+  max-width:10ch;
 }
 
 .page-dashboard .dashboardSupportHeader .tiny.muted{
   display:block;
-  line-height:1.22;
-  max-width:28ch;
+  font-size:10px;
+  line-height:1.16;
+  max-width:24ch;
   justify-self:start;
   text-align:left;
   margin-top:-2px;
+  color:rgba(214, 227, 243, .52);
 }
 
 /* Session Support layout: keep this after legacy dashboard rules. */
@@ -18878,20 +18901,20 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthKpiStrip,
 .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthTrustCard,
 .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthBottomRow{
-  margin-top:14px;
+  margin-top:10px;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthKpiStrip{
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:10px;
+  gap:8px;
   justify-content:stretch;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthBottomRow{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:14px;
+  gap:10px;
   align-items:stretch;
 }
 
@@ -18906,12 +18929,12 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailTitle{
-  font-size:17px;
+  font-size:15px;
   line-height:1.08;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailPrimary{
-  font-size:14px;
+  font-size:12px;
   line-height:1.18;
 }
 
@@ -18920,8 +18943,8 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailLine{
-  font-size:10.5px;
-  line-height:1.3;
+  font-size:9.5px;
+  line-height:1.24;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusDetailTags{
@@ -18974,9 +18997,9 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrb{
-  min-height:84px;
+  min-height:76px;
   gap:3px;
-  padding:8px 8px 7px;
+  padding:7px 7px 6px;
   border-color:rgba(255,255,255,.04);
   background:
     linear-gradient(180deg, rgba(255,255,255,.008), rgba(255,255,255,.002)),
@@ -18985,7 +19008,7 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbCircle{
-  width:44px;
+  width:40px;
   box-shadow:none;
   place-items:center;
   text-align:center;
@@ -18997,10 +19020,14 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardStatusOrbMeta{
-  font-size:8.5px;
-  line-height:1.48;
+  font-size:8px;
+  line-height:1.2;
   white-space:normal;
   text-overflow:clip;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  overflow:hidden;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid > .dashboardHealthTrustCard > summary{
@@ -19017,7 +19044,8 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dataTrustSummary{
-  line-height:1.28;
+  font-size:10px;
+  line-height:1.18;
   color:rgba(214, 226, 243, .68);
   max-width:none;
   display:-webkit-box;
@@ -19039,7 +19067,7 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
   display:flex;
   flex-direction:column;
   height:100%;
-  padding:12px 12px 12px;
+  padding:10px 10px 10px;
   border-color:rgba(255,255,255,.04);
   background:
     linear-gradient(180deg, rgba(255,255,255,.01), rgba(255,255,255,.003)),
@@ -19055,7 +19083,7 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 .page-dashboard .dashboardHealthSurface .session-health-grid .showcaseValue{
   margin-top:0;
   line-height:.95;
-  font-size:clamp(21px, 3vw, 35px) !important;
+  font-size:clamp(19px, 2.6vw, 31px) !important;
   max-width:100%;
   overflow-wrap:anywhere;
   word-break:break-word;
@@ -19072,9 +19100,13 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardHealthSurface .sessio
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .supportLead{
-  font-size:12px;
-  line-height:1.2;
+  font-size:11px;
+  line-height:1.16;
   color:rgba(216, 228, 243, .62);
+}
+
+.page-dashboard .dashboardHealthSurface .session-health-grid .statusBadge strong{
+  font-size:11px;
 }
 
 .page-dashboard .dashboardHealthSurface .session-health-grid .dashboardMilestonePrimary{
@@ -33726,6 +33758,11 @@ textarea:focus-visible{
   align-items:center;
 }
 
+.page-dashboard .dashboardDecisionHead .pill{
+  font-size:.7rem;
+  letter-spacing:.03em;
+}
+
 .page-dashboard .dashboardDecisionHead .trendChip{
   opacity:.92;
 }
@@ -34100,11 +34137,11 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardBriefSignalRow .trendChip{
-  opacity:.86;
+  opacity:.74;
 }
 
 .page-dashboard .dashboardBriefCard .supportLead{
-  color:rgba(239, 246, 253, .90);
+  color:rgba(239, 246, 253, .84);
 }
 
 .page-dashboard .dashboardBriefStructuredLabel{
@@ -34117,11 +34154,11 @@ textarea:focus-visible{
 
 .page-dashboard .dashboardBriefBiasText,
 .page-dashboard .dashboardBriefQuickText{
-  color:rgba(226, 238, 250, .74);
+  color:rgba(226, 238, 250, .68);
 }
 
 .page-dashboard .dashboardBriefQuickItem-secondary .dashboardBriefQuickText{
-  color:rgba(216, 228, 243, .66);
+  color:rgba(216, 228, 243, .60);
 }
 
 .page-dashboard .dashboardBriefMetaStrong .trendChip{
@@ -35057,9 +35094,9 @@ textarea:focus-visible{
 }
 
 .page-dashboard .dashboardPrimaryBandSubhead{
-  font-size:11px;
-  line-height:1.35;
-  color:rgba(209, 223, 239, .54);
+  font-size:10px;
+  line-height:1.28;
+  color:rgba(209, 223, 239, .44);
 }
 
 .page-dashboard .dashboardStepLabel{
@@ -35072,8 +35109,8 @@ textarea:focus-visible{
   margin-bottom:0;
   border-color:rgba(112, 219, 255, .16);
   box-shadow:
-    0 24px 42px rgba(0,0,0,.26),
-    0 0 20px rgba(83,215,255,.08),
+    0 18px 32px rgba(0,0,0,.20),
+    0 0 14px rgba(83,215,255,.05),
     inset 0 0 0 1px rgba(144, 231, 255, .05),
     inset 0 0 30px rgba(74, 158, 255, .05);
 }
@@ -35092,6 +35129,13 @@ textarea:focus-visible{
   gap:12px;
 }
 
+.page-dashboard .dashboardDecisionLead{
+  font-size:12px;
+  line-height:1.38;
+  color:rgba(236, 244, 252, .88);
+  max-width:68ch;
+}
+
 .page-dashboard .dashboardBriefCard{
   border-color:rgba(144, 231, 255, .10);
   box-shadow:
@@ -35107,6 +35151,18 @@ textarea:focus-visible{
 .page-dashboard .dashboardHeroPriorityMeta .trendChip,
 .page-dashboard .dashboardBriefMetaStrong .trendChip{
   opacity:.84;
+}
+
+.page-dashboard .dashboardDecisionPrimaryActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.page-dashboard .dashboardDecisionPrimaryActions .btn{
+  min-height:34px;
+  padding:7px 11px;
+  font-size:11px;
 }
 
 .page-dashboard .dashboardGammaChipDetail,
