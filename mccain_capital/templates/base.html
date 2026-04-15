@@ -7,7 +7,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <meta name="csrf-token" content="{{ csrf_token }}"/>
-  <title>{{ title }}</title>
+  <title>{% set title_unread = notifications_unread_count|default(0)|int %}{% if title_unread > 0 %}({{ '99+' if title_unread > 99 else title_unread }}) {% endif %}{{ title }}</title>
   <script>
     (() => {
       try {
@@ -835,6 +835,41 @@
   })();
 </script>
 <script>
+  (function initTabNotificationMirror(){
+    const TITLE_BADGE_RE = /^\((?:\d+|\d+\+)\)\s+/;
+    const baseTitle = String(document.title || "").replace(TITLE_BADGE_RE, "");
+    const badge = document.getElementById("notifBellBadge");
+    if (!badge) return;
+
+    const readBadgeCount = () => {
+      if (badge.classList.contains("is-empty")) return 0;
+      const raw = String(badge.textContent || "").trim();
+      if (!raw) return 0;
+      if (raw.endsWith("+")) {
+        const value = parseInt(raw.slice(0, -1), 10);
+        return Number.isFinite(value) ? value : 0;
+      }
+      const value = parseInt(raw, 10);
+      return Number.isFinite(value) ? value : 0;
+    };
+
+    const syncTitleFromBadge = () => {
+      const count = readBadgeCount();
+      document.title = count > 0 ? `(${String(badge.textContent || "").trim()}) ${baseTitle}` : baseTitle;
+    };
+
+    syncTitleFromBadge();
+    const observer = new MutationObserver(syncTitleFromBadge);
+    observer.observe(badge, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  })();
+</script>
+<script>
   (function initNotifications(){
     const bellBtn = document.getElementById("notifBellButton");
     const badge = document.getElementById("notifBellBadge");
@@ -849,7 +884,59 @@
     const ITEMS_KEY = "notifItemsOverride";
     const LAST_SEEN_KEY = "marketFeedLastSeen";
     const BADGE_MAX = 99;
-    if (!bellBtn || !dropdown) return;
+    const SERVER_UNREAD = {{ notif_unread|default(0)|int }};
+    const TITLE_BADGE_RE = /^\((?:\d+|\d+\+)\)\s+/;
+    const baseTitle = String(document.title || "").replace(TITLE_BADGE_RE, "");
+    const faviconLink = document.querySelector("link[rel='icon']");
+    const faviconHref = faviconLink?.getAttribute("href") || "";
+    let faviconImage = null;
+    let faviconReady = false;
+
+    const ensureFaviconImage = () => {
+      if (!faviconLink || faviconReady || !faviconHref) return;
+      faviconImage = new Image();
+      faviconImage.crossOrigin = "anonymous";
+      faviconImage.onload = () => {
+        faviconReady = true;
+        const stored = window.localStorage?.getItem(COUNT_KEY);
+        const count = stored ? parseInt(stored, 10) : (parseInt(badge?.textContent || String(SERVER_UNREAD), 10) || SERVER_UNREAD);
+        const safeCount = Number.isFinite(count) ? count : 0;
+        const isHigh = window.localStorage?.getItem(HIGH_KEY) === "1";
+        applyFaviconBadge(safeCount, isHigh);
+      };
+      faviconImage.src = faviconHref;
+    };
+
+    const applyFaviconBadge = (count, isHigh) => {
+      if (!faviconLink) return;
+      if (count <= 0) {
+        faviconLink.href = faviconHref;
+        return;
+      }
+      if (!faviconReady || !faviconImage?.naturalWidth || !faviconImage?.naturalHeight) {
+        ensureFaviconImage();
+        return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(faviconImage, 0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = isHigh ? "#cf2f2f" : "#d64545";
+      ctx.beginPath();
+      ctx.arc(49, 15, 14, 0, Math.PI * 2);
+      ctx.fill();
+      const text = count > BADGE_MAX ? "99+" : String(count);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = count > 9 ? "bold 14px sans-serif" : "bold 18px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, 49, 16);
+      faviconLink.href = canvas.toDataURL("image/png");
+    };
+
+    ensureFaviconImage();
 
     const formatBadgeCount = (count) => {
       const safeCount = Math.max(0, Number.isFinite(count) ? count : 0);
@@ -870,11 +957,15 @@
     };
 
     const applyBadgeCount = (count) => {
-      if (!badge) return;
       const safeCount = Math.max(0, Number.isFinite(count) ? count : 0);
-      badge.textContent = formatBadgeCount(safeCount);
-      badge.classList.toggle("is-empty", safeCount <= 0);
+      if (badge) {
+        badge.textContent = formatBadgeCount(safeCount);
+        badge.classList.toggle("is-empty", safeCount <= 0);
+      }
       if (dropdownCount) dropdownCount.textContent = `${safeCount} unread`;
+      document.title = safeCount > 0 ? `(${formatBadgeCount(safeCount)}) ${baseTitle}` : baseTitle;
+      const isHigh = window.localStorage?.getItem(HIGH_KEY) === "1";
+      applyFaviconBadge(safeCount, isHigh);
     };
 
     const renderItems = (items) => {
@@ -934,7 +1025,7 @@
 
     const applyOverrides = () => {
       const stored = window.localStorage?.getItem(COUNT_KEY);
-      const count = stored ? parseInt(stored, 10) : (parseInt(badge?.textContent || "0", 10) || 0);
+      const count = stored ? parseInt(stored, 10) : (parseInt(badge?.textContent || String(SERVER_UNREAD), 10) || SERVER_UNREAD);
       applyBadgeCount(count);
       const high = window.localStorage?.getItem(HIGH_KEY) === "1";
       badge?.classList.toggle("is-high", high);
@@ -985,7 +1076,9 @@
       bellBtn.setAttribute("aria-expanded", next ? "true" : "false");
     };
 
-    bellBtn.addEventListener("click", toggleMenu);
+    if (bellBtn && dropdown) {
+      bellBtn.addEventListener("click", toggleMenu);
+    }
     if (clearBtn) {
       clearBtn.addEventListener("click", (event) => {
         event.preventDefault();
@@ -997,11 +1090,13 @@
       applyOverrides();
     });
     document.addEventListener("click", (event) => {
+      if (!dropdown || !bellBtn) return;
       if (!dropdown.classList.contains("is-open")) return;
       if (bellBtn.contains(event.target) || dropdown.contains(event.target)) return;
       closeMenu();
     });
     document.addEventListener("keydown", (event) => {
+      if (!dropdown) return;
       if (event.key === "Escape") closeMenu();
     });
 
@@ -1066,6 +1161,19 @@
         await seedFromFeed(true);
       });
     }
+
+    // Keep tab badges current without requiring a manual refresh click.
+    window.setTimeout(() => {
+      void seedFromFeed(false);
+    }, 0);
+    window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      void seedFromFeed(false);
+    }, 60000);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      void seedFromFeed(false);
+    });
   })();
 </script>
 <script>
