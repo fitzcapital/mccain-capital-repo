@@ -583,8 +583,8 @@
     setText("marketPulseHeroSession", levels.session || "Closed · No confidence");
     setText("marketPulseHeroMacroFlip", fmt(levels.main_flip, 0));
 
-    setText("marketPulseHeroTopState", `STATE: ${currentRead}`);
-    setText("marketPulseHeroTopMode", `MODE: ${state}`);
+    setText("marketPulseHeroTopState", `READ: ${currentRead}`);
+    setText("marketPulseHeroTopMode", `DECISION: ${state}`);
     setText("marketPulseHeroRailSummary", levels.current_read || "Awaiting valid structure");
     setText("marketPulseHeroChartBanner", headline);
 

@@ -1665,6 +1665,34 @@ body{
       opacity:1;
       font-weight:600;
     }
+    .page-market-pulse .topbar{
+      padding:10px 12px;
+      border-color:rgba(255,255,255,.06);
+      background:
+        linear-gradient(120deg, rgba(255,255,255,.022), rgba(var(--accent-rgb),.016) 35%, rgba(255,255,255,.008) 100%),
+        radial-gradient(900px 260px at 8% -20%, rgba(var(--accent-rgb),.05), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,.014), rgba(0,0,0,0) 70%),
+        var(--panel);
+      box-shadow:0 10px 24px rgba(5, 12, 24, .18);
+    }
+    .page-market-pulse .brandTitle{
+      animation:none;
+      text-shadow:
+        0 0 8px rgba(255,255,255,.05),
+        0 0 16px rgba(var(--accent-rgb),.10);
+    }
+    .page-market-pulse .brandText::before{
+      opacity:.42;
+      filter:blur(20px);
+    }
+    .page-market-pulse .brandSignature{
+      font-size:9px;
+      color:rgba(237,244,255,.46);
+    }
+    .page-market-pulse .sub{
+      font-size:10px;
+      color:rgba(237,244,255,.52);
+    }
     .mcMark{display:inline-flex;align-items:center;gap:6px}
     .mcIcon{
       width:12px;
@@ -10746,8 +10774,9 @@ body.marketPulseReady .marketPulseSection{
 }
 .page-market-pulse .pill,
 .page-market-pulse .trendChip{
-  font-size:.74rem;
-  line-height:1.05;
+  font-size:.7rem;
+  line-height:1;
+  letter-spacing:.03em;
 }
 .page-market-pulse .supportLead{
   font-size:1rem;
@@ -12017,12 +12046,12 @@ body.marketPulseReady .marketPulseSection{
 }
 .marketFeedTab{
   border-radius:999px;
-  padding:6px 12px;
+  padding:5px 11px;
   border:1px solid rgba(126, 176, 230, .18);
   background:rgba(9, 20, 34, .5);
   color:rgba(190, 214, 242, .78);
-  font-size:.76rem;
-  letter-spacing:.08em;
+  font-size:.72rem;
+  letter-spacing:.04em;
   text-transform:uppercase;
   cursor:pointer;
 }
@@ -12246,8 +12275,9 @@ body.marketPulseReady .marketPulseSection{
   animation:marketSpin .75s linear infinite;
 }
 .marketFeedPanel .marketFeedCommand__sub{
-  font-size:.82rem;
-  color:rgba(174, 200, 230, .78);
+  font-size:.74rem;
+  line-height:1.2;
+  color:rgba(174, 200, 230, .68);
 }
 .marketFeedUnreadBadge{
   display:inline-flex;
@@ -12278,6 +12308,9 @@ body.marketPulseReady .marketPulseSection{
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+  font-size:.74rem;
+  line-height:1.22;
+  color:rgba(182, 204, 230, .68);
 }
 .marketFeedGrid{
   display:grid;
@@ -12294,10 +12327,10 @@ body.marketPulseReady .marketPulseSection{
   min-width:0;
 }
 .marketFeedRail__label{
-  font-size:.74rem;
+  font-size:.68rem;
   letter-spacing:.14em;
   text-transform:uppercase;
-  color:rgba(170, 196, 222, .7);
+  color:rgba(170, 196, 222, .6);
 }
 .marketFeedFeatured__meta,
 .marketFeedRow__meta{
@@ -12321,14 +12354,14 @@ body.marketPulseReady .marketPulseSection{
   min-width:0;
 }
 .marketFeedPanel .marketFeedList{
-  gap:10px;
+  gap:8px;
   max-height:720px;
   overflow:auto;
   padding-right:6px;
 }
 .marketFeedPanel .marketFeedRow{
-  gap:6px;
-  padding:12px 14px;
+  gap:5px;
+  padding:11px 13px;
   border-radius:14px;
   border:1px solid rgba(90, 130, 180, .12);
   background:rgba(9, 18, 30, .5);
@@ -12454,15 +12487,15 @@ body.marketPulseReady .marketPulseSection{
   flex-wrap:wrap;
 }
 .marketFeedRow__time{
-  font-size:.75rem;
-  color:rgba(180, 201, 228, .70);
+  font-size:.69rem;
+  color:rgba(180, 201, 228, .62);
   height:1.6rem;
 }
 .marketFeedRow__headline{
   color:#f0f7ff;
   text-decoration:none;
-  font-size:.96rem;
-  line-height:1.6;
+  font-size:.88rem;
+  line-height:1.38;
   font-weight:700;
 }
 .marketFeedRow__headline:hover{
@@ -12476,9 +12509,9 @@ body.marketPulseReady .marketPulseSection{
 }
 .marketFeedRow__summary{
   margin:0;
-  font-size:.84rem;
-  line-height:1.42;
-  color:rgba(213, 227, 244, .72);
+  font-size:.78rem;
+  line-height:1.3;
+  color:rgba(213, 227, 244, .58);
   display:-webkit-box;
   -webkit-box-orient:vertical;
   -webkit-line-clamp:2;
@@ -36298,14 +36331,16 @@ textarea:focus-visible{
 }
 
 .marketPulseHeaderSubline{
-  font-size:.84rem;
-  line-height:1.12;
+  font-size:.78rem;
+  line-height:1.08;
   font-weight:800;
-  color:rgba(234, 242, 251, .9);
+  color:rgba(234, 242, 251, .82);
 }
 
 .marketPulsePlaybookMeta{
-  font-size:.74rem;
+  font-size:.68rem;
+  line-height:1.18;
+  color:rgba(212, 225, 242, .68);
 }
 
 .marketPulseGammaStateCard,
@@ -36457,11 +36492,11 @@ textarea:focus-visible{
 
 .marketPulseGammaStateSub,
 .marketPulseBiasSecondary{
-  font-size:.76rem;
-  line-height:1.1;
+  font-size:.71rem;
+  line-height:1.06;
   letter-spacing:.08em;
   text-transform:uppercase;
-  color:rgba(216, 228, 243, .82);
+  color:rgba(216, 228, 243, .72);
 }
 
 .marketPulseBiasCardLabel{
@@ -36485,9 +36520,9 @@ textarea:focus-visible{
   display:block;
   padding:3px 6px;
   border-radius:10px;
-  font-size:.7rem;
+  font-size:.66rem;
   line-height:1.1;
-  color:rgba(205, 219, 236, .7);
+  color:rgba(205, 219, 236, .62);
 }
 
 .marketPulseBiasRailItem.is-active{
@@ -36555,7 +36590,7 @@ textarea:focus-visible{
 }
 
 .marketPulseExecutionHeroTopState{
-  font-size:.68rem;
+  font-size:.72rem;
   font-weight:800;
   line-height:1;
 }
@@ -36574,7 +36609,7 @@ textarea:focus-visible{
 
 .marketPulseExecutionHeroGrid{
   display:grid;
-  grid-template-columns:minmax(220px, 0.78fr) minmax(0, 1.75fr) minmax(280px, 0.98fr);
+  grid-template-columns:minmax(210px, 0.72fr) minmax(0, 1.6fr) minmax(320px, 1.12fr);
   gap:12px;
   align-items:start;
 }
@@ -36693,7 +36728,7 @@ textarea:focus-visible{
 
 .marketPulseExecutionHeroMetric .tiny{
   white-space:normal;
-  line-height:1.16;
+  line-height:1.2;
 }
 
 #marketPulseHeroBias,
@@ -36743,6 +36778,16 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 
 .marketPulseExecutionHeroPanel-decision{
   align-content:start;
+  padding:14px;
+  gap:12px;
+  border-color:rgba(136, 176, 224, .22);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.03),
+    0 18px 36px rgba(2, 8, 18, .22);
+}
+
+.marketPulseExecutionHeroPanel-decision .marketPulseExecutionHeroSectionHead{
+  align-items:center;
 }
 
 .marketPulseExecutionHeroChartBanner{
@@ -37052,17 +37097,17 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 .marketPulseExecutionHeroDecisionGrid{
   display:grid;
   grid-template-columns:1fr;
-  gap:8px;
+  gap:10px;
   min-width:0;
 }
 
 .marketPulseExecutionHeroDecisionLead,
 .marketPulseExecutionHeroDecisionCell{
   display:grid;
-  gap:3px;
+  gap:4px;
   min-width:0;
   overflow:hidden;
-  padding:11px 12px;
+  padding:12px 13px;
   border-radius:15px;
   border:1px solid rgba(115, 157, 206, .16);
   background:rgba(8, 15, 27, .46);
@@ -37075,8 +37120,8 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 
 .marketPulseExecutionHeroDecisionLead strong,
 .marketPulseExecutionHeroDecisionCell strong{
-  font-size:clamp(.74rem, .72vw, .88rem);
-  line-height:1.08;
+  font-size:clamp(.8rem, .8vw, .94rem);
+  line-height:1.12;
   color:rgba(246, 250, 255, .96);
   overflow-wrap:break-word;
   word-break:normal;
@@ -37113,6 +37158,18 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
   white-space:nowrap;
 }
 
+.page-market-pulse .marketPulseExecutionHeroSectionHead > .tiny,
+.page-market-pulse .marketPulseExecutionHeroDecisionLead .tiny,
+.page-market-pulse .marketPulseExecutionHeroDecisionCell .tiny,
+.page-market-pulse .marketPulseExecutionHeroMetric .tiny,
+.page-market-pulse .marketPulseExecutionHeroRailFootCell .tiny,
+.page-market-pulse .marketPulseTriggerTopline .tiny,
+.page-market-pulse .marketPulseTriggerCopy span,
+.page-market-pulse .marketPulseTapeShell .tiny{
+  font-size:.76rem;
+  line-height:1.22;
+}
+
 .marketPulseExecutionContextGrid{
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
@@ -37125,13 +37182,14 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 }
 
 .marketPulseTradeContextLead{
-  font-size:.8rem;
-  line-height:1.24;
-  color:rgba(223, 233, 245, .84);
+  font-size:.86rem;
+  line-height:1.28;
+  color:rgba(232, 240, 250, .9);
 }
 
 .marketPulseTradeabilityMetaRow-compact{
   grid-template-columns:minmax(92px, .38fr) minmax(0, 1fr);
+  gap:8px;
 }
 
 .marketPulsePlaybookGrid-context{
@@ -37192,20 +37250,20 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 
 .marketPulseTriggerCopy{
   display:grid;
-  gap:3px;
+  gap:4px;
   min-width:0;
 }
 
 .marketPulseTriggerCopy strong{
-  font-size:.9rem;
-  line-height:1.05;
+  font-size:.84rem;
+  line-height:1.08;
   color:rgba(244, 249, 255, .96);
 }
 
 .marketPulseTriggerCopy span{
-  font-size:.78rem;
-  line-height:1.2;
-  color:rgba(214, 225, 239, .78);
+  font-size:.8rem;
+  line-height:1.26;
+  color:rgba(214, 225, 239, .72);
 }
 
 .marketPulseTriggerFooter{
@@ -37218,15 +37276,15 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 }
 
 .marketPulseTriggerFooter strong{
-  font-size:.92rem;
-  line-height:1.04;
+  font-size:.88rem;
+  line-height:1.08;
   color:rgba(255, 232, 186, .96);
 }
 
 .marketPulseTriggerFooter span{
-  font-size:.78rem;
-  line-height:1.2;
-  color:rgba(225, 234, 245, .82);
+  font-size:.8rem;
+  line-height:1.24;
+  color:rgba(225, 234, 245, .76);
 }
 
 .marketPulseExecutionChartHead{
@@ -38075,12 +38133,12 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 }
 
 .marketPulseTapeShell .marketPulseTapeCard{
-  min-height:110px;
-  padding:10px;
+  min-height:98px;
+  padding:9px 10px;
 }
 
 .marketPulseTapeShell .marketPulseTapeCard .v{
-  font-size:1.42rem;
+  font-size:1.34rem;
 }
 
 .marketPulseTapeShell .marketPulseBreadthBar{
@@ -38089,11 +38147,11 @@ html[data-font-mode="hand"] .marketPulseExecutionHeroMetric.is-spot strong{
 
 .marketPulseTapeShell .marketPulseBreadthItem,
 .marketPulseTapeShell .tiny{
-  font-size:.78rem;
+  font-size:.72rem;
 }
 
 .marketPulseTapeShell .marketPulseTapeCard .k{
-  font-size:.88rem;
+  font-size:.82rem;
 }
 
 .marketPulseTapeShell .marketPulseTapeCard [data-role="change-line"],
