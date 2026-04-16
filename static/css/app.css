@@ -1813,13 +1813,12 @@ body{
   border:1px solid rgba(120, 170, 220, .24);
   background:rgba(15, 28, 44, .72);
   color:rgba(182, 224, 255, .92);
-  box-shadow:0 0 12px rgba(80, 160, 255, .12);
-  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease, opacity .18s ease;
+  box-shadow:none;
+  transition:border-color .18s ease, background-color .18s ease, opacity .18s ease;
 }
 .notifRefreshBtn:hover{
   border-color:rgba(120, 210, 255, .48);
-  box-shadow:0 0 18px rgba(90, 200, 255, .2);
-  transform:translateY(-1px);
+  background:rgba(19, 34, 54, .84);
 }
 .notifRefreshBtn:disabled{
   cursor:wait;
@@ -1828,9 +1827,14 @@ body{
 .notifRefreshBtn svg{
   width:14px;
   height:14px;
+  transform-origin:50% 50%;
 }
 .notifRefreshBtn.is-loading svg{
-  animation:marketSpin .75s linear infinite;
+  animation:notifRefreshSpin 1.05s linear infinite;
+}
+@keyframes notifRefreshSpin{
+  from{ transform:rotate(0deg); }
+  to{ transform:rotate(360deg); }
 }
 .notifDropdownList{
   display:grid;
