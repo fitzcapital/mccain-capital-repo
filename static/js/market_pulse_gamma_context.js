@@ -836,12 +836,30 @@
   const tapeCards = Array.from(document.querySelectorAll(".marketPulseTapeCard[data-symbol]"));
   const mobilePulseQuery = window.matchMedia("(max-width: 640px)");
   const scrollRoot = document.scrollingElement || document.documentElement;
-  const MOBILE_STREAM_FLUSH_MS = 900;
+  const DESKTOP_STREAM_FLUSH_MS = 500;
+  const MOBILE_STREAM_FLUSH_MS = 1200;
+  const RESIZE_RENDER_DEBOUNCE_MS = 180;
   let pendingStreamPayload = null;
   let pendingStreamTimer = null;
+  let pendingRenderTimer = null;
+  let lastStreamApplyAt = 0;
+  let pageVisible = document.visibilityState !== "hidden";
+  let stream = null;
+  let reconnectTimer = null;
 
   const dispatchStreamStatus = (status, detail) => {
     window.dispatchEvent(new CustomEvent("market-pulse-stream-status", { detail: { status, detail } }));
+  };
+
+  const scheduleRender = (delay = 0) => {
+    if (!pageVisible) return;
+    if (pendingRenderTimer !== null) {
+      window.clearTimeout(pendingRenderTimer);
+    }
+    pendingRenderTimer = window.setTimeout(() => {
+      pendingRenderTimer = null;
+      window.requestAnimationFrame(() => render(current));
+    }, Math.max(0, delay));
   };
 
   const preserveMobileScroll = (beforeBottomGap) => {
@@ -959,7 +977,7 @@
         nextGammaSnapshot
       ),
     };
-    render(current);
+    scheduleRender();
     tapeCards.forEach((card) => {
       const symbol = String(card.dataset.symbol || "").toUpperCase();
       if (!symbol) return;
@@ -979,21 +997,34 @@
     );
     window.dispatchEvent(new CustomEvent("market-pulse-stream-payload", { detail: payload }));
     preserveMobileScroll(beforeBottomGap);
+    lastStreamApplyAt = Date.now();
   };
 
   const queueStreamPayload = (payload) => {
-    if (!mobilePulseQuery.matches) {
+    const flushMs = mobilePulseQuery.matches ? MOBILE_STREAM_FLUSH_MS : DESKTOP_STREAM_FLUSH_MS;
+    if (!pageVisible) {
+      pendingStreamPayload = payload;
+      return;
+    }
+    if (flushMs <= 0) {
       applyStreamPayload(payload);
       return;
     }
     pendingStreamPayload = payload;
+    const elapsed = Date.now() - lastStreamApplyAt;
+    if (elapsed >= flushMs && pendingStreamTimer === null) {
+      const nextPayload = pendingStreamPayload;
+      pendingStreamPayload = null;
+      applyStreamPayload(nextPayload);
+      return;
+    }
     if (pendingStreamTimer !== null) return;
     pendingStreamTimer = window.setTimeout(() => {
       pendingStreamTimer = null;
       const nextPayload = pendingStreamPayload;
       pendingStreamPayload = null;
       applyStreamPayload(nextPayload);
-    }, MOBILE_STREAM_FLUSH_MS);
+    }, Math.max(0, flushMs - elapsed));
   };
 
   const formatSigned = (value, digits = 2) => {
@@ -1792,7 +1823,10 @@
 
     setText("marketPulseHeroSpot", formatNumber(input.spot, 2));
     setText("marketPulseHeroBias", biasLine);
-    setText("marketPulseHeroTradeability", `${derived.tradeability.label} · ${derived.tradeability.score}/10`);
+    const tradeabilityLabel = String(derived.tradeability.label || "Unavailable")
+      .replace(/_/g, " ")
+      .trim();
+    setText("marketPulseHeroTradeability", tradeabilityLabel || "Unavailable");
     setText("marketPulseHeroMacroFlip", formatNumber(input.gammaFlip, 0));
     setText("marketPulseHeroRailContext", (model && model.posture_summary) || executionPlan.subline);
     setText("marketPulseHeroRailSummary", executionPlan.locationLine || executionPlan.subline);
@@ -2220,13 +2254,35 @@
   let current = JSON.parse(JSON.stringify(base));
   render(current);
   window.addEventListener("resize", () => {
-    window.requestAnimationFrame(() => render(current));
+    if (pendingRenderTimer !== null) {
+      window.clearTimeout(pendingRenderTimer);
+    }
+    pendingRenderTimer = window.setTimeout(() => {
+      pendingRenderTimer = null;
+      scheduleRender();
+    }, RESIZE_RENDER_DEBOUNCE_MS);
   });
   window.dispatchEvent(new CustomEvent("market-pulse-core-ready"));
   dispatchStreamStatus("Live stream connecting", "Waiting for first tick…");
 
+  const closeStream = () => {
+    if (reconnectTimer !== null) {
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (!stream) return;
+    try {
+      stream.close();
+    } catch (_err) {
+      // no-op
+    }
+    stream = null;
+  };
+
   const connectStream = () => {
-    const stream = new EventSource("/stream/market");
+    closeStream();
+    if (!pageVisible) return;
+    stream = new EventSource("/stream/market");
     stream.onopen = () => {
       dispatchStreamStatus("Live stream connected", "Listening for fresh ticks…");
     };
@@ -2243,14 +2299,31 @@
 
     stream.onerror = () => {
       dispatchStreamStatus("Live stream retrying", "Connection dropped. Reconnecting to market feed…");
-      try {
-        stream.close();
-      } catch (_err) {
-        // no-op
-      }
-      window.setTimeout(connectStream, 3000);
+      closeStream();
+      if (!pageVisible) return;
+      reconnectTimer = window.setTimeout(connectStream, 3000);
     };
   };
 
   connectStream();
+  document.addEventListener("visibilitychange", () => {
+    pageVisible = document.visibilityState !== "hidden";
+    if (!pageVisible) {
+      closeStream();
+      if (pendingStreamTimer !== null) {
+        window.clearTimeout(pendingStreamTimer);
+        pendingStreamTimer = null;
+      }
+      dispatchStreamStatus("Live stream paused", "Background tab");
+      return;
+    }
+    scheduleRender();
+    if (pendingStreamPayload) {
+      const nextPayload = pendingStreamPayload;
+      pendingStreamPayload = null;
+      applyStreamPayload(nextPayload);
+    }
+    dispatchStreamStatus("Live stream connecting", "Restoring live feed…");
+    connectStream();
+  });
 })();

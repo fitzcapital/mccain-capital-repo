@@ -169,7 +169,7 @@
   });
 
   let priceLines = [];
-  let polling = { bars_interval_ms: 30000, levels_interval_ms: 10000 };
+  let polling = { bars_interval_ms: 45000, levels_interval_ms: 20000 };
   let barsTimer = null;
   let levelsTimer = null;
   let initialized = false;
@@ -177,9 +177,18 @@
   let lastLevelsPayload = null;
   let lastGoodLevelsPayload = null;
   let lastAppliedLevelsSignature = "";
+  let lastBarsSignature = "";
   let pendingLevelsPayload = null;
   let levelsRenderTimer = null;
+  let resizeTimer = null;
+  let barsRequestInFlight = false;
+  let levelsRequestInFlight = false;
+  let pageVisible = document.visibilityState !== "hidden";
+  let lastMeasuredWidth = 0;
   const LEVEL_RENDER_DEBOUNCE_MS = 120;
+  const HIDDEN_BARS_INTERVAL_MS = 120000;
+  const HIDDEN_LEVELS_INTERVAL_MS = 60000;
+  const RESIZE_DEBOUNCE_MS = 140;
   const HERO_LEVEL_KEYS = [
     "main_flip",
     "local_flip",
@@ -311,6 +320,21 @@
       const numeric = asNum(payload?.[key]);
       return `${key}:${numeric === null ? "na" : numeric.toFixed(4)}`;
     }).join("|");
+
+  const barsSignature = (candles, payload) => {
+    if (!Array.isArray(candles) || !candles.length) return "empty";
+    const first = candles[0];
+    const last = candles[candles.length - 1];
+    return [
+      candles.length,
+      Number(first.time) || 0,
+      Number(last.time) || 0,
+      Number(last.close || 0).toFixed(2),
+      Math.max(0, Number(payload?.previous_session_bar_count) || 0),
+      Math.max(0, Number(payload?.current_session_bar_count) || 0),
+      Boolean(payload?.opening_session_mode) ? "open" : "session",
+    ].join("|");
+  };
 
   const sanitizeLevelsPayload = (payload) => {
     if (!payload || typeof payload !== "object") return null;
@@ -579,7 +603,10 @@
     setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || "SPX Spot");
     setText("marketPulseHeroGamma", levels.gamma_regime_label || "Regime Unavailable");
     setText("marketPulseHeroBias", levels.current_read || levels.bias_context || levels.bias_label || "Awaiting structure");
-    setText("marketPulseHeroTradeability", levels.execution_regime_label || levels.tradeability || "Reduced confidence · structure first");
+    const tradeability = String(
+      levels.execution_regime_label || levels.tradeability || "Reduced confidence"
+    ).replaceAll("_", " ");
+    setText("marketPulseHeroTradeability", tradeability);
     setText("marketPulseHeroSession", levels.session || "Closed · No confidence");
     setText("marketPulseHeroMacroFlip", fmt(levels.main_flip, 0));
 
@@ -601,94 +628,143 @@
   };
 
   const updateBars = async ({ fitContent = false } = {}) => {
+    if (barsRequestInFlight) return;
+    barsRequestInFlight = true;
     const payload = await fetchJson(barsEndpoint());
-    const bars = Array.isArray(payload.bars) ? payload.bars : [];
-    if (!bars.length) {
-      if (emptyState) {
-        emptyState.hidden = false;
-        emptyState.textContent = "Tradier returned no intraday bars for SPX.";
+    try {
+      const bars = Array.isArray(payload.bars) ? payload.bars : [];
+      if (!bars.length) {
+        if (emptyState) {
+          emptyState.hidden = false;
+          emptyState.textContent = "Tradier returned no intraday bars for SPX.";
+        }
+        return;
       }
-      return;
-    }
 
-    const candles = bars
-      .map((bar) => ({
-        time: Number(bar.time),
-        open: Number(bar.open),
-        high: Number(bar.high),
-        low: Number(bar.low),
-        close: Number(bar.close),
-      }))
-      .filter((bar) => Number.isFinite(bar.time) && Number.isFinite(bar.open) && Number.isFinite(bar.high) && Number.isFinite(bar.low) && Number.isFinite(bar.close));
-
-    const volume = bars
-      .map((bar, index) => {
-        const close = Number(bar.close);
-        const open = Number(bar.open);
-        const amount = Number(bar.volume);
-        return {
+      const candles = bars
+        .map((bar) => ({
           time: Number(bar.time),
-          value: Number.isFinite(amount) ? amount : 0,
-          color: close >= open ? "rgba(15, 163, 127, 0.18)" : "rgba(194, 59, 87, 0.16)",
-        };
-      })
-      .filter((bar) => Number.isFinite(bar.time));
+          open: Number(bar.open),
+          high: Number(bar.high),
+          low: Number(bar.low),
+          close: Number(bar.close),
+        }))
+        .filter((bar) => Number.isFinite(bar.time) && Number.isFinite(bar.open) && Number.isFinite(bar.high) && Number.isFinite(bar.low) && Number.isFinite(bar.close));
 
-    const previousSessionBarCount = Math.max(0, Number(payload.previous_session_bar_count) || 0);
-    const currentSessionBarCount = Math.max(0, Number(payload.current_session_bar_count) || 0);
-    const boundedPreviousCount = Math.min(previousSessionBarCount, candles.length);
-    const boundedCurrentCount = Math.min(currentSessionBarCount, Math.max(0, candles.length - boundedPreviousCount));
-    const splitIndex = boundedCurrentCount > 0 ? boundedPreviousCount : candles.length;
-    const priorCandles = candles.slice(0, splitIndex);
-    const currentCandles = candles.slice(splitIndex);
+      const nextBarsSignature = barsSignature(candles, payload);
+      const previousSessionBarCount = Math.max(0, Number(payload.previous_session_bar_count) || 0);
+      const currentSessionBarCount = Math.max(0, Number(payload.current_session_bar_count) || 0);
+      const boundedPreviousCount = Math.min(previousSessionBarCount, candles.length);
+      const boundedCurrentCount = Math.min(currentSessionBarCount, Math.max(0, candles.length - boundedPreviousCount));
+      const splitIndex = boundedCurrentCount > 0 ? boundedPreviousCount : candles.length;
+      const priorCandles = candles.slice(0, splitIndex);
+      const currentCandles = candles.slice(splitIndex);
 
-    priorSessionSeries.setData(currentCandles.length ? priorCandles : []);
-    candleSeries.setData(currentCandles.length ? currentCandles : candles);
-    volumeSeries.setData(volume);
-    setSpotTrendTone(detectShortTermTrend(currentCandles.length ? currentCandles : candles));
-    lastBarsPayload = {
-      ...payload,
-      bars: candles,
-    };
-    applyViewport({ fitContent });
-    if (emptyState) emptyState.hidden = true;
-    if (!initialized) {
-      initialized = true;
-      window.dispatchEvent(new CustomEvent("market-pulse-chart-ready"));
+      lastBarsPayload = {
+        ...payload,
+        bars: candles,
+      };
+
+      if (nextBarsSignature === lastBarsSignature) {
+        if (fitContent) applyViewport({ fitContent: true });
+        if (emptyState) emptyState.hidden = true;
+        return;
+      }
+
+      const volume = bars
+        .map((bar) => {
+          const close = Number(bar.close);
+          const open = Number(bar.open);
+          const amount = Number(bar.volume);
+          return {
+            time: Number(bar.time),
+            value: Number.isFinite(amount) ? amount : 0,
+            color: close >= open ? "rgba(15, 163, 127, 0.18)" : "rgba(194, 59, 87, 0.16)",
+          };
+        })
+        .filter((bar) => Number.isFinite(bar.time));
+
+      priorSessionSeries.setData(currentCandles.length ? priorCandles : []);
+      candleSeries.setData(currentCandles.length ? currentCandles : candles);
+      volumeSeries.setData(volume);
+      lastBarsSignature = nextBarsSignature;
+      setSpotTrendTone(detectShortTermTrend(currentCandles.length ? currentCandles : candles));
+      applyViewport({ fitContent });
+      if (emptyState) emptyState.hidden = true;
+      if (!initialized) {
+        initialized = true;
+        window.dispatchEvent(new CustomEvent("market-pulse-chart-ready"));
+      }
+    } finally {
+      barsRequestInFlight = false;
     }
   };
 
   const updateLevels = async () => {
-    const payload = await fetchJson(levelsEndpoint());
-    const nextLevels = sanitizeLevelsPayload(payload);
-    if (!nextLevels) {
-      console.warn("SPX hero levels update skipped: invalid level payload", payload);
-      return;
+    if (levelsRequestInFlight) return;
+    levelsRequestInFlight = true;
+    try {
+      const payload = await fetchJson(levelsEndpoint());
+      const nextLevels = sanitizeLevelsPayload(payload);
+      if (!nextLevels) {
+        console.warn("SPX hero levels update skipped: invalid level payload", payload);
+        return;
+      }
+      const nextSignature = levelsSignature(nextLevels);
+      if (nextSignature === lastAppliedLevelsSignature) {
+        lastLevelsPayload = nextLevels;
+        lastGoodLevelsPayload = nextLevels;
+        return;
+      }
+      scheduleLevelsApply(nextLevels);
+    } finally {
+      levelsRequestInFlight = false;
     }
-    const nextSignature = levelsSignature(nextLevels);
-    if (nextSignature === lastAppliedLevelsSignature) {
-      lastLevelsPayload = nextLevels;
-      lastGoodLevelsPayload = nextLevels;
-      return;
-    }
-    scheduleLevelsApply(nextLevels);
   };
 
-  const startPolling = () => {
-    // Phase 1 keeps live updates backend-driven via polling rather than direct browser streaming.
-    window.clearInterval(barsTimer);
-    window.clearInterval(levelsTimer);
-    barsTimer = window.setInterval(() => {
-      updateBars().catch((error) => {
+  const clearPollTimers = () => {
+    window.clearTimeout(barsTimer);
+    window.clearTimeout(levelsTimer);
+    barsTimer = null;
+    levelsTimer = null;
+  };
+
+  const scheduleBarsPoll = (delay) => {
+    window.clearTimeout(barsTimer);
+    if (!pageVisible) return;
+    const intervalMs = Math.max(15000, Number(polling.bars_interval_ms) || 45000);
+    barsTimer = window.setTimeout(async () => {
+      try {
+        await updateBars();
+      } catch (error) {
         if (emptyState) {
           emptyState.hidden = false;
           emptyState.textContent = `SPX chart refresh failed: ${error.message}`;
         }
-      });
-    }, Math.max(5000, Number(polling.bars_interval_ms) || 30000));
-    levelsTimer = window.setInterval(() => {
-      updateLevels().catch(() => {});
-    }, Math.max(3000, Number(polling.levels_interval_ms) || 10000));
+      } finally {
+        scheduleBarsPoll(intervalMs);
+      }
+    }, Math.max(0, Number(delay) || intervalMs));
+  };
+
+  const scheduleLevelsPoll = (delay) => {
+    window.clearTimeout(levelsTimer);
+    if (!pageVisible) return;
+    const intervalMs = Math.max(10000, Number(polling.levels_interval_ms) || 20000);
+    levelsTimer = window.setTimeout(async () => {
+      try {
+        await updateLevels();
+      } catch (_) {
+      } finally {
+        scheduleLevelsPoll(intervalMs);
+      }
+    }, Math.max(0, Number(delay) || intervalMs));
+  };
+
+  const startPolling = () => {
+    clearPollTimers();
+    scheduleBarsPoll(Math.min(Math.max(15000, Number(polling.bars_interval_ms) || 45000), HIDDEN_BARS_INTERVAL_MS));
+    scheduleLevelsPoll(Math.min(Math.max(10000, Number(polling.levels_interval_ms) || 20000), HIDDEN_LEVELS_INTERVAL_MS));
   };
 
   const boot = async () => {
@@ -712,11 +788,27 @@
   };
 
   const resize = () => {
+    const nextWidth = canvas.clientWidth;
+    if (!nextWidth || nextWidth === lastMeasuredWidth) return;
+    lastMeasuredWidth = nextWidth;
     try {
-      chart.applyOptions({ width: canvas.clientWidth, height: 358 });
+      chart.applyOptions({ width: nextWidth, height: 358 });
     } catch (_) {}
   };
 
-  window.addEventListener("resize", resize);
+  window.addEventListener("resize", () => {
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(resize, RESIZE_DEBOUNCE_MS);
+  });
+  document.addEventListener("visibilitychange", () => {
+    pageVisible = document.visibilityState !== "hidden";
+    if (!pageVisible) {
+      clearPollTimers();
+      return;
+    }
+    resize();
+    scheduleBarsPoll(0);
+    scheduleLevelsPoll(0);
+  });
   boot();
 })();

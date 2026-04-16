@@ -125,6 +125,13 @@ function initCalendarPreview(root = document) {
 
   let freshTimer = null;
   let openSymbol = "";
+  let stream = null;
+  let reconnectTimer = null;
+  let pendingPayload = null;
+  let pendingPayloadTimer = null;
+  let pageVisible = document.visibilityState !== "hidden";
+  let lastPayloadAppliedAt = 0;
+  const STREAM_FLUSH_MS = 250;
 
   const asNum = (value) => {
     if (value === null || value === undefined) return null;
@@ -308,6 +315,21 @@ function initCalendarPreview(root = document) {
     updatedNode.textContent = detail;
   };
 
+  const dispatchTapeState = () => {
+    let liveCards = 0;
+    let delayedCards = 0;
+    rows.forEach((row) => {
+      if (row.classList.contains("is-live")) liveCards += 1;
+      if (row.classList.contains("is-delayed")) delayedCards += 1;
+    });
+    document.dispatchEvent(new CustomEvent("dashboard:tape-state", {
+      detail: {
+        hasLive: liveCards > 0,
+        hasDelayed: delayedCards > 0,
+      },
+    }));
+  };
+
   const tapeHasRenderableValues = () => rows.some((row) => {
     const lastNode = row.querySelector('[data-role="last"]');
     return hasMeaningfulText(lastNode) && String(lastNode.textContent || "").trim().toLowerCase() !== "loading...";
@@ -463,8 +485,68 @@ function initCalendarPreview(root = document) {
     });
   };
 
+  const applyStreamPayload = (payload) => {
+    if (!payload || typeof payload !== "object") return;
+    const prices = payload.prices || {};
+    const seriesPoints = payload.series_points || {};
+    updateGammaStrip(payload.market_structure_snapshot || null, payload.dashboard_gamma || null);
+    rows.forEach((row) => {
+      const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
+      updateRow(row, prices[symbol] || {}, seriesPoints[symbol] || []);
+    });
+    dispatchTapeState();
+    setStreamStatus("Live", formatClock(payload.updated_at || payload.server_ts || new Date().toISOString()));
+    updatedNode.classList.remove("is-fresh");
+    window.requestAnimationFrame(() => updatedNode.classList.add("is-fresh"));
+    if (freshTimer) window.clearTimeout(freshTimer);
+    freshTimer = window.setTimeout(() => {
+      updatedNode.classList.remove("is-fresh");
+    }, 1400);
+    lastPayloadAppliedAt = Date.now();
+  };
+
+  const flushPendingPayload = () => {
+    pendingPayloadTimer = null;
+    if (!pageVisible || !pendingPayload) return;
+    const nextPayload = pendingPayload;
+    pendingPayload = null;
+    applyStreamPayload(nextPayload);
+  };
+
+  const queuePayload = (payload) => {
+    pendingPayload = payload;
+    if (!pageVisible) return;
+    const elapsed = Date.now() - lastPayloadAppliedAt;
+    if (elapsed >= STREAM_FLUSH_MS && pendingPayloadTimer === null) {
+      flushPendingPayload();
+      return;
+    }
+    if (pendingPayloadTimer !== null) return;
+    pendingPayloadTimer = window.setTimeout(flushPendingPayload, Math.max(0, STREAM_FLUSH_MS - elapsed));
+  };
+
+  const cleanupStream = () => {
+    if (reconnectTimer) {
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (pendingPayloadTimer) {
+      window.clearTimeout(pendingPayloadTimer);
+      pendingPayloadTimer = null;
+    }
+    if (!stream) return;
+    try {
+      stream.close();
+    } catch (_err) {
+      // Ignore stream close failures.
+    }
+    stream = null;
+  };
+
   const connect = () => {
-    const stream = new EventSource("/stream/market");
+    cleanupStream();
+    if (!pageVisible) return;
+    stream = new EventSource("/stream/market");
     stream.onopen = () => {
       setStreamStatus("Live", "just now");
     };
@@ -476,45 +558,29 @@ function initCalendarPreview(root = document) {
       } catch (_err) {
         return;
       }
-      const prices = payload && typeof payload === "object" ? (payload.prices || {}) : {};
-      const seriesPoints = payload && typeof payload === "object" ? (payload.series_points || {}) : {};
-      updateGammaStrip(
-        payload && typeof payload === "object" ? payload.market_structure_snapshot : null,
-        payload && typeof payload === "object" ? payload.dashboard_gamma : null,
-      );
-      rows.forEach((row) => {
-        const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
-        updateRow(row, prices[symbol] || {}, seriesPoints[symbol] || []);
-      });
-      const liveCards = rows.filter((row) => row.classList.contains("is-live")).length;
-      const delayedCards = rows.filter((row) => row.classList.contains("is-delayed")).length;
-      document.dispatchEvent(new CustomEvent("dashboard:tape-state", {
-        detail: {
-          hasLive: liveCards > 0,
-          hasDelayed: delayedCards > 0,
-        },
-      }));
-      setStreamStatus("Live", formatClock(payload.updated_at || payload.server_ts || new Date().toISOString()));
-      updatedNode.classList.remove("is-fresh");
-      window.requestAnimationFrame(() => updatedNode.classList.add("is-fresh"));
-      if (freshTimer) window.clearTimeout(freshTimer);
-      freshTimer = window.setTimeout(() => {
-        updatedNode.classList.remove("is-fresh");
-      }, 1400);
+      queuePayload(payload);
     };
     stream.onerror = () => {
-      try {
-        stream.close();
-      } catch (_err) {
-        // Ignore stream close failures.
-      }
+      cleanupStream();
+      if (!pageVisible) return;
       setStreamStatus("Retrying", "reconnecting…");
-      window.setTimeout(connect, 3000);
+      reconnectTimer = window.setTimeout(connect, 3000);
     };
   };
 
   setStreamStatus("Connecting", "waiting for first tick…");
   connect();
+  document.addEventListener("visibilitychange", () => {
+    pageVisible = document.visibilityState !== "hidden";
+    if (!pageVisible) {
+      cleanupStream();
+      setStreamStatus("Paused", "background tab");
+      return;
+    }
+    if (pendingPayload) flushPendingPayload();
+    setStreamStatus("Connecting", "restoring live feed…");
+    connect();
+  });
 
   if (tapeCard && tapeRefreshBtn) {
     const endpoint = String(tapeCard.dataset.refreshEndpoint || "").trim();
@@ -526,6 +592,9 @@ function initCalendarPreview(root = document) {
     const refreshTape = async () => {
       if (!endpoint || tapeRefreshBtn.disabled) return;
       setTapeRefreshState(true);
+      if (typeof window.showDashboardLoading === "function") {
+        window.showDashboardLoading("Refreshing dashboard tape", "Updating live tape state.");
+      }
       try {
         const response = await fetch(endpoint, {
           credentials: "same-origin",
@@ -543,6 +612,9 @@ function initCalendarPreview(root = document) {
       } catch (_error) {
         // Keep existing rows/status if the manual refresh fails.
       } finally {
+        if (typeof window.completeDashboardLoading === "function") {
+          window.completeDashboardLoading();
+        }
         setTapeRefreshState(false);
       }
     };
@@ -568,6 +640,9 @@ function initCalendarPreview(root = document) {
     decisionRefreshBtn.addEventListener("click", async () => {
       if (!endpoint || decisionRefreshBtn.disabled) return;
       setRefreshState(true);
+      if (typeof window.showDashboardLoading === "function") {
+        window.showDashboardLoading("Refreshing dashboard plan", "Updating planning and gamma context.");
+      }
       try {
         const response = await fetch(endpoint, {
           credentials: "same-origin",
@@ -583,6 +658,9 @@ function initCalendarPreview(root = document) {
       } catch (_error) {
         // Keep the current planning state visible if the manual refresh fails.
       } finally {
+        if (typeof window.completeDashboardLoading === "function") {
+          window.completeDashboardLoading();
+        }
         setRefreshState(false);
       }
     });

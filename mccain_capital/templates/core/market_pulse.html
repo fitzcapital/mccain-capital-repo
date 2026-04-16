@@ -48,6 +48,7 @@
 {% set bias_label = local_bias.label or 'WAIT' %}
 {% set trade_state_label = playbook.get('trade_state_label') or structure_snapshot.get('trade_state_label') or 'WAIT' %}
 {% set hero_tradeability_label = playbook.get('tradeability_label') or structure_snapshot.get('execution_regime_label') or structure_snapshot.get('tradeability') or 'WAIT' %}
+{% set hero_tradeability_display = hero_tradeability_label|replace('_', ' ') %}
 {% set hero_session_label = playbook.get('session_summary_label') or structure_snapshot.get('session') or macro_regime.subtitle or 'Confirmation required' %}
 
 <div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact">
@@ -162,9 +163,9 @@
             <span class="tiny muted">Bias</span>
             <strong id="marketPulseHeroBias">{{ playbook.get('bias_label') or local_bias.action or 'Unavailable' }}</strong>
           </div>
-          <div class="marketPulseExecutionHeroMetric">
+          <div class="marketPulseExecutionHeroMetric marketPulseExecutionHeroMetric-tradeability">
             <span class="tiny muted">Tradeability</span>
-            <strong id="marketPulseHeroTradeability">{{ hero_tradeability_label }}</strong>
+            <strong id="marketPulseHeroTradeability">{{ hero_tradeability_display }}</strong>
           </div>
         </div>
       </section>

@@ -33,6 +33,8 @@
   const qsa = (selector) => Array.from(doc.querySelectorAll(selector));
 
   let previousDrawerFocus = null;
+  let clockTimer = null;
+  let drawerResizeTimer = null;
 
   function focusWithoutScroll(target) {
     if (!target || typeof target.focus !== "function") return;
@@ -225,10 +227,12 @@
     });
 
     window.addEventListener("resize", () => {
-      if (window.innerWidth > 640) {
+      if (window.innerWidth <= 640) return;
+      window.clearTimeout(drawerResizeTimer);
+      drawerResizeTimer = window.setTimeout(() => {
         closeDrawer();
         syncDrawerScrollLock();
-      }
+      }, 120);
     });
   }
 
@@ -441,10 +445,18 @@
     }
   }
 
+  function scheduleETClockTick() {
+    window.clearTimeout(clockTimer);
+    clockTimer = window.setTimeout(() => {
+      updateETClock();
+      scheduleETClockTick();
+    }, document.visibilityState === "hidden" ? 15000 : 1000);
+  }
+
   function initThemeAndGuided() {
-    const themeMigrationKey = "mc_theme_v4";
+    const themeMigrationKey = "mc_theme_v6";
     const fontModeKey = "mc_font_mode";
-    const themeOrder = ["new-galaxy", "wallpaper-galaxy", "cosmic-flare", "galaxy", "obsidian", "black", "nebula"];
+    const themeOrder = ["galaxy", "cosmic-flare", "new-galaxy", "wallpaper-galaxy", "obsidian", "black", "nebula"];
     const themeLabels = {
       "new-galaxy": "Theme: New Galaxy",
       "wallpaper-galaxy": "Theme: Wallpaper Galaxy",
@@ -466,7 +478,7 @@
     };
 
     const applyTheme = (theme) => {
-      const normalized = themeOrder.includes(theme) ? theme : "new-galaxy";
+      const normalized = themeOrder.includes(theme) ? theme : "galaxy";
       body.setAttribute("data-theme", normalized);
       syncThemeButtons(normalized);
     };
@@ -518,7 +530,7 @@
     };
 
     window.toggleTheme = () => {
-      const current = body.getAttribute("data-theme") || "new-galaxy";
+      const current = body.getAttribute("data-theme") || "galaxy";
       const idx = themeOrder.indexOf(current);
       const next = themeOrder[(idx + 1) % themeOrder.length];
       storageSet("mc_theme", next);
@@ -536,15 +548,13 @@
 
     if (storageGet(themeMigrationKey) !== "1") {
       const savedTheme = storageGet("mc_theme");
-      if (savedTheme === "galaxy") {
-        storageSet("mc_theme", "new-galaxy");
-      } else if (!savedTheme) {
-        storageSet("mc_theme", "new-galaxy");
+      if (!savedTheme || savedTheme === "cosmic-flare") {
+        storageSet("mc_theme", "galaxy");
       }
       storageSet(themeMigrationKey, "1");
     }
 
-    applyTheme(storageGet("mc_theme") || "new-galaxy");
+    applyTheme(storageGet("mc_theme") || "galaxy");
     applyFontMode(storageGet(fontModeKey) || doc.documentElement.getAttribute("data-font-mode") || "clean");
     const savedGuide = storageGet("mc_guided_mode");
     const firstRunSeen = storageGet("mc_guided_seen");
@@ -678,8 +688,9 @@
     setupMobileDensityCompaction();
     initShortcutHelp();
     initCardStagger();
-    window.setInterval(updateETClock, 1000);
     updateETClock();
+    scheduleETClockTick();
+    doc.addEventListener("visibilitychange", scheduleETClockTick);
   }
 
   init();

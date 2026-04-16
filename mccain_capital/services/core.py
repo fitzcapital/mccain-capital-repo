@@ -3475,8 +3475,13 @@ def _market_pulse_execution_chart_viewmodel(
         )
 
     latest_price = None
-    if points:
-        latest_price = points[-1]["price"]
+    point_prices = [
+        float(point.get("price"))
+        for point in points
+        if isinstance(point, dict) and isinstance(point.get("price"), (int, float))
+    ]
+    if point_prices:
+        latest_price = point_prices[-1]
     elif isinstance(resolved_spot, (int, float)):
         latest_price = float(resolved_spot)
     elif isinstance(spx_quote.get("price"), (int, float)):
@@ -7149,6 +7154,7 @@ def _market_news_snapshot(
     market_structure_snapshot: Optional[Dict[str, Any]] = None,
     macro_events: Optional[List[Dict[str, Any]]] = None,
     force_refresh_feed: bool = False,
+    page_type: str = "",
 ) -> Dict[str, Any]:
     now_et = now_et or app_runtime.now_et()
     macro_events = list(macro_events or _market_news_macro_events(now_et))
@@ -7157,6 +7163,7 @@ def _market_news_snapshot(
         now_et=now_et,
         market_structure_snapshot=market_structure_snapshot,
         force_refresh=force_refresh_feed,
+        page_type=page_type,
     )
     result = {
         "available": bool(feed_snapshot.get("top_items") or macro_events),
@@ -9373,7 +9380,7 @@ def dashboard():
         except Exception:
             pass
     try:
-        news_snapshot = _market_news_snapshot()
+        news_snapshot = _market_news_snapshot(page_type="dashboard")
     except Exception:
         news_snapshot = {"macro_events": []}
     spx_priority_context = build_spx_priority_context(dashboard_spx, gamma_snapshot)
@@ -9697,7 +9704,7 @@ def dashboard_planning_refresh_api():
         gamma_snapshot = {}
 
     try:
-        news_snapshot = _market_news_snapshot()
+        news_snapshot = _market_news_snapshot(page_type="dashboard")
     except Exception:
         news_snapshot = {"macro_events": []}
 
@@ -10151,6 +10158,7 @@ def market_pulse_page():
             market_structure_snapshot=market_structure_snapshot,
             macro_events=macro_events,
             force_refresh_feed=force_refresh,
+            page_type="market-pulse",
         )
     except TypeError:
         # Backward-compatible fallback for older zero-arg call sites used in tests
@@ -10246,6 +10254,7 @@ def market_pulse_news_feed_api():
         market_structure_snapshot=market_structure_snapshot,
         macro_events=_market_news_macro_events(now_et),
         force_refresh_feed=force_refresh,
+        page_type=(request.args.get("page") or "market-pulse"),
     )
     feed_snapshot = dict(news_snapshot.get("market_feed_snapshot") or {})
     items = list(news_snapshot.get("pulse_feed_items") or [])
@@ -10288,6 +10297,7 @@ def market_pulse_feed_page():
         market_structure_snapshot=market_structure_snapshot,
         macro_events=_market_news_macro_events(now_et),
         force_refresh_feed=False,
+        page_type="market-pulse",
     )
     feed_snapshot = dict(news_snapshot.get("market_feed_snapshot") or {})
     feed_items = list(news_snapshot.get("pulse_feed_items") or [])[:MARKET_NEWS_FEED_LIMIT]

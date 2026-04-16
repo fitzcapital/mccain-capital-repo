@@ -19,6 +19,10 @@ LOGGER = logging.getLogger(__name__)
 
 TWITTERAPI_TIMEOUT_SECONDS = 15.0
 SOURCE_STALE_SECONDS = 60
+PAGE_CACHE_TTL_SECONDS = {
+    "dashboard": 180,
+    "market-pulse": 75,
+}
 COOLDOWN_429_SECONDS = 300
 REFRESH_LOCK_TTL_SECONDS = 20
 DEFAULT_LIMIT = 100
@@ -192,11 +196,18 @@ def _release_refresh_lock(username: str) -> None:
         return
 
 
-def _source_is_stale(state: Dict[str, Any], now_et: datetime) -> bool:
+def _resolve_stale_after_seconds(page_type: str) -> int:
+    normalized = str(page_type or "").strip().lower()
+    return int(PAGE_CACHE_TTL_SECONDS.get(normalized, SOURCE_STALE_SECONDS))
+
+
+def _source_is_stale(
+    state: Dict[str, Any], now_et: datetime, *, stale_after_seconds: int = SOURCE_STALE_SECONDS
+) -> bool:
     last_success_at = _parse_dt(state.get("last_success_at"))
     if last_success_at is None:
         return True
-    return (now_et - last_success_at).total_seconds() >= SOURCE_STALE_SECONDS
+    return (now_et - last_success_at).total_seconds() >= max(1, int(stale_after_seconds))
 
 
 def _source_in_cooldown(state: Dict[str, Any], now_et: datetime) -> bool:
@@ -868,6 +879,7 @@ def _refresh_source_state(
     structure: Dict[str, Any],
     limit: int,
     force_refresh: bool,
+    stale_after_seconds: int,
 ) -> Dict[str, Any]:
     username = str(source["username"])
     source_state["last_attempt_at"] = now_et.isoformat()
@@ -880,7 +892,9 @@ def _refresh_source_state(
         )
         return source_state
 
-    if not force_refresh and not _source_is_stale(source_state, now_et):
+    if not force_refresh and not _source_is_stale(
+        source_state, now_et, stale_after_seconds=stale_after_seconds
+    ):
         LOGGER.info(
             "twitter feed cache hit for %s using last success at %s",
             username,
@@ -959,6 +973,7 @@ def _build_combined_snapshot_from_store(
     now_et: datetime,
     structure: Dict[str, Any],
     limit: int,
+    stale_after_seconds: int,
 ) -> Dict[str, Any]:
     primary_label = str(TRACKED_SOURCES[0]["source"]) if TRACKED_SOURCES else "Primary source"
     source_states = dict(store.get("sources") or {})
@@ -994,7 +1009,7 @@ def _build_combined_snapshot_from_store(
             any_error = True
         if (
             payload
-            and not _source_is_stale(state, now_et)
+            and not _source_is_stale(state, now_et, stale_after_seconds=stale_after_seconds)
             and not _source_in_cooldown(state, now_et)
         ):
             any_live = True
@@ -1081,9 +1096,11 @@ def build_twitter_feed_snapshot(
     now_et: Optional[datetime] = None,
     market_structure_snapshot: Optional[Dict[str, Any]] = None,
     force_refresh: bool = False,
+    page_type: str = "",
 ) -> Dict[str, Any]:
     now_et = now_et or app_runtime.now_et()
     structure = dict(market_structure_snapshot or {})
+    stale_after_seconds = _resolve_stale_after_seconds(page_type)
     store = _load_source_store()
     api_key = _twitterapi_key()
     if api_key:
@@ -1099,6 +1116,7 @@ def build_twitter_feed_snapshot(
                 structure=structure,
                 limit=limit,
                 force_refresh=force_refresh,
+                stale_after_seconds=stale_after_seconds,
             )
         store["sources"] = sources
         _save_source_store(store)
@@ -1108,4 +1126,5 @@ def build_twitter_feed_snapshot(
         now_et=now_et,
         structure=structure,
         limit=limit,
+        stale_after_seconds=stale_after_seconds,
     )

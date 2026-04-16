@@ -19,6 +19,22 @@
       }
     })();
   </script>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const perfKey = "mc_perf_mode";
+      try {
+        const stored = window.localStorage ? window.localStorage.getItem(perfKey) : null;
+        const enabled = stored === "off" ? false : true;
+        if (enabled) {
+          root.classList.add("perf-mode-low-gpu");
+          root.setAttribute("data-perf-mode", "low-gpu");
+        }
+      } catch (_err) {
+        // Default rendering mode stays active if storage or UA access is restricted.
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-tape-20260317a">
 </head>
 
@@ -40,259 +56,188 @@
       </symbol>
     </defs>
   </svg>
-  {% if active == 'market-pulse' %}
-    <div
-      class="marketPulseLoadingOverlay"
-      id="marketPulseLoadingOverlay"
-      aria-hidden="true"
-      data-active="0"
-    >
-      <div class="marketPulseLoadingCard">
-        <div class="marketPulseLoadingTopline">
-          <div class="marketPulseLoadingStatusIcon" aria-hidden="true">
-            <span class="marketPulseLoadingStatusPulse"></span>
-          </div>
-          <div class="marketPulseLoadingHead">
-            <div class="marketPulseLoadingTitle" id="marketPulseLoadingTitle">Market Pulse Sync</div>
-            <div class="marketPulseLoadingSub" id="marketPulseLoadingSub">Refreshing SPX priority, tape leadership, and macro catalysts…</div>
-          </div>
-          <div class="marketPulseLoadingPercent" id="marketPulseLoadingPercent">12%</div>
+  <div
+    class="marketPulseLoadingOverlay"
+    id="marketPulseLoadingOverlay"
+    aria-hidden="true"
+    data-active="0"
+  >
+    <div class="marketPulseLoadingCard" role="status" aria-live="polite">
+      <div class="marketPulseLoadingTopline">
+        <div class="marketPulseLoadingStatusIcon" aria-hidden="true">
+          <span class="marketPulseLoadingStatusPulse">
+            <span class="marketPulseLoadingStatusPulseInner"></span>
+          </span>
         </div>
-        <div class="marketPulseLoadingMetaRow">
-          <div class="pill marketPulseLoadingPill">System sync</div>
-          <div class="tiny muted marketPulseLoadingMetaText" id="marketPulseLoadingMetaText">Preparing live decision context</div>
+        <div class="marketPulseLoadingHead">
+          <div class="marketPulseLoadingTitle" id="marketPulseLoadingTitle">Loading page</div>
+          <div class="marketPulseLoadingSub" id="marketPulseLoadingSub">Preparing latest view.</div>
         </div>
-        <div class="dashboardProgress dashboardProgress-primary marketPulseLoadingProgress">
-          <div class="dashboardProgressBar">
-            <span class="dashboardProgressBarFill marketPulseLoadingTrackBar" id="marketPulseLoadingTrackBar"></span>
-            <span class="dashboardProgressBarCap"></span>
-          </div>
-        </div>
-        <div class="marketPulseLoadingSteps" id="marketPulseLoadingSteps">
-          <div class="marketPulseLoadingStep is-active" data-step="levels">
-            <span class="marketPulseLoadingStepIcon" aria-hidden="true"></span>
-            <span class="marketPulseLoadingStepLabel">Loading levels</span>
-          </div>
-          <div class="marketPulseLoadingStep" data-step="tape">
-            <span class="marketPulseLoadingStepIcon" aria-hidden="true"></span>
-            <span class="marketPulseLoadingStepLabel">Syncing tape</span>
-          </div>
-          <div class="marketPulseLoadingStep" data-step="macro">
-            <span class="marketPulseLoadingStepIcon" aria-hidden="true"></span>
-            <span class="marketPulseLoadingStepLabel">Processing macro</span>
-          </div>
-          <div class="marketPulseLoadingStep" data-step="finalizing">
-            <span class="marketPulseLoadingStepIcon" aria-hidden="true"></span>
-            <span class="marketPulseLoadingStepLabel">Finalizing</span>
-          </div>
+        <div class="pill marketPulseLoadingPill" id="marketPulseLoadingMetaText">Opening</div>
+      </div>
+      <div class="marketPulseLoadingProgressCompact" aria-hidden="true">
+        <div class="marketPulseLoadingProgressTrack">
+          <span class="marketPulseLoadingTrackBar" id="marketPulseLoadingTrackBar"></span>
         </div>
       </div>
     </div>
-    <script>
-      (() => {
-        const overlay = document.getElementById("marketPulseLoadingOverlay");
-        if (!overlay) return;
-        const titleNode = document.getElementById("marketPulseLoadingTitle");
-        const subNode = document.getElementById("marketPulseLoadingSub");
-        const percentNode = document.getElementById("marketPulseLoadingPercent");
-        const metaNode = document.getElementById("marketPulseLoadingMetaText");
-        const trackNode = document.getElementById("marketPulseLoadingTrackBar");
-        const stepNodes = Array.from(document.querySelectorAll(".marketPulseLoadingStep"));
-        const flagKey = "mc_market_pulse_transition";
-        const navEntries = (typeof performance !== "undefined" && performance.getEntriesByType)
-          ? performance.getEntriesByType("navigation")
-          : [];
-        const navType = navEntries && navEntries[0] ? navEntries[0].type : "";
+  </div>
+  <script>
+    (() => {
+      const overlay = document.getElementById("marketPulseLoadingOverlay");
+      if (!overlay) return;
+      const titleNode = document.getElementById("marketPulseLoadingTitle");
+      const subNode = document.getElementById("marketPulseLoadingSub");
+      const metaNode = document.getElementById("marketPulseLoadingMetaText");
+      const trackNode = document.getElementById("marketPulseLoadingTrackBar");
+      const flagKey = "mc_page_transition";
+      const onMarketPulsePage = document.body.classList.contains("page-market-pulse");
+      const onDashboardPage = document.body.classList.contains("page-dashboard");
+      const navEntries = (typeof performance !== "undefined" && performance.getEntriesByType)
+        ? performance.getEntriesByType("navigation")
+        : [];
+      const navType = navEntries && navEntries[0] ? navEntries[0].type : "";
+      const STAGES = [
+        { id: "loading_levels", pct: 20, pill: "Loading" },
+        { id: "syncing_tape", pct: 48, pill: "Syncing" },
+        { id: "processing_macro", pct: 76, pill: "Processing" },
+        { id: "finalizing", pct: 92, pill: "Finalizing" },
+        { id: "complete", pct: 100, pill: "Ready" },
+      ];
+      const stageIndex = (id) => {
+        const idx = STAGES.findIndex((stage) => stage.id === id);
+        return idx < 0 ? 0 : idx;
+      };
+      const loaderState = {
+        stage: "loading_levels",
+        active: false,
+        completeTimer: 0,
+        progressTimers: [],
+      };
 
-        const STAGES = [
-          { id: "loading_levels", step: "levels", pct: 24, meta: "Preparing live decision context" },
-          { id: "syncing_tape", step: "tape", pct: 52, meta: "Streaming live tape state" },
-          { id: "processing_macro", step: "macro", pct: 78, meta: "Folding macro and catalyst context" },
-          { id: "finalizing", step: "finalizing", pct: 94, meta: "Locking final execution state" },
-          { id: "complete", step: "finalizing", pct: 100, meta: "Sync complete. Launching Market Pulse..." },
-        ];
-        const stageIndex = (id) => {
-          const idx = STAGES.findIndex((stage) => stage.id === id);
-          return idx < 0 ? 0 : idx;
-        };
-        const loaderState = {
-          stage: "loading_levels",
-          currentPct: 0,
-          targetPct: 0,
-          rafId: 0,
-          active: false,
-          completeTimer: 0,
-          releaseTimer: 0,
-          completionWatcher: 0,
-        };
+      const clearProgressTimers = () => {
+        loaderState.progressTimers.forEach((timer) => window.clearTimeout(timer));
+        loaderState.progressTimers = [];
+      };
 
-        const readPayload = () => {
-          try {
-            return JSON.parse(sessionStorage.getItem(flagKey) || "null");
-          } catch (_err) {
-            return null;
-          }
-        };
-
-        const syncVisualPercent = () => {
-          const pct = Math.max(0, Math.min(100, loaderState.currentPct));
-          if (percentNode) percentNode.textContent = `${Math.round(pct)}%`;
-          if (trackNode) trackNode.style.width = `${pct}%`;
-        };
-
-        const animateProgress = () => {
-          if (loaderState.rafId) cancelAnimationFrame(loaderState.rafId);
-          const tick = () => {
-            const diff = loaderState.targetPct - loaderState.currentPct;
-            if (Math.abs(diff) < 0.35) {
-              loaderState.currentPct = loaderState.targetPct;
-              syncVisualPercent();
-              loaderState.rafId = 0;
-              return;
-            }
-            loaderState.currentPct += diff * 0.16;
-            syncVisualPercent();
-            loaderState.rafId = requestAnimationFrame(tick);
-          };
-          loaderState.rafId = requestAnimationFrame(tick);
-        };
-
-        const applyStage = (nextStage, title, detail) => {
-          const currentIdx = stageIndex(loaderState.stage);
-          const requestedIdx = stageIndex(nextStage);
-          const stage = STAGES[Math.max(currentIdx, requestedIdx)];
-          loaderState.stage = stage.id;
-          loaderState.targetPct = Math.max(loaderState.targetPct, stage.pct);
-          if (titleNode && title) titleNode.textContent = title;
-          if (subNode && detail) subNode.textContent = detail;
-          if (metaNode) metaNode.textContent = stage.meta;
-          stepNodes.forEach((node) => {
-            const nodeStep = node.dataset.step || "";
-            const nodeIdx = Math.max(0, STAGES.findIndex((entry) => entry.step === nodeStep));
-            node.classList.toggle("is-complete", nodeIdx < stageIndex(stage.id));
-            node.classList.toggle("is-active", nodeStep === stage.step && stage.id !== "complete");
-          });
-          animateProgress();
-        };
-
-        const inferStage = (title, detail) => {
-          const text = `${title || ""} ${detail || ""}`.toLowerCase();
-          if (text.includes("final") || text.includes("ready")) return "finalizing";
-          if (text.includes("macro") || text.includes("catalyst")) return "processing_macro";
-          if (text.includes("tape") || text.includes("stream")) return "syncing_tape";
-          return "loading_levels";
-        };
-
-        const scheduleSoftProgress = () => {
-          window.setTimeout(() => {
-            if (loaderState.active) applyStage("syncing_tape");
-          }, 180);
-          window.setTimeout(() => {
-            if (loaderState.active) applyStage("processing_macro");
-          }, 420);
-        };
-
-        const show = (title, detail, persist = true) => {
-          window.clearTimeout(loaderState.completeTimer);
-          window.clearTimeout(loaderState.releaseTimer);
-          if (loaderState.completionWatcher) cancelAnimationFrame(loaderState.completionWatcher);
-          loaderState.active = true;
-          loaderState.stage = "loading_levels";
-          loaderState.currentPct = 12;
-          loaderState.targetPct = 20;
-          syncVisualPercent();
-          applyStage(inferStage(title, detail), title, detail);
-          overlay.classList.add("show");
-          overlay.setAttribute("aria-hidden", "false");
-          overlay.dataset.active = "1";
-          document.documentElement.classList.add("marketPulseBooting");
-          document.body.classList.add("marketPulseBooting");
-          document.body.classList.remove("marketPulseReady");
-          scheduleSoftProgress();
-          if (persist) {
-            sessionStorage.setItem(
-              flagKey,
-              JSON.stringify({
-                title: title || "Market Pulse Sync",
-                detail: detail || "Refreshing SPX priority, tape leadership, and macro catalysts…",
-                ts: Date.now(),
-              })
-            );
-          }
-        };
-
-        const hide = (clearFlag = true) => {
-          loaderState.active = false;
-          overlay.classList.remove("show");
-          overlay.setAttribute("aria-hidden", "true");
-          overlay.dataset.active = "0";
-          window.clearTimeout(loaderState.releaseTimer);
-          if (loaderState.completionWatcher) cancelAnimationFrame(loaderState.completionWatcher);
-          loaderState.releaseTimer = window.setTimeout(() => {
-            document.documentElement.classList.remove("marketPulseBooting");
-            document.body.classList.remove("marketPulseBooting");
-          }, 260);
-          if (clearFlag) {
-            sessionStorage.removeItem(flagKey);
-          }
-        };
-
-        const waitForFullCompletion = () => {
-          if (!loaderState.active) return;
-          if (loaderState.currentPct >= 99.5) {
-            window.clearTimeout(loaderState.completeTimer);
-            loaderState.completeTimer = window.setTimeout(() => {
-              hide(true);
-            }, 460);
-            loaderState.completionWatcher = 0;
-            return;
-          }
-          loaderState.completionWatcher = requestAnimationFrame(waitForFullCompletion);
-        };
-
-        const complete = () => {
-          if (!loaderState.active) return;
-          window.clearTimeout(loaderState.completeTimer);
-          window.clearTimeout(loaderState.releaseTimer);
-          if (loaderState.completionWatcher) cancelAnimationFrame(loaderState.completionWatcher);
-          applyStage("complete", "Market Pulse Sync", "Sync complete. Launching Market Pulse...");
-          document.body.classList.add("marketPulseReady");
-          stepNodes.forEach((node) => {
-            node.classList.remove("is-active");
-            node.classList.add("is-complete");
-          });
-          waitForFullCompletion();
-        };
-
-        window.showMarketPulseLoading = (title, detail) => show(title, detail, true);
-        window.hideMarketPulseLoading = () => complete();
-        window.updateMarketPulseLoadingStage = (stage, title, detail) => {
-          if (!loaderState.active) return;
-          applyStage(stage, title, detail);
-        };
-        window.completeMarketPulseLoading = () => complete();
-
-        const payload = readPayload();
-        const payloadFresh = !!(payload && payload.ts && (Date.now() - payload.ts) < 15000);
-        const shouldBoot = navType === "reload" || payloadFresh;
-        if (shouldBoot) {
-          show(
-            (payload && payload.title) || "Market Pulse Sync",
-            (payload && payload.detail) || "Refreshing SPX priority, tape leadership, and macro catalysts…",
-            false
-          );
+      const readPayload = () => {
+        try {
+          return JSON.parse(sessionStorage.getItem(flagKey) || "null");
+        } catch (_err) {
+          return null;
         }
-      })();
-    </script>
-  {% else %}
-    <div
-      class="marketPulseLoadingOverlay"
-      id="marketPulseLoadingOverlay"
-      aria-hidden="true"
-      data-active="0"
-      hidden
-    ></div>
-  {% endif %}
+      };
+
+      const writePayload = (payload) => {
+        try {
+          sessionStorage.setItem(flagKey, JSON.stringify({ ...payload, ts: Date.now() }));
+        } catch (_err) {
+        }
+      };
+
+      const clearPayload = () => {
+        try {
+          sessionStorage.removeItem(flagKey);
+        } catch (_err) {
+        }
+      };
+
+      const applyStage = (nextStage, title, detail) => {
+        const currentIdx = stageIndex(loaderState.stage);
+        const requestedIdx = stageIndex(nextStage);
+        const stage = STAGES[Math.max(currentIdx, requestedIdx)];
+        loaderState.stage = stage.id;
+        if (titleNode && title) titleNode.textContent = title;
+        if (subNode && detail) subNode.textContent = detail;
+        if (metaNode) metaNode.textContent = stage.pill;
+        if (trackNode) trackNode.style.width = `${stage.pct}%`;
+      };
+
+      const inferStage = (title, detail) => {
+        const text = `${title || ""} ${detail || ""}`.toLowerCase();
+        if (text.includes("final") || text.includes("ready")) return "finalizing";
+        if (text.includes("macro") || text.includes("catalyst")) return "processing_macro";
+        if (text.includes("tape") || text.includes("stream")) return "syncing_tape";
+        return "loading_levels";
+      };
+
+      const scheduleSoftProgress = () => {
+        clearProgressTimers();
+        loaderState.progressTimers.push(window.setTimeout(() => {
+          if (loaderState.active) applyStage("syncing_tape");
+        }, 180));
+        loaderState.progressTimers.push(window.setTimeout(() => {
+          if (loaderState.active) applyStage("processing_macro");
+        }, 460));
+      };
+
+      const show = (title, detail, persist = true) => {
+        window.clearTimeout(loaderState.completeTimer);
+        clearProgressTimers();
+        loaderState.active = true;
+        loaderState.stage = "loading_levels";
+        applyStage(inferStage(title, detail), title, detail);
+        overlay.classList.add("show");
+        overlay.setAttribute("aria-hidden", "false");
+        overlay.dataset.active = "1";
+        if (persist) {
+          writePayload({
+            title: title || "Loading page",
+            detail: detail || "Preparing latest view.",
+            page: window.location.pathname,
+          });
+        }
+        if (onMarketPulsePage || onDashboardPage) scheduleSoftProgress();
+      };
+
+      const hide = (clearFlag = true) => {
+        loaderState.active = false;
+        clearProgressTimers();
+        overlay.classList.remove("show");
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.dataset.active = "0";
+        if (clearFlag) clearPayload();
+      };
+
+      const complete = () => {
+        if (!loaderState.active) return;
+        window.clearTimeout(loaderState.completeTimer);
+        clearProgressTimers();
+        applyStage("complete", "Market Pulse ready", "Live context loaded.");
+        loaderState.completeTimer = window.setTimeout(() => {
+          hide(true);
+        }, 180);
+      };
+
+      window.showShellLoading = (title, detail) => show(title, detail, true);
+      window.hideShellLoading = () => complete();
+      window.showMarketPulseLoading = (title, detail) => show(title, detail, true);
+      window.hideMarketPulseLoading = () => complete();
+      window.showDashboardLoading = (title, detail) => show(title, detail, true);
+      window.hideDashboardLoading = () => complete();
+      window.updateMarketPulseLoadingStage = (stage, title, detail) => {
+        if (!loaderState.active) return;
+        applyStage(stage, title, detail);
+      };
+      window.completeMarketPulseLoading = () => complete();
+      window.updateDashboardLoadingStage = (stage, title, detail) => {
+        if (!loaderState.active) return;
+        applyStage(stage, title, detail);
+      };
+      window.completeDashboardLoading = () => complete();
+
+      const payload = readPayload();
+      const payloadFresh = !!(payload && payload.ts && (Date.now() - payload.ts) < 12000);
+      const pageMatches = !!(payload && payload.page === window.location.pathname);
+      if (payloadFresh && pageMatches && ((onMarketPulsePage || onDashboardPage) || navType !== "back_forward")) {
+        show(
+          payload.title || "Loading page",
+          payload.detail || "Preparing latest view.",
+          false
+        );
+      }
+    })();
+  </script>
   {% set tw = trading_window if trading_window is defined else {} %}
   {% set notif_unread = notifications_unread_count or 0 %}
   {% set notif_items = notifications or [] %}
@@ -513,7 +458,7 @@
             {% endif %}
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: New Galaxy</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
             {% if auth_enabled %}
               <div class="hr"></div>
               {% if authenticated %}
@@ -726,7 +671,7 @@
             {% else %}
               <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             {% endif %}
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: New Galaxy</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}
@@ -770,7 +715,7 @@
   </div>
 <script>
   (function(){
-    const FLAG_KEY = "mc_market_pulse_transition";
+    const FLAG_KEY = "mc_page_transition";
     const isPlainLeftClick = (event) => (
       event
       && event.button === 0
@@ -780,14 +725,25 @@
       && !event.altKey
       && !event.defaultPrevented
     );
-    const marketPulsePayload = (targetUrl) => {
+    const pagePayload = (targetUrl) => {
       const isRefresh = window.location.pathname === "/market-pulse" || targetUrl.searchParams.get("refresh") === "1";
-      return {
-        title: "Market Pulse Sync",
-        detail: isRefresh
-          ? "Refreshing SPX priority, tape leadership, and macro catalysts…"
-          : "Building live SPX context, tape leadership, and macro catalysts…",
-      };
+      if (targetUrl.pathname === "/market-pulse") {
+        return {
+          page: "/market-pulse",
+          title: isRefresh ? "Refreshing Market Pulse" : "Opening Market Pulse",
+          detail: isRefresh
+            ? "Refreshing SPX priority, tape leadership, and macro context."
+            : "Preparing live SPX context.",
+        };
+      }
+      if (targetUrl.pathname === "/dashboard") {
+        return {
+          page: "/dashboard",
+          title: "Opening Dashboard",
+          detail: "Preparing command center, tape, and planning state.",
+        };
+      }
+      return null;
     };
     document.addEventListener("click", (event) => {
       if (!isPlainLeftClick(event)) return;
@@ -803,10 +759,10 @@
         return;
       }
       if (targetUrl.origin !== window.location.origin) return;
-      if (targetUrl.pathname !== "/market-pulse") return;
-      const payload = marketPulsePayload(targetUrl);
-      if (typeof window.showMarketPulseLoading === "function") {
-        window.showMarketPulseLoading(payload.title, payload.detail);
+      const payload = pagePayload(targetUrl);
+      if (!payload) return;
+      if (typeof window.showShellLoading === "function") {
+        window.showShellLoading(payload.title, payload.detail);
       } else {
         sessionStorage.setItem(
           FLAG_KEY,
@@ -869,8 +825,12 @@
     });
   })();
 </script>
+{% if active in ['dashboard', 'market-pulse'] %}
 <script>
   (function initNotifications(){
+    const onDashboardPage = document.body.classList.contains("page-dashboard");
+    const onMarketPulsePage = document.body.classList.contains("page-market-pulse");
+    if (!onDashboardPage && !onMarketPulsePage) return;
     const bellBtn = document.getElementById("notifBellButton");
     const badge = document.getElementById("notifBellBadge");
     const dropdown = document.getElementById("notifDropdown");
@@ -891,6 +851,8 @@
     const faviconHref = faviconLink?.getAttribute("href") || "";
     let faviconImage = null;
     let faviconReady = false;
+    const FEED_PAGE = onMarketPulsePage ? "market-pulse" : "dashboard";
+    const FEED_POLL_MS = onMarketPulsePage ? 60000 : 180000;
 
     const ensureFaviconImage = () => {
       if (!faviconLink || faviconReady || !faviconHref) return;
@@ -1117,11 +1079,29 @@
       }).format(dt);
     };
 
+    let notifRefreshTimer = null;
+    let notifRefreshInFlight = false;
+
+    const scheduleFeedSeed = (delayMs = FEED_POLL_MS) => {
+      window.clearTimeout(notifRefreshTimer);
+      if (document.visibilityState === "hidden") return;
+      notifRefreshTimer = window.setTimeout(() => {
+        void seedFromFeed(false);
+      }, Math.max(0, Number(delayMs) || 0));
+    };
+
     const seedFromFeed = async (forceRefresh = true) => {
+      if (notifRefreshInFlight) return;
+      notifRefreshInFlight = true;
       setRefreshState(true);
       try {
         const refreshFlag = forceRefresh ? "1" : "0";
-        const response = await fetch(`/api/market-pulse/news?refresh=${refreshFlag}&mode=curated`, { cache: "no-store" });
+        const params = new URLSearchParams({
+          refresh: refreshFlag,
+          mode: "curated",
+          page: FEED_PAGE,
+        });
+        const response = await fetch(`/api/market-pulse/news?${params.toString()}`, { cache: "no-store" });
         const payload = await response.json();
         if (!payload || payload.ok === false) return;
         const items = Array.isArray(payload.items) ? payload.items : [];
@@ -1152,7 +1132,9 @@
         applyOverrides();
       } catch (_err) {
       } finally {
+        notifRefreshInFlight = false;
         setRefreshState(false);
+        scheduleFeedSeed(FEED_POLL_MS);
       }
     };
 
@@ -1161,24 +1143,23 @@
         event.preventDefault();
         event.stopPropagation();
         if (refreshBtn.disabled) return;
-        await seedFromFeed(true);
+        const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
+        await seedFromFeed(forceRefresh);
       });
     }
 
     // Keep tab badges current without requiring a manual refresh click.
-    window.setTimeout(() => {
-      void seedFromFeed(false);
-    }, 0);
-    window.setInterval(() => {
-      if (document.visibilityState === "hidden") return;
-      void seedFromFeed(false);
-    }, 60000);
+    scheduleFeedSeed(0);
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible") {
+        window.clearTimeout(notifRefreshTimer);
+        return;
+      }
       void seedFromFeed(false);
     });
   })();
 </script>
+{% endif %}
 <script>
   (function initFlashAutoDismiss(){
     const flashNodes = Array.from(document.querySelectorAll(".flashStack .flashMessage"));
