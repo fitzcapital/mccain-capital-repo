@@ -391,7 +391,7 @@
       <div class="nav">
         <div class="navGroup">
           <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">Dashboard</a>
-          <a class="btn navPulseBtn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
+          <a class="btn navPulseBtn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse">Market Pulse</a>
           <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
@@ -407,7 +407,7 @@
           <div id="moreMenu" class="moreMenu" role="menu">
             {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
             <div class="menuTitle">Core</div>
-            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
+            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse">Market Pulse</a>
             <a class="btn {% if request.path == '/ops/trading-window' %}active{% endif %}" href="/ops/trading-window">Trading Window</a>
             <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
@@ -612,7 +612,7 @@
           <div class="drawerSectionTitle">Core</div>
           <div class="drawerPrimaryGrid">
             <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Dashboard</a>
-            <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse?refresh=1">Market Pulse</a>
+            <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse">Market Pulse</a>
             <a class="btn {% if request.path == '/ops/trading-window' %}primary{% endif %}" href="/ops/trading-window">Trading Window</a>
             <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
             <a class="btn {% if active=='strat' %}primary{% endif %}" href="/strat">The Strat</a>
@@ -852,7 +852,6 @@
     let faviconImage = null;
     let faviconReady = false;
     const FEED_PAGE = onMarketPulsePage ? "market-pulse" : "dashboard";
-    const FEED_POLL_MS = onMarketPulsePage ? 60000 : 180000;
 
     const ensureFaviconImage = () => {
       if (!faviconLink || faviconReady || !faviconHref) return;
@@ -1079,21 +1078,19 @@
       }).format(dt);
     };
 
-    let notifRefreshTimer = null;
     let notifRefreshInFlight = false;
 
-    const scheduleFeedSeed = (delayMs = FEED_POLL_MS) => {
-      window.clearTimeout(notifRefreshTimer);
-      if (document.visibilityState === "hidden") return;
-      notifRefreshTimer = window.setTimeout(() => {
-        void seedFromFeed(false);
-      }, Math.max(0, Number(delayMs) || 0));
-    };
-
-    const seedFromFeed = async (forceRefresh = true) => {
+    const seedFromFeed = async (forceRefresh = true, showShellStatus = false) => {
       if (notifRefreshInFlight) return;
       notifRefreshInFlight = true;
+      const startedAt = Date.now();
       setRefreshState(true);
+      if (showShellStatus && typeof window.showShellLoading === "function") {
+        window.showShellLoading(
+          "Refreshing notifications",
+          "Loading latest tweet and feed updates."
+        );
+      }
       try {
         const refreshFlag = forceRefresh ? "1" : "0";
         const params = new URLSearchParams({
@@ -1132,9 +1129,15 @@
         applyOverrides();
       } catch (_err) {
       } finally {
+        const elapsed = Date.now() - startedAt;
+        if (showShellStatus && elapsed < 450) {
+          await new Promise((resolve) => window.setTimeout(resolve, 450 - elapsed));
+        }
         notifRefreshInFlight = false;
         setRefreshState(false);
-        scheduleFeedSeed(FEED_POLL_MS);
+        if (showShellStatus && typeof window.hideShellLoading === "function") {
+          window.hideShellLoading();
+        }
       }
     };
 
@@ -1144,19 +1147,11 @@
         event.stopPropagation();
         if (refreshBtn.disabled) return;
         const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
-        await seedFromFeed(forceRefresh);
+        await seedFromFeed(forceRefresh, true);
       });
     }
 
-    // Keep tab badges current without requiring a manual refresh click.
-    scheduleFeedSeed(0);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "visible") {
-        window.clearTimeout(notifRefreshTimer);
-        return;
-      }
-      void seedFromFeed(false);
-    });
+    // Tweet-backed notifications are manual-only. No background polling here.
   })();
 </script>
 {% endif %}

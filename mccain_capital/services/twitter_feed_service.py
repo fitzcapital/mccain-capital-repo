@@ -25,9 +25,12 @@ PAGE_CACHE_TTL_SECONDS = {
 }
 COOLDOWN_429_SECONDS = 300
 REFRESH_LOCK_TTL_SECONDS = 20
-DEFAULT_LIMIT = 100
+DEFAULT_LIMIT = 15
+DEFAULT_DASHBOARD_LIMIT = 8
+DEFAULT_MARKET_PULSE_LIMIT = 15
+MAX_MARKET_PULSE_LIMIT = 100
 TWITTERAPI_PAGE_SIZE = 100
-TWITTERAPI_MAX_PAGES = 5
+TWITTERAPI_MAX_PAGES = 1
 MAX_ITEM_AGE_HOURS = 96
 TWITTERAPI_BASE_URL = "https://api.twitterapi.io"
 
@@ -201,6 +204,17 @@ def _resolve_stale_after_seconds(page_type: str) -> int:
     return int(PAGE_CACHE_TTL_SECONDS.get(normalized, SOURCE_STALE_SECONDS))
 
 
+def _resolve_snapshot_limit(page_type: str, requested_limit: int) -> int:
+    normalized = str(page_type or "").strip().lower()
+    if normalized == "dashboard":
+        default_limit = DEFAULT_DASHBOARD_LIMIT
+    elif normalized == "market-pulse":
+        default_limit = DEFAULT_MARKET_PULSE_LIMIT
+    else:
+        default_limit = DEFAULT_LIMIT
+    return max(1, min(MAX_MARKET_PULSE_LIMIT, int(requested_limit or default_limit)))
+
+
 def _source_is_stale(
     state: Dict[str, Any], now_et: datetime, *, stale_after_seconds: int = SOURCE_STALE_SECONDS
 ) -> bool:
@@ -312,12 +326,12 @@ def _run_twitterapi_last_tweets_page(
     return _extract_twitterapi_rows_and_cursor(payload)
 
 
-def _run_twitterapi_last_tweets(*, username: str, api_key: str) -> List[Dict[str, Any]]:
+def _run_twitterapi_last_tweets(*, username: str, api_key: str, limit: int) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     seen_keys: set[str] = set()
     cursor = ""
     for _ in range(TWITTERAPI_MAX_PAGES):
-        remaining = max(1, min(TWITTERAPI_PAGE_SIZE, DEFAULT_LIMIT - len(rows)))
+        remaining = max(1, min(TWITTERAPI_PAGE_SIZE, int(limit) - len(rows)))
         page_rows, next_cursor = _run_twitterapi_last_tweets_page(
             username=username,
             api_key=api_key,
@@ -335,15 +349,15 @@ def _run_twitterapi_last_tweets(*, username: str, api_key: str) -> List[Dict[str
                 seen_keys.add(dedupe_key)
             rows.append(row)
             page_added += 1
-            if len(rows) >= DEFAULT_LIMIT:
-                return rows[:DEFAULT_LIMIT]
+            if len(rows) >= limit:
+                return rows[:limit]
         if page_added == 0:
             break
         next_cursor = str(next_cursor or "").strip()
         if not next_cursor or next_cursor == cursor:
             break
         cursor = next_cursor
-    return rows[:DEFAULT_LIMIT]
+    return rows[:limit]
 
 
 def _clean_text(value: Any) -> str:
@@ -892,8 +906,11 @@ def _refresh_source_state(
         )
         return source_state
 
-    if not force_refresh and not _source_is_stale(
-        source_state, now_et, stale_after_seconds=stale_after_seconds
+    cached_count = int(source_state.get("last_good_count") or 0)
+    if (
+        not force_refresh
+        and cached_count >= limit
+        and not _source_is_stale(source_state, now_et, stale_after_seconds=stale_after_seconds)
     ):
         LOGGER.info(
             "twitter feed cache hit for %s using last success at %s",
@@ -907,7 +924,7 @@ def _refresh_source_state(
         return source_state
 
     try:
-        raw_items = _run_twitterapi_last_tweets(username=username, api_key=api_key)
+        raw_items = _run_twitterapi_last_tweets(username=username, api_key=api_key, limit=limit)
         raw_normalized = [
             row
             for row in (
@@ -1100,6 +1117,7 @@ def build_twitter_feed_snapshot(
 ) -> Dict[str, Any]:
     now_et = now_et or app_runtime.now_et()
     structure = dict(market_structure_snapshot or {})
+    limit = _resolve_snapshot_limit(page_type, limit)
     stale_after_seconds = _resolve_stale_after_seconds(page_type)
     store = _load_source_store()
     api_key = _twitterapi_key()

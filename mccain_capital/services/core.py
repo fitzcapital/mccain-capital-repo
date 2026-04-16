@@ -7155,11 +7155,13 @@ def _market_news_snapshot(
     macro_events: Optional[List[Dict[str, Any]]] = None,
     force_refresh_feed: bool = False,
     page_type: str = "",
+    feed_limit: int = 0,
 ) -> Dict[str, Any]:
     now_et = now_et or app_runtime.now_et()
     macro_events = list(macro_events or _market_news_macro_events(now_et))
 
     feed_snapshot = build_twitter_feed_snapshot(
+        limit=feed_limit,
         now_et=now_et,
         market_structure_snapshot=market_structure_snapshot,
         force_refresh=force_refresh_feed,
@@ -10244,6 +10246,15 @@ def market_pulse_news_feed_api():
         return jsonify({"ok": False, "error": "auth_required"}), 401
     force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     mode = (request.args.get("mode") or "").strip().lower()
+    page_type = (request.args.get("page") or "market-pulse").strip().lower()
+    try:
+        requested_limit = int(request.args.get("limit") or 0)
+    except (TypeError, ValueError):
+        requested_limit = 0
+    limit = max(
+        1,
+        min(100, requested_limit or (15 if page_type == "market-pulse" else 8 if page_type == "dashboard" else 15)),
+    )
     now_et = app_runtime.now_et()
     playbook_snapshot = get_or_build_market_pulse_snapshot(
         force_refresh=force_refresh, now_et=now_et
@@ -10254,7 +10265,8 @@ def market_pulse_news_feed_api():
         market_structure_snapshot=market_structure_snapshot,
         macro_events=_market_news_macro_events(now_et),
         force_refresh_feed=force_refresh,
-        page_type=(request.args.get("page") or "market-pulse"),
+        page_type=page_type,
+        feed_limit=limit,
     )
     feed_snapshot = dict(news_snapshot.get("market_feed_snapshot") or {})
     items = list(news_snapshot.get("pulse_feed_items") or [])
@@ -10262,7 +10274,7 @@ def market_pulse_news_feed_api():
     return jsonify(
         {
             "ok": True,
-            "items": (raw_items if mode == "raw" else items)[:MARKET_NEWS_FEED_LIMIT],
+            "items": (raw_items if mode == "raw" else items)[:limit],
             "status": str(
                 feed_snapshot.get("status")
                 or ("live" if news_snapshot.get("pulse_feed_available") else "quiet")
@@ -10282,6 +10294,8 @@ def market_pulse_news_feed_api():
             ),
             "now_summary": dict(feed_snapshot.get("now_summary") or {}),
             "flow_summary": dict(feed_snapshot.get("flow_summary") or {}),
+            "limit": limit,
+            "returned_count": len((raw_items if mode == "raw" else items)[:limit]),
         }
     )
 

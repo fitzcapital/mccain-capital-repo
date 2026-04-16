@@ -82,7 +82,7 @@
       </div>
     </div>
     <div class="marketPulsePlaybookActions">
-          <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse?refresh=1">Refresh</a>
+          <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse">Refresh</a>
           <a class="btn" href="/candle-opens">Candle Opens</a>
     </div>
   </div>
@@ -1093,6 +1093,8 @@
     return value === "raw" ? "raw" : "curated";
   })();
   let currentFeedItems = Array.isArray(window.marketFeedItems) ? [...window.marketFeedItems] : [];
+  let currentFeedLimit = Math.max(15, Math.min(100, currentFeedItems.length || 15));
+  const FEED_LIMIT_STEPS = [15, 30, 50, 75, 100];
 
   const escapeHtml = (value) => {
     const text = String(value || "");
@@ -1368,6 +1370,11 @@
             <div class="marketFeedListShell__count">${sorted.length} posts</div>
           </div>
           <div class="marketFeedList" id="marketFeedList">${listHtml}</div>
+          ${sorted.length >= currentFeedLimit && currentFeedLimit < 100 ? `
+            <div class="marketFeedListShell__actions">
+              <button class="marketFeedActionBtn" data-market-feed-load-more="1" type="button">Load older posts</button>
+            </div>
+          ` : ""}
         </div>
       </section>`;
   };
@@ -1376,6 +1383,7 @@
     const buttons = [
       feedRefreshBtn,
       feedEmptyRefreshBtn,
+      ...Array.from(document.querySelectorAll("[data-market-feed-load-more='1']")),
       ...Array.from(document.querySelectorAll("[data-market-feed-refresh='1']")),
     ];
     buttons.forEach((button) => {
@@ -1386,13 +1394,20 @@
     });
   };
 
-  const refreshFeedInPlace = async (forceRefresh = true) => {
+  const refreshFeedInPlace = async (forceRefresh = false, requestedLimit = currentFeedLimit) => {
     setFeedRefreshState(true);
     try {
       const refreshFlag = forceRefresh ? "1" : "0";
-      const response = await fetch(`/api/market-pulse/news?refresh=${refreshFlag}&mode=${currentFeedMode}`, { cache: "no-store" });
+      const params = new URLSearchParams({
+        refresh: refreshFlag,
+        mode: currentFeedMode,
+        page: "market-pulse",
+        limit: String(Math.max(1, Math.min(100, requestedLimit))),
+      });
+      const response = await fetch(`/api/market-pulse/news?${params.toString()}`, { cache: "no-store" });
       const data = await response.json();
       if (!data || data.ok === false) return;
+      currentFeedLimit = Math.max(1, Math.min(100, Number(data.limit) || requestedLimit || currentFeedLimit));
       const items = Array.isArray(data.items) ? data.items : [];
       currentFeedItems = feedItemsSorted(items);
       window.marketFeedItems = [...currentFeedItems];
@@ -1408,13 +1423,15 @@
   if (feedRefreshBtn) {
     feedRefreshBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      refreshFeedInPlace();
+      const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
+      refreshFeedInPlace(forceRefresh, currentFeedLimit);
     });
   }
   if (feedEmptyRefreshBtn) {
     feedEmptyRefreshBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      refreshFeedInPlace();
+      const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
+      refreshFeedInPlace(forceRefresh, currentFeedLimit);
     });
   }
 
@@ -1425,7 +1442,16 @@
     const refreshTrigger = event.target.closest("[data-market-feed-refresh='1']");
     if (refreshTrigger) {
       event.preventDefault();
-      refreshFeedInPlace();
+      const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
+      refreshFeedInPlace(forceRefresh, currentFeedLimit);
+      return;
+    }
+    const loadMoreTrigger = event.target.closest("[data-market-feed-load-more='1']");
+    if (loadMoreTrigger) {
+      event.preventDefault();
+      const currentStepIndex = FEED_LIMIT_STEPS.findIndex((step) => step >= currentFeedLimit);
+      const nextLimit = FEED_LIMIT_STEPS[Math.min(FEED_LIMIT_STEPS.length - 1, Math.max(0, currentStepIndex) + 1)] || 100;
+      refreshFeedInPlace(false, nextLimit);
       return;
     }
     const link = event.target.closest("[data-feed-read='1']");

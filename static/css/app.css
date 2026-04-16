@@ -1741,6 +1741,8 @@ body{
 .notifBellButton svg{
   width:20px;
   height:20px;
+  animation:none !important;
+  transform:none !important;
 }
 .notifBadge{
   position:absolute;
@@ -12006,6 +12008,11 @@ body.marketPulseReady .marketPulseSection{
   font-size:.76rem;
   color:rgba(170, 193, 221, .68);
 }
+.marketFeedListShell__actions{
+  display:flex;
+  justify-content:center;
+  padding-top:6px;
+}
 .marketFeedList{
   display:grid;
   gap:8px;
@@ -18023,7 +18030,10 @@ h1,
   filter:none !important;
 }
 
-.notifRefreshBtn.is-loading svg,
+.notifRefreshBtn.is-loading svg{
+  animation:notifRefreshSpin 1.05s linear infinite !important;
+}
+
 .marketFeedActionBtn.is-loading svg{
   animation:marketSpin .75s linear infinite !important;
 }

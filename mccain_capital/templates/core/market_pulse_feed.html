@@ -19,7 +19,7 @@
       <button class="btn primary" type="button" id="notifFeedRefreshBtn">Refresh Feed</button>
       <button class="btn" type="button" id="notifFeedMarkSeenBtn">Mark All Seen</button>
       <a class="btn" href="https://twitter.com/unusual_whales" target="_blank" rel="noopener noreferrer">Open on X</a>
-      <a class="btn" href="/market-pulse?refresh=1">Open Market Pulse</a>
+      <a class="btn" href="/market-pulse">Open Market Pulse</a>
     </div>
     <div class="tiny muted" id="notifFeedSourceNote">{{ feed_source_note or feed_snapshot.get('source_note') or 'Monitoring the live feed source.' }}</div>
     <div class="notifDropdownList" id="notifFeedHistoryList">
@@ -151,11 +151,11 @@
       syncBellOverrides(sorted);
     };
 
-    const refresh = async (forceRefresh = true) => {
+    const refresh = async (forceRefresh = false) => {
       if (refreshBtn) refreshBtn.disabled = true;
       try {
         const refreshFlag = forceRefresh ? "1" : "0";
-        const response = await fetch(`/api/market-pulse/news?refresh=${refreshFlag}&mode=curated`, { cache: "no-store" });
+        const response = await fetch(`/api/market-pulse/news?refresh=${refreshFlag}&mode=curated&page=market-pulse&limit=100`, { cache: "no-store" });
         const payload = await response.json();
         render(Array.isArray(payload?.items) ? payload.items : []);
       } catch (_err) {
@@ -174,7 +174,10 @@
       });
     }
     if (refreshBtn) {
-      refreshBtn.addEventListener("click", () => refresh(true));
+      refreshBtn.addEventListener("click", (event) => {
+        const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
+        refresh(forceRefresh);
+      });
     }
 
     render(seedItems);
