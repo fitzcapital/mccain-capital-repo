@@ -7,6 +7,14 @@ def journal_home():
     return svc.journal_home()
 
 
+def life_journal_home():
+    return svc.life_journal_home()
+
+
+def edit_life_entry(entry_id: int):
+    return svc.edit_life_entry(entry_id)
+
+
 def journal_weekly_review():
     return svc.journal_weekly_review()
 
@@ -29,3 +37,7 @@ def edit_entry(entry_id: int):
 
 def delete_entry_route(entry_id: int):
     return svc.delete_entry_route(entry_id)
+
+
+def delete_life_entry_route(entry_id: int):
+    return svc.delete_life_entry_route(entry_id)

@@ -51,6 +51,43 @@ def fetch_entries(q: str = "", d: str = "") -> List[object]:
         return list(conn.execute(sql, params).fetchall())
 
 
+def fetch_entries_by_type(entry_type: str, q: str = "", d: str = "") -> List[object]:
+    ensure_journal_schema()
+    entry_type = (entry_type or "").strip()
+    q = (q or "").strip()
+    d = (d or "").strip()
+
+    sql = """
+    SELECT
+      e.*,
+      (
+        SELECT COUNT(*)
+        FROM entry_trade_links l
+        WHERE l.entry_id = e.id
+      ) AS linked_trades
+    FROM entries e
+    WHERE entry_type = ?
+    """
+    params: List[Any] = [entry_type]
+
+    if d:
+        sql += " AND entry_date = ?"
+        params.append(d)
+
+    if q:
+        sql += (
+            " AND (notes LIKE ? OR template_payload LIKE ? OR market LIKE ? OR setup LIKE ? "
+            "OR grade LIKE ? OR mood LIKE ?)"
+        )
+        like = f"%{q}%"
+        params.extend([like, like, like, like, like, like])
+
+    sql += " ORDER BY entry_date DESC, updated_at DESC"
+
+    with db() as conn:
+        return list(conn.execute(sql, params).fetchall())
+
+
 def get_entry(entry_id: int) -> Optional[object]:
     ensure_journal_schema()
     with db() as conn:

@@ -7240,9 +7240,16 @@ def _load_dashboard_milestone_settings() -> Dict[str, Any]:
 
 def _load_dashboard_pace_settings() -> Dict[str, Any]:
     custom_daily = float(app_runtime.get_setting_float("dashboard_pace_daily", 0.0) or 0.0)
+    start_date_raw = str(app_runtime.get_setting_value("dashboard_projection_start_date", "") or "")
     target_date_raw = str(
         app_runtime.get_setting_value("dashboard_projection_target_date", "") or ""
     )
+    start_date = ""
+    if start_date_raw:
+        try:
+            start_date = date.fromisoformat(start_date_raw).isoformat()
+        except ValueError:
+            start_date = ""
     target_date = ""
     if target_date_raw:
         try:
@@ -7252,6 +7259,7 @@ def _load_dashboard_pace_settings() -> Dict[str, Any]:
     return {
         "custom_daily": max(0.0, custom_daily),
         "custom_enabled": custom_daily > 0.0,
+        "start_date": start_date,
         "target_date": target_date,
     }
 
@@ -8355,14 +8363,27 @@ def _dashboard_pace_viewmodel(
     custom_enabled = bool(pace_settings.get("custom_enabled")) and custom_daily > 0.0
     applied_avg = custom_daily if custom_enabled else live_avg
     base_balance = float(proj.get("base_balance") or 0.0)
+    start_date_input = str(pace_settings.get("start_date") or "").strip()
     target_date_input = str(pace_settings.get("target_date") or "").strip()
+    projection_anchor = anchor_day
+    start_date_label = anchor_day.strftime("%b %d")
+    start_date_full = anchor_day.strftime("%a, %b %d, %Y")
+    start_date_configured = False
+    if start_date_input:
+        try:
+            projection_anchor = date.fromisoformat(start_date_input)
+            start_date_label = projection_anchor.strftime("%b %d")
+            start_date_full = projection_anchor.strftime("%a, %b %d, %Y")
+            start_date_configured = True
+        except ValueError:
+            start_date_input = ""
     nodes: List[Dict[str, Any]] = []
     for key, label in (("p5", "5D"), ("p10", "10D"), ("p20", "20D")):
         row = dict(proj.get(key) or {})
         sessions = int(row.get("days") or 0)
         est_pnl = float(applied_avg * sessions)
         est_balance = base_balance + est_pnl
-        target_day = _advance_market_sessions(anchor_day, sessions)
+        target_day = _advance_market_sessions(projection_anchor, sessions)
         nodes.append(
             {
                 "label": label,
@@ -8388,7 +8409,7 @@ def _dashboard_pace_viewmodel(
     if target_date_input:
         try:
             target_day = date.fromisoformat(target_date_input)
-            target_sessions = _market_sessions_between(anchor_day, target_day)
+            target_sessions = _market_sessions_between(projection_anchor, target_day)
             target_est_pnl = applied_avg * target_sessions
             target_est_balance = base_balance + target_est_pnl
             target_projection = {
@@ -8406,7 +8427,7 @@ def _dashboard_pace_viewmodel(
                 ),
                 "detail": (
                     f"{target_sessions} trading sessions at "
-                    f"{app_runtime.money(applied_avg)}/day."
+                    f"{app_runtime.money(applied_avg)}/day from {start_date_label}."
                 ),
             }
         except ValueError:
@@ -8436,7 +8457,7 @@ def _dashboard_pace_viewmodel(
         elif projected_days_balance is not None:
             projected_days_overall = projected_days_balance
         if projected_days_overall is not None:
-            eta_day = _advance_market_sessions(anchor_day, projected_days_overall)
+            eta_day = _advance_market_sessions(projection_anchor, projected_days_overall)
             milestone_eta = eta_day.strftime("%a, %b %d, %Y")
     if milestone_eta:
         note = f"Milestone tracks to {milestone_eta} at this trading-day pace."
@@ -8458,6 +8479,12 @@ def _dashboard_pace_viewmodel(
             if custom_enabled
             else "Using your recent trading-day average."
         ),
+        "start": {
+            "configured": start_date_configured,
+            "input": start_date_input,
+            "label": start_date_label,
+            "full": start_date_full,
+        },
         "trading_day_label": "Trading-day projections only",
         "note": note,
         "nodes": nodes,
@@ -8704,6 +8731,7 @@ def dashboard_brief_update():
 def dashboard_pace_update():
     pace_reset = str(request.form.get("pace_reset") or "").strip() == "1"
     custom_daily = app_runtime.parse_float(request.form.get("dashboard_pace_daily") or "") or 0.0
+    start_date = str(request.form.get("dashboard_projection_start_date") or "").strip()
     target_date = str(request.form.get("dashboard_projection_target_date") or "").strip()
     if pace_reset or custom_daily <= 0.0:
         app_runtime.set_setting_value("dashboard_pace_daily", "")
@@ -8711,6 +8739,15 @@ def dashboard_pace_update():
     else:
         app_runtime.set_setting_value("dashboard_pace_daily", f"{max(0.0, custom_daily):.2f}")
         flash("Forward pace updated.", "success")
+    if start_date:
+        try:
+            start_iso = date.fromisoformat(start_date).isoformat()
+        except ValueError:
+            start_iso = ""
+            flash("Projection start date was ignored because it was not a valid date.", "warning")
+        app_runtime.set_setting_value("dashboard_projection_start_date", start_iso)
+    else:
+        app_runtime.set_setting_value("dashboard_projection_start_date", "")
     if target_date:
         try:
             target_iso = date.fromisoformat(target_date).isoformat()
@@ -8737,7 +8774,6 @@ def dashboard_pace_update():
 def dashboard():
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
-    from mccain_capital.services import gamma_map_service
     from mccain_capital.repositories import analytics as analytics_repo
     from mccain_capital.repositories import journal as journal_repo
     from mccain_capital.repositories import trades as trades_repo
@@ -9368,56 +9404,6 @@ def dashboard():
         _dashboard_tape_row_viewmodel(symbol, dashboard_tape_quotes.get(symbol) or {})
         for symbol in ("QQQ", "IWM", "AAPL", "TSLA")
     )
-    try:
-        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
-    except Exception:
-        gamma_snapshot = {}
-    if not current_app.config.get("TESTING"):
-        try:
-            from mccain_capital.services import market_pulse_runtime
-
-            # Start the runtime in the background, but do not block the dashboard
-            # on a synchronous gamma refresh when the snapshot is cold.
-            market_pulse_runtime.ensure_market_pulse_runtime_started()
-        except Exception:
-            pass
-    try:
-        news_snapshot = _market_news_snapshot(page_type="dashboard")
-    except Exception:
-        news_snapshot = {"macro_events": []}
-    spx_priority_context = build_spx_priority_context(dashboard_spx, gamma_snapshot)
-    dashboard_execution_chart = _market_pulse_execution_chart_viewmodel(
-        spx_quote=dashboard_spx,
-        gamma_snapshot=gamma_snapshot,
-        macro_events=list(news_snapshot.get("macro_events") or []),
-        now_et=now_et,
-    )
-    dashboard_execution_model = _market_pulse_execution_model(
-        spx_quote=dashboard_spx,
-        gamma_snapshot=gamma_snapshot,
-        execution_chart=dashboard_execution_chart,
-        spx_priority_context=spx_priority_context,
-    )
-    playbook_snapshot = get_or_build_market_pulse_snapshot(
-        force_refresh=False,
-        now_et=now_et,
-        preloaded_gamma_snapshot=gamma_snapshot,
-        preloaded_macro_events=list(news_snapshot.get("macro_events") or []),
-    )
-    dashboard_playbook_view = dict(playbook_snapshot.get("playbook_view") or {})
-    dashboard_market_structure_snapshot = dict(
-        playbook_snapshot.get("market_structure_snapshot") or {}
-    )
-    daily_brief = _dashboard_daily_brief_viewmodel(
-        now_et=now_et,
-        dashboard_spx=dashboard_spx,
-        dashboard_vix=dashboard_vix,
-        gamma_snapshot=gamma_snapshot,
-        market_structure_snapshot=dashboard_market_structure_snapshot,
-        news_snapshot=news_snapshot,
-        today_count=today_count,
-        today_net=today_net,
-    )
     journal_today_rows = [dict(r) for r in journal_repo.fetch_entries(d=today_key)]
     journal_capture_count_today = 0
     for row in journal_today_rows:
@@ -9429,22 +9415,15 @@ def dashboard():
             payload = {}
         if str(payload.get("capture_screenshot_path") or "").strip():
             journal_capture_count_today += 1
-    brief_ready = all(
-        str(daily_brief.get(field) or "").strip() for field in ("focus", "plan_a", "no_trade")
-    )
     journal_count_today = len(journal_today_rows)
     dashboard_checklist = [
         {
             "label": "Brief locked",
-            "status": "Ready" if brief_ready else "Needs tune",
-            "detail": (
-                "Focus, Plan A, and no-trade rule are set."
-                if brief_ready
-                else "Tighten the brief before adding risk."
-            ),
-            "done": brief_ready,
-            "href": "#daily-brief-card",
-            "action": "Review" if brief_ready else "Tune",
+            "status": "Loading",
+            "detail": "Planning, gamma, and brief context load after the page paints.",
+            "done": False,
+            "href": "#dashboardPlanningSection",
+            "action": "Load",
         },
         {
             "label": "Post-session import",
@@ -9480,6 +9459,47 @@ def dashboard():
             "action": "Open" if journal_count_today else "Log",
         },
     ]
+    dashboard_planning_ready = False
+    daily_brief = {
+        "day_key": today_key,
+        "cta_label": "Open Trades",
+        "status_label": "Planning loading",
+    }
+    dashboard_market_structure_snapshot = {}
+    placeholder_gamma_entries = [
+        {
+            "key": key,
+            "label": label,
+            "value": "--",
+            "detail": "",
+            "tone": "",
+            "glow": False,
+            "emphasis": "primary" if key in ("regime", "local_flip") else "secondary",
+        }
+        for key, label in (
+            ("regime", "Regime"),
+            ("local_flip", "Local Flip"),
+            ("next_call_wall", "Next Call Wall"),
+            ("next_put_wall", "Next Put Wall"),
+            ("main_flip", "Main Flip"),
+            ("call_wall", "Call Wall"),
+            ("put_wall", "Put Wall"),
+        )
+    ]
+    decision_panel = {
+        "status": "Loading",
+        "status_tone": "info",
+        "posture_summary": "Loading planning context.",
+        "plan": "Loading plan...",
+        "bias": "Loading",
+        "risk_size": "Loading",
+        "trade_gate": "Loading trade gate...",
+        "gamma_strip": {
+            "state": "loading",
+            "status_text": "Loading gamma structure and live brief.",
+            "entries": placeholder_gamma_entries,
+        },
+    }
 
     scope_label = (
         str(scope.get("label") or "").strip()
@@ -9498,25 +9518,9 @@ def dashboard():
     )
     readiness = _dashboard_readiness_viewmodel(
         dashboard_checklist,
-        brief_ready=brief_ready,
+        brief_ready=False,
         today_count=today_count,
         data_trust=data_trust,
-    )
-    gamma_strip = _dashboard_gamma_strip_viewmodel(
-        playbook_view=dashboard_playbook_view,
-        market_structure_snapshot=dashboard_market_structure_snapshot,
-    )
-    decision_panel = _dashboard_decision_viewmodel(
-        daily_brief=daily_brief,
-        risk_posture_title=risk_posture_title,
-        risk_posture_detail=risk_posture_detail,
-        data_trust=data_trust,
-        readiness=readiness,
-        dashboard_vix=dashboard_vix,
-        playbook_view=dashboard_playbook_view,
-        gamma_strip=gamma_strip,
-        execution_model=dashboard_execution_model,
-        market_structure_snapshot=dashboard_market_structure_snapshot,
     )
     pace_card = _dashboard_pace_viewmodel(
         proj,
@@ -9582,8 +9586,6 @@ def dashboard():
         dashboard_tape_rows=dashboard_tape_rows,
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
-        dashboard_execution_model=dashboard_execution_model,
-        dashboard_playbook_view=dashboard_playbook_view,
         dashboard_market_structure_snapshot=dashboard_market_structure_snapshot,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
@@ -9601,6 +9603,8 @@ def dashboard():
         dashboard_month=month,
         milestone=milestone,
         vanquish_lock=vanquish_lock,
+        dashboard_planning_ready=dashboard_planning_ready,
+        today_key=today_key,
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -9647,6 +9651,9 @@ def dashboard_planning_refresh_api():
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
 
+    force_refresh = (request.args.get("force") or "").strip() == "1"
+    scope_mode = (request.args.get("scope") or "all").strip().lower()
+
     try:
         market_worker.start_market_worker_once()
     except Exception:
@@ -9655,8 +9662,8 @@ def dashboard_planning_refresh_api():
     now_et = app_runtime.now_et()
     today_key = app_runtime.today_iso()
     anchor = trades_repo.latest_trade_day() or now_et.date()
-    year = anchor.year
-    month = anchor.month
+    year = int(request.args.get("y") or anchor.year)
+    month = max(1, min(12, int(request.args.get("m") or anchor.month)))
 
     today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="")]
     today_stats = trades_repo.trade_day_stats(today_rows)
@@ -9711,7 +9718,7 @@ def dashboard_planning_refresh_api():
         news_snapshot = {"macro_events": []}
 
     playbook_snapshot = get_or_build_market_pulse_snapshot(
-        force_refresh=True,
+        force_refresh=force_refresh,
         now_et=now_et,
         preloaded_gamma_snapshot=gamma_snapshot,
         preloaded_macro_events=list(news_snapshot.get("macro_events") or []),
@@ -9752,6 +9759,14 @@ def dashboard_planning_refresh_api():
         gamma_strip=gamma_strip,
         market_structure_snapshot=dashboard_market_structure_snapshot,
     )
+    brief_html = render_template(
+        "dashboard/_brief_card.html",
+        daily_brief=daily_brief,
+        decision_panel=decision_panel,
+        dashboard_year=year,
+        dashboard_month=month,
+        scope_mode=("active" if scope_mode == "active" else "all"),
+    )
     return jsonify(
         {
             "ok": True,
@@ -9759,6 +9774,7 @@ def dashboard_planning_refresh_api():
             "dashboard_gamma": gamma_strip,
             "market_structure_snapshot": dashboard_market_structure_snapshot,
             "pattern_watch": pattern_watch,
+            "brief_html": brief_html,
             "refreshed_at": app_runtime.now_iso(),
         }
     )
@@ -10152,20 +10168,21 @@ def market_pulse_page():
     execution_model = dict(playbook_snapshot.get("execution_model") or {})
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     playbook_view = dict(playbook_snapshot.get("playbook_view") or {})
-    try:
-        news_snapshot = _market_news_snapshot(
-            now_et=now_et,
-            quotes=quotes,
-            context=context,
-            market_structure_snapshot=market_structure_snapshot,
-            macro_events=macro_events,
-            force_refresh_feed=force_refresh,
-            page_type="market-pulse",
-        )
-    except TypeError:
-        # Backward-compatible fallback for older zero-arg call sites used in tests
-        # and lightweight overrides.
-        news_snapshot = _market_news_snapshot()
+    news_snapshot = {
+        "macro_events": list(macro_events or []),
+        "market_items": [],
+        "pulse_feed_items": [],
+        "pulse_feed_accounts": list(MARKET_PULSE_X_ACCOUNTS),
+        "watchlist_items": [],
+        "market_feed_snapshot": {
+            "status": "idle",
+            "source_note": "Feed loads on demand. Use refresh when you want the latest posts.",
+            "raw_items": [],
+        },
+        "pulse_feed_available": False,
+        "pulse_feed_source_note": "Feed loads on demand. Use refresh when you want the latest posts.",
+        "fetched_at": "",
+    }
     execution_chart_payload = {**execution_chart, "execution_model": execution_model}
     alert = _market_pulse_alert(quotes)
     guardrail = _market_pulse_guardrail(quotes)

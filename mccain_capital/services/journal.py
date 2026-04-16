@@ -29,6 +29,17 @@ from mccain_capital.services.ui import render_page
 from mccain_capital.services.viewmodels import StateBadgeViewModel
 
 _CAPTURE_ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+_LIFE_ENTRY_TYPE = "life_note"
+_LIFE_CATEGORY_OPTIONS = (
+    "Personal",
+    "Family",
+    "Health",
+    "Mindset",
+    "Relationship",
+    "Home",
+    "Travel",
+    "Finance",
+)
 
 
 def _entry_form(
@@ -198,6 +209,164 @@ def journal_home():
         journal_status_badges=journal_status_badges,
     )
     return render_page(content, active="journal")
+
+
+def life_journal_home():
+    if request.method == "POST":
+        saved = _save_life_entry()
+        if saved:
+            return saved
+
+    return _render_life_journal_page()
+
+
+def edit_life_entry(entry_id: int):
+    row = repo.get_entry(entry_id)
+    if not row:
+        abort(404)
+    if str(row["entry_type"] or "").strip() != _LIFE_ENTRY_TYPE:
+        abort(404)
+    if request.method == "POST":
+        saved = _save_life_entry(existing_row=dict(row), entry_id=entry_id)
+        if saved:
+            return saved
+        row = repo.get_entry(entry_id)
+        if not row:
+            abort(404)
+    return _render_life_journal_page(edit_entry=dict(row))
+
+
+def _render_life_journal_page(edit_entry: Optional[Dict[str, Any]] = None):
+    q = (request.args.get("q") or "").strip()
+    d = (request.args.get("d") or "").strip()
+    entries = [dict(r) for r in repo.fetch_entries_by_type(_LIFE_ENTRY_TYPE, q=q, d=d)]
+    for entry in entries:
+        _enrich_life_entry(entry)
+
+    latest_entry = entries[0] if entries else {}
+    composer_values = _life_form_values(edit_entry, default_date=(d or today_iso()))
+    form_action = (
+        url_for("edit_life_entry", entry_id=int(edit_entry["id"])) if edit_entry else url_for("life_journal_home")
+    )
+    content = render_template(
+        "journal/life.html",
+        entries=entries,
+        q=q,
+        d=d,
+        life_category_options=_LIFE_CATEGORY_OPTIONS,
+        form_action=form_action,
+        form_values=composer_values,
+        editing_life_entry=bool(edit_entry),
+        hero_title=(
+            str(latest_entry.get("life_title") or "").strip()
+            if latest_entry
+            else "Personal journal, without the trading noise."
+        ),
+        hero_blurb=(
+            "Capture life context, photos, and the takeaway in one place. "
+            "Every note is auto-summarized so the feed stays readable."
+        ),
+    )
+    return render_page(content, active="life-journal")
+
+
+def _save_life_entry(
+    existing_row: Optional[Dict[str, Any]] = None, entry_id: Optional[int] = None
+) -> Optional[Any]:
+    f = request.form
+    entry_date = (f.get("entry_date") or today_iso()).strip()
+    title = (f.get("life_title") or "").strip()
+    category = (f.get("life_category") or "Personal").strip() or "Personal"
+    mood = (f.get("life_mood") or "").strip()
+    notes = (f.get("life_notes") or "").strip()
+    existing_payload = _safe_template_payload((existing_row or {}).get("template_payload"))
+    screenshot_paths = _merge_capture_paths(
+        _capture_paths_from_payload(existing_payload),
+        _save_capture_uploads(request.files.getlist("life_photos"), entry_date),
+    )
+    if not title or not notes:
+        flash("Life journal entries need a title and notes.", "warning")
+        return None
+    summary_payload = _life_summary_payload(notes, mood)
+    template_payload = {
+        "life_summary": summary_payload["summary"],
+        "life_summary_structured": summary_payload,
+        "capture_screenshots": screenshot_paths,
+        "capture_screenshot_path": screenshot_paths[0] if screenshot_paths else "",
+    }
+    entry_data = {
+        "entry_date": entry_date,
+        "market": category,
+        "setup": title,
+        "grade": "",
+        "pnl": None,
+        "mood": mood,
+        "notes": notes,
+        "entry_type": _LIFE_ENTRY_TYPE,
+        "template_payload": template_payload,
+    }
+    if existing_row and entry_id:
+        repo.update_entry(entry_id, entry_data)
+        flash("Life journal entry updated.", "success")
+    else:
+        repo.create_entry(entry_data)
+        flash("Life journal entry saved.", "success")
+    return redirect(url_for("life_journal_home", d=entry_date))
+
+
+def _life_form_values(
+    edit_entry: Optional[Dict[str, Any]], *, default_date: str
+) -> Dict[str, Any]:
+    if not edit_entry:
+        return {
+            "entry_date": default_date,
+            "life_category": "Personal",
+            "life_mood": "",
+            "life_title": "",
+            "life_notes": "",
+        }
+    payload = _safe_template_payload(edit_entry.get("template_payload"))
+    return {
+        "entry_date": str(edit_entry.get("entry_date") or default_date).strip() or default_date,
+        "life_category": str(edit_entry.get("market") or "Personal").strip() or "Personal",
+        "life_mood": str(edit_entry.get("mood") or "").strip(),
+        "life_title": str(edit_entry.get("setup") or "").strip(),
+        "life_notes": str(edit_entry.get("notes") or "").strip(),
+        "capture_screenshot_paths": _capture_paths_from_payload(payload),
+    }
+
+
+def _enrich_life_entry(entry: Dict[str, Any]) -> None:
+    payload = _safe_template_payload(entry.get("template_payload"))
+    capture_paths = _capture_paths_from_payload(payload)
+    summary_payload = payload.get("life_summary_structured")
+    if not isinstance(summary_payload, dict):
+        summary_payload = _life_summary_payload(entry.get("notes"), entry.get("mood"))
+    entry["entry_date_display"] = _format_entry_date(entry.get("entry_date"))
+    entry["updated_at_display"] = _format_updated_timestamp(entry.get("updated_at"))
+    entry["life_title"] = str(entry.get("setup") or "Life Note").strip() or "Life Note"
+    entry["life_category"] = str(entry.get("market") or "Personal").strip() or "Personal"
+    entry["life_summary"] = str(summary_payload.get("summary") or "").strip()
+    entry["life_summary_structured"] = summary_payload
+    entry["capture_screenshot_paths"] = capture_paths
+    entry["capture_screenshot_hrefs"] = [_capture_href(path) for path in capture_paths]
+    entry["capture_screenshot_href"] = (
+        entry["capture_screenshot_hrefs"][0] if entry["capture_screenshot_hrefs"] else ""
+    )
+    note_view = _render_note_sections(str(entry.get("notes") or "").strip())
+    entry["note_sections"] = note_view["sections"]
+    entry["note_plain"] = note_view["plain"]
+
+
+def delete_life_entry_route(entry_id: int):
+    row = repo.get_entry(entry_id)
+    if not row:
+        abort(404)
+    if str(row["entry_type"] or "").strip() != _LIFE_ENTRY_TYPE:
+        abort(404)
+    repo.delete_entry(entry_id)
+    flash("Life journal entry deleted.", "success")
+    return redirect(url_for("life_journal_home"))
 
 
 def journal_trades_for_date():
@@ -486,6 +655,67 @@ def _normalize_note_heading(text: str) -> str:
         "plan": "Plan",
     }
     return aliases.get(lower, clean.rstrip(":"))
+
+
+def _summarize_life_note(text: Any) -> str:
+    raw = " ".join(str(text or "").replace("\n", " ").split())
+    if not raw:
+        return ""
+    parts = [part.strip(" -") for part in raw.split(".") if part.strip()]
+    if parts:
+        summary = ". ".join(parts[:2]).strip()
+    else:
+        summary = raw.strip()
+    if len(summary) > 180:
+        summary = summary[:177].rstrip() + "..."
+    if summary and not summary.endswith((".", "!", "?")):
+        summary += "."
+    return summary
+
+
+def _life_summary_payload(text: Any, mood: Any = "") -> Dict[str, str]:
+    raw = " ".join(str(text or "").split())
+    if not raw:
+        return {"summary": "", "what_happened": "", "how_i_felt": "", "next_step": ""}
+    note_view = _render_note_sections(str(text or "").strip())
+    sections = {str(item.get("title") or "").strip().lower(): str(item.get("body") or "").strip() for item in note_view.get("sections") or []}
+    sentences = [part.strip() for part in raw.replace("!", ".").replace("?", ".").split(".") if part.strip()]
+    what_happened = (
+        sections.get("what i saw")
+        or sections.get("what happened")
+        or sections.get("context")
+        or (sentences[0] if sentences else raw)
+    )
+    feeling_sentence = next(
+        (
+            sentence
+            for sentence in sentences
+            if any(token in sentence.lower() for token in ("felt", "feeling", "emotion", "grateful", "tired", "happy", "sad", "calm", "stressed", "anxious", "excited"))
+        ),
+        "",
+    )
+    how_i_felt = sections.get("emotion") or sections.get("how i felt") or ""
+    if not how_i_felt:
+        mood_text = str(mood or "").strip()
+        if mood_text and feeling_sentence:
+            how_i_felt = f"{mood_text} - {feeling_sentence}"
+        elif mood_text:
+            how_i_felt = mood_text
+        else:
+            how_i_felt = feeling_sentence
+    next_step = (
+        sections.get("next time")
+        or sections.get("next action")
+        or sections.get("plan")
+        or (sentences[-1] if len(sentences) > 1 else "")
+    )
+    summary = _summarize_life_note(text)
+    return {
+        "summary": summary,
+        "what_happened": what_happened,
+        "how_i_felt": how_i_felt,
+        "next_step": next_step,
+    }
 
 
 def _render_note_sections(text: str) -> Dict[str, Any]:

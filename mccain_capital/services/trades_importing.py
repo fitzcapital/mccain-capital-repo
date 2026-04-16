@@ -505,6 +505,9 @@ def parse_contract_desc(desc: str) -> Dict[str, Any]:
 
     ticker = parts[0].upper()
     exp_raw = parts[1].upper()
+    remainder = [part for part in parts[2:] if not re.fullmatch(r"\[[^\]]+\]", part.strip())]
+    if len(remainder) < 2:
+        return {"ticker": ticker, "expiry": None, "strike": None, "opt_type": ""}
     exp_bits = exp_raw.split("/")
     expiry_iso = None
     try:
@@ -517,9 +520,39 @@ def parse_contract_desc(desc: str) -> Dict[str, Any]:
     except Exception:
         expiry_iso = None
 
-    strike = parse_float(parts[2])
-    opt_type = normalize_opt_type(parts[3])
+    strike = parse_float(remainder[0])
+    opt_type = normalize_opt_type(remainder[1])
     return {"ticker": ticker, "expiry": expiry_iso, "strike": strike, "opt_type": opt_type}
+
+
+def normalize_contract_desc(desc: str) -> str:
+    parsed = parse_contract_desc(desc)
+    ticker = str(parsed.get("ticker") or "").upper()
+    expiry = str(parsed.get("expiry") or "")
+    strike = parsed.get("strike")
+    opt_type = str(parsed.get("opt_type") or "").upper()
+    if ticker and expiry and strike is not None and opt_type:
+        strike_token = f"{float(strike):g}"
+        return f"{ticker}|{expiry}|{strike_token}|{opt_type}"
+    return " ".join((desc or "").upper().split())
+
+
+def normalize_broker_raw_line(raw_line: str) -> str:
+    parsed = parse_broker_line_any(raw_line)
+    if not parsed:
+        return " ".join((raw_line or "").upper().split())
+    trade_date, tm = parse_broker_dt(parsed.get("dt") or "")
+    return "|".join(
+        [
+            normalize_contract_desc(parsed.get("desc") or ""),
+            trade_date or "",
+            tm or "",
+            str(parsed.get("side") or "").upper(),
+            str(int(parsed.get("qty") or 0)),
+            f"{float(parsed.get('price') or 0.0):.4f}",
+            f"{float(parsed.get('fee') or 0.0):.4f}",
+        ]
+    )
 
 
 def parse_broker_line_any(ln: str) -> Optional[Dict[str, Any]]:
@@ -798,7 +831,7 @@ def insert_trades_from_broker_paste_with_report(
     if fills_sorted and fills_sorted[0]["line_no"] != 1:
         warnings.append("Detected out-of-order fills; sorted by datetime before pairing. ✅")
 
-    open_lots: Dict[str, List[Dict[str, Any]]] = {}
+    open_lots: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
     completed: List[Dict[str, Any]] = []
 
     for f in fills_sorted:
@@ -807,36 +840,40 @@ def insert_trades_from_broker_paste_with_report(
         qty = f["qty"]
         price = f["price"]
         fee = f["fee"]
+        lots = open_lots.setdefault(key, {"BUY": [], "SELL": []})
 
         if side == "BUY":
-            open_lots.setdefault(key, []).append(
-                {
-                    "qty": qty,
-                    "entry_price": price,
-                    "entry_time": f["tm"],
-                    "trade_date": f["trade_date"],
-                    "fees": fee,
-                }
-            )
-            continue
-
-        if key not in open_lots or not open_lots[key]:
-            errors.append(f"Line {f['line_no']}: SELL with no matching BUY open lot for {key}")
-            continue
+            close_side = "SELL"
+            open_side = "BUY"
+        else:
+            close_side = "BUY"
+            open_side = "SELL"
 
         remaining = qty
-        while remaining > 0 and open_lots[key]:
-            lot = open_lots[key][0]
-            take = min(remaining, int(lot["qty"]))
+        close_fee_remaining = float(fee)
+        while remaining > 0 and lots[close_side]:
+            lot = lots[close_side][0]
+            lot_qty_before = int(lot["qty"])
+            remaining_before = remaining
+            take = min(remaining_before, lot_qty_before)
             remaining -= take
             lot["qty"] -= take
 
             entry_price = float(lot["entry_price"])
             exit_price = float(price)
-
-            gross_pl = (exit_price - entry_price) * 100.0 * take
-            comm = float(lot["fees"]) + float(fee)
+            entry_fee = (
+                float(lot["fee_remaining"]) * (take / lot_qty_before) if lot_qty_before > 0 else 0.0
+            )
+            close_fee = close_fee_remaining * (take / remaining_before) if remaining_before > 0 else 0.0
+            lot["fee_remaining"] = max(0.0, float(lot["fee_remaining"]) - entry_fee)
+            close_fee_remaining = max(0.0, close_fee_remaining - close_fee)
+            if close_side == "BUY":
+                gross_pl = (exit_price - entry_price) * 100.0 * take
+            else:
+                gross_pl = (entry_price - exit_price) * 100.0 * take
+            comm = entry_fee + close_fee
             net_pl = gross_pl - comm
+            total_spent = abs(entry_price * 100.0 * take)
 
             completed.append(
                 {
@@ -849,24 +886,28 @@ def insert_trades_from_broker_paste_with_report(
                     "entry_price": entry_price,
                     "exit_price": exit_price,
                     "contracts": take,
-                    "total_spent": entry_price * 100.0 * take,
+                    "total_spent": total_spent,
                     "comm": comm,
                     "gross_pl": gross_pl,
                     "net_pl": net_pl,
-                    "result_pct": (
-                        (net_pl / (entry_price * 100.0 * take) * 100.0) if entry_price > 0 else None
-                    ),
+                    "result_pct": (net_pl / total_spent * 100.0) if total_spent > 0 else None,
                     "balance": f.get("balance"),
                     "raw_line": f["raw_line"],
                 }
             )
 
             if lot["qty"] <= 0:
-                open_lots[key].pop(0)
+                lots[close_side].pop(0)
 
         if remaining > 0:
-            errors.append(
-                f"Line {f['line_no']}: SELL qty exceeds open BUY qty for {key} (extra {remaining})"
+            lots[open_side].append(
+                {
+                    "qty": remaining,
+                    "entry_price": price,
+                    "entry_time": f["tm"],
+                    "trade_date": f["trade_date"],
+                    "fee_remaining": close_fee_remaining,
+                }
             )
 
     inserted = 0
@@ -886,7 +927,7 @@ def insert_trades_from_broker_paste_with_report(
             round(float(tr.get("comm") or 0.0), 4),
             round(float(tr.get("gross_pl") or 0.0), 4),
             round(float(tr.get("net_pl") or 0.0), 4),
-            (tr.get("raw_line") or "").strip(),
+            normalize_broker_raw_line(tr.get("raw_line") or ""),
         )
 
     def db_trade_identity(row: Any) -> tuple[Any, ...]:
@@ -903,29 +944,8 @@ def insert_trades_from_broker_paste_with_report(
             round(float(row["comm"] or 0.0), 4),
             round(float(row["gross_pl"] or 0.0), 4),
             round(float(row["net_pl"] or 0.0), 4),
-            (row["raw_line"] or "").strip(),
+            normalize_broker_raw_line(row["raw_line"] or ""),
         )
-
-    derived_start_balance: Optional[float] = None
-    if ending_balance is not None and completed:
-        total_net = sum(float(tr.get("net_pl") or 0.0) for tr in completed)
-        derived_start_balance = float(ending_balance) - total_net
-
-    balance = derived_start_balance
-    if balance is None and completed:
-        first_day = min(str(tr["trade_date"]) for tr in completed)
-        with db() as conn:
-            row = conn.execute(
-                """
-                SELECT balance
-                FROM trades
-                WHERE trade_date < ? AND balance IS NOT NULL
-                ORDER BY trade_date DESC, id DESC
-                LIMIT 1
-                """,
-                (first_day,),
-            ).fetchone()
-        balance = float(row["balance"]) if row and row["balance"] is not None else 50000.0
 
     with db() as conn:
         existing_rows = conn.execute(
@@ -944,6 +964,32 @@ def insert_trades_from_broker_paste_with_report(
                 continue
             to_insert.append(tr)
             existing.add(ident)
+
+        derived_start_balance: Optional[float] = None
+        if ending_balance is not None and to_insert:
+            total_net = sum(float(tr.get("net_pl") or 0.0) for tr in to_insert)
+            derived_start_balance = float(ending_balance) - total_net
+
+        balance = derived_start_balance
+        if balance is None and (to_insert or completed):
+            seed_rows = to_insert or completed
+            first_day = min(str(tr["trade_date"]) for tr in seed_rows)
+            row = conn.execute(
+                """
+                SELECT balance
+                FROM trades
+                WHERE trade_date < ? AND balance IS NOT NULL
+                ORDER BY trade_date DESC, id DESC
+                LIMIT 1
+                """,
+                (first_day,),
+            ).fetchone()
+            balance = float(row["balance"]) if row and row["balance"] is not None else 50000.0
+
+        preview_balance = balance
+        if preview_balance is not None:
+            for tr in to_insert:
+                preview_balance = float(preview_balance) + float(tr.get("net_pl") or 0.0)
 
         if commit:
             conn.execute("BEGIN")
@@ -1015,7 +1061,10 @@ def insert_trades_from_broker_paste_with_report(
         else:
             inserted = len(to_insert)
 
-    open_count = sum(sum(lot["qty"] for lot in lots) for lots in open_lots.values() if lots)
+    open_count = sum(
+        sum(lot["qty"] for side_lots in lots_by_side.values() for lot in side_lots)
+        for lots_by_side in open_lots.values()
+    )
     if open_count:
         warnings.append(
             f"Note: {open_count} contract(s) remain OPEN (unmatched BUY). That’s normal mid-position."
@@ -1025,7 +1074,9 @@ def insert_trades_from_broker_paste_with_report(
 
     import_end_date = max((str(tr["trade_date"]) for tr in completed), default="")
     ledger_ending_balance = None
-    if import_end_date:
+    if import_end_date and to_insert and preview_balance is not None:
+        ledger_ending_balance = float(preview_balance)
+    elif import_end_date:
         with db() as conn:
             row = conn.execute(
                 """

@@ -121,6 +121,7 @@ function initCalendarPreview(root = document) {
   const decisionRiskValue = document.getElementById("dashboardDecisionRiskValue");
   const decisionPlanValue = document.getElementById("dashboardDecisionPlanValue");
   const decisionTradeGateValue = document.getElementById("dashboardDecisionTradeGateValue");
+  const briefCardShell = document.getElementById("dashboardBriefCardShell");
   if (!rows.length || !statusNode || !updatedNode) return;
 
   let freshTimer = null;
@@ -637,14 +638,32 @@ function initCalendarPreview(root = document) {
       decisionRefreshBtn.classList.toggle("is-loading", !!loading);
       decisionRefreshBtn.setAttribute("aria-busy", loading ? "true" : "false");
     };
-    decisionRefreshBtn.addEventListener("click", async () => {
+    const applyBriefHtml = (html) => {
+      if (!briefCardShell || typeof html !== "string" || !html.trim()) return;
+      briefCardShell.innerHTML = html;
+    };
+    const buildEndpoint = (force) => {
+      if (!endpoint) return "";
+      const url = new URL(endpoint, window.location.origin);
+      const pageParams = new URLSearchParams(window.location.search);
+      pageParams.forEach((value, key) => {
+        if (!url.searchParams.has(key)) {
+          url.searchParams.set(key, value);
+        }
+      });
+      if (force) {
+        url.searchParams.set("force", "1");
+      }
+      return url.toString();
+    };
+    const refreshPlanning = async ({ force = false, showLoading = false } = {}) => {
       if (!endpoint || decisionRefreshBtn.disabled) return;
       setRefreshState(true);
-      if (typeof window.showDashboardLoading === "function") {
+      if (showLoading && typeof window.showDashboardLoading === "function") {
         window.showDashboardLoading("Refreshing dashboard plan", "Updating planning and gamma context.");
       }
       try {
-        const response = await fetch(endpoint, {
+        const response = await fetch(buildEndpoint(force), {
           credentials: "same-origin",
           cache: "no-store",
           headers: { "X-Requested-With": "XMLHttpRequest" },
@@ -655,15 +674,22 @@ function initCalendarPreview(root = document) {
         }
         updateDecisionPanel(payload.decision_panel || {});
         updateGammaStrip(payload.market_structure_snapshot || null, payload.dashboard_gamma || null);
+        applyBriefHtml(payload.brief_html || "");
       } catch (_error) {
         // Keep the current planning state visible if the manual refresh fails.
       } finally {
-        if (typeof window.completeDashboardLoading === "function") {
+        if (showLoading && typeof window.completeDashboardLoading === "function") {
           window.completeDashboardLoading();
         }
         setRefreshState(false);
       }
+    };
+    decisionRefreshBtn.addEventListener("click", async () => {
+      void refreshPlanning({ force: true, showLoading: true });
     });
+    window.setTimeout(() => {
+      void refreshPlanning({ force: false, showLoading: false });
+    }, 60);
   }
 })();
 

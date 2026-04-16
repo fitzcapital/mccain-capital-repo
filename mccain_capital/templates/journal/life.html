@@ -1,0 +1,217 @@
+<div class="card pageHero journalHero lifeJournalHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">Life Journal</div>
+        <div class="pageTitleRow">
+          <h2 class="pageTitle">{{ hero_title }}</h2>
+          <details class="inlineHelp">
+            <summary aria-label="Life journal help">?</summary>
+            <div class="helpPopover">Use this for personal life notes, photos, and context that should stay separate from the trading debrief workflow.</div>
+          </details>
+        </div>
+        <div class="summaryLead stack8">{{ hero_blurb }}</div>
+        <div class="workspaceHeroActionBar">
+          <div class="workspaceHeroPriority">
+            <span class="workspaceHeroPriorityLabel">How It Works</span>
+            <span class="workspaceHeroPriorityText">Write the note, attach photos if you want, and the feed stores a compact summary automatically.</span>
+          </div>
+          <div class="actionRow workspaceHeroPrimaryActions">
+            <a class="btn" href="/journal">Trading Journal</a>
+            <a class="btn ctaLink" href="/journal/review/weekly">Weekly Review</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lifeJournalShell">
+  <section class="card controlPanel lifeJournalComposer"><div class="toolbar">
+    <div class="pill">{% if editing_life_entry %}Edit Life Entry{% else %}New Life Entry{% endif %}</div>
+    <div class="summaryLead stack8">Quick capture, family note, health update, travel moment, or anything else you want in your own record.</div>
+    <form method="post" action="{{ form_action }}" enctype="multipart/form-data" class="lifeJournalForm">
+      <div class="lifeJournalFormGrid">
+        <div class="dashboardProjectionField">
+          <label for="lifeJournalDate">Date</label>
+          <input id="lifeJournalDate" class="appDateInput" type="date" name="entry_date" value="{{ form_values.entry_date }}" />
+        </div>
+        <div class="dashboardProjectionField">
+          <label for="lifeJournalCategory">Category</label>
+          <select id="lifeJournalCategory" name="life_category">
+            {% for option in life_category_options %}
+              <option value="{{ option }}" {% if form_values.life_category == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="dashboardProjectionField">
+          <label for="lifeJournalMood">Mood</label>
+          <input id="lifeJournalMood" name="life_mood" placeholder="Calm, tired, excited…" value="{{ form_values.life_mood }}" />
+        </div>
+        <div class="dashboardProjectionField lifeJournalFieldWide">
+          <label for="lifeJournalTitle">Title</label>
+          <input id="lifeJournalTitle" name="life_title" placeholder="What happened or what matters?" value="{{ form_values.life_title }}" />
+        </div>
+        <div class="dashboardProjectionField lifeJournalFieldWide">
+          <label for="lifeJournalNotes">Notes</label>
+          <textarea id="lifeJournalNotes" name="life_notes" rows="8" placeholder="Write freely. The page will keep a short summary for the feed automatically.">{{ form_values.life_notes }}</textarea>
+        </div>
+        <div class="dashboardProjectionField lifeJournalFieldWide">
+          <label for="lifeJournalPhotos">Photos</label>
+          <input id="lifeJournalPhotos" type="file" name="life_photos" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple />
+          <div class="dashboardProjectionHint tiny">Optional. You can attach multiple images.</div>
+          {% if form_values.capture_screenshot_paths %}
+            <div class="lifeJournalExistingPhotos">
+              {% for path in form_values.capture_screenshot_paths %}
+                <a class="trendChip" href="{{ url_for('journal_capture_asset', name=path) }}" target="_blank" rel="noopener">Photo {{ loop.index }}</a>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+        <div class="dashboardProjectionActions">
+          <button class="btn primary" type="submit">{% if editing_life_entry %}Update Life Entry{% else %}Save Life Entry{% endif %}</button>
+          {% if editing_life_entry %}
+            <a class="btn" href="/journal/life">Cancel</a>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </div></section>
+
+  <section class="card controlPanel lifeJournalFilterPanel"><div class="toolbar">
+    <div class="pill">Life Feed</div>
+    <form method="get" action="/journal/life" class="row journalFilterForm">
+      <div class="fieldGrow2">
+        <label for="lifeJournalSearch">Search</label>
+        <input id="lifeJournalSearch" name="q" value="{{ q }}" placeholder="title, notes, mood…" />
+      </div>
+      <div class="fieldGrow1">
+        <label for="lifeJournalFilterDate">Date</label>
+        <input id="lifeJournalFilterDate" class="appDateInput" type="date" name="d" value="{{ d }}" />
+      </div>
+      <div class="actionRow journalFilterActions">
+        <button class="btn" type="submit">Apply</button>
+        <a class="btn" href="/journal/life">Reset</a>
+      </div>
+    </form>
+  </div></section>
+
+  <div class="grid lifeJournalFeed">
+    {% for e in entries %}
+      <details class="card entry lifeJournalEntry">
+        <summary class="lifeJournalEntrySummary">
+          <div class="lifeJournalEntrySummaryMain">
+            <div class="pillRow">
+              <div class="pill">{{ e.get('entry_date_display') or e.get('entry_date') }}</div>
+              <span class="trendChip">{{ e.get('life_category') }}</span>
+              {% if e.get('mood') %}
+                <span class="trendChip">{{ e.get('mood') }}</span>
+              {% endif %}
+            </div>
+            <div class="lifeJournalEntryTitle">{{ e.get('life_title') }}</div>
+            <div class="lifeJournalEntrySummaryText">{{ e.get('life_summary') or 'No summary yet.' }}</div>
+          </div>
+          <div class="journalEntryChevron" aria-hidden="true">+</div>
+        </summary>
+        <div class="lifeJournalEntryBody">
+          {% if e.get('capture_screenshot_hrefs') %}
+            <div class="lifeJournalPhotoGrid">
+              {% for href in e.get('capture_screenshot_hrefs') %}
+                <button
+                  class="lifeJournalPhotoCard"
+                  type="button"
+                  data-journal-preview="{{ href }}"
+                  data-journal-preview-alt="Life journal photo for {{ e.get('life_title') }}"
+                >
+                  <img src="{{ href }}" alt="Life journal photo for {{ e.get('life_title') }}">
+                </button>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="lifeJournalEntryContent">
+            <div class="entryNoteSection journalStructuredSection lifeJournalSummaryCard">
+              <div class="entryNoteHeading">Summary</div>
+              <div class="entryNoteBody">{{ e.get('life_summary') or 'No summary yet.' }}</div>
+            </div>
+            <div class="lifeJournalInsightGrid">
+              <div class="entryNoteSection journalStructuredSection">
+                <div class="entryNoteHeading">What Happened</div>
+                <div class="entryNoteBody">{{ e.get('life_summary_structured', {}).get('what_happened') or '—' }}</div>
+              </div>
+              <div class="entryNoteSection journalStructuredSection">
+                <div class="entryNoteHeading">How I Felt</div>
+                <div class="entryNoteBody">{{ e.get('life_summary_structured', {}).get('how_i_felt') or '—' }}</div>
+              </div>
+              <div class="entryNoteSection journalStructuredSection">
+                <div class="entryNoteHeading">Next Step</div>
+                <div class="entryNoteBody">{{ e.get('life_summary_structured', {}).get('next_step') or '—' }}</div>
+              </div>
+            </div>
+            {% for section in e.get('note_sections') or [] %}
+              <div class="entryNoteSection journalStructuredSection">
+                <div class="entryNoteHeading">{{ section.title }}</div>
+                <div class="entryNoteBody">{{ section.body }}</div>
+              </div>
+            {% endfor %}
+            <div class="entryNotesCard journalEntryNotesCard">
+              <div class="entryNoteHeading">Full Note</div>
+              <div class="entryNoteBody">{{ e.get('note_plain') or e.get('notes') }}</div>
+            </div>
+          </div>
+          <div class="journalEntryFooter">
+            <div class="journalEntryFooterMeta">Updated {{ e.get('updated_at_display') or e.get('updated_at') }}</div>
+            <div class="rightActions">
+              <a class="btn" href="{{ url_for('edit_life_entry', entry_id=e['id']) }}">Edit</a>
+              <form id="del-life-{{ e['id'] }}" method="post" action="{{ url_for('delete_life_entry_route', entry_id=e['id']) }}" class="inlineForm"></form>
+              <button class="btn danger" type="button" onclick="confirmDelete('del-life-{{ e['id'] }}')">Delete</button>
+            </div>
+          </div>
+        </div>
+      </details>
+    {% endfor %}
+
+    {% if not entries %}
+      <div class="card entry"><div class="meta">No life journal entries yet. Start with one note and add photos when they matter.</div></div>
+    {% endif %}
+  </div>
+</div>
+
+<div id="journalPreviewLightbox" class="journalPreviewLightbox" aria-hidden="true">
+  <button class="journalPreviewBackdrop" type="button" aria-label="Close image preview"></button>
+  <div class="journalPreviewDialog" role="dialog" aria-modal="true" aria-label="Life journal image preview">
+    <button class="journalPreviewClose" type="button" aria-label="Close image preview">✕</button>
+    <img id="journalPreviewImage" src="" alt="">
+  </div>
+</div>
+
+<script>
+  (function() {
+    const host = document.getElementById('journalPreviewLightbox');
+    const img = document.getElementById('journalPreviewImage');
+    if (!host || !img) return;
+    const close = () => {
+      host.classList.remove('open');
+      host.setAttribute('aria-hidden', 'true');
+      img.setAttribute('src', '');
+      img.setAttribute('alt', '');
+    };
+    const open = (src, alt) => {
+      if (!src) return;
+      img.setAttribute('src', src);
+      img.setAttribute('alt', alt || 'Life journal image preview');
+      host.classList.add('open');
+      host.setAttribute('aria-hidden', 'false');
+    };
+    document.querySelectorAll('[data-journal-preview]').forEach((node) => {
+      node.addEventListener('click', () => {
+        open(node.getAttribute('data-journal-preview'), node.getAttribute('data-journal-preview-alt'));
+      });
+    });
+    host.querySelectorAll('.journalPreviewBackdrop, .journalPreviewClose').forEach((node) => {
+      node.addEventListener('click', close);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && host.classList.contains('open')) close();
+    });
+  })();
+</script>

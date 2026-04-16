@@ -308,9 +308,10 @@
                 <div class="notifDropdownHeader">
                   <span>Notifications</span>
                   <div class="notifDropdownHeaderMeta">
+                    <span class="notifDropdownLastRead" id="notifDropdownLastRead">Last read just now</span>
                     <span class="notifDropdownCount" id="notifDropdownCount">{{ notif_unread }} unread</span>
                     <button
-                      class="notifRefreshBtn"
+                      class="notifRefreshBtn dashboardDecisionRefreshBtn"
                       id="notifRefreshBtn"
                       type="button"
                       aria-label="Refresh notifications"
@@ -417,6 +418,8 @@
             <div class="menuTitle">Review</div>
             <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
             <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
+            <a class="btn {% if active=='life-journal' %}active{% endif %}" href="/journal/life">Life Journal</a>
+            <a class="btn {% if active=='self-control' %}active{% endif %}" href="/self-control">Self-Control</a>
             <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
             {% if active == 'dashboard' %}
@@ -626,6 +629,8 @@
           <div class="drawerStack">
             <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
             <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
+            <a class="btn {% if active=='life-journal' %}primary{% endif %}" href="/journal/life">Life Journal</a>
+            <a class="btn {% if active=='self-control' %}primary{% endif %}" href="/self-control">Self-Control</a>
             <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='calc' %}primary{% endif %}" href="/calculator">Planner</a>
@@ -839,10 +844,12 @@
     const dropdownEmpty = document.getElementById("notifDropdownEmpty");
     const clearBtn = document.getElementById("notifClearBtn");
     const refreshBtn = document.getElementById("notifRefreshBtn");
+    const dropdownLastRead = document.getElementById("notifDropdownLastRead");
     const COUNT_KEY = "notifUnreadOverride";
     const HIGH_KEY = "notifHighOverride";
     const ITEMS_KEY = "notifItemsOverride";
     const LAST_SEEN_KEY = "marketFeedLastSeen";
+    const LAST_READ_AT_KEY = "notifLastReadAt";
     const BADGE_MAX = 99;
     const SERVER_UNREAD = {{ notif_unread|default(0)|int }};
     const TITLE_BADGE_RE = /^\((?:\d+|\d+\+)\)\s+/;
@@ -920,6 +927,40 @@
       return Number.isNaN(value) ? 0 : value;
     };
 
+    const readLastReadAt = () => {
+      const raw = window.localStorage?.getItem(LAST_READ_AT_KEY) || "";
+      const parsed = raw ? Date.parse(raw) : 0;
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const writeLastReadAt = (iso) => {
+      if (!window.localStorage || !iso) return 0;
+      const parsed = Date.parse(iso);
+      if (Number.isNaN(parsed)) return 0;
+      window.localStorage.setItem(LAST_READ_AT_KEY, new Date(parsed).toISOString());
+      return parsed;
+    };
+
+    const formatLastReadLabel = (timestamp) => {
+      if (!timestamp) return "Last read never";
+      const deltaMs = Math.max(0, Date.now() - timestamp);
+      const deltaSeconds = Math.floor(deltaMs / 1000);
+      if (deltaSeconds < 10) return "Last read just now";
+      if (deltaSeconds < 60) return `Last read ${deltaSeconds}s ago`;
+      const deltaMinutes = Math.floor(deltaSeconds / 60);
+      if (deltaMinutes < 60) return `Last read ${deltaMinutes}m ago`;
+      const deltaHours = Math.floor(deltaMinutes / 60);
+      if (deltaHours < 24) return `Last read ${deltaHours}h ago`;
+      const deltaDays = Math.floor(deltaHours / 24);
+      if (deltaDays < 7) return `Last read ${deltaDays}d ago`;
+      return `Last read ${formatEt(new Date(timestamp).toISOString())}`;
+    };
+
+    const applyLastReadLabel = (timestamp = readLastReadAt()) => {
+      if (!dropdownLastRead) return;
+      dropdownLastRead.textContent = formatLastReadLabel(timestamp);
+    };
+
     const applyBadgeCount = (count) => {
       const safeCount = Math.max(0, Number.isFinite(count) ? count : 0);
       if (badge) {
@@ -993,6 +1034,7 @@
       applyBadgeCount(count);
       const high = window.localStorage?.getItem(HIGH_KEY) === "1";
       badge?.classList.toggle("is-high", high);
+      applyLastReadLabel();
       if (dropdownList) {
         try {
           const raw = window.localStorage?.getItem(ITEMS_KEY);
@@ -1017,6 +1059,7 @@
       if (latestSeenIso) {
         window.localStorage.setItem(LAST_SEEN_KEY, latestSeenIso);
       }
+      writeLastReadAt(new Date().toISOString());
       window.localStorage.setItem(COUNT_KEY, "0");
       window.localStorage.setItem(HIGH_KEY, "0");
       applyOverrides();
@@ -1038,6 +1081,10 @@
       const next = !dropdown.classList.contains("is-open");
       dropdown.classList.toggle("is-open", next);
       bellBtn.setAttribute("aria-expanded", next ? "true" : "false");
+      if (next) {
+        const timestamp = writeLastReadAt(new Date().toISOString());
+        applyLastReadLabel(timestamp);
+      }
     };
 
     if (bellBtn && dropdown) {
@@ -1050,7 +1097,7 @@
       });
     }
     window.addEventListener("storage", (event) => {
-      if (!event.key || ![COUNT_KEY, HIGH_KEY, ITEMS_KEY].includes(event.key)) return;
+      if (!event.key || ![COUNT_KEY, HIGH_KEY, ITEMS_KEY, LAST_READ_AT_KEY].includes(event.key)) return;
       applyOverrides();
     });
     document.addEventListener("click", (event) => {
@@ -1085,6 +1132,7 @@
       notifRefreshInFlight = true;
       const startedAt = Date.now();
       setRefreshState(true);
+      await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
       if (showShellStatus && typeof window.showShellLoading === "function") {
         window.showShellLoading(
           "Refreshing notifications",
@@ -1130,8 +1178,9 @@
       } catch (_err) {
       } finally {
         const elapsed = Date.now() - startedAt;
-        if (showShellStatus && elapsed < 450) {
-          await new Promise((resolve) => window.setTimeout(resolve, 450 - elapsed));
+        const minimumVisibleMs = showShellStatus ? 450 : 650;
+        if (elapsed < minimumVisibleMs) {
+          await new Promise((resolve) => window.setTimeout(resolve, minimumVisibleMs - elapsed));
         }
         notifRefreshInFlight = false;
         setRefreshState(false);
@@ -1147,9 +1196,14 @@
         event.stopPropagation();
         if (refreshBtn.disabled) return;
         const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
-        await seedFromFeed(forceRefresh, true);
+        await seedFromFeed(forceRefresh, false);
       });
     }
+
+    window.setInterval(() => {
+      if (!dropdown?.classList.contains("is-open")) return;
+      applyLastReadLabel();
+    }, 30000);
 
     // Tweet-backed notifications are manual-only. No background polling here.
   })();
@@ -1185,5 +1239,8 @@
   };
 </script>
 <script defer src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}"></script>
+{% if active == 'self-control' %}
+<script defer src="{{ url_for('static', filename='js/self_control_console.js') }}?v={{ static_v }}"></script>
+{% endif %}
 </body>
 </html>

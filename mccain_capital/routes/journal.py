@@ -6,6 +6,18 @@ from mccain_capital.handlers import journal as h
 def register(app):
     app.add_url_rule("/journal", endpoint="journal_home", view_func=h.journal_home)
     app.add_url_rule(
+        "/journal/life",
+        endpoint="life_journal_home",
+        view_func=h.life_journal_home,
+        methods=["GET", "POST"],
+    )
+    app.add_url_rule(
+        "/journal/life/edit/<int:entry_id>",
+        endpoint="edit_life_entry",
+        view_func=h.edit_life_entry,
+        methods=["GET", "POST"],
+    )
+    app.add_url_rule(
         "/journal/trades-for-date",
         endpoint="journal_trades_for_date",
         view_func=h.journal_trades_for_date,
@@ -51,5 +63,11 @@ def register(app):
         "/delete/<int:entry_id>",
         endpoint="delete_entry_route_legacy",
         view_func=h.delete_entry_route,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/journal/life/delete/<int:entry_id>",
+        endpoint="delete_life_entry_route",
+        view_func=h.delete_life_entry_route,
         methods=["POST"],
     )

@@ -370,6 +370,298 @@ def _migration_0008_trade_review_workflow(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS self_control_blocked_sites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain TEXT NOT NULL UNIQUE,
+            category TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            source TEXT NOT NULL DEFAULT 'seeded',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_self_control_blocked_sites_category
+            ON self_control_blocked_sites(category, enabled);
+
+        CREATE TABLE IF NOT EXISTS self_control_presets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            duration_minutes INTEGER NOT NULL,
+            strict_mode INTEGER NOT NULL DEFAULT 0,
+            intent_prompt TEXT NOT NULL DEFAULT '',
+            blocked_categories_json TEXT NOT NULL DEFAULT '[]',
+            blocked_domains_json TEXT NOT NULL DEFAULT '[]',
+            auto_trigger_placeholder TEXT NOT NULL DEFAULT '',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            seeded INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS self_control_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            manual_only INTEGER NOT NULL DEFAULT 1,
+            trigger_type TEXT NOT NULL,
+            trigger_config_json TEXT NOT NULL DEFAULT '{}',
+            action_type TEXT NOT NULL,
+            action_config_json TEXT NOT NULL DEFAULT '{}',
+            require_journal_before_unlock INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS self_control_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            preset_slug TEXT NOT NULL DEFAULT '',
+            label TEXT NOT NULL,
+            intent_note TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL,
+            strict_mode INTEGER NOT NULL DEFAULT 0,
+            started_at TEXT NOT NULL,
+            planned_end_at TEXT NOT NULL,
+            ended_at TEXT NOT NULL DEFAULT '',
+            planned_minutes INTEGER NOT NULL,
+            completed_minutes INTEGER NOT NULL DEFAULT 0,
+            blocked_categories_json TEXT NOT NULL DEFAULT '[]',
+            blocked_domains_json TEXT NOT NULL DEFAULT '[]',
+            source_rule_slug TEXT NOT NULL DEFAULT '',
+            unlock_requirement TEXT NOT NULL DEFAULT '',
+            unlock_satisfied_at TEXT NOT NULL DEFAULT '',
+            cancel_reason TEXT NOT NULL DEFAULT '',
+            override_reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_self_control_sessions_status
+            ON self_control_sessions(status, started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_self_control_sessions_started
+            ON self_control_sessions(started_at DESC);
+
+        CREATE TABLE IF NOT EXISTS self_control_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER,
+            event_type TEXT NOT NULL,
+            event_at TEXT NOT NULL,
+            detail_json TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_self_control_events_session
+            ON self_control_events(session_id, event_at DESC);
+
+        CREATE TABLE IF NOT EXISTS self_control_enforcement_providers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider_type TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            status TEXT NOT NULL,
+            last_checked_at TEXT NOT NULL DEFAULT '',
+            last_error TEXT NOT NULL DEFAULT '',
+            config_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+    now = datetime.now().isoformat(timespec="seconds")
+    blocked_sites = [
+        ("x.com", "Social"),
+        ("twitter.com", "Social"),
+        ("instagram.com", "Social"),
+        ("facebook.com", "Social"),
+        ("discord.com", "Social"),
+        ("youtube.com", "Entertainment"),
+        ("reddit.com", "News / Doomscroll"),
+    ]
+    for domain, category in blocked_sites:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO self_control_blocked_sites (
+              domain, category, enabled, source, created_at, updated_at
+            )
+            VALUES (?, ?, 1, 'seeded', ?, ?)
+            """,
+            (domain, category, now, now),
+        )
+
+    presets = [
+        (
+            "market-open-lock",
+            "Market Open Lock",
+            "Cut off social drift while the opening rotation is still noisy.",
+            60,
+            1,
+            "Protect the open and stop reactive scrolling.",
+            '["Social","News / Doomscroll"]',
+            "[]",
+            "Future auto-trigger when session enters cash open.",
+        ),
+        (
+            "midday-reset",
+            "Midday Reset",
+            "Short recovery block after the first wave of execution.",
+            30,
+            0,
+            "Reset attention before the next trade cluster.",
+            '["Social","Entertainment"]',
+            "[]",
+            "Future auto-trigger after trade-count threshold.",
+        ),
+        (
+            "power-hour-focus",
+            "Power Hour Focus",
+            "Lock back in for the close and avoid re-entry noise.",
+            45,
+            1,
+            "Keep the close clean and deliberate.",
+            '["Social","Random distractions"]',
+            "[]",
+            "Future auto-trigger one hour before close.",
+        ),
+        (
+            "journal-mode",
+            "Journal Mode",
+            "Block scroll loops while writing the debrief.",
+            30,
+            0,
+            "Finish the journal before reopening the noise.",
+            '["Social","Entertainment","Random distractions"]',
+            "[]",
+            "Future trigger after a completed trading session.",
+        ),
+        (
+            "no-scroll-until-close",
+            "No Scroll Until Close",
+            "Carry a hard no-scroll posture through the session.",
+            120,
+            1,
+            "Stay in execution mode until the close is done.",
+            '["Social","News / Doomscroll","Entertainment"]',
+            "[]",
+            "Future all-day discipline mode.",
+        ),
+        (
+            "post-loss-cooldown",
+            "Post-Loss Cooldown",
+            "Create friction after a loss or rule break.",
+            45,
+            1,
+            "No reactive re-entry after a stop-out.",
+            '["Social","Entertainment","News / Doomscroll","Random distractions"]',
+            "[]",
+            "Future auto-trigger from live trade loss hooks.",
+        ),
+    ]
+    for preset in presets:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO self_control_presets (
+              slug, name, description, duration_minutes, strict_mode, intent_prompt,
+              blocked_categories_json, blocked_domains_json, auto_trigger_placeholder,
+              enabled, seeded, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+            """,
+            (*preset, now, now),
+        )
+
+    rules = [
+        (
+            "post-loss-cooldown",
+            "Trigger Post-Loss Cooldown",
+            "Launch cooldown discipline after a losing trade.",
+            1,
+            1,
+            "losing_trade",
+            "{}",
+            "start_preset",
+            '{"preset_slug":"post-loss-cooldown"}',
+            0,
+        ),
+        (
+            "daily-max-loss-lock",
+            "Trigger Lock After Daily Max Loss",
+            "Lock the operator after daily max loss is reached.",
+            1,
+            1,
+            "daily_max_loss",
+            '{"threshold_source":"risk_controls.daily_max_loss"}',
+            "start_duration",
+            '{"duration_minutes":90,"strict_mode":true,"label":"Daily Max Loss Lock"}',
+            0,
+        ),
+        (
+            "require-debrief-before-reenable",
+            "Require Debrief Before Re-Enable",
+            "Cooldown completes only after a trading debrief is logged.",
+            1,
+            1,
+            "cooldown_completion",
+            "{}",
+            "start_duration",
+            '{"duration_minutes":15,"strict_mode":true,"label":"Debrief Gate","unlock_requirement":"trade_debrief_today_after_session_start"}',
+            1,
+        ),
+        (
+            "midday-reset-after-trade-count",
+            "Trigger Midday Reset After X Trades",
+            "Kick off a reset after a configurable number of trades.",
+            1,
+            1,
+            "trade_count",
+            '{"trade_count":5}',
+            "start_preset",
+            '{"preset_slug":"midday-reset"}',
+            0,
+        ),
+        (
+            "prevent-immediate-reentry",
+            "Prevent Immediate Re-Entry After Stop-Out",
+            "Force a short delay after a stop-out before re-entry.",
+            1,
+            1,
+            "stop_out",
+            '{"cooldown_minutes":15}',
+            "start_duration",
+            '{"duration_minutes":15,"strict_mode":true,"label":"Immediate Re-Entry Lock"}',
+            0,
+        ),
+    ]
+    for rule in rules:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO self_control_rules (
+              slug, name, description, enabled, manual_only, trigger_type,
+              trigger_config_json, action_type, action_config_json,
+              require_journal_before_unlock, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (*rule, now, now),
+        )
+
+    providers = [
+        ("browser_extension", "Browser Extension", "not_connected"),
+        ("local_helper", "Local Helper", "not_connected"),
+        ("os_blocker", "OS Blocker", "not_connected"),
+    ]
+    for provider_type, display_name, status in providers:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO self_control_enforcement_providers (
+              provider_type, display_name, status, config_json, created_at, updated_at
+            )
+            VALUES (?, ?, ?, '{}', ?, ?)
+            """,
+            (provider_type, display_name, status, now, now),
+        )
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
@@ -379,6 +671,7 @@ MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0006_trade_review_rich_fields", _migration_0006_trade_review_rich_fields),
     ("0007_trade_source", _migration_0007_trade_source),
     ("0008_trade_review_workflow", _migration_0008_trade_review_workflow),
+    ("0009_self_control_mode", _migration_0009_self_control_mode),
 ]
 
 

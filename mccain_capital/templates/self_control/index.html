@@ -1,0 +1,501 @@
+{% set session_live = active_session and active_session.status in ['active', 'awaiting_journal_unlock'] %}
+<section class="selfControlConsole" data-self-control-console>
+  <header class="card selfControlHero tone-{{ self_control_status.tone }}" id="selfControlHero">
+    <div class="selfControlHeroMain">
+      <div class="pill">Self-Control Mode</div>
+      <h1 class="selfControlTitle">
+        {% if session_live %}
+          Focus Lock Active
+        {% else %}
+          Discipline Mode: Idle
+        {% endif %}
+      </h1>
+      <p class="selfControlLead">
+        {% if session_live %}
+          {{ active_session.label }} is running in {{ active_session.strict_label|lower }} until {{ active_session.planned_end_label }}. Keep execution tight and let the lock absorb noise, re-entry impulse, and drift.
+        {% else %}
+          No lock is active. Start a preset or custom focus window before market noise pulls execution off plan.
+        {% endif %}
+      </p>
+
+      {% if session_live %}
+        <div
+          class="selfHeroLiveStrip"
+          data-self-control-countdown
+          data-session-id="{{ active_session.id }}"
+          data-status="{{ active_session.status }}"
+          data-end-at="{{ active_session.planned_end_at }}"
+        >
+          <div class="selfHeroLiveTime" data-self-control-countdown-value>
+            {% if active_session.status == 'active' %}
+              --:--
+            {% elif active_session.status == 'awaiting_journal_unlock' %}
+              Debrief Required
+            {% else %}
+              Complete
+            {% endif %}
+          </div>
+          <div class="selfHeroLiveMeta">
+            <span>{{ active_session.strict_label }}</span>
+            <span>{{ active_session.blocked_scope_label }}</span>
+            <span>{{ active_session.started_label }} → {{ active_session.planned_end_label }}</span>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="selfControlHeroMeta">
+        <span class="trendChip {{ self_control_status.tone }}">{{ self_control_status.chip }}</span>
+        <span class="trendChip">App-enforced discipline mode</span>
+        <span class="trendChip">
+          {% if providers %}
+            {{ providers[1].status_label if providers|length > 1 else providers[0].status_label }} enforcement
+          {% else %}
+            Enforcement pending
+          {% endif %}
+        </span>
+      </div>
+
+      <div class="selfHeroActionRow">
+        {% if session_live %}
+          <a class="btn primary" href="#selfControlBuilder">View Active Lock</a>
+        {% else %}
+          <a class="btn primary" href="#selfControlPresetBand">Start Preset</a>
+        {% endif %}
+        <a class="btn" href="#selfControlBuilder">Build Custom Lock</a>
+        <a class="btn subtle" href="#selfControlRulesPanel">Review Rules</a>
+      </div>
+    </div>
+
+    <div class="selfControlHeroStats">
+      <div class="selfMetricTile">
+        <div class="selfMetricLabel">Focus Today</div>
+        <div class="selfMetricValue">{{ daily_metrics.focus_time_today_label }}</div>
+      </div>
+      <div class="selfMetricTile">
+        <div class="selfMetricLabel">Completed</div>
+        <div class="selfMetricValue">{{ daily_metrics.sessions_completed_today }}</div>
+      </div>
+      <div class="selfMetricTile">
+        <div class="selfMetricLabel">Streak</div>
+        <div class="selfMetricValue">{{ daily_metrics.current_streak }}d</div>
+      </div>
+      <div class="selfMetricTile">
+        <div class="selfMetricLabel">Compliance</div>
+        <div class="selfMetricValue">{{ daily_metrics.compliance_rate }}%</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="selfControlMainGrid">
+    <section class="card selfBuilderPanel" id="selfControlBuilder">
+      <div class="selfSectionHead selfSectionHead-tight">
+        <div>
+          <div class="pill">Session Builder</div>
+          <h2 class="selfSectionTitle">Build a Focus Window</h2>
+        </div>
+        <span class="trendChip">One active session at a time</span>
+      </div>
+
+      {% if session_live %}
+        <div class="selfActiveLockPanel tone-{{ active_session.status_tone }}">
+          <div class="selfActiveLockTop">
+            <div>
+              <div class="selfActiveLockLabel">{{ active_session.label }}</div>
+              <div class="selfActiveLockMeta">{{ active_session.started_label }} → {{ active_session.planned_end_label }}</div>
+            </div>
+            <span class="trendChip {{ active_session.status_tone }}">{{ active_session.status_label }}</span>
+          </div>
+
+          <div class="selfBuilderFactGrid">
+            <div class="selfBuilderFact">
+              <span>Mode</span>
+              <strong>{{ active_session.strict_label }}</strong>
+            </div>
+            <div class="selfBuilderFact">
+              <span>Scope</span>
+              <strong>{{ active_session.blocked_scope_label }}</strong>
+            </div>
+            <div class="selfBuilderFact">
+              <span>Preset</span>
+              <strong>{{ active_session.preset_slug or 'Custom' }}</strong>
+            </div>
+            <div class="selfBuilderFact">
+              <span>Intent</span>
+              <strong>{{ active_session.intent_note or 'Execution discipline locked in.' }}</strong>
+            </div>
+          </div>
+
+          {% if active_session.blocked_categories or active_session.blocked_domains %}
+            <div class="selfBlockedSummary">
+              {% for category in active_session.blocked_categories %}
+                <span class="trendChip">{{ category }}</span>
+              {% endfor %}
+              {% for domain in active_session.blocked_domains[:6] %}
+                <span class="trendChip">{{ domain }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <div class="selfActionRow">
+            {% if active_session.status == 'awaiting_journal_unlock' %}
+              <a class="btn" href="/journal/new?d={{ active_session.started_at[:10] }}&entry_type=trade_debrief&link_all_day=1&auto_draft=1">Open Trade Debrief</a>
+              <form method="post" action="{{ url_for('self_control_session_acknowledge_unlock') }}">
+                <button class="btn primary" type="submit" {% if not unlock_ready %}disabled{% endif %}>Acknowledge Unlock</button>
+              </form>
+            {% elif not active_session.strict_mode %}
+              <form method="post" action="{{ url_for('self_control_session_cancel') }}" data-self-control-cancel-form>
+                <input type="hidden" name="cancel_reason" value="" data-self-control-cancel-reason>
+                <button class="btn danger" type="button" data-self-control-open-cancel>Cancel Session</button>
+              </form>
+            {% else %}
+              <div class="selfLockNotice">Strict mode is active. Early cancel is disabled and blocked-site edits are locked.</div>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="selfBuilderIntro">
+          <div class="selfBuilderIntroTitle">No active lock running.</div>
+          <p>Pick a lock, set the scope, and start before noise pulls execution off plan.</p>
+        </div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('self_control_session_start') }}" class="selfBuilderForm" data-self-control-start-form>
+        <input type="hidden" name="start_confirmed" value="0" data-self-control-start-confirmed>
+
+        <div class="selfBuilderStepGrid">
+          <section class="selfBuilderStep">
+            <div class="selfBuilderStepHead">
+              <span class="selfStepIndex">01</span>
+              <div>
+                <h3>Mode</h3>
+                <p>Use a preset or build a custom lock.</p>
+              </div>
+            </div>
+            <div class="selfModeCards">
+              <a class="selfModeCard" href="#selfControlPresetBand">
+                <strong>Preset</strong>
+                <span>Use a saved operating profile.</span>
+              </a>
+              <div class="selfModeCard is-active">
+                <strong>Custom</strong>
+                <span>Set duration and scope directly.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="selfBuilderStep">
+            <div class="selfBuilderStepHead">
+              <span class="selfStepIndex">02</span>
+              <div>
+                <h3>Duration</h3>
+                <p>Choose a standard window or set your own.</p>
+              </div>
+            </div>
+            <div class="selfDurationGrid">
+              {% for option in duration_options %}
+                {% if option in [15, 30, 45, 60, 90, 120] %}
+                  <label class="selfDurationOption">
+                    <input type="radio" name="duration_minutes" value="{{ option }}" {% if option == 15 %}checked{% endif %}>
+                    <span>{{ option }}m</span>
+                  </label>
+                {% endif %}
+              {% endfor %}
+              <label class="selfField selfField-compact">
+                <span>Custom</span>
+                <input class="input" type="number" name="custom_duration" min="5" max="480" step="5" placeholder="Custom minutes">
+              </label>
+            </div>
+          </section>
+
+          <section class="selfBuilderStep">
+            <div class="selfBuilderStepHead">
+              <span class="selfStepIndex">03</span>
+              <div>
+                <h3>Block Categories</h3>
+                <p>Choose what to block.</p>
+              </div>
+            </div>
+            <div class="selfBuilderChoiceGrid">
+              {% for category in categories %}
+                <label class="selfChoicePill">
+                  <input type="checkbox" name="blocked_categories" value="{{ category }}" checked>
+                  <span>{{ category }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="selfBuilderStep">
+            <div class="selfBuilderStepHead">
+              <span class="selfStepIndex">04</span>
+              <div>
+                <h3>Enforcement</h3>
+                <p>Set exit policy.</p>
+              </div>
+            </div>
+            <div class="selfEnforcementGrid">
+              <div class="selfModeCard is-active">
+                <strong>Standard</strong>
+                <span>Logged early exit allowed.</span>
+              </div>
+              <label class="selfModeCard selfModeCard-strict">
+                <input type="checkbox" name="strict_mode" value="1">
+                <strong>Strict</strong>
+                <span>No early cancel. Sites locked.</span>
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <div class="selfBuilderFooter">
+          <label class="selfField">
+            <span>Preset Name / Label</span>
+            <input class="input" type="text" name="label" placeholder="Execution Reset" maxlength="80">
+          </label>
+          <label class="selfField selfField-wide">
+            <span>What are you protecting right now?</span>
+            <input class="input" type="text" name="intent_note" placeholder="No revenge trades. Follow the plan only." maxlength="160">
+          </label>
+          <div class="selfBuilderAction">
+            <button class="btn primary" type="button" data-self-control-open-start data-session-label="Custom Focus Session" {% if session_live %}disabled{% endif %}>Start Focus Session</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <aside class="card selfRulesPanel" id="selfControlRulesPanel">
+      <div class="selfSectionHead selfSectionHead-tight">
+        <div>
+          <div class="pill">Automation Layer</div>
+          <h2 class="selfSectionTitle">Discipline Rules</h2>
+        </div>
+      </div>
+
+      <div class="selfRuleSignalGrid">
+        <div class="selfSignalTile">
+          <span>Trades Today</span>
+          <strong>{{ trade_signals.today_trade_count }}</strong>
+        </div>
+        <div class="selfSignalTile">
+          <span>Net P/L</span>
+          <strong>${{ '%.2f'|format(trade_signals.today_net) }}</strong>
+        </div>
+        <div class="selfSignalTile">
+          <span>Daily Max Loss</span>
+          <strong>{% if trade_signals.daily_max_loss_threshold > 0 %}${{ '%.2f'|format(trade_signals.daily_max_loss_threshold) }}{% else %}Unset{% endif %}</strong>
+        </div>
+      </div>
+
+      <div class="selfRuleRows">
+        {% for rule in rules %}
+          <article class="selfRuleRow tone-{{ rule.signal_tone }}">
+            <div class="selfRuleCopy">
+              <div class="selfRuleName">{{ rule.name }}</div>
+              <div class="selfRuleDescription">{{ rule.signal or rule.description }}</div>
+            </div>
+            <div class="selfRuleControls">
+              <span class="trendChip {% if rule.enabled %}positive{% else %}warning{% endif %}">{{ 'Enabled' if rule.enabled else 'Disabled' }}</span>
+              <form method="post" action="{{ url_for('self_control_rule_toggle', slug=rule.slug) }}">
+                <button class="btn subtle" type="submit">{{ 'Disable' if rule.enabled else 'Enable' }}</button>
+              </form>
+              <form method="post" action="{{ url_for('self_control_rule_trigger', slug=rule.slug) }}">
+                <button class="btn" type="submit" {% if not rule.enabled or session_live %}disabled{% endif %}>Trigger</button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </aside>
+  </div>
+
+  <section class="card selfPresetBand" id="selfControlPresetBand">
+    <div class="selfSectionHead selfSectionHead-tight">
+      <div>
+        <div class="pill">Quick Start Presets</div>
+        <h2 class="selfSectionTitle">Preset Locks</h2>
+      </div>
+      <span class="trendChip">Six fast launch profiles</span>
+    </div>
+    <div class="selfPresetGrid">
+      {% for preset in presets %}
+        <article class="selfPresetCard">
+          <div class="selfPresetTop">
+            <div>
+              <div class="selfPresetName">{{ preset.name }}</div>
+              <div class="selfPresetMeta">{{ preset.duration_label }} · {% if preset.strict_mode %}Strict{% else %}Flexible{% endif %}</div>
+            </div>
+            <span class="trendChip">{{ preset.scope.domains|length }} sites</span>
+          </div>
+          <div class="selfPresetDescription">{{ preset.description or 'Focused discipline window for a defined trading context.' }}</div>
+          <div class="selfPresetPreview">{{ preset.scope_preview }}</div>
+          <form method="post" action="{{ url_for('self_control_preset_start', slug=preset.slug) }}" data-self-control-start-form>
+            <input type="hidden" name="start_confirmed" value="0" data-self-control-start-confirmed>
+            <input type="hidden" name="unlock_requirement" value="">
+            <button class="btn primary" type="button" data-self-control-open-start data-session-label="{{ preset.name }}" {% if session_live %}disabled{% endif %}>Launch</button>
+          </form>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="selfControlManagementGrid">
+    <section class="card selfSitesPanel {% if active_session and active_session.strict_mode %}is-locked{% endif %}">
+      <div class="selfSectionHead selfSectionHead-tight">
+        <div>
+          <div class="pill">Blocked Sites</div>
+          <h2 class="selfSectionTitle">Custom Domain Control</h2>
+        </div>
+        {% if active_session and active_session.strict_mode %}
+          <span class="trendChip warning">Locked by strict session</span>
+        {% else %}
+          <span class="trendChip">{{ blocked_site_groups|sum(attribute='enabled_count') }} enabled</span>
+        {% endif %}
+      </div>
+
+      <form method="post" action="{{ url_for('self_control_site_add') }}" class="selfSiteAddForm">
+        <input class="input" type="text" name="domain" placeholder="news.ycombinator.com" {% if active_session and active_session.strict_mode %}disabled{% endif %}>
+        <select class="input" name="category" {% if active_session and active_session.strict_mode %}disabled{% endif %}>
+          {% for category in categories %}
+            <option value="{{ category }}">{{ category }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn primary" type="submit" {% if active_session and active_session.strict_mode %}disabled{% endif %}>Add Site</button>
+      </form>
+
+      <div class="selfSiteGroups">
+        {% for group in blocked_site_groups %}
+          <section class="selfSiteGroup">
+            <div class="selfSiteGroupHead">
+              <div class="selfSiteGroupTitle">{{ group.name }}</div>
+              <span class="trendChip">{{ group.enabled_count }} active</span>
+            </div>
+            {% if group["items"] %}
+              <div class="selfSiteList">
+                {% for site in group["items"] %}
+                  <div class="selfSiteRow">
+                    <div class="selfSiteInfo">
+                      <div class="selfSiteDomain">{{ site.domain }}</div>
+                      {% if site.source != 'seeded' %}
+                        <span class="trendChip">Custom</span>
+                      {% endif %}
+                    </div>
+                    <div class="selfSiteActions">
+                      <form method="post" action="{{ url_for('self_control_site_toggle', site_id=site.id) }}">
+                        <button class="btn subtle" type="submit" {% if active_session and active_session.strict_mode %}disabled{% endif %}>{{ 'Disable' if site.enabled else 'Enable' }}</button>
+                      </form>
+                      <form method="post" action="{{ url_for('self_control_site_delete', site_id=site.id) }}">
+                        <button class="btn danger" type="submit" {% if active_session and active_session.strict_mode %}disabled{% endif %}>Remove</button>
+                      </form>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="selfSiteEmpty">No sites assigned yet.</div>
+            {% endif %}
+          </section>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card selfHistoryPanel">
+      <div class="selfSectionHead selfSectionHead-tight">
+        <div>
+          <div class="pill">Discipline Log</div>
+          <h2 class="selfSectionTitle">Recent Sessions</h2>
+        </div>
+        <span class="trendChip">{{ history|length }} recorded</span>
+      </div>
+
+      {% if history %}
+        <div class="selfHistoryTable">
+          {% for item in history %}
+            <details class="selfHistoryRow tone-{{ item.status_tone }}">
+              <summary class="selfHistorySummaryRow">
+                <span class="selfHistoryCol selfHistoryCol-main">
+                  <strong>{{ item.label }}</strong>
+                  <em>{{ item.started_label }}</em>
+                </span>
+                <span class="selfHistoryCol">{{ item.planned_minutes }}m</span>
+                <span class="selfHistoryCol">{{ item.strict_label }}</span>
+                <span class="selfHistoryCol"><span class="trendChip {{ item.status_tone }}">{{ item.status_label }}</span></span>
+                <span class="selfHistoryCol selfHistoryReview">View</span>
+              </summary>
+              <div class="selfHistoryDetail">
+                <div class="selfHistoryFacts">
+                  <span>Completed {{ item.completed_minutes }}m</span>
+                  <span>{{ item.blocked_domains|length }} sites</span>
+                  {% if item.ended_label != '—' %}<span>Ended {{ item.ended_label }}</span>{% endif %}
+                </div>
+                {% if item.cancel_reason %}
+                  <div class="selfHistoryNote">Cancelled early: {{ item.cancel_reason }}</div>
+                {% elif item.intent_note %}
+                  <div class="selfHistoryNote">{{ item.intent_note }}</div>
+                {% endif %}
+                {% if item.events %}
+                  <div class="selfEventStrip">
+                    {% for event in item.events %}
+                      <span class="trendChip">{{ event.event_type|replace('_', ' ')|title }}</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            </details>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="selfEmptyState">
+          <div class="selfEmptyLead">No discipline history yet.</div>
+          <div class="selfEmptyBody">The first session will create a compact log with completions, overrides, and friction events.</div>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+
+  <details class="card selfProvidersPanel">
+    <summary class="selfProviderSummary">
+      <div>
+        <div class="pill">External Enforcement</div>
+        <h2 class="selfSectionTitle">Provider Readiness</h2>
+      </div>
+      <span class="trendChip">Phase 2 scaffold</span>
+    </summary>
+    <div class="selfProviderList">
+      {% for provider in providers %}
+        <article class="selfProviderCard tone-{{ provider.tone }}">
+          <div class="selfProviderName">{{ provider.display_name }}</div>
+          <div class="selfProviderStatus">{{ provider.status_label }}</div>
+          <div class="selfProviderCopy">Provider wiring is scaffolded. Real browser or OS enforcement can attach here next.</div>
+        </article>
+      {% endfor %}
+    </div>
+  </details>
+
+  <div class="selfControlModal" id="selfControlStartModal" aria-hidden="true">
+    <div class="selfControlModalCard">
+      <div class="pill">Confirm Start</div>
+      <h3>Activate Self-Control Mode</h3>
+      <p data-self-control-start-copy>Start this discipline session and lock the current block scope?</p>
+      <div class="selfActionRow">
+        <button class="btn" type="button" data-self-control-modal-close>Back</button>
+        <button class="btn primary" type="button" data-self-control-confirm-start>Start Session</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="selfControlModal" id="selfControlCancelModal" aria-hidden="true">
+    <div class="selfControlModalCard">
+      <div class="pill">Early Exit</div>
+      <h3>Log the override reason</h3>
+      <p>Cancelling a non-strict session requires a reason so the override stays visible in your discipline log.</p>
+      <label class="selfField">
+        <span>Reason</span>
+        <textarea class="input" rows="4" data-self-control-cancel-text placeholder="Why are you ending this session early?"></textarea>
+      </label>
+      <div class="selfActionRow">
+        <button class="btn" type="button" data-self-control-modal-close>Back</button>
+        <button class="btn danger" type="button" data-self-control-confirm-cancel>Cancel Session</button>
+      </div>
+    </div>
+  </div>
+</section>

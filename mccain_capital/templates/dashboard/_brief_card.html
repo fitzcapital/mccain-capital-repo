@@ -1,0 +1,196 @@
+<div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
+  <div class="pillRow dashboardBriefSignalRow">
+    <div class="pill">Daily Brief</div>
+    <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
+    <span class="dashboardBriefSignalText" title="{{ daily_brief.source_detail }}">{{ daily_brief.source_label }}</span>
+  </div>
+  <div class="supportLead dashboardBriefHeadlineCompact" title="{{ decision_panel.posture_summary or daily_brief.headline }}">{{ decision_panel.posture_summary or daily_brief.headline }}</div>
+    <div class="dashboardBriefFoldBody dashboardBriefDesktopBody">
+      <div class="dashboardBriefStructuredGrid">
+        <div class="dashboardBriefBiasPanel {% if decision_panel.status_tone == 'positive' %}is-positive{% elif decision_panel.status_tone == 'negative' %}is-negative{% else %}is-warning{% endif %}">
+          <div class="dashboardBriefStructuredLabel">Market Condition</div>
+          <div class="dashboardBriefBiasValue">{{ daily_brief.market_condition }}</div>
+          <div class="dashboardBriefBiasText" title="{{ daily_brief.summary }}">{{ daily_brief.summary }}</div>
+        </div>
+        <div class="dashboardBriefQuickItem">
+          <div class="dashboardBriefStructuredLabel">Market Location</div>
+          <div class="dashboardBriefQuickText" title="{{ daily_brief.market_location }}">{{ daily_brief.market_location }}</div>
+        </div>
+        <div class="dashboardBriefQuickItem">
+          <div class="dashboardBriefStructuredLabel">Active Level</div>
+          <div class="dashboardBriefQuickText" title="{{ daily_brief.active_level_display }}">{{ daily_brief.active_level_display }}</div>
+        </div>
+      </div>
+      <div class="dashboardBriefQuickGrid dashboardBriefQuickGrid-secondary">
+        <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
+          <div class="dashboardBriefStructuredLabel">Execution Triggers</div>
+          <div class="dashboardBriefQuickText" title="{{ daily_brief.execution_triggers }}">{{ daily_brief.execution_triggers }}</div>
+        </div>
+        <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
+          <div class="dashboardBriefStructuredLabel">Do Not Do</div>
+          <div class="dashboardBriefQuickText" title="{{ daily_brief.do_not_do }}">{{ daily_brief.do_not_do }}</div>
+        </div>
+      </div>
+    <div class="rightActions dashboardBriefPrimaryActions">
+        <a class="btn" href="/market-pulse">Market Pulse</a>
+        <a class="btn" href="/ops/trading-window">Trade Gate</a>
+        <a class="btn ctaLink" href="/calendar">Open Calendar</a>
+    </div>
+    <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more">
+      <summary>More Info</summary>
+      <div class="dashboardBriefMeta dashboardBriefMetaStrong">
+        {% for level in daily_brief.key_levels %}
+          <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
+        {% endfor %}
+      </div>
+      <div class="dashboardBriefSecondaryGrid">
+        <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+          <div class="tiny muted">Risk Posture</div>
+          <div class="dashboardBriefCopy">{{ daily_brief.risk_posture }}</div>
+        </div>
+        <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+          <div class="tiny muted">Macro Context</div>
+          <div class="dashboardBriefCopy">{{ decision_panel.risk_posture_title }} · {{ decision_panel.risk_posture_detail }}</div>
+        </div>
+      </div>
+      <div class="dashboardBriefMacroList">
+        {% for event in daily_brief.macro_events %}
+          <div class="dashboardBriefMacroItem">
+            <div class="dashboardBriefMacroHeadline">{{ event.headline }}</div>
+            <div class="tiny muted">{{ event.published_label or 'Macro window' }} · {{ event.summary }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </details>
+    <details class="syncDetails stack10" data-dashboard-optional="brief-tune">
+      <summary>Tune Brief</summary>
+      <form method="post" action="/dashboard/brief" class="stack10">
+        <input type="hidden" name="brief_day" value="{{ daily_brief.day_key }}"/>
+        <input type="hidden" name="y" value="{{ dashboard_year }}"/>
+        <input type="hidden" name="m" value="{{ dashboard_month }}"/>
+        <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+        <div class="stack10">
+          <label>Market Condition</label>
+          <textarea name="brief_focus" placeholder="What matters most today?">{{ daily_brief.focus }}</textarea>
+        </div>
+        <div class="stack10">
+          <label>Execution Triggers</label>
+          <textarea name="brief_plan_a" placeholder="Primary setup">{{ daily_brief.plan_a }}</textarea>
+        </div>
+        <div class="stack10">
+          <label>Market Location</label>
+          <textarea name="brief_plan_b" placeholder="Secondary setup">{{ daily_brief.plan_b }}</textarea>
+        </div>
+        <div class="stack10">
+          <label>Do Not Do</label>
+          <textarea name="brief_no_trade" placeholder="When should you stand down?">{{ daily_brief.no_trade }}</textarea>
+        </div>
+        <div class="rightActions">
+          <button class="btn" type="submit" name="brief_reset" value="1">Reset to Live Brief</button>
+          <button class="btn primary" type="submit">Save Brief</button>
+        </div>
+      </form>
+    </details>
+  </div>
+  <details class="dashboardBriefMobileFold">
+    <summary>
+      <div class="dashboardBriefMobileSummary">
+        <div class="dashboardBriefMobileTop">
+          <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% else %}warning{% endif %}">{{ decision_panel.bias }}</span>
+          <span class="trendChip">{{ decision_panel.status }}</span>
+          <span class="trendChip {% if daily_brief.is_tuned %}positive{% endif %}">{{ daily_brief.source_label }}</span>
+          <span class="dashboardBriefMobileChevron">▾</span>
+        </div>
+        <div class="dashboardBriefMobileFocus">{{ decision_panel.posture_summary or daily_brief.focus }}</div>
+        <div class="dashboardBriefMobileMeta">
+          {% for level in daily_brief.key_levels[:2] %}
+            <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
+          {% endfor %}
+        </div>
+        {% if daily_brief.macro_events %}
+          <div class="dashboardBriefMobileRisk">{{ daily_brief.macro_events[0].headline }}</div>
+        {% endif %}
+      </div>
+    </summary>
+    <div class="dashboardBriefFoldBody">
+      <div class="dashboardBriefGrid">
+        <div class="dashboardBriefPanel">
+          <div class="tiny muted">Market Condition</div>
+          <div class="dashboardBriefCopy">{{ daily_brief.market_condition }}</div>
+        </div>
+        <div class="dashboardBriefPanel">
+          <div class="tiny muted">Active Level</div>
+          <div class="dashboardBriefCopy">{{ daily_brief.active_level_display }}</div>
+        </div>
+      </div>
+      <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more-mobile">
+        <summary>More Info</summary>
+        <div class="dashboardBriefSecondaryGrid">
+          <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+            <div class="tiny muted">Market Location</div>
+            <div class="dashboardBriefCopy">{{ daily_brief.market_location }}</div>
+          </div>
+          <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+            <div class="tiny muted">Execution Triggers</div>
+            <div class="dashboardBriefCopy">{{ daily_brief.execution_triggers }}</div>
+          </div>
+          <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+            <div class="tiny muted">Do Not Do</div>
+            <div class="dashboardBriefCopy">{{ daily_brief.do_not_do }}</div>
+          </div>
+          <div class="dashboardBriefPanel dashboardBriefPanelSecondary">
+            <div class="tiny muted">Risk Posture</div>
+            <div class="dashboardBriefCopy">{{ daily_brief.risk_posture }}</div>
+          </div>
+        </div>
+        <div class="dashboardBriefMeta">
+          {% for level in daily_brief.key_levels %}
+            <span class="trendChip {% if level.tone %}{{ level.tone }}{% endif %}">{{ level.label }} {{ level.value }}</span>
+          {% endfor %}
+        </div>
+        <div class="dashboardBriefMacroList">
+          {% for event in daily_brief.macro_events %}
+            <div class="dashboardBriefMacroItem">
+              <div class="dashboardBriefMacroHeadline">{{ event.headline }}</div>
+              <div class="tiny muted">{{ event.published_label or 'Macro window' }} · {{ event.summary }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </details>
+      <div class="rightActions">
+        <a class="btn" href="/market-pulse">Market Pulse</a>
+        <a class="btn" href="/ops/trading-window">Trade Gate</a>
+        <a class="btn ctaLink" href="/calendar">Open Calendar</a>
+      </div>
+      <details class="syncDetails stack10" data-dashboard-optional="brief-tune-mobile">
+        <summary>Tune Brief</summary>
+        <form method="post" action="/dashboard/brief" class="stack10">
+          <input type="hidden" name="brief_day" value="{{ daily_brief.day_key }}"/>
+          <input type="hidden" name="y" value="{{ dashboard_year }}"/>
+          <input type="hidden" name="m" value="{{ dashboard_month }}"/>
+          <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+          <div class="stack10">
+            <label>Market Condition</label>
+            <textarea name="brief_focus" placeholder="What matters most today?">{{ daily_brief.focus }}</textarea>
+          </div>
+          <div class="stack10">
+            <label>Execution Triggers</label>
+            <textarea name="brief_plan_a" placeholder="Primary setup">{{ daily_brief.plan_a }}</textarea>
+          </div>
+          <div class="stack10">
+            <label>Market Location</label>
+            <textarea name="brief_plan_b" placeholder="Secondary setup">{{ daily_brief.plan_b }}</textarea>
+          </div>
+          <div class="stack10">
+            <label>Do Not Do</label>
+            <textarea name="brief_no_trade" placeholder="When should you stand down?">{{ daily_brief.no_trade }}</textarea>
+          </div>
+          <div class="rightActions">
+            <button class="btn" type="submit" name="brief_reset" value="1">Reset to Live Brief</button>
+            <button class="btn primary" type="submit">Save Brief</button>
+          </div>
+        </form>
+      </details>
+    </div>
+  </details>
+</div></div>

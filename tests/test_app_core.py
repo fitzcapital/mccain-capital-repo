@@ -78,6 +78,76 @@ def test_journal_empty_state_uses_consistent_capture_copy(client):
     assert "Quick Capture" in body
 
 
+def test_life_journal_page_renders_personal_workspace(client):
+    resp = client.get("/journal/life", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Life Journal" in body
+    assert "Save Life Entry" in body
+    assert "No life journal entries yet." in body
+
+
+def test_life_journal_save_persists_summary(client):
+    resp = client.post(
+        "/journal/life",
+        data={
+            "entry_date": "2026-04-16",
+            "life_title": "Family dinner",
+            "life_category": "Family",
+            "life_mood": "Grateful",
+            "life_notes": "Had dinner with family after a long week. Good reset and better perspective.",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Life journal entry saved." in body
+    assert "Family dinner" in body
+    assert "Good reset and better perspective." in body
+
+
+def test_life_journal_edit_page_and_update_flow(client):
+    client.post(
+        "/journal/life",
+        data={
+            "entry_date": "2026-04-16",
+            "life_title": "Morning walk",
+            "life_category": "Health",
+            "life_mood": "Calm",
+            "life_notes": "Went for a walk before work. Felt clearer after moving early.",
+        },
+        follow_redirects=True,
+    )
+    from mccain_capital.repositories import journal as journal_repo
+
+    rows = [dict(r) for r in journal_repo.fetch_entries_by_type("life_note")]
+    assert rows
+    entry_id = int(rows[0]["id"])
+
+    edit_page = client.get(f"/journal/life/edit/{entry_id}", follow_redirects=True)
+    assert edit_page.status_code == 200
+    assert "Update Life Entry" in edit_page.get_data(as_text=True)
+
+    resp = client.post(
+        f"/journal/life/edit/{entry_id}",
+        data={
+            "entry_date": "2026-04-16",
+            "life_title": "Morning walk updated",
+            "life_category": "Health",
+            "life_mood": "Focused",
+            "life_notes": "What happened: Went for a longer walk before work.\n\nHow I felt: More focused and less rushed.\n\nNext step: Keep the phone away for the first 30 minutes.",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Life journal entry updated." in body
+    assert "Morning walk updated" in body
+    assert "What Happened" in body
+    assert "How I Felt" in body
+    assert "Next Step" in body
+
+
 def test_strategies_page_uses_playbook_workflow_surface(client):
     resp = client.get("/strategies", follow_redirects=True)
     assert resp.status_code == 200
