@@ -50,6 +50,10 @@ def test_run_migrations_is_idempotent(tmp_path: Path):
             "0006_trade_review_rich_fields",
             "0007_trade_source",
             "0008_trade_review_workflow",
+            "0009_self_control_mode",
+            "0010_trading_blocked_sites",
+            "0011_trading_scope_hardening",
+            "0012_full_trading_host_coverage",
         ]
     finally:
         conn.close()

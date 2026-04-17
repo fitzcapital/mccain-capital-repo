@@ -7,6 +7,7 @@ from mccain_capital import app_core as core
 from mccain_capital import runtime as app_runtime
 from mccain_capital.repositories import journal as journal_repo
 from mccain_capital.repositories import self_control as repo
+from scripts import self_control_pf_blocker
 
 
 @pytest.fixture(autouse=True)
@@ -24,6 +25,10 @@ def test_self_control_page_renders_with_seeded_console(client):
     assert "Blocked Sites" in body
     assert "Market Open Lock" in body
     assert "Post-Loss Cooldown" in body
+    assert "Trading" in body
+    assert "trade.vanquishtrader.com" in body
+    assert "www.tradingview.com" in body
+    assert "tradingview.com" in body
     assert "Browser Extension" in body
 
 
@@ -209,3 +214,31 @@ def test_self_control_page_exports_enforcement_state(client, tmp_path, monkeypat
     assert payload["status"] == "active"
     assert payload["label"] == "Market Open Lock"
     assert "x.com" in payload["blocked_domains"]
+    assert "trade.vanquishtrader.com" in payload["blocked_domains"]
+    assert "tradingview.com" in payload["blocked_domains"]
+    assert "www.tradingview.com" in payload["blocked_domains"]
+
+
+def test_self_control_pf_state_expands_www_domains(tmp_path):
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "active": True,
+                "status": "active",
+                "session_id": 1,
+                "label": "Trading Lock",
+                "strict_mode": True,
+                "planned_end_at": "",
+                "unlock_requirement": "",
+                "blocked_domains": ["tradingview.com", "trade.vanquishtrader.com"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    state = self_control_pf_blocker._parse_state(str(state_path))
+
+    assert "tradingview.com" in state.blocked_domains
+    assert "www.tradingview.com" in state.blocked_domains
+    assert "trade.vanquishtrader.com" in state.blocked_domains
