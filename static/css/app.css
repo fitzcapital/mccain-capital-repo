@@ -19428,6 +19428,535 @@ body[data-theme="cosmic-flare"] .page-dashboard .summaryStat.dashboardConsistenc
   letter-spacing:-.028em;
 }
 
+/* MGP refinement pass:
+   tighten hierarchy, reduce compositor-heavy effects, and keep glow only on live/active/critical states. */
+body[data-theme="galaxy"]{
+  --mgp-bg-base:#050914;
+  --mgp-surface-1:#0c1422;
+  --mgp-surface-2:#111b2b;
+  --mgp-surface-3:#172335;
+  --mgp-border-soft:rgba(124, 153, 196, .14);
+  --mgp-border-strong:rgba(145, 176, 221, .22);
+  --mgp-text-high:#edf4ff;
+  --mgp-text-mid:rgba(219, 230, 246, .82);
+  --mgp-text-low:rgba(181, 196, 220, .64);
+  --mgp-shadow-1:0 6px 16px rgba(2, 7, 16, .18);
+  --mgp-shadow-2:0 10px 22px rgba(2, 7, 16, .22);
+  background:
+    radial-gradient(960px 520px at 14% -8%, rgba(70, 120, 204, .14), transparent 60%),
+    radial-gradient(760px 420px at 88% 0%, rgba(68, 158, 216, .10), transparent 58%),
+    linear-gradient(180deg, #040811 0%, #070d17 46%, #04070f 100%) !important;
+  background-color:var(--mgp-bg-base) !important;
+}
+
+body[data-theme="galaxy"] .topbar,
+body[data-theme="galaxy"] .drawer,
+body[data-theme="galaxy"] .quickPanel,
+body[data-theme="galaxy"] .moreMenu,
+body[data-theme="galaxy"] .mobileDock,
+body[data-theme="galaxy"] .clockPill{
+  border-color:var(--mgp-border-soft) !important;
+  background:
+    linear-gradient(180deg, rgba(20, 31, 48, .96), rgba(11, 18, 30, .98)) !important;
+  box-shadow:var(--mgp-shadow-1) !important;
+}
+
+body[data-theme="galaxy"] .card,
+body[data-theme="galaxy"] .stat,
+body[data-theme="galaxy"] .metric,
+body[data-theme="galaxy"] .insightCard,
+body[data-theme="galaxy"] .showcaseCard,
+body[data-theme="galaxy"] .page-dashboard .dashboardTapeMonitor,
+body[data-theme="galaxy"] .page-dashboard .dashboardSnapshotCard,
+body[data-theme="galaxy"] .page-market-pulse .marketPulseSection,
+body[data-theme="galaxy"] .page-market-pulse .marketPulseFold,
+body[data-theme="galaxy"] .page-market-pulse .marketPulseExecutionHeroPanel{
+  border-color:var(--mgp-border-soft) !important;
+  background:
+    linear-gradient(180deg, rgba(20, 29, 45, .98), rgba(13, 20, 32, .99)) !important;
+  box-shadow:var(--mgp-shadow-1) !important;
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardHero,
+body[data-theme="galaxy"] .page-dashboard .dashboardPriorityCard,
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeCard,
+body[data-theme="galaxy"] .page-self-control .selfControlHero,
+body[data-theme="galaxy"] .page-self-control .selfBuilderPanel,
+body[data-theme="galaxy"] .page-self-control .selfRulesPanel,
+body[data-theme="galaxy"] .page-self-control .selfPresetBand,
+body[data-theme="galaxy"] .page-ops .pageHero,
+body[data-theme="galaxy"] .page-ops .opsCommandDeck{
+  border-color:var(--mgp-border-strong) !important;
+  background:
+    linear-gradient(180deg, rgba(24, 36, 54, .98), rgba(15, 23, 35, .99)) !important;
+  box-shadow:var(--mgp-shadow-2) !important;
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardSnapshotCard,
+body[data-theme="galaxy"] .selfMetricTile,
+body[data-theme="galaxy"] .selfSignalTile,
+body[data-theme="galaxy"] .selfBuilderFact,
+body[data-theme="galaxy"] .selfBuilderIntro,
+body[data-theme="galaxy"] .selfBuilderStep,
+body[data-theme="galaxy"] .selfRuleRow,
+body[data-theme="galaxy"] .selfPresetCard,
+body[data-theme="galaxy"] .selfSiteGroup,
+body[data-theme="galaxy"] .selfProviderCard,
+body[data-theme="galaxy"] .selfHistoryRow,
+body[data-theme="galaxy"] .statusBadge,
+body[data-theme="galaxy"] .page-ops .opsConsoleCard,
+body[data-theme="galaxy"] .page-ops .supportCard,
+body[data-theme="galaxy"] .page-ops .subtleCard{
+  background:
+    linear-gradient(180deg, rgba(18, 27, 42, .96), rgba(13, 19, 30, .98)) !important;
+  border-color:rgba(124, 153, 196, .12) !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="galaxy"] .card,
+body[data-theme="galaxy"] .btn,
+body[data-theme="galaxy"] .statusBadge,
+body[data-theme="galaxy"] .selfModeCard,
+body[data-theme="galaxy"] .selfDurationOption,
+body[data-theme="galaxy"] .selfChoicePill,
+body[data-theme="galaxy"] .selfRuleRow,
+body[data-theme="galaxy"] .selfPresetCard,
+body[data-theme="galaxy"] .dashboardSnapshotCard,
+body[data-theme="galaxy"] .dashboardCoreTapeStat{
+  transition:
+    transform .14s ease,
+    border-color .14s ease,
+    background-color .14s ease,
+    box-shadow .14s ease;
+}
+
+body[data-theme="galaxy"] .card:hover,
+body[data-theme="galaxy"] .selfRuleRow:hover,
+body[data-theme="galaxy"] .selfPresetCard:hover,
+body[data-theme="galaxy"] .dashboardSnapshotCard:hover,
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeStat:hover{
+  transform:translateY(-1px);
+  border-color:rgba(157, 187, 230, .22) !important;
+  box-shadow:0 10px 20px rgba(3, 9, 18, .18) !important;
+}
+
+body[data-theme="galaxy"] .btn{
+  min-height:36px;
+  padding:8px 12px;
+  border-color:rgba(138, 165, 205, .16) !important;
+  background:linear-gradient(180deg, rgba(23, 33, 48, .98), rgba(15, 22, 34, .98)) !important;
+}
+
+body[data-theme="galaxy"] .btn:hover{
+  transform:translateY(-1px);
+  border-color:rgba(166, 193, 232, .24) !important;
+  box-shadow:0 8px 16px rgba(3, 9, 18, .16) !important;
+}
+
+body[data-theme="galaxy"] .btn.primary,
+body[data-theme="galaxy"] .btn.active,
+body[data-theme="galaxy"] .pill,
+body[data-theme="galaxy"] .clockPill,
+body[data-theme="galaxy"] .themeToggle{
+  border-color:rgba(120, 171, 232, .22) !important;
+  background:linear-gradient(180deg, rgba(29, 44, 68, .98), rgba(18, 28, 44, .98)) !important;
+  color:var(--mgp-text-high) !important;
+}
+
+body[data-theme="galaxy"] .toolbar,
+body[data-theme="galaxy"] .card > .toolbar,
+body[data-theme="galaxy"] .supportCard > .toolbar,
+body[data-theme="galaxy"] .showcaseCard > .toolbar,
+body[data-theme="galaxy"] .pageHero > .toolbar,
+body[data-theme="galaxy"] .workspaceHero > .toolbar{
+  gap:8px;
+}
+
+body[data-theme="galaxy"] .pageHero .toolbar,
+body[data-theme="galaxy"] .heroCard > .toolbar,
+body[data-theme="galaxy"] .primaryCard > .toolbar,
+body[data-theme="galaxy"] .supportCard > .toolbar,
+body[data-theme="galaxy"] .page-dashboard .dashboardPriorityCard .toolbar{
+  padding:12px 14px;
+}
+
+body[data-theme="galaxy"] .pageHero .pageTitle,
+body[data-theme="galaxy"] .pageTitle{
+  color:var(--mgp-text-high);
+  letter-spacing:-.03em;
+}
+
+body[data-theme="galaxy"] .pageSub,
+body[data-theme="galaxy"] .pageHero .pageSub,
+body[data-theme="galaxy"] .summaryLead,
+body[data-theme="galaxy"] .workspaceSectionLead,
+body[data-theme="galaxy"] .supportBody{
+  color:var(--mgp-text-low);
+  line-height:1.34;
+}
+
+body[data-theme="galaxy"] .supportLead{
+  color:var(--mgp-text-mid);
+  line-height:1.12;
+}
+
+body[data-theme="galaxy"] .statusBadgeLabel,
+body[data-theme="galaxy"] .dashboardSnapshotLabel,
+body[data-theme="galaxy"] .selfMetricLabel,
+body[data-theme="galaxy"] .selfField > span,
+body[data-theme="galaxy"] .selfBuilderStepHead p,
+body[data-theme="galaxy"] .selfPresetDescription,
+body[data-theme="galaxy"] .selfPresetPreview,
+body[data-theme="galaxy"] .selfRuleDescription{
+  color:var(--mgp-text-low) !important;
+}
+
+body[data-theme="galaxy"] .glow-green,
+body[data-theme="galaxy"] .glow-red,
+body[data-theme="galaxy"] [class*="glow-"],
+body[data-theme="galaxy"] .dashboardCoreTapeStat .marketMiniSparkEnd,
+body[data-theme="galaxy"] .dashboardCoreTapeStat .marketMiniSpark,
+body[data-theme="galaxy"] .marketMiniSparkLine,
+body[data-theme="galaxy"] .marketMiniSparkEnd{
+  text-shadow:none !important;
+  filter:none !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal{
+  padding:10px 12px 12px;
+  border-color:rgba(101, 146, 213, .22) !important;
+  background:linear-gradient(180deg, rgba(25, 36, 55, .98), rgba(15, 22, 34, .99)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.015),
+    0 0 12px rgba(76, 140, 224, .12) !important;
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeRow{
+  gap:10px;
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat{
+  min-height:184px;
+  gap:6px;
+  padding:9px 10px;
+  border-radius:12px;
+  border-color:rgba(118, 144, 183, .12) !important;
+  background:linear-gradient(180deg, rgba(17, 25, 38, .98), rgba(12, 18, 28, .98)) !important;
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardTapeSparkBand::after,
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat .marketMiniSparkEnd{
+  display:none !important;
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardLivePulse.is-live,
+body[data-theme="galaxy"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .liveTapeBadge{
+  box-shadow:0 0 10px rgba(88, 177, 231, .12);
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardSnapshotBar{
+  gap:6px;
+  margin-bottom:10px;
+}
+
+body[data-theme="galaxy"] .page-dashboard .dashboardSnapshotCard{
+  gap:2px;
+  padding:8px 10px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfControlConsole{
+  gap:12px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfControlHero,
+body[data-theme="galaxy"] .page-self-control .selfBuilderPanel,
+body[data-theme="galaxy"] .page-self-control .selfRulesPanel,
+body[data-theme="galaxy"] .page-self-control .selfPresetBand,
+body[data-theme="galaxy"] .page-self-control .selfHistoryPanel,
+body[data-theme="galaxy"] .page-self-control .selfSitesPanel,
+body[data-theme="galaxy"] .page-self-control .selfProvidersPanel{
+  padding:14px 15px;
+  border-radius:22px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfControlHero,
+body[data-theme="galaxy"] .page-self-control .selfControlMainGrid,
+body[data-theme="galaxy"] .page-self-control .selfControlManagementGrid{
+  gap:14px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfControlTitle{
+  margin:5px 0 4px;
+  font-size:32px;
+  font-weight:650;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfControlLead{
+  font-size:13px;
+  line-height:1.24;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfControlHeroMeta,
+body[data-theme="galaxy"] .page-self-control .selfHeroActionRow{
+  gap:6px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfControlHeroMeta{
+  margin-top:8px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfHeroActionRow{
+  margin-top:10px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfHeroLiveStrip,
+body[data-theme="galaxy"] .page-self-control .selfActiveLockPanel{
+  gap:6px;
+  padding:10px 12px;
+  border-color:rgba(106, 180, 228, .24) !important;
+  background:linear-gradient(180deg, rgba(22, 35, 52, .98), rgba(14, 22, 33, .98)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.02),
+    0 0 12px rgba(92, 154, 226, .12) !important;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfHeroLiveTime{
+  font-size:36px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfHeroLiveMeta{
+  gap:6px;
+  font-size:10px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfMetricTile,
+body[data-theme="galaxy"] .page-self-control .selfSignalTile{
+  padding:10px 11px;
+  border-radius:14px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfMetricValue{
+  margin-top:4px;
+  font-size:24px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfSectionHead-tight{
+  margin-bottom:10px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfSectionTitle{
+  font-size:20px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfBuilderForm{
+  gap:10px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfBuilderStepGrid{
+  gap:8px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfBuilderStep{
+  padding:12px 14px;
+  border-radius:16px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfBuilderStepHead{
+  gap:8px;
+  margin-bottom:8px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfBuilderStepHead h3{
+  font-size:16px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfStepIndex{
+  width:24px;
+  height:24px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfModeCards,
+body[data-theme="galaxy"] .page-self-control .selfEnforcementGrid,
+body[data-theme="galaxy"] .page-self-control .selfBuilderChoiceGrid,
+body[data-theme="galaxy"] .page-self-control .selfDurationGrid,
+body[data-theme="galaxy"] .page-self-control .selfRuleSignalGrid,
+body[data-theme="galaxy"] .page-self-control .selfPresetGrid,
+body[data-theme="galaxy"] .page-self-control .selfBuilderFactGrid{
+  gap:6px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfModeCard{
+  padding:10px 11px;
+  border-radius:13px;
+  background:linear-gradient(180deg, rgba(17, 26, 40, .98), rgba(12, 18, 29, .98)) !important;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfModeCard.is-active,
+body[data-theme="galaxy"] .page-self-control .selfModeCard-strict:has(input:checked),
+body[data-theme="galaxy"] .page-self-control .selfDurationOption:has(input:checked),
+body[data-theme="galaxy"] .page-self-control .selfChoicePill:has(input:checked){
+  border-color:rgba(135, 172, 224, .28) !important;
+  background:linear-gradient(180deg, rgba(26, 39, 58, .98), rgba(17, 26, 40, .98)) !important;
+  box-shadow:inset 0 0 0 1px rgba(128, 171, 224, .08) !important;
+  transform:none;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfModeCard::after,
+body[data-theme="galaxy"] .page-self-control .selfDurationOption::after,
+body[data-theme="galaxy"] .page-self-control .selfChoicePill::after{
+  top:7px;
+  right:7px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfDurationOption,
+body[data-theme="galaxy"] .page-self-control .selfChoicePill{
+  min-height:36px;
+  padding:7px 10px;
+  border-radius:13px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfBuilderFooter{
+  gap:6px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfRuleRows,
+body[data-theme="galaxy"] .page-self-control .selfProviderList,
+body[data-theme="galaxy"] .page-self-control .selfSiteGroups,
+body[data-theme="galaxy"] .page-self-control .selfHistoryTable{
+  gap:6px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfRuleRow{
+  grid-template-columns:minmax(0, 1fr) auto;
+  padding:8px 10px;
+  border-radius:12px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfRuleName{
+  font-size:13px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfRuleDescription{
+  margin-top:1px;
+  font-size:10px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfRuleControls,
+body[data-theme="galaxy"] .page-self-control .selfSiteActions{
+  gap:4px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfRuleControls .btn{
+  min-height:28px;
+  padding-inline:9px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfPresetCard{
+  padding:11px 12px;
+  border-radius:14px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfPresetTop{
+  gap:8px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfPresetName{
+  font-size:16px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfPresetMeta{
+  font-size:11px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfPresetDescription,
+body[data-theme="galaxy"] .page-self-control .selfPresetPreview{
+  margin-top:3px;
+  font-size:11px;
+  line-height:1.16;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfPresetPreview{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfPresetCard .btn{
+  margin-top:8px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfSiteAddForm{
+  gap:6px;
+  margin-bottom:10px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfHistorySummaryRow{
+  padding:9px 11px;
+}
+
+body[data-theme="galaxy"] .page-self-control .selfHistoryDetail{
+  gap:6px;
+  padding:0 11px 9px;
+}
+
+body[data-theme="galaxy"] .page-ops .pageHero,
+body[data-theme="galaxy"] .page-ops .opsCommandDeck,
+body[data-theme="galaxy"] .page-ops .opsConsoleCard,
+body[data-theme="galaxy"] .page-ops .supportCard,
+body[data-theme="galaxy"] .page-ops .subtleCard{
+  background:
+    linear-gradient(180deg, rgba(22, 33, 49, .98), rgba(14, 21, 32, .99)) !important;
+}
+
+body[data-theme="galaxy"] .page-ops .opsShell{
+  align-items:start;
+  gap:14px;
+}
+
+body[data-theme="galaxy"] .page-ops .opsStatusStrip{
+  gap:6px;
+}
+
+body[data-theme="galaxy"] .page-ops .statusBadge{
+  padding:8px 10px;
+  border-radius:12px;
+}
+
+body[data-theme="galaxy"] .page-ops .statusBadge.is-critical{
+  border-color:rgba(228, 101, 120, .28) !important;
+  background:linear-gradient(180deg, rgba(64, 28, 36, .96), rgba(39, 18, 24, .98)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.02),
+    0 0 12px rgba(228, 101, 120, .12) !important;
+}
+
+body[data-theme="galaxy"] .page-ops .opsCommandDeck .toolbar,
+body[data-theme="galaxy"] .page-ops .opsConsoleCard .toolbar{
+  gap:8px;
+}
+
+@media (max-width: 760px){
+  body[data-theme="galaxy"] .page-self-control .selfControlHero,
+  body[data-theme="galaxy"] .page-self-control .selfBuilderPanel,
+  body[data-theme="galaxy"] .page-self-control .selfRulesPanel,
+  body[data-theme="galaxy"] .page-self-control .selfPresetBand,
+  body[data-theme="galaxy"] .page-self-control .selfHistoryPanel,
+  body[data-theme="galaxy"] .page-self-control .selfSitesPanel,
+  body[data-theme="galaxy"] .page-self-control .selfProvidersPanel{
+    padding:13px;
+    border-radius:18px;
+  }
+
+  body[data-theme="galaxy"] .page-self-control .selfControlTitle{
+    font-size:28px;
+  }
+
+  body[data-theme="galaxy"] .page-self-control .selfHeroLiveTime{
+    font-size:32px;
+  }
+}
+
 .page-trades .pageHero .summaryLead,
 .page-analytics .pageHero .summaryLead,
 .page-analytics .analyticsSectionLead,
