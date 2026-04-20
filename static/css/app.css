@@ -5626,11 +5626,13 @@ body{
     padding:8px;
     margin-bottom:8px;
     display:grid;
-    grid-template-columns:1fr;
+    grid-template-columns:minmax(0, 1fr) auto;
     gap:8px;
     border-radius:14px;
   }
   .brand{
+    grid-column:1;
+    grid-row:1;
     width:100%;
     flex:1 1 auto;
   }
@@ -5646,6 +5648,7 @@ body{
         flex:1 1 auto;
       }
   .topRight{
+    grid-column:1 / -1;
     width:100%;
     display:grid;
     grid-template-columns:1fr;
@@ -5673,7 +5676,7 @@ body{
   }
   .statusRow{
     display:grid;
-    grid-template-columns:1fr;
+    grid-template-columns:minmax(0, 1fr) auto;
     gap:8px;
     justify-content:stretch;
   }
@@ -5696,6 +5699,7 @@ body{
   }
   .topNoticePill,
   .tradingWindowPillGroup{
+    grid-column:1 / -1;
     max-width:none;
     width:100%;
   }
@@ -5708,6 +5712,35 @@ body{
   .tradingWindowPill{
     max-width:none;
     width:100%;
+  }
+  .notifBell{
+    align-self:stretch;
+    justify-self:end;
+    margin-left:0;
+  }
+  .notifBellButton{
+    width:42px;
+    height:42px;
+    border-radius:12px;
+  }
+  .notifDropdown{
+    position:fixed;
+    top:72px;
+    right:max(8px, env(safe-area-inset-right));
+    left:max(8px, env(safe-area-inset-left));
+    width:auto;
+    max-height:calc(100dvh - 92px);
+    overflow:hidden;
+  }
+  .notifDropdownList{
+    max-height:min(54vh, 360px);
+    overflow:auto;
+  }
+  #menuToggleBtn.hamburger{
+    grid-column:2;
+    grid-row:1;
+    justify-self:end;
+    align-self:center;
   }
   .tradingWindowPillAction{
     width:42px;
@@ -22229,6 +22262,43 @@ html[data-font-mode="hand"] body .dashboardProjectionForm .dashboardProjectionHi
   .topbar{
     gap:10px;
     padding:10px 11px;
+  }
+
+  .topRight,
+  .headerInfoCluster,
+  .statusRow{
+    width:100%;
+  }
+
+  .statusRow{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) auto;
+    align-items:stretch;
+    gap:8px;
+  }
+
+  .topNoticePill,
+  .tradingWindowPillGroup{
+    grid-column:1 / -1;
+    max-width:none;
+    width:100%;
+  }
+
+  #marketStatusClock{
+    width:100%;
+    min-width:0;
+  }
+
+  .notifBell{
+    align-self:stretch;
+    justify-self:end;
+    margin-left:0;
+  }
+
+  .notifBellButton{
+    width:42px;
+    height:42px;
+    border-radius:12px;
   }
 
   .pageHero .toolbar,
