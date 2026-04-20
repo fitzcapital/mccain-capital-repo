@@ -15,6 +15,7 @@
 
 McCain Capital is a Flask + SQLite application that centralizes your trading workflow in one place.
 It combines trade logging, journal discipline, risk controls, analytics, and planning tools into a single operating surface.
+The current shell uses the McCain Capital orbital logo across the app chrome, docs, favicon, and mobile icon assets.
 
 ## 👤 Who It’s For
 
@@ -29,14 +30,25 @@ It combines trade logging, journal discipline, risk controls, analytics, and pla
 - 📊 **Dashboard Control Center**: live today/MTD/YTD metrics, calendar heatmap, projections
 - 📋 **Trades Workspace**: manual entry, table paste, broker statement upload/import, review tags
 - 📝 **Journal Workspace**: daily entries, linked-trade context, weekly review workflows
+- 🧭 **Life Journal**: private personal notes, photo attachments, mood/category tags, structured summaries, and searchable recent-note feed
 - 📈 **Analytics Workspace**: setup/session/hour edge diagnostics, expectancy + drawdown depth
+- 🛰️ **Market Pulse**: feed-backed notification history, execution context, gamma/regime snapshots, and compact market status
 - 🧮 **Calculator**: pre-trade stop/target/risk-reward planning
 - 🎯 **Goals + Payouts**: discipline and payout-readiness tracking
+- 🎨 **Polished App Shell**: current orbital logo, New Galaxy theme depth, compact mobile header, and viewport-safe notification bell/dropdown
 - 🛡️ **Guardrails + Auth**: risk lockouts and access control support
 - 🔔 **Operational Notifications**:
   - Sync success/fail
   - Guardrail lock/active state
   - Auto-sync missed/skipped warnings
+
+### Recent UI Details
+
+- The compact notification bell now stays aligned with the market clock on mobile and narrow tablet widths.
+- The notification dropdown uses safe viewport insets and internal scrolling on phone-sized screens.
+- The Life Journal page now uses a two-pane capture/feed layout on desktop and a single-column flow on compact screens.
+- Life Journal entries show private-context chips, photo note support, auto-summary cards, structured "What Happened / How I Felt / Next Step" sections, and full-note expansion.
+- The New Galaxy theme received a lighter compositor pass with static depth, cobalt/violet accents, and lower blur usage.
 
 ---
 
@@ -76,6 +88,10 @@ Browser request → Route → Handler → Service → Repository/SQLite → Temp
 - Shared system status + alert strip centralized in:
   - `mccain_capital/services/ui.py`
   - `mccain_capital/templates/base.html`
+- Life Journal capture/feed UI lives in:
+  - `mccain_capital/templates/journal/life.html`
+  - `mccain_capital/services/journal.py`
+  - `mccain_capital/repositories/journal.py`
 
 ---
 

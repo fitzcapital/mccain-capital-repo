@@ -7506,6 +7506,114 @@ body{
         inset 0 0 18px rgba(255,110,178,.12) !important;
     }
 
+    /* New Galaxy purple-blue pop pass: static depth, balanced violet/cobalt accents, lower compositor cost. */
+    body[data-theme="new-galaxy"]{
+      --accent-rgb:136,166,255;
+      --accent-soft-rgb:176,104,255;
+      --panel:#0a0d24;
+      --panel2:#070616;
+      --surface:#141a42;
+      --surface2:#1e285f;
+      background:
+        radial-gradient(1040px 640px at 16% -6%, rgba(142,91,255,.28), transparent 60%),
+        radial-gradient(940px 560px at 82% 2%, rgba(72,118,255,.26), transparent 58%),
+        radial-gradient(820px 540px at 48% 32%, rgba(91,201,255,.14), transparent 64%),
+        radial-gradient(900px 620px at 68% 86%, rgba(173,92,255,.14), transparent 62%),
+        linear-gradient(180deg, #03050f 0%, #081027 36%, #100a25 68%, #040712 100%);
+      background-color:#040712;
+    }
+
+    body[data-theme="new-galaxy"]::before{
+      background:
+        radial-gradient(2px 2px at 6% 11%, rgba(255,255,255,.86), transparent 70%),
+        radial-gradient(1.4px 1.4px at 12% 29%, rgba(188,210,255,.78), transparent 72%),
+        radial-gradient(1.8px 1.8px at 20% 14%, rgba(195,142,255,.70), transparent 70%),
+        radial-gradient(1.5px 1.5px at 31% 24%, rgba(177,222,255,.66), transparent 72%),
+        radial-gradient(2px 2px at 43% 9%, rgba(246,231,255,.78), transparent 70%),
+        radial-gradient(1.6px 1.6px at 55% 21%, rgba(144,181,255,.72), transparent 72%),
+        radial-gradient(1.9px 1.9px at 71% 11%, rgba(255,255,255,.82), transparent 70%),
+        radial-gradient(1.4px 1.4px at 84% 25%, rgba(135,231,255,.64), transparent 72%),
+        radial-gradient(820px 300px at 19% 7%, rgba(143,92,255,.19), transparent 74%),
+        radial-gradient(780px 320px at 72% 14%, rgba(84,142,255,.18), transparent 75%),
+        radial-gradient(880px 420px at 55% 38%, rgba(80,214,255,.11), transparent 74%);
+      opacity:.86;
+      animation:none;
+    }
+
+    body[data-theme="new-galaxy"]::after{
+      background:
+        radial-gradient(540px 320px at 23% 25%, rgba(143,92,255,.16), transparent 74%),
+        radial-gradient(580px 360px at 68% 20%, rgba(74,130,255,.14), transparent 75%),
+        radial-gradient(540px 340px at 77% 68%, rgba(74,212,255,.09), transparent 75%);
+      filter:none;
+      opacity:.72;
+      animation:none;
+    }
+
+    body[data-theme="new-galaxy"] .brandText::before{
+      width:260px;
+      height:68px;
+      background:
+        radial-gradient(circle, rgba(132,164,255,.20), transparent 58%),
+        radial-gradient(circle at 68% 48%, rgba(180,102,255,.13), transparent 62%);
+      filter:none;
+      opacity:.86;
+    }
+
+    body[data-theme="new-galaxy"] .topbar,
+    body[data-theme="new-galaxy"] .card,
+    body[data-theme="new-galaxy"] .stat,
+    body[data-theme="new-galaxy"] .metric,
+    body[data-theme="new-galaxy"] .insightCard,
+    body[data-theme="new-galaxy"] .showcaseCard{
+      border-color:rgba(139,169,255,.27);
+      background:
+        linear-gradient(180deg, rgba(126,160,255,.13), rgba(126,160,255,.03) 34%, rgba(0,0,0,0)),
+        linear-gradient(135deg, rgba(174,94,255,.10), rgba(0,0,0,0) 44%),
+        rgba(9, 12, 33, .82);
+      box-shadow:
+        0 12px 28px rgba(0,0,0,.44),
+        0 0 0 1px rgba(135,166,255,.07),
+        inset 0 1px 0 rgba(255,255,255,.08);
+      backdrop-filter:none;
+    }
+
+    body[data-theme="new-galaxy"] .btn{
+      border-color:rgba(139,169,255,.28);
+      background:
+        linear-gradient(180deg, rgba(126,160,255,.13), rgba(126,160,255,.04)),
+        linear-gradient(135deg, rgba(174,94,255,.09), rgba(0,0,0,0) 50%);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+    }
+
+    body[data-theme="new-galaxy"] .btn.primary,
+    body[data-theme="new-galaxy"] .btn.active,
+    body[data-theme="new-galaxy"] .clockPill,
+    body[data-theme="new-galaxy"] .pill,
+    body[data-theme="new-galaxy"] .themeToggle{
+      border-color:rgba(153,182,255,.44);
+      background:
+        linear-gradient(180deg, rgba(146,178,255,.18), rgba(146,178,255,.07)),
+        linear-gradient(135deg, rgba(180,100,255,.14), rgba(0,0,0,0) 58%),
+        rgba(28, 39, 94, .24);
+      box-shadow:
+        0 0 18px rgba(93,137,255,.13),
+        inset 0 1px 0 rgba(255,255,255,.10);
+    }
+
+    body[data-theme="new-galaxy"] .moreMenu,
+    body[data-theme="new-galaxy"] .quickPanel,
+    body[data-theme="new-galaxy"] .drawer,
+    body[data-theme="new-galaxy"] .mobileDock{
+      border-color:rgba(139,169,255,.28);
+      background:
+        linear-gradient(180deg, rgba(126,160,255,.14), rgba(126,160,255,.04)),
+        linear-gradient(135deg, rgba(174,94,255,.10), rgba(0,0,0,0) 52%),
+        rgba(8,10,30,.94);
+      backdrop-filter:none;
+      box-shadow:0 14px 30px rgba(0,0,0,.48);
+    }
+
     body[data-theme="wallpaper-galaxy"]{
       --accent-rgb:124,214,255;
       --accent-soft-rgb:255,88,214;
@@ -27108,7 +27216,229 @@ html[data-font-mode="hand"] body .dashboardProjectionForm .dashboardProjectionHi
   object-fit:cover;
 }
 
+/* Life journal polish pass */
+.page-journal .wrap:has(.lifeJournalShell){
+  max-width:min(1500px, calc(100vw - 40px));
+}
+
+.page-journal .lifeJournalHero{
+  margin-bottom:12px;
+  padding:16px 18px;
+}
+
+.page-journal .lifeJournalHero .toolbar{
+  padding:0;
+}
+
+.page-journal .lifeJournalHero .pageTitle{
+  margin:4px 0 0;
+  font-size:34px;
+  line-height:1;
+}
+
+.page-journal .lifeJournalHero .summaryLead{
+  max-width:70ch;
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:14px;
+  line-height:1.35;
+}
+
+.lifeJournalHeroMeta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:10px;
+}
+
+.lifeJournalShell{
+  grid-template-columns:minmax(0, 1.1fr) minmax(360px, .78fr);
+  align-items:start;
+  gap:14px;
+}
+
+.lifeJournalAside{
+  display:grid;
+  gap:12px;
+  min-width:0;
+}
+
+.lifeJournalComposer,
+.lifeJournalFilterPanel,
+.lifeJournalEntry{
+  border-color:rgba(124, 153, 196, .13);
+  background:
+    linear-gradient(180deg, rgba(20, 30, 45, .96), rgba(12, 19, 30, .98));
+}
+
+.lifeJournalComposer > .toolbar,
+.lifeJournalFilterPanel > .toolbar{
+  display:grid;
+  gap:12px;
+}
+
+.lifeJournalPanelHead{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-end;
+}
+
+.lifeJournalPanelHead .summaryLead{
+  max-width:46ch;
+  margin:0;
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:13px;
+  line-height:1.35;
+}
+
+.lifeJournalPanelTitle{
+  margin:7px 0 0;
+  color:#f3f8ff;
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:22px;
+  line-height:1.05;
+  letter-spacing:-.02em;
+}
+
+.lifeJournalFormGrid{
+  gap:12px;
+}
+
+.lifeJournalForm .dashboardProjectionField{
+  gap:6px;
+}
+
+.lifeJournalForm label,
+.lifeJournalFilterPanel label,
+.lifeJournalForm input,
+.lifeJournalForm select,
+.lifeJournalForm textarea,
+.lifeJournalFilterPanel input,
+.lifeJournalFilterPanel button,
+.lifeJournalFilterPanel .btn,
+.lifeJournalForm .btn,
+.lifeJournalEntry,
+.lifeJournalEntry .btn{
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  letter-spacing:0;
+}
+
+.lifeJournalForm label,
+.lifeJournalFilterPanel label{
+  color:rgba(225, 235, 250, .70);
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+}
+
+.lifeJournalForm input:not([type="file"]),
+.lifeJournalForm textarea,
+.lifeJournalForm select,
+.lifeJournalForm input[type="file"],
+.lifeJournalFilterPanel input{
+  min-height:42px;
+  border-radius:8px;
+  border-color:rgba(135, 162, 203, .16);
+  background:rgba(4, 10, 20, .62);
+  color:#edf4ff;
+  font-size:14px;
+  font-weight:600;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.lifeJournalForm textarea{
+  min-height:260px;
+  line-height:1.5;
+  font-weight:500;
+}
+
+.lifeJournalForm input::placeholder,
+.lifeJournalForm textarea::placeholder,
+.lifeJournalFilterPanel input::placeholder{
+  color:rgba(198, 214, 230, .44);
+}
+
+.lifeJournalFeed{
+  gap:10px;
+}
+
+.lifeJournalEntry{
+  padding:0;
+  overflow:hidden;
+}
+
+.lifeJournalEntry > summary::-webkit-details-marker{
+  display:none;
+}
+
+.lifeJournalEntry[open] > summary{
+  border-bottom:1px solid rgba(255,255,255,.07);
+}
+
+.lifeJournalEntrySummary{
+  padding:14px;
+  cursor:pointer;
+}
+
+.lifeJournalEntryTitle{
+  font-family:"Architects Daughter","Sora","Segoe UI",system-ui,sans-serif;
+  font-size:28px;
+  line-height:1.05;
+  letter-spacing:0;
+}
+
+.lifeJournalEntrySummaryText{
+  display:-webkit-box;
+  overflow:hidden;
+  color:rgba(219, 230, 246, .74);
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:13px;
+  line-height:1.42;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:3;
+}
+
+.lifeJournalEntryBody{
+  padding:14px;
+}
+
+.lifeJournalInsightGrid{
+  grid-template-columns:1fr;
+}
+
+.lifeJournalEntry .journalStructuredSection,
+.lifeJournalEntry .journalEntryNotesCard{
+  border-radius:8px;
+  background:rgba(6, 12, 24, .54);
+}
+
+.lifeJournalEntry .entryNoteHeading{
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:11px;
+  letter-spacing:.06em;
+}
+
+.lifeJournalEntry .entryNoteBody{
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
+  font-size:13px;
+  line-height:1.48;
+  letter-spacing:0;
+}
+
 @media (max-width: 980px){
+  .page-journal .wrap:has(.lifeJournalShell){
+    max-width:var(--app-shell-max);
+  }
+
+  .lifeJournalShell{
+    grid-template-columns:1fr;
+  }
+
+  .lifeJournalPanelHead{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
   .lifeJournalFormGrid{
     grid-template-columns:1fr;
   }
