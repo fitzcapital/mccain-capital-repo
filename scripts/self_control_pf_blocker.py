@@ -101,8 +101,17 @@ def _parse_state(path: str) -> EnforcementState:
         strict_mode=bool(payload.get("strict_mode")),
         planned_end_at=str(payload.get("planned_end_at") or "").strip(),
         unlock_requirement=str(payload.get("unlock_requirement") or "").strip(),
-        blocked_domains=sorted(set(domains)),
+        blocked_domains=sorted(set(_expand_domains(domains))),
     )
+
+
+def _expand_domains(domains: list[str]) -> list[str]:
+    expanded: set[str] = set()
+    for domain in domains:
+        expanded.add(domain)
+        if not domain.startswith("www."):
+            expanded.add(f"www.{domain}")
+    return sorted(expanded)
 
 
 def _effective_active(state: EnforcementState) -> bool:

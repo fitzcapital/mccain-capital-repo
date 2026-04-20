@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime
 from typing import Callable, List, Tuple
@@ -469,6 +470,15 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
         """
     )
     now = datetime.now().isoformat(timespec="seconds")
+    trading_blocked_sites = [
+        ("trade.vanquishtrader.com", "Trading"),
+        ("app.vanquishtrader.com", "Trading"),
+        ("api.vanquishtrader.com", "Trading"),
+        ("www.vanquishtrader.com", "Trading"),
+        ("vanquishtrader.com", "Trading"),
+        ("tradingview.com", "Trading"),
+        ("www.tradingview.com", "Trading"),
+    ]
     blocked_sites = [
         ("x.com", "Social"),
         ("twitter.com", "Social"),
@@ -477,6 +487,7 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
         ("discord.com", "Social"),
         ("youtube.com", "Entertainment"),
         ("reddit.com", "News / Doomscroll"),
+        *trading_blocked_sites,
     ]
     for domain, category in blocked_sites:
         conn.execute(
@@ -497,7 +508,7 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
             60,
             1,
             "Protect the open and stop reactive scrolling.",
-            '["Social","News / Doomscroll"]',
+            '["Social","News / Doomscroll","Trading"]',
             "[]",
             "Future auto-trigger when session enters cash open.",
         ),
@@ -508,7 +519,7 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
             30,
             0,
             "Reset attention before the next trade cluster.",
-            '["Social","Entertainment"]',
+            '["Social","Entertainment","Trading"]',
             "[]",
             "Future auto-trigger after trade-count threshold.",
         ),
@@ -519,7 +530,7 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
             45,
             1,
             "Keep the close clean and deliberate.",
-            '["Social","Random distractions"]',
+            '["Social","Random distractions","Trading"]',
             "[]",
             "Future auto-trigger one hour before close.",
         ),
@@ -530,7 +541,7 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
             30,
             0,
             "Finish the journal before reopening the noise.",
-            '["Social","Entertainment","Random distractions"]',
+            '["Social","Entertainment","Random distractions","Trading"]',
             "[]",
             "Future trigger after a completed trading session.",
         ),
@@ -541,7 +552,7 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
             120,
             1,
             "Stay in execution mode until the close is done.",
-            '["Social","News / Doomscroll","Entertainment"]',
+            '["Social","News / Doomscroll","Entertainment","Trading"]',
             "[]",
             "Future all-day discipline mode.",
         ),
@@ -552,7 +563,7 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
             45,
             1,
             "No reactive re-entry after a stop-out.",
-            '["Social","Entertainment","News / Doomscroll","Random distractions"]',
+            '["Social","Entertainment","News / Doomscroll","Random distractions","Trading"]',
             "[]",
             "Future auto-trigger from live trade loss hooks.",
         ),
@@ -662,6 +673,107 @@ def _migration_0009_self_control_mode(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migration_0010_trading_blocked_sites(conn: sqlite3.Connection) -> None:
+    now = datetime.now().isoformat(timespec="seconds")
+    blocked_sites = [
+        ("trade.vanquishtrader.com", "Trading"),
+        ("app.vanquishtrader.com", "Trading"),
+        ("api.vanquishtrader.com", "Trading"),
+        ("www.vanquishtrader.com", "Trading"),
+        ("vanquishtrader.com", "Trading"),
+        ("tradingview.com", "Trading"),
+        ("www.tradingview.com", "Trading"),
+    ]
+    for domain, category in blocked_sites:
+        conn.execute(
+            """
+            INSERT INTO self_control_blocked_sites (
+              domain, category, enabled, source, created_at, updated_at
+            )
+            VALUES (?, ?, 1, 'seeded', ?, ?)
+            ON CONFLICT(domain) DO UPDATE SET
+              category = excluded.category,
+              enabled = 1,
+              source = CASE
+                WHEN self_control_blocked_sites.source = 'seeded' THEN excluded.source
+                ELSE self_control_blocked_sites.source
+              END,
+              updated_at = excluded.updated_at
+            """,
+            (domain, category, now, now),
+        )
+
+
+def _append_trading_to_seeded_presets(conn: sqlite3.Connection) -> None:
+    now = datetime.now().isoformat(timespec="seconds")
+    rows = conn.execute(
+        """
+        SELECT id, blocked_categories_json
+        FROM self_control_presets
+        WHERE seeded = 1
+        """
+    ).fetchall()
+    for row in rows:
+        try:
+            categories = json.loads(row["blocked_categories_json"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            categories = []
+        if not isinstance(categories, list):
+            categories = []
+        normalized = [str(item or "").strip() for item in categories if str(item or "").strip()]
+        if "Trading" in normalized:
+            continue
+        normalized.append("Trading")
+        conn.execute(
+            """
+            UPDATE self_control_presets
+            SET blocked_categories_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (json.dumps(normalized, separators=(",", ":")), now, int(row["id"])),
+        )
+
+
+def _append_trading_to_active_sessions(conn: sqlite3.Connection) -> None:
+    now = datetime.now().isoformat(timespec="seconds")
+    rows = conn.execute(
+        """
+        SELECT id, blocked_categories_json
+        FROM self_control_sessions
+        WHERE status IN ('active', 'awaiting_journal_unlock')
+        """
+    ).fetchall()
+    for row in rows:
+        try:
+            categories = json.loads(row["blocked_categories_json"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            categories = []
+        if not isinstance(categories, list):
+            categories = []
+        normalized = [str(item or "").strip() for item in categories if str(item or "").strip()]
+        if "Trading" in normalized:
+            continue
+        normalized.append("Trading")
+        conn.execute(
+            """
+            UPDATE self_control_sessions
+            SET blocked_categories_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (json.dumps(normalized, separators=(",", ":")), now, int(row["id"])),
+        )
+
+
+def _migration_0011_trading_scope_hardening(conn: sqlite3.Connection) -> None:
+    _migration_0010_trading_blocked_sites(conn)
+    _append_trading_to_seeded_presets(conn)
+    _append_trading_to_active_sessions(conn)
+
+
+def _migration_0012_full_trading_host_coverage(conn: sqlite3.Connection) -> None:
+    _migration_0010_trading_blocked_sites(conn)
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
@@ -672,6 +784,9 @@ MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0007_trade_source", _migration_0007_trade_source),
     ("0008_trade_review_workflow", _migration_0008_trade_review_workflow),
     ("0009_self_control_mode", _migration_0009_self_control_mode),
+    ("0010_trading_blocked_sites", _migration_0010_trading_blocked_sites),
+    ("0011_trading_scope_hardening", _migration_0011_trading_scope_hardening),
+    ("0012_full_trading_host_coverage", _migration_0012_full_trading_host_coverage),
 ]
 
 

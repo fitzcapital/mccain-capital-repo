@@ -461,7 +461,7 @@
       "new-galaxy": "Theme: New Galaxy",
       "wallpaper-galaxy": "Theme: Wallpaper Galaxy",
       "cosmic-flare": "Theme: Cosmic Flare",
-      galaxy: "Theme: Midnight Galaxy",
+      galaxy: "Theme: MGP",
       obsidian: "Theme: True Dark",
       black: "Theme: Midnight",
       nebula: "Theme: Nebula",

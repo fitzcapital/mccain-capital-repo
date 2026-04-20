@@ -39,6 +39,8 @@ Browser Request
 
 - 📝 Journal
   - `services/journal.py` + `repositories/journal.py`
+  - Trading journal, weekly review, and Life Journal share the journal repository.
+  - Life Journal-specific capture/feed presentation lives in `templates/journal/life.html`.
 
 - 🎯 Goals/Payouts
   - `services/goals.py` + `repositories/goals.py` + shared math/helpers from `runtime.py`
@@ -92,6 +94,13 @@ This sync keeps modular code and legacy compatibility code pointed at the same d
 1. Route -> handler -> `services/journal.py:journal_home()`.
 2. Service calls `repositories/journal.py:fetch_entries(...)`.
 3. Service renders journal template with returned rows.
+
+### 🧭 Example: `/journal/life`
+
+1. Route -> handler -> `services/journal.py:life_journal_home()`.
+2. Service saves personal notes, category/mood metadata, structured summaries, and photo paths through the journal repository.
+3. Service enriches rows with summary sections and capture image hrefs.
+4. Template renders the capture composer, filter controls, recent-note feed, expandable structured summary cards, and image preview hooks.
 
 ## ✅ 7) CI + Quality Gates
 

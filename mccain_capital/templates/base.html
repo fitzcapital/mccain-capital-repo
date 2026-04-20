@@ -112,6 +112,7 @@
         stage: "loading_levels",
         active: false,
         completeTimer: 0,
+        failsafeTimer: 0,
         progressTimers: [],
       };
 
@@ -173,6 +174,7 @@
 
       const show = (title, detail, persist = true) => {
         window.clearTimeout(loaderState.completeTimer);
+        window.clearTimeout(loaderState.failsafeTimer);
         clearProgressTimers();
         loaderState.active = true;
         loaderState.stage = "loading_levels";
@@ -188,10 +190,15 @@
           });
         }
         if (onMarketPulsePage || onDashboardPage) scheduleSoftProgress();
+        loaderState.failsafeTimer = window.setTimeout(() => {
+          if (loaderState.active) complete();
+        }, 4500);
       };
 
       const hide = (clearFlag = true) => {
         loaderState.active = false;
+        window.clearTimeout(loaderState.completeTimer);
+        window.clearTimeout(loaderState.failsafeTimer);
         clearProgressTimers();
         overlay.classList.remove("show");
         overlay.setAttribute("aria-hidden", "true");
@@ -202,8 +209,9 @@
       const complete = () => {
         if (!loaderState.active) return;
         window.clearTimeout(loaderState.completeTimer);
+        window.clearTimeout(loaderState.failsafeTimer);
         clearProgressTimers();
-        applyStage("complete", "Market Pulse ready", "Live context loaded.");
+        applyStage("complete", "Ready", "Page loaded.");
         loaderState.completeTimer = window.setTimeout(() => {
           hide(true);
         }, 180);
@@ -235,7 +243,27 @@
           payload.detail || "Preparing latest view.",
           false
         );
+        const finishRestoredLoader = () => {
+          window.setTimeout(() => {
+            if (loaderState.active) complete();
+          }, 220);
+        };
+        if (document.readyState === "complete") {
+          finishRestoredLoader();
+        } else {
+          window.addEventListener("load", finishRestoredLoader, { once: true });
+        }
+      } else if (payload && (!payloadFresh || navType === "back_forward")) {
+        clearPayload();
       }
+      window.addEventListener("pageshow", (event) => {
+        if (event.persisted) hide(true);
+      });
+      window.addEventListener("pagehide", () => {
+        window.clearTimeout(loaderState.completeTimer);
+        window.clearTimeout(loaderState.failsafeTimer);
+        clearProgressTimers();
+      });
     })();
   </script>
   {% set tw = trading_window if trading_window is defined else {} %}
@@ -461,7 +489,7 @@
             {% endif %}
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: MGP</button>
             {% if auth_enabled %}
               <div class="hr"></div>
               {% if authenticated %}
@@ -676,7 +704,7 @@
             {% else %}
               <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
             {% endif %}
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: Midnight Galaxy</button>
+            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: MGP</button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}
@@ -750,6 +778,12 @@
       }
       return null;
     };
+    const writeTransitionPayload = (payload) => {
+      try {
+        sessionStorage.setItem(FLAG_KEY, JSON.stringify({ ...payload, ts: Date.now() }));
+      } catch (_err) {
+      }
+    };
     document.addEventListener("click", (event) => {
       if (!isPlainLeftClick(event)) return;
       const link = event.target.closest && event.target.closest("a[href]");
@@ -768,11 +802,9 @@
       if (!payload) return;
       if (typeof window.showShellLoading === "function") {
         window.showShellLoading(payload.title, payload.detail);
+        writeTransitionPayload(payload);
       } else {
-        sessionStorage.setItem(
-          FLAG_KEY,
-          JSON.stringify({ ...payload, ts: Date.now() })
-        );
+        writeTransitionPayload(payload);
       }
     }, true);
 

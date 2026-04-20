@@ -22,6 +22,7 @@ SELF_CONTROL_CATEGORIES = (
     "Social",
     "Entertainment",
     "News / Doomscroll",
+    "Trading",
     "Random distractions",
 )
 SELF_CONTROL_STATE_PATH = os.path.join(
@@ -626,6 +627,15 @@ def _write_enforcement_state_snapshot(session: Optional[Dict[str, Any]]) -> None
     app_runtime.ensure_storage_dirs()
     os.makedirs(os.path.dirname(SELF_CONTROL_STATE_PATH) or ".", exist_ok=True)
     active = bool(session and str(session.get("status") or "") in {"active", "awaiting_journal_unlock"})
+    blocked_categories = list((session or {}).get("blocked_categories") or [])
+    blocked_domains = list((session or {}).get("blocked_domains") or [])
+    if active:
+        blocked_scope = _resolve_block_scope(
+            categories=blocked_categories,
+            explicit_domains=blocked_domains,
+        )
+        blocked_categories = blocked_scope["categories"]
+        blocked_domains = blocked_scope["domains"]
     payload = {
         "updated_at": app_runtime.now_et().isoformat(),
         "active": active,
@@ -635,8 +645,8 @@ def _write_enforcement_state_snapshot(session: Optional[Dict[str, Any]]) -> None
         "strict_mode": bool((session or {}).get("strict_mode")),
         "planned_end_at": str((session or {}).get("planned_end_at") or "").strip(),
         "unlock_requirement": str((session or {}).get("unlock_requirement") or "").strip(),
-        "blocked_domains": list((session or {}).get("blocked_domains") or []),
-        "blocked_categories": list((session or {}).get("blocked_categories") or []),
+        "blocked_domains": blocked_domains,
+        "blocked_categories": blocked_categories,
         "provider_mode": "hosts",
     }
     tmp_path = f"{SELF_CONTROL_STATE_PATH}.tmp"
