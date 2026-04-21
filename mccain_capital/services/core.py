@@ -9418,7 +9418,7 @@ def dashboard():
     journal_count_today = len(journal_today_rows)
     dashboard_checklist = [
         {
-            "label": "Brief locked",
+            "label": "Mindset anchored",
             "status": "Loading",
             "detail": "Planning, gamma, and brief context load after the page paints.",
             "done": False,
@@ -9438,7 +9438,7 @@ def dashboard():
             "action": "Open" if today_count else "Import",
         },
         {
-            "label": "Journal today",
+            "label": "Debrief before re-risk",
             "status": "Logged" if journal_count_today else "Missing",
             "detail": (
                 f"{journal_count_today} entr{'y' if journal_count_today == 1 else 'ies'} logged"

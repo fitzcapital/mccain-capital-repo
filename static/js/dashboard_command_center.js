@@ -695,6 +695,256 @@ function initCalendarPreview(root = document) {
 
 (function () {
   const shell = document.getElementById("dashboardModeShell");
+  if (!shell) return;
+
+  const stateButtons = Array.from(document.querySelectorAll("[data-discipline-state]"));
+  const modeButtons = Array.from(document.querySelectorAll("[data-discipline-mode]"));
+  const gateButtons = Array.from(document.querySelectorAll("[data-trade-gate-toggle]"));
+  const gateStatus = document.getElementById("dashboardTradeGateStatus");
+  const gateNote = document.getElementById("dashboardTradeGateNote");
+  const planningSection = document.getElementById("dashboardPlanningSection");
+  const resetTrigger = document.getElementById("dashboardResetTrigger");
+  const resetModal = document.getElementById("dashboardResetModal");
+  const resetFeedback = document.getElementById("dashboardResetFeedback");
+  const resetCloseButtons = Array.from(document.querySelectorAll("[data-reset-close]"));
+  const resetActionButtons = Array.from(document.querySelectorAll("[data-reset-action]"));
+  const tradeActionLinks = Array.from(document.querySelectorAll("[data-discipline-trade-action]"));
+  const storageKey = "mc_dashboard_discipline_layer";
+
+  const readState = () => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return {
+        disciplineState: String(parsed.disciplineState || "locked-in"),
+        disciplineMode: String(parsed.disciplineMode || "a-plus-only"),
+        tradeGate: {
+          structure: !!parsed.tradeGate?.structure,
+          trigger: !!parsed.tradeGate?.trigger,
+          risk: !!parsed.tradeGate?.risk,
+        },
+      };
+    } catch (_err) {
+      return {
+        disciplineState: "locked-in",
+        disciplineMode: "a-plus-only",
+        tradeGate: { structure: false, trigger: false, risk: false },
+      };
+    }
+  };
+
+  const persistState = (nextState) => {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(nextState));
+    } catch (_err) {
+      // Ignore storage failures.
+    }
+  };
+
+  const uiState = readState();
+  const gateLabels = ["No Trade", "Wait", "Still Wait", "Eligible"];
+  const gateNotes = {
+    "0": "No trade. Protect capital until structure, trigger, and risk all agree.",
+    "1": "Wait. One checkbox is not enough to earn risk.",
+    "2": "Still wait. Do not anticipate the last condition.",
+    "3": "Eligible. Only proceed if the setup still matches plan.",
+    manage: "Manage only. Defend the winner, but do not add new risk.",
+    done: "Stand down. The session is closed to new risk.",
+  };
+
+  const syncButtonGroup = (buttons, key, value) => {
+    buttons.forEach((button) => {
+      const isActive = button.dataset[key] === value;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+  };
+
+  const gateCount = () => Object.values(uiState.tradeGate).filter(Boolean).length;
+
+  const setResetFeedback = (message = "") => {
+    if (!resetFeedback) return;
+    resetFeedback.hidden = !message;
+    resetFeedback.textContent = message;
+  };
+
+  const clearGate = () => {
+    Object.keys(uiState.tradeGate).forEach((key) => {
+      uiState.tradeGate[key] = false;
+    });
+  };
+
+  const modeBlocksNewRisk = () => (
+    uiState.disciplineMode === "manage-winner" || uiState.disciplineMode === "done-for-day"
+  );
+
+  const syncTradeActions = () => {
+    const blocked = modeBlocksNewRisk();
+    tradeActionLinks.forEach((link) => {
+      link.setAttribute("aria-disabled", blocked ? "true" : "false");
+      link.classList.toggle("isDisabled", blocked);
+      link.classList.toggle("is-guarded", blocked);
+      link.title = blocked
+        ? (
+          uiState.disciplineMode === "done-for-day"
+            ? "Done for Day blocks new risk."
+            : "Manage Winner mode blocks new entries."
+        )
+        : "";
+    });
+  };
+
+  const syncGateStatus = () => {
+    const count = gateCount();
+    if (!gateStatus) return;
+    if (uiState.disciplineMode === "done-for-day") {
+      gateStatus.textContent = "Stand Down";
+      gateStatus.dataset.tradeGateStatus = "done";
+      if (gateNote) gateNote.textContent = gateNotes.done;
+      return;
+    }
+    if (uiState.disciplineMode === "manage-winner") {
+      gateStatus.textContent = "Manage Only";
+      gateStatus.dataset.tradeGateStatus = "manage";
+      if (gateNote) gateNote.textContent = gateNotes.manage;
+      return;
+    }
+    gateStatus.textContent = gateLabels[count] || "No Trade";
+    gateStatus.dataset.tradeGateStatus = String(count);
+    if (gateNote) gateNote.textContent = gateNotes[String(count)] || gateNotes["0"];
+  };
+
+  const syncGateButtons = () => {
+    const disabled = modeBlocksNewRisk();
+    gateButtons.forEach((button) => {
+      const key = String(button.dataset.tradeGateToggle || "");
+      const isActive = !!uiState.tradeGate[key];
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+      button.disabled = disabled;
+    });
+    syncGateStatus();
+  };
+
+  const syncShellState = () => {
+    shell.dataset.disciplineState = uiState.disciplineState;
+    shell.dataset.disciplineMode = uiState.disciplineMode;
+  };
+
+  const applyUiState = () => {
+    syncShellState();
+    syncButtonGroup(stateButtons, "disciplineState", uiState.disciplineState);
+    syncButtonGroup(modeButtons, "disciplineMode", uiState.disciplineMode);
+    syncGateButtons();
+    syncTradeActions();
+  };
+
+  const openResetModal = () => {
+    if (!resetModal) return;
+    setResetFeedback("");
+    resetModal.hidden = false;
+    document.body.classList.add("modalOpen");
+  };
+
+  const closeResetModal = () => {
+    if (!resetModal) return;
+    resetModal.hidden = true;
+    document.body.classList.remove("modalOpen");
+  };
+
+  applyUiState();
+
+  stateButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.disciplineState = String(button.dataset.disciplineState || "locked-in");
+      applyUiState();
+      persistState(uiState);
+    });
+  });
+
+  modeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      uiState.disciplineMode = String(button.dataset.disciplineMode || "a-plus-only");
+      if (modeBlocksNewRisk()) {
+        clearGate();
+      }
+      applyUiState();
+      persistState(uiState);
+    });
+  });
+
+  gateButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = String(button.dataset.tradeGateToggle || "");
+      if (!key) return;
+      uiState.tradeGate[key] = !uiState.tradeGate[key];
+      applyUiState();
+      persistState(uiState);
+    });
+  });
+
+  resetTrigger?.addEventListener("click", openResetModal);
+  resetCloseButtons.forEach((button) => {
+    button.addEventListener("click", closeResetModal);
+  });
+
+  resetActionButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = String(button.dataset.resetAction || "");
+      if (action === "plan") {
+        uiState.disciplineState = "locked-in";
+        uiState.disciplineMode = "a-plus-only";
+        clearGate();
+        setResetFeedback("");
+        applyUiState();
+        persistState(uiState);
+        closeResetModal();
+        planningSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      } else if (action === "stand-down") {
+        uiState.disciplineState = "neutral";
+        uiState.disciplineMode = "done-for-day";
+        clearGate();
+        setResetFeedback("");
+        applyUiState();
+        persistState(uiState);
+        closeResetModal();
+        planningSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      } else if (action === "proceed") {
+        if (uiState.disciplineMode !== "a-plus-only") {
+          setResetFeedback("Mode is not set for new risk. Return to Plan or keep managing what is already on.");
+          return;
+        }
+        if (gateCount() < 3) {
+          setResetFeedback("Gate incomplete. Re-check structure, trigger, and risk before proceeding.");
+          planningSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+        uiState.disciplineState = "locked-in";
+        setResetFeedback("");
+        applyUiState();
+        persistState(uiState);
+        closeResetModal();
+        planningSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+        gateStatus?.focus?.();
+        return;
+      }
+      applyUiState();
+      persistState(uiState);
+      closeResetModal();
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && resetModal && !resetModal.hidden) {
+      closeResetModal();
+    }
+  });
+})();
+
+(function () {
+  const shell = document.getElementById("dashboardModeShell");
   const toggle = document.getElementById("dashboardModeToggle");
   if (!shell || !toggle) return;
 

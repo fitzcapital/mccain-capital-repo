@@ -17805,6 +17805,442 @@ body.modalOpen{
   }
 }
 
+/* Dashboard discipline layer */
+.page-dashboard .dashboardDisciplineRail{
+  display:grid;
+  grid-template-columns:minmax(0, 1.18fr) minmax(0, 1.08fr) auto auto;
+  align-items:center;
+  gap:12px 14px;
+  padding:11px 14px;
+  border:1px solid rgba(241, 196, 90, .12);
+  border-radius:18px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.006)),
+    radial-gradient(circle at top left, rgba(241, 196, 90, .07), transparent 38%),
+    radial-gradient(circle at bottom right, rgba(86, 162, 230, .05), transparent 34%),
+    rgba(5, 10, 19, .72);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 10px 26px rgba(0,0,0,.18);
+}
+
+.page-dashboard .dashboardDisciplineRailGroup,
+.page-dashboard .dashboardDisciplineRailActions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+
+.page-dashboard .dashboardDisciplineRailActions{
+  margin-left:auto;
+  justify-content:flex-end;
+}
+
+.page-dashboard .dashboardDisciplineRailLabel,
+.page-dashboard .dashboardBehaviorLabel,
+.page-dashboard .dashboardTradeGateLabel{
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:rgba(216, 228, 241, .58);
+  flex:0 0 auto;
+}
+
+.page-dashboard .dashboardDisciplinePillSet,
+.page-dashboard .dashboardTradeGateControls{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  min-width:0;
+}
+
+.page-dashboard .dashboardDisciplinePill,
+.page-dashboard .dashboardTradeGateToggle{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:32px;
+  padding:7px 11px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:999px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.014)),
+    rgba(255,255,255,.02);
+  color:rgba(236, 242, 248, .82);
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.01em;
+  white-space:nowrap;
+  transition:border-color .18s ease, background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+
+.page-dashboard .dashboardDisciplinePill:hover,
+.page-dashboard .dashboardTradeGateToggle:hover,
+.page-dashboard .dashboardResetTrigger:hover{
+  border-color:rgba(241, 196, 90, .28);
+  background:rgba(255,255,255,.06);
+}
+
+.page-dashboard .dashboardDisciplinePill.is-active,
+.page-dashboard .dashboardTradeGateToggle.is-active{
+  border-color:rgba(241, 196, 90, .34);
+  background:
+    linear-gradient(180deg, rgba(241, 196, 90, .20), rgba(241, 196, 90, .07)),
+    rgba(255,255,255,.03);
+  color:#fff3d6;
+  box-shadow:0 0 18px rgba(241, 196, 90, .08);
+}
+
+.page-dashboard .dashboardDisciplineRulePill,
+.page-dashboard .dashboardTradeGateStatus{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:32px;
+  padding:7px 11px;
+  border:1px solid rgba(241, 196, 90, .16);
+  border-radius:999px;
+  background:rgba(241, 196, 90, .08);
+  color:#f6dfad;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+.page-dashboard .dashboardResetTrigger{
+  min-height:32px;
+  padding:7px 11px;
+  min-width:78px;
+  justify-content:center;
+}
+
+.page-dashboard .dashboardBehaviorStrip{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+  margin-top:10px;
+}
+
+.page-dashboard .dashboardBehaviorItem{
+  display:grid;
+  gap:5px;
+  min-height:72px;
+  align-content:start;
+  padding:11px 12px;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:16px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.008)),
+    radial-gradient(circle at top left, rgba(86, 162, 230, .04), transparent 38%),
+    rgba(7, 12, 22, .36);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.page-dashboard .dashboardBehaviorItem strong{
+  color:rgba(245, 248, 252, .92);
+  font-size:12px;
+  line-height:1.42;
+  font-weight:600;
+}
+
+.page-dashboard .dashboardBehaviorItem-wide{
+  grid-column:span 2;
+}
+
+.page-dashboard .dashboardTradeGateRow{
+  display:grid;
+  gap:10px;
+  padding:11px 12px;
+  border:1px solid rgba(241, 196, 90, .10);
+  border-radius:18px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.006)),
+    radial-gradient(circle at right center, rgba(241, 196, 90, .05), transparent 28%),
+    rgba(6, 11, 21, .34);
+}
+
+.page-dashboard .dashboardTradeGateHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.page-dashboard .dashboardTradeGateNote{
+  color:rgba(216, 227, 239, .62);
+  font-size:11px;
+  line-height:1.42;
+}
+
+.page-dashboard .dashboardTradeGateStatus[data-trade-gate-status="0"]{
+  border-color:rgba(255,255,255,.10);
+  background:rgba(255,255,255,.05);
+  color:rgba(233, 239, 246, .78);
+}
+
+.page-dashboard .dashboardTradeGateStatus[data-trade-gate-status="1"],
+.page-dashboard .dashboardTradeGateStatus[data-trade-gate-status="2"]{
+  border-color:rgba(241, 196, 90, .18);
+  background:rgba(241, 196, 90, .08);
+  color:#f4e2b7;
+}
+
+.page-dashboard .dashboardTradeGateStatus[data-trade-gate-status="3"]{
+  border-color:rgba(104, 212, 166, .24);
+  background:rgba(104, 212, 166, .12);
+  color:#dffdf0;
+}
+
+.page-dashboard .dashboardTradeGateStatus[data-trade-gate-status="manage"]{
+  border-color:rgba(110, 188, 255, .20);
+  background:rgba(110, 188, 255, .10);
+  color:#dcedff;
+}
+
+.page-dashboard .dashboardTradeGateStatus[data-trade-gate-status="done"]{
+  border-color:rgba(255, 144, 144, .16);
+  background:rgba(255, 144, 144, .08);
+  color:#ffd9d9;
+}
+
+.page-dashboard .dashboardTradeGateToggle:disabled{
+  opacity:.52;
+  box-shadow:none;
+}
+
+.page-dashboard .dashboardModeShell[data-discipline-mode="manage-winner"] .dashboardTradeGateRow,
+.page-dashboard .dashboardModeShell[data-discipline-mode="done-for-day"] .dashboardTradeGateRow{
+  border-color:rgba(255,255,255,.05);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.012), rgba(255,255,255,.004)),
+    rgba(6, 11, 21, .28);
+}
+
+.page-dashboard a.btn.is-guarded{
+  border-color:rgba(255,255,255,.09);
+}
+
+.page-dashboard .dashboardDisciplineCard{
+  border-color:rgba(241, 196, 90, .14);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 12px 26px rgba(0,0,0,.18);
+}
+
+.page-dashboard .dashboardDisciplineCard .toolbar{
+  padding:12px 13px;
+  gap:12px;
+}
+
+.page-dashboard .dashboardDisciplineCardHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.page-dashboard .dashboardNonNegotiablesCard{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.006)),
+    radial-gradient(circle at top right, rgba(241, 196, 90, .08), transparent 40%),
+    rgba(6, 11, 20, .58);
+}
+
+.page-dashboard .dashboardNonNegotiablesList{
+  display:grid;
+  gap:8px;
+}
+
+.page-dashboard .dashboardNonNegotiablesItem{
+  display:flex;
+  align-items:center;
+  min-height:44px;
+  padding:10px 12px;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:14px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)),
+    rgba(255,255,255,.018);
+}
+
+.page-dashboard .dashboardNonNegotiablesRule{
+  color:rgba(247, 249, 252, .9);
+  font-size:12px;
+  line-height:1.35;
+  font-weight:600;
+}
+
+.page-dashboard .dashboardResetModal{
+  position:fixed;
+  inset:0;
+  z-index:140;
+  display:grid;
+  place-items:center;
+  padding:20px;
+}
+
+.page-dashboard .dashboardResetModal[hidden]{
+  display:none !important;
+}
+
+.page-dashboard .dashboardResetModalBackdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(2, 6, 12, .72);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+}
+
+.page-dashboard .dashboardResetModalCard{
+  position:relative;
+  width:min(460px, calc(100vw - 32px));
+  padding:16px;
+  border:1px solid rgba(241, 196, 90, .16);
+  border-radius:24px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.008)),
+    radial-gradient(circle at top left, rgba(241, 196, 90, .08), transparent 42%),
+    rgba(7, 12, 22, .96);
+  box-shadow:
+    0 22px 46px rgba(0,0,0,.42),
+    inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.page-dashboard .dashboardResetModalHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.page-dashboard .dashboardResetModalTitle{
+  margin:8px 0 0;
+  font-size:22px;
+  color:#fbfdff;
+}
+
+.page-dashboard .dashboardResetModalClose{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:36px;
+  height:36px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:999px;
+  background:rgba(255,255,255,.04);
+  color:rgba(240, 245, 251, .84);
+  font-size:20px;
+  line-height:1;
+}
+
+.page-dashboard .dashboardResetModalBody{
+  display:grid;
+  gap:10px;
+  margin-top:14px;
+}
+
+.page-dashboard .dashboardResetPrompt{
+  padding:11px 12px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:14px;
+  background:rgba(255,255,255,.026);
+  color:rgba(237, 243, 249, .86);
+  font-size:13px;
+  line-height:1.4;
+}
+
+.page-dashboard .dashboardResetFeedback{
+  padding:10px 12px;
+  border:1px solid rgba(241, 196, 90, .14);
+  border-radius:12px;
+  background:rgba(241, 196, 90, .08);
+  color:#f8e7bf;
+  font-size:12px;
+  line-height:1.4;
+}
+
+.page-dashboard .dashboardResetModalActions{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:9px;
+  margin-top:16px;
+}
+
+.page-dashboard .dashboardResetModalActions .btn{
+  justify-content:center;
+}
+
+@media (max-width: 1100px){
+  .page-dashboard .dashboardDisciplineRail{
+    grid-template-columns:1fr;
+  }
+
+  .page-dashboard .dashboardDisciplineRailGroup,
+  .page-dashboard .dashboardDisciplineRailActions{
+    width:100%;
+  }
+
+  .page-dashboard .dashboardBehaviorStrip{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .page-dashboard .dashboardBehaviorItem-wide{
+    grid-column:1 / -1;
+  }
+}
+
+@media (max-width: 900px){
+  .page-dashboard .dashboardDisciplineRail{
+    padding:11px 12px;
+  }
+
+  .page-dashboard .dashboardDisciplineRailActions{
+    justify-content:flex-end;
+  }
+}
+
+@media (max-width: 640px){
+  .page-dashboard .dashboardTradeGateHeader{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .page-dashboard .dashboardDisciplineRailGroup{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .page-dashboard .dashboardBehaviorStrip,
+  .page-dashboard .dashboardResetModalActions{
+    grid-template-columns:1fr;
+  }
+
+  .page-dashboard .dashboardDisciplineRailActions,
+  .page-dashboard .dashboardDisciplinePillSet,
+  .page-dashboard .dashboardTradeGateControls{
+    width:100%;
+  }
+
+  .page-dashboard .dashboardDisciplinePill,
+  .page-dashboard .dashboardTradeGateToggle,
+  .page-dashboard .dashboardResetTrigger,
+  .page-dashboard .dashboardResetModalActions .btn{
+    flex:1 1 100%;
+    width:100%;
+    justify-content:center;
+  }
+
+  .page-dashboard .dashboardResetModalCard{
+    padding:14px;
+    border-radius:20px;
+  }
+}
+
 .page-self-control .pageContent{
   display:block;
 }

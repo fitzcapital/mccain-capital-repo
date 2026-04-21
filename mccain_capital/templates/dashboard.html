@@ -45,6 +45,36 @@
   data-dashboard-mode="{{ dashboard_default_mode }}"
   data-dashboard-default-mode="{{ dashboard_default_mode }}"
 >
+<section class="dashboardDisciplineRail card" aria-label="Discipline rail">
+  <div class="dashboardDisciplineRailGroup">
+    <span class="dashboardDisciplineRailLabel">State</span>
+    <div class="dashboardDisciplinePillSet" role="radiogroup" aria-label="Trading state" data-discipline-group="state">
+      <button type="button" class="dashboardDisciplinePill is-active" data-discipline-state="locked-in" aria-pressed="true">Locked In</button>
+      <button type="button" class="dashboardDisciplinePill" data-discipline-state="neutral" aria-pressed="false">Neutral</button>
+      <button type="button" class="dashboardDisciplinePill" data-discipline-state="urgent" aria-pressed="false">Urgent</button>
+      <button type="button" class="dashboardDisciplinePill" data-discipline-state="frustrated" aria-pressed="false">Frustrated</button>
+    </div>
+  </div>
+  <div class="dashboardDisciplineRailGroup">
+    <span class="dashboardDisciplineRailLabel">Mode</span>
+    <div class="dashboardDisciplinePillSet" role="radiogroup" aria-label="Session mode" data-discipline-group="mode">
+      <button type="button" class="dashboardDisciplinePill is-active" data-discipline-mode="a-plus-only" aria-pressed="true">A+ Only</button>
+      <button type="button" class="dashboardDisciplinePill" data-discipline-mode="manage-winner" aria-pressed="false">Manage Winner</button>
+      <button type="button" class="dashboardDisciplinePill" data-discipline-mode="done-for-day" aria-pressed="false">Done for Day</button>
+    </div>
+  </div>
+  <div class="dashboardDisciplineRulePill" aria-label="Rule">One loss = done</div>
+  <div class="dashboardDisciplineRailActions">
+    <button
+      type="button"
+      class="btn dashboardResetTrigger"
+      id="dashboardResetTrigger"
+      aria-haspopup="dialog"
+      aria-controls="dashboardResetModal"
+      onclick="document.getElementById('dashboardResetModal').hidden = false; document.body.classList.add('modalOpen');"
+    >Reset</button>
+  </div>
+</section>
 <div class="dashboardSnapshotBar dashboardSnapshotBar-primary">
   {% for item in snapshot_primary %}
     <div class="dashboardSnapshotCard{% if item.tone %} is-{{ item.tone }}{% endif %}">
@@ -69,6 +99,20 @@
               <span class="dashboardPrimaryBandSubhead">Start with the decision, then use the brief and checklist to support it.</span>
             </div>
             <h2 class="pageTitle">{{ hero_title }}</h2>
+            <div class="dashboardBehaviorStrip" aria-label="Behavioral operating guide">
+              <div class="dashboardBehaviorItem">
+                <span class="dashboardBehaviorLabel">Today's Mission</span>
+                <strong>Defend capital. No unnecessary risk.</strong>
+              </div>
+              <div class="dashboardBehaviorItem">
+                <span class="dashboardBehaviorLabel">Invalidators</span>
+                <strong>impulse entry / no stop / revenge impulse</strong>
+              </div>
+              <div class="dashboardBehaviorItem dashboardBehaviorItem-wide">
+                <span class="dashboardBehaviorLabel">If-Then Rule</span>
+                <strong>If I feel urgency, I step back and re-check the gate.</strong>
+              </div>
+            </div>
             <div class="dashboardLead stack8">{{ hero_lead }}</div>
             <div class="dashboardReadinessBarCard">
               <div class="dashboardReadinessTopline">
@@ -100,17 +144,21 @@
                 </div>
               </div>
               <div class="rightActions dashboardHeroPrimaryActions">
-                <a class="btn primary" href="{{ focus_href }}">{{ focus_cta }}</a>
+                <a
+                  class="btn primary"
+                  href="{{ focus_href }}"
+                  {% if focus_href in ['/market-pulse', '/trades/new'] %}data-discipline-trade-action="hero-focus"{% endif %}
+                >{{ focus_cta }}</a>
                 <a class="btn" href="#daily-brief-card">Brief</a>
               </div>
             </div>
             <details class="dashboardCommandFold"{% if command_fold_open %} open{% endif %}>
-              <summary aria-label="Command center controls">
-                <span>Checklist</span>
+              <summary aria-label="Permission to trade controls">
+                <span>Permission to trade</span>
                 <span class="tiny muted">{{ checklist_ns.done }}/{{ checklist_ns.total }} ready</span>
               </summary>
               <div class="dashboardCommandBody">
-                <div class="dashboardChecklist" aria-label="Daily accountability checklist">
+                <div class="dashboardChecklist" aria-label="Permission to trade checklist">
                   {% for item in dashboard_checklist %}
                     <a class="dashboardChecklistItem {% if item.done %}is-done{% else %}is-missing{% endif %}" href="{{ item.href }}" title="{{ item.detail }}">
                       <span class="dashboardChecklistEyebrow">{{ item.status }}</span>
@@ -166,6 +214,18 @@
             <span id="dashboardDecisionStatusChip" class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% endif %}">{{ decision_panel.status }}</span>
           </div>
         </div>
+        <div class="dashboardTradeGateRow" aria-label="Pre-trade gate" data-trade-gate>
+          <div class="dashboardTradeGateHeader">
+            <span class="dashboardTradeGateLabel">Permission to trade</span>
+            <div class="dashboardTradeGateStatus" id="dashboardTradeGateStatus" data-trade-gate-status="0" tabindex="-1">No Trade</div>
+          </div>
+          <div class="dashboardTradeGateControls">
+            <button type="button" class="dashboardTradeGateToggle" data-trade-gate-toggle="structure" aria-pressed="false">Structure clear</button>
+            <button type="button" class="dashboardTradeGateToggle" data-trade-gate-toggle="trigger" aria-pressed="false">Trigger confirmed</button>
+            <button type="button" class="dashboardTradeGateToggle" data-trade-gate-toggle="risk" aria-pressed="false">Risk accepted</button>
+          </div>
+          <div class="dashboardTradeGateNote" id="dashboardTradeGateNote">No trade. Protect capital until structure, trigger, and risk all agree.</div>
+        </div>
         <div class="dashboardDecisionLead">{{ decision_panel.posture_summary or decision_panel.plan }}</div>
         <div class="dashboardDecisionGrid">
           <div class="dashboardDecisionItem dashboardDecisionItem-bias">
@@ -186,7 +246,7 @@
           </div>
         </div>
         <div class="rightActions dashboardDecisionPrimaryActions">
-          <a class="btn" href="/market-pulse">Open Market Pulse</a>
+          <a class="btn" href="/market-pulse" data-discipline-trade-action="decision-market-pulse">Open Market Pulse</a>
           <a class="btn" href="/ops/trading-window">Trade Gate</a>
           <a class="btn ctaLink" href="/calendar">Calendar</a>
         </div>
@@ -372,6 +432,22 @@
 	        <span class="tiny muted">Reference only. Open when milestone, pacing, or trust needs attention.</span>
 	      </div>
 	      <div class="dashboardHealthGrid session-health-grid">
+          <div class="card primaryCard dashboardDisciplineCard dashboardNonNegotiablesCard"><div class="toolbar">
+            <div class="dashboardDisciplineCardHead">
+              <div class="pill">Non-Negotiables</div>
+            </div>
+            <div class="dashboardNonNegotiablesList" role="list">
+              <div class="dashboardNonNegotiablesItem" role="listitem">
+                <span class="dashboardNonNegotiablesRule">No conviction = no trade</span>
+              </div>
+              <div class="dashboardNonNegotiablesItem" role="listitem">
+                <span class="dashboardNonNegotiablesRule">No stop = invalid trade</span>
+              </div>
+              <div class="dashboardNonNegotiablesItem" role="listitem">
+                <span class="dashboardNonNegotiablesRule">One clean loss = day over</span>
+              </div>
+            </div>
+          </div></div>
 	        {% set milestone_pct = '%.1f'|format(milestone.overall_progress_pct) %}
 	        {% set milestone_balance_remaining = (milestone.target_balance|float - overall_balance|float) if milestone.has_balance_goal else 0 %}
           {% set milestone_heading = milestone.name if (milestone.name or '')|lower != 'profit milestone' else 'Current target progress' %}
@@ -726,7 +802,37 @@
 	      </div>
 	    </div>
 	  </section>
-	</div>
+  </div>
+  </div>
+
+  <div class="dashboardResetModal" id="dashboardResetModal" hidden>
+    <div class="dashboardResetModalBackdrop" data-reset-close onclick="this.closest('.dashboardResetModal').hidden = true; document.body.classList.remove('modalOpen');"></div>
+    <div class="dashboardResetModalCard card" role="dialog" aria-modal="true" aria-labelledby="dashboardResetModalTitle">
+      <div class="dashboardResetModalHead">
+        <div>
+          <div class="pill">Reset State</div>
+          <h3 id="dashboardResetModalTitle" class="dashboardResetModalTitle">Reset State</h3>
+        </div>
+        <button
+          type="button"
+          class="dashboardResetModalClose"
+          aria-label="Close reset modal"
+          data-reset-close
+          onclick="this.closest('.dashboardResetModal').hidden = true; document.body.classList.remove('modalOpen');"
+        >&times;</button>
+      </div>
+      <div class="dashboardResetModalBody">
+        <div class="dashboardResetPrompt">What am I feeling right now?</div>
+        <div class="dashboardResetPrompt">Is this in the plan?</div>
+        <div class="dashboardResetPrompt">If this loses, am I still within rules?</div>
+        <div class="dashboardResetFeedback" id="dashboardResetFeedback" hidden></div>
+      </div>
+      <div class="dashboardResetModalActions">
+        <button type="button" class="btn" data-reset-action="plan">Return to Plan</button>
+        <button type="button" class="btn" data-reset-action="stand-down">Stand Down</button>
+        <button type="button" class="btn primary" data-reset-action="proceed">Proceed</button>
+      </div>
+    </div>
   </div>
 
 {% set balance_spark = namespace(values=[], min=None, max=None, points='', last_y=15) %}

@@ -371,10 +371,10 @@ def test_dashboard_renders_accountability_checklist(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Tools" in body
-    assert "Daily accountability checklist" in body
-    assert "Brief locked" in body
+    assert "Permission to trade checklist" in body
+    assert "Mindset anchored" in body
     assert "Post-session import" in body
-    assert "Journal today" in body
+    assert "Debrief before re-risk" in body
     assert "No debrief or quick capture logged for today yet." in body
 
 
