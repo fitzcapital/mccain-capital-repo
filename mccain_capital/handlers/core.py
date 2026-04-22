@@ -125,6 +125,14 @@ def dashboard_pace_update():
     return svc.dashboard_pace_update()
 
 
+def dashboard_reflection_update():
+    return svc.dashboard_reflection_update()
+
+
+def dashboard_behavior_update():
+    return svc.dashboard_behavior_update()
+
+
 def candle_opens_page():
     return svc.candle_opens_page()
 

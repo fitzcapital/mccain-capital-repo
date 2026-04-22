@@ -1,0 +1,192 @@
+{% set intention_presets = [
+  ('confirmed-setups', 'Only take confirmed setups'),
+  ('one-loss', 'Respect one loss and done'),
+  ('structure-trigger', 'Wait for structure and trigger agreement'),
+  ('patience', 'Choose patience over pressure')
+] %}
+{% set foundation_routine = {
+  'before': [
+    ('scripture-read', 'Scripture read'),
+    ('identity-reviewed', 'Identity reviewed'),
+    ('prayer-completed', 'Prayer completed'),
+    ('bias-defined', 'Bias defined'),
+    ('key-levels-reviewed', 'Key levels reviewed'),
+    ('scenarios-prepared', 'Scenarios prepared')
+  ],
+  'during': [
+    ('wait-for-confirmation', 'Wait for confirmation'),
+    ('no-emotional-entries', 'No emotional entries'),
+    ('urgency-interrupt', 'Use urgency interrupt if pressured'),
+    ('stop-placed', 'Stop placed immediately'),
+    ('one-loss-done', 'One loss and done')
+  ],
+  'after': [
+    ('session-reviewed', 'Session reviewed'),
+    ('rules-followed', 'Did I follow rules?'),
+    ('acted-as-doer', 'Did I act as a doer?'),
+    ('log-mistake-breakthrough', 'Log mistake or breakthrough'),
+    ('close-intentionally', 'Close session intentionally')
+  ]
+} %}
+
+<section class="dashboardStageSection dashboardStageFoundation dashboardPrimarySection">
+  <div class="dashboardStepLabel">Foundation</div>
+  <div class="card dashboardFoundationCard" id="dashboardFoundationCard">
+    <div class="toolbar">
+      <div class="dashboardFoundationTopbar">
+        <div class="dashboardFoundationHead">
+          <div class="dashboardPrimaryBandHeader">
+            <span class="dashboardPrimaryBandEyebrow">Alignment Before Action</span>
+            <span class="dashboardPrimaryBandSubhead">Ground the session before pressure gets a vote.</span>
+          </div>
+          <div class="dashboardFoundationSummaryLine">
+            <strong id="dashboardFoundationSummary">Structure first, action second.</strong>
+            <span class="trendChip" id="dashboardFoundationSummaryChip">Foundation live</span>
+          </div>
+        </div>
+        <div class="dashboardFoundationActions">
+          <button
+            type="button"
+            class="btn"
+            data-urgency-trigger="foundation"
+            aria-haspopup="dialog"
+            aria-controls="dashboardResetModal"
+          >Urgency Check</button>
+        </div>
+      </div>
+
+      <div class="dashboardFoundationGrid dashboardFoundationGrid-compact">
+        <div class="dashboardFoundationModule dashboardFoundationModule-scripture">
+          <div class="dashboardFoundationModuleHead">
+            <div class="pill">Scripture Anchor</div>
+            <span class="dashboardFoundationModuleTone">James 1:22-24</span>
+          </div>
+          <div class="dashboardFoundationExcerpt">“Be doers of the word, and not hearers only...”</div>
+          <div class="dashboardFoundationCitation">Truth over self-deception.</div>
+          <details class="dashboardFoundationFold" data-dashboard-optional="foundation-scripture">
+            <summary>Full passage</summary>
+            <div class="dashboardFoundationFoldBody">
+              <p>“But be doers of the word, and not hearers only, deceiving yourselves.”</p>
+              <p>“For if anyone is a hearer of the word and not a doer, he is like a man who looks intently at his natural face in a mirror.”</p>
+              <p>“For he looks at himself and goes away and at once forgets what he was like.”</p>
+            </div>
+          </details>
+        </div>
+
+        <div class="dashboardFoundationModule dashboardFoundationModule-intention">
+          <div class="dashboardFoundationModuleHead">
+            <div class="pill">Daily Intention</div>
+            <span class="dashboardFoundationModuleTone" id="dashboardIntentionStatus">Today I will…</span>
+          </div>
+          <div class="dashboardIntentionPresetRow" role="list" aria-label="Daily intention presets">
+            {% for value, label in intention_presets %}
+              <button type="button" class="dashboardIntentionPreset" data-intention-preset="{{ value }}" role="listitem">{{ label }}</button>
+            {% endfor %}
+          </div>
+          <details class="dashboardFoundationFold dashboardFoundationFold-subtle" data-dashboard-optional="foundation-intention-custom">
+            <summary>Custom intention</summary>
+            <div class="dashboardFoundationFoldBody">
+              <label class="dashboardFoundationField">
+                <span>Write it plainly</span>
+                <input
+                  type="text"
+                  id="dashboardIntentionCustom"
+                  maxlength="120"
+                  placeholder="Choose patience over pressure."
+                />
+              </label>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <details class="dashboardFoundationDetailFold" data-dashboard-optional="foundation-tools">
+        <summary class="dashboardFoundationDetailSummary">
+          <span>Creed and Prayer</span>
+          <span class="dashboardFoundationDetailMeta">Execution identity and session prayer</span>
+        </summary>
+        <div class="dashboardFoundationDetailGrid">
+          <div class="dashboardFoundationModule dashboardFoundationModule-creed">
+            <div class="dashboardFoundationModuleHead">
+              <div class="pill">Alignment Creed</div>
+              <span class="dashboardFoundationModuleTone">Execution identity</span>
+            </div>
+            <div class="dashboardFoundationCreedList" role="list">
+              <span class="dashboardFoundationCreedLine" role="listitem">I execute what I know.</span>
+              <span class="dashboardFoundationCreedLine" role="listitem">I do not trade from emotion.</span>
+              <span class="dashboardFoundationCreedLine" role="listitem">I wait for confirmation.</span>
+              <span class="dashboardFoundationCreedLine" role="listitem">I protect capital.</span>
+              <span class="dashboardFoundationCreedLine" role="listitem">I stay aligned under pressure.</span>
+              <span class="dashboardFoundationCreedLine" role="listitem">I act with discipline.</span>
+            </div>
+          </div>
+
+          <div class="dashboardFoundationModule dashboardFoundationModule-prayer">
+            <div class="dashboardFoundationModuleHead">
+              <div class="pill">Prayer / Reflection</div>
+              <span class="dashboardFoundationModuleTone">Secondary panel</span>
+            </div>
+            <details class="dashboardFoundationFold" data-dashboard-optional="foundation-prayer">
+              <summary>Open session prayer</summary>
+              <div class="dashboardFoundationFoldBody">
+                <p>Most High, guide my actions today. Keep me patient, disciplined, and aligned.</p>
+                <p>Let me not move from emotion, but from truth, structure, and obedience.</p>
+                <p>Help me wait, see clearly, and protect what You have entrusted to me.</p>
+              </div>
+            </details>
+          </div>
+        </div>
+      </details>
+
+      <details class="dashboardRoutineStrip dashboardRoutineStripFold" data-dashboard-optional="foundation-routine">
+        <summary class="dashboardRoutineStripSummary">
+          <div class="dashboardRoutineStripHead">
+            <div>
+              <div class="pill">Daily Routine</div>
+              <div class="supportLead">Ritualized flow before, during, and after risk.</div>
+            </div>
+            <div class="dashboardRoutineProgress">
+              <span class="dashboardRoutineProgressLabel">Routine</span>
+              <strong id="dashboardRoutineProgressValue">0/16</strong>
+            </div>
+          </div>
+        </summary>
+        <div class="dashboardRoutineGrid">
+          <section class="dashboardRoutinePhase" aria-labelledby="dashboardRoutinePhase-before">
+            <div class="dashboardRoutinePhaseHead">
+              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-before">Before Market</span>
+              <span class="dashboardRoutinePhaseMeta">Anchor before pressure.</span>
+            </div>
+            <div class="dashboardRoutineChecklist" role="list">
+              {% for key, label in foundation_routine.before %}
+                <button type="button" class="dashboardRoutineItem" data-routine-check="{{ key }}" role="listitem">{{ label }}</button>
+              {% endfor %}
+            </div>
+          </section>
+          <section class="dashboardRoutinePhase" aria-labelledby="dashboardRoutinePhase-during">
+            <div class="dashboardRoutinePhaseHead">
+              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-during">During Market</span>
+              <span class="dashboardRoutinePhaseMeta">Interrupt urgency. Honor the plan.</span>
+            </div>
+            <div class="dashboardRoutineChecklist" role="list">
+              {% for key, label in foundation_routine.during %}
+                <button type="button" class="dashboardRoutineItem" data-routine-check="{{ key }}" role="listitem">{{ label }}</button>
+              {% endfor %}
+            </div>
+          </section>
+          <section class="dashboardRoutinePhase" aria-labelledby="dashboardRoutinePhase-after">
+            <div class="dashboardRoutinePhaseHead">
+              <span class="dashboardRoutinePhaseLabel" id="dashboardRoutinePhase-after">After Market</span>
+              <span class="dashboardRoutinePhaseMeta">Close with truth, not mood.</span>
+            </div>
+            <div class="dashboardRoutineChecklist" role="list">
+              {% for key, label in foundation_routine.after %}
+                <button type="button" class="dashboardRoutineItem" data-routine-check="{{ key }}" role="listitem">{{ label }}</button>
+              {% endfor %}
+            </div>
+          </section>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>

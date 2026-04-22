@@ -7289,6 +7289,216 @@ def _save_dashboard_brief_settings(day: str, payload: Dict[str, Any]) -> None:
     app_runtime.set_setting_value(_dashboard_brief_setting_key(day), json.dumps(clean))
 
 
+def _dashboard_reflection_setting_key(day: str) -> str:
+    return f"dashboard_reflection::{str(day or '').strip()}"
+
+
+def _load_dashboard_reflection_settings(day: str) -> Dict[str, str]:
+    raw = str(app_runtime.get_setting_value(_dashboard_reflection_setting_key(day), "") or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _save_dashboard_reflection_settings(day: str, payload: Dict[str, Any]) -> None:
+    answer = str(payload.get("answer") or "").strip().lower()
+    if answer not in {"yes", "no"}:
+        answer = ""
+    clean = {
+        "answer": answer,
+        "break_alignment": str(payload.get("break_alignment") or "").strip()[:220],
+        "urgency_trigger": str(payload.get("urgency_trigger") or "").strip()[:220],
+        "obey_tomorrow": str(payload.get("obey_tomorrow") or "").strip()[:220],
+    }
+    if answer != "no":
+        clean["break_alignment"] = ""
+        clean["urgency_trigger"] = ""
+        clean["obey_tomorrow"] = ""
+    app_runtime.set_setting_value(_dashboard_reflection_setting_key(day), json.dumps(clean))
+
+
+def _dashboard_reflection_viewmodel(day: str) -> Dict[str, Any]:
+    saved = _load_dashboard_reflection_settings(day)
+    answer = str(saved.get("answer") or "").strip().lower()
+    if answer not in {"yes", "no"}:
+        answer = ""
+    has_entry = bool(
+        answer
+        or saved.get("break_alignment")
+        or saved.get("urgency_trigger")
+        or saved.get("obey_tomorrow")
+    )
+    return {
+        "day": day,
+        "answer": answer,
+        "break_alignment": str(saved.get("break_alignment") or "").strip(),
+        "urgency_trigger": str(saved.get("urgency_trigger") or "").strip(),
+        "obey_tomorrow": str(saved.get("obey_tomorrow") or "").strip(),
+        "has_entry": has_entry,
+        "status_label": "Saved to day" if has_entry else "Not saved",
+    }
+
+
+def _dashboard_behavior_setting_key(day: str) -> str:
+    return f"dashboard_behavior::{str(day or '').strip()}"
+
+
+def _load_dashboard_behavior_settings(day: str) -> Dict[str, Any]:
+    raw = str(app_runtime.get_setting_value(_dashboard_behavior_setting_key(day), "") or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _save_dashboard_behavior_settings(day: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    current = _load_dashboard_behavior_settings(day)
+    urgency_count = int(current.get("urgency_count") or 0)
+    urgency_increment_count = 0
+    try:
+        urgency_increment_count = max(0, int(payload.get("urgency_increment_count") or 0))
+    except (TypeError, ValueError):
+        urgency_increment_count = 0
+    if urgency_increment_count > 0:
+        urgency_count += urgency_increment_count
+    elif bool(payload.get("increment_urgency")):
+        urgency_count += 1
+    elif "urgency_count" in payload:
+        try:
+            urgency_count = max(0, int(payload.get("urgency_count") or 0))
+        except (TypeError, ValueError):
+            urgency_count = max(0, urgency_count)
+
+    discipline_state = str(payload.get("discipline_state") or current.get("discipline_state") or "").strip().lower()
+    if discipline_state not in {"locked-in", "neutral", "urgent", "frustrated"}:
+        discipline_state = str(current.get("discipline_state") or "locked-in").strip().lower() or "locked-in"
+
+    discipline_mode = str(payload.get("discipline_mode") or current.get("discipline_mode") or "").strip().lower()
+    if discipline_mode not in {"a-plus-only", "manage-winner", "done-for-day"}:
+        discipline_mode = str(current.get("discipline_mode") or "a-plus-only").strip().lower() or "a-plus-only"
+
+    def _int(value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    clean = {
+        "day": day,
+        "discipline_state": discipline_state,
+        "discipline_mode": discipline_mode,
+        "gate_count": max(0, min(3, _int(payload.get("gate_count"), _int(current.get("gate_count"), 0)))),
+        "routine_done": max(0, _int(payload.get("routine_done"), _int(current.get("routine_done"), 0))),
+        "routine_total": max(0, _int(payload.get("routine_total"), _int(current.get("routine_total"), 16))),
+        "alignment_pct": max(0, min(100, _int(payload.get("alignment_pct"), _int(current.get("alignment_pct"), 0)))),
+        "intention": str(payload.get("intention") or current.get("intention") or "").strip()[:140],
+        "reflection_answer": str(payload.get("reflection_answer") or current.get("reflection_answer") or "").strip().lower()[:8],
+        "urgency_count": urgency_count,
+        "updated_at": str(payload.get("updated_at") or app_runtime.now_iso()).strip() or app_runtime.now_iso(),
+    }
+    if clean["reflection_answer"] not in {"yes", "no"}:
+        clean["reflection_answer"] = ""
+    app_runtime.set_setting_value(_dashboard_behavior_setting_key(day), json.dumps(clean, separators=(",", ":")))
+    return clean
+
+
+def _dashboard_behavior_status(saved: Dict[str, Any]) -> Dict[str, str]:
+    alignment_pct = 0
+    try:
+        alignment_pct = int(saved.get("alignment_pct") or 0)
+    except (TypeError, ValueError):
+        alignment_pct = 0
+    discipline_state = str(saved.get("discipline_state") or "").strip().lower()
+    discipline_mode = str(saved.get("discipline_mode") or "").strip().lower()
+    reflection_answer = str(saved.get("reflection_answer") or "").strip().lower()
+    urgency_count = 0
+    try:
+        urgency_count = int(saved.get("urgency_count") or 0)
+    except (TypeError, ValueError):
+        urgency_count = 0
+
+    if discipline_mode == "done-for-day":
+        return {"label": "Closed", "tone": "neutral"}
+    if reflection_answer == "no" or discipline_state in {"urgent", "frustrated"} or alignment_pct < 40:
+        return {"label": "Drift", "tone": "negative"}
+    if urgency_count > 0 or discipline_mode == "manage-winner" or alignment_pct < 80:
+        return {"label": "Guarded", "tone": "warning"}
+    return {"label": "Aligned", "tone": "positive"}
+
+
+def _dashboard_behavior_trend_viewmodel(day: str, window: int = 5) -> Dict[str, Any]:
+    try:
+        anchor = date.fromisoformat(str(day or "").strip())
+    except ValueError:
+        anchor = app_runtime.now_et().date()
+
+    entries: List[Dict[str, Any]] = []
+    doer_streak = 0
+    total_urgency = 0
+    aligned_days = 0
+    for idx in range(window):
+        current_day = anchor - timedelta(days=(window - 1 - idx))
+        current_key = current_day.isoformat()
+        saved = _load_dashboard_behavior_settings(current_key)
+        reflection = _dashboard_reflection_viewmodel(current_key)
+        reflection_answer = str(reflection.get("answer") or saved.get("reflection_answer") or "").strip().lower()
+        status = _dashboard_behavior_status({**saved, "reflection_answer": reflection_answer})
+        alignment_pct = 0
+        try:
+            alignment_pct = int(saved.get("alignment_pct") or 0)
+        except (TypeError, ValueError):
+            alignment_pct = 0
+        urgency_count = 0
+        try:
+            urgency_count = int(saved.get("urgency_count") or 0)
+        except (TypeError, ValueError):
+            urgency_count = 0
+        is_doer = reflection_answer == "yes"
+        if is_doer:
+            doer_streak += 1
+        else:
+            doer_streak = 0
+        if status["label"] == "Aligned":
+            aligned_days += 1
+        total_urgency += urgency_count
+        entries.append(
+            {
+                "day": current_key,
+                "dow": current_day.strftime("%a").upper(),
+                "daynum": current_day.strftime("%d").lstrip("0") or "0",
+                "alignment_pct": alignment_pct,
+                "status_label": status["label"],
+                "status_tone": status["tone"],
+                "urgency_count": urgency_count,
+                "doer_answer": reflection_answer,
+                "is_today": current_key == anchor.isoformat(),
+                "has_data": bool(saved),
+            }
+        )
+
+    recent_streak = 0
+    for entry in reversed(entries):
+        if entry["doer_answer"] == "yes":
+            recent_streak += 1
+        else:
+            break
+
+    return {
+        "entries": entries,
+        "doer_streak": recent_streak,
+        "aligned_days": aligned_days,
+        "window": window,
+        "urgency_total": total_urgency,
+    }
+
+
 def _dashboard_daily_brief_viewmodel(
     *,
     now_et: datetime,
@@ -8771,6 +8981,66 @@ def dashboard_pace_update():
     return redirect(url_for("dashboard", **params))
 
 
+def dashboard_reflection_update():
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    day = (
+        str(request.form.get("reflection_day") or app_runtime.today_iso()).strip()
+        or app_runtime.today_iso()
+    )
+    try:
+        day = date.fromisoformat(day).isoformat()
+    except ValueError:
+        day = app_runtime.today_iso()
+    _save_dashboard_reflection_settings(
+        day,
+        {
+            "answer": request.form.get("reflection_answer") or "",
+            "break_alignment": request.form.get("reflection_break_alignment") or "",
+            "urgency_trigger": request.form.get("reflection_urgency_trigger") or "",
+            "obey_tomorrow": request.form.get("reflection_obey_tomorrow") or "",
+        },
+    )
+    return jsonify({"ok": True, "reflection": _dashboard_reflection_viewmodel(day)})
+
+
+def dashboard_behavior_update():
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    day = (
+        str(request.form.get("behavior_day") or app_runtime.today_iso()).strip()
+        or app_runtime.today_iso()
+    )
+    try:
+        day = date.fromisoformat(day).isoformat()
+    except ValueError:
+        day = app_runtime.today_iso()
+    saved = _save_dashboard_behavior_settings(
+        day,
+        {
+            "discipline_state": request.form.get("discipline_state") or "",
+            "discipline_mode": request.form.get("discipline_mode") or "",
+            "gate_count": request.form.get("gate_count") or "",
+            "routine_done": request.form.get("routine_done") or "",
+            "routine_total": request.form.get("routine_total") or "",
+            "alignment_pct": request.form.get("alignment_pct") or "",
+            "intention": request.form.get("intention") or "",
+            "reflection_answer": request.form.get("reflection_answer") or "",
+            "urgency_count": request.form.get("urgency_count") or "",
+            "increment_urgency": str(request.form.get("increment_urgency") or "").strip() in {"1", "true", "yes"},
+            "urgency_increment_count": request.form.get("urgency_increment_count") or "",
+            "updated_at": request.form.get("updated_at") or app_runtime.now_iso(),
+        },
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "behavior": saved,
+            "trend": _dashboard_behavior_trend_viewmodel(day),
+        }
+    )
+
+
 def dashboard():
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
@@ -9522,6 +9792,8 @@ def dashboard():
         today_count=today_count,
         data_trust=data_trust,
     )
+    dashboard_reflection = _dashboard_reflection_viewmodel(today_key)
+    dashboard_behavior_trend = _dashboard_behavior_trend_viewmodel(today_key)
     pace_card = _dashboard_pace_viewmodel(
         proj,
         milestone,
@@ -9589,6 +9861,8 @@ def dashboard():
         dashboard_market_structure_snapshot=dashboard_market_structure_snapshot,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
+        dashboard_reflection=dashboard_reflection,
+        dashboard_behavior_trend=dashboard_behavior_trend,
         snapshot_bar=snapshot_bar,
         readiness=readiness,
         decision_panel=decision_panel,

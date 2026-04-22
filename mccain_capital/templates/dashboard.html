@@ -75,6 +75,77 @@
     >Reset</button>
   </div>
 </section>
+<section
+  class="dashboardCommandDeckWrap"
+  id="dashboardCommandDeckWrap"
+  data-behavior-endpoint="{{ url_for('dashboard_behavior_update') }}"
+  data-behavior-day="{{ dashboard_reflection.day }}"
+>
+<section class="dashboardCommandDeck" id="dashboardCommandDeck" aria-label="Session command deck">
+  <article class="dashboardCommandCard dashboardCommandCard-session" id="dashboardCommandCardSession" data-command-tone="info">
+    <span class="dashboardCommandCardLabel">Operating State</span>
+    <strong class="dashboardCommandCardValue" id="dashboardCommandStateValue">Planning Only</strong>
+    <span class="dashboardCommandCardMeta" id="dashboardCommandStateMeta">Alignment before risk. Let the brief lead.</span>
+  </article>
+  <article class="dashboardCommandCard" id="dashboardCommandCardPermission" data-command-tone="info">
+    <span class="dashboardCommandCardLabel">Permission</span>
+    <strong class="dashboardCommandCardValue" id="dashboardCommandPermissionValue">No Trade</strong>
+    <span class="dashboardCommandCardMeta" id="dashboardCommandPermissionMeta">Finish the gate before adding risk.</span>
+  </article>
+  <article class="dashboardCommandCard" id="dashboardCommandCardAlignment" data-command-tone="info">
+    <span class="dashboardCommandCardLabel">Alignment</span>
+    <strong class="dashboardCommandCardValue" id="dashboardCommandAlignmentValue">Foundation live</strong>
+    <span class="dashboardCommandCardMeta" id="dashboardCommandAlignmentMeta">Routine 0/16. Intention not set yet.</span>
+  </article>
+  <article class="dashboardCommandCard" id="dashboardCommandCardNext" data-command-tone="info">
+    <span class="dashboardCommandCardLabel">Next Step</span>
+    <strong class="dashboardCommandCardValue" id="dashboardCommandNextValue">{{ focus_cta }}</strong>
+    <span class="dashboardCommandCardMeta" id="dashboardCommandNextMeta">{{ focus_body }}</span>
+  </article>
+</section>
+<details class="dashboardBehaviorTrendCard dashboardBehaviorTrendFold{% if dashboard_behavior_trend.aligned_days == 0 and dashboard_behavior_trend.doer_streak == 0 and dashboard_behavior_trend.urgency_total == 0 %} is-empty{% endif %}" id="dashboardBehaviorTrendCard" aria-label="Recent behavior trend">
+  <summary class="dashboardBehaviorTrendSummary">
+    <div class="dashboardBehaviorTrendHead">
+      <div>
+        <div class="pill">5-Day Memory</div>
+        <div class="supportLead">
+          {% if dashboard_behavior_trend.aligned_days == 0 and dashboard_behavior_trend.doer_streak == 0 and dashboard_behavior_trend.urgency_total == 0 %}
+            Memory starts once a close is logged.
+          {% else %}
+            Track drift, urgency, and doer follow-through across sessions.
+          {% endif %}
+        </div>
+      </div>
+      <div class="dashboardBehaviorTrendStats">
+        <span class="trendChip" id="dashboardBehaviorAlignedDays">{{ dashboard_behavior_trend.aligned_days }}/{{ dashboard_behavior_trend.window }} aligned</span>
+        <span class="trendChip" id="dashboardBehaviorDoerStreak">{{ dashboard_behavior_trend.doer_streak }} day doer streak</span>
+        <span class="trendChip" id="dashboardBehaviorUrgencyTotal">{{ dashboard_behavior_trend.urgency_total }} urgency checks</span>
+      </div>
+    </div>
+  </summary>
+  <div class="dashboardBehaviorTrendGrid" id="dashboardBehaviorTrendGrid">
+    {% for entry in dashboard_behavior_trend.entries %}
+      <article
+        class="dashboardBehaviorTrendDay is-{{ entry.status_tone }}{% if entry.is_today %} is-today{% endif %}"
+        data-trend-day="{{ entry.day }}"
+      >
+        <span class="dashboardBehaviorTrendDow">{{ entry.dow }}</span>
+        <strong class="dashboardBehaviorTrendPct">{{ entry.alignment_pct }}%</strong>
+        <span class="dashboardBehaviorTrendStatus">{{ entry.status_label }}</span>
+        <span class="dashboardBehaviorTrendMeta">
+          {% if entry.doer_answer == 'yes' %}
+            Doer kept
+          {% elif entry.doer_answer == 'no' %}
+            Review logged
+          {% else %}
+            No close logged
+          {% endif %}
+        </span>
+      </article>
+    {% endfor %}
+  </div>
+</details>
+</section>
 <div class="dashboardSnapshotBar dashboardSnapshotBar-primary">
   {% for item in snapshot_primary %}
     <div class="dashboardSnapshotCard{% if item.tone %} is-{{ item.tone }}{% endif %}">
@@ -88,6 +159,7 @@
 <div class="dashboardStage">
   <div class="dashboardStageColumn dashboardStageLead">
   <div class="dashboardPrimaryBand">
+  {% include "dashboard/_foundation_panel.html" %}
   <section class="dashboardStageSection dashboardStageCommand dashboardPrimarySection">
     <div class="dashboardStepLabel">Prepare</div>
     <div class="dashboardHero card pageHero heroCard">
@@ -149,6 +221,13 @@
                   href="{{ focus_href }}"
                   {% if focus_href in ['/market-pulse', '/trades/new'] %}data-discipline-trade-action="hero-focus"{% endif %}
                 >{{ focus_cta }}</a>
+                <button
+                  type="button"
+                  class="btn"
+                  data-urgency-trigger="hero"
+                  aria-haspopup="dialog"
+                  aria-controls="dashboardResetModal"
+                >Pressure Check</button>
                 <a class="btn" href="#daily-brief-card">Brief</a>
               </div>
             </div>
@@ -225,6 +304,10 @@
             <button type="button" class="dashboardTradeGateToggle" data-trade-gate-toggle="risk" aria-pressed="false">Risk accepted</button>
           </div>
           <div class="dashboardTradeGateNote" id="dashboardTradeGateNote">No trade. Protect capital until structure, trigger, and risk all agree.</div>
+          <div class="dashboardTradeGateMeta">
+            <span class="trendChip">Alignment before risk</span>
+            <span class="trendChip">Obedience protects capital</span>
+          </div>
         </div>
         <div class="dashboardDecisionLead">{{ decision_panel.posture_summary or decision_panel.plan }}</div>
         <div class="dashboardDecisionGrid">
@@ -425,12 +508,19 @@
 	      {% endif %}
 	    {% endfor %}
 
-	    <div class="dashboardHealthSurface">
-	      <div class="dashboardSupportHeader">
-	        <span class="dashboardStepLabel dashboardStepLabel-inline">Review</span>
-	        <span class="dashboardFoldTitle">Support &amp; Health</span>
-	        <span class="tiny muted">Reference only. Open when milestone, pacing, or trust needs attention.</span>
-	      </div>
+	    <details class="dashboardHealthSurface dashboardHealthFold" data-dashboard-optional="support-health">
+	      <summary class="dashboardHealthFoldSummary">
+	        <div class="dashboardSupportHeader">
+	          <span class="dashboardStepLabel dashboardStepLabel-inline">Review</span>
+          <span class="dashboardFoldTitle">Support &amp; Health</span>
+          <span class="tiny muted">Reference only. Open when milestone, pacing, or trust needs attention.</span>
+        </div>
+          <div class="dashboardHealthFoldChips">
+            <span class="trendChip" id="dashboardHealthFoldAlignmentChip">{{ dashboard_behavior_trend.doer_streak }} day doer streak</span>
+            <span class="trendChip{% if dashboard_reflection.answer != 'yes' %} neutral{% endif %}">{{ dashboard_reflection.status_label }}</span>
+            <span class="trendChip neutral">{{ money(overall_balance) }}</span>
+          </div>
+	      </summary>
 	      <div class="dashboardHealthGrid session-health-grid">
           <div class="card primaryCard dashboardDisciplineCard dashboardNonNegotiablesCard"><div class="toolbar">
             <div class="dashboardDisciplineCardHead">
@@ -447,6 +537,41 @@
                 <span class="dashboardNonNegotiablesRule">One clean loss = day over</span>
               </div>
             </div>
+          </div></div>
+          <div class="card primaryCard dashboardAlignmentCard"><div class="toolbar">
+            <div class="dashboardAlignmentHead">
+              <div>
+                <div class="pill">Doer Score</div>
+                <div class="supportLead">This matters more than raw P&amp;L.</div>
+              </div>
+              <span class="trendChip" id="dashboardAlignmentStatusChip">Aligned</span>
+            </div>
+            <div class="dashboardAlignmentTrendMeta">
+              <span class="dashboardAlignmentTrendStat" id="dashboardAlignmentDoerStreakValue">{{ dashboard_behavior_trend.doer_streak }} day doer streak</span>
+              <span class="dashboardAlignmentTrendStat" id="dashboardAlignmentUrgencyValue">{{ dashboard_behavior_trend.urgency_total }} urgency checks / 5d</span>
+            </div>
+            <div class="dashboardAlignmentScoreRow">
+              <div class="dashboardAlignmentScoreDial" id="dashboardAlignmentScoreDial" style="--alignment-pct: 0%;">
+                <div class="dashboardAlignmentScoreDialInner">
+                  <strong id="dashboardAlignmentScoreValue">0%</strong>
+                  <span id="dashboardAlignmentScoreLabel">Locked on process</span>
+                </div>
+              </div>
+              <div class="dashboardAlignmentScoreCopy">
+                <div class="dashboardAlignmentScoreHeadline">Obedience protects capital.</div>
+                <div class="tiny">Structure first, action second. Do not override what was already made clear.</div>
+              </div>
+            </div>
+            <details class="dashboardAlignmentFold" data-dashboard-optional="alignment-checklist">
+              <summary class="dashboardAlignmentFoldSummary">Process checks</summary>
+              <div class="dashboardAlignmentChecklist" role="list" aria-label="Alignment score checklist">
+                <button type="button" class="dashboardAlignmentItem" data-alignment-check="waited-setup" role="listitem">Waited for setup</button>
+                <button type="button" class="dashboardAlignmentItem" data-alignment-check="risk-rules" role="listitem">Followed risk rules</button>
+                <button type="button" class="dashboardAlignmentItem" data-alignment-check="avoided-emotion" role="listitem">Avoided emotional trade</button>
+                <button type="button" class="dashboardAlignmentItem" data-alignment-check="honored-one-loss" role="listitem">Honored one loss and done</button>
+                <button type="button" class="dashboardAlignmentItem" data-alignment-check="closed-intentionally" role="listitem">Closed the day intentionally</button>
+              </div>
+            </details>
           </div></div>
 	        {% set milestone_pct = '%.1f'|format(milestone.overall_progress_pct) %}
 	        {% set milestone_balance_remaining = (milestone.target_balance|float - overall_balance|float) if milestone.has_balance_goal else 0 %}
@@ -799,8 +924,45 @@
 	            </div>
 	          </div>
 	        </div>
+          <div
+            class="card primaryCard dashboardReflectionCard"
+            id="dashboardReflectionCard"
+            data-reflection-endpoint="{{ url_for('dashboard_reflection_update') }}"
+            data-reflection-day="{{ dashboard_reflection.day }}"
+          ><div class="toolbar">
+            <div class="dashboardReflectionHead">
+              <div>
+                <div class="pill">Close</div>
+                <div class="supportLead">Post-session reflection</div>
+              </div>
+              <span class="dashboardReflectionMeta" id="dashboardReflectionStatus">{{ dashboard_reflection.status_label }}</span>
+            </div>
+            <div class="dashboardReflectionPrompt">Was I a doer today?</div>
+            <div class="dashboardReflectionChoices" role="radiogroup" aria-label="Was I a doer today">
+              <button type="button" class="dashboardReflectionChoice{% if dashboard_reflection.answer == 'yes' %} is-active{% endif %}" data-reflection-answer="yes" aria-pressed="{% if dashboard_reflection.answer == 'yes' %}true{% else %}false{% endif %}">Yes</button>
+              <button type="button" class="dashboardReflectionChoice{% if dashboard_reflection.answer == 'no' %} is-active{% endif %}" data-reflection-answer="no" aria-pressed="{% if dashboard_reflection.answer == 'no' %}true{% else %}false{% endif %}">No</button>
+            </div>
+            <div
+              class="dashboardReflectionDriftFields"
+              id="dashboardReflectionDriftFields"
+              {% if dashboard_reflection.answer != 'no' %}hidden style="display:none"{% endif %}
+            >
+              <label class="dashboardFoundationField">
+                <span>Where did I break alignment?</span>
+                <textarea id="dashboardReflectionBreak" rows="2" maxlength="220" placeholder="Name the break without spin.">{{ dashboard_reflection.break_alignment }}</textarea>
+              </label>
+              <label class="dashboardFoundationField">
+                <span>What triggered urgency?</span>
+                <textarea id="dashboardReflectionUrgency" rows="2" maxlength="220" placeholder="Pressure, fear, revenge, insecurity, self-reliance.">{{ dashboard_reflection.urgency_trigger }}</textarea>
+              </label>
+              <label class="dashboardFoundationField">
+                <span>What must I obey tomorrow?</span>
+                <textarea id="dashboardReflectionObey" rows="2" maxlength="220" placeholder="Write the one instruction that must hold tomorrow.">{{ dashboard_reflection.obey_tomorrow }}</textarea>
+              </label>
+            </div>
+          </div></div>
 	      </div>
-	    </div>
+	    </details>
 	  </section>
   </div>
   </div>
@@ -810,8 +972,8 @@
     <div class="dashboardResetModalCard card" role="dialog" aria-modal="true" aria-labelledby="dashboardResetModalTitle">
       <div class="dashboardResetModalHead">
         <div>
-          <div class="pill">Reset State</div>
-          <h3 id="dashboardResetModalTitle" class="dashboardResetModalTitle">Reset State</h3>
+          <div class="pill">Urgency Interrupt</div>
+          <h3 id="dashboardResetModalTitle" class="dashboardResetModalTitle">Pressure Check</h3>
         </div>
         <button
           type="button"
@@ -822,15 +984,23 @@
         >&times;</button>
       </div>
       <div class="dashboardResetModalBody">
-        <div class="dashboardResetPrompt">What am I feeling right now?</div>
-        <div class="dashboardResetPrompt">Is this in the plan?</div>
-        <div class="dashboardResetPrompt">If this loses, am I still within rules?</div>
+        <div class="dashboardResetPrompt">Is this my actual setup?</div>
+        <div class="dashboardResetPrompt">Is confirmation present?</div>
+        <div class="dashboardResetPrompt">Am I following my rules?</div>
+        <div class="dashboardResetPrompt">Is this conviction or pressure?</div>
+        <div class="dashboardResetPrompt">If this loses, did I still honor the system?</div>
+        <div class="dashboardResetReminderRow">
+          <span class="trendChip negative">No conviction = no trade</span>
+          <span class="trendChip negative">No stop = invalid trade</span>
+          <span class="trendChip warning">One clean loss = day over</span>
+          <span class="trendChip">Obedience protects capital</span>
+        </div>
         <div class="dashboardResetFeedback" id="dashboardResetFeedback" hidden></div>
       </div>
       <div class="dashboardResetModalActions">
         <button type="button" class="btn" data-reset-action="plan">Return to Plan</button>
         <button type="button" class="btn" data-reset-action="stand-down">Stand Down</button>
-        <button type="button" class="btn primary" data-reset-action="proceed">Proceed</button>
+        <button type="button" class="btn primary" data-reset-action="proceed">Proceed Aligned</button>
       </div>
     </div>
   </div>

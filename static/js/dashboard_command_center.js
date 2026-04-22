@@ -703,13 +703,14 @@ function initCalendarPreview(root = document) {
   const gateStatus = document.getElementById("dashboardTradeGateStatus");
   const gateNote = document.getElementById("dashboardTradeGateNote");
   const planningSection = document.getElementById("dashboardPlanningSection");
-  const resetTrigger = document.getElementById("dashboardResetTrigger");
+  const resetTriggers = Array.from(document.querySelectorAll("[data-urgency-trigger], #dashboardResetTrigger"));
   const resetModal = document.getElementById("dashboardResetModal");
   const resetFeedback = document.getElementById("dashboardResetFeedback");
   const resetCloseButtons = Array.from(document.querySelectorAll("[data-reset-close]"));
   const resetActionButtons = Array.from(document.querySelectorAll("[data-reset-action]"));
   const tradeActionLinks = Array.from(document.querySelectorAll("[data-discipline-trade-action]"));
   const storageKey = "mc_dashboard_discipline_layer";
+  let disciplineTouchedAt = "";
 
   const readState = () => {
     try {
@@ -814,6 +815,19 @@ function initCalendarPreview(root = document) {
     if (gateNote) gateNote.textContent = gateNotes[String(count)] || gateNotes["0"];
   };
 
+  const emitDisciplineState = () => {
+    document.dispatchEvent(new CustomEvent("dashboard:discipline-state", {
+      detail: {
+        disciplineState: uiState.disciplineState,
+        disciplineMode: uiState.disciplineMode,
+        gateCount: gateCount(),
+        gateLabel: String(gateStatus?.textContent || gateLabels[gateCount()] || "No Trade"),
+        gateNote: String(gateNote?.textContent || gateNotes[String(gateCount())] || gateNotes["0"]),
+        touchedAt: disciplineTouchedAt,
+      },
+    }));
+  };
+
   const syncGateButtons = () => {
     const disabled = modeBlocksNewRisk();
     gateButtons.forEach((button) => {
@@ -837,6 +851,7 @@ function initCalendarPreview(root = document) {
     syncButtonGroup(modeButtons, "disciplineMode", uiState.disciplineMode);
     syncGateButtons();
     syncTradeActions();
+    emitDisciplineState();
   };
 
   const openResetModal = () => {
@@ -844,6 +859,9 @@ function initCalendarPreview(root = document) {
     setResetFeedback("");
     resetModal.hidden = false;
     document.body.classList.add("modalOpen");
+    document.dispatchEvent(new CustomEvent("dashboard:urgency-check", {
+      detail: { openedAt: new Date().toISOString() },
+    }));
   };
 
   const closeResetModal = () => {
@@ -857,6 +875,7 @@ function initCalendarPreview(root = document) {
   stateButtons.forEach((button) => {
     button.addEventListener("click", () => {
       uiState.disciplineState = String(button.dataset.disciplineState || "locked-in");
+      disciplineTouchedAt = new Date().toISOString();
       applyUiState();
       persistState(uiState);
     });
@@ -865,6 +884,7 @@ function initCalendarPreview(root = document) {
   modeButtons.forEach((button) => {
     button.addEventListener("click", () => {
       uiState.disciplineMode = String(button.dataset.disciplineMode || "a-plus-only");
+      disciplineTouchedAt = new Date().toISOString();
       if (modeBlocksNewRisk()) {
         clearGate();
       }
@@ -878,12 +898,15 @@ function initCalendarPreview(root = document) {
       const key = String(button.dataset.tradeGateToggle || "");
       if (!key) return;
       uiState.tradeGate[key] = !uiState.tradeGate[key];
+      disciplineTouchedAt = new Date().toISOString();
       applyUiState();
       persistState(uiState);
     });
   });
 
-  resetTrigger?.addEventListener("click", openResetModal);
+  resetTriggers.forEach((button) => {
+    button.addEventListener("click", openResetModal);
+  });
   resetCloseButtons.forEach((button) => {
     button.addEventListener("click", closeResetModal);
   });
@@ -895,6 +918,7 @@ function initCalendarPreview(root = document) {
         uiState.disciplineState = "locked-in";
         uiState.disciplineMode = "a-plus-only";
         clearGate();
+        disciplineTouchedAt = new Date().toISOString();
         setResetFeedback("");
         applyUiState();
         persistState(uiState);
@@ -905,6 +929,7 @@ function initCalendarPreview(root = document) {
         uiState.disciplineState = "neutral";
         uiState.disciplineMode = "done-for-day";
         clearGate();
+        disciplineTouchedAt = new Date().toISOString();
         setResetFeedback("");
         applyUiState();
         persistState(uiState);
@@ -913,15 +938,16 @@ function initCalendarPreview(root = document) {
         return;
       } else if (action === "proceed") {
         if (uiState.disciplineMode !== "a-plus-only") {
-          setResetFeedback("Mode is not set for new risk. Return to Plan or keep managing what is already on.");
+          setResetFeedback("Mode is not set for new risk. Stand down or return to plan before acting.");
           return;
         }
         if (gateCount() < 3) {
-          setResetFeedback("Gate incomplete. Re-check structure, trigger, and risk before proceeding.");
+          setResetFeedback("Gate incomplete. No conviction = no trade until structure, trigger, and risk all agree.");
           planningSection?.scrollIntoView({ behavior: "smooth", block: "start" });
           return;
         }
         uiState.disciplineState = "locked-in";
+        disciplineTouchedAt = new Date().toISOString();
         setResetFeedback("");
         applyUiState();
         persistState(uiState);
@@ -941,6 +967,640 @@ function initCalendarPreview(root = document) {
       closeResetModal();
     }
   });
+})();
+
+(function () {
+  const foundationCard = document.getElementById("dashboardFoundationCard");
+  if (!foundationCard) return;
+
+  const storageKey = "mc_dashboard_foundation_system_v1";
+  const intentionButtons = Array.from(document.querySelectorAll("[data-intention-preset]"));
+  const intentionInput = document.getElementById("dashboardIntentionCustom");
+  const intentionStatus = document.getElementById("dashboardIntentionStatus");
+  const foundationSummary = document.getElementById("dashboardFoundationSummary");
+  const foundationSummaryChip = document.getElementById("dashboardFoundationSummaryChip");
+  const routineButtons = Array.from(document.querySelectorAll("[data-routine-check]"));
+  const routineProgress = document.getElementById("dashboardRoutineProgressValue");
+  const alignmentButtons = Array.from(document.querySelectorAll("[data-alignment-check]"));
+  const alignmentStatusChip = document.getElementById("dashboardAlignmentStatusChip");
+  const alignmentScoreDial = document.getElementById("dashboardAlignmentScoreDial");
+  const alignmentScoreValue = document.getElementById("dashboardAlignmentScoreValue");
+  const alignmentScoreLabel = document.getElementById("dashboardAlignmentScoreLabel");
+  const reflectionCard = document.getElementById("dashboardReflectionCard");
+  const reflectionEndpoint = String(reflectionCard?.dataset.reflectionEndpoint || "").trim();
+  const reflectionDay = String(reflectionCard?.dataset.reflectionDay || "").trim();
+  const reflectionStatus = document.getElementById("dashboardReflectionStatus");
+  const reflectionButtons = Array.from(document.querySelectorAll("[data-reflection-answer]"));
+  const reflectionDriftFields = document.getElementById("dashboardReflectionDriftFields");
+  const reflectionBreak = document.getElementById("dashboardReflectionBreak");
+  const reflectionUrgency = document.getElementById("dashboardReflectionUrgency");
+  const reflectionObey = document.getElementById("dashboardReflectionObey");
+
+  const defaults = {
+    intentionPreset: "",
+    intentionCustom: "",
+    routine: {},
+    alignment: {},
+    lastIntentionAt: "",
+    lastRoutineAt: "",
+    lastAlignmentAt: "",
+  };
+
+  const presetLabels = Object.fromEntries(
+    intentionButtons.map((button) => [
+      String(button.dataset.intentionPreset || ""),
+      String(button.textContent || "").trim(),
+    ])
+  );
+  const routineKeys = routineButtons.map((button) => String(button.dataset.routineCheck || "")).filter(Boolean);
+  const alignmentKeys = alignmentButtons.map((button) => String(button.dataset.alignmentCheck || "")).filter(Boolean);
+
+  const readState = () => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return {
+        intentionPreset: String(parsed.intentionPreset || defaults.intentionPreset),
+        intentionCustom: String(parsed.intentionCustom || defaults.intentionCustom),
+        routine: { ...defaults.routine, ...(parsed.routine || {}) },
+        alignment: { ...defaults.alignment, ...(parsed.alignment || {}) },
+        lastIntentionAt: String(parsed.lastIntentionAt || defaults.lastIntentionAt),
+        lastRoutineAt: String(parsed.lastRoutineAt || defaults.lastRoutineAt),
+        lastAlignmentAt: String(parsed.lastAlignmentAt || defaults.lastAlignmentAt),
+      };
+    } catch (_error) {
+      return typeof window.structuredClone === "function"
+        ? window.structuredClone(defaults)
+        : JSON.parse(JSON.stringify(defaults));
+    }
+  };
+
+  const persistState = (nextState) => {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(nextState));
+    } catch (_error) {
+      // Ignore storage failures.
+    }
+  };
+
+  const state = readState();
+  const reflectionState = {
+    answer: reflectionButtons.find((button) => button.classList.contains("is-active"))?.dataset.reflectionAnswer || "",
+    breakAlignment: String(reflectionBreak?.value || ""),
+    urgencyTrigger: String(reflectionUrgency?.value || ""),
+    obeyTomorrow: String(reflectionObey?.value || ""),
+  };
+  let reflectionSaveTimer = null;
+  let reflectionRequestSeq = 0;
+
+  const countDone = (collection, keys) => keys.reduce((sum, key) => sum + (collection[key] ? 1 : 0), 0);
+
+  const activeIntentionText = () => {
+    const custom = String(state.intentionCustom || "").trim();
+    if (custom) return custom;
+    return presetLabels[state.intentionPreset] || "Choose patience over pressure.";
+  };
+
+  const syncIntentions = () => {
+    intentionButtons.forEach((button) => {
+      const active = String(button.dataset.intentionPreset || "") === state.intentionPreset;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    if (intentionInput && intentionInput.value !== state.intentionCustom) {
+      intentionInput.value = state.intentionCustom;
+    }
+    const nextText = activeIntentionText();
+    if (intentionStatus) intentionStatus.textContent = nextText;
+  };
+
+  const syncRoutine = () => {
+    routineButtons.forEach((button) => {
+      const key = String(button.dataset.routineCheck || "");
+      const active = !!state.routine[key];
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    if (routineProgress) {
+      routineProgress.textContent = `${countDone(state.routine, routineKeys)}/${routineKeys.length}`;
+    }
+  };
+
+  const alignmentStatusForPct = (pct) => {
+    if (pct >= 80) {
+      return {
+        label: "Aligned",
+        detail: "Locked on process",
+        tone: "positive",
+      };
+    }
+    if (pct >= 40) {
+      return {
+        label: "Warning",
+        detail: "Guard against drift",
+        tone: "warning",
+      };
+    }
+    return {
+      label: "Out of Alignment",
+      detail: "Stand down and reset",
+      tone: "negative",
+    };
+  };
+
+  const syncAlignment = () => {
+    alignmentButtons.forEach((button) => {
+      const key = String(button.dataset.alignmentCheck || "");
+      const active = !!state.alignment[key];
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    const completed = countDone(state.alignment, alignmentKeys);
+    const pct = alignmentKeys.length ? Math.round((completed / alignmentKeys.length) * 100) : 0;
+    const status = alignmentStatusForPct(pct);
+    if (alignmentStatusChip) {
+      alignmentStatusChip.textContent = status.label;
+      alignmentStatusChip.classList.remove("positive", "negative", "warning", "info");
+      alignmentStatusChip.classList.add(status.tone);
+    }
+    if (alignmentScoreDial) {
+      alignmentScoreDial.style.setProperty("--alignment-pct", `${pct}%`);
+    }
+    if (alignmentScoreValue) alignmentScoreValue.textContent = `${pct}%`;
+    if (alignmentScoreLabel) alignmentScoreLabel.textContent = status.detail;
+    if (foundationSummary) {
+      foundationSummary.textContent = pct >= 80
+        ? `Aligned to execute. Intention: ${activeIntentionText()}`
+        : pct >= 40
+        ? `Guard the session. Intention: ${activeIntentionText()}`
+        : "Pressure is rising. Re-anchor before taking risk.";
+    }
+    if (foundationSummaryChip) {
+      foundationSummaryChip.textContent = status.label;
+      foundationSummaryChip.classList.remove("positive", "negative", "warning", "info");
+      foundationSummaryChip.classList.add(status.tone);
+    }
+  };
+
+  const syncReflection = () => {
+    reflectionButtons.forEach((button) => {
+      const value = String(button.dataset.reflectionAnswer || "");
+      const active = value === reflectionState.answer;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    const showDrift = reflectionState.answer === "no";
+    if (reflectionDriftFields) {
+      reflectionDriftFields.hidden = !showDrift;
+      reflectionDriftFields.style.display = showDrift ? "grid" : "none";
+    }
+    if (reflectionBreak && reflectionBreak.value !== reflectionState.breakAlignment) {
+      reflectionBreak.value = reflectionState.breakAlignment;
+    }
+    if (reflectionUrgency && reflectionUrgency.value !== reflectionState.urgencyTrigger) {
+      reflectionUrgency.value = reflectionState.urgencyTrigger;
+    }
+    if (reflectionObey && reflectionObey.value !== reflectionState.obeyTomorrow) {
+      reflectionObey.value = reflectionState.obeyTomorrow;
+    }
+  };
+
+  const syncUi = () => {
+    syncIntentions();
+    syncRoutine();
+    syncAlignment();
+    syncReflection();
+    document.dispatchEvent(new CustomEvent("dashboard:foundation-state", {
+      detail: {
+        intention: activeIntentionText(),
+        routineDone: countDone(state.routine, routineKeys),
+        routineTotal: routineKeys.length,
+        alignmentDone: countDone(state.alignment, alignmentKeys),
+        alignmentTotal: alignmentKeys.length,
+        alignmentPct: alignmentKeys.length ? Math.round((countDone(state.alignment, alignmentKeys) / alignmentKeys.length) * 100) : 0,
+        alignmentLabel: String(alignmentStatusChip?.textContent || "Foundation live"),
+        alignmentDetail: String(alignmentScoreLabel?.textContent || ""),
+        reflectionAnswer: reflectionState.answer,
+        reflectionStatus: String(reflectionStatus?.textContent || ""),
+        lastTouchedAt: state.lastAlignmentAt || state.lastRoutineAt || state.lastIntentionAt || "",
+      },
+    }));
+  };
+
+  const setReflectionStatus = (message) => {
+    if (reflectionStatus) reflectionStatus.textContent = String(message || "");
+  };
+
+  const applyReflectionPayload = (payload) => {
+    const reflection = payload && typeof payload === "object" ? payload : {};
+    reflectionState.answer = String(reflection.answer || "");
+    reflectionState.breakAlignment = String(reflection.break_alignment || "");
+    reflectionState.urgencyTrigger = String(reflection.urgency_trigger || "");
+    reflectionState.obeyTomorrow = String(reflection.obey_tomorrow || "");
+    setReflectionStatus(reflection.status_label || "Saved to day");
+    syncUi();
+  };
+
+  const saveReflection = async () => {
+    if (!reflectionEndpoint || !reflectionDay) return;
+    const seq = ++reflectionRequestSeq;
+    setReflectionStatus("Saving...");
+    const body = new URLSearchParams({
+      reflection_day: reflectionDay,
+      reflection_answer: reflectionState.answer,
+      reflection_break_alignment: reflectionState.answer === "no" ? reflectionState.breakAlignment : "",
+      reflection_urgency_trigger: reflectionState.answer === "no" ? reflectionState.urgencyTrigger : "",
+      reflection_obey_tomorrow: reflectionState.answer === "no" ? reflectionState.obeyTomorrow : "",
+    });
+    try {
+      const response = await fetch(reflectionEndpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: body.toString(),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload || payload.ok === false) {
+        throw new Error("reflection_save_failed");
+      }
+      if (seq !== reflectionRequestSeq) return;
+      applyReflectionPayload(payload.reflection || {});
+    } catch (_error) {
+      if (seq !== reflectionRequestSeq) return;
+      setReflectionStatus("Save failed");
+    }
+  };
+
+  const queueReflectionSave = () => {
+    if (reflectionSaveTimer) {
+      window.clearTimeout(reflectionSaveTimer);
+    }
+    reflectionSaveTimer = window.setTimeout(() => {
+      reflectionSaveTimer = null;
+      void saveReflection();
+    }, 280);
+  };
+
+  intentionButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const value = String(button.dataset.intentionPreset || "");
+      state.intentionPreset = state.intentionPreset === value ? "" : value;
+      if (state.intentionPreset) {
+        state.intentionCustom = "";
+      }
+      state.lastIntentionAt = new Date().toISOString();
+      syncUi();
+      persistState(state);
+    });
+  });
+
+  intentionInput?.addEventListener("input", () => {
+    state.intentionCustom = String(intentionInput.value || "").trimStart();
+    if (state.intentionCustom) {
+      state.intentionPreset = "";
+    }
+    state.lastIntentionAt = new Date().toISOString();
+    syncUi();
+    persistState(state);
+  });
+
+  routineButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = String(button.dataset.routineCheck || "");
+      if (!key) return;
+      state.routine[key] = !state.routine[key];
+      state.lastRoutineAt = new Date().toISOString();
+      syncUi();
+      persistState(state);
+    });
+  });
+
+  alignmentButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = String(button.dataset.alignmentCheck || "");
+      if (!key) return;
+      state.alignment[key] = !state.alignment[key];
+      state.lastAlignmentAt = new Date().toISOString();
+      syncUi();
+      persistState(state);
+    });
+  });
+
+  reflectionButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const value = String(button.dataset.reflectionAnswer || "");
+      reflectionState.answer = reflectionState.answer === value ? "" : value;
+      if (reflectionState.answer !== "no") {
+        reflectionState.breakAlignment = "";
+        reflectionState.urgencyTrigger = "";
+        reflectionState.obeyTomorrow = "";
+      }
+      syncUi();
+      queueReflectionSave();
+    });
+  });
+
+  [
+    [reflectionBreak, "breakAlignment"],
+    [reflectionUrgency, "urgencyTrigger"],
+    [reflectionObey, "obeyTomorrow"],
+  ].forEach(([node, key]) => {
+    node?.addEventListener("input", () => {
+      reflectionState[key] = String(node.value || "").trimStart();
+      queueReflectionSave();
+    });
+  });
+
+  syncUi();
+})();
+
+(function () {
+  const shell = document.getElementById("dashboardModeShell");
+  const wrap = document.getElementById("dashboardCommandDeckWrap");
+  const stateValue = document.getElementById("dashboardCommandStateValue");
+  const stateMeta = document.getElementById("dashboardCommandStateMeta");
+  const permissionValue = document.getElementById("dashboardCommandPermissionValue");
+  const permissionMeta = document.getElementById("dashboardCommandPermissionMeta");
+  const alignmentValue = document.getElementById("dashboardCommandAlignmentValue");
+  const alignmentMeta = document.getElementById("dashboardCommandAlignmentMeta");
+  const nextValue = document.getElementById("dashboardCommandNextValue");
+  const nextMeta = document.getElementById("dashboardCommandNextMeta");
+  const trendGrid = document.getElementById("dashboardBehaviorTrendGrid");
+  const alignedDaysNode = document.getElementById("dashboardBehaviorAlignedDays");
+  const doerStreakNode = document.getElementById("dashboardBehaviorDoerStreak");
+  const urgencyTotalNode = document.getElementById("dashboardBehaviorUrgencyTotal");
+  const alignmentDoerStreakNode = document.getElementById("dashboardAlignmentDoerStreakValue");
+  const alignmentUrgencyNode = document.getElementById("dashboardAlignmentUrgencyValue");
+  const cards = {
+    session: document.getElementById("dashboardCommandCardSession"),
+    permission: document.getElementById("dashboardCommandCardPermission"),
+    alignment: document.getElementById("dashboardCommandCardAlignment"),
+    next: document.getElementById("dashboardCommandCardNext"),
+  };
+  if (!shell || !stateValue || !stateMeta || !permissionValue || !permissionMeta || !alignmentValue || !alignmentMeta || !nextValue || !nextMeta) {
+    return;
+  }
+  const behaviorEndpoint = String(wrap?.dataset.behaviorEndpoint || "").trim();
+  const behaviorDay = String(wrap?.dataset.behaviorDay || "").trim();
+  let saveTimer = null;
+  let requestSeq = 0;
+  let pendingUrgencyIncrements = 0;
+
+  const discipline = {
+    disciplineState: String(shell.dataset.disciplineState || "locked-in"),
+    disciplineMode: String(shell.dataset.disciplineMode || "a-plus-only"),
+    gateCount: 0,
+    gateLabel: String(permissionValue.textContent || "No Trade"),
+    gateNote: String(permissionMeta.textContent || "Finish the gate before adding risk."),
+    touchedAt: "",
+  };
+  const foundation = {
+    intention: "Choose patience over pressure.",
+    routineDone: 0,
+    routineTotal: 16,
+    alignmentPct: 0,
+    alignmentLabel: "Foundation live",
+    alignmentDetail: "Routine before pressure.",
+    reflectionAnswer: "",
+    reflectionStatus: "",
+    lastTouchedAt: "",
+  };
+  const trend = {
+    entries: [],
+    alignedDays: 0,
+    window: 5,
+    doerStreak: 0,
+    urgencyTotal: 0,
+  };
+
+  const formatClock = (iso) => {
+    const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(ts)) return "";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(new Date(ts));
+  };
+
+  const setTone = (node, tone) => {
+    if (!node) return;
+    node.dataset.commandTone = tone;
+  };
+
+  const escapeHtml = (value) => String(value || "").replace(/[&<>"]/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+  }[char] || char));
+
+  const renderTrend = () => {
+    if (!Array.isArray(trend.entries) || !trend.entries.length) {
+      return;
+    }
+    if (alignedDaysNode) {
+      alignedDaysNode.textContent = `${trend.alignedDays}/${trend.window} aligned`;
+    }
+    if (doerStreakNode) {
+      doerStreakNode.textContent = `${trend.doerStreak} day doer streak`;
+    }
+    if (urgencyTotalNode) {
+      urgencyTotalNode.textContent = `${trend.urgencyTotal} urgency checks`;
+    }
+    if (alignmentDoerStreakNode) {
+      alignmentDoerStreakNode.textContent = `${trend.doerStreak} day doer streak`;
+    }
+    if (alignmentUrgencyNode) {
+      alignmentUrgencyNode.textContent = `${trend.urgencyTotal} urgency checks / 5d`;
+    }
+    if (!trendGrid) return;
+    trendGrid.innerHTML = trend.entries.map((entry) => {
+      const tone = escapeHtml(entry.status_tone || "info");
+      const day = escapeHtml(entry.day || "");
+      const dow = escapeHtml(entry.dow || "");
+      const pct = escapeHtml(entry.alignment_pct ?? 0);
+      const statusLabel = escapeHtml(entry.status_label || "Pending");
+      const meta = entry.doer_answer === "yes"
+        ? "Doer kept"
+        : entry.doer_answer === "no"
+        ? "Review logged"
+        : "No close logged";
+      return `
+        <article class="dashboardBehaviorTrendDay is-${tone}${entry.is_today ? " is-today" : ""}" data-trend-day="${day}">
+          <span class="dashboardBehaviorTrendDow">${dow}</span>
+          <strong class="dashboardBehaviorTrendPct">${pct}%</strong>
+          <span class="dashboardBehaviorTrendStatus">${statusLabel}</span>
+          <span class="dashboardBehaviorTrendMeta">${escapeHtml(meta)}</span>
+        </article>
+      `;
+    }).join("");
+  };
+
+  const pushBehavior = async ({ incrementUrgency = false } = {}) => {
+    if (!behaviorEndpoint || !behaviorDay) return;
+    const seq = ++requestSeq;
+    const body = new URLSearchParams({
+      behavior_day: behaviorDay,
+      discipline_state: discipline.disciplineState,
+      discipline_mode: discipline.disciplineMode,
+      gate_count: String(discipline.gateCount || 0),
+      routine_done: String(foundation.routineDone || 0),
+      routine_total: String(foundation.routineTotal || 0),
+      alignment_pct: String(foundation.alignmentPct || 0),
+      intention: foundation.intention || "",
+      reflection_answer: foundation.reflectionAnswer || "",
+      updated_at: new Date().toISOString(),
+    });
+    if (incrementUrgency || pendingUrgencyIncrements > 0) {
+      body.set("increment_urgency", "1");
+      body.set("urgency_increment_count", String(Math.max(1, pendingUrgencyIncrements)));
+    }
+    try {
+      const response = await fetch(behaviorEndpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: body.toString(),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload || payload.ok === false) {
+        throw new Error("behavior_save_failed");
+      }
+      if (seq !== requestSeq) return;
+      pendingUrgencyIncrements = 0;
+      if (payload.trend && typeof payload.trend === "object") {
+        trend.entries = Array.isArray(payload.trend.entries) ? payload.trend.entries : [];
+        trend.alignedDays = Number(payload.trend.aligned_days || 0);
+        trend.window = Number(payload.trend.window || 5);
+        trend.doerStreak = Number(payload.trend.doer_streak || 0);
+        trend.urgencyTotal = Number(payload.trend.urgency_total || 0);
+        renderTrend();
+      }
+    } catch (_error) {
+      // Ignore intermittent dashboard history save failures.
+    }
+  };
+
+  const queueBehaviorSave = ({ incrementUrgency = false } = {}) => {
+    if (incrementUrgency) {
+      pendingUrgencyIncrements += 1;
+    }
+    if (saveTimer) {
+      window.clearTimeout(saveTimer);
+    }
+    saveTimer = window.setTimeout(() => {
+      const shouldIncrementUrgency = pendingUrgencyIncrements > 0;
+      saveTimer = null;
+      void pushBehavior({ incrementUrgency: shouldIncrementUrgency });
+    }, incrementUrgency ? 80 : 260);
+  };
+
+  const render = () => {
+    let sessionTone = "info";
+    let sessionLabel = "Planning Only";
+    let sessionDetail = "Alignment before risk. Let the brief lead.";
+
+    if (discipline.disciplineMode === "done-for-day") {
+      sessionTone = "negative";
+      sessionLabel = "Stand Down";
+      sessionDetail = "Day is closed to new risk. Review and close intentionally.";
+    } else if (discipline.disciplineMode === "manage-winner") {
+      sessionTone = "warning";
+      sessionLabel = "Manage Only";
+      sessionDetail = "Defend the win. No new entries until mode changes.";
+    } else if (discipline.disciplineState === "urgent" || discipline.disciplineState === "frustrated" || foundation.reflectionAnswer === "no" || foundation.alignmentPct < 40) {
+      sessionTone = "negative";
+      sessionLabel = "Out of Alignment";
+      sessionDetail = "Pressure is rising. Reset before taking risk.";
+    } else if (discipline.gateCount === 3 && foundation.alignmentPct >= 80 && discipline.disciplineState === "locked-in") {
+      sessionTone = "positive";
+      sessionLabel = "Cleared";
+      sessionDetail = "Structure, trigger, and risk agree. Execute only if plan still matches.";
+    } else if (discipline.gateCount > 0 || foundation.alignmentPct >= 40) {
+      sessionTone = "warning";
+      sessionLabel = "Planning Only";
+      sessionDetail = "Build confirmation. Do not anticipate the final condition.";
+    }
+
+    const stateStamp = formatClock(discipline.touchedAt || foundation.lastTouchedAt);
+    stateValue.textContent = sessionLabel;
+    stateMeta.textContent = stateStamp ? `${sessionDetail} Updated ${stateStamp} ET.` : sessionDetail;
+    setTone(cards.session, sessionTone);
+
+    let permissionTone = "info";
+    if (discipline.disciplineMode === "done-for-day") {
+      permissionTone = "negative";
+    } else if (discipline.disciplineMode === "manage-winner" || discipline.gateCount === 1 || discipline.gateCount === 2) {
+      permissionTone = "warning";
+    } else if (discipline.gateCount === 3) {
+      permissionTone = "positive";
+    }
+    permissionValue.textContent = discipline.gateLabel || "No Trade";
+    permissionMeta.textContent = discipline.gateNote || "Finish the gate before adding risk.";
+    setTone(cards.permission, permissionTone);
+
+    const alignmentTone = foundation.alignmentPct >= 80 ? "positive" : foundation.alignmentPct >= 40 ? "warning" : "negative";
+    alignmentValue.textContent = `${foundation.alignmentLabel || "Foundation live"} ${foundation.alignmentPct}%`;
+    alignmentMeta.textContent = `Routine ${foundation.routineDone}/${foundation.routineTotal}. ${foundation.intention || "Choose patience over pressure."}`;
+    setTone(cards.alignment, alignmentTone);
+
+    let nextLabel = "Finish trade gate";
+    let nextDetail = "Complete structure, trigger, and risk before action.";
+    let nextTone = "info";
+    if (discipline.disciplineMode === "done-for-day") {
+      nextLabel = "Close the session";
+      nextDetail = foundation.reflectionAnswer === "yes"
+        ? "Log the close and leave the day intact."
+        : "Finish the review and name what must hold tomorrow.";
+      nextTone = "negative";
+    } else if (discipline.disciplineState === "urgent" || discipline.disciplineState === "frustrated" || foundation.reflectionAnswer === "no" || foundation.alignmentPct < 40) {
+      nextLabel = "Run pressure check";
+      nextDetail = "Interrupt emotion before the next decision gets a vote.";
+      nextTone = "negative";
+    } else if (discipline.gateCount < 3) {
+      nextLabel = "Finish trade gate";
+      nextDetail = "No conviction means no trade until all three conditions agree.";
+      nextTone = "warning";
+    } else if (foundation.alignmentPct < 80) {
+      nextLabel = "Tighten alignment";
+      nextDetail = foundation.alignmentDetail || "Honor the process before adding risk.";
+      nextTone = "warning";
+    } else {
+      nextLabel = "Execute the brief";
+      nextDetail = "Take the clean setup only. Protect capital if the read slips.";
+      nextTone = "positive";
+    }
+    nextValue.textContent = nextLabel;
+    nextMeta.textContent = nextDetail;
+    setTone(cards.next, nextTone);
+  };
+
+  document.addEventListener("dashboard:discipline-state", (event) => {
+    Object.assign(discipline, event?.detail || {});
+    render();
+    queueBehaviorSave();
+  });
+
+  document.addEventListener("dashboard:foundation-state", (event) => {
+    Object.assign(foundation, event?.detail || {});
+    render();
+    queueBehaviorSave();
+  });
+
+  document.addEventListener("dashboard:urgency-check", () => {
+    queueBehaviorSave({ incrementUrgency: true });
+  });
+
+  renderTrend();
+  render();
 })();
 
 (function () {

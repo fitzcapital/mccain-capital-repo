@@ -104,6 +104,18 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/api/dashboard/reflection",
+        endpoint="dashboard_reflection_update",
+        view_func=h.dashboard_reflection_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/api/dashboard/behavior",
+        endpoint="dashboard_behavior_update",
+        view_func=h.dashboard_behavior_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/dashboard/calendar-fragment",
         endpoint="dashboard_calendar_fragment",
         view_func=h.dashboard_calendar_fragment,

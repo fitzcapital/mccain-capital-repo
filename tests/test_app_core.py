@@ -378,6 +378,81 @@ def test_dashboard_renders_accountability_checklist(client):
     assert "No debrief or quick capture logged for today yet." in body
 
 
+def test_dashboard_renders_foundation_routine_and_reflection_layers(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Operating State" in body
+    assert "Permission" in body
+    assert "Next Step" in body
+    assert "dashboardCommandDeck" in body
+    assert "5-Day Memory" in body
+    assert "Alignment Before Action" in body
+    assert "Scripture Anchor" in body
+    assert "Be doers of the word, and not hearers only" in body
+    assert "Daily Routine" in body
+    assert "Urgency Check" in body
+    assert "Doer Score" in body
+    assert "Was I a doer today?" in body
+
+
+def test_dashboard_reflection_update_saves_and_renders(client):
+    day = today_iso()
+    save_resp = client.post(
+        "/api/dashboard/reflection",
+        data={
+            "reflection_day": day,
+            "reflection_answer": "no",
+            "reflection_break_alignment": "Forced a setup early.",
+            "reflection_urgency_trigger": "Pressure after missing the first move.",
+            "reflection_obey_tomorrow": "Wait for confirmation before risk.",
+        },
+        follow_redirects=False,
+    )
+    assert save_resp.status_code == 200
+    payload = save_resp.get_json()
+    assert payload["ok"] is True
+    saved = json.loads(get_setting_value(f"dashboard_reflection::{day}", "{}"))
+    assert saved["answer"] == "no"
+    assert saved["break_alignment"] == "Forced a setup early."
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Saved to day" in body
+    assert "Forced a setup early." in body
+    assert "Pressure after missing the first move." in body
+    assert "Wait for confirmation before risk." in body
+
+
+def test_dashboard_behavior_update_saves_daily_summary_and_trend(client):
+    day = today_iso()
+    resp = client.post(
+        "/api/dashboard/behavior",
+        data={
+            "behavior_day": day,
+            "discipline_state": "locked-in",
+            "discipline_mode": "a-plus-only",
+            "gate_count": "3",
+            "routine_done": "12",
+            "routine_total": "16",
+            "alignment_pct": "88",
+            "intention": "Only take confirmed setups.",
+            "reflection_answer": "yes",
+            "increment_urgency": "1",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    saved = json.loads(get_setting_value(f"dashboard_behavior::{day}", "{}"))
+    assert saved["alignment_pct"] == 88
+    assert saved["gate_count"] == 3
+    assert saved["urgency_count"] == 1
+    assert payload["trend"]["doer_streak"] >= 1
+
+
 def test_dashboard_accountability_checklist_reflects_today_journal_capture(client):
     from mccain_capital.repositories import journal as journal_repo
 
