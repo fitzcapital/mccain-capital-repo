@@ -1,8 +1,8 @@
 {% if today_count == 0 %}
   {% set hero_title = "Prepare the Session" %}
-  {% set hero_lead = "Plan the day, confirm the brief, and start with one clean record." %}
+  {% set hero_lead = "Set the day, confirm the brief, and start clean." %}
   {% set focus_body = "Confirm structure, lock the brief, and wait for a clean trigger." %}
-  {% set focus_href = "/market-pulse" %}
+  {% set focus_href = market_pulse_href %}
   {% set focus_cta = "Open Playbook" %}
 {% elif today_net < 0 %}
   {% set hero_title = "Protect Capital and Review" %}
@@ -31,7 +31,7 @@
   {% endif %}
 {% endfor %}
 {% set command_fold_open = checklist_ns.done < checklist_ns.total %}
-{% set dashboard_spx_state = dashboard_spx.get('market_state') or 'Awaiting Feed' %}
+{% set dashboard_spx_state = dashboard_instrument.get('market_state') or 'Awaiting Feed' %}
 {% set dashboard_vix_state = dashboard_vix.get('market_state') or 'Awaiting Feed' %}
 {% set tape_live = dashboard_spx_state == 'Live' or dashboard_vix_state == 'Live' %}
 {% set tape_delayed = (dashboard_spx_state == 'Delayed' or dashboard_vix_state == 'Delayed') and not tape_live %}
@@ -44,6 +44,8 @@
   id="dashboardModeShell"
   data-dashboard-mode="{{ dashboard_default_mode }}"
   data-dashboard-default-mode="{{ dashboard_default_mode }}"
+  data-selected-ticker="{{ selected_ticker }}"
+  data-playbook-ticker-storage-key="{{ playbook_ticker_storage_key }}"
 >
 <section class="dashboardDisciplineRail card" aria-label="Discipline rail">
   <div class="dashboardDisciplineRailGroup">
@@ -112,7 +114,7 @@
           {% if dashboard_behavior_trend.aligned_days == 0 and dashboard_behavior_trend.doer_streak == 0 and dashboard_behavior_trend.urgency_total == 0 %}
             Memory starts once a close is logged.
           {% else %}
-            Track drift, urgency, and doer follow-through across sessions.
+            Track drift, urgency, and follow-through across sessions.
           {% endif %}
         </div>
       </div>
@@ -168,9 +170,25 @@
           <div>
             <div class="dashboardPrimaryBandHeader">
               <span class="dashboardPrimaryBandEyebrow">Operating Zone</span>
-              <span class="dashboardPrimaryBandSubhead">Start with the decision, then use the brief and checklist to support it.</span>
+              <span class="dashboardPrimaryBandSubhead">Decision first. Brief and checklist support it.</span>
             </div>
-            <h2 class="pageTitle">{{ hero_title }}</h2>
+            <div class="playbookTickerRow dashboardTickerRow">
+              <div class="dashboardTickerTitleBlock">
+                <h2 class="pageTitle">{{ hero_title }}</h2>
+                <div class="dashboardTickerMeta tiny muted">{{ selected_ticker }} context</div>
+              </div>
+              <div class="playbookTickerSwitcher" role="tablist" aria-label="Dashboard ticker">
+                {% for switch_ticker in supported_tickers %}
+                  <a
+                    class="playbookTickerSwitch{% if switch_ticker == selected_ticker %} is-active{% endif %}"
+                    href="/dashboard?ticker={{ switch_ticker }}{% if dashboard_year %}&y={{ dashboard_year }}{% endif %}{% if dashboard_month %}&m={{ dashboard_month }}{% endif %}{% if scope_mode %}&scope={{ scope_mode }}{% endif %}"
+                    role="tab"
+                    aria-selected="{{ 'true' if switch_ticker == selected_ticker else 'false' }}"
+                    data-dashboard-ticker-switch="{{ switch_ticker }}"
+                  >{{ switch_ticker }}</a>
+                {% endfor %}
+              </div>
+            </div>
             <div class="dashboardBehaviorStrip" aria-label="Behavioral operating guide">
               <div class="dashboardBehaviorItem">
                 <span class="dashboardBehaviorLabel">Today's Mission</span>
@@ -219,7 +237,7 @@
                 <a
                   class="btn primary"
                   href="{{ focus_href }}"
-                  {% if focus_href in ['/market-pulse', '/trades/new'] %}data-discipline-trade-action="hero-focus"{% endif %}
+                  {% if focus_href == market_pulse_href or focus_href == '/trades/new' %}data-discipline-trade-action="hero-focus"{% endif %}
                 >{{ focus_cta }}</a>
                 <button
                   type="button"
@@ -270,7 +288,7 @@
     <div class="dashboardPriorityGrid">
       <div class="dashboardStepLabel">Plan</div>
       <div
-        class="card primaryCard dashboardPriorityCard dashboardDecisionCard"
+        class="card primaryCard dashboardPriorityCard dashboardDecisionCard{% if (decision_panel.status or '')|lower == 'loading' %} is-hydrating{% endif %}"
         data-refresh-endpoint="{{ url_for('dashboard_planning_refresh_api') }}"
       ><div class="toolbar">
         <div class="dashboardDecisionHead">
@@ -303,33 +321,33 @@
             <button type="button" class="dashboardTradeGateToggle" data-trade-gate-toggle="trigger" aria-pressed="false">Trigger confirmed</button>
             <button type="button" class="dashboardTradeGateToggle" data-trade-gate-toggle="risk" aria-pressed="false">Risk accepted</button>
           </div>
-          <div class="dashboardTradeGateNote" id="dashboardTradeGateNote">No trade. Protect capital until structure, trigger, and risk all agree.</div>
+          <div class="dashboardTradeGateNote" id="dashboardTradeGateNote">No trade until structure, trigger, and risk all agree.</div>
           <div class="dashboardTradeGateMeta">
             <span class="trendChip">Alignment before risk</span>
             <span class="trendChip">Obedience protects capital</span>
           </div>
         </div>
-        <div class="dashboardDecisionLead">{{ decision_panel.posture_summary or decision_panel.plan }}</div>
+        <div id="dashboardDecisionLead" class="dashboardDecisionLead">{{ decision_panel.posture_summary or decision_panel.plan }}</div>
         <div class="dashboardDecisionGrid">
           <div class="dashboardDecisionItem dashboardDecisionItem-bias">
             <span class="dashboardDecisionLabel">Bias</span>
-            <strong id="dashboardDecisionBiasValue">{{ decision_panel.bias }}</strong>
+            <strong id="dashboardDecisionBiasValue">{{ decision_panel.bias or 'Syncing' }}</strong>
           </div>
           <div class="dashboardDecisionItem dashboardDecisionItem-risk">
             <span class="dashboardDecisionLabel">Risk</span>
-            <strong id="dashboardDecisionRiskValue">{{ decision_panel.risk_size }}</strong>
+            <strong id="dashboardDecisionRiskValue">{{ decision_panel.risk_size or 'Syncing' }}</strong>
           </div>
           <div class="dashboardDecisionItem dashboardDecisionItem-wide dashboardDecisionItem-plan">
             <span class="dashboardDecisionLabel">Plan</span>
-            <strong id="dashboardDecisionPlanValue" title="{{ decision_panel.plan }}">{{ decision_panel.plan|truncate(88, False, '…') }}</strong>
+            <strong id="dashboardDecisionPlanValue" title="{{ decision_panel.plan or 'Building context' }}">{{ (decision_panel.plan or 'Building context from gamma, structure, and session state.')|truncate(88, False, '…') }}</strong>
           </div>
           <div class="dashboardDecisionItem dashboardDecisionItem-wide dashboardDecisionItem-tradegate">
             <span class="dashboardDecisionLabel">Trade Gate</span>
-            <div id="dashboardDecisionTradeGateValue" class="supportBody" title="{{ decision_panel.trade_gate }}">{{ decision_panel.trade_gate|truncate(74, False, '…') }}</div>
+            <div id="dashboardDecisionTradeGateValue" class="supportBody" title="{{ decision_panel.trade_gate or 'Waiting for live context' }}">{{ (decision_panel.trade_gate or 'Waiting for live context before the next session is framed.')|truncate(74, False, '…') }}</div>
           </div>
         </div>
         <div class="rightActions dashboardDecisionPrimaryActions">
-          <a class="btn" href="/market-pulse" data-discipline-trade-action="decision-market-pulse">Open Market Pulse</a>
+          <a class="btn" href="{{ market_pulse_href }}" data-discipline-trade-action="decision-market-pulse">Open Market Pulse</a>
           <a class="btn" href="/ops/trading-window">Trade Gate</a>
           <a class="btn ctaLink" href="/calendar">Calendar</a>
         </div>
@@ -372,41 +390,41 @@
           </div>
         </div>
         <div class="dashboardGammaMeta{% if decision_panel.gamma_strip.state == 'stale' %} is-stale{% elif decision_panel.gamma_strip.state == 'loading' %} is-loading{% elif decision_panel.gamma_strip.state == 'unavailable' %} is-unavailable{% endif %}" id="dashboardGammaMeta">
-          {{ decision_panel.gamma_strip.status_text }}
+          {{ decision_panel.gamma_strip.status_text or 'Hydrating gamma structure and daily brief after first paint.' }}
         </div>
       </div></div>
       <div id="dashboardBriefCardShell">
-        <div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard"><div class="toolbar">
+        <div id="daily-brief-card" class="card primaryCard dashboardPriorityCard dashboardPriorityCardWide dashboardBriefCard is-hydrating"><div class="toolbar">
           <div class="pillRow dashboardBriefSignalRow">
             <div class="pill">Daily Brief</div>
-            <span class="trendChip">Loading</span>
-            <span class="dashboardBriefSignalText">Auto-generated brief loading…</span>
+            <span class="trendChip">Syncing</span>
+            <span class="dashboardBriefSignalText">Building the next-session brief from live structure and macro context.</span>
           </div>
-          <div class="supportLead dashboardBriefHeadlineCompact">Loading planning context.</div>
+          <div class="supportLead dashboardBriefHeadlineCompact">Preparing the brief shell now so the page stays usable while planning hydrates.</div>
           <div class="dashboardBriefFoldBody dashboardBriefDesktopBody">
             <div class="dashboardBriefStructuredGrid">
               <div class="dashboardBriefBiasPanel is-warning">
                 <div class="dashboardBriefStructuredLabel">Market Condition</div>
-                <div class="dashboardBriefBiasValue">Loading</div>
-                <div class="dashboardBriefBiasText">Dashboard brief is loading after first paint.</div>
+                <div class="dashboardBriefBiasValue">Syncing</div>
+                <div class="dashboardBriefBiasText">Context is hydrating after first paint so the operating layer stays visible.</div>
               </div>
               <div class="dashboardBriefQuickItem">
                 <div class="dashboardBriefStructuredLabel">Market Location</div>
-                <div class="dashboardBriefQuickText">Loading…</div>
+                <div class="dashboardBriefQuickText">Waiting for structure snapshot.</div>
               </div>
               <div class="dashboardBriefQuickItem">
                 <div class="dashboardBriefStructuredLabel">Active Level</div>
-                <div class="dashboardBriefQuickText">Loading…</div>
+                <div class="dashboardBriefQuickText">Waiting for nearest actionable level.</div>
               </div>
             </div>
             <div class="dashboardBriefQuickGrid dashboardBriefQuickGrid-secondary">
               <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
                 <div class="dashboardBriefStructuredLabel">Execution Triggers</div>
-                <div class="dashboardBriefQuickText">Loading…</div>
+                <div class="dashboardBriefQuickText">Will resolve once the brief engine finishes.</div>
               </div>
               <div class="dashboardBriefQuickItem dashboardBriefQuickItem-secondary">
                 <div class="dashboardBriefStructuredLabel">Do Not Do</div>
-                <div class="dashboardBriefQuickText">Loading…</div>
+                <div class="dashboardBriefQuickText">Will resolve once the brief engine finishes.</div>
               </div>
             </div>
             <details class="dashboardBriefMoreInfo" data-dashboard-optional="brief-more">
@@ -426,7 +444,7 @@
   <div class="dashboardStageColumn dashboardStageSide">
   <section class="dashboardStageSection dashboardStageMonitor">
     <div class="dashboardStepLabel">Monitor</div>
-	    <div class="card primaryCard dashboardTapeMonitor dashboardTapeWatchlist dashboardCoreTapeCard" data-refresh-endpoint="{{ url_for('dashboard_tape_refresh_api') }}"><div class="toolbar">
+	    <div class="card primaryCard dashboardTapeMonitor dashboardTapeWatchlist dashboardCoreTapeCard" data-refresh-endpoint="{{ url_for('dashboard_tape_refresh_api', ticker=selected_ticker) }}"><div class="toolbar">
       <div class="dashboardTapeHeader">
         <div class="dashboardTapeHeaderBrand">
           <div class="dashboardTapeSectionLabel">Live Tape</div>
@@ -513,7 +531,7 @@
 	        <div class="dashboardSupportHeader">
 	          <span class="dashboardStepLabel dashboardStepLabel-inline">Review</span>
           <span class="dashboardFoldTitle">Support &amp; Health</span>
-          <span class="tiny muted">Reference only. Open when milestone, pacing, or trust needs attention.</span>
+          <span class="tiny muted">Review rail for pacing, milestone, and trust.</span>
         </div>
           <div class="dashboardHealthFoldChips">
             <span class="trendChip" id="dashboardHealthFoldAlignmentChip">{{ dashboard_behavior_trend.doer_streak }} day doer streak</span>
@@ -642,6 +660,7 @@
 	              <input type="hidden" name="y" value="{{ dashboard_year }}"/>
 	              <input type="hidden" name="m" value="{{ dashboard_month }}"/>
 	              <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+                <input type="hidden" name="ticker" value="{{ selected_ticker }}"/>
 	              <div class="row stack10">
 	                <div>
 	                  <label>Milestone Name</label>
@@ -875,7 +894,7 @@
 	        </details>
 
 	        <div class="showcaseGrid dashboardHealthBottomRow">
-	          <div class="showcaseCard">
+	          <div class="showcaseCard{% if ytd_trades == 0 and not (balance_integrity and balance_integrity.has_drift) %} is-empty{% endif %}">
 	            <div class="showcaseHead">
 	              <div class="showcaseTitle">
 	                <svg class="mcIcon"><use href="#mc-crest"></use></svg>
@@ -907,7 +926,7 @@
 	              <div class="showcaseWave"></div>
 	            </div>
 	          </div>
-	          <div class="showcaseCard">
+	          <div class="showcaseCard{% if today_count == 0 %} is-empty{% endif %}">
 	            <div class="showcaseHead">
 	              <div class="showcaseTitle">
 	                <svg class="mcIcon"><use href="#mc-orbit"></use></svg>
@@ -925,7 +944,7 @@
 	          </div>
 	        </div>
           <div
-            class="card primaryCard dashboardReflectionCard"
+            class="card primaryCard dashboardReflectionCard{% if not dashboard_reflection.has_entry and today_count == 0 %} is-empty{% endif %}"
             id="dashboardReflectionCard"
             data-reflection-endpoint="{{ url_for('dashboard_reflection_update') }}"
             data-reflection-day="{{ dashboard_reflection.day }}"
@@ -1133,7 +1152,7 @@
   {% set performance_delta_label = '-' ~ money(performance_delta_abs) ~ ' behind target' %}
 {% else %}
   {% set performance_status_label = 'On Track' %}
-  {% set performance_delta_label = money(performance_chart.actual_last) ~ ' on pace' if performance_chart.actuals else 'Awaiting month sample' %}
+  {% set performance_delta_label = money(performance_chart.actual_last) ~ ' on pace' if performance_chart.actuals else 'Waiting for first closed trade' %}
 {% endif %}
 {% if performance_chart.recent_days|length > 15 %}
   {% set performance_chart.recent_days = performance_chart.recent_days[-15:] %}
@@ -1175,10 +1194,10 @@
 <div class="dashboardStepLabel">Project</div>
 <div class="dashboardProjectHeader">
   <span class="dashboardProjectEyebrow">Reference Deck</span>
-  <span class="dashboardProjectSubhead">Performance and pace stay available, but they should not compete with the live operating zone.</span>
+  <span class="dashboardProjectSubhead">Performance and pace stay available, but they should not compete with the operating zone.</span>
 </div>
 <div class="dashboardAnalyticsCluster dashboardProjectGrid">
-  <div class="card primaryCard summaryPanel dashboardAnalyticsPrimary"><div class="toolbar">
+  <div class="card primaryCard summaryPanel dashboardAnalyticsPrimary{% if not performance_chart.actuals %} is-empty{% endif %}"><div class="toolbar">
     <div class="calendarHead">
       <div>
         <div class="pill">📈 Performance Deck</div>
@@ -1231,7 +1250,7 @@
                 </div>
               {% endfor %}
             {% else %}
-              {% for i in range(10) %}
+              {% for i in range(5) %}
                 <div class="dashboardPerformanceTile dashboardPerformanceTile-flat is-empty">
                   <span class="dashboardPerformanceTileDay">—</span>
                   <strong class="dashboardPerformanceTileValue">—</strong>
@@ -1239,6 +1258,9 @@
               {% endfor %}
             {% endif %}
           </div>
+          {% if not performance_chart.actuals %}
+            <div class="dashboardPerformanceEmptyNote">No closed trades are in scope yet. This deck will strengthen once the month has real history.</div>
+          {% endif %}
           <div class="dashboardPerformancePaceRow">
             <div class="dashboardPerformancePaceLabels">
               <span>Target by today</span>
@@ -1353,11 +1375,11 @@
     </details>
   </div></div>
 
-  <div class="card supportCard dashboardProjectionCard dashboardAnalyticsSecondary"><div class="toolbar">
+  <div class="card supportCard dashboardProjectionCard dashboardAnalyticsSecondary{% if not pace_card.nodes and not pace_card.target.configured %} is-empty{% endif %}"><div class="toolbar">
     <div class="dashboardProjectionHead">
       <div>
         <div class="pill">Forward Pace</div>
-        <div class="summaryLead stack8">Project 5D / 10D / 20D balance paths using live or manual trading-day pace.</div>
+        <div class="summaryLead stack8">Project 5D / 10D / 20D balance paths from live or manual pace.</div>
       </div>
     </div>
     <div class="dashboardProjectionHero">
@@ -1373,15 +1395,16 @@
         <span class="dashboardProjectionFoldTitle">Set pace / day</span>
         <span class="dashboardProjectionFoldMeta tiny">
           {% if pace_card.custom_enabled %}
-            Custom {{ pace_card.headline }}/day
+            Custom {{ pace_card.headline }}/day{% if pace_card.pass_buffer_enabled %} · Buffer {{ pace_card.pass_buffer_label }}{% endif %}
           {% else %}
-            {{ pace_card.trading_day_label }}
+            {{ pace_card.trading_day_label }}{% if pace_card.pass_buffer_enabled %} · Buffer {{ pace_card.pass_buffer_label }}{% endif %}
           {% endif %}
         </span>
       </summary>
       <form method="post" action="/dashboard/pace" class="dashboardProjectionForm">
         <input type="hidden" name="y" value="{{ dashboard_year }}"/>
         <input type="hidden" name="m" value="{{ dashboard_month }}"/>
+        <input type="hidden" name="ticker" value="{{ selected_ticker }}"/>
         <input type="hidden" name="scope" value="{{ scope_mode }}"/>
         <div class="dashboardProjectionFormGrid">
           <div class="dashboardProjectionField">
@@ -1394,6 +1417,17 @@
               value="{{ pace_card.custom_input }}"
             />
             <div class="dashboardProjectionHint tiny">{{ pace_card.trading_day_label }}</div>
+          </div>
+          <div class="dashboardProjectionField">
+            <label for="dashboardPaceBuffer">Pass buffer ($)</label>
+            <input
+              id="dashboardPaceBuffer"
+              name="dashboard_pace_buffer"
+              inputmode="decimal"
+              placeholder="5000"
+              value="{{ pace_card.pass_buffer_input }}"
+            />
+            <div class="dashboardProjectionHint tiny">Subtract from projected profit for account-pass cushion.</div>
           </div>
           <div class="dashboardProjectionField">
             <label for="dashboardProjectionStartDate">Start date</label>
@@ -1455,7 +1489,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="dashboardProjectionEmpty">No recent weekday sample yet. Pace will appear once enough session history is in scope.</div>
+      <div class="dashboardProjectionEmpty">No recent weekday sample is in scope yet. Pace will appear once enough closed-trade history is available.</div>
     {% endif %}
     <div class="dashboardProjectionFootnote tiny line15">{{ pace_card.note }}</div>
   </div></div>
@@ -1468,7 +1502,7 @@
     </summary>
     <div class="dashboardCalendarLazy" id="dashboardCalendarLazy" data-loaded="0">
       <div class="dashboardCalendarLazyPlaceholder">
-        <div class="tiny stack8 line15">Calendar content loads on demand to keep the dashboard fast on mobile.</div>
+        <div class="tiny stack8 line15">Calendar loads on demand to keep the dashboard fast on mobile.</div>
       </div>
     </div>
 </details>

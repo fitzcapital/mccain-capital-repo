@@ -81,6 +81,10 @@ def market_pulse_news_feed_api():
     return svc.market_pulse_news_feed_api()
 
 
+def market_pulse_context_api():
+    return svc.market_pulse_context_api()
+
+
 def hero_bars_api():
     return svc.hero_bars_api()
 

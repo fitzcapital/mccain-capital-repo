@@ -311,7 +311,11 @@
       const href = navShortcutMap[comboBuffer];
       if (href) {
         event.preventDefault();
-        window.location.href = href;
+        if (typeof window.navigateWithShellLoading === "function") {
+          window.navigateWithShellLoading(href);
+        } else {
+          window.location.href = href;
+        }
         return true;
       }
       return false;
@@ -454,11 +458,13 @@
   }
 
   function initThemeAndGuided() {
-    const themeMigrationKey = "mc_theme_v6";
+    const themeMigrationKey = "mc_theme_v9";
     const fontModeKey = "mc_font_mode";
-    const themeOrder = ["galaxy", "cosmic-flare", "new-galaxy", "wallpaper-galaxy", "obsidian", "black", "nebula"];
+    const themeOrder = ["galaxy", "cosmic-flare", "new-galaxy", "grey", "wallpaper-galaxy", "obsidian", "black", "nebula", "cinematic-nebula"];
     const themeLabels = {
       "new-galaxy": "Theme: New Galaxy",
+      "cinematic-nebula": "Theme: Cinematic Nebula",
+      grey: "Theme: Grey",
       "wallpaper-galaxy": "Theme: Wallpaper Galaxy",
       "cosmic-flare": "Theme: Cosmic Flare",
       galaxy: "Theme: MGP",
@@ -467,8 +473,8 @@
       nebula: "Theme: Nebula",
     };
     const fontLabels = {
-      clean: "Font: Clean",
-      hand: "Font: Architects",
+      clean: "Font: Tech",
+      hand: "Font: Tech",
     };
 
     const syncThemeButtons = (theme) => {
@@ -478,7 +484,7 @@
     };
 
     const applyTheme = (theme) => {
-      const normalized = themeOrder.includes(theme) ? theme : "galaxy";
+      const normalized = themeOrder.includes(theme) ? theme : "cinematic-nebula";
       body.setAttribute("data-theme", normalized);
       syncThemeButtons(normalized);
     };
@@ -492,7 +498,7 @@
     };
 
     const applyFontMode = (mode) => {
-      const normalized = mode === "hand" ? "hand" : "clean";
+      const normalized = "clean";
       doc.documentElement.setAttribute("data-font-mode", normalized);
       body.setAttribute("data-font-mode", normalized);
       syncFontButtons(normalized);
@@ -542,19 +548,21 @@
     };
 
     window.toggleAppFont = () => {
-      const current = doc.documentElement.getAttribute("data-font-mode") === "hand" ? "hand" : "clean";
-      applyFontMode(current === "hand" ? "clean" : "hand");
+      applyFontMode("clean");
     };
 
     if (storageGet(themeMigrationKey) !== "1") {
       const savedTheme = storageGet("mc_theme");
-      if (!savedTheme || savedTheme === "cosmic-flare") {
-        storageSet("mc_theme", "galaxy");
+      if (savedTheme === "daylight") {
+        storageSet("mc_theme", "grey");
+      }
+      if (!savedTheme || savedTheme === "cosmic-flare" || savedTheme === "galaxy") {
+        storageSet("mc_theme", "cinematic-nebula");
       }
       storageSet(themeMigrationKey, "1");
     }
 
-    applyTheme(storageGet("mc_theme") || "galaxy");
+    applyTheme(storageGet("mc_theme") || "cinematic-nebula");
     applyFontMode(storageGet(fontModeKey) || doc.documentElement.getAttribute("data-font-mode") || "clean");
     const savedGuide = storageGet("mc_guided_mode");
     const firstRunSeen = storageGet("mc_guided_seen");

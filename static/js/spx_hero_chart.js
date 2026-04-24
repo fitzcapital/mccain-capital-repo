@@ -5,6 +5,9 @@
 
   const host = document.getElementById("spxExecutionHeroChart");
   const canvas = document.getElementById("spxExecutionHeroChartCanvas");
+  const levelRail = document.getElementById("spxExecutionHeroLevelRail");
+  const markersToggle = document.getElementById("marketPulseHeroToggleMarkers");
+  const levelsToggle = document.getElementById("marketPulseHeroToggleLevels");
   const emptyState = document.getElementById("spxExecutionHeroChartEmpty");
   if (!host || !canvas) return;
 
@@ -17,7 +20,7 @@
   const barsUrl = String(host.dataset.barsUrl || "/api/hero/bars");
   const levelsUrl = String(host.dataset.levelsUrl || "/api/hero/levels");
   const streamUrl = String(host.dataset.streamUrl || "/api/hero/stream-session");
-  const symbol = String(host.dataset.symbol || "SPX");
+  const symbol = String(host.dataset.symbol || "QQQ").toUpperCase();
   const interval = String(host.dataset.interval || "5min");
   const HERO_CHART_TIMEZONE = "America/New_York";
   const HERO_TIME_AXIS_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -71,15 +74,21 @@
     labelMintText: "#08111D",
     labelGreenBg: "#218A5A",
     labelGreenText: "#EAF2FF",
+    stratUp: "#00ff9f",
+    stratDown: "#ff2d7a",
+    stratInside: "#66dcff",
+    stratOutside: "#f6c76b",
   };
-  const DEFAULT_VISIBLE_BARS = 42;
-  const LEFT_SCROLL_BUFFER_BARS = 18;
-  const DEFAULT_RIGHT_OFFSET_BARS = 10;
+  const DEFAULT_VISIBLE_BARS = 28;
+  const LEFT_SCROLL_BUFFER_BARS = 8;
+  const DEFAULT_RIGHT_OFFSET_BARS = 5;
+  const HERO_CHART_HEIGHT = 548;
+  const HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
 
-  const priceScaleWidth = 88;
+  const priceScaleWidth = 70;
   const chart = LightweightCharts.createChart(canvas, {
     autoSize: true,
-    height: 358,
+    height: HERO_CHART_HEIGHT,
     layout: {
       background: { type: LightweightCharts.ColorType.Solid, color: HERO_CHART_THEME.background },
       textColor: HERO_CHART_THEME.textSecondary,
@@ -104,7 +113,7 @@
       timeVisible: true,
       secondsVisible: false,
       rightOffset: DEFAULT_RIGHT_OFFSET_BARS,
-      barSpacing: 7.5,
+      barSpacing: 10,
       fixLeftEdge: false,
       lockVisibleTimeRangeOnResize: true,
       tickMarkFormatter: (time) => HERO_TIME_AXIS_FORMATTER.format(new Date(Number(time) * 1000)),
@@ -185,6 +194,8 @@
   let levelsRequestInFlight = false;
   let pageVisible = document.visibilityState !== "hidden";
   let lastMeasuredWidth = 0;
+  let levelRailRows = [];
+  let displayPrefs = { showMarkers: true, showLevels: true };
   const LEVEL_RENDER_DEBOUNCE_MS = 120;
   const HIDDEN_BARS_INTERVAL_MS = 120000;
   const HIDDEN_LEVELS_INTERVAL_MS = 60000;
@@ -230,6 +241,133 @@
     return numeric === null ? fallback : fmt(numeric, digits);
   };
 
+  const loadDisplayPrefs = () => {
+    try {
+      const raw = window.localStorage.getItem(HERO_CHART_PREFS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.showMarkers === "boolean") displayPrefs.showMarkers = parsed.showMarkers;
+      if (typeof parsed?.showLevels === "boolean") displayPrefs.showLevels = parsed.showLevels;
+    } catch (_) {}
+  };
+
+  const saveDisplayPrefs = () => {
+    try {
+      window.localStorage.setItem(HERO_CHART_PREFS_KEY, JSON.stringify(displayPrefs));
+    } catch (_) {}
+  };
+
+  const syncToggleButtons = () => {
+    if (markersToggle) {
+      markersToggle.setAttribute("aria-pressed", displayPrefs.showMarkers ? "true" : "false");
+      markersToggle.classList.toggle("is-active", displayPrefs.showMarkers);
+    }
+    if (levelsToggle) {
+      levelsToggle.setAttribute("aria-pressed", displayPrefs.showLevels ? "true" : "false");
+      levelsToggle.classList.toggle("is-active", displayPrefs.showLevels);
+    }
+  };
+
+  const stratTypeForBar = (previousBar, currentBar) => {
+    if (!previousBar || !currentBar) return null;
+    const prevHigh = asNum(previousBar.high);
+    const prevLow = asNum(previousBar.low);
+    const high = asNum(currentBar.high);
+    const low = asNum(currentBar.low);
+    if ([prevHigh, prevLow, high, low].some((value) => value === null)) return null;
+    if (high <= prevHigh && low >= prevLow) return "1";
+    if (high > prevHigh && low < prevLow) return "3";
+    if (high > prevHigh) return "2U";
+    if (low < prevLow) return "2D";
+    return null;
+  };
+
+  const stratMarkersForType = (type, bar) => {
+    if (!type || !bar) return null;
+    if (type === "2U") {
+      return [
+        {
+          time: bar.time,
+          position: "aboveBar",
+          shape: "arrowUp",
+          color: HERO_CHART_THEME.stratUp,
+        },
+        {
+          time: bar.time,
+          position: "belowBar",
+          shape: "text",
+          text: "2",
+          color: HERO_CHART_THEME.stratUp,
+        },
+      ];
+    }
+    if (type === "2D") {
+      return [
+        {
+          time: bar.time,
+          position: "aboveBar",
+          shape: "arrowDown",
+          color: HERO_CHART_THEME.stratDown,
+        },
+        {
+          time: bar.time,
+          position: "belowBar",
+          shape: "text",
+          text: "2",
+          color: HERO_CHART_THEME.stratDown,
+        },
+      ];
+    }
+    if (type === "1") {
+      return [
+        {
+          time: bar.time,
+          position: "belowBar",
+          shape: "text",
+          text: "1",
+          color: HERO_CHART_THEME.stratInside,
+        },
+      ];
+    }
+    if (type === "3") {
+      return [
+        {
+          time: bar.time,
+          position: "aboveBar",
+          shape: "text",
+          text: "3",
+          color: HERO_CHART_THEME.stratOutside,
+        },
+      ];
+    }
+    return null;
+  };
+
+  const buildStratMarkers = (allCandles, startIndex = 0) => {
+    if (!Array.isArray(allCandles) || allCandles.length < 2) return [];
+    const markers = [];
+    const firstIndex = Math.max(1, Number(startIndex) || 0);
+    for (let index = firstIndex; index < allCandles.length; index += 1) {
+      const type = stratTypeForBar(allCandles[index - 1], allCandles[index]);
+      const nextMarkers = stratMarkersForType(type, allCandles[index]);
+      if (Array.isArray(nextMarkers) && nextMarkers.length) markers.push(...nextMarkers);
+    }
+    return markers;
+  };
+
+  const stratMarkersForPayload = (payload) => {
+    const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+    if (bars.length < 2 || !displayPrefs.showMarkers) return [];
+    const previousSessionBarCount = Math.max(0, Number(payload?.previous_session_bar_count) || 0);
+    const currentSessionBarCount = Math.max(0, Number(payload?.current_session_bar_count) || 0);
+    const boundedPreviousCount = Math.min(previousSessionBarCount, bars.length);
+    const boundedCurrentCount = Math.min(currentSessionBarCount, Math.max(0, bars.length - boundedPreviousCount));
+    const splitIndex = boundedCurrentCount > 0 ? boundedPreviousCount : bars.length;
+    return boundedCurrentCount > 0
+      ? buildStratMarkers(bars, splitIndex)
+      : buildStratMarkers(bars, 1);
+  };
+
   const updateHeaderSummary = (levels) => {
     const gammaState = String(levels.gamma_regime || "").toLowerCase();
     const biasState = String(levels.bias_state || "").toLowerCase();
@@ -243,7 +381,8 @@
       "marketPulseHeaderSubline",
       `Main Flip ${fmtCompactLevel(levels.main_flip, 0)} | Local Flip ${localFlip} | CW ${fmtCompactLevel(levels.call_wall, 0)} | PW ${fmtCompactLevel(levels.put_wall, 0)}`
     );
-    setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel} • SPX ${spot}`);
+    setText("marketPulseTitle", `${symbol} PLAYBOOK`);
+    setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel} • ${symbol} ${spot}`);
     setText("marketPulseHeaderGammaLabel", levels.gamma_regime_label || "REGIME UNAVAILABLE");
     setText("marketPulseHeaderGammaSub", levels.gamma_regime_subtitle || "Gamma snapshot unavailable");
     setText("marketPulseHeaderBiasPrimary", levels.bias_context || levels.planning_bias_label || "Awaiting valid structure");
@@ -429,38 +568,41 @@
     const openingMode = Boolean(lastBarsPayload.opening_session_mode);
     const sessionTargetBarCount = Math.max(0, Number(lastBarsPayload.session_target_bar_count) || 0);
     if (openingMode) {
-      // Hold a stable opening frame with prior-session carryover and right-side
-      // breathing room instead of zooming the hero into the first live candle.
-      const rightOffsetBars = Math.max(4, Number(lastBarsPayload.right_offset_bars) || 6);
-      const desiredWindowBars = Math.max(
-        bars.length,
-        Number(lastBarsPayload.visible_window_bars) || 0,
-      );
+      const previousCount = Math.max(0, Number(lastBarsPayload.previous_session_bar_count) || 0);
+      const currentCount = Math.max(0, Number(lastBarsPayload.current_session_bar_count) || 0);
+      const rightOffsetBars = Math.max(4, Math.min(8, Number(lastBarsPayload.right_offset_bars) || 5));
+      const liveWindowBars = currentCount > 0
+        ? Math.max(18, Math.min(34, currentCount + 14))
+        : Math.max(18, Math.min(30, bars.length));
+      const from = currentCount > 0
+        ? Math.max(0, previousCount + currentCount - liveWindowBars)
+        : Math.max(0, bars.length - liveWindowBars);
       chart.timeScale().applyOptions({
         rightOffset: rightOffsetBars,
-        barSpacing: 11,
+        barSpacing: 12,
       });
       chart.timeScale().setVisibleLogicalRange({
-        from: Math.max(-1, bars.length - desiredWindowBars),
+        from,
         to: (bars.length - 1) + rightOffsetBars,
       });
       applyFrameBounds(bars, lastLevelsPayload);
+      renderLevelRail(lastLevelsPayload);
       return;
     }
 
     clearFrameBounds();
     chart.timeScale().applyOptions({
       rightOffset: DEFAULT_RIGHT_OFFSET_BARS,
-      barSpacing: 7.5,
+      barSpacing: 10,
     });
     if (fitContent || !initialized) {
       const requestedVisibleBars = Math.max(
         Number(lastBarsPayload.visible_window_bars) || 0,
-        Math.min(bars.length, 30),
+        Math.min(bars.length, DEFAULT_VISIBLE_BARS),
       );
       const visibleBars = Math.max(
-        Math.min(bars.length + LEFT_SCROLL_BUFFER_BARS, requestedVisibleBars + LEFT_SCROLL_BUFFER_BARS),
-        Math.min(bars.length, 30),
+        Math.min(bars.length, requestedVisibleBars, DEFAULT_VISIBLE_BARS) + LEFT_SCROLL_BUFFER_BARS,
+        Math.min(bars.length, DEFAULT_VISIBLE_BARS),
       );
       const targetTo = sessionTargetBarCount > 0
         ? Math.max((bars.length - 1) + DEFAULT_RIGHT_OFFSET_BARS, sessionTargetBarCount - 1)
@@ -470,6 +612,7 @@
         to: targetTo,
       });
     }
+    renderLevelRail(lastLevelsPayload);
   };
 
   const clearPriceLines = () => {
@@ -481,13 +624,27 @@
     priceLines = [];
   };
 
+  const applyMarkerVisibility = () => {
+      candleSeries.setMarkers(stratMarkersForPayload(lastBarsPayload));
+  };
+
+  const applyLevelVisibility = () => {
+    host.classList.toggle("is-levels-hidden", !displayPrefs.showLevels);
+    if (!displayPrefs.showLevels) {
+      clearPriceLines();
+      if (levelRail) levelRail.innerHTML = "";
+      return;
+    }
+    if (lastLevelsPayload) updateOverlayLines(lastLevelsPayload);
+  };
+
   const addLevelLine = ({
     title,
     value,
     color,
     width = 1,
     style = 0,
-    axis = true,
+    axis = false,
     axisLabelColor,
     axisLabelTextColor,
   }) => {
@@ -510,6 +667,11 @@
   const updateOverlayLines = (levels) => {
     // Python is the source of truth for state; the frontend only renders levels and emphasis.
     clearPriceLines();
+    if (!displayPrefs.showLevels) {
+      levelRailRows = [];
+      if (levelRail) levelRail.innerHTML = "";
+      return;
+    }
     const state = String(levels.state || "").toUpperCase();
     const price = asNum(levels.spot);
     const callWall = asNum(levels.call_wall);
@@ -518,6 +680,13 @@
     const mainFlip = asNum(levels.main_flip);
     const nextCallWall = asNum(levels.next_call_wall);
     const nextPutWall = asNum(levels.next_put_wall);
+
+    const nextRailRows = [];
+    const pushRailRow = (kind, title, value, emphasis = "") => {
+      const numeric = asNum(value);
+      if (numeric === null) return;
+      nextRailRows.push({ kind, title, value: numeric, emphasis });
+    };
 
     addLevelLine({
       title: "Main",
@@ -528,6 +697,7 @@
       axisLabelColor: HERO_CHART_THEME.labelDark,
       axisLabelTextColor: HERO_CHART_THEME.textSecondary,
     });
+    pushRailRow("main", "Main", mainFlip);
     addLevelLine({
       title: "NPW",
       value: nextPutWall,
@@ -537,6 +707,7 @@
       axisLabelColor: HERO_CHART_THEME.labelMintBg,
       axisLabelTextColor: HERO_CHART_THEME.labelMintText,
     });
+    pushRailRow("put-next", "NPW", nextPutWall);
     addLevelLine({
       title: "PW",
       value: putWall,
@@ -546,15 +717,17 @@
       axisLabelColor: HERO_CHART_THEME.labelGreenBg,
       axisLabelTextColor: HERO_CHART_THEME.labelGreenText,
     });
+    pushRailRow("put", "PW", putWall);
     addLevelLine({
       title: "LF",
       value: localFlip,
       color: HERO_CHART_THEME.lf,
-      width: 3,
+      width: 2,
       style: 0,
       axisLabelColor: HERO_CHART_THEME.labelLfBg,
       axisLabelTextColor: HERO_CHART_THEME.labelLfText,
     });
+    pushRailRow("local", "LF", localFlip, "support");
     addLevelLine({
       title: "CW",
       value: callWall,
@@ -564,6 +737,7 @@
       axisLabelColor: HERO_CHART_THEME.labelCwBg,
       axisLabelTextColor: HERO_CHART_THEME.labelCwText,
     });
+    pushRailRow("call", "CW", callWall, state === "NO_TRADE" ? "danger" : "target");
     addLevelLine({
       title: "NCW",
       value: nextCallWall,
@@ -573,6 +747,7 @@
       axisLabelColor: HERO_CHART_THEME.labelNcwBg,
       axisLabelTextColor: HERO_CHART_THEME.labelNcwText,
     });
+    pushRailRow("call-next", "NCW", nextCallWall);
     addLevelLine({
       title: "",
       value: price,
@@ -582,7 +757,7 @@
       axis: false,
     });
     addLevelLine({
-      title: "SPX",
+      title: symbol,
       value: price,
       color: HERO_CHART_THEME.spx,
       width: 2,
@@ -590,6 +765,49 @@
       axisLabelColor: HERO_CHART_THEME.labelBlueBg,
       axisLabelTextColor: HERO_CHART_THEME.labelBlueText,
     });
+    pushRailRow("spot", symbol, price, "current");
+    levelRailRows = nextRailRows;
+    renderLevelRail(levels);
+  };
+
+  const renderLevelRail = (levels) => {
+    if (!displayPrefs.showLevels) {
+      if (levelRail) levelRail.innerHTML = "";
+      return;
+    }
+    if (!levelRail || !levels || !Array.isArray(levelRailRows) || !levelRailRows.length) return;
+    const plottedRows = levelRailRows
+      .map((row) => ({ ...row, y: candleSeries.priceToCoordinate(row.value) }))
+      .filter((row) => Number.isFinite(row.y))
+      .sort((a, b) => a.y - b.y);
+    if (!plottedRows.length) {
+      levelRail.innerHTML = "";
+      return;
+    }
+
+    const minGap = 27;
+    let previousY = -Infinity;
+    plottedRows.forEach((row) => {
+      const y = Math.max(12, Number(row.y));
+      row.displayY = Math.max(y, previousY + minGap);
+      previousY = row.displayY;
+    });
+
+    const railHeight = levelRail.getBoundingClientRect().height || 320;
+    for (let i = plottedRows.length - 1; i >= 0; i -= 1) {
+      const row = plottedRows[i];
+      row.displayY = Math.min(row.displayY, railHeight - 14);
+      if (i < plottedRows.length - 1) {
+        row.displayY = Math.min(row.displayY, plottedRows[i + 1].displayY - minGap);
+      }
+    }
+
+    levelRail.innerHTML = plottedRows.map((row) => `
+      <div class="marketPulseExecutionHeroLevelRailItem is-${row.kind} ${row.emphasis ? `is-${row.emphasis}` : ""}" style="top:${Math.max(12, row.displayY)}px">
+        <span>${row.title}</span>
+        <strong>${fmt(row.value, row.kind === "spot" ? 2 : 0)}</strong>
+      </div>
+    `).join("");
   };
 
   const renderSummary = (levels) => {
@@ -600,7 +818,7 @@
 
     updateHeaderSummary(levels);
     setText("marketPulseHeroSpot", fmt(levels.spot, 2));
-    setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || "SPX Spot");
+    setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || `${symbol} Spot`);
     setText("marketPulseHeroGamma", levels.gamma_regime_label || "Regime Unavailable");
     setText("marketPulseHeroBias", levels.current_read || levels.bias_context || levels.bias_label || "Awaiting structure");
     const tradeability = String(
@@ -636,7 +854,7 @@
       if (!bars.length) {
         if (emptyState) {
           emptyState.hidden = false;
-          emptyState.textContent = "Tradier returned no intraday bars for SPX.";
+          emptyState.textContent = `Tradier returned no intraday bars for ${symbol}.`;
         }
         return;
       }
@@ -686,6 +904,7 @@
 
       priorSessionSeries.setData(currentCandles.length ? priorCandles : []);
       candleSeries.setData(currentCandles.length ? currentCandles : candles);
+      candleSeries.setMarkers(stratMarkersForPayload(lastBarsPayload));
       volumeSeries.setData(volume);
       lastBarsSignature = nextBarsSignature;
       setSpotTrendTone(detectShortTermTrend(currentCandles.length ? currentCandles : candles));
@@ -707,7 +926,7 @@
       const payload = await fetchJson(levelsEndpoint());
       const nextLevels = sanitizeLevelsPayload(payload);
       if (!nextLevels) {
-        console.warn("SPX hero levels update skipped: invalid level payload", payload);
+        console.warn(`${symbol} hero levels update skipped: invalid level payload`, payload);
         return;
       }
       const nextSignature = levelsSignature(nextLevels);
@@ -739,7 +958,7 @@
       } catch (error) {
         if (emptyState) {
           emptyState.hidden = false;
-          emptyState.textContent = `SPX chart refresh failed: ${error.message}`;
+          emptyState.textContent = `${symbol} chart refresh failed: ${error.message}`;
         }
       } finally {
         scheduleBarsPoll(intervalMs);
@@ -781,7 +1000,7 @@
     } catch (error) {
       if (emptyState) {
         emptyState.hidden = false;
-        emptyState.textContent = `SPX hero failed to initialize: ${error.message}`;
+        emptyState.textContent = `${symbol} hero failed to initialize: ${error.message}`;
       }
       window.dispatchEvent(new CustomEvent("market-pulse-chart-ready"));
     }
@@ -792,10 +1011,34 @@
     if (!nextWidth || nextWidth === lastMeasuredWidth) return;
     lastMeasuredWidth = nextWidth;
     try {
-      chart.applyOptions({ width: nextWidth, height: 358 });
+      chart.applyOptions({ width: nextWidth, height: HERO_CHART_HEIGHT });
     } catch (_) {}
+    renderLevelRail(lastLevelsPayload);
   };
 
+  const bindDisplayToggles = () => {
+    if (markersToggle) {
+      markersToggle.addEventListener("click", () => {
+        displayPrefs.showMarkers = !displayPrefs.showMarkers;
+        saveDisplayPrefs();
+        syncToggleButtons();
+        applyMarkerVisibility();
+      });
+    }
+    if (levelsToggle) {
+      levelsToggle.addEventListener("click", () => {
+        displayPrefs.showLevels = !displayPrefs.showLevels;
+        saveDisplayPrefs();
+        syncToggleButtons();
+        applyLevelVisibility();
+      });
+    }
+  };
+
+  loadDisplayPrefs();
+  syncToggleButtons();
+  bindDisplayToggles();
+  applyLevelVisibility();
   window.addEventListener("resize", () => {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(resize, RESIZE_DEBOUNCE_MS);

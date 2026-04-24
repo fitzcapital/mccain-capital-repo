@@ -11,8 +11,11 @@
   <script>
     (() => {
       try {
-        if (window.localStorage && window.localStorage.getItem("mc_font_mode") === "hand") {
-          document.documentElement.setAttribute("data-font-mode", "hand");
+        if (window.localStorage) {
+          const storedFontMode = window.localStorage.getItem("mc_font_mode");
+          if (storedFontMode === "hand") {
+            window.localStorage.setItem("mc_font_mode", "clean");
+          }
         }
       } catch (_err) {
         // Keep the default app font if localStorage is blocked.
@@ -35,7 +38,10 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-tape-20260317a">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=browser-font-respect-20260423a">
+  {% if active in ['market-pulse', 'market_pulse'] %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=hero-chart-type-scale-20260423">
+  {% endif %}
 </head>
 
 <body class="{% if active %}page-{{ active|replace('_', '-')|replace(' ', '-') }}{% endif %}">
@@ -749,6 +755,37 @@
 <script>
   (function(){
     const FLAG_KEY = "mc_page_transition";
+    const PAGE_META = {
+      "/dashboard": { title: "Dashboard", detail: "Preparing command center, tape, and planning state." },
+      "/market-pulse": { title: "Market Pulse", detail: "Preparing gamma playbook context." },
+      "/candle-opens": { title: "Candle Opens", detail: "Loading session timing and open-window references." },
+      "/trades": { title: "Trades", detail: "Loading executions, open positions, and trade history." },
+      "/trades/new": { title: "New Trade", detail: "Preparing the trade entry workspace." },
+      "/trades/upload/statement": { title: "Live Upload", detail: "Preparing statement upload and parsing tools." },
+      "/trades/open-positions": { title: "Open Positions", detail: "Loading active risk and open exposure." },
+      "/journal": { title: "Journal", detail: "Loading review notes and trading journal entries." },
+      "/journal/new": { title: "New Journal", detail: "Preparing a fresh journal entry." },
+      "/journal/life": { title: "Life Journal", detail: "Loading personal reflections and life notes." },
+      "/analytics": { title: "Analytics", detail: "Loading performance curves, behavior, and edge reads." },
+      "/analytics/replay": { title: "Session Replay", detail: "Preparing replay context and session breakdown." },
+      "/calendar": { title: "Calendar", detail: "Loading trading days, events, and review cadence." },
+      "/calculator": { title: "Planner", detail: "Preparing planning tools, targets, and pacing inputs." },
+      "/strat": { title: "The Strat", detail: "Loading pattern reference, drills, and execution context." },
+      "/playbook": { title: "Playbook", detail: "Loading setups, frameworks, and execution guidance." },
+      "/strategies": { title: "Strategies", detail: "Loading strategy inventory and setup definitions." },
+      "/self-control": { title: "Self-Control", detail: "Loading discipline controls and behavioral review." },
+      "/payouts": { title: "Payouts", detail: "Loading payouts, withdrawals, and cash tracking." },
+      "/goals": { title: "Income Tracker", detail: "Loading goals, pacing, and target progress." },
+      "/books": { title: "Books", detail: "Loading reading library and study notes." },
+      "/ops/alerts": { title: "Ops Alerts", detail: "Loading ops alerts and system watch items." },
+      "/ops/backups": { title: "Auto Backups", detail: "Loading backup status and restore tools." },
+      "/ops/trading-window": { title: "Trading Window", detail: "Loading trading window rules and schedule." },
+      "/ops/notifications-test": { title: "Notifications Lab", detail: "Loading notification controls and test tools." },
+      "/auth/passkeys": { title: "Passkeys", detail: "Loading authentication and passkey settings." },
+      "/setup": { title: "Login Setup", detail: "Loading account setup and access configuration." },
+      "/login": { title: "Sign In", detail: "Preparing authentication." },
+      "/logout": { title: "Signing Out", detail: "Closing the session securely." },
+    };
     const isPlainLeftClick = (event) => (
       event
       && event.button === 0
@@ -758,25 +795,55 @@
       && !event.altKey
       && !event.defaultPrevented
     );
-    const pagePayload = (targetUrl) => {
-      const isRefresh = window.location.pathname === "/market-pulse" || targetUrl.searchParams.get("refresh") === "1";
-      if (targetUrl.pathname === "/market-pulse") {
-        return {
-          page: "/market-pulse",
-          title: isRefresh ? "Refreshing Market Pulse" : "Opening Market Pulse",
-          detail: isRefresh
-            ? "Refreshing SPX priority, tape leadership, and macro context."
-            : "Preparing live SPX context.",
-        };
+    const normalizePath = (pathname) => {
+      if (!pathname) return "/";
+      if (pathname.length > 1 && pathname.endsWith("/")) return pathname.slice(0, -1);
+      return pathname;
+    };
+    const titleCase = (value) => String(value || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+    const pathLabel = (pathname) => {
+      const normalized = normalizePath(pathname);
+      if (PAGE_META[normalized]?.title) return PAGE_META[normalized].title;
+      const segment = normalized.split("/").filter(Boolean).pop() || "Page";
+      return titleCase(segment.replace(/[-_]+/g, " "));
+    };
+    const linkLabel = (link, pathname) => {
+      const explicit = link?.dataset?.loadingLabel || link?.getAttribute?.("aria-label") || "";
+      const text = explicit || link?.textContent || "";
+      const clean = titleCase(text.replace(/\s+/g, " ").trim());
+      return clean || pathLabel(pathname);
+    };
+    const detailForPath = (pathname, label, isRefresh) => {
+      const normalized = normalizePath(pathname);
+      if (isRefresh && normalized === "/market-pulse") {
+        return "Refreshing SPX priority, tape leadership, and macro context.";
       }
-      if (targetUrl.pathname === "/dashboard") {
-        return {
-          page: "/dashboard",
-          title: "Opening Dashboard",
-          detail: "Preparing command center, tape, and planning state.",
-        };
+      if (PAGE_META[normalized]?.detail) return PAGE_META[normalized].detail;
+      return isRefresh
+        ? `Refreshing ${label.toLowerCase()}.`
+        : `Opening ${label.toLowerCase()}.`;
+    };
+    const buildTransitionPayload = (targetUrl, link = null) => {
+      const normalizedPath = normalizePath(targetUrl.pathname);
+      if (!normalizedPath) return null;
+      const currentPath = normalizePath(window.location.pathname);
+      if (
+        normalizedPath === currentPath
+        && targetUrl.search === window.location.search
+        && targetUrl.hash
+      ) {
+        return null;
       }
-      return null;
+      const label = linkLabel(link, normalizedPath);
+      const isRefresh = normalizedPath === currentPath;
+      return {
+        page: normalizedPath,
+        title: `${isRefresh ? "Refreshing" : "Opening"} ${label}`,
+        detail: detailForPath(normalizedPath, label, isRefresh),
+      };
     };
     const writeTransitionPayload = (payload) => {
       try {
@@ -798,7 +865,7 @@
         return;
       }
       if (targetUrl.origin !== window.location.origin) return;
-      const payload = pagePayload(targetUrl);
+      const payload = buildTransitionPayload(targetUrl, link);
       if (!payload) return;
       if (typeof window.showShellLoading === "function") {
         window.showShellLoading(payload.title, payload.detail);
@@ -807,6 +874,29 @@
         writeTransitionPayload(payload);
       }
     }, true);
+
+    window.navigateWithShellLoading = (href, label = "") => {
+      if (!href) return;
+      let targetUrl = null;
+      try {
+        targetUrl = new URL(href, window.location.href);
+      } catch (_err) {
+        window.location.href = href;
+        return;
+      }
+      if (targetUrl.origin !== window.location.origin) {
+        window.location.href = targetUrl.href;
+        return;
+      }
+      const payload = buildTransitionPayload(targetUrl, label ? { textContent: label } : null);
+      if (payload) {
+        if (typeof window.showShellLoading === "function") {
+          window.showShellLoading(payload.title, payload.detail);
+        }
+        writeTransitionPayload(payload);
+      }
+      window.location.href = targetUrl.href;
+    };
 
     const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     if(!token || typeof window.fetch !== "function") return;
@@ -1270,7 +1360,7 @@
     newEntryUrl: "{{ url_for('new_entry') }}",
   };
 </script>
-<script defer src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}"></script>
+<script defer src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}&rev=cinematic-nebula-20260423a"></script>
 {% if active == 'self-control' %}
 <script defer src="{{ url_for('static', filename='js/self_control_console.js') }}?v={{ static_v }}"></script>
 {% endif %}

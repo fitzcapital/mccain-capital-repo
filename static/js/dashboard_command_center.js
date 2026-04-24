@@ -49,6 +49,61 @@ function initCalendarPreview(root = document) {
 }
 
 (function () {
+  const shell = document.getElementById("dashboardModeShell");
+  if (!shell) return;
+
+  const storageKey = String(shell.dataset.playbookTickerStorageKey || "mc_playbook_ticker");
+  const selectedTicker = String(shell.dataset.selectedTicker || "QQQ").toUpperCase();
+  const supportedTickers = new Set(["QQQ", "SPY"]);
+  const switchLinks = Array.from(document.querySelectorAll("[data-dashboard-ticker-switch]"));
+
+  const normalizeTicker = (value) => {
+    const ticker = String(value || "").trim().toUpperCase();
+    return supportedTickers.has(ticker) ? ticker : "";
+  };
+
+  const storageGet = (key) => {
+    try {
+      return window.localStorage ? window.localStorage.getItem(key) : null;
+    } catch (_err) {
+      return null;
+    }
+  };
+
+  const storageSet = (key, value) => {
+    try {
+      if (window.localStorage) window.localStorage.setItem(key, value);
+    } catch (_err) {
+      // Ignore storage failures in strict/private contexts.
+    }
+  };
+
+  const url = new URL(window.location.href);
+  const queryTicker = normalizeTicker(url.searchParams.get("ticker"));
+  const storedTicker = normalizeTicker(storageGet(storageKey));
+  if (!queryTicker && storedTicker && storedTicker !== selectedTicker) {
+    url.searchParams.set("ticker", storedTicker);
+    window.location.replace(url.toString());
+    return;
+  }
+
+  storageSet(storageKey, queryTicker || selectedTicker || "QQQ");
+  switchLinks.forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const nextTicker = normalizeTicker(link.dataset.dashboardTickerSwitch);
+      if (!nextTicker || nextTicker === selectedTicker) {
+        event.preventDefault();
+        return;
+      }
+      storageSet(storageKey, nextTicker);
+      if (typeof window.showDashboardLoading === "function") {
+        window.showDashboardLoading(`${nextTicker} dashboard`, `Loading ${nextTicker} context…`);
+      }
+    });
+  });
+})();
+
+(function () {
   const details = document.getElementById("advancedDashboardWidgets");
   const lazyShell = document.getElementById("dashboardCalendarLazy");
   if (!details || !lazyShell) return;
@@ -117,12 +172,15 @@ function initCalendarPreview(root = document) {
   const decisionCard = document.querySelector(".dashboardDecisionCard");
   const decisionRefreshBtn = document.getElementById("dashboardPlanningRefreshBtn");
   const decisionStatusChip = document.getElementById("dashboardDecisionStatusChip");
+  const decisionLead = document.getElementById("dashboardDecisionLead");
   const decisionBiasValue = document.getElementById("dashboardDecisionBiasValue");
   const decisionRiskValue = document.getElementById("dashboardDecisionRiskValue");
   const decisionPlanValue = document.getElementById("dashboardDecisionPlanValue");
   const decisionTradeGateValue = document.getElementById("dashboardDecisionTradeGateValue");
   const briefCardShell = document.getElementById("dashboardBriefCardShell");
   if (!rows.length || !statusNode || !updatedNode) return;
+  const shell = document.getElementById("dashboardModeShell");
+  const activeTicker = String(shell?.dataset.selectedTicker || "QQQ").toUpperCase();
 
   let freshTimer = null;
   let openSymbol = "";
@@ -412,8 +470,23 @@ function initCalendarPreview(root = document) {
     return text.length > max ? `${text.slice(0, Math.max(0, max - 1)).trim()}…` : text;
   };
 
+  const setPlanningHydrationState = (loading) => {
+    if (decisionCard) {
+      decisionCard.classList.toggle("is-hydrating", !!loading);
+    }
+    const briefCard = document.getElementById("daily-brief-card");
+    if (briefCard) {
+      briefCard.classList.toggle("is-hydrating", !!loading);
+    }
+  };
+
   const updateDecisionPanel = (panel) => {
     if (!panel || typeof panel !== "object") return;
+    if (decisionLead) {
+      decisionLead.textContent = String(
+        panel.posture_summary || panel.plan || "Wait for aligned planning context."
+      );
+    }
     if (decisionBiasValue) decisionBiasValue.textContent = String(panel.bias || "Unavailable");
     if (decisionRiskValue) decisionRiskValue.textContent = String(panel.risk_size || "Unavailable");
     if (decisionPlanValue) {
@@ -434,6 +507,7 @@ function initCalendarPreview(root = document) {
         decisionStatusChip.classList.add(tone);
       }
     }
+    setPlanningHydrationState(false);
   };
 
   const updateGammaStrip = (structure, metaPayload) => {
@@ -547,7 +621,9 @@ function initCalendarPreview(root = document) {
   const connect = () => {
     cleanupStream();
     if (!pageVisible) return;
-    stream = new EventSource("/stream/market");
+    const streamUrl = new URL("/stream/market", window.location.origin);
+    streamUrl.searchParams.set("ticker", activeTicker);
+    stream = new EventSource(streamUrl.toString());
     stream.onopen = () => {
       setStreamStatus("Live", "just now");
     };
@@ -585,6 +661,17 @@ function initCalendarPreview(root = document) {
 
   if (tapeCard && tapeRefreshBtn) {
     const endpoint = String(tapeCard.dataset.refreshEndpoint || "").trim();
+    const buildEndpoint = () => {
+      if (!endpoint) return "";
+      const url = new URL(endpoint, window.location.origin);
+      const pageParams = new URLSearchParams(window.location.search);
+      pageParams.forEach((value, key) => {
+        if (!url.searchParams.has(key)) {
+          url.searchParams.set(key, value);
+        }
+      });
+      return url.toString();
+    };
     const setTapeRefreshState = (loading) => {
       tapeRefreshBtn.disabled = !!loading;
       tapeRefreshBtn.classList.toggle("is-loading", !!loading);
@@ -597,7 +684,7 @@ function initCalendarPreview(root = document) {
         window.showDashboardLoading("Refreshing dashboard tape", "Updating live tape state.");
       }
       try {
-        const response = await fetch(endpoint, {
+        const response = await fetch(buildEndpoint(), {
           credentials: "same-origin",
           cache: "no-store",
           headers: { "X-Requested-With": "XMLHttpRequest" },
@@ -659,6 +746,7 @@ function initCalendarPreview(root = document) {
     const refreshPlanning = async ({ force = false, showLoading = false } = {}) => {
       if (!endpoint || decisionRefreshBtn.disabled) return;
       setRefreshState(true);
+      setPlanningHydrationState(true);
       if (showLoading && typeof window.showDashboardLoading === "function") {
         window.showDashboardLoading("Refreshing dashboard plan", "Updating planning and gamma context.");
       }
@@ -680,6 +768,9 @@ function initCalendarPreview(root = document) {
       } finally {
         if (showLoading && typeof window.completeDashboardLoading === "function") {
           window.completeDashboardLoading();
+        }
+        if (decisionLead && String(decisionLead.textContent || "").trim().length > 0) {
+          setPlanningHydrationState(false);
         }
         setRefreshState(false);
       }
@@ -1527,12 +1618,11 @@ function initCalendarPreview(root = document) {
     } else if (discipline.gateCount > 0 || foundation.alignmentPct >= 40) {
       sessionTone = "warning";
       sessionLabel = "Planning Only";
-      sessionDetail = "Build confirmation. Do not anticipate the final condition.";
+      sessionDetail = "Build confirmation. Do not anticipate.";
     }
 
-    const stateStamp = formatClock(discipline.touchedAt || foundation.lastTouchedAt);
     stateValue.textContent = sessionLabel;
-    stateMeta.textContent = stateStamp ? `${sessionDetail} Updated ${stateStamp} ET.` : sessionDetail;
+    stateMeta.textContent = sessionDetail;
     setTone(cards.session, sessionTone);
 
     let permissionTone = "info";
@@ -1559,23 +1649,23 @@ function initCalendarPreview(root = document) {
       nextLabel = "Close the session";
       nextDetail = foundation.reflectionAnswer === "yes"
         ? "Log the close and leave the day intact."
-        : "Finish the review and name what must hold tomorrow.";
+        : "Finish the review and name tomorrow's instruction.";
       nextTone = "negative";
     } else if (discipline.disciplineState === "urgent" || discipline.disciplineState === "frustrated" || foundation.reflectionAnswer === "no" || foundation.alignmentPct < 40) {
       nextLabel = "Run pressure check";
-      nextDetail = "Interrupt emotion before the next decision gets a vote.";
+      nextDetail = "Interrupt emotion before the next decision.";
       nextTone = "negative";
     } else if (discipline.gateCount < 3) {
       nextLabel = "Finish trade gate";
-      nextDetail = "No conviction means no trade until all three conditions agree.";
+      nextDetail = "No conviction means no trade until all three agree.";
       nextTone = "warning";
     } else if (foundation.alignmentPct < 80) {
       nextLabel = "Tighten alignment";
-      nextDetail = foundation.alignmentDetail || "Honor the process before adding risk.";
+      nextDetail = foundation.alignmentDetail || "Honor the process before risk.";
       nextTone = "warning";
     } else {
       nextLabel = "Execute the brief";
-      nextDetail = "Take the clean setup only. Protect capital if the read slips.";
+      nextDetail = "Take the clean setup only.";
       nextTone = "positive";
     }
     nextValue.textContent = nextLabel;

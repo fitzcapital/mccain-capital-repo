@@ -37,10 +37,10 @@
         <div class="dashboardFoundationHead">
           <div class="dashboardPrimaryBandHeader">
             <span class="dashboardPrimaryBandEyebrow">Alignment Before Action</span>
-            <span class="dashboardPrimaryBandSubhead">Ground the session before pressure gets a vote.</span>
+            <span class="dashboardPrimaryBandSubhead">Anchor before pressure.</span>
           </div>
           <div class="dashboardFoundationSummaryLine">
-            <strong id="dashboardFoundationSummary">Structure first, action second.</strong>
+            <strong id="dashboardFoundationSummary">Structure first.</strong>
             <span class="trendChip" id="dashboardFoundationSummaryChip">Foundation live</span>
           </div>
         </div>
@@ -78,14 +78,14 @@
             <div class="pill">Daily Intention</div>
             <span class="dashboardFoundationModuleTone" id="dashboardIntentionStatus">Today I will…</span>
           </div>
-          <div class="dashboardIntentionPresetRow" role="list" aria-label="Daily intention presets">
-            {% for value, label in intention_presets %}
-              <button type="button" class="dashboardIntentionPreset" data-intention-preset="{{ value }}" role="listitem">{{ label }}</button>
-            {% endfor %}
-          </div>
-          <details class="dashboardFoundationFold dashboardFoundationFold-subtle" data-dashboard-optional="foundation-intention-custom">
-            <summary>Custom intention</summary>
+          <details class="dashboardFoundationFold dashboardFoundationFold-subtle" data-dashboard-optional="foundation-intention-controls">
+            <summary>Change intention</summary>
             <div class="dashboardFoundationFoldBody">
+              <div class="dashboardIntentionPresetRow" role="list" aria-label="Daily intention presets">
+                {% for value, label in intention_presets %}
+                  <button type="button" class="dashboardIntentionPreset" data-intention-preset="{{ value }}" role="listitem">{{ label }}</button>
+                {% endfor %}
+              </div>
               <label class="dashboardFoundationField">
                 <span>Write it plainly</span>
                 <input
@@ -143,7 +143,7 @@
           <div class="dashboardRoutineStripHead">
             <div>
               <div class="pill">Daily Routine</div>
-              <div class="supportLead">Ritualized flow before, during, and after risk.</div>
+              <div class="supportLead">Ritual before, during, and after risk.</div>
             </div>
             <div class="dashboardRoutineProgress">
               <span class="dashboardRoutineProgressLabel">Routine</span>

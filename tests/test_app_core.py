@@ -355,6 +355,35 @@ def test_base_shell_includes_market_pulse_transition_overlay(client):
     assert b"showMarketPulseLoading" in resp.data
 
 
+def test_base_shell_generalizes_transition_loader_for_internal_pages(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'window.navigateWithShellLoading' in body
+    assert '"/analytics": { title: "Analytics"' in body
+    assert '"/strat": { title: "The Strat"' in body
+
+
+def test_market_pulse_page_uses_deferred_context_refresh_button(client):
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="marketPulseContextRefreshBtn"' in body
+    assert "/api/market-pulse/context" in body
+    assert "if (!pageLoaded || !coreReady) return;" in body
+
+
+def test_market_pulse_context_api_returns_playbook_payload(client):
+    resp = client.get("/api/market-pulse/context", follow_redirects=True)
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert "payload" in payload
+    assert "gamma_snapshot" in payload["payload"]
+    assert "execution_model" in payload["payload"]
+    assert "market_structure_snapshot" in payload["payload"]
+
+
 def test_dashboard_renders_daily_brief_card(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
@@ -451,6 +480,26 @@ def test_dashboard_behavior_update_saves_daily_summary_and_trend(client):
     assert saved["gate_count"] == 3
     assert saved["urgency_count"] == 1
     assert payload["trend"]["doer_streak"] >= 1
+
+
+def test_dashboard_pace_buffer_updates_projection_profit(client):
+    resp = client.post(
+        "/dashboard/pace",
+        data={
+            "dashboard_pace_daily": "750",
+            "dashboard_pace_buffer": "5000",
+            "dashboard_projection_target_date": "2026-05-21",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert get_setting_value("dashboard_pace_buffer", "") == "5000.00"
+
+    dashboard = client.get("/dashboard", follow_redirects=True)
+    assert dashboard.status_code == 200
+    body = dashboard.get_data(as_text=True)
+    assert "Pass buffer ($)" in body
+    assert "Buffer $5,000.00 applied." in body
 
 
 def test_dashboard_accountability_checklist_reflects_today_journal_capture(client):
@@ -745,7 +794,7 @@ def test_dashboard_primary_decision_actions_link_to_market_pulse_trade_gate_and_
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'href="/market-pulse?refresh=1"' in body
+    assert 'href="/market-pulse?ticker=QQQ&amp;refresh=1"' in body
     assert 'href="/ops/trading-window"' in body
     assert 'href="/calendar"' in body
 
@@ -2446,6 +2495,8 @@ def test_candle_opens_page_renders_monthly_market_calendar(client):
     assert b"Trading Days" in resp.data
     assert b"Day reset" in resp.data
     assert b"candleWeekdayInline" in resp.data
+    assert b"candleFocusStrip" in resp.data
+    assert b"Next Reset Cluster" in resp.data
 
 
 def test_trades_page_uses_derived_running_balance(client):

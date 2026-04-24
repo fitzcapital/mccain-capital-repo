@@ -96,6 +96,9 @@ MARKET_PULSE_X_RSS_URLS: Tuple[str, ...] = (
 MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
     {"handle": "unusual_whales", "label": "Unusual Whales", "lane": "Options Flow"},
 )
+SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("QQQ", "SPY")
+DEFAULT_PLAYBOOK_TICKER = "QQQ"
+PLAYBOOK_TICKER_STORAGE_KEY = "mc_playbook_ticker"
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
 GAMMA_SPOT_TIMESTAMP_DRIFT_SECONDS = 120
@@ -2471,6 +2474,7 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
 
     started = time.perf_counter()
     now_et = app_runtime.now_et()
+    anchor = now_et.date()
     fetched_label = now_et.strftime("%b %d, %Y %I:%M:%S %p ET")
     fetched_at = _market_pulse_cache.get("fetched_at")
     cached_payload = _market_pulse_cache.get("payload")
@@ -2486,6 +2490,26 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
         normalized_cache["source_label"] = "Massive market feed (cached snapshot)"
         normalized_cache["source_note"] = "Using recent cached Massive snapshot within refresh TTL."
         return normalized_cache
+
+    if not force_refresh:
+        disk_payload = _load_market_pulse_disk_cache()
+        if isinstance(disk_payload, dict):
+            _market_pulse_cache["fetched_at"] = now_et
+            _market_pulse_cache["payload"] = disk_payload
+            fallback = _market_pulse_attach_replay_cache(
+                _market_pulse_force_symbol_set(disk_payload)
+            )
+            fallback["source_label"] = str(
+                fallback.get("source_label") or "Market feed cached snapshot"
+            )
+            fallback["source_note"] = (
+                "Using cached market snapshot for fast page load. Use refresh for live data."
+            )
+            fallback.setdefault("integrity", {})
+            if isinstance(fallback["integrity"], dict):
+                fallback["integrity"]["cached_only"] = True
+                fallback["integrity"]["forced_refresh"] = False
+            return fallback
 
     symbols = [str(spec.get("symbol") or "").strip().upper() for spec in MARKET_PULSE_SYMBOLS]
     quotes_by_symbol = market_data_service.get_watchlist(symbols, allow_yf_fallback=False)
@@ -5960,6 +5984,7 @@ def _market_pulse_regime_strip_viewmodel(
 
 def get_or_build_market_pulse_snapshot(
     *,
+    ticker: str = DEFAULT_PLAYBOOK_TICKER,
     force_refresh: bool = False,
     now_et: Optional[datetime] = None,
     preloaded_snapshot: Optional[Dict[str, Any]] = None,
@@ -5979,6 +6004,7 @@ def get_or_build_market_pulse_snapshot(
     from mccain_capital.services import market_worker
 
     now_et = now_et or app_runtime.now_et()
+    selected_ticker = get_supported_playbook_ticker(ticker)
     raw_snapshot = dict(
         preloaded_snapshot or _market_pulse_snapshot(force_refresh=force_refresh) or {}
     )
@@ -6030,64 +6056,117 @@ def get_or_build_market_pulse_snapshot(
     }
     resolved_spx_quote = _market_pulse_apply_resolved_spot(spx_quote, spot_meta)
     resolved_gamma_snapshot = _market_pulse_apply_resolved_levels(gamma_snapshot, gamma_resolution)
+    active_quote = dict(resolved_spx_quote)
+    active_gamma_snapshot = dict(resolved_gamma_snapshot)
+    active_spot_meta = dict(spot_meta)
+    active_level_meta = copy.deepcopy(dict(gamma_resolution.get("level_meta") or {}))
+    active_local_flip_meta = copy.deepcopy(dict(gamma_resolution.get("local_flip_meta") or {}))
+    active_gamma_regime_meta = copy.deepcopy(
+        dict(gamma_resolution.get("gamma_regime_meta") or {})
+    )
+    active_levels_source = gamma_resolution.get("levels_source")
+    active_gamma_data_status = gamma_resolution.get("gamma_data_status")
+    active_structure_invariant_status = gamma_resolution.get("structure_invariant_status")
+    active_structure_invariant_issues = list(gamma_resolution.get("structure_invariant_issues") or [])
+    active_canonical_structure = dict(gamma_resolution.get("canonical_structure") or {})
+
+    if selected_ticker != "SPX":
+        instrument_quote = _market_pulse_quote_for_ticker(
+            quotes,
+            selected_ticker,
+            fallback={"symbol": selected_ticker, "label": selected_ticker},
+        )
+        active_quote = instrument_quote
+        active_gamma_snapshot = _market_pulse_scaled_gamma_snapshot(
+            ticker=selected_ticker,
+            base_gamma_snapshot=resolved_gamma_snapshot,
+            base_quote=resolved_spx_quote,
+            target_quote=instrument_quote,
+        )
+        active_spot_meta = _market_pulse_spot_meta_for_ticker(
+            ticker=selected_ticker,
+            quote=instrument_quote,
+            session_mode=session_mode,
+        )
+        ratio = _market_pulse_proxy_ratio(resolved_spx_quote, instrument_quote)
+        for payload in active_level_meta.values():
+            if not isinstance(payload, dict):
+                continue
+            payload["value"] = _market_pulse_scale_price(payload.get("value"), ratio)
+            if payload.get("label"):
+                payload["label"] = _market_pulse_localize_label(payload.get("label"), selected_ticker)
+        active_local_flip_meta = _market_pulse_localize_payload(active_local_flip_meta, selected_ticker)
+        active_gamma_regime_meta = _market_pulse_localize_payload(
+            active_gamma_regime_meta, selected_ticker
+        )
+        active_canonical_structure = _market_pulse_localize_payload(
+            active_canonical_structure, selected_ticker
+        )
+
+    active_levels = {
+        "main_flip": active_gamma_snapshot.get("gamma_flip_combined_basket"),
+        "local_flip": active_gamma_snapshot.get("local_flip_aggregated_gamma"),
+        "call_wall": active_gamma_snapshot.get("call_wall_aggregated_gamma"),
+        "put_wall": active_gamma_snapshot.get("put_wall_aggregated_gamma"),
+        "next_call_wall": active_gamma_snapshot.get("next_call_wall_above"),
+        "next_put_wall": active_gamma_snapshot.get("next_put_wall_below"),
+    }
     execution_chart = _market_pulse_execution_chart_viewmodel(
-        spx_quote=resolved_spx_quote,
-        gamma_snapshot=resolved_gamma_snapshot,
+        spx_quote=active_quote,
+        gamma_snapshot=active_gamma_snapshot,
         macro_events=macro_events,
         now_et=now_et,
-        resolved_spot=spot_meta.get("value"),
-        resolved_levels=resolved_levels,
+        resolved_spot=active_spot_meta.get("value"),
+        resolved_levels=active_levels,
     )
     chart_meta = _market_pulse_chart_source_viewmodel(
         execution_chart=execution_chart,
         session_mode=session_mode,
     )
     spx_priority_context = build_spx_priority_context(
-        spx_quote=resolved_spx_quote,
-        gamma_snapshot=resolved_gamma_snapshot,
+        spx_quote=active_quote,
+        gamma_snapshot=active_gamma_snapshot,
     )
     execution_model = _market_pulse_execution_model(
-        spx_quote=resolved_spx_quote,
-        gamma_snapshot=resolved_gamma_snapshot,
+        spx_quote=active_quote,
+        gamma_snapshot=active_gamma_snapshot,
         execution_chart=execution_chart,
         spx_priority_context=spx_priority_context,
     )
     market_structure_snapshot = _market_pulse_structure_snapshot(
-        spx_quote=resolved_spx_quote,
-        gamma_snapshot=resolved_gamma_snapshot,
+        spx_quote=active_quote,
+        gamma_snapshot=active_gamma_snapshot,
         execution_chart=execution_chart,
         execution_model=execution_model,
         now_et=now_et,
     )
 
     # Backend remains the source of truth for UI labels and provenance.
-    market_structure_snapshot["spot"] = spot_meta.get("value")
-    market_structure_snapshot["spot_meta"] = spot_meta
-    market_structure_snapshot["level_meta"] = gamma_resolution.get("level_meta") or {}
-    market_structure_snapshot["local_flip_meta"] = gamma_resolution.get("local_flip_meta") or {}
-    market_structure_snapshot["gamma_regime_meta"] = gamma_resolution.get("gamma_regime_meta") or {}
+    market_structure_snapshot["spot"] = active_spot_meta.get("value")
+    market_structure_snapshot["spot_meta"] = active_spot_meta
+    market_structure_snapshot["level_meta"] = active_level_meta
+    market_structure_snapshot["local_flip_meta"] = active_local_flip_meta
+    market_structure_snapshot["gamma_regime_meta"] = active_gamma_regime_meta
     market_structure_snapshot["chart_meta"] = chart_meta
-    market_structure_snapshot["levels_source"] = gamma_resolution.get(
+    market_structure_snapshot["levels_source"] = active_levels_source or market_structure_snapshot.get(
         "levels_source"
-    ) or market_structure_snapshot.get("levels_source")
-    market_structure_snapshot["gamma_data_status"] = gamma_resolution.get(
-        "gamma_data_status"
-    ) or market_structure_snapshot.get("gamma_data_status")
-    market_structure_snapshot["structure_invariant_status"] = gamma_resolution.get(
-        "structure_invariant_status"
-    ) or market_structure_snapshot.get("structure_invariant_status")
-    market_structure_snapshot["structure_invariant_issues"] = list(
-        gamma_resolution.get("structure_invariant_issues")
-        or market_structure_snapshot.get("structure_invariant_issues")
-        or []
     )
-    market_structure_snapshot["main_flip"] = resolved_levels.get("main_flip")
-    market_structure_snapshot["local_flip"] = resolved_levels.get("local_flip")
-    market_structure_snapshot["call_wall"] = resolved_levels.get("call_wall")
-    market_structure_snapshot["put_wall"] = resolved_levels.get("put_wall")
-    market_structure_snapshot["next_call_wall"] = resolved_levels.get("next_call_wall")
-    market_structure_snapshot["next_put_wall"] = resolved_levels.get("next_put_wall")
-    canonical_structure = dict(gamma_resolution.get("canonical_structure") or {})
+    market_structure_snapshot["gamma_data_status"] = active_gamma_data_status or market_structure_snapshot.get(
+        "gamma_data_status"
+    )
+    market_structure_snapshot["structure_invariant_status"] = (
+        active_structure_invariant_status or market_structure_snapshot.get("structure_invariant_status")
+    )
+    market_structure_snapshot["structure_invariant_issues"] = list(
+        active_structure_invariant_issues or market_structure_snapshot.get("structure_invariant_issues") or []
+    )
+    market_structure_snapshot["main_flip"] = active_levels.get("main_flip")
+    market_structure_snapshot["local_flip"] = active_levels.get("local_flip")
+    market_structure_snapshot["call_wall"] = active_levels.get("call_wall")
+    market_structure_snapshot["put_wall"] = active_levels.get("put_wall")
+    market_structure_snapshot["next_call_wall"] = active_levels.get("next_call_wall")
+    market_structure_snapshot["next_put_wall"] = active_levels.get("next_put_wall")
+    canonical_structure = active_canonical_structure
     market_structure_snapshot["next_call_wall_source"] = str(
         canonical_structure.get("next_call_wall_source") or "unresolved"
     )
@@ -6128,17 +6207,17 @@ def get_or_build_market_pulse_snapshot(
         f"{market_structure_snapshot.get('session_mode_label') or session_mode.title()} · "
         f"{market_structure_snapshot.get('regime_confidence_label') or 'No confidence'}"
     )
-    market_structure_snapshot["spot_source_label"] = spot_meta.get("source_label") or "Unavailable"
-    market_structure_snapshot["spot_source"] = spot_meta.get("source") or ""
-    market_structure_snapshot["spot_is_fallback"] = bool(spot_meta.get("spot_is_fallback"))
-    market_structure_snapshot["fallback_reason"] = spot_meta.get("fallback_reason") or ""
+    market_structure_snapshot["spot_source_label"] = active_spot_meta.get("source_label") or "Unavailable"
+    market_structure_snapshot["spot_source"] = active_spot_meta.get("source") or ""
+    market_structure_snapshot["spot_is_fallback"] = bool(active_spot_meta.get("spot_is_fallback"))
+    market_structure_snapshot["fallback_reason"] = active_spot_meta.get("fallback_reason") or ""
     market_structure_snapshot["spot_source_short_label"] = (
-        "SPX Spot"
-        if spot_meta.get("source") == "live"
-        else f"Spot · {spot_meta.get('source_label') or 'Unavailable'}"
+        f"{selected_ticker} Spot"
+        if active_spot_meta.get("source") == "live"
+        else f"Spot · {active_spot_meta.get('source_label') or 'Unavailable'}"
     )
     merged_regime_state = _market_pulse_gamma_regime_state(
-        resolved_gamma_snapshot,
+        active_gamma_snapshot,
         gamma_data_status=str(market_structure_snapshot.get("gamma_data_status") or ""),
         session_mode=session_mode,
         levels={
@@ -6152,7 +6231,7 @@ def get_or_build_market_pulse_snapshot(
         next_put_wall=market_structure_snapshot.get("next_put_wall"),
     )
     merged_regime = _market_pulse_gamma_regime_viewmodel(
-        resolved_gamma_snapshot,
+        active_gamma_snapshot,
         gamma_data_status=str(market_structure_snapshot.get("gamma_data_status") or ""),
         regime_status=str(merged_regime_state.get("regime_status") or ""),
         missing_reason=str(merged_regime_state.get("missing_reason") or ""),
@@ -6210,13 +6289,13 @@ def get_or_build_market_pulse_snapshot(
     market_structure_snapshot["bars_source"] = chart_meta.get("bars_source")
     market_structure_snapshot["bars_as_of"] = chart_meta.get("bars_as_of")
     market_structure_snapshot["last_valid_snapshot_time"] = dict(
-        gamma_resolution.get("gamma_regime_meta") or {}
+        active_gamma_regime_meta or {}
     ).get("as_of") or market_structure_snapshot.get("last_valid_snapshot_time")
     market_structure_snapshot["last_valid_snapshot_time_label"] = (
         _format_iso_et_label(market_structure_snapshot.get("last_valid_snapshot_time")) or "—"
     )
     market_structure_snapshot["snapshot_timestamp"] = (
-        spot_meta.get("as_of")
+        active_spot_meta.get("as_of")
         or chart_meta.get("bars_as_of")
         or market_structure_snapshot.get("snapshot_timestamp")
         or ""
@@ -6273,12 +6352,25 @@ def get_or_build_market_pulse_snapshot(
     market_structure_snapshot["context_score_pct"] = playbook_view.get("context_score")
     market_structure_snapshot["context_tone"] = playbook_view.get("context_tone")
 
+    if selected_ticker != "SPX":
+        active_gamma_snapshot = _market_pulse_localize_payload(active_gamma_snapshot, selected_ticker)
+        execution_chart = _market_pulse_localize_payload(execution_chart, selected_ticker)
+        execution_model = _market_pulse_localize_payload(execution_model, selected_ticker)
+        market_structure_snapshot = _market_pulse_localize_payload(
+            market_structure_snapshot, selected_ticker
+        )
+        playbook_view = _market_pulse_localize_payload(playbook_view, selected_ticker)
+        spx_priority_context = _market_pulse_localize_payload(spx_priority_context, selected_ticker)
+
     payload = {
         "snapshot": raw_snapshot,
-        "gamma_snapshot": resolved_gamma_snapshot,
+        "ticker": selected_ticker,
+        "gamma_snapshot": active_gamma_snapshot,
         "quotes": quotes,
-        "spx_quote": resolved_spx_quote,
+        "spx_quote": active_quote,
+        "playbook_quote": active_quote,
         "spx_priority_context": spx_priority_context,
+        "playbook_priority_context": spx_priority_context,
         "execution_chart": execution_chart,
         "execution_model": execution_model,
         "market_structure_snapshot": market_structure_snapshot,
@@ -6732,6 +6824,223 @@ def _market_news_compose_feed(
     deduped = _dedupe_market_news_rows(rows)
     deduped.sort(key=_market_pulse_feed_priority)
     return deduped[:MARKET_NEWS_FEED_LIMIT]
+
+
+def get_supported_playbook_ticker(value: Any) -> str:
+    ticker = str(value or "").strip().upper()
+    return ticker if ticker in SUPPORTED_PLAYBOOK_TICKERS else DEFAULT_PLAYBOOK_TICKER
+
+
+def get_playbook_ticker_context(value: Any) -> Dict[str, Any]:
+    ticker = get_supported_playbook_ticker(value)
+    alternate = next(
+        (item for item in SUPPORTED_PLAYBOOK_TICKERS if item != ticker),
+        DEFAULT_PLAYBOOK_TICKER,
+    )
+    return {
+        "ticker": ticker,
+        "alternate_ticker": alternate,
+        "supported_tickers": SUPPORTED_PLAYBOOK_TICKERS,
+        "storage_key": PLAYBOOK_TICKER_STORAGE_KEY,
+    }
+
+
+def _dashboard_tape_symbols(selected_ticker: str) -> List[str]:
+    ticker = get_supported_playbook_ticker(selected_ticker)
+    alternate = next(
+        (item for item in SUPPORTED_PLAYBOOK_TICKERS if item != ticker),
+        DEFAULT_PLAYBOOK_TICKER,
+    )
+    return [ticker, "VIX", alternate, "IWM", "AAPL", "TSLA"]
+
+
+def _market_pulse_quote_for_ticker(
+    quotes: List[Dict[str, Any]],
+    ticker: str,
+    *,
+    fallback: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    resolved_ticker = str(ticker or "").strip().upper()
+    for row in list(quotes or []):
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or row.get("label") or "").strip().upper()
+        if symbol == resolved_ticker:
+            return dict(row)
+    return dict(fallback or {})
+
+
+def _market_pulse_round_price(value: Any) -> Optional[float]:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(numeric, 4)
+
+
+def _market_pulse_scale_price(value: Any, ratio: Optional[float]) -> Optional[float]:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if ratio is None:
+        return None
+    return _market_pulse_round_price(numeric * ratio)
+
+
+def _market_pulse_localize_label(value: Any, ticker: str) -> Any:
+    if not isinstance(value, str):
+        return value
+    localized = re.sub(r"\bSPX\b", ticker, value)
+    localized = re.sub(r"\bS&P 500\b", ticker, localized, flags=re.IGNORECASE)
+    return localized
+
+
+def _market_pulse_localize_payload(value: Any, ticker: str) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _market_pulse_localize_payload(item, ticker)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_market_pulse_localize_payload(item, ticker) for item in value]
+    return _market_pulse_localize_label(value, ticker)
+
+
+def _market_pulse_proxy_ratio(
+    base_quote: Dict[str, Any],
+    target_quote: Dict[str, Any],
+) -> Optional[float]:
+    try:
+        base_price = float(base_quote.get("price"))
+        target_price = float(target_quote.get("price"))
+    except (TypeError, ValueError):
+        return None
+    if base_price <= 0 or target_price <= 0:
+        return None
+    return target_price / base_price
+
+
+def _market_pulse_scaled_gamma_snapshot(
+    *,
+    ticker: str,
+    base_gamma_snapshot: Dict[str, Any],
+    base_quote: Dict[str, Any],
+    target_quote: Dict[str, Any],
+) -> Dict[str, Any]:
+    scaled = copy.deepcopy(dict(base_gamma_snapshot or {}))
+    ratio = _market_pulse_proxy_ratio(base_quote, target_quote)
+    if ratio is None:
+        scaled["spot"] = _market_pulse_round_price(target_quote.get("price"))
+        scaled["spot_price_used"] = _market_pulse_round_price(target_quote.get("price"))
+        scaled["symbol"] = ticker
+        scaled["proxy_scale_ratio"] = None
+        scaled["proxy_source"] = "unavailable"
+        return _market_pulse_localize_payload(scaled, ticker)
+
+    scalar_fields = (
+        "spot",
+        "spot_price_used",
+        "gamma_flip_combined_basket",
+        "local_flip_aggregated_gamma",
+        "call_wall_aggregated_gamma",
+        "put_wall_aggregated_gamma",
+        "local_flip_distance_from_spot",
+        "nearest_positive_gamma_above_spot",
+        "nearest_negative_gamma_below_spot",
+        "gamma_range_estimate",
+        "gamma_range_high",
+        "gamma_range_low",
+        "next_call_wall_above",
+        "next_put_wall_below",
+    )
+    for field in scalar_fields:
+        if field in scaled:
+            scaled[field] = _market_pulse_scale_price(scaled.get(field), ratio)
+
+    for field in (
+        "gamma_walls_top3",
+        "top_positive_strikes",
+        "top_negative_strikes",
+        "top_3_positive_gamma_strikes",
+        "top_3_negative_gamma_strikes",
+    ):
+        values = scaled.get(field)
+        if isinstance(values, list):
+            scaled[field] = [
+                scaled_value
+                for scaled_value in (_market_pulse_scale_price(item, ratio) for item in values)
+                if scaled_value is not None
+            ]
+
+    void_zone = dict(scaled.get("void_zone") or {})
+    if void_zone:
+        void_zone["start"] = _market_pulse_scale_price(void_zone.get("start"), ratio)
+        void_zone["end"] = _market_pulse_scale_price(void_zone.get("end"), ratio)
+        scaled["void_zone"] = void_zone
+
+    grouped_rows = []
+    for row in list(scaled.get("grouped_strike_rows") or []):
+        if not isinstance(row, dict):
+            continue
+        next_row = dict(row)
+        next_row["strike"] = _market_pulse_scale_price(row.get("strike"), ratio)
+        grouped_rows.append(next_row)
+    if grouped_rows:
+        scaled["grouped_strike_rows"] = grouped_rows
+
+    scaled["spot"] = _market_pulse_round_price(target_quote.get("price"))
+    scaled["spot_price_used"] = _market_pulse_round_price(target_quote.get("price"))
+    scaled["spot_source"] = str(target_quote.get("provider") or target_quote.get("reason") or "market_snapshot")
+    scaled["spot_source_label"] = f"Live {ticker} Quote"
+    scaled["spot_source_name"] = ticker
+    scaled["spot_source_timestamp"] = str(
+        target_quote.get("asof") or target_quote.get("as_of") or scaled.get("spot_source_timestamp") or ""
+    )
+    scaled["symbol"] = ticker
+    scaled["proxy_scale_ratio"] = ratio
+    scaled["proxy_source"] = "scaled_from_spx_gamma_snapshot"
+    scaled["warning_state"] = dict(scaled.get("warning_state") or {})
+    warning_notes = list(scaled["warning_state"].get("warnings") or [])
+    proxy_warning = (
+        f"{ticker} playbook levels are currently scaled from the shared SPX gamma snapshot."
+    )
+    if proxy_warning not in warning_notes:
+        warning_notes.append(proxy_warning)
+    scaled["warning_state"]["warnings"] = warning_notes
+    warnings = list(scaled.get("warnings") or [])
+    if proxy_warning not in warnings:
+        warnings.append(proxy_warning)
+    scaled["warnings"] = warnings
+    return _market_pulse_localize_payload(scaled, ticker)
+
+
+def _market_pulse_spot_meta_for_ticker(
+    *,
+    ticker: str,
+    quote: Dict[str, Any],
+    session_mode: str,
+) -> Dict[str, Any]:
+    price = _market_pulse_round_price(quote.get("price"))
+    as_of = str(quote.get("asof") or quote.get("as_of") or "")
+    state = "LIVE_SESSION" if price is not None and session_mode == "regular" else "AFTER_HOURS_VALID"
+    if price is None:
+        state = "UNAVAILABLE"
+    provider = str(quote.get("provider") or quote.get("reason") or "market_snapshot")
+    source_label = f"Live {ticker} Quote" if price is not None else f"{ticker} quote unavailable"
+    return {
+        "value": price,
+        "source": provider,
+        "source_label": source_label,
+        "as_of": as_of,
+        "state": state,
+        "spot_is_fallback": price is None,
+        "fallback_reason": (
+            f"{ticker} quote unavailable; instrument playbook levels cannot be refreshed."
+            if price is None
+            else ""
+        ),
+    }
 
 
 def _market_pulse_x_clean_text(value: Any) -> str:
@@ -7240,6 +7549,7 @@ def _load_dashboard_milestone_settings() -> Dict[str, Any]:
 
 def _load_dashboard_pace_settings() -> Dict[str, Any]:
     custom_daily = float(app_runtime.get_setting_float("dashboard_pace_daily", 0.0) or 0.0)
+    pass_buffer = float(app_runtime.get_setting_float("dashboard_pace_buffer", 0.0) or 0.0)
     start_date_raw = str(app_runtime.get_setting_value("dashboard_projection_start_date", "") or "")
     target_date_raw = str(
         app_runtime.get_setting_value("dashboard_projection_target_date", "") or ""
@@ -7259,6 +7569,8 @@ def _load_dashboard_pace_settings() -> Dict[str, Any]:
     return {
         "custom_daily": max(0.0, custom_daily),
         "custom_enabled": custom_daily > 0.0,
+        "pass_buffer": max(0.0, pass_buffer),
+        "pass_buffer_enabled": pass_buffer > 0.0,
         "start_date": start_date,
         "target_date": target_date,
     }
@@ -7504,6 +7816,8 @@ def _dashboard_daily_brief_viewmodel(
     now_et: datetime,
     dashboard_spx: Dict[str, Any],
     dashboard_vix: Dict[str, Any],
+    ticker: str = DEFAULT_PLAYBOOK_TICKER,
+    dashboard_instrument: Optional[Dict[str, Any]] = None,
     gamma_snapshot: Dict[str, Any],
     market_structure_snapshot: Optional[Dict[str, Any]] = None,
     news_snapshot: Dict[str, Any],
@@ -7525,10 +7839,12 @@ def _dashboard_daily_brief_viewmodel(
             return None
 
     structure = dict(market_structure_snapshot or {})
+    selected_ticker = get_supported_playbook_ticker(ticker)
+    instrument_quote = dict(dashboard_instrument or dashboard_spx or {})
     spot = _num(structure.get("spot"))
     if spot is None:
-        spot = _num(dashboard_spx.get("price"))
-    change_pct = _num(dashboard_spx.get("pct_change"))
+        spot = _num(instrument_quote.get("price"))
+    change_pct = _num(instrument_quote.get("pct_change"))
     vix = _num(dashboard_vix.get("price"))
     gamma_flip = _num(structure.get("main_flip"))
     if gamma_flip is None:
@@ -7552,7 +7868,7 @@ def _dashboard_daily_brief_viewmodel(
         )
     next_call_wall = _num(structure.get("next_call_wall"))
     next_put_wall = _num(structure.get("next_put_wall"))
-    day_open = _num(dashboard_spx.get("day_open"))
+    day_open = _num(instrument_quote.get("day_open"))
 
     def _macro_event_dt(row: Dict[str, Any]) -> Optional[datetime]:
         raw = str(row.get("starts_at") or "").strip()
@@ -7574,7 +7890,10 @@ def _dashboard_daily_brief_viewmodel(
     ):
         bias_label = "Bullish above flip"
         bias_tone = "positive"
-        bias_summary = f"SPX is trading above gamma flip {gamma_flip:.0f}, so continuation longs have cleaner structure than reactive fades."
+        bias_summary = (
+            f"{selected_ticker} is trading above gamma flip {gamma_flip:.0f}, so continuation "
+            "longs have cleaner structure than reactive fades."
+        )
     elif (
         spot is not None
         and gamma_flip is not None
@@ -7583,7 +7902,10 @@ def _dashboard_daily_brief_viewmodel(
     ):
         bias_label = "Defensive below flip"
         bias_tone = "negative"
-        bias_summary = f"SPX is below gamma flip {gamma_flip:.0f}, so failed bounces and risk-off structure deserve more respect than impulsive longs."
+        bias_summary = (
+            f"{selected_ticker} is below gamma flip {gamma_flip:.0f}, so failed bounces and "
+            "risk-off structure deserve more respect than impulsive longs."
+        )
     else:
         bias_label = "Two-way / responsive"
         bias_tone = ""
@@ -7839,7 +8161,10 @@ def _dashboard_daily_brief_viewmodel(
         "source_detail": (
             "Using your saved brief edits for this day."
             if is_tuned
-            else "Generated from live SPX, nearest actionable gamma level, and macro context."
+            else (
+                f"Generated from live {selected_ticker}, nearest actionable gamma level, "
+                "and macro context."
+            )
         ),
         "is_tuned": is_tuned,
     }
@@ -8571,6 +8896,8 @@ def _dashboard_pace_viewmodel(
     live_avg = float(proj.get("avg") or 0.0)
     custom_daily = float(pace_settings.get("custom_daily") or 0.0)
     custom_enabled = bool(pace_settings.get("custom_enabled")) and custom_daily > 0.0
+    pass_buffer = max(0.0, float(pace_settings.get("pass_buffer") or 0.0))
+    pass_buffer_enabled = bool(pace_settings.get("pass_buffer_enabled")) and pass_buffer > 0.0
     applied_avg = custom_daily if custom_enabled else live_avg
     base_balance = float(proj.get("base_balance") or 0.0)
     start_date_input = str(pace_settings.get("start_date") or "").strip()
@@ -8591,18 +8918,20 @@ def _dashboard_pace_viewmodel(
     for key, label in (("p5", "5D"), ("p10", "10D"), ("p20", "20D")):
         row = dict(proj.get(key) or {})
         sessions = int(row.get("days") or 0)
-        est_pnl = float(applied_avg * sessions)
-        est_balance = base_balance + est_pnl
+        gross_pnl = float(applied_avg * sessions)
+        net_pnl = gross_pnl - pass_buffer
+        est_balance = base_balance + gross_pnl
         target_day = _advance_market_sessions(projection_anchor, sessions)
         nodes.append(
             {
                 "label": label,
                 "sessions": sessions,
-                "est_pnl": app_runtime.money(est_pnl),
+                "est_pnl": app_runtime.money(net_pnl),
+                "gross_pnl": app_runtime.money(gross_pnl),
                 "est_balance": app_runtime.money(est_balance),
                 "target_date_label": target_day.strftime("%b %d"),
                 "target_date_full": target_day.strftime("%a, %b %d, %Y"),
-                "tone": "positive" if est_pnl > 0 else "negative" if est_pnl < 0 else "neutral",
+                "tone": "positive" if net_pnl > 0 else "negative" if net_pnl < 0 else "neutral",
             }
         )
     target_projection: Dict[str, Any] = {
@@ -8621,25 +8950,29 @@ def _dashboard_pace_viewmodel(
             target_day = date.fromisoformat(target_date_input)
             target_sessions = _market_sessions_between(projection_anchor, target_day)
             target_est_pnl = applied_avg * target_sessions
+            target_est_pnl_net = target_est_pnl - pass_buffer
             target_est_balance = base_balance + target_est_pnl
             target_projection = {
                 "configured": True,
                 "input": target_date_input,
                 "label": target_day.strftime("%b %d"),
                 "sessions": target_sessions,
-                "est_pnl": app_runtime.money(target_est_pnl),
+                "est_pnl": app_runtime.money(target_est_pnl_net),
+                "gross_pnl": app_runtime.money(target_est_pnl),
                 "est_balance": app_runtime.money(target_est_balance),
                 "target_date_full": target_day.strftime("%a, %b %d, %Y"),
                 "tone": (
                     "positive"
-                    if target_est_pnl > 0
-                    else "negative" if target_est_pnl < 0 else "neutral"
+                    if target_est_pnl_net > 0
+                    else "negative" if target_est_pnl_net < 0 else "neutral"
                 ),
                 "detail": (
                     f"{target_sessions} trading sessions at "
                     f"{app_runtime.money(applied_avg)}/day from {start_date_label}."
                 ),
             }
+            if pass_buffer_enabled:
+                target_projection["detail"] += f" Buffer {app_runtime.money(pass_buffer)} applied."
         except ValueError:
             target_projection["input"] = ""
     note = "Use for pacing, not certainty."
@@ -8675,6 +9008,8 @@ def _dashboard_pace_viewmodel(
         note = "Custom pace is active. Dates use trading days only."
     elif live_avg > 0.0:
         note = "Live pace is based on recent trading sessions only."
+    if pass_buffer_enabled:
+        note += f" Pass buffer {app_runtime.money(pass_buffer)} is subtracted from projected profit."
     return {
         "headline": app_runtime.money(applied_avg),
         "headline_suffix": "/day",
@@ -8683,6 +9018,10 @@ def _dashboard_pace_viewmodel(
         "custom_enabled": custom_enabled,
         "custom_daily": custom_daily,
         "custom_input": f"{custom_daily:.2f}" if custom_enabled else "",
+        "pass_buffer": pass_buffer,
+        "pass_buffer_enabled": pass_buffer_enabled,
+        "pass_buffer_input": f"{pass_buffer:.2f}" if pass_buffer_enabled else "",
+        "pass_buffer_label": app_runtime.money(pass_buffer),
         "mode_label": "Custom pace" if custom_enabled else "Live pace",
         "mode_detail": (
             f"Using your manual pace of {app_runtime.money(custom_daily)}/day."
@@ -8898,6 +9237,7 @@ def dashboard_milestone_update():
     y = str(request.form.get("y") or "").strip()
     m = str(request.form.get("m") or "").strip()
     scope = str(request.form.get("scope") or "").strip().lower()
+    ticker = get_supported_playbook_ticker(request.form.get("ticker"))
     params: Dict[str, str] = {}
     if y:
         params["y"] = y
@@ -8905,6 +9245,7 @@ def dashboard_milestone_update():
         params["m"] = m
     if scope in {"active", "all"}:
         params["scope"] = scope
+    params["ticker"] = ticker
     return redirect(url_for("dashboard", **params))
 
 
@@ -8928,6 +9269,7 @@ def dashboard_brief_update():
     y = str(request.form.get("y") or "").strip()
     m = str(request.form.get("m") or "").strip()
     scope = str(request.form.get("scope") or "").strip().lower()
+    ticker = get_supported_playbook_ticker(request.form.get("ticker"))
     params: Dict[str, str] = {}
     if y:
         params["y"] = y
@@ -8935,12 +9277,14 @@ def dashboard_brief_update():
         params["m"] = m
     if scope in {"active", "all"}:
         params["scope"] = scope
+    params["ticker"] = ticker
     return redirect(url_for("dashboard", **params))
 
 
 def dashboard_pace_update():
     pace_reset = str(request.form.get("pace_reset") or "").strip() == "1"
     custom_daily = app_runtime.parse_float(request.form.get("dashboard_pace_daily") or "") or 0.0
+    pass_buffer = app_runtime.parse_float(request.form.get("dashboard_pace_buffer") or "") or 0.0
     start_date = str(request.form.get("dashboard_projection_start_date") or "").strip()
     target_date = str(request.form.get("dashboard_projection_target_date") or "").strip()
     if pace_reset or custom_daily <= 0.0:
@@ -8949,6 +9293,10 @@ def dashboard_pace_update():
     else:
         app_runtime.set_setting_value("dashboard_pace_daily", f"{max(0.0, custom_daily):.2f}")
         flash("Forward pace updated.", "success")
+    if pace_reset or pass_buffer <= 0.0:
+        app_runtime.set_setting_value("dashboard_pace_buffer", "")
+    else:
+        app_runtime.set_setting_value("dashboard_pace_buffer", f"{max(0.0, pass_buffer):.2f}")
     if start_date:
         try:
             start_iso = date.fromisoformat(start_date).isoformat()
@@ -8971,6 +9319,7 @@ def dashboard_pace_update():
     y = str(request.form.get("y") or "").strip()
     m = str(request.form.get("m") or "").strip()
     scope = str(request.form.get("scope") or "").strip().lower()
+    ticker = get_supported_playbook_ticker(request.form.get("ticker"))
     params: Dict[str, str] = {}
     if y:
         params["y"] = y
@@ -8978,6 +9327,7 @@ def dashboard_pace_update():
         params["m"] = m
     if scope in {"active", "all"}:
         params["scope"] = scope
+    params["ticker"] = ticker
     return redirect(url_for("dashboard", **params))
 
 
@@ -9048,6 +9398,9 @@ def dashboard():
     from mccain_capital.repositories import journal as journal_repo
     from mccain_capital.repositories import trades as trades_repo
 
+    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    selected_ticker = str(ticker_context["ticker"])
+    alternate_ticker = str(ticker_context["alternate_ticker"])
     scope = trades_repo.account_scope_snapshot()
     scope_enabled = bool(scope.get("enabled"))
     scope_mode_raw = (request.args.get("scope") or "").strip().lower()
@@ -9254,25 +9607,44 @@ def dashboard():
             pass
     tape_snapshot = market_worker.get_market_snapshot()
     tape_prices = dict(tape_snapshot.get("prices") or {})
-    dashboard_spx = dict(tape_prices.get("SPX") or {})
+    dashboard_instrument = dict(tape_prices.get(selected_ticker) or {})
+    dashboard_peer = dict(tape_prices.get(alternate_ticker) or {})
     dashboard_vix = dict(tape_prices.get("VIX") or {})
     if current_app.config.get("TESTING"):
-        if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
+        watch_symbols = [selected_ticker, alternate_ticker, "VIX"]
+        if (
+            dashboard_instrument.get("price") is None
+            or dashboard_peer.get("price") is None
+            or dashboard_vix.get("price") is None
+        ):
             try:
-                tradier_quotes = market_data_service.get_watchlist_tradier(["SPX", "VIX"])
+                tradier_quotes = market_data_service.get_watchlist_tradier(watch_symbols)
             except Exception:
                 tradier_quotes = {}
-            if dashboard_spx.get("price") is None:
-                dashboard_spx = dict(tradier_quotes.get("SPX") or dashboard_spx)
+            if dashboard_instrument.get("price") is None:
+                dashboard_instrument = dict(
+                    tradier_quotes.get(selected_ticker) or dashboard_instrument
+                )
+            if dashboard_peer.get("price") is None:
+                dashboard_peer = dict(tradier_quotes.get(alternate_ticker) or dashboard_peer)
             if dashboard_vix.get("price") is None:
                 dashboard_vix = dict(tradier_quotes.get("VIX") or dashboard_vix)
-        if dashboard_spx.get("price") is None or dashboard_vix.get("price") is None:
+        if (
+            dashboard_instrument.get("price") is None
+            or dashboard_peer.get("price") is None
+            or dashboard_vix.get("price") is None
+        ):
             try:
-                fallback = market_data_service.get_watchlist(["SPX", "VIX"], allow_yf_fallback=False)
+                fallback = market_data_service.get_watchlist(
+                    watch_symbols,
+                    allow_yf_fallback=False,
+                )
             except Exception:
                 fallback = {}
-            if dashboard_spx.get("price") is None:
-                dashboard_spx = dict(fallback.get("SPX") or dashboard_spx)
+            if dashboard_instrument.get("price") is None:
+                dashboard_instrument = dict(fallback.get(selected_ticker) or dashboard_instrument)
+            if dashboard_peer.get("price") is None:
+                dashboard_peer = dict(fallback.get(alternate_ticker) or dashboard_peer)
             if dashboard_vix.get("price") is None:
                 dashboard_vix = dict(fallback.get("VIX") or dashboard_vix)
     now_et = app_runtime.now_et()
@@ -9634,11 +10006,13 @@ def dashboard():
             "source_display": str(enriched.get("source_badge_label") or "—"),
         }
 
-    dashboard_spx = _enrich_dashboard_quote("SPX", dashboard_spx)
+    dashboard_instrument = _enrich_dashboard_quote(selected_ticker, dashboard_instrument)
+    dashboard_peer = _enrich_dashboard_quote(alternate_ticker, dashboard_peer)
     dashboard_vix = _enrich_dashboard_quote("VIX", dashboard_vix)
-    dashboard_tape_symbols = ["SPX", "VIX", "QQQ", "IWM", "AAPL", "TSLA"]
+    dashboard_tape_symbols = _dashboard_tape_symbols(selected_ticker)
     dashboard_tape_quotes: Dict[str, Dict[str, Any]] = {
-        "SPX": dict(dashboard_spx),
+        selected_ticker: dict(dashboard_instrument),
+        alternate_ticker: dict(dashboard_peer),
         "VIX": dict(dashboard_vix),
     }
     extra_tape_quotes: Dict[str, Dict[str, Any]] = {}
@@ -9667,12 +10041,21 @@ def dashboard():
             source_quote,
         )
     dashboard_tape_rows = [
-        _dashboard_tape_row_viewmodel("SPX", dashboard_tape_quotes.get("SPX") or {}, "SPX cash"),
+        _dashboard_tape_row_viewmodel(
+            selected_ticker,
+            dashboard_tape_quotes.get(selected_ticker) or {},
+            f"{selected_ticker} focus",
+        ),
         _dashboard_tape_row_viewmodel("VIX", dashboard_tape_quotes.get("VIX") or {}, "VIX pulse"),
+        _dashboard_tape_row_viewmodel(
+            alternate_ticker,
+            dashboard_tape_quotes.get(alternate_ticker) or {},
+            f"{alternate_ticker} peer",
+        ),
     ]
     dashboard_tape_rows.extend(
         _dashboard_tape_row_viewmodel(symbol, dashboard_tape_quotes.get(symbol) or {})
-        for symbol in ("QQQ", "IWM", "AAPL", "TSLA")
+        for symbol in ("IWM", "AAPL", "TSLA")
     )
     journal_today_rows = [dict(r) for r in journal_repo.fetch_entries(d=today_key)]
     journal_capture_count_today = 0
@@ -9812,6 +10195,10 @@ def dashboard():
 
     content = render_template(
         "dashboard.html",
+        selected_ticker=selected_ticker,
+        alternate_ticker=alternate_ticker,
+        supported_tickers=ticker_context["supported_tickers"],
+        playbook_ticker_storage_key=ticker_context["storage_key"],
         heat=heat,
         prev_y=prev_y,
         prev_m=prev_m,
@@ -9852,7 +10239,7 @@ def dashboard():
         risk_posture_detail=risk_posture_detail,
         pattern_watch=pattern_watch,
         setup_focus=setup_focus,
-        dashboard_spx=dashboard_spx,
+        dashboard_instrument=dashboard_instrument,
         dashboard_vix=dashboard_vix,
         dashboard_tape_quotes=dashboard_tape_quotes,
         dashboard_tape_rows=dashboard_tape_rows,
@@ -9871,8 +10258,9 @@ def dashboard():
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),
-        scope_active_href=f"/dashboard?y={year}&m={month}&scope=active",
-        scope_all_href=f"/dashboard?y={year}&m={month}&scope=all",
+        scope_active_href=f"/dashboard?y={year}&m={month}&scope=active&ticker={selected_ticker}",
+        scope_all_href=f"/dashboard?y={year}&m={month}&scope=all&ticker={selected_ticker}",
+        market_pulse_href=url_for("market_pulse_page", ticker=selected_ticker, refresh=1),
         dashboard_year=year,
         dashboard_month=month,
         milestone=milestone,
@@ -9925,6 +10313,8 @@ def dashboard_planning_refresh_api():
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
 
+    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    selected_ticker = str(ticker_context["ticker"])
     force_refresh = (request.args.get("force") or "").strip() == "1"
     scope_mode = (request.args.get("scope") or "all").strip().lower()
 
@@ -9978,7 +10368,7 @@ def dashboard_planning_refresh_api():
 
     tape_snapshot = market_worker.get_market_snapshot()
     tape_prices = dict(tape_snapshot.get("prices") or {})
-    dashboard_spx = dict(tape_prices.get("SPX") or {})
+    dashboard_instrument = dict(tape_prices.get(selected_ticker) or {})
     dashboard_vix = dict(tape_prices.get("VIX") or {})
 
     try:
@@ -9992,6 +10382,7 @@ def dashboard_planning_refresh_api():
         news_snapshot = {"macro_events": []}
 
     playbook_snapshot = get_or_build_market_pulse_snapshot(
+        ticker=selected_ticker,
         force_refresh=force_refresh,
         now_et=now_et,
         preloaded_gamma_snapshot=gamma_snapshot,
@@ -10004,8 +10395,10 @@ def dashboard_planning_refresh_api():
     refreshed_gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or gamma_snapshot or {})
     daily_brief = _dashboard_daily_brief_viewmodel(
         now_et=now_et,
-        dashboard_spx=dashboard_spx,
+        dashboard_spx=dashboard_instrument,
         dashboard_vix=dashboard_vix,
+        ticker=selected_ticker,
+        dashboard_instrument=dict(playbook_snapshot.get("playbook_quote") or dashboard_instrument),
         gamma_snapshot=refreshed_gamma_snapshot,
         market_structure_snapshot=dashboard_market_structure_snapshot,
         news_snapshot=news_snapshot,
@@ -10035,11 +10428,13 @@ def dashboard_planning_refresh_api():
     )
     brief_html = render_template(
         "dashboard/_brief_card.html",
+        selected_ticker=selected_ticker,
         daily_brief=daily_brief,
         decision_panel=decision_panel,
         dashboard_year=year,
         dashboard_month=month,
         scope_mode=("active" if scope_mode == "active" else "all"),
+        market_pulse_href=url_for("market_pulse_page", ticker=selected_ticker, refresh=1),
     )
     return jsonify(
         {
@@ -10061,7 +10456,8 @@ def dashboard_tape_refresh_api():
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
 
-    symbols = ["SPX", "VIX", "QQQ", "IWM", "AAPL", "TSLA"]
+    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    symbols = _dashboard_tape_symbols(str(ticker_context["ticker"]))
     try:
         market_worker.start_market_worker_once()
     except Exception:
@@ -10117,6 +10513,8 @@ def stream_market():
     from mccain_capital.services import options_panel_service
 
     is_testing = bool(current_app.config.get("TESTING"))
+    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    selected_ticker = str(ticker_context["ticker"])
     gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     if not is_testing:
         market_pulse_runtime.ensure_market_pulse_runtime_started()
@@ -10177,23 +10575,30 @@ def stream_market():
                 ],
             }
             cached_playbook = _market_pulse_cached_playbook_snapshot(now_et)
-            if not isinstance(cached_playbook, dict):
+            if (
+                not isinstance(cached_playbook, dict)
+                or get_supported_playbook_ticker(cached_playbook.get("ticker")) != selected_ticker
+            ):
                 cached_playbook = get_or_build_market_pulse_snapshot(
+                    ticker=selected_ticker,
                     force_refresh=False,
                     now_et=now_et,
                     preloaded_gamma_snapshot=current_gamma_snapshot,
                 )
-            current_execution_model = _market_pulse_execution_model(
-                spx_quote=current_spx_quote,
-                gamma_snapshot=current_gamma_snapshot,
-                execution_chart=current_execution_chart,
-                spx_priority_context={"metrics": {}},
-            )
+            current_execution_model = dict((cached_playbook or {}).get("execution_model") or {})
+            if not current_execution_model:
+                current_execution_model = _market_pulse_execution_model(
+                    spx_quote=current_spx_quote,
+                    gamma_snapshot=current_gamma_snapshot,
+                    execution_chart=current_execution_chart,
+                    spx_priority_context={"metrics": {}},
+                )
             current_structure_snapshot = dict(
                 (cached_playbook or {}).get("market_structure_snapshot") or {}
             )
             current_playbook_view = dict((cached_playbook or {}).get("playbook_view") or {})
             payload["gamma_map"] = current_gamma_snapshot
+            payload["ticker"] = selected_ticker
             payload["execution_model"] = current_execution_model
             payload["market_structure_snapshot"] = current_structure_snapshot
             payload["playbook_view"] = current_playbook_view
@@ -10303,26 +10708,24 @@ def market_pulse_page():
 
     if auth_enabled() and not is_authenticated():
         return redirect(url_for("login_page", next="/market-pulse"))
+    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    selected_ticker = str(ticker_context["ticker"])
     force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
     now_et = app_runtime.now_et()
     if not current_app.config.get("TESTING"):
         market_pulse_runtime.ensure_market_pulse_runtime_started()
     snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
-    gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    cached_playbook_snapshot = dict(_market_pulse_cached_playbook_snapshot(now_et) or {})
+    gamma_snapshot = dict(cached_playbook_snapshot.get("gamma_snapshot") or {})
+    if force_refresh:
+        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     options_snapshot = options_panel_service.get_options_snapshot()
-    if (force_refresh or not gamma_snapshot.get("asof")) and not current_app.config.get("TESTING"):
+    if force_refresh and not current_app.config.get("TESTING"):
         runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
         gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
         options_snapshot = dict(runtime_payload.get("options_snapshot") or options_snapshot)
     options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
     options_contracts = list(options_spx.get("contracts") or [])
-    if not options_contracts:
-        try:
-            options_snapshot = options_panel_service.run_options_refresh_once()
-            options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
-            options_contracts = list(options_spx.get("contracts") or [])
-        except Exception:
-            options_contracts = []
     gamma_updated_label = (
         _format_iso_et_label(
             gamma_snapshot.get("last_successful_compute")
@@ -10426,8 +10829,9 @@ def market_pulse_page():
         if isinstance(q, dict) and str(q.get("label") or q.get("symbol") or "").strip()
     }
     context = _market_pulse_context(quotes)
-    macro_events = _market_news_macro_events(now_et)
+    macro_events: List[Dict[str, Any]] = []
     playbook_snapshot = get_or_build_market_pulse_snapshot(
+        ticker=selected_ticker,
         force_refresh=False,
         now_et=now_et,
         preloaded_snapshot=snapshot,
@@ -10436,8 +10840,15 @@ def market_pulse_page():
         preloaded_macro_events=list(macro_events or []),
     )
     gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or gamma_snapshot)
-    spx_quote = dict(playbook_snapshot.get("spx_quote") or spx_quote)
-    spx_priority_context = dict(playbook_snapshot.get("spx_priority_context") or {})
+    playbook_quote = dict(
+        playbook_snapshot.get("playbook_quote") or playbook_snapshot.get("spx_quote") or spx_quote
+    )
+    spx_quote = dict(playbook_snapshot.get("spx_quote") or playbook_quote or spx_quote)
+    spx_priority_context = dict(
+        playbook_snapshot.get("playbook_priority_context")
+        or playbook_snapshot.get("spx_priority_context")
+        or {}
+    )
     execution_chart = dict(playbook_snapshot.get("execution_chart") or {})
     execution_model = dict(playbook_snapshot.get("execution_model") or {})
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
@@ -10485,6 +10896,10 @@ def market_pulse_page():
         fetched_at=str(snapshot.get("fetched_at") or ""),
         source_label=str(snapshot.get("source_label") or "Yahoo Finance chart feed"),
         source_note=str(snapshot.get("source_note") or ""),
+        ticker=selected_ticker,
+        supported_tickers=ticker_context["supported_tickers"],
+        playbook_ticker_storage_key=ticker_context["storage_key"],
+        playbook_quote=playbook_quote,
         spx_quote=spx_quote,
         vix_quote=vix_quote,
         quotes_map=quotes_map,
@@ -10521,15 +10936,101 @@ def market_pulse_page():
         pulse_feed_accounts=list(news_snapshot.get("pulse_feed_accounts") or []),
         watchlist_items=list(news_snapshot.get("watchlist_items") or []),
         market_feed_snapshot=dict(news_snapshot.get("market_feed_snapshot") or {}),
+        market_pulse_context_api_url=url_for("market_pulse_context_api", ticker=selected_ticker),
         money=app_runtime.money,
         money_compact=_money_compact,
     )
     resp = make_response(
-        render_page(content, active="market-pulse", title="McCain Capital · Market Pulse")
+        render_page(
+            content,
+            active="market-pulse",
+            title=f"McCain Capital · {selected_ticker} Playbook",
+        )
     )
     resp.headers["Cache-Control"] = "no-store, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+def market_pulse_context_api():
+    from mccain_capital.services import gamma_map_service
+    from mccain_capital.services import market_pulse_runtime
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    selected_ticker = str(ticker_context["ticker"])
+    force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    now_et = app_runtime.now_et()
+    if not current_app.config.get("TESTING"):
+        market_pulse_runtime.ensure_market_pulse_runtime_started()
+    snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
+    cached_playbook_snapshot = dict(_market_pulse_cached_playbook_snapshot(now_et) or {})
+    gamma_snapshot = dict(cached_playbook_snapshot.get("gamma_snapshot") or {})
+    if force_refresh:
+        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    if force_refresh and not current_app.config.get("TESTING"):
+        runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
+        gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
+
+    raw_quotes = list(snapshot.get("quotes") or [])
+    quotes = _market_pulse_enrich_quotes(raw_quotes, now_et)
+    spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
+    vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
+    quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
+    series_points = {
+        str(q.get("label") or q.get("symbol") or ""): list(q.get("series") or [])
+        for q in quotes
+        if isinstance(q, dict) and str(q.get("label") or q.get("symbol") or "").strip()
+    }
+    context = _market_pulse_context(quotes)
+    macro_events = _market_news_macro_events(now_et)
+    playbook_snapshot = get_or_build_market_pulse_snapshot(
+        ticker=selected_ticker,
+        force_refresh=force_refresh,
+        now_et=now_et,
+        preloaded_snapshot=snapshot,
+        preloaded_gamma_snapshot=gamma_snapshot,
+        preloaded_quotes=quotes,
+        preloaded_macro_events=list(macro_events or []),
+    )
+    gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or gamma_snapshot)
+    playbook_quote = dict(
+        playbook_snapshot.get("playbook_quote") or playbook_snapshot.get("spx_quote") or spx_quote
+    )
+    spx_quote = dict(playbook_snapshot.get("spx_quote") or playbook_quote or spx_quote)
+    execution_model = dict(playbook_snapshot.get("execution_model") or {})
+    market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
+    playbook_view = dict(playbook_snapshot.get("playbook_view") or {})
+    execution_chart = dict(playbook_snapshot.get("execution_chart") or {})
+    spx_priority_context = dict(
+        playbook_snapshot.get("playbook_priority_context")
+        or playbook_snapshot.get("spx_priority_context")
+        or {}
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "payload": {
+                "ticker": selected_ticker,
+                "playbook_quote": playbook_quote,
+                "spx_quote": spx_quote,
+                "vix_quote": vix_quote,
+                "gamma_snapshot": gamma_snapshot,
+                "execution_model": execution_model,
+                "market_structure_snapshot": market_structure_snapshot,
+                "playbook_view": playbook_view,
+                "execution_chart": execution_chart,
+                "playbook_priority_context": spx_priority_context,
+                "spx_priority_context": spx_priority_context,
+                "market_now_iso": now_et.isoformat(),
+                "server_ts": now_et.isoformat(),
+                "series_points": series_points,
+                "quotes_map": quotes_map,
+                "vix_direction": context.get("vix_direction") if context else "",
+            },
+        }
+    )
 
 
 def market_pulse_news_feed_api():
@@ -10630,7 +11131,7 @@ def hero_bars_api():
 
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
-    symbol = str(request.args.get("symbol") or hero_service.DEFAULT_SYMBOL).strip().upper()
+    symbol = get_supported_playbook_ticker(request.args.get("symbol") or request.args.get("ticker"))
     interval = str(request.args.get("interval") or hero_service.DEFAULT_INTERVAL).strip().lower()
     return jsonify(hero_service.get_intraday_bars(symbol=symbol, interval=interval))
 
@@ -10640,9 +11141,13 @@ def hero_levels_api():
 
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
-    symbol = str(request.args.get("symbol") or "SPX").strip().upper()
+    symbol = get_supported_playbook_ticker(request.args.get("symbol") or request.args.get("ticker"))
     now_et = app_runtime.now_et()
-    playbook_snapshot = get_or_build_market_pulse_snapshot(force_refresh=False, now_et=now_et)
+    playbook_snapshot = get_or_build_market_pulse_snapshot(
+        ticker=symbol,
+        force_refresh=False,
+        now_et=now_et,
+    )
     return jsonify(
         hero_service.get_hero_levels(
             symbol=symbol,
@@ -11465,6 +11970,7 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
     week_index, week_open_dates = _trading_week_index_map(year)
     month_index, month_open_dates = _trading_month_index_map(year)
     now_et = app_runtime.now_et()
+    anchor = now_et.date()
     first = date(year, month, 1)
     month_end = date(year, month, monthrange(year, month)[1])
     news_overlay = _forex_factory_usd_window_events(first, month_end)
@@ -11537,6 +12043,11 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
                     "news_priority_score": int(news_meta.get("priority_score") or 0),
                     "is_key_news_day": bool(news_meta.get("is_key_day")),
                     "has_curated_news": bool(news_meta.get("curated_count")),
+                    "is_dense_day": bool(
+                        in_month
+                        and is_trading
+                        and ((len(day_labels) + len(week_labels) + len(month_labels)) >= 4)
+                    ),
                     "is_quiet_day": bool(
                         in_month
                         and is_trading
@@ -11551,6 +12062,13 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         weeks.append(cells)
 
     month_name = date(year, month, 1).strftime("%B %Y")
+    focus_cards = _build_candle_focus_cards(
+        anchor=anchor,
+        year=year,
+        month=month,
+        weeks=weeks,
+        news_top_days=list(news_overlay["top_days"] or []),
+    )
     return {
         "month_name": month_name,
         "year": year,
@@ -11579,6 +12097,7 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         "news_source_note": news_overlay["source_note"],
         "news_confidence_label": news_overlay["confidence_label"],
         "news_top_days": news_overlay["top_days"],
+        "focus_cards": focus_cards,
         "top_notice": _candle_page_top_notice(now_et, news_overlay["events"]),
     }
 
@@ -11606,6 +12125,113 @@ def _candle_page_top_notice(
             "level": "high",
         }
     return None
+
+
+def _build_candle_focus_cards(
+    *,
+    anchor: date,
+    year: int,
+    month: int,
+    weeks: List[List[Dict[str, Any]]],
+    news_top_days: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    month_days = [
+        day
+        for week in weeks
+        for day in week
+        if day.get("in_month") and not day.get("is_weekend") and not day.get("is_holiday")
+    ]
+    if not month_days:
+        return []
+
+    active_days = [day for day in month_days if date.fromisoformat(day["iso"]) >= anchor]
+    horizon_days = active_days or month_days
+
+    def _day_signal_score(day: Dict[str, Any]) -> tuple[int, int, int]:
+        news_score = int(day.get("news_priority_score") or 0)
+        label_count = len(day.get("labels") or [])
+        event_count = len(day.get("news_events") or [])
+        return (news_score, label_count, event_count)
+
+    upcoming_reset = next((day for day in horizon_days if day.get("labels")), None)
+    peak_reset = max((day for day in month_days if day.get("labels")), key=_day_signal_score, default=None)
+    next_macro = None
+    for top_day in list(news_top_days or []):
+        try:
+            top_day_date = date.fromisoformat(str(top_day.get("iso") or ""))
+        except ValueError:
+            continue
+        if top_day_date >= anchor and top_day_date.month == month and top_day_date.year == year:
+            next_macro = top_day
+            break
+    if next_macro is None:
+        next_macro = next((top for top in list(news_top_days or []) if top.get("iso")), None)
+
+    cards: List[Dict[str, Any]] = []
+    if upcoming_reset:
+        cards.append(
+            {
+                "kind": "reset",
+                "tone": (
+                    "dense"
+                    if len(upcoming_reset.get("labels") or []) >= 4
+                    else "standard"
+                ),
+                "eyebrow": "Next Reset Cluster",
+                "title": datetime.strptime(upcoming_reset["iso"], "%Y-%m-%d").strftime("%a, %b %d"),
+                "headline": (
+                    f"{len(upcoming_reset.get('labels') or [])} reset markers"
+                    if len(upcoming_reset.get("labels") or []) > 1
+                    else f"{(upcoming_reset.get('labels') or ['Reset'])[0]} opens"
+                ),
+                "meta": " / ".join(list(upcoming_reset.get("labels") or [])[:3])
+                or "No reset markers",
+                "href": f"#day-{upcoming_reset['iso']}",
+            }
+        )
+    if next_macro:
+        cards.append(
+            {
+                "kind": "macro",
+                "tone": str(next_macro.get("focus_key") or "macro"),
+                "eyebrow": "Next Macro Collision",
+                "title": str(next_macro.get("date_label") or ""),
+                "headline": str(next_macro.get("headline") or "Macro day"),
+                "meta": " · ".join(
+                    [
+                        part
+                        for part in [
+                            (
+                                f"{int(next_macro.get('high_count') or 0)} red"
+                                if int(next_macro.get("high_count") or 0)
+                                else ""
+                            ),
+                            (
+                                f"{int(next_macro.get('medium_count') or 0)} orange"
+                                if int(next_macro.get("medium_count") or 0)
+                                else ""
+                            ),
+                            (f"{next_macro.get('focus_label')} priority" if next_macro.get("focus_label") else ""),
+                        ]
+                        if part
+                    ]
+                ),
+                "href": f"#news-day-{next_macro['iso']}",
+            }
+        )
+    if peak_reset and (not upcoming_reset or peak_reset.get("iso") != upcoming_reset.get("iso")):
+        cards.append(
+            {
+                "kind": "peak",
+                "tone": "standard",
+                "eyebrow": "Peak Signal Day",
+                "title": datetime.strptime(peak_reset["iso"], "%Y-%m-%d").strftime("%a, %b %d"),
+                "headline": f"{len(peak_reset.get('labels') or [])} reset markers in one session",
+                "meta": " / ".join(list(peak_reset.get("labels") or [])[:4]),
+                "href": f"#day-{peak_reset['iso']}",
+            }
+        )
+    return cards[:3]
 
 
 def _calendar_event_title_key(title: str) -> str:
