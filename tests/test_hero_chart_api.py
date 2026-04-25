@@ -58,6 +58,116 @@ def test_get_intraday_bars_filters_spx_to_regular_session_after_hours(monkeypatc
     )
 
 
+def test_get_intraday_bars_includes_extended_hours_for_qqq_after_hours(monkeypatch):
+    now_et = datetime(2026, 4, 8, 17, 0, 0, tzinfo=app_runtime.TZ)
+    monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
+
+    rows = [
+        {
+            "ts": "2026-04-08T08:00:00-04:00",
+            "open": 445.0,
+            "high": 446.0,
+            "low": 444.5,
+            "close": 445.5,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-08T15:55:00-04:00",
+            "open": 450.0,
+            "high": 451.0,
+            "low": 449.5,
+            "close": 450.5,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-08T16:05:00-04:00",
+            "open": 450.5,
+            "high": 451.5,
+            "low": 450.0,
+            "close": 451.0,
+            "volume": 100,
+        },
+    ]
+
+    prior_rows = [
+        {
+            "ts": "2026-04-07T15:55:00-04:00",
+            "open": 440.0,
+            "high": 441.0,
+            "low": 439.5,
+            "close": 440.5,
+            "volume": 100,
+        },
+    ]
+
+    monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: rows)
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: prior_rows,
+    )
+
+    payload = hero_service.get_intraday_bars(symbol="QQQ", interval="5min")
+
+    assert payload["opening_session_mode"] is False
+    assert payload["previous_session_bar_count"] == 1
+    assert payload["current_session_bar_count"] == 3
+    assert len(payload["bars"]) == 4
+    assert payload["bars"][0]["close"] == 440.5
+    assert payload["bars"][-1]["close"] == 451.0
+
+
+def test_get_intraday_bars_includes_premarket_for_spy_open_session(monkeypatch):
+    now_et = datetime(2026, 4, 8, 10, 5, 0, tzinfo=app_runtime.TZ)
+    monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
+
+    rows = [
+        {
+            "ts": "2026-04-08T08:55:00-04:00",
+            "open": 510.0,
+            "high": 510.5,
+            "low": 509.5,
+            "close": 510.25,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-08T09:35:00-04:00",
+            "open": 511.0,
+            "high": 511.5,
+            "low": 510.5,
+            "close": 511.25,
+            "volume": 100,
+        },
+    ]
+
+    prior_rows = [
+        {
+            "ts": "2026-04-07T15:55:00-04:00",
+            "open": 507.0,
+            "high": 507.5,
+            "low": 506.5,
+            "close": 507.25,
+            "volume": 100,
+        },
+    ]
+
+    monkeypatch.setattr(hero_service.market_data_service, "get_intraday", lambda symbol: rows)
+    monkeypatch.setattr(
+        hero_service.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: prior_rows,
+    )
+
+    payload = hero_service.get_intraday_bars(symbol="SPY", interval="5min")
+
+    assert payload["opening_session_mode"] is False
+    assert payload["previous_session_bar_count"] == 1
+    assert payload["current_session_bar_count"] == 2
+    assert len(payload["bars"]) == 3
+    assert payload["bars"][0]["close"] == 507.25
+    assert payload["bars"][-1]["close"] == 511.25
+
+
 def test_get_intraday_bars_opening_session_returns_prior_plus_current(monkeypatch):
     now_et = datetime(2026, 4, 8, 10, 5, 0, tzinfo=app_runtime.TZ)
     monkeypatch.setattr(app_runtime, "now_et", lambda: now_et)
@@ -288,7 +398,7 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
     monkeypatch.setattr(
         hero_service,
         "get_intraday_bars",
-        lambda symbol="SPX", interval="5min": {
+        lambda symbol="QQQ", interval="5min": {
             "symbol": symbol,
             "interval": interval,
             "bars": [
@@ -306,7 +416,7 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["symbol"] == "SPX"
+    assert payload["symbol"] == "QQQ"
     assert payload["bars"][0]["close"] == 1.5
     assert payload["opening_session_mode"] is True
     assert payload["live_session_bar_count"] == 2

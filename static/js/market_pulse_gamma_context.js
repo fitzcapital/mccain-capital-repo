@@ -778,6 +778,17 @@
   if (!card) return;
   const shell = card.closest(".spxPriorityShell");
   const spotPanel = document.getElementById("spxPrioritySpotPanel");
+  const uiFX = typeof window !== "undefined" ? window.mcUIFX : null;
+  const LIVE_VALUE_IDS = new Set([
+    "marketPulseHeroSpot",
+    "spxPrioritySpot",
+    "spxPriorityChangeLine",
+  ]);
+  const STATUS_IDS = new Set([
+    "marketPulseHeroStateChip",
+    "marketPulseHeroStateContext",
+    "spxPriorityStateChip",
+  ]);
 
   const toneForBadge = (label) => {
     const l = String(label || "").toLowerCase();
@@ -790,7 +801,21 @@
     const node = document.getElementById(id);
     if (!node) return;
     const next = String(value ?? "—");
-    if (node.textContent !== next) node.textContent = next;
+    const previous = String(node.textContent || "");
+    if (previous === next) return;
+    node.textContent = next;
+    if (LIVE_VALUE_IDS.has(id)) {
+      const prevNumeric = Number(previous.replace(/[^0-9+\-.]/g, ""));
+      const nextNumeric = Number(next.replace(/[^0-9+\-.]/g, ""));
+      const direction = Number.isFinite(prevNumeric) && Number.isFinite(nextNumeric)
+        ? nextNumeric > prevNumeric ? "up" : nextNumeric < prevNumeric ? "down" : "neutral"
+        : "neutral";
+      uiFX?.flashValue?.(node, direction, { essential: true });
+      return;
+    }
+    if (STATUS_IDS.has(id)) {
+      uiFX?.pulseNode?.(node, "info");
+    }
   };
 
   const buildTickPingLabel = (asOfIso, provider) => {
@@ -1191,15 +1216,34 @@
   const updateStateChip = (node, state, labelOverride = "") => {
     if (!node) return;
     const nextState = String(state || "missing");
-    node.textContent = String(labelOverride || dataStateLabel(nextState));
+    const nextLabel = String(labelOverride || dataStateLabel(nextState));
+    const changed = String(node.textContent || "") !== nextLabel || !node.classList.contains(`state-${nextState}`);
+    node.textContent = nextLabel;
     node.classList.remove("state-live", "state-delayed", "state-cached", "state-missing");
     node.classList.add(`state-${nextState}`);
+    if (changed) {
+      const tone = nextState === "live" ? "positive" : nextState === "missing" ? "negative" : "warning";
+      uiFX?.pulseNode?.(node, tone);
+    }
   };
 
-  const updateTextNode = (node, value) => {
+  const updateTextNode = (node, value, options = {}) => {
     if (!node) return;
     const next = String(value ?? "—");
-    if (node.textContent !== next) node.textContent = next;
+    const previous = String(node.textContent || "");
+    if (previous === next) return false;
+    node.textContent = next;
+    if (options.live) {
+      const prevNumeric = Number(previous.replace(/[^0-9+\-.]/g, ""));
+      const nextNumeric = Number(next.replace(/[^0-9+\-.]/g, ""));
+      const direction = Number.isFinite(prevNumeric) && Number.isFinite(nextNumeric)
+        ? nextNumeric > prevNumeric ? "up" : nextNumeric < prevNumeric ? "down" : "neutral"
+        : (options.direction || "neutral");
+      uiFX?.flashValue?.(node, direction, { essential: true });
+    } else if (options.pulse) {
+      uiFX?.pulseNode?.(node, options.tone || "info");
+    }
+    return true;
   };
 
   const updateSparkNode = (node, points, tone) => {
@@ -1221,9 +1265,15 @@
   const setChipTone = (id, label, tone) => {
     const node = document.getElementById(id);
     if (!node) return;
-    node.textContent = String(label || "—");
+    const next = String(label || "—");
+    const changed = String(node.textContent || "") !== next || (tone && !node.classList.contains(tone));
+    node.textContent = next;
     node.classList.remove("positive", "negative", "warn", "critical", "neutral");
     if (tone) node.classList.add(tone);
+    if (changed) {
+      const pulseTone = tone === "positive" ? "positive" : tone === "negative" || tone === "critical" ? "negative" : tone === "warn" ? "warning" : "info";
+      uiFX?.pulseNode?.(node, pulseTone);
+    }
   };
 
   const gradeTradeability = (score) => {
@@ -2001,6 +2051,7 @@
 
     const chip = card.querySelector('[data-role="state-chip"]');
     if (chip) {
+      const chipChanged = String(chip.textContent || "") !== watchState;
       chip.textContent = watchState;
       chip.classList.remove("tone-positive", "tone-negative", "tone-neutral");
       chip.classList.add(
@@ -2008,12 +2059,29 @@
           : watchState === "Risk-Off" || watchState === "Weak" ? "tone-negative"
             : "tone-neutral"
       );
+      if (chipChanged) {
+        uiFX?.pulseNode?.(
+          chip,
+          watchState === "Risk-On" || watchState === "Strong"
+            ? "positive"
+            : watchState === "Risk-Off" || watchState === "Weak"
+              ? "negative"
+              : "info"
+        );
+      }
     }
     updateTextNode(card.querySelector('[data-role="freshness"]'), state === "live" ? "Live" : formatEtLabel(asOf));
-    updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2));
+    updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2), {
+      live: true,
+      direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral",
+    });
     updateTextNode(
       card.querySelector('[data-role="change-line"]'),
-      `${formatSigned(pct, 2)}%`
+      `${formatSigned(pct, 2)}%`,
+      {
+        live: true,
+        direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral",
+      }
     );
     updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
     updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);

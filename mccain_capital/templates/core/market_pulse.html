@@ -249,6 +249,15 @@
               >
                 <span aria-hidden="true">≡</span>
               </button>
+              <button
+                class="marketPulseExecutionHeroChartToggle is-active"
+                id="marketPulseHeroToggleDayLevels"
+                type="button"
+                aria-pressed="true"
+                title="Toggle PDH / PDL / CDH / CDL"
+              >
+                <span aria-hidden="true">D</span>
+              </button>
             </div>
           </div>
           {# NCW / NPW come from gamma_snapshot.next_call_wall_above / next_put_wall_below when available. #}
@@ -882,11 +891,25 @@
       </div>
       <button class="btn" type="button" data-close-modal="marketPulseLevelsModal">Close</button>
     </div>
+    {% set advanced_levels = [
+      {'label': 'Gamma Flip', 'value': main_flip_num, 'precision': 0},
+      {'label': 'Local Flip', 'value': local_flip_num, 'precision': 0},
+      {'label': 'Call Wall', 'value': call_wall_num, 'precision': 0},
+      {'label': 'Put Wall', 'value': put_wall_num, 'precision': 0},
+      {'label': 'PDH', 'value': quote.get('prior_day_high') if quote else none, 'precision': 2},
+      {'label': 'PDL', 'value': quote.get('prior_day_low') if quote else none, 'precision': 2},
+    ] %}
     <div class="marketPulseModalBody marketPulseModalGrid">
-      {% for level in execution_chart.levels %}
+      {% for level in advanced_levels %}
         <div class="marketPulseModalStat">
           <span class="tiny muted">{{ level.label }}</span>
-          <strong>{{ '%.0f'|format(level.value) }}</strong>
+          <strong>
+            {% if level.value is number %}
+              {{ ('%0.' ~ level.precision ~ 'f')|format(level.value) }}
+            {% else %}
+              —
+            {% endif %}
+          </strong>
         </div>
       {% endfor %}
       <div class="marketPulseModalStat">
@@ -946,7 +969,7 @@
 
 <script id="spxPriorityBasePayload" type="application/json">{{ {'ticker': selected_ticker, 'playbook_quote': quote, 'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_structure_snapshot': market_structure_snapshot, 'playbook_view': playbook_view, 'playbook_priority_context': priority_context, 'spx_priority_context': spx_priority_context, 'execution_chart': execution_chart, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else '', 'context_api_url': market_pulse_context_api_url}|tojson }}</script>
 <script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
-<script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=hero-chart-a-plus-20260423"></script>
+<script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-incremental-20260425a"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>
 <script>
   window.marketFeedItems = {{ whales_items | tojson | safe }};

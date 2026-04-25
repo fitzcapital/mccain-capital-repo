@@ -8,6 +8,7 @@
   const levelRail = document.getElementById("spxExecutionHeroLevelRail");
   const markersToggle = document.getElementById("marketPulseHeroToggleMarkers");
   const levelsToggle = document.getElementById("marketPulseHeroToggleLevels");
+  const dayLevelsToggle = document.getElementById("marketPulseHeroToggleDayLevels");
   const emptyState = document.getElementById("spxExecutionHeroChartEmpty");
   if (!host || !canvas) return;
 
@@ -35,15 +36,15 @@
     border: "#163250",
     textPrimary: "#EAF2FF",
     textSecondary: "#9CB3D1",
-    gridMajor: "rgba(120, 160, 200, 0.16)",
-    gridMinor: "rgba(120, 160, 200, 0.08)",
-    axis: "rgba(120, 160, 200, 0.20)",
-    bull: "#0FA37F",
+    gridMajor: "rgba(120, 160, 200, 0.12)",
+    gridMinor: "rgba(120, 160, 200, 0.055)",
+    axis: "rgba(120, 160, 200, 0.16)",
+    bull: "#12B88E",
     bullBorder: "#19C997",
     bullWick: "#22D3A6",
-    bear: "#C23B57",
-    bearBorder: "#E25574",
-    bearWick: "#F06A88",
+    bear: "#D24A64",
+    bearBorder: "#F05F7C",
+    bearWick: "#FF7890",
     bullMuted: "rgba(15, 163, 127, 0.56)",
     bullBorderMuted: "rgba(25, 201, 151, 0.62)",
     bullWickMuted: "rgba(34, 211, 166, 0.58)",
@@ -60,34 +61,40 @@
     main: "rgba(140,155,180,0.38)",
     labelDark: "rgba(8, 14, 24, 0.88)",
     labelBorder: "rgba(255,255,255,0.08)",
-    labelCwBg: "#C85A72",
+    labelCwBg: "#ff4f79",
     labelCwText: "#FFFFFF",
-    labelNcwBg: "#E07186",
-    labelNcwText: "#08111D",
-    labelLfBg: "#A88BFF",
-    labelLfText: "#08111D",
-    labelBlueBg: "#63B3FF",
+    labelNcwBg: "#ff6c8d",
+    labelNcwText: "#07111f",
+    labelLfBg: "#7f5cff",
+    labelLfText: "#f8fbff",
+    labelBlueBg: "#42bfff",
     labelBlueText: "#08111D",
-    labelCurrentBg: "#C23B57",
+    labelCurrentBg: "#2f9cff",
     labelCurrentText: "#FFFFFF",
-    labelMintBg: "#4DD599",
+    labelMintBg: "#00ff9f",
     labelMintText: "#08111D",
-    labelGreenBg: "#218A5A",
+    labelGreenBg: "#19c77e",
     labelGreenText: "#EAF2FF",
-    stratUp: "#00ff9f",
-    stratDown: "#ff2d7a",
-    stratInside: "#66dcff",
-    stratOutside: "#f6c76b",
+    stratUp: "#1dffad",
+    stratDown: "#ff3b7f",
+    stratInside: "#71ddff",
+    stratOutside: "#ffd45f",
+    pdh: "#f7d56f",
+    pdl: "#b78cff",
+    cdh: "#63f7d4",
+    cdl: "#ff8aa3",
   };
   const DEFAULT_VISIBLE_BARS = 28;
   const LEFT_SCROLL_BUFFER_BARS = 8;
   const DEFAULT_RIGHT_OFFSET_BARS = 5;
-  const HERO_CHART_HEIGHT = 548;
+  const HERO_CHART_HEIGHT = 600;
   const HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
+  const STRAT_MARKER_LIMIT = 96;
+  const LEVEL_RAIL_MIN_GAP = 38;
 
-  const priceScaleWidth = 70;
+  const priceScaleWidth = 62;
   const chart = LightweightCharts.createChart(canvas, {
-    autoSize: true,
+    autoSize: false,
     height: HERO_CHART_HEIGHT,
     layout: {
       background: { type: LightweightCharts.ColorType.Solid, color: HERO_CHART_THEME.background },
@@ -105,7 +112,7 @@
     },
     rightPriceScale: {
       borderColor: HERO_CHART_THEME.axis,
-      scaleMargins: { top: 0.08, bottom: 0.18 },
+      scaleMargins: { top: 0.14, bottom: 0.18 },
       minimumWidth: priceScaleWidth,
     },
     timeScale: {
@@ -178,6 +185,7 @@
   });
 
   let priceLines = [];
+  let dayLevelLines = [];
   let polling = { bars_interval_ms: 45000, levels_interval_ms: 20000 };
   let barsTimer = null;
   let levelsTimer = null;
@@ -187,15 +195,21 @@
   let lastGoodLevelsPayload = null;
   let lastAppliedLevelsSignature = "";
   let lastBarsSignature = "";
+  let lastLiveBarSignature = "";
+  let lastMarkerSignature = "";
+  let lastDayLevelSignature = "";
   let pendingLevelsPayload = null;
   let levelsRenderTimer = null;
   let resizeTimer = null;
+  let resizeObserver = null;
   let barsRequestInFlight = false;
   let levelsRequestInFlight = false;
   let pageVisible = document.visibilityState !== "hidden";
   let lastMeasuredWidth = 0;
+  let lastMeasuredHeight = 0;
   let levelRailRows = [];
-  let displayPrefs = { showMarkers: true, showLevels: true };
+  let dayLevelRailRows = [];
+  let displayPrefs = { showMarkers: true, showLevels: true, showDayLevels: true };
   const LEVEL_RENDER_DEBOUNCE_MS = 120;
   const HIDDEN_BARS_INTERVAL_MS = 120000;
   const HIDDEN_LEVELS_INTERVAL_MS = 60000;
@@ -241,6 +255,9 @@
     return numeric === null ? fallback : fmt(numeric, digits);
   };
 
+  const railDigitsForKind = (kind) =>
+    ["spot", "pdh", "pdl", "cdh", "cdl"].includes(String(kind || "")) ? 2 : 0;
+
   const loadDisplayPrefs = () => {
     try {
       const raw = window.localStorage.getItem(HERO_CHART_PREFS_KEY);
@@ -248,6 +265,9 @@
       const parsed = JSON.parse(raw);
       if (typeof parsed?.showMarkers === "boolean") displayPrefs.showMarkers = parsed.showMarkers;
       if (typeof parsed?.showLevels === "boolean") displayPrefs.showLevels = parsed.showLevels;
+      if (typeof parsed?.showDayLevels === "boolean") {
+        displayPrefs.showDayLevels = parsed.showDayLevels;
+      }
     } catch (_) {}
   };
 
@@ -265,6 +285,10 @@
     if (levelsToggle) {
       levelsToggle.setAttribute("aria-pressed", displayPrefs.showLevels ? "true" : "false");
       levelsToggle.classList.toggle("is-active", displayPrefs.showLevels);
+    }
+    if (dayLevelsToggle) {
+      dayLevelsToggle.setAttribute("aria-pressed", displayPrefs.showDayLevels ? "true" : "false");
+      dayLevelsToggle.classList.toggle("is-active", displayPrefs.showDayLevels);
     }
   };
 
@@ -291,6 +315,7 @@
           position: "aboveBar",
           shape: "arrowUp",
           color: HERO_CHART_THEME.stratUp,
+          size: 0.72,
         },
         {
           time: bar.time,
@@ -298,6 +323,7 @@
           shape: "text",
           text: "2",
           color: HERO_CHART_THEME.stratUp,
+          size: 0.9,
         },
       ];
     }
@@ -308,6 +334,7 @@
           position: "aboveBar",
           shape: "arrowDown",
           color: HERO_CHART_THEME.stratDown,
+          size: 0.72,
         },
         {
           time: bar.time,
@@ -315,6 +342,7 @@
           shape: "text",
           text: "2",
           color: HERO_CHART_THEME.stratDown,
+          size: 0.9,
         },
       ];
     }
@@ -326,6 +354,7 @@
           shape: "text",
           text: "1",
           color: HERO_CHART_THEME.stratInside,
+          size: 0.9,
         },
       ];
     }
@@ -337,6 +366,7 @@
           shape: "text",
           text: "3",
           color: HERO_CHART_THEME.stratOutside,
+          size: 1,
         },
       ];
     }
@@ -364,8 +394,16 @@
     const boundedCurrentCount = Math.min(currentSessionBarCount, Math.max(0, bars.length - boundedPreviousCount));
     const splitIndex = boundedCurrentCount > 0 ? boundedPreviousCount : bars.length;
     return boundedCurrentCount > 0
-      ? buildStratMarkers(bars, splitIndex)
-      : buildStratMarkers(bars, 1);
+      ? buildStratMarkers(bars, splitIndex).slice(-STRAT_MARKER_LIMIT)
+      : buildStratMarkers(bars, 1).slice(-STRAT_MARKER_LIMIT);
+  };
+
+  const applyStratMarkers = ({ force = false } = {}) => {
+    const markers = stratMarkersForPayload(lastBarsPayload);
+    const nextSignature = markersSignature(markers);
+    if (!force && nextSignature === lastMarkerSignature) return;
+    candleSeries.setMarkers(markers);
+    lastMarkerSignature = nextSignature;
   };
 
   const updateHeaderSummary = (levels) => {
@@ -424,6 +462,25 @@
     return "neutral";
   };
 
+  const volumeBarForSource = (bar) => {
+    const close = Number(bar?.close);
+    const open = Number(bar?.open);
+    const amount = Number(bar?.volume);
+    const time = Number(bar?.time);
+    if (!Number.isFinite(time)) return null;
+    return {
+      time,
+      value: Number.isFinite(amount) ? amount : 0,
+      color: close >= open ? "rgba(15, 163, 127, 0.18)" : "rgba(194, 59, 87, 0.16)",
+    };
+  };
+
+  const volumeBarsForSource = (bars) => (
+    Array.isArray(bars)
+      ? bars.map(volumeBarForSource).filter((bar) => bar && Number.isFinite(bar.time))
+      : []
+  );
+
   const toneClass = (state) => {
     const normalized = String(state || "").toUpperCase();
     if (normalized === "READY") return "tone-positive";
@@ -468,11 +525,35 @@
       candles.length,
       Number(first.time) || 0,
       Number(last.time) || 0,
-      Number(last.close || 0).toFixed(2),
       Math.max(0, Number(payload?.previous_session_bar_count) || 0),
       Math.max(0, Number(payload?.current_session_bar_count) || 0),
       Boolean(payload?.opening_session_mode) ? "open" : "session",
     ].join("|");
+  };
+
+  const liveBarSignature = (candle, sourceBar) => {
+    if (!candle) return "empty";
+    return [
+      Number(candle.time) || 0,
+      Number(candle.open || 0).toFixed(4),
+      Number(candle.high || 0).toFixed(4),
+      Number(candle.low || 0).toFixed(4),
+      Number(candle.close || 0).toFixed(4),
+      Number(sourceBar?.volume || 0),
+    ].join("|");
+  };
+
+  const markersSignature = (markers) => {
+    if (!Array.isArray(markers) || !markers.length) return "empty";
+    return markers
+      .map((marker) => [
+        Number(marker.time) || 0,
+        marker.position || "",
+        marker.shape || "",
+        marker.text || "",
+        marker.color || "",
+      ].join(":"))
+      .join("|");
   };
 
   const sanitizeLevelsPayload = (payload) => {
@@ -486,6 +567,12 @@
       ...(lastGoodLevelsPayload || {}),
       ...payload,
     };
+  };
+
+  const currentChartPrice = () => {
+    const bars = Array.isArray(lastBarsPayload?.bars) ? lastBarsPayload.bars : [];
+    if (!bars.length) return null;
+    return asNum(bars[bars.length - 1]?.close);
   };
 
   const applyLevelsPayload = (payload) => {
@@ -549,7 +636,7 @@
     }
     const low = Math.min(...prices);
     const high = Math.max(...prices);
-    const padding = Math.max((high - low) * 0.14, 6);
+    const padding = Math.max((high - low) * 0.22, 8);
     const firstTime = Number(bars[0].time);
     const lastTime = Number(bars[bars.length - 1].time);
     upperFrameSeries.setData([
@@ -624,18 +711,31 @@
     priceLines = [];
   };
 
+  const clearDayLevelLines = () => {
+    dayLevelLines.forEach((line) => {
+      try {
+        candleSeries.removePriceLine(line);
+      } catch (_) {}
+    });
+    dayLevelLines = [];
+  };
+
   const applyMarkerVisibility = () => {
-      candleSeries.setMarkers(stratMarkersForPayload(lastBarsPayload));
+    applyStratMarkers({ force: true });
   };
 
   const applyLevelVisibility = () => {
-    host.classList.toggle("is-levels-hidden", !displayPrefs.showLevels);
+    host.classList.toggle(
+      "is-levels-hidden",
+      !displayPrefs.showLevels && !displayPrefs.showDayLevels
+    );
     if (!displayPrefs.showLevels) {
       clearPriceLines();
-      if (levelRail) levelRail.innerHTML = "";
-      return;
+      levelRailRows = [];
+    } else if (lastLevelsPayload) {
+      updateOverlayLines(lastLevelsPayload);
     }
-    if (lastLevelsPayload) updateOverlayLines(lastLevelsPayload);
+    renderLevelRail(lastLevelsPayload);
   };
 
   const addLevelLine = ({
@@ -664,16 +764,98 @@
     );
   };
 
+  const addDayLevelLine = ({ title, value, color }) => {
+    const numeric = asNum(value);
+    if (numeric === null) return;
+    dayLevelLines.push(
+      candleSeries.createPriceLine({
+        price: numeric,
+        color,
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: false,
+        title,
+      })
+    );
+  };
+
+  const highLowForCandles = (candles) => {
+    if (!Array.isArray(candles) || !candles.length) return null;
+    const highs = candles.map((bar) => asNum(bar.high)).filter((value) => value !== null);
+    const lows = candles.map((bar) => asNum(bar.low)).filter((value) => value !== null);
+    if (!highs.length || !lows.length) return null;
+    return { high: Math.max(...highs), low: Math.min(...lows) };
+  };
+
+  const buildDayLevelRows = (payload) => {
+    const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+    if (!bars.length) return [];
+    const previousCount = Math.max(0, Number(payload.previous_session_bar_count) || 0);
+    const currentCount = Math.max(0, Number(payload.current_session_bar_count) || 0);
+    const boundedPreviousCount = Math.min(previousCount, bars.length);
+    const boundedCurrentCount = Math.min(currentCount, Math.max(0, bars.length - boundedPreviousCount));
+    const splitIndex = boundedCurrentCount > 0 ? boundedPreviousCount : bars.length;
+    const priorRange = highLowForCandles(bars.slice(0, splitIndex));
+    const currentRange = highLowForCandles(bars.slice(splitIndex));
+    const rows = [];
+    if (priorRange) {
+      rows.push({ kind: "pdh", title: "PDH", value: priorRange.high });
+      rows.push({ kind: "pdl", title: "PDL", value: priorRange.low });
+    }
+    if (currentRange) {
+      rows.push({ kind: "cdh", title: "CDH", value: currentRange.high });
+      rows.push({ kind: "cdl", title: "CDL", value: currentRange.low });
+    }
+    return rows;
+  };
+
+  const updateDayLevelLines = () => {
+    host.classList.toggle(
+      "is-levels-hidden",
+      !displayPrefs.showLevels && !displayPrefs.showDayLevels
+    );
+    if (!displayPrefs.showDayLevels) {
+      if (lastDayLevelSignature !== "hidden") {
+        clearDayLevelLines();
+        dayLevelRailRows = [];
+        lastDayLevelSignature = "hidden";
+      }
+      renderLevelRail(lastLevelsPayload);
+      return;
+    }
+    const nextRows = buildDayLevelRows(lastBarsPayload);
+    const nextSignature = nextRows
+      .map((row) => `${row.kind}:${Number(row.value || 0).toFixed(4)}`)
+      .join("|") || "empty";
+    if (nextSignature === lastDayLevelSignature) {
+      renderLevelRail(lastLevelsPayload);
+      return;
+    }
+    clearDayLevelLines();
+    dayLevelRailRows = nextRows;
+    dayLevelRailRows.forEach((row) => {
+      addDayLevelLine({
+        title: row.title,
+        value: row.value,
+        color: HERO_CHART_THEME[row.kind] || HERO_CHART_THEME.textSecondary,
+      });
+    });
+    lastDayLevelSignature = nextSignature;
+    renderLevelRail(lastLevelsPayload);
+  };
+
   const updateOverlayLines = (levels) => {
     // Python is the source of truth for state; the frontend only renders levels and emphasis.
     clearPriceLines();
     if (!displayPrefs.showLevels) {
       levelRailRows = [];
-      if (levelRail) levelRail.innerHTML = "";
+      renderLevelRail(levels);
       return;
     }
     const state = String(levels.state || "").toUpperCase();
-    const price = asNum(levels.spot);
+    const quotePrice = asNum(levels.spot);
+    const chartPrice = currentChartPrice();
+    const price = chartPrice ?? quotePrice;
     const callWall = asNum(levels.call_wall);
     const putWall = asNum(levels.put_wall);
     const localFlip = asNum(levels.local_flip);
@@ -757,7 +939,7 @@
       axis: false,
     });
     addLevelLine({
-      title: symbol,
+      title: "P",
       value: price,
       color: HERO_CHART_THEME.spx,
       width: 2,
@@ -765,47 +947,61 @@
       axisLabelColor: HERO_CHART_THEME.labelBlueBg,
       axisLabelTextColor: HERO_CHART_THEME.labelBlueText,
     });
-    pushRailRow("spot", symbol, price, "current");
+    pushRailRow("spot", "P", price, "current");
     levelRailRows = nextRailRows;
     renderLevelRail(levels);
   };
 
   const renderLevelRail = (levels) => {
-    if (!displayPrefs.showLevels) {
+    const railRows = [
+      ...(displayPrefs.showLevels ? levelRailRows : []),
+      ...(displayPrefs.showDayLevels ? dayLevelRailRows : []),
+    ];
+    if (!displayPrefs.showLevels && !displayPrefs.showDayLevels) {
       if (levelRail) levelRail.innerHTML = "";
       return;
     }
-    if (!levelRail || !levels || !Array.isArray(levelRailRows) || !levelRailRows.length) return;
-    const plottedRows = levelRailRows
+    if (!levelRail || !Array.isArray(railRows) || !railRows.length) {
+      if (levelRail) levelRail.innerHTML = "";
+      return;
+    }
+    const railHeight = levelRail.getBoundingClientRect().height || 320;
+    const plottedRows = railRows
       .map((row) => ({ ...row, y: candleSeries.priceToCoordinate(row.value) }))
       .filter((row) => Number.isFinite(row.y))
+      .filter((row) => row.y >= 10 && row.y <= railHeight - 10)
       .sort((a, b) => a.y - b.y);
     if (!plottedRows.length) {
       levelRail.innerHTML = "";
       return;
     }
 
-    const minGap = 27;
-    let previousY = -Infinity;
+    const topLimit = 18;
+    const bottomLimit = Math.max(topLimit, railHeight - 18);
     plottedRows.forEach((row) => {
-      const y = Math.max(12, Number(row.y));
-      row.displayY = Math.max(y, previousY + minGap);
-      previousY = row.displayY;
+      row.displayY = Math.min(Math.max(Number(row.y), topLimit), bottomLimit);
     });
-
-    const railHeight = levelRail.getBoundingClientRect().height || 320;
-    for (let i = plottedRows.length - 1; i >= 0; i -= 1) {
-      const row = plottedRows[i];
-      row.displayY = Math.min(row.displayY, railHeight - 14);
-      if (i < plottedRows.length - 1) {
-        row.displayY = Math.min(row.displayY, plottedRows[i + 1].displayY - minGap);
+    for (let index = 1; index < plottedRows.length; index += 1) {
+      plottedRows[index].displayY = Math.max(
+        plottedRows[index].displayY,
+        plottedRows[index - 1].displayY + LEVEL_RAIL_MIN_GAP,
+      );
+    }
+    const overflow = plottedRows[plottedRows.length - 1].displayY - bottomLimit;
+    if (overflow > 0) {
+      plottedRows[plottedRows.length - 1].displayY = bottomLimit;
+      for (let index = plottedRows.length - 2; index >= 0; index -= 1) {
+        plottedRows[index].displayY = Math.min(
+          plottedRows[index].displayY,
+          plottedRows[index + 1].displayY - LEVEL_RAIL_MIN_GAP,
+        );
       }
     }
 
     levelRail.innerHTML = plottedRows.map((row) => `
-      <div class="marketPulseExecutionHeroLevelRailItem is-${row.kind} ${row.emphasis ? `is-${row.emphasis}` : ""}" style="top:${Math.max(12, row.displayY)}px">
+      <div class="marketPulseExecutionHeroLevelRailItem is-${row.kind} ${row.emphasis ? `is-${row.emphasis}` : ""}" title="${row.title} ${fmt(row.value, railDigitsForKind(row.kind))}" style="top:${Math.max(12, row.displayY)}px">
         <span>${row.title}</span>
-        <strong>${fmt(row.value, row.kind === "spot" ? 2 : 0)}</strong>
+        <strong>${fmt(row.value, railDigitsForKind(row.kind))}</strong>
       </div>
     `).join("");
   };
@@ -848,8 +1044,8 @@
   const updateBars = async ({ fitContent = false } = {}) => {
     if (barsRequestInFlight) return;
     barsRequestInFlight = true;
-    const payload = await fetchJson(barsEndpoint());
     try {
+      const payload = await fetchJson(barsEndpoint());
       const bars = Array.isArray(payload.bars) ? payload.bars : [];
       if (!bars.length) {
         if (emptyState) {
@@ -859,15 +1055,27 @@
         return;
       }
 
-      const candles = bars
+      const normalizedBars = bars
         .map((bar) => ({
-          time: Number(bar.time),
-          open: Number(bar.open),
-          high: Number(bar.high),
-          low: Number(bar.low),
-          close: Number(bar.close),
+          source: bar,
+          candle: {
+            time: Number(bar.time),
+            open: Number(bar.open),
+            high: Number(bar.high),
+            low: Number(bar.low),
+            close: Number(bar.close),
+          },
         }))
-        .filter((bar) => Number.isFinite(bar.time) && Number.isFinite(bar.open) && Number.isFinite(bar.high) && Number.isFinite(bar.low) && Number.isFinite(bar.close));
+        .filter(({ candle }) => Number.isFinite(candle.time) && Number.isFinite(candle.open) && Number.isFinite(candle.high) && Number.isFinite(candle.low) && Number.isFinite(candle.close));
+      const candles = normalizedBars.map(({ candle }) => candle);
+      const sourceBars = normalizedBars.map(({ source }) => source);
+      if (!candles.length) {
+        if (emptyState) {
+          emptyState.hidden = false;
+          emptyState.textContent = `Tradier returned invalid intraday bars for ${symbol}.`;
+        }
+        return;
+      }
 
       const nextBarsSignature = barsSignature(candles, payload);
       const previousSessionBarCount = Math.max(0, Number(payload.previous_session_bar_count) || 0);
@@ -877,37 +1085,49 @@
       const splitIndex = boundedCurrentCount > 0 ? boundedPreviousCount : candles.length;
       const priorCandles = candles.slice(0, splitIndex);
       const currentCandles = candles.slice(splitIndex);
+      const activeCandles = currentCandles.length ? currentCandles : candles;
+      const activeSourceBars = currentCandles.length ? sourceBars.slice(splitIndex) : sourceBars;
+      const latestCandle = activeCandles[activeCandles.length - 1];
+      const latestSourceBar = activeSourceBars[activeSourceBars.length - 1];
+      const nextLiveBarSignature = liveBarSignature(latestCandle, latestSourceBar);
 
       lastBarsPayload = {
         ...payload,
         bars: candles,
       };
 
-      if (nextBarsSignature === lastBarsSignature) {
-        if (fitContent) applyViewport({ fitContent: true });
+      if (initialized && !fitContent && nextBarsSignature === lastBarsSignature) {
+        if (nextLiveBarSignature !== lastLiveBarSignature && latestCandle) {
+          candleSeries.update(latestCandle);
+          const latestVolume = volumeBarForSource(latestSourceBar);
+          if (latestVolume) volumeSeries.update(latestVolume);
+          lastLiveBarSignature = nextLiveBarSignature;
+        }
+        applyStratMarkers();
+        updateDayLevelLines();
+        setSpotTrendTone(detectShortTermTrend(activeCandles));
         if (emptyState) emptyState.hidden = true;
         return;
       }
 
-      const volume = bars
-        .map((bar) => {
-          const close = Number(bar.close);
-          const open = Number(bar.open);
-          const amount = Number(bar.volume);
-          return {
-            time: Number(bar.time),
-            value: Number.isFinite(amount) ? amount : 0,
-            color: close >= open ? "rgba(15, 163, 127, 0.18)" : "rgba(194, 59, 87, 0.16)",
-          };
-        })
-        .filter((bar) => Number.isFinite(bar.time));
+      if (nextBarsSignature === lastBarsSignature) {
+        if (fitContent) applyViewport({ fitContent: true });
+        applyStratMarkers();
+        updateDayLevelLines();
+        if (emptyState) emptyState.hidden = true;
+        return;
+      }
+
+      const volume = volumeBarsForSource(activeSourceBars);
 
       priorSessionSeries.setData(currentCandles.length ? priorCandles : []);
-      candleSeries.setData(currentCandles.length ? currentCandles : candles);
-      candleSeries.setMarkers(stratMarkersForPayload(lastBarsPayload));
+      candleSeries.setData(activeCandles);
+      applyStratMarkers({ force: true });
       volumeSeries.setData(volume);
+      updateDayLevelLines();
       lastBarsSignature = nextBarsSignature;
-      setSpotTrendTone(detectShortTermTrend(currentCandles.length ? currentCandles : candles));
+      lastLiveBarSignature = nextLiveBarSignature;
+      setSpotTrendTone(detectShortTermTrend(activeCandles));
       applyViewport({ fitContent });
       if (emptyState) emptyState.hidden = true;
       if (!initialized) {
@@ -1008,10 +1228,12 @@
 
   const resize = () => {
     const nextWidth = canvas.clientWidth;
-    if (!nextWidth || nextWidth === lastMeasuredWidth) return;
+    const nextHeight = Math.max(360, Math.round(canvas.clientHeight || HERO_CHART_HEIGHT));
+    if (!nextWidth || (nextWidth === lastMeasuredWidth && nextHeight === lastMeasuredHeight)) return;
     lastMeasuredWidth = nextWidth;
+    lastMeasuredHeight = nextHeight;
     try {
-      chart.applyOptions({ width: nextWidth, height: HERO_CHART_HEIGHT });
+      chart.applyOptions({ width: nextWidth, height: nextHeight });
     } catch (_) {}
     renderLevelRail(lastLevelsPayload);
   };
@@ -1033,6 +1255,15 @@
         applyLevelVisibility();
       });
     }
+    if (dayLevelsToggle) {
+      dayLevelsToggle.addEventListener("click", () => {
+        displayPrefs.showDayLevels = !displayPrefs.showDayLevels;
+        saveDisplayPrefs();
+        syncToggleButtons();
+        lastDayLevelSignature = "";
+        updateDayLevelLines();
+      });
+    }
   };
 
   loadDisplayPrefs();
@@ -1043,6 +1274,18 @@
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(resize, RESIZE_DEBOUNCE_MS);
   });
+  if ("ResizeObserver" in window) {
+    resizeObserver = new ResizeObserver(() => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(resize, RESIZE_DEBOUNCE_MS);
+    });
+    resizeObserver.observe(canvas);
+  }
+  try {
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      renderLevelRail(lastLevelsPayload);
+    });
+  } catch (_) {}
   document.addEventListener("visibilitychange", () => {
     pageVisible = document.visibilityState !== "hidden";
     if (!pageVisible) {
@@ -1053,5 +1296,6 @@
     scheduleBarsPoll(0);
     scheduleLevelsPoll(0);
   });
+  resize();
   boot();
 })();

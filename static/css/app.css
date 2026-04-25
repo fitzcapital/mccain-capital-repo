@@ -2099,16 +2099,36 @@ body{
   position:absolute;
   top: calc(100% + 10px);
   right: 0;
-  width: 240px;
+  width: min(320px, calc(100vw - 24px));
+  max-height:min(72vh, 760px);
+  overflow-y:auto;
   padding: 10px;
   border-radius: 16px;
   border: 1px solid rgba(var(--accent-rgb),.18);
   background: linear-gradient(180deg, rgba(var(--accent-rgb),.06), rgba(0,0,0,0) 70%), var(--panel);
   box-shadow: var(--shadow);
-  display:none;
-  z-index: 120;
+  z-index: 260;
+  display:block;
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transform:translate3d(0, 8px, 0) scale(.985);
+  transform-origin:top right;
+  transition:
+    opacity 180ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform 220ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    visibility 0s linear 220ms;
 }
-.moreMenu.open{ display:block; }
+.moreMenu.open{
+  opacity:1;
+  visibility:visible;
+  pointer-events:auto;
+  transform:translate3d(0, 0, 0) scale(1);
+  transition:
+    opacity 180ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform 220ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    visibility 0s linear 0s;
+}
 .moreMenu .btn{ width:100%; justify-content:flex-start; }
 .moreMenu .hr{ margin: 8px 0; }
 .moreMenu .menuTitle{
@@ -2121,6 +2141,20 @@ body{
 }
 
 .moreBtn{ padding-left: 14px; padding-right: 14px; min-width: 96px; }
+.moreBtn{
+  transition:
+    transform 160ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow 180ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+.moreBtn[aria-expanded="true"]{
+  transform:translate3d(0, -1px, 0);
+}
+.moreMenu .btn,
+.moreMenu .menuTitle,
+.moreMenu .hr{
+  position:relative;
+  z-index:1;
+}
 
 
     .toolbar{padding:var(--card-pad)}
@@ -18260,6 +18294,593 @@ body.modalOpen{
   }
 }
 
+/* Hard-final cinematic starfield override.
+   Removes diagonal/X streaks and keeps only a blue/green starfield atmosphere. */
+body[data-theme="cinematic-nebula"] .wrap::before{
+  display:block !important;
+  background:
+    radial-gradient(1.8px 1.8px at 8% 14%, rgba(198, 244, 255, .72), transparent 72%),
+    radial-gradient(1.5px 1.5px at 14% 28%, rgba(96, 228, 255, .68), transparent 72%),
+    radial-gradient(1.6px 1.6px at 22% 10%, rgba(255, 255, 255, .64), transparent 72%),
+    radial-gradient(1.4px 1.4px at 31% 21%, rgba(124, 214, 255, .56), transparent 72%),
+    radial-gradient(1.7px 1.7px at 42% 12%, rgba(0, 255, 159, .48), transparent 72%),
+    radial-gradient(1.4px 1.4px at 54% 18%, rgba(186, 235, 255, .58), transparent 72%),
+    radial-gradient(1.7px 1.7px at 66% 11%, rgba(72, 186, 255, .62), transparent 72%),
+    radial-gradient(1.5px 1.5px at 74% 23%, rgba(255, 255, 255, .54), transparent 72%),
+    radial-gradient(1.6px 1.6px at 84% 14%, rgba(0, 255, 159, .44), transparent 72%),
+    radial-gradient(1.4px 1.4px at 92% 24%, rgba(148, 226, 255, .56), transparent 72%),
+    radial-gradient(680px 320px at 16% 10%, rgba(34, 118, 255, .11), transparent 76%),
+    radial-gradient(760px 340px at 82% 12%, rgba(52, 204, 255, .09), transparent 80%),
+    radial-gradient(620px 320px at 78% 82%, rgba(0, 255, 159, .07), transparent 82%),
+    linear-gradient(180deg, rgba(4, 9, 18, .02), rgba(4, 9, 18, .12));
+  opacity:.96 !important;
+  animation:ambientFloat 30s ease-in-out infinite alternate !important;
+}
+
+/* Hard-final cinematic nav/topbar tint override.
+   Keep this at EOF so no older cinematic block can reintroduce purple. */
+body[data-theme="cinematic-nebula"] .topbar::before{
+  display:block !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(96, 228, 255, 0),
+      rgba(96, 228, 255, .86) 22%,
+      rgba(48, 164, 255, .78) 52%,
+      rgba(0, 255, 159, .76) 80%,
+      rgba(255,255,255,0) 100%
+    ) !important;
+  opacity:.96 !important;
+  filter:blur(10px) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::after{
+  background:
+    linear-gradient(
+      90deg,
+      rgba(88, 226, 255, .99),
+      rgba(48, 164, 255, .92) 56%,
+      rgba(0, 255, 159, .84)
+    ) !important;
+  box-shadow:
+    0 0 12px rgba(88, 226, 255, .32),
+    0 0 16px rgba(48, 164, 255, .20),
+    0 0 18px rgba(0, 255, 159, .18) !important;
+}
+
+/* Final cinematic-nebula override.
+   This intentionally lives at the end of the file so it can beat the late
+   low-fidelity flattening rules without changing non-cinematic themes. */
+body[data-theme="cinematic-nebula"]{
+  --mc-nebula-surface-1:rgba(5, 11, 19, .94);
+  --mc-nebula-surface-2:rgba(7, 15, 26, .97);
+  --mc-nebula-surface-3:rgba(10, 22, 38, .985);
+  --mc-nebula-text-high:#f5fbff;
+  --mc-nebula-text-mid:rgba(214, 236, 255, .84);
+  --mc-nebula-text-low:rgba(148, 187, 214, .66);
+  --mc-nebula-cyan-edge:rgba(96, 228, 255, .52);
+  --mc-nebula-blue-edge:rgba(72, 160, 255, .36);
+  --mc-nebula-green-edge:rgba(0, 255, 159, .42);
+  --mc-nebula-green-soft:rgba(60, 255, 193, .12);
+  --mc-nebula-panel-shadow:
+    0 24px 56px rgba(1, 5, 14, .54),
+    0 0 30px rgba(74, 214, 255, .12);
+  scrollbar-color:rgba(96, 228, 255, .64) rgba(6, 14, 25, .94);
+  scrollbar-width:thin;
+}
+
+body[data-theme="cinematic-nebula"] ::-webkit-scrollbar{
+  width:12px;
+  height:12px;
+}
+
+body[data-theme="cinematic-nebula"] ::-webkit-scrollbar-track{
+  background:linear-gradient(180deg, rgba(8, 16, 28, .98), rgba(6, 12, 22, .98));
+}
+
+body[data-theme="cinematic-nebula"] ::-webkit-scrollbar-thumb{
+  border-radius:999px;
+  border:2px solid rgba(6, 12, 22, .98);
+  background:
+    linear-gradient(180deg, rgba(96, 228, 255, .88), rgba(34, 168, 255, .76) 58%, rgba(0, 255, 159, .72));
+  box-shadow:
+    0 0 10px rgba(96, 228, 255, .20),
+    0 0 12px rgba(0, 255, 159, .12);
+}
+
+body[data-theme="cinematic-nebula"] .wrap::before{
+  display:block !important;
+  background:
+    linear-gradient(118deg, transparent 0 14%, rgba(96, 228, 255, .038) 14.25% 14.45%, transparent 14.7% 100%),
+    linear-gradient(34deg, transparent 0 72%, rgba(46, 145, 255, .026) 72.15% 72.35%, transparent 72.6% 100%),
+    linear-gradient(92deg, transparent 0 84%, rgba(0, 255, 159, .020) 84.2% 84.4%, transparent 84.6% 100%),
+    radial-gradient(700px 300px at 16% 12%, rgba(28, 106, 255, .10), transparent 78%),
+    radial-gradient(760px 340px at 84% 12%, rgba(42, 202, 255, .08), transparent 80%),
+    radial-gradient(560px 300px at 78% 80%, rgba(0, 255, 159, .06), transparent 82%);
+  opacity:.96;
+}
+
+body[data-theme="cinematic-nebula"] .topbar{
+  background:
+    linear-gradient(180deg, rgba(9, 18, 33, .95), rgba(5, 11, 22, .985)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    inset 0 0 0 1px rgba(96, 228, 255, .03),
+    0 18px 42px rgba(3, 8, 20, .40),
+    0 0 28px rgba(72, 186, 255, .14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::before{
+  display:block !important;
+  background:
+    linear-gradient(90deg, rgba(96, 228, 255, 0), rgba(96, 228, 255, .82) 24%, rgba(40, 168, 255, .74) 54%, rgba(0, 255, 159, .72) 82%, rgba(255,255,255,0) 100%);
+  opacity:.94;
+  filter:blur(10px);
+}
+
+body[data-theme="cinematic-nebula"] .topbar::after{
+  display:block !important;
+  background:
+    linear-gradient(102deg, transparent 0 15%, rgba(116, 219, 255, .055) 15.2% 15.34%, transparent 15.5% 100%),
+    linear-gradient(90deg, transparent 0 84%, rgba(0, 255, 159, .028) 84.2% 84.35%, transparent 84.55% 100%),
+    radial-gradient(600px 180px at 12% -8%, rgba(44, 116, 255, .10), transparent 72%);
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    inset 0 -1px 0 rgba(255,255,255,.03),
+    0 0 0 1px rgba(96, 228, 255, .12),
+    0 10px 22px rgba(4, 10, 22, .34),
+    0 0 28px rgba(76, 198, 255, .18),
+    0 0 20px rgba(0, 255, 159, .12) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::after{
+  background:
+    linear-gradient(90deg, rgba(88, 226, 255, .98), rgba(44, 156, 255, .90) 56%, rgba(0, 255, 159, .84));
+  box-shadow:
+    0 0 12px rgba(88, 226, 255, .32),
+    0 0 16px rgba(44, 156, 255, .18),
+    0 0 18px rgba(0, 255, 159, .18);
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu{
+  color:var(--mc-nebula-text-high);
+  width:min(360px, calc(100vw - 40px));
+  border-color:rgba(96, 228, 255, .28) !important;
+  background:
+    linear-gradient(180deg, rgba(10, 21, 38, .985), rgba(5, 12, 22, .992)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    inset 0 0 0 1px rgba(96, 228, 255, .04),
+    0 28px 60px rgba(1, 4, 12, .62),
+    0 0 30px rgba(72, 186, 255, .18),
+    0 0 26px rgba(0, 255, 159, .10) !important;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(96, 228, 255, .64) rgba(6, 14, 25, .94);
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu::before{
+  display:block !important;
+  background:
+    radial-gradient(140% 120% at 0% 0%, rgba(88, 226, 255, .12), transparent 40%),
+    radial-gradient(140% 120% at 100% 0%, rgba(0, 255, 159, .08), transparent 34%),
+    linear-gradient(118deg, transparent 0 18%, rgba(121, 214, 255, .032) 18.1% 18.25%, transparent 18.4% 100%);
+  opacity:.98;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu::after{
+  display:block !important;
+  opacity:.20;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu::-webkit-scrollbar{
+  width:12px;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu::-webkit-scrollbar-track{
+  background:linear-gradient(180deg, rgba(8, 16, 28, .98), rgba(6, 12, 22, .98));
+  border-left:1px solid rgba(96, 228, 255, .10);
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu::-webkit-scrollbar-thumb{
+  border-radius:999px;
+  border:2px solid rgba(6, 12, 22, .98);
+  background:
+    linear-gradient(180deg, rgba(96, 228, 255, .88), rgba(34, 168, 255, .76) 58%, rgba(0, 255, 159, .72));
+  box-shadow:
+    0 0 10px rgba(96, 228, 255, .24),
+    0 0 12px rgba(0, 255, 159, .14);
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .menuTitle{
+  color:#eef9ff !important;
+  text-shadow:
+    0 0 8px rgba(67, 198, 255, .14),
+    0 0 10px rgba(0, 255, 159, .06) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .hr{
+  border-color:rgba(96, 228, 255, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .btn{
+  color:rgba(236, 247, 255, .92) !important;
+  font-weight:650;
+  line-height:1.18;
+  border-color:rgba(96, 228, 255, .18) !important;
+  background:
+    linear-gradient(180deg, rgba(10, 22, 39, .96), rgba(7, 15, 27, .985)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 0 0 1px rgba(96, 228, 255, .04) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .btn:hover,
+body[data-theme="cinematic-nebula"] .moreMenu .btn.active{
+  color:#fbfeff !important;
+  border-color:rgba(96, 228, 255, .30) !important;
+  background:
+    linear-gradient(180deg, rgba(14, 31, 54, .98), rgba(8, 18, 31, 1)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 20px rgba(67, 198, 255, .16),
+    0 0 16px rgba(0, 255, 159, .09) !important;
+}
+
+body[data-theme="cinematic-nebula"] .clockPill,
+body[data-theme="cinematic-nebula"] .themeToggle,
+body[data-theme="cinematic-nebula"] .statusBadge{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 0 1px rgba(96, 228, 255, .08),
+    0 0 18px rgba(67, 198, 255, .10),
+    0 0 14px rgba(0, 255, 159, .06) !important;
+}
+
+body[data-theme="cinematic-nebula"] .card,
+body[data-theme="cinematic-nebula"] .stat,
+body[data-theme="cinematic-nebula"] .metric,
+body[data-theme="cinematic-nebula"] .insightCard,
+body[data-theme="cinematic-nebula"] .showcaseCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSnapshotCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard{
+  backdrop-filter:blur(18px) saturate(126%) !important;
+  -webkit-backdrop-filter:blur(18px) saturate(126%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    inset 0 0 0 1px rgba(96, 228, 255, .026),
+    0 22px 52px rgba(2, 7, 18, .50),
+    0 0 26px rgba(74, 214, 255, .11),
+    0 0 16px rgba(0, 255, 159, .06) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal{
+  position:relative;
+  overflow:visible;
+  border-color:rgba(96, 228, 255, .22) !important;
+  background:
+    linear-gradient(180deg, rgba(7, 16, 29, .985), rgba(4, 10, 18, .995)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    inset 0 0 0 1px rgba(96, 228, 255, .03),
+    0 24px 58px rgba(1, 5, 14, .56),
+    0 0 36px rgba(67, 198, 255, .18),
+    0 0 24px rgba(0, 255, 159, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal::before{
+  display:block !important;
+  content:"";
+  position:absolute;
+  inset:-12px -10px -18px;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    radial-gradient(72% 54% at 18% 50%, rgba(55, 204, 255, .24), transparent 58%),
+    radial-gradient(78% 56% at 82% 54%, rgba(0, 255, 159, .16), transparent 60%),
+    radial-gradient(64% 48% at 50% 100%, rgba(74, 214, 255, .14), transparent 65%);
+  filter:blur(28px);
+  opacity:.98;
+  z-index:-1;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat{
+  border-color:rgba(96, 228, 255, .24) !important;
+  background:
+    linear-gradient(180deg, rgba(7, 16, 28, .98), rgba(4, 10, 18, .995)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 0 0 1px rgba(96, 228, 255, .04),
+    0 0 18px rgba(67, 198, 255, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat.glow-green{
+  border-color:rgba(0, 255, 159, .32) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 0 0 1px rgba(0, 255, 159, .06),
+    0 0 18px rgba(0, 255, 159, .12),
+    0 0 30px rgba(0, 255, 159, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat.glow-red{
+  border-color:rgba(255, 74, 122, .30) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 0 0 1px rgba(255, 74, 122, .05),
+    0 0 18px rgba(255, 74, 122, .11) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .liveTapeBadge{
+  color:#effbff !important;
+  text-shadow:0 0 10px rgba(74, 214, 255, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .marketMiniSparkLine{
+  filter:drop-shadow(0 0 5px rgba(92, 240, 255, .20));
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .marketMiniSparkEnd{
+  filter:
+    drop-shadow(0 0 5px rgba(92, 240, 255, .22))
+    drop-shadow(0 0 9px rgba(0, 255, 159, .14)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardTapeBar{
+  scrollbar-width:thin;
+  scrollbar-color:rgba(96, 228, 255, .46) transparent;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardTapeBar::-webkit-scrollbar{
+  height:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardTapeBar::-webkit-scrollbar-thumb{
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(88, 226, 255, .76), rgba(0, 255, 159, .68));
+}
+
+/* Lightweight premium motion */
+:root{
+  --ui-motion-ease:cubic-bezier(0.4, 0, 0.2, 1);
+  --ui-motion-fast:140ms;
+  --ui-motion-mid:180ms;
+  --ui-motion-slow:280ms;
+  --ui-lift-shadow:0 12px 28px rgba(3, 10, 22, .16);
+  --ui-lift-shadow-nebula:0 14px 32px rgba(3, 10, 22, .18);
+}
+
+.ui-reveal-ready{
+  opacity:0;
+  transform:translate3d(0, 8px, 0) scale(.994);
+}
+
+.ui-reveal-ready.ui-reveal-enter{
+  opacity:1;
+  transform:translate3d(0, 0, 0) scale(1);
+  transition:
+    transform var(--ui-motion-slow) var(--ui-motion-ease),
+    opacity 220ms var(--ui-motion-ease);
+  transition-delay:calc(var(--stagger, 0) * 20ms);
+  will-change:transform, opacity;
+}
+
+.price-tick,
+.status-pulse{
+  will-change:transform, opacity, box-shadow;
+}
+
+.price-tick{
+  animation:ui-price-tick var(--ui-motion-mid) var(--ui-motion-ease);
+}
+
+.price-tick.is-up{
+  color:#00ff9f !important;
+  text-shadow:0 0 8px rgba(0, 255, 159, .10);
+}
+
+.price-tick.is-down{
+  color:#ff2d7a !important;
+  text-shadow:0 0 8px rgba(255, 45, 122, .10);
+}
+
+.price-tick.is-neutral{
+  color:#7fd8ff !important;
+}
+
+.status-pulse{
+  animation:ui-status-pulse 160ms var(--ui-motion-ease);
+}
+
+.status-pulse.tone-positive{
+  box-shadow:0 0 0 1px rgba(0, 255, 159, .12), 0 0 10px rgba(0, 255, 159, .05);
+}
+
+.status-pulse.tone-negative{
+  box-shadow:0 0 0 1px rgba(255, 45, 122, .12), 0 0 10px rgba(255, 45, 122, .05);
+}
+
+.status-pulse.tone-warning{
+  box-shadow:0 0 0 1px rgba(255, 208, 112, .12), 0 0 10px rgba(255, 208, 112, .05);
+}
+
+.status-pulse.tone-info,
+.status-pulse.tone-neutral{
+  box-shadow:0 0 0 1px rgba(114, 212, 255, .10), 0 0 8px rgba(114, 212, 255, .04);
+}
+
+.btn{
+  transition:
+    transform var(--ui-motion-fast) var(--ui-motion-ease),
+    opacity var(--ui-motion-fast) var(--ui-motion-ease),
+    box-shadow var(--ui-motion-mid) var(--ui-motion-ease);
+}
+
+.btn:active{
+  transform:scale(.982);
+}
+
+@media (hover:hover) and (pointer:fine){
+  .page-dashboard .card,
+  .page-dashboard .dashboardCoreTapeCard,
+  .page-dashboard .liveTapeWatchRow,
+  .page-market-pulse .marketPulseSection,
+  .page-market-pulse .marketPulseExecutionHeroPanel,
+  .page-market-pulse .marketPulseTapeCard{
+    transition:
+      transform var(--ui-motion-mid) var(--ui-motion-ease),
+      box-shadow var(--ui-motion-mid) var(--ui-motion-ease),
+      opacity var(--ui-motion-fast) var(--ui-motion-ease);
+    transform:translate3d(0, 0, 0);
+  }
+
+  .page-dashboard .card:hover,
+  .page-dashboard .dashboardCoreTapeCard:hover,
+  .page-market-pulse .marketPulseSection:hover,
+  .page-market-pulse .marketPulseExecutionHeroPanel:hover,
+  .page-market-pulse .marketPulseTapeCard:hover{
+    transform:translate3d(0, -3px, 0) scale(1.006);
+    box-shadow:var(--ui-lift-shadow);
+    will-change:transform, box-shadow, opacity;
+  }
+
+  .page-dashboard .liveTapeWatchRow:hover{
+    transform:translate3d(0, -2px, 0);
+    box-shadow:0 8px 18px rgba(4, 10, 22, .12);
+    will-change:transform, box-shadow, opacity;
+  }
+}
+
+body[data-theme="cinematic-nebula"] .price-tick.is-up{
+  text-shadow:
+    0 0 10px rgba(0, 255, 159, .10),
+    0 0 14px rgba(54, 228, 195, .04);
+}
+
+body[data-theme="cinematic-nebula"] .price-tick.is-down{
+  text-shadow:
+    0 0 10px rgba(255, 45, 122, .10),
+    0 0 14px rgba(221, 87, 255, .04);
+}
+
+@media (hover:hover) and (pointer:fine){
+  body[data-theme="cinematic-nebula"] .page-dashboard .card:hover,
+  body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseSection:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseExecutionHeroPanel:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeCard:hover{
+    box-shadow:
+      var(--ui-lift-shadow-nebula),
+      0 0 0 1px rgba(106, 215, 255, .05),
+      inset 0 1px 0 rgba(255, 255, 255, .03);
+  }
+
+  body[data-theme="cinematic-nebula"] .page-dashboard .liveTapeWatchRow:hover{
+    box-shadow:
+      0 8px 18px rgba(4, 10, 22, .13),
+      0 0 0 1px rgba(106, 215, 255, .04);
+  }
+}
+
+html.perf-mode-low-gpu .ui-reveal-ready,
+html.perf-mode-low-gpu .ui-reveal-ready.ui-reveal-enter{
+  opacity:1;
+  transform:none;
+  transition:none;
+}
+
+html.perf-mode-low-gpu .page-dashboard .card,
+html.perf-mode-low-gpu .page-dashboard .dashboardCoreTapeCard,
+html.perf-mode-low-gpu .page-dashboard .liveTapeWatchRow,
+html.perf-mode-low-gpu .page-market-pulse .marketPulseSection,
+html.perf-mode-low-gpu .page-market-pulse .marketPulseExecutionHeroPanel,
+html.perf-mode-low-gpu .page-market-pulse .marketPulseTapeCard{
+  transition:none;
+}
+
+@media (prefers-reduced-motion: reduce){
+  .ui-reveal-ready,
+  .ui-reveal-ready.ui-reveal-enter{
+    opacity:1;
+    transform:none;
+    transition:none;
+  }
+
+  .price-tick,
+  .status-pulse{
+    animation:none;
+    box-shadow:none;
+  }
+
+  .btn,
+  .page-dashboard .card,
+  .page-dashboard .dashboardCoreTapeCard,
+  .page-dashboard .liveTapeWatchRow,
+  .page-market-pulse .marketPulseSection,
+  .page-market-pulse .marketPulseExecutionHeroPanel,
+  .page-market-pulse .marketPulseTapeCard{
+    transition:none !important;
+    transform:none !important;
+  }
+}
+
+@keyframes ui-price-tick{
+  0%{
+    opacity:.86;
+    transform:translate3d(0, 0, 0) scale(.986);
+  }
+  55%{
+    opacity:1;
+    transform:translate3d(0, -.5px, 0) scale(1.018);
+  }
+  100%{
+    opacity:1;
+    transform:translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes ui-status-pulse{
+  0%{
+    opacity:.9;
+    transform:translate3d(0, 0, 0) scale(.992);
+  }
+  60%{
+    opacity:1;
+    transform:translate3d(0, 0, 0) scale(1.008);
+  }
+  100%{
+    opacity:1;
+    transform:translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Cinematic Nebula should feel alive, not jumpy. Keep hover feedback subtle. */
+@media (hover:hover) and (pointer:fine){
+  body[data-theme="cinematic-nebula"] .page-dashboard .card:hover,
+  body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard:hover,
+  body[data-theme="cinematic-nebula"] .page-dashboard .liveTapeWatchRow:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseSection:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseExecutionHeroPanel:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeCard:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseModalStat:hover{
+    transform:translate3d(0, -1px, 0) scale(1.001) !important;
+    transition-duration:150ms !important;
+  }
+}
+
+body[data-theme="cinematic-nebula"] .price-tick{
+  animation-duration:150ms !important;
+}
+
+body[data-theme="cinematic-nebula"] .status-pulse{
+  animation-duration:140ms !important;
+}
+
 /* Respect browser-managed fonts. Keep site sizing/weight, but let Firefox's chosen
    sans-serif family win instead of forcing named web/app fonts. */
 body{
@@ -18460,13 +19081,13 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStatusDetailCard{
   position:relative;
   border-color:var(--mc-nebula-border-soft) !important;
   background:
-    linear-gradient(180deg, rgba(17, 28, 51, .90), rgba(8, 15, 31, .96)) !important;
+    linear-gradient(180deg, rgba(9, 16, 29, .98), rgba(4, 9, 18, .995)) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.045),
     var(--mc-nebula-inner-glow),
     var(--mc-nebula-panel-shadow),
-    0 0 22px rgba(74, 214, 255, .08),
-    0 0 18px rgba(255, 59, 160, .05) !important;
+    0 0 28px rgba(74, 214, 255, .10),
+    0 0 22px rgba(255, 59, 160, .07) !important;
   backdrop-filter:blur(18px) saturate(126%);
   -webkit-backdrop-filter:blur(18px) saturate(126%);
 }
@@ -18476,13 +19097,13 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardProjectionCard,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDecisionCard,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBriefCard{
-  border-color:rgba(124, 221, 255, .18) !important;
+  border-color:rgba(124, 221, 255, .34) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.05),
     inset 0 0 0 1px rgba(120, 213, 255, .028),
     0 18px 42px rgba(2, 7, 18, .38),
-    0 0 28px rgba(67, 198, 255, .10),
-    0 0 22px rgba(233, 94, 255, .08) !important;
+    0 0 36px rgba(67, 198, 255, .14),
+    0 0 26px rgba(233, 94, 255, .10) !important;
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero::before,
@@ -18498,11 +19119,11 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBriefCard::before{
   pointer-events:none;
   border-radius:inherit;
   background:
-    radial-gradient(120% 120% at 0% 0%, rgba(86, 198, 255, .08), transparent 44%),
-    radial-gradient(120% 120% at 100% 0%, rgba(240, 96, 255, .06), transparent 38%),
+    radial-gradient(120% 120% at 0% 0%, rgba(86, 198, 255, .11), transparent 38%),
+    radial-gradient(120% 120% at 100% 0%, rgba(240, 96, 255, .09), transparent 34%),
     linear-gradient(135deg, rgba(255,255,255,.018), transparent 48%, rgba(97, 192, 255, .012)),
     linear-gradient(118deg, transparent 0 20%, rgba(121, 214, 255, .02) 20.3% 20.5%, transparent 20.8% 100%);
-  opacity:.95;
+  opacity:1;
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero::after,
@@ -18521,7 +19142,7 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBriefCard::after{
     radial-gradient(circle at 8% 12%, rgba(133, 214, 255, .16) 0 1.1px, transparent 1.2px),
     radial-gradient(circle at 28% 16%, rgba(133, 214, 255, .12) 0 1px, transparent 1.1px),
     linear-gradient(122deg, transparent 0 10.4%, rgba(133, 214, 255, .05) 10.45% 10.6%, transparent 10.65% 100%);
-  opacity:.22;
+  opacity:.28;
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell::before,
@@ -18591,6 +19212,34 @@ body[data-theme="cinematic-nebula"] .statusBadge{
     0 0 12px rgba(255, 59, 160, .05) !important;
 }
 
+body[data-theme="cinematic-nebula"] .btn.primary,
+body[data-theme="cinematic-nebula"] .pill,
+body[data-theme="cinematic-nebula"] .themeToggle,
+body[data-theme="cinematic-nebula"] .statusBadge{
+  position:relative;
+  overflow:hidden;
+}
+
+body[data-theme="cinematic-nebula"] .btn.primary::after,
+body[data-theme="cinematic-nebula"] .pill::after,
+body[data-theme="cinematic-nebula"] .themeToggle::after,
+body[data-theme="cinematic-nebula"] .statusBadge::after{
+  content:"";
+  position:absolute;
+  left:10px;
+  right:10px;
+  bottom:4px;
+  height:2px;
+  border-radius:999px;
+  background:
+    linear-gradient(90deg, rgba(88, 226, 255, .68), rgba(255, 98, 210, .42));
+  opacity:.74;
+  box-shadow:
+    0 0 10px rgba(88, 226, 255, .16),
+    0 0 12px rgba(255, 98, 210, .08);
+  pointer-events:none;
+}
+
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCardLabel,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDecisionLabel,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardGammaChipLabel,
@@ -18621,37 +19270,66 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeWatchDetailVal
   color:var(--mc-nebula-text-high) !important;
 }
 
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSnapshotCard{
+  border-color:rgba(120, 223, 255, .26) !important;
+  background:
+    linear-gradient(180deg, rgba(7, 13, 24, .985), rgba(4, 8, 16, .995)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    inset 0 0 0 1px rgba(120, 223, 255, .024),
+    0 18px 40px rgba(2, 7, 18, .42),
+    0 0 28px rgba(74, 214, 255, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSnapshotCard.is-positive{
+  border-color:var(--mc-nebula-green-edge) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 18px 40px rgba(2, 7, 18, .42),
+    0 0 26px rgba(0, 255, 159, .12),
+    0 0 18px rgba(74, 214, 255, .07) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSnapshotCard.is-negative{
+  border-color:var(--mc-nebula-red-edge) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 18px 40px rgba(2, 7, 18, .42),
+    0 0 24px rgba(255, 45, 122, .14),
+    0 0 16px rgba(255, 98, 210, .08) !important;
+}
+
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal{
   background:
-    linear-gradient(180deg, rgba(10, 21, 39, .90), rgba(6, 12, 24, .98)) !important;
+    linear-gradient(180deg, rgba(7, 13, 24, .985), rgba(3, 7, 14, .998)) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.05),
-    inset 0 0 0 1px rgba(120, 223, 255, .03),
+    inset 0 0 0 1px rgba(120, 223, 255, .04),
     0 22px 50px rgba(2, 7, 18, .42),
-    0 0 30px rgba(74, 214, 255, .10),
-    0 0 22px rgba(255, 59, 160, .07) !important;
+    0 0 34px rgba(74, 214, 255, .14),
+    0 0 26px rgba(255, 59, 160, .09) !important;
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal{
-  border-color:rgba(120, 223, 255, .18) !important;
+  border-color:rgba(120, 223, 255, .34) !important;
   background:
-    linear-gradient(180deg, rgba(12, 22, 40, .86), rgba(8, 14, 28, .96)) !important;
+    linear-gradient(180deg, rgba(7, 13, 24, .985), rgba(3, 7, 14, .998)) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.05),
     0 18px 44px rgba(2, 7, 18, .40),
-    0 0 26px rgba(74, 214, 255, .08),
-    0 0 18px rgba(255, 59, 160, .06) !important;
+    0 0 30px rgba(74, 214, 255, .14),
+    0 0 22px rgba(255, 59, 160, .09) !important;
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat{
-  border-color:rgba(120, 223, 255, .14) !important;
+  border-color:rgba(120, 223, 255, .30) !important;
   background:
-    linear-gradient(180deg, rgba(18, 30, 52, .84), rgba(9, 16, 30, .94)) !important;
+    linear-gradient(180deg, rgba(6, 12, 22, .985), rgba(3, 8, 15, .998)) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.04),
-    inset 0 0 0 1px rgba(120, 223, 255, .018),
-    0 0 18px rgba(74, 214, 255, .04) !important;
+    inset 0 0 0 1px rgba(120, 223, 255, .028),
+    0 0 22px rgba(74, 214, 255, .08) !important;
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardTapePriceBlock,
@@ -18721,13 +19399,91 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTradeGateRow{
   position:relative;
   overflow:hidden;
-  border-color:rgba(108, 210, 255, .16) !important;
+  border-color:rgba(108, 210, 255, .24) !important;
   background:
-    linear-gradient(180deg, rgba(19, 33, 59, .78), rgba(8, 15, 28, .94)) !important;
+    linear-gradient(180deg, rgba(8, 15, 27, .982), rgba(4, 8, 15, .996)) !important;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.045),
     inset 0 0 0 1px rgba(120, 223, 255, .018),
-    0 0 20px rgba(74, 214, 255, .05) !important;
+    0 0 24px rgba(74, 214, 255, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat.glow-green{
+  border-color:var(--mc-nebula-green-edge) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 24px rgba(0, 255, 159, .14),
+    0 0 16px rgba(74, 214, 255, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat.glow-red{
+  border-color:var(--mc-nebula-red-edge) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 22px rgba(255, 45, 122, .16),
+    0 0 16px rgba(255, 98, 210, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardTapeBarState.is-risk-on,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardTapeBarState.is-expanding{
+  border-color:rgba(0, 255, 159, .34);
+  box-shadow:
+    0 0 18px rgba(0, 255, 159, .16),
+    inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardTapeBarState.is-risk-off{
+  border-color:rgba(255, 45, 122, .34);
+  box-shadow:
+    0 0 18px rgba(255, 45, 122, .16),
+    inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard #dashboardGammaChip-regime.is-positive.has-glow{
+  border-color:var(--mc-nebula-green-edge) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 22px rgba(0, 255, 159, .16),
+    0 0 38px rgba(0, 255, 159, .06) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard #dashboardGammaChip-regime.is-negative.has-glow{
+  border-color:var(--mc-nebula-red-edge) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 22px rgba(255, 45, 122, .16),
+    0 0 38px rgba(255, 45, 122, .06) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard #dashboardGammaChip-main_flip{
+  border-color:rgba(102, 214, 255, .38) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 24px rgba(102, 214, 255, .14),
+    0 10px 18px rgba(0,0,0,.14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard #dashboardGammaChip-local_flip{
+  border-color:rgba(255, 171, 86, .42) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 26px rgba(255, 166, 82, .18),
+    0 0 40px rgba(255, 166, 82, .08),
+    0 10px 18px rgba(0,0,0,.14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard #dashboardGammaChip-call_wall{
+  border-color:rgba(255, 45, 122, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 22px rgba(255, 45, 122, .14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard #dashboardGammaChip-put_wall{
+  border-color:rgba(0, 255, 159, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 22px rgba(0, 255, 159, .12) !important;
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardGammaChip::before,
@@ -18761,7 +19517,7 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashb
   text-shadow:
     -.6px 0 rgba(255, 74, 163, .22),
     .6px 0 rgba(74, 214, 255, .28),
-    0 0 18px rgba(74, 214, 255, .08);
+    0 0 20px rgba(74, 214, 255, .14);
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardLivePulse,
@@ -18799,7 +19555,7 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeDeltaPct.is-up
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeWatchCell-chg.is-up,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeWatchCell-chgp.is-up{
   color:var(--mc-nebula-gain) !important;
-  text-shadow:0 0 14px rgba(0,255,159,.18);
+  text-shadow:0 0 18px rgba(0,255,159,.28);
 }
 
 body[data-theme="cinematic-nebula"] .glow-red,
@@ -18809,7 +19565,7 @@ body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeDeltaPct.is-do
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeWatchCell-chg.is-down,
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeWatchCell-chgp.is-down{
   color:var(--mc-nebula-loss) !important;
-  text-shadow:0 0 14px rgba(255,45,122,.18);
+  text-shadow:0 0 18px rgba(255,45,122,.28);
 }
 
 body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeBarDelta,
@@ -18831,10 +19587,574 @@ body[data-theme="cinematic-nebula"] .page-dashboard .showcaseValue{
     0 0 12px rgba(74, 214, 255, .06);
 }
 
+/* Cinematic Nebula v2 flagship polish. */
+body[data-theme="cinematic-nebula"]{
+  --mc-nebula-ribbon-cyan:rgba(88, 226, 255, .42);
+  --mc-nebula-ribbon-magenta:rgba(255, 98, 210, .34);
+  --mc-nebula-hero-shadow:0 26px 64px rgba(2, 7, 18, .46);
+  --mc-nebula-command-shadow:0 20px 48px rgba(2, 7, 18, .38);
+  --mc-nebula-topbar-halo:0 0 44px rgba(54, 184, 255, .22);
+  --mc-nebula-magenta-halo:0 0 34px rgba(255, 98, 210, .16);
+  --mc-nebula-true-dark:rgba(4, 9, 18, .985);
+  --mc-nebula-true-dark-soft:rgba(7, 13, 24, .965);
+  --mc-nebula-cyan-edge:rgba(88, 226, 255, .56);
+  --mc-nebula-magenta-edge:rgba(255, 98, 210, .48);
+  --mc-nebula-green-edge:rgba(0, 255, 159, .52);
+  --mc-nebula-red-edge:rgba(255, 45, 122, .48);
+}
+
+body[data-theme="cinematic-nebula"] .topbar{
+  position:relative;
+  overflow:visible;
+  border-color:rgba(121, 223, 255, .20) !important;
+  background:
+    linear-gradient(180deg, rgba(14, 24, 42, .92), rgba(7, 14, 27, .96)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    inset 0 0 0 1px rgba(122, 214, 255, .028),
+    0 18px 42px rgba(3, 8, 20, .36),
+    0 0 26px rgba(54, 184, 255, .09) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::before{
+  content:"";
+  position:absolute;
+  top:-8px;
+  left:18px;
+  width:56%;
+  height:14px;
+  border-radius:999px;
+  background:
+    linear-gradient(90deg, rgba(88, 226, 255, 0), rgba(88, 226, 255, .72) 18%, rgba(255, 98, 210, .68) 58%, rgba(255,255,255,0) 100%);
+  opacity:.92;
+  filter:blur(8px);
+  transform:translate3d(-8%, 0, 0) scaleX(.96);
+  animation:nebulaRibbonDrift 8.5s var(--ui-motion-ease) infinite alternate;
+  pointer-events:none;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    linear-gradient(102deg, transparent 0 16%, rgba(116, 219, 255, .05) 16.2% 16.34%, transparent 16.5% 100%),
+    linear-gradient(90deg, transparent 0 84%, rgba(255, 98, 210, .035) 84.2% 84.35%, transparent 84.55% 100%),
+    radial-gradient(600px 180px at 12% -8%, rgba(101, 90, 255, .11), transparent 72%);
+  opacity:.88;
+}
+
+body[data-theme="cinematic-nebula"] .brandText::before{
+  width:280px;
+  height:72px;
+  background:
+    radial-gradient(circle, rgba(86, 208, 255, .22), transparent 64%),
+    radial-gradient(circle at 66% 44%, rgba(230, 96, 255, .12), transparent 58%);
+  filter:blur(18px);
+  opacity:.86;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav{
+  position:relative;
+  padding:4px;
+  border-radius:18px;
+  background:
+    linear-gradient(180deg, rgba(15, 28, 49, .68), rgba(9, 17, 31, .82));
+  box-shadow:inset 0 0 0 1px rgba(119, 207, 255, .05);
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn{
+  position:relative;
+  border-color:transparent !important;
+  background:transparent !important;
+  color:rgba(222, 235, 252, .72) !important;
+  box-shadow:none !important;
+  transition:
+    color 160ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    background-color 180ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow 180ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform 160ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn:hover{
+  color:#eef8ff !important;
+  background:
+    linear-gradient(180deg, rgba(20, 40, 67, .48), rgba(10, 19, 35, .72)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 14px rgba(76, 198, 255, .08) !important;
+  transform:translate3d(0, -1px, 0);
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active{
+  color:#f9fcff !important;
+  background:
+    linear-gradient(180deg, rgba(24, 46, 77, .98), rgba(11, 22, 40, 1)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    inset 0 -1px 0 rgba(255,255,255,.03),
+    0 0 0 1px rgba(122, 214, 255, .10),
+    0 10px 22px rgba(4, 10, 22, .32),
+    0 0 22px rgba(76, 198, 255, .16),
+    0 0 16px rgba(255, 98, 210, .08) !important;
+  animation:nebulaActivePulse 3.4s ease-in-out infinite;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::before{
+  display:none;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::after{
+  content:"";
+  position:absolute;
+  left:12px;
+  right:12px;
+  bottom:4px;
+  height:3px;
+  border-radius:999px;
+  background:
+    linear-gradient(90deg, rgba(88, 226, 255, .96), rgba(255, 98, 210, .72));
+  box-shadow:
+    0 0 12px rgba(88, 226, 255, .24),
+    0 0 18px rgba(255, 98, 210, .12);
+}
+
+body[data-theme="cinematic-nebula"] .clockPill,
+body[data-theme="cinematic-nebula"] .themeToggle,
+body[data-theme="cinematic-nebula"] .statusBadge{
+  position:relative;
+  overflow:hidden;
+  animation:nebulaChromePulse 4.4s ease-in-out infinite;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu{
+  border-color:rgba(124, 228, 255, .26) !important;
+  background:
+    linear-gradient(180deg, rgba(20, 38, 64, .96), rgba(10, 20, 35, .98)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    inset 0 0 0 1px rgba(122, 214, 255, .04),
+    0 24px 52px rgba(0,0,0,.58),
+    0 0 34px rgba(67, 198, 255, .16),
+    0 0 24px rgba(255, 98, 210, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    radial-gradient(140% 120% at 0% 0%, rgba(88, 226, 255, .10), transparent 40%),
+    radial-gradient(140% 120% at 100% 0%, rgba(255, 98, 210, .08), transparent 34%),
+    linear-gradient(118deg, transparent 0 18%, rgba(121, 214, 255, .03) 18.1% 18.25%, transparent 18.4% 100%);
+  opacity:.96;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu::after{
+  content:"";
+  position:absolute;
+  inset:12px;
+  pointer-events:none;
+  border-radius:12px;
+  background:
+    linear-gradient(90deg, transparent, rgba(122, 214, 255, .08), transparent),
+    linear-gradient(180deg, transparent 0 94%, rgba(255,255,255,.04) 94% 95%, transparent 95% 100%);
+  opacity:.28;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .menuTitle{
+  color:rgba(196, 230, 255, .82);
+  text-shadow:
+    0 0 8px rgba(67, 198, 255, .10),
+    0 0 6px rgba(255, 98, 210, .06);
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .btn{
+  position:relative;
+  border-color:rgba(122, 214, 255, .14) !important;
+  background:
+    linear-gradient(180deg, rgba(17, 31, 54, .78), rgba(9, 18, 32, .90)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 0 1px rgba(122, 214, 255, .03) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .btn::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    linear-gradient(112deg, transparent 0 24%, rgba(122, 214, 255, .06) 24.1% 24.3%, transparent 24.5% 100%),
+    radial-gradient(140% 120% at 0% 0%, rgba(88, 226, 255, .08), transparent 42%);
+  opacity:.72;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .btn:hover,
+body[data-theme="cinematic-nebula"] .moreMenu .btn.active{
+  border-color:rgba(128, 228, 255, .28) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 18px rgba(67, 198, 255, .12),
+    0 0 12px rgba(255, 98, 210, .07) !important;
+}
+
+body[data-theme="cinematic-nebula"] .clockPill::after,
+body[data-theme="cinematic-nebula"] .themeToggle::after,
+body[data-theme="cinematic-nebula"] .statusBadge::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    linear-gradient(90deg, transparent, rgba(133, 214, 255, .08), transparent),
+    linear-gradient(180deg, transparent 0 92%, rgba(255,255,255,.04) 92% 93%, transparent 93% 100%);
+  opacity:.34;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell{
+  position:relative;
+  overflow:hidden;
+  border-color:rgba(118, 218, 255, .14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .moreMenu .dashboardModeToggle{
+  padding:4px;
+  border-radius:16px;
+  border:1px solid rgba(122, 214, 255, .18);
+  background:
+    linear-gradient(180deg, rgba(16, 30, 53, .76), rgba(8, 16, 30, .90));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 18px rgba(67, 198, 255, .08);
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .moreMenu .dashboardModeToggle::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(88, 226, 255, .08), transparent 42%),
+    radial-gradient(120% 120% at 100% 0%, rgba(255, 98, 210, .06), transparent 38%);
+  opacity:.9;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .moreMenu .dashboardModeToggleButton{
+  border-color:transparent !important;
+  background:transparent !important;
+  color:rgba(221, 235, 252, .74) !important;
+  box-shadow:none !important;
+  transition:
+    transform 160ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow 180ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    color 160ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .moreMenu .dashboardModeToggleButton.is-active{
+  border-color:rgba(128, 228, 255, .28) !important;
+  background:
+    linear-gradient(180deg, rgba(28, 56, 92, .94), rgba(13, 28, 52, .98)) !important;
+  color:#f8fcff !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 0 26px rgba(67, 198, 255, .24),
+    0 0 18px rgba(255, 98, 210, .16) !important;
+  animation:nebulaActivePulse 3.2s ease-in-out infinite;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .moreMenu .dashboardModeToggleButton:not(.is-active):hover{
+  color:#eef7ff !important;
+  transform:translate3d(0, -1px, 0);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 14px rgba(67, 198, 255, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    radial-gradient(860px 260px at 10% 0%, rgba(88, 226, 255, .05), transparent 56%),
+    radial-gradient(760px 240px at 94% 6%, rgba(255, 98, 210, .045), transparent 52%);
+  opacity:.95;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero{
+  border-color:rgba(133, 224, 255, .26) !important;
+  background:
+    linear-gradient(180deg, rgba(16, 28, 51, .95), rgba(8, 15, 31, .98)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    inset 0 0 0 1px rgba(120, 213, 255, .04),
+    var(--mc-nebula-hero-shadow),
+    0 0 48px rgba(67, 198, 255, .18),
+    0 0 34px rgba(233, 94, 255, .14) !important;
+  animation:nebulaHeroAura 6.4s ease-in-out infinite;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero::before{
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(86, 198, 255, .10), transparent 42%),
+    radial-gradient(120% 120% at 100% 0%, rgba(240, 96, 255, .08), transparent 36%),
+    linear-gradient(120deg, transparent 0 18%, rgba(121, 214, 255, .026) 18.2% 18.36%, transparent 18.52% 100%);
+  opacity:1;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero .toolbar{
+  gap:14px;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHeroActionBar{
+  padding:10px 12px;
+  border-radius:18px;
+  border:1px solid rgba(122, 214, 255, .12);
+  background:
+    linear-gradient(180deg, rgba(14, 28, 50, .68), rgba(8, 16, 30, .82));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 0 18px rgba(74, 214, 255, .05);
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHeroPriority,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardReadinessBarCard{
+  border-color:rgba(124, 222, 255, .18) !important;
+  background:
+    linear-gradient(180deg, rgba(18, 35, 62, .80), rgba(8, 17, 31, .92)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 20px rgba(74, 214, 255, .05) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDecisionCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBriefCard{
+  border-color:rgba(109, 194, 255, .13) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    var(--mc-nebula-command-shadow),
+    0 0 18px rgba(74, 214, 255, .05) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardHero,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardCoreTapeCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardPriorityGrid > .dashboardDecisionCard{
+  border-color:rgba(129, 227, 255, .24) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    0 20px 50px rgba(2, 7, 18, .42),
+    0 0 28px rgba(67, 198, 255, .10),
+    0 0 18px rgba(255, 94, 214, .07) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell[data-dashboard-mode="pre"] .dashboardHero,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell[data-dashboard-mode="pre"] .dashboardBriefCard{
+  border-color:rgba(255, 201, 118, .18) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 18px 44px rgba(2, 7, 18, .38),
+    0 0 22px rgba(255, 189, 82, .07),
+    0 0 16px rgba(74, 214, 255, .05) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHeroPrimaryActions .btn.primary{
+  border-color:rgba(124, 228, 255, .32) !important;
+  background:
+    linear-gradient(180deg, rgba(26, 56, 95, .94), rgba(14, 30, 56, .98)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 0 0 1px rgba(124, 228, 255, .08),
+    0 0 32px rgba(74, 214, 255, .22),
+    0 0 22px rgba(255, 98, 210, .16) !important;
+  animation:nebulaPrimaryPulse 3.6s ease-in-out infinite;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardGammaStrip{
+  position:relative;
+  overflow:hidden;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardGammaStrip::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:
+    linear-gradient(90deg, rgba(88, 226, 255, .08), transparent 24%, transparent 76%, rgba(255, 98, 210, .06)),
+    radial-gradient(circle at 12% 28%, rgba(88, 226, 255, .12) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 86% 18%, rgba(255, 98, 210, .10) 0 1px, transparent 1.2px);
+  opacity:.42;
+}
+
+body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseExecutionHeroPanel-rail,
+body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseExecutionHeroPanel-decision{
+  border-color:rgba(114, 213, 255, .15) !important;
+  background:
+    linear-gradient(180deg, rgba(13, 25, 46, .82), rgba(7, 14, 27, .94)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 18px 42px rgba(2, 7, 18, .34),
+    0 0 18px rgba(74, 214, 255, .05) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseExecutionHeroStateChip,
+body[data-theme="cinematic-nebula"] .page-market-pulse #marketPulseHeroStateContext{
+  border-color:rgba(126, 222, 255, .18) !important;
+  background:
+    linear-gradient(180deg, rgba(20, 40, 70, .82), rgba(12, 24, 42, .94)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 14px rgba(74, 214, 255, .06),
+    0 0 12px rgba(255, 98, 210, .04) !important;
+}
+
+@keyframes nebulaRibbonDrift{
+  0%{
+    opacity:.64;
+    transform:translate3d(-8%, 0, 0) scaleX(.96);
+  }
+  100%{
+    opacity:1;
+    transform:translate3d(12%, 0, 0) scaleX(1.06);
+  }
+}
+
+@keyframes nebulaActivePulse{
+  0%, 100%{
+    filter:none;
+  }
+  50%{
+    filter:brightness(1.08) saturate(1.08);
+  }
+}
+
+@keyframes nebulaChromePulse{
+  0%, 100%{
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.07),
+      0 0 0 1px rgba(122, 214, 255, .08),
+      0 0 24px rgba(76, 198, 255, .16),
+      0 0 18px rgba(255, 98, 210, .10);
+  }
+  50%{
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.08),
+      0 0 0 1px rgba(122, 214, 255, .10),
+      0 0 32px rgba(76, 198, 255, .22),
+      0 0 24px rgba(255, 98, 210, .14);
+  }
+}
+
+@keyframes nebulaPrimaryPulse{
+  0%, 100%{
+    transform:translate3d(0, 0, 0) scale(1);
+  }
+  50%{
+    transform:translate3d(0, -1px, 0) scale(1.012);
+  }
+}
+
+@keyframes nebulaHeroAura{
+  0%, 100%{
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.07),
+      inset 0 0 0 1px rgba(120, 213, 255, .05),
+      0 30px 72px rgba(2, 7, 18, .50),
+      0 0 48px rgba(67, 198, 255, .18),
+      0 0 34px rgba(233, 94, 255, .14);
+  }
+  50%{
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.08),
+      inset 0 0 0 1px rgba(120, 213, 255, .07),
+      0 32px 76px rgba(2, 7, 18, .54),
+      0 0 62px rgba(67, 198, 255, .26),
+      0 0 44px rgba(233, 94, 255, .20);
+  }
+}
+
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .topbar::before,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .topbar .nav .btn.active,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .clockPill,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .themeToggle,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .statusBadge,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHeroPrimaryActions .btn.primary,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .page-dashboard .moreMenu .dashboardModeToggleButton.is-active,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor .liveTapeBadge::before,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .liveTapeBadge::before{
+  animation:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    inset 0 0 0 1px rgba(122, 214, 255, .038),
+    0 20px 48px rgba(3, 8, 20, .42),
+    0 0 40px rgba(54, 184, 255, .14),
+    0 0 28px rgba(255, 98, 210, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active,
+body[data-theme="cinematic-nebula"] .clockPill,
+body[data-theme="cinematic-nebula"] .themeToggle,
+body[data-theme="cinematic-nebula"] .statusBadge{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    0 0 0 1px rgba(122, 214, 255, .08),
+    0 0 24px rgba(76, 198, 255, .16),
+    0 0 18px rgba(255, 98, 210, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    inset 0 0 0 1px rgba(120, 213, 255, .05),
+    0 30px 72px rgba(2, 7, 18, .50),
+    0 0 48px rgba(67, 198, 255, .18),
+    0 0 34px rgba(233, 94, 255, .14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero::after{
+  opacity:.36 !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHeroPrimaryActions .btn.primary{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    0 0 0 1px rgba(124, 228, 255, .12),
+    0 0 30px rgba(74, 214, 255, .20),
+    0 0 22px rgba(255, 98, 210, .12) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardHero,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardCoreTapeCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell[data-dashboard-mode="live"] .dashboardPriorityGrid > .dashboardDecisionCard{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.065),
+    0 24px 60px rgba(2, 7, 18, .46),
+    0 0 38px rgba(67, 198, 255, .16),
+    0 0 24px rgba(255, 94, 214, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardGammaStrip{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 28px rgba(67, 198, 255, .12),
+    0 0 18px rgba(255, 94, 214, .08) !important;
+}
+
 @media (prefers-reduced-motion: reduce){
   body[data-theme="cinematic-nebula"]::before,
   body[data-theme="cinematic-nebula"]::after,
   body[data-theme="cinematic-nebula"] .wrap::before,
+  body[data-theme="cinematic-nebula"] .topbar::before,
   body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor .liveTapeBadge::before,
   body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .liveTapeBadge::before{
     animation:none !important;
@@ -44990,6 +46310,39 @@ html[data-font-mode="hand"] .page-market-pulse #marketPulseHeroTradeability{
   background:rgba(10, 18, 30, 0.5);
 }
 
+body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeShell .marketPulseTapeCard{
+  border-color:rgba(120, 223, 255, .24) !important;
+  background:
+    linear-gradient(180deg, rgba(7, 13, 24, .985), rgba(3, 7, 14, .998)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 24px rgba(74, 214, 255, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive{
+  border-color:rgba(0, 255, 159, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 24px rgba(0, 255, 159, .12),
+    0 0 16px rgba(74, 214, 255, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative{
+  border-color:rgba(255, 45, 122, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 22px rgba(255, 45, 122, .14),
+    0 0 16px rgba(255, 98, 210, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral,
+body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan{
+  border-color:rgba(102, 214, 255, .30) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 22px rgba(102, 214, 255, .12) !important;
+}
+
 .marketPulseFoldSummary{
   display:flex;
   align-items:center;
@@ -46184,4 +47537,619 @@ html[data-font-mode="hand"] .page-market-pulse #marketPulseHeroTradeability{
   .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal .dashboardCoreTapeStat .marketMiniSpark{
     height:52px;
   }
+}
+
+/* EOF cinematic-nebula correction.
+   This must remain after the duplicated dashboard CSS blocks. */
+body[data-theme="cinematic-nebula"]::before{
+  display:block !important;
+  background:
+    radial-gradient(1.7px 1.7px at 7% 13%, rgba(210, 248, 255, .76), transparent 72%),
+    radial-gradient(1.4px 1.4px at 15% 27%, rgba(96, 228, 255, .62), transparent 72%),
+    radial-gradient(1.6px 1.6px at 23% 9%, rgba(255,255,255,.64), transparent 72%),
+    radial-gradient(1.3px 1.3px at 33% 22%, rgba(0, 255, 159, .48), transparent 72%),
+    radial-gradient(1.8px 1.8px at 43% 11%, rgba(108, 210, 255, .62), transparent 72%),
+    radial-gradient(1.4px 1.4px at 54% 25%, rgba(224, 252, 255, .54), transparent 72%),
+    radial-gradient(1.8px 1.8px at 64% 13%, rgba(72, 186, 255, .62), transparent 72%),
+    radial-gradient(1.5px 1.5px at 75% 22%, rgba(0, 255, 159, .42), transparent 72%),
+    radial-gradient(1.7px 1.7px at 87% 11%, rgba(184, 240, 255, .62), transparent 72%),
+    radial-gradient(1.4px 1.4px at 94% 19%, rgba(96, 228, 255, .56), transparent 72%),
+    radial-gradient(680px 300px at 18% 8%, rgba(40, 168, 255, .14), transparent 74%),
+    radial-gradient(760px 340px at 82% 12%, rgba(80, 225, 255, .10), transparent 78%),
+    radial-gradient(620px 320px at 76% 82%, rgba(0, 255, 159, .08), transparent 82%) !important;
+  opacity:.96 !important;
+  animation:ambientFloat 30s ease-in-out infinite alternate !important;
+}
+
+body[data-theme="cinematic-nebula"]::after,
+body[data-theme="cinematic-nebula"] .wrap::before{
+  display:block !important;
+  background:
+    radial-gradient(1.2px 1.2px at 11% 42%, rgba(255,255,255,.40), transparent 72%),
+    radial-gradient(1.1px 1.1px at 29% 58%, rgba(104, 228, 255, .36), transparent 72%),
+    radial-gradient(1.3px 1.3px at 47% 38%, rgba(0, 255, 159, .30), transparent 72%),
+    radial-gradient(1.1px 1.1px at 68% 62%, rgba(190, 244, 255, .34), transparent 72%),
+    radial-gradient(1.2px 1.2px at 91% 48%, rgba(96, 228, 255, .34), transparent 72%),
+    radial-gradient(880px 360px at 48% 38%, rgba(31, 112, 255, .055), transparent 78%),
+    radial-gradient(720px 420px at 58% 72%, rgba(0, 255, 159, .045), transparent 82%) !important;
+  opacity:.78 !important;
+  animation:ambientFloat 42s ease-in-out infinite alternate-reverse !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::before{
+  display:block !important;
+  background:
+    linear-gradient(90deg, rgba(96, 228, 255, 0), rgba(96, 228, 255, .86) 22%, rgba(48, 164, 255, .78) 52%, rgba(0, 255, 159, .76) 80%, rgba(255,255,255,0) 100%) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::after{
+  display:block !important;
+  background:
+    radial-gradient(1.4px 1.4px at 9% 22%, rgba(215, 250, 255, .46), transparent 72%),
+    radial-gradient(1.2px 1.2px at 48% 18%, rgba(96, 228, 255, .36), transparent 72%),
+    radial-gradient(1.3px 1.3px at 88% 24%, rgba(0, 255, 159, .34), transparent 72%),
+    linear-gradient(180deg, rgba(96, 228, 255, .035), transparent 42%) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::after,
+body[data-theme="cinematic-nebula"] .pill::after,
+body[data-theme="cinematic-nebula"] .btn.primary::after{
+  background:
+    linear-gradient(90deg, rgba(88, 226, 255, .99), rgba(48, 164, 255, .92) 56%, rgba(0, 255, 159, .84)) !important;
+  box-shadow:
+    0 0 12px rgba(88, 226, 255, .34),
+    0 0 16px rgba(48, 164, 255, .22),
+    0 0 18px rgba(0, 255, 159, .20) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStatusCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardMemoryCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBriefCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDecisionCard{
+  border-color:rgba(64, 204, 255, .22) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 18px 42px rgba(2, 7, 18, .44),
+    0 0 24px rgba(64, 204, 255, .10),
+    0 0 18px rgba(0, 255, 159, .055) !important;
+}
+
+body[data-theme="cinematic-nebula"]{
+  --accent-soft-rgb:0,255,159 !important;
+  --mc-nebula-glow-magenta:rgba(0, 255, 159, .10) !important;
+  --mc-nebula-magenta-edge:rgba(72, 186, 255, .34) !important;
+  --mc-nebula-magenta-halo:0 0 34px rgba(0, 255, 159, .12) !important;
+  background:
+    radial-gradient(980px 520px at 12% -10%, rgba(40, 168, 255, .15), transparent 60%),
+    radial-gradient(960px 520px at 84% -8%, rgba(0, 255, 159, .10), transparent 58%),
+    radial-gradient(900px 560px at 66% 78%, rgba(42, 212, 201, .09), transparent 66%),
+    linear-gradient(180deg, #030711 0%, #06101c 38%, #050b14 100%) !important;
+  background-color:#030711 !important;
+}
+
+body[data-theme="cinematic-nebula"] .wrap::after,
+body[data-theme="cinematic-nebula"] .topbar + *::before,
+body[data-theme="cinematic-nebula"] .topbar + *::after{
+  background-image:none !important;
+}
+
+/* EOF cinematic-nebula starfield hard override.
+   Keep the theme green/blue and remove the purple diagonal beam/X overlays. */
+body[data-theme="cinematic-nebula"]{
+  --accent-soft-rgb:0, 255, 159 !important;
+  --mc-nebula-border-soft:rgba(74, 214, 255, .26) !important;
+  --mc-nebula-border-strong:rgba(0, 255, 159, .38) !important;
+  --mc-nebula-glow-magenta:rgba(0, 255, 159, .09) !important;
+  --mc-nebula-magenta-edge:rgba(0, 255, 159, .26) !important;
+  --mc-nebula-magenta-halo:0 0 34px rgba(0, 255, 159, .12) !important;
+  background:
+    radial-gradient(900px 480px at 14% -8%, rgba(50, 184, 255, .17), transparent 62%),
+    radial-gradient(840px 480px at 82% -10%, rgba(0, 255, 159, .13), transparent 60%),
+    radial-gradient(760px 500px at 70% 82%, rgba(23, 216, 205, .09), transparent 70%),
+    linear-gradient(180deg, #020711 0%, #05101c 46%, #030812 100%) !important;
+  background-color:#020711 !important;
+}
+
+body[data-theme="cinematic-nebula"]::before{
+  display:block !important;
+  background:
+    radial-gradient(1.6px 1.6px at 6% 9%, rgba(230, 252, 255, .78), transparent 72%),
+    radial-gradient(1.2px 1.2px at 12% 22%, rgba(96, 228, 255, .62), transparent 72%),
+    radial-gradient(1.4px 1.4px at 20% 14%, rgba(0, 255, 159, .46), transparent 72%),
+    radial-gradient(1.1px 1.1px at 31% 7%, rgba(215, 250, 255, .62), transparent 72%),
+    radial-gradient(1.5px 1.5px at 43% 18%, rgba(88, 226, 255, .58), transparent 72%),
+    radial-gradient(1.2px 1.2px at 52% 10%, rgba(215, 250, 255, .54), transparent 72%),
+    radial-gradient(1.6px 1.6px at 62% 23%, rgba(0, 255, 159, .40), transparent 72%),
+    radial-gradient(1.2px 1.2px at 73% 12%, rgba(96, 228, 255, .54), transparent 72%),
+    radial-gradient(1.4px 1.4px at 86% 20%, rgba(230, 252, 255, .58), transparent 72%),
+    radial-gradient(1.1px 1.1px at 94% 8%, rgba(0, 255, 159, .38), transparent 72%),
+    radial-gradient(720px 320px at 18% 3%, rgba(50, 184, 255, .16), transparent 75%),
+    radial-gradient(740px 320px at 76% 0%, rgba(0, 255, 159, .11), transparent 78%) !important;
+  opacity:.98 !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"]::after{
+  display:block !important;
+  background:
+    radial-gradient(1.1px 1.1px at 9% 43%, rgba(235, 252, 255, .34), transparent 72%),
+    radial-gradient(1px 1px at 18% 66%, rgba(96, 228, 255, .32), transparent 72%),
+    radial-gradient(1.2px 1.2px at 34% 49%, rgba(0, 255, 159, .26), transparent 72%),
+    radial-gradient(1px 1px at 51% 71%, rgba(235, 252, 255, .28), transparent 72%),
+    radial-gradient(1.2px 1.2px at 67% 43%, rgba(96, 228, 255, .30), transparent 72%),
+    radial-gradient(1px 1px at 82% 67%, rgba(0, 255, 159, .24), transparent 72%),
+    radial-gradient(1.1px 1.1px at 93% 50%, rgba(235, 252, 255, .28), transparent 72%),
+    radial-gradient(880px 460px at 52% 54%, rgba(31, 165, 255, .045), transparent 82%),
+    radial-gradient(780px 420px at 62% 84%, rgba(0, 255, 159, .045), transparent 84%) !important;
+  opacity:.72 !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .wrap::before,
+body[data-theme="cinematic-nebula"] .wrap::after,
+body[data-theme="cinematic-nebula"] .page-dashboard::before,
+body[data-theme="cinematic-nebula"] .page-dashboard::after,
+body[data-theme="cinematic-nebula"] .dashboardModeShell::before,
+body[data-theme="cinematic-nebula"] .dashboardModeShell::after,
+body[data-theme="cinematic-nebula"] .dashboardPrimaryBand::before,
+body[data-theme="cinematic-nebula"] .dashboardPrimaryBand::after,
+body[data-theme="cinematic-nebula"] .dashboardStage::before,
+body[data-theme="cinematic-nebula"] .dashboardStage::after,
+body[data-theme="cinematic-nebula"] .dashboardStageLead::before,
+body[data-theme="cinematic-nebula"] .dashboardStageLead::after,
+body[data-theme="cinematic-nebula"] .dashboardStageSide::before,
+body[data-theme="cinematic-nebula"] .dashboardStageSide::after,
+body[data-theme="cinematic-nebula"] .dashboardHero::before,
+body[data-theme="cinematic-nebula"] .dashboardHero::after,
+body[data-theme="cinematic-nebula"] .dashboardDecisionCard::before,
+body[data-theme="cinematic-nebula"] .dashboardDecisionCard::after,
+body[data-theme="cinematic-nebula"] .dashboardBriefCard::before,
+body[data-theme="cinematic-nebula"] .dashboardBriefCard::after,
+body[data-theme="cinematic-nebula"] .dashboardProjectionCard::before,
+body[data-theme="cinematic-nebula"] .dashboardProjectionCard::after,
+body[data-theme="cinematic-nebula"] .dashboardMilestoneCard::before,
+body[data-theme="cinematic-nebula"] .dashboardMilestoneCard::after,
+body[data-theme="cinematic-nebula"] .dashboardStatusDetailCard::before,
+body[data-theme="cinematic-nebula"] .dashboardStatusDetailCard::after,
+body[data-theme="cinematic-nebula"] .summaryPanel::before,
+body[data-theme="cinematic-nebula"] .summaryPanel::after,
+body[data-theme="cinematic-nebula"] .moreMenu::before{
+  background-image:none !important;
+  background:none !important;
+  filter:none !important;
+  opacity:0 !important;
+  animation:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::before{
+  background:
+    linear-gradient(90deg, rgba(96, 228, 255, 0), rgba(96, 228, 255, .92) 22%, rgba(36, 169, 255, .84) 52%, rgba(0, 255, 159, .82) 80%, rgba(255,255,255,0) 100%) !important;
+  box-shadow:
+    0 0 18px rgba(96, 228, 255, .34),
+    0 0 28px rgba(0, 255, 159, .20) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::after{
+  background:
+    radial-gradient(1.2px 1.2px at 8% 28%, rgba(235, 252, 255, .52), transparent 72%),
+    radial-gradient(1.1px 1.1px at 34% 18%, rgba(96, 228, 255, .46), transparent 72%),
+    radial-gradient(1.2px 1.2px at 70% 24%, rgba(0, 255, 159, .42), transparent 72%),
+    radial-gradient(1.1px 1.1px at 92% 30%, rgba(235, 252, 255, .42), transparent 72%),
+    linear-gradient(180deg, rgba(96, 228, 255, .04), transparent 44%) !important;
+  opacity:.92 !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::after,
+body[data-theme="cinematic-nebula"] .pill::after,
+body[data-theme="cinematic-nebula"] .btn.primary::after{
+  background:
+    linear-gradient(90deg, #60e4ff 0%, #28a8ff 48%, #00ff9f 100%) !important;
+  box-shadow:
+    0 0 14px rgba(96, 228, 255, .46),
+    0 0 22px rgba(0, 255, 159, .30) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar,
+body[data-theme="cinematic-nebula"] .card,
+body[data-theme="cinematic-nebula"] .stat,
+body[data-theme="cinematic-nebula"] .metric,
+body[data-theme="cinematic-nebula"] .insightCard,
+body[data-theme="cinematic-nebula"] .showcaseCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardPrimaryBand,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardFoundationCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBriefCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDecisionCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .summaryPanel,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSupportFold,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHealthSurface,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSnapshotCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardHero,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardPriorityCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardProjectionCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardMilestoneCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStatusDetailCard{
+  border-color:rgba(74, 214, 255, .23) !important;
+  background:
+    linear-gradient(180deg, rgba(6, 17, 29, .96), rgba(3, 9, 18, .992)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    inset 0 0 0 1px rgba(96, 228, 255, .026),
+    0 20px 50px rgba(1, 5, 14, .48),
+    0 0 30px rgba(74, 214, 255, .12),
+    0 0 22px rgba(0, 255, 159, .075) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStatusCard{
+  border-color:rgba(255, 72, 112, .18) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 16px 38px rgba(1, 5, 14, .42),
+    0 0 20px rgba(74, 214, 255, .09) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal{
+  border-color:rgba(96, 228, 255, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    inset 0 0 0 1px rgba(0, 255, 159, .035),
+    0 26px 64px rgba(1, 5, 14, .60),
+    0 0 46px rgba(67, 198, 255, .26),
+    0 0 34px rgba(0, 255, 159, .16) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal::before{
+  display:block !important;
+  content:"" !important;
+  position:absolute !important;
+  inset:-16px -16px -24px !important;
+  pointer-events:none !important;
+  border-radius:inherit !important;
+  background:
+    radial-gradient(74% 56% at 18% 52%, rgba(55, 204, 255, .30), transparent 58%),
+    radial-gradient(78% 58% at 82% 54%, rgba(0, 255, 159, .22), transparent 62%),
+    radial-gradient(70% 52% at 50% 105%, rgba(74, 214, 255, .18), transparent 68%) !important;
+  filter:blur(30px) !important;
+  opacity:1 !important;
+  z-index:-1 !important;
+  animation:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu{
+  border-color:rgba(96, 228, 255, .32) !important;
+  background:
+    linear-gradient(180deg, rgba(8, 21, 37, .988), rgba(3, 11, 21, .996)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    inset 0 0 0 1px rgba(0, 255, 159, .035),
+    0 28px 60px rgba(1, 4, 12, .66),
+    0 0 34px rgba(72, 186, 255, .24),
+    0 0 28px rgba(0, 255, 159, .16) !important;
+}
+
+/* Final blue/green pass: denser starfield, no purple status chrome. */
+body[data-theme="cinematic-nebula"]::before{
+  background:
+    radial-gradient(1.8px 1.8px at 4% 8%, rgba(238, 253, 255, .86), transparent 70%),
+    radial-gradient(1.2px 1.2px at 8% 23%, rgba(96, 228, 255, .68), transparent 72%),
+    radial-gradient(1.1px 1.1px at 11% 52%, rgba(0, 255, 159, .42), transparent 72%),
+    radial-gradient(1.5px 1.5px at 17% 15%, rgba(238, 253, 255, .64), transparent 72%),
+    radial-gradient(1.1px 1.1px at 22% 36%, rgba(96, 228, 255, .48), transparent 72%),
+    radial-gradient(1.6px 1.6px at 28% 9%, rgba(0, 255, 159, .44), transparent 72%),
+    radial-gradient(1.2px 1.2px at 34% 26%, rgba(238, 253, 255, .58), transparent 72%),
+    radial-gradient(1.1px 1.1px at 39% 61%, rgba(96, 228, 255, .42), transparent 72%),
+    radial-gradient(1.7px 1.7px at 45% 16%, rgba(238, 253, 255, .62), transparent 72%),
+    radial-gradient(1.1px 1.1px at 52% 38%, rgba(0, 255, 159, .36), transparent 72%),
+    radial-gradient(1.4px 1.4px at 58% 11%, rgba(96, 228, 255, .56), transparent 72%),
+    radial-gradient(1.1px 1.1px at 64% 50%, rgba(238, 253, 255, .42), transparent 72%),
+    radial-gradient(1.7px 1.7px at 70% 20%, rgba(0, 255, 159, .40), transparent 72%),
+    radial-gradient(1.2px 1.2px at 76% 42%, rgba(96, 228, 255, .48), transparent 72%),
+    radial-gradient(1.5px 1.5px at 83% 12%, rgba(238, 253, 255, .60), transparent 72%),
+    radial-gradient(1.1px 1.1px at 89% 33%, rgba(0, 255, 159, .34), transparent 72%),
+    radial-gradient(1.3px 1.3px at 96% 18%, rgba(96, 228, 255, .52), transparent 72%),
+    radial-gradient(820px 300px at 28% 0%, rgba(65, 202, 255, .18), transparent 74%),
+    radial-gradient(880px 320px at 74% 0%, rgba(0, 255, 159, .13), transparent 76%) !important;
+  opacity:1 !important;
+}
+
+body[data-theme="cinematic-nebula"]::after{
+  background:
+    radial-gradient(1px 1px at 7% 74%, rgba(238, 253, 255, .32), transparent 72%),
+    radial-gradient(1.1px 1.1px at 15% 44%, rgba(96, 228, 255, .38), transparent 72%),
+    radial-gradient(1px 1px at 24% 78%, rgba(0, 255, 159, .26), transparent 72%),
+    radial-gradient(1.1px 1.1px at 37% 46%, rgba(238, 253, 255, .30), transparent 72%),
+    radial-gradient(1px 1px at 49% 82%, rgba(96, 228, 255, .30), transparent 72%),
+    radial-gradient(1.1px 1.1px at 63% 58%, rgba(0, 255, 159, .24), transparent 72%),
+    radial-gradient(1px 1px at 78% 72%, rgba(238, 253, 255, .28), transparent 72%),
+    radial-gradient(1.1px 1.1px at 92% 56%, rgba(96, 228, 255, .30), transparent 72%),
+    radial-gradient(860px 520px at 16% 72%, rgba(26, 145, 255, .045), transparent 84%),
+    radial-gradient(900px 520px at 78% 72%, rgba(0, 255, 159, .045), transparent 84%) !important;
+  filter:none !important;
+  opacity:.82 !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStatusCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardMemoryCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSnapshotCard{
+  border-color:rgba(74, 214, 255, .24) !important;
+  background:
+    linear-gradient(180deg, rgba(6, 17, 29, .95), rgba(3, 9, 18, .99)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    inset 0 0 0 1px rgba(0, 255, 159, .025),
+    0 18px 42px rgba(1, 5, 14, .44),
+    0 0 26px rgba(74, 214, 255, .12),
+    0 0 18px rgba(0, 255, 159, .07) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStatusCard::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStatusCard::after,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard::after,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSnapshotCard::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardSnapshotCard::after{
+  background:none !important;
+  background-image:none !important;
+  opacity:0 !important;
+}
+
+/* Cinematic Nebula polish pass: quieter top halo, no purple trim, calmer motion. */
+body[data-theme="cinematic-nebula"] .topbar::before{
+  opacity:.78 !important;
+  filter:blur(9px) !important;
+  box-shadow:
+    0 0 15px rgba(96, 228, 255, .29),
+    0 0 24px rgba(0, 255, 159, .17) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    inset 0 0 0 1px rgba(96, 228, 255, .03),
+    0 16px 36px rgba(3, 8, 20, .38),
+    0 0 24px rgba(72, 186, 255, .12) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .card,
+  .stat,
+  .metric,
+  .insightCard,
+  .showcaseCard,
+  .heroCard,
+  .primaryCard,
+  .supportCard,
+  .quickPanel,
+  .drawer,
+  .mobileDock,
+  .pageHero,
+  .workspacePanel,
+  .summaryPanel,
+  .marketPulseSection,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionStateCard,
+  .marketPulseChecklistCard,
+  .marketPulseStructureCard,
+  .marketPulseDistanceCard,
+  .marketPulseTapeCard,
+  .dashboardCommandCard,
+  .dashboardFoundationCard,
+  .dashboardBriefCard,
+  .dashboardDecisionCard,
+  .dashboardProjectionCard,
+  .dashboardMilestoneCard,
+  .dashboardStatusDetailCard,
+  .dashboardSnapshotCard,
+  .dashboardMemoryCard,
+  .dashboardPrimaryBand,
+  .dashboardModeShell
+){
+  border-color:rgba(74, 214, 255, .22) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .card,
+  .stat,
+  .metric,
+  .insightCard,
+  .showcaseCard,
+  .heroCard,
+  .primaryCard,
+  .supportCard,
+  .pageHero,
+  .workspacePanel,
+  .summaryPanel,
+  .marketPulseSection,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionStateCard,
+  .marketPulseChecklistCard,
+  .marketPulseStructureCard,
+  .marketPulseDistanceCard,
+  .dashboardCommandCard,
+  .dashboardFoundationCard,
+  .dashboardBriefCard,
+  .dashboardDecisionCard,
+  .dashboardProjectionCard,
+  .dashboardMilestoneCard,
+  .dashboardStatusDetailCard,
+  .dashboardSnapshotCard,
+  .dashboardMemoryCard
+)::before,
+body[data-theme="cinematic-nebula"] :where(
+  .card,
+  .stat,
+  .metric,
+  .insightCard,
+  .showcaseCard,
+  .heroCard,
+  .primaryCard,
+  .supportCard,
+  .pageHero,
+  .workspacePanel,
+  .summaryPanel,
+  .marketPulseSection,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionStateCard,
+  .marketPulseChecklistCard,
+  .marketPulseStructureCard,
+  .marketPulseDistanceCard,
+  .dashboardCommandCard,
+  .dashboardFoundationCard,
+  .dashboardBriefCard,
+  .dashboardDecisionCard,
+  .dashboardProjectionCard,
+  .dashboardMilestoneCard,
+  .dashboardStatusDetailCard,
+  .dashboardSnapshotCard,
+  .dashboardMemoryCard
+)::after{
+  background-image:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::after,
+body[data-theme="cinematic-nebula"] .pill::after,
+body[data-theme="cinematic-nebula"] .btn.primary::after,
+body[data-theme="cinematic-nebula"] .marketPulseTickerOption[aria-selected="true"]::after,
+body[data-theme="cinematic-nebula"] .dashboardTickerOption[aria-selected="true"]::after{
+  background:linear-gradient(90deg, #5ee6ff 0%, #22a8ff 48%, #00ff9f 100%) !important;
+  box-shadow:
+    0 0 10px rgba(94, 230, 255, .36),
+    0 0 18px rgba(0, 255, 159, .22) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu.open{
+  transform:translate3d(0, 0, 0) scale(1) !important;
+  transition:
+    opacity 130ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform 140ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    visibility 0s linear 0s !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu{
+  transform:translate3d(0, 5px, 0) scale(.995) !important;
+  transition:
+    opacity 130ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform 140ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    visibility 0s linear 140ms !important;
+}
+
+@media (hover:hover) and (pointer:fine){
+  body[data-theme="cinematic-nebula"] .page-dashboard .card:hover,
+  body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseSection:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseExecutionHeroPanel:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeCard:hover{
+    transform:translate3d(0, -2px, 0) scale(1.003) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.045),
+      0 20px 46px rgba(1, 5, 14, .48),
+      0 0 24px rgba(74, 214, 255, .12) !important;
+  }
+}
+
+body[data-theme="cinematic-nebula"] .ui-reveal-ready{
+  transform:translate3d(0, 4px, 0) scale(.998) !important;
+}
+
+body[data-theme="cinematic-nebula"] .ui-reveal-ready.ui-reveal-enter{
+  transition:
+    transform 190ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    opacity 170ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .price-tick{
+  animation:ui-price-tick 120ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .status-pulse{
+  animation:ui-status-pulse 120ms var(--ui-motion-ease, cubic-bezier(0.4, 0, 0.2, 1)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal{
+  border-color:rgba(73, 183, 255, .58) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    inset 0 0 0 1px rgba(73, 183, 255, .14),
+    0 28px 66px rgba(1, 5, 14, .60),
+    0 0 0 1px rgba(73, 183, 255, .08),
+    0 0 34px rgba(49, 152, 255, .32),
+    0 0 56px rgba(0, 255, 159, .12) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard.dashboardCoreTapeTerminal::before{
+  background:
+    radial-gradient(82% 62% at 18% 48%, rgba(43, 164, 255, .34), transparent 60%),
+    radial-gradient(82% 60% at 82% 54%, rgba(0, 255, 159, .18), transparent 64%),
+    radial-gradient(82% 56% at 50% 104%, rgba(73, 183, 255, .22), transparent 70%) !important;
+  filter:blur(28px) !important;
+  opacity:1 !important;
+}
+
+/* Final motion trim: no card should jump forward on hover. */
+@media (hover:hover) and (pointer:fine){
+  body[data-theme="cinematic-nebula"] .page-dashboard .card:hover,
+  body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCoreTapeCard:hover,
+  body[data-theme="cinematic-nebula"] .page-dashboard .liveTapeWatchRow:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseSection:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseExecutionHeroPanel:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseTapeCard:hover,
+  body[data-theme="cinematic-nebula"] .page-market-pulse .marketPulseModalStat:hover{
+    transform:translate3d(0, -1px, 0) scale(1.001) !important;
+  }
+}
+
+body[data-theme="cinematic-nebula"] .ui-reveal-ready{
+  transform:translate3d(0, 3px, 0) scale(.999) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu{
+  transform:translate3d(0, 3px, 0) scale(.998) !important;
+}
+
+/* Hard-disable hover pop/lift animation. Keep color/glow states, remove movement. */
+@media (hover:hover) and (pointer:fine){
+  body[data-theme="cinematic-nebula"] :where(
+    .card,
+    .panel,
+    .btn,
+    .stat,
+    .metric,
+    .marketPulseSection,
+    .marketPulseExecutionHeroPanel,
+    .marketPulseTapeCard,
+    .marketPulseModalStat,
+    .dashboardCoreTapeCard,
+    .dashboardTapeWatchRow,
+    .liveTapeWatchRow,
+    .dashboardSnapshotCard,
+    .dashboardCommandCard,
+    .dashboardFoundationCard,
+    .dashboardBriefCard
+  ):hover{
+    transform:none !important;
+  }
+}
+
+body[data-theme="cinematic-nebula"] .ui-reveal-ready,
+body[data-theme="cinematic-nebula"] .ui-reveal-ready.ui-reveal-enter{
+  opacity:1 !important;
+  transform:none !important;
+  transition:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .price-tick,
+body[data-theme="cinematic-nebula"] .status-pulse{
+  animation:none !important;
+  transform:none !important;
 }

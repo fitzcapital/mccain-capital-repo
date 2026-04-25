@@ -32,6 +32,7 @@ MAX_MARKET_PULSE_LIMIT = 100
 TWITTERAPI_PAGE_SIZE = 100
 TWITTERAPI_MAX_PAGES = 1
 MAX_ITEM_AGE_HOURS = 96
+MAX_CACHED_SOURCE_ITEMS = 250
 TWITTERAPI_BASE_URL = "https://api.twitterapi.io"
 
 TRACKED_SOURCES: Tuple[Dict[str, str], ...] = (
@@ -133,9 +134,13 @@ def _normalize_source_store(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]
         state["last_good_payload"] = [
             row for row in list(state.get("last_good_payload") or []) if isinstance(row, dict)
         ]
+        state["last_raw_payload"] = [
+            row for row in list(state.get("last_raw_payload") or []) if isinstance(row, dict)
+        ]
         state["last_good_count"] = int(
             state.get("last_good_count") or len(state["last_good_payload"])
         )
+        state["last_raw_count"] = int(state.get("last_raw_count") or len(state["last_raw_payload"]))
         sources[username] = state
     return {"sources": sources}
 
@@ -241,10 +246,14 @@ def _mark_source_success(
     state["cooldown_until"] = ""
     state["last_status_code"] = 200
     state["last_error"] = ""
-    state["last_good_payload"] = list(items)
-    state["last_good_count"] = len(items)
-    state["last_raw_payload"] = list(raw_items)
-    state["last_raw_count"] = len(raw_items)
+    cached_items = list(state.get("last_good_payload") or [])
+    cached_raw_items = list(state.get("last_raw_payload") or [])
+    merged_items = _merge_cached_items(items, cached_items, limit=MAX_CACHED_SOURCE_ITEMS)
+    merged_raw_items = _merge_cached_items(raw_items, cached_raw_items, limit=MAX_CACHED_SOURCE_ITEMS)
+    state["last_good_payload"] = merged_items
+    state["last_good_count"] = len(merged_items)
+    state["last_raw_payload"] = merged_raw_items
+    state["last_raw_count"] = len(merged_raw_items)
     return state
 
 
@@ -874,6 +883,34 @@ def _sort_raw_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return int(published.timestamp()) if published else 0
 
     return sorted(items, key=_key, reverse=True)
+
+
+def _cache_item_key(item: Dict[str, Any]) -> Tuple[str, str, str]:
+    url = str(item.get("url") or item.get("tweetUrl") or item.get("twitterUrl") or "").strip()
+    post_id = str(item.get("id") or item.get("tweetId") or "").strip()
+    text = str(item.get("text") or item.get("headline") or item.get("summary") or "").strip().lower()
+    return (url, post_id, text)
+
+
+def _merge_cached_items(
+    fresh_items: List[Dict[str, Any]],
+    cached_items: List[Dict[str, Any]],
+    *,
+    limit: int,
+) -> List[Dict[str, Any]]:
+    merged: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    for item in [*cached_items, *fresh_items]:
+        if not isinstance(item, dict):
+            continue
+        key = _cache_item_key(item)
+        if not any(key):
+            continue
+        prior = merged.get(key)
+        if prior is None or str(item.get("published_at") or "") >= str(
+            prior.get("published_at") or ""
+        ):
+            merged[key] = item
+    return _sort_raw_items(list(merged.values()))[: max(1, int(limit))]
 
 
 def _source_payload_items(

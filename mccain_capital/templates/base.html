@@ -38,9 +38,9 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=browser-font-respect-20260423a">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=market-pulse-chart-stable-20260425b">
   {% if active in ['market-pulse', 'market_pulse'] %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=hero-chart-type-scale-20260423">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=market-pulse-chart-stable-20260425b">
   {% endif %}
 </head>
 
@@ -439,7 +439,7 @@
             Menu ▾
           </button>
 
-          <div id="moreMenu" class="moreMenu" role="menu">
+          <div id="moreMenu" class="moreMenu" role="menu" aria-hidden="true">
             {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
             <div class="menuTitle">Core</div>
             <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse">Market Pulse</a>

@@ -91,6 +91,33 @@ def test_twitter_feed_uses_cache_when_fetch_fails(monkeypatch):
     )
 
 
+def test_twitter_feed_merges_fresh_posts_with_cached_archive(monkeypatch):
+    now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
+    _reset_cache(monkeypatch)
+    calls = {"count": 0}
+
+    def fake_fetch(**kwargs):
+        calls["count"] += 1
+        post_id = str(calls["count"])
+        return [
+            {
+                "author": {"userName": "unusual_whales"},
+                "fullText": f"Cached archive post {post_id} for SPY and QQQ.",
+                "url": f"https://x.com/unusual_whales/status/{post_id}",
+                "createdAt": (now + timedelta(minutes=calls["count"])).isoformat(),
+            }
+        ]
+
+    monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", fake_fetch)
+    first = svc.build_twitter_feed_snapshot(now_et=now, force_refresh=True)
+    second = svc.build_twitter_feed_snapshot(now_et=now + timedelta(minutes=5), force_refresh=True)
+
+    urls = {item["url"] for item in second["items"]}
+    assert "https://x.com/unusual_whales/status/1" in urls
+    assert "https://x.com/unusual_whales/status/2" in urls
+    assert second["source_states"]["unusual_whales"]["last_good_count"] == 2
+
+
 def test_twitter_feed_never_returns_empty_without_cache(monkeypatch):
     now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
     _reset_cache(monkeypatch)

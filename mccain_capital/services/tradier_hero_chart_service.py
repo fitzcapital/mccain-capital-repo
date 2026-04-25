@@ -30,6 +30,7 @@ OPENING_SESSION_BAR_THRESHOLD = 10
 OPENING_SESSION_CARRYOVER_MINUTES = 390
 OPENING_SESSION_RIGHT_OFFSET_BARS = 6
 HERO_CHART_TIMEZONE = "America/New_York"
+EXTENDED_HOURS_SYMBOLS = frozenset({"QQQ", "SPY"})
 
 
 def _as_float(value: Any) -> Optional[float]:
@@ -131,6 +132,10 @@ def _previous_trading_day(anchor_day: date) -> date:
     return out
 
 
+def _supports_extended_hours(symbol: str) -> bool:
+    return str(symbol or DEFAULT_SYMBOL).strip().upper() in EXTENDED_HOURS_SYMBOLS
+
+
 def _bars_for_session_day(
     bars: List[Dict[str, Any]], *, session_day: date, regular_only: bool = True
 ) -> List[Dict[str, Any]]:
@@ -167,6 +172,54 @@ def _regular_session_bars_for_anchor_day(
         return current_regular
     prior_session_day = _previous_trading_day(anchor_day)
     return _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=True)
+
+
+def _extended_hours_bars_for_anchor_day(
+    *,
+    current_bars: List[Dict[str, Any]],
+    prior_bars: List[Dict[str, Any]],
+    anchor_day: date,
+    interval: str = DEFAULT_INTERVAL,
+) -> Dict[str, Any]:
+    """Return prior-session context plus current ETF extended-hours tape.
+
+    For QQQ/SPY we want one prior regular session for structure/gap context,
+    while the active day can include premarket, regular, and after-hours bars.
+    If the active day has no bars yet, fall back to the prior trading day's
+    all-session tape instead of returning an empty chart.
+    """
+
+    prior_session_day = _previous_trading_day(anchor_day)
+    prior_regular = _bars_for_session_day(
+        prior_bars, session_day=prior_session_day, regular_only=True
+    )
+    current_all = _bars_for_session_day(current_bars, session_day=anchor_day, regular_only=False)
+    current_regular = _bars_for_session_day(current_bars, session_day=anchor_day, regular_only=True)
+
+    if current_all:
+        combined = [dict(bar) for bar in prior_regular] + [dict(bar) for bar in current_all]
+        return {
+            "bars": combined,
+            "previous_session_bar_count": len(prior_regular),
+            "current_session_bar_count": len(current_all),
+            "previous_session_day": prior_session_day.isoformat() if prior_regular else "",
+            "current_session_day": anchor_day.isoformat(),
+            "visible_window_bars": len(combined),
+            "session_target_bar_count": (
+                _regular_session_target_bar_count(interval) if current_regular else 0
+            ),
+        }
+
+    prior_all = _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=False)
+    return {
+        "bars": [dict(bar) for bar in prior_all],
+        "previous_session_bar_count": 0,
+        "current_session_bar_count": len(prior_all),
+        "previous_session_day": "",
+        "current_session_day": prior_session_day.isoformat() if prior_all else "",
+        "visible_window_bars": len(prior_all),
+        "session_target_bar_count": 0,
+    }
 
 
 def _two_session_regular_bars(
@@ -381,6 +434,17 @@ def get_intraday_bars(
         LOGGER.warning("hero chart prior-session fetch failed for %s: %s", symbol_name, exc)
         prior_rows = []
     normalized_prior = normalize_tradier_timesales(list(prior_rows or []), interval=interval)
+
+    if _supports_extended_hours(symbol_name):
+        payload.update(
+            _extended_hours_bars_for_anchor_day(
+                current_bars=normalized_current,
+                prior_bars=normalized_prior,
+                anchor_day=now_et.date(),
+                interval=interval,
+            )
+        )
+        return payload
 
     if _session_phase(now_et) != "open":
         two_session_payload = _two_session_regular_bars(

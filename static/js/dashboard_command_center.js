@@ -48,6 +48,47 @@ function initCalendarPreview(root = document) {
   }
 }
 
+const dashboardUIFX = (() => {
+  const uiFX = typeof window !== "undefined" ? window.mcUIFX : null;
+
+  const asNumericText = (value) => {
+    const text = String(value ?? "").replace(/[^0-9+\-.]/g, "");
+    if (!text) return null;
+    const numeric = Number(text);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const directionFor = (previousText, nextValue, fallback = "neutral") => {
+    const prev = asNumericText(previousText);
+    const next = typeof nextValue === "number" ? nextValue : asNumericText(nextValue);
+    if (prev === null || next === null) return fallback;
+    if (next > prev) return "up";
+    if (next < prev) return "down";
+    return "neutral";
+  };
+
+  const setText = (node, value, { live = false, direction = "neutral", pulse = false, tone = "neutral", essential = false } = {}) => {
+    if (!node) return false;
+    const next = String(value ?? "—");
+    const previous = String(node.textContent || "");
+    if (previous === next) return false;
+    node.textContent = next;
+    if (live) {
+      uiFX?.flashValue?.(node, directionFor(previous, value, direction), { essential: true });
+    } else if (pulse) {
+      uiFX?.pulseNode?.(node, tone, { essential });
+    }
+    return true;
+  };
+
+  const pulse = (node, tone = "neutral", options = {}) => {
+    if (!node) return;
+    uiFX?.pulseNode?.(node, tone, options);
+  };
+
+  return { pulse, setText };
+})();
+
 (function () {
   const shell = document.getElementById("dashboardModeShell");
   if (!shell) return;
@@ -335,14 +376,14 @@ function initCalendarPreview(root = document) {
 
     if (lastNode) {
       if (price !== null) {
-        lastNode.textContent = formatValue(price, 2);
+        dashboardUIFX.setText(lastNode, formatValue(price, 2), { live: true, direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral" });
       } else if (!hasMeaningfulText(lastNode)) {
         lastNode.textContent = "loading...";
       }
     }
     if (chgpNode) {
       if (pct !== null) {
-        chgpNode.textContent = `${formatSigned(pct, 2)}%`;
+        dashboardUIFX.setText(chgpNode, `${formatSigned(pct, 2)}%`, { live: true, direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral" });
       } else if (!hasMeaningfulText(chgpNode)) {
         chgpNode.textContent = "loading...";
       }
@@ -354,24 +395,24 @@ function initCalendarPreview(root = document) {
 
     if (detailChgNode) {
       if (absChange !== null) {
-        detailChgNode.textContent = formatSigned(absChange, 2);
+        dashboardUIFX.setText(detailChgNode, formatSigned(absChange, 2), { live: true, direction: absChange > 0 ? "up" : absChange < 0 ? "down" : "neutral" });
       } else if (!hasMeaningfulText(detailChgNode)) {
         detailChgNode.textContent = "loading...";
       }
     }
-    if (detailOpenNode && openValue !== null) detailOpenNode.textContent = formatValue(openValue, 2);
-    if (detailPrevNode && prevCloseValue !== null) detailPrevNode.textContent = formatValue(prevCloseValue, 2);
-    if (detailLiveNode && String((quote || {}).as_of || "").trim()) detailLiveNode.textContent = freshness.compact;
+    if (detailOpenNode && openValue !== null) dashboardUIFX.setText(detailOpenNode, formatValue(openValue, 2));
+    if (detailPrevNode && prevCloseValue !== null) dashboardUIFX.setText(detailPrevNode, formatValue(prevCloseValue, 2));
+    if (detailLiveNode && String((quote || {}).as_of || "").trim()) dashboardUIFX.setText(detailLiveNode, freshness.compact);
   };
 
   const setStreamStatus = (label, detail) => {
-    statusNode.textContent = label;
+    const statusChanged = dashboardUIFX.setText(statusNode, label, { pulse: true, tone: label.toLowerCase().includes("retry") ? "warning" : "info" });
     statusNode.dataset.tone = label.toLowerCase().includes("retry")
       ? "delayed"
       : label.toLowerCase().includes("connect")
       ? "off"
       : "live";
-    updatedNode.textContent = detail;
+    dashboardUIFX.setText(updatedNode, detail, { pulse: statusChanged, tone: "info" });
   };
 
   const dispatchTapeState = () => {
@@ -483,28 +524,31 @@ function initCalendarPreview(root = document) {
   const updateDecisionPanel = (panel) => {
     if (!panel || typeof panel !== "object") return;
     if (decisionLead) {
-      decisionLead.textContent = String(
+      dashboardUIFX.setText(decisionLead, String(
         panel.posture_summary || panel.plan || "Wait for aligned planning context."
-      );
+      ), { pulse: true, tone: "info" });
     }
-    if (decisionBiasValue) decisionBiasValue.textContent = String(panel.bias || "Unavailable");
-    if (decisionRiskValue) decisionRiskValue.textContent = String(panel.risk_size || "Unavailable");
+    if (decisionBiasValue) dashboardUIFX.setText(decisionBiasValue, String(panel.bias || "Unavailable"), { pulse: true, tone: "info" });
+    if (decisionRiskValue) dashboardUIFX.setText(decisionRiskValue, String(panel.risk_size || "Unavailable"), { pulse: true, tone: "warning" });
     if (decisionPlanValue) {
       const fullPlan = String(panel.plan || "Wait");
-      decisionPlanValue.textContent = truncateText(fullPlan, 88);
+      dashboardUIFX.setText(decisionPlanValue, truncateText(fullPlan, 88), { pulse: true, tone: "info" });
       decisionPlanValue.title = fullPlan;
     }
     if (decisionTradeGateValue) {
       const fullGate = String(panel.trade_gate || "Wait");
-      decisionTradeGateValue.textContent = truncateText(fullGate, 74);
+      dashboardUIFX.setText(decisionTradeGateValue, truncateText(fullGate, 74), { pulse: true, tone: "warning" });
       decisionTradeGateValue.title = fullGate;
     }
     if (decisionStatusChip) {
       const tone = String(panel.status_tone || "").toLowerCase();
-      decisionStatusChip.textContent = String(panel.status || "Unavailable");
+      const changed = dashboardUIFX.setText(decisionStatusChip, String(panel.status || "Unavailable"));
       decisionStatusChip.classList.remove("positive", "negative", "warning", "info");
       if (["positive", "negative", "warning", "info"].includes(tone)) {
         decisionStatusChip.classList.add(tone);
+      }
+      if (changed) {
+        dashboardUIFX.pulse(decisionStatusChip, tone || "info");
       }
     }
     setPlanningHydrationState(false);
@@ -525,15 +569,18 @@ function initCalendarPreview(root = document) {
     gammaStrip.classList.remove("is-live", "is-stale", "is-loading", "is-unavailable");
     gammaStrip.classList.add(`is-${state}`);
     if (gammaMeta) {
-      gammaMeta.textContent = String(
+      const gammaMetaChanged = dashboardUIFX.setText(gammaMeta, String(
         payload.status_text
           || structure.gamma_regime_reason_label
           || structure.secondary_structure_degraded_reason
           || "Gamma context unavailable"
-      );
+      ), { pulse: true, tone: state === "stale" ? "warning" : state === "unavailable" ? "negative" : "info" });
       gammaMeta.classList.remove("is-stale", "is-loading", "is-unavailable");
       if (state === "stale" || state === "loading" || state === "unavailable") {
         gammaMeta.classList.add(`is-${state}`);
+      }
+      if (gammaMetaChanged && state === "stale") {
+        dashboardUIFX.pulse(gammaMeta, "warning");
       }
     }
     [
@@ -548,15 +595,24 @@ function initCalendarPreview(root = document) {
       const card = gammaCardByKey(key);
       const valueNode = gammaValueByKey(key);
       const detailNode = gammaDetailByKey(key);
-      if (valueNode) valueNode.textContent = structureValueForKey(key, structure);
+      const tone = structureToneForKey(key, structure);
+      const valueChanged = valueNode
+        ? dashboardUIFX.setText(valueNode, structureValueForKey(key, structure), {
+            pulse: true,
+            tone: tone || "info",
+          })
+        : false;
       if (detailNode && key === "regime") {
-        detailNode.textContent = String(
+        dashboardUIFX.setText(detailNode, String(
           structure.gamma_regime === "unconfirmed" || structure.gamma_regime === "unavailable"
             ? (structure.gamma_regime_reason_label || "")
             : ""
-        );
+        ));
       }
-      applyGammaTone(card, structureToneForKey(key, structure), structureGlowForKey(key, structure));
+      applyGammaTone(card, tone, structureGlowForKey(key, structure));
+      if (valueChanged) {
+        dashboardUIFX.pulse(card, tone || "info");
+      }
     });
   };
 
@@ -1210,26 +1266,28 @@ function initCalendarPreview(root = document) {
     const pct = alignmentKeys.length ? Math.round((completed / alignmentKeys.length) * 100) : 0;
     const status = alignmentStatusForPct(pct);
     if (alignmentStatusChip) {
-      alignmentStatusChip.textContent = status.label;
+      const changed = dashboardUIFX.setText(alignmentStatusChip, status.label);
       alignmentStatusChip.classList.remove("positive", "negative", "warning", "info");
       alignmentStatusChip.classList.add(status.tone);
+      if (changed) dashboardUIFX.pulse(alignmentStatusChip, status.tone);
     }
     if (alignmentScoreDial) {
       alignmentScoreDial.style.setProperty("--alignment-pct", `${pct}%`);
     }
-    if (alignmentScoreValue) alignmentScoreValue.textContent = `${pct}%`;
-    if (alignmentScoreLabel) alignmentScoreLabel.textContent = status.detail;
+    if (alignmentScoreValue) dashboardUIFX.setText(alignmentScoreValue, `${pct}%`, { pulse: true, tone: status.tone });
+    if (alignmentScoreLabel) dashboardUIFX.setText(alignmentScoreLabel, status.detail, { pulse: true, tone: status.tone });
     if (foundationSummary) {
-      foundationSummary.textContent = pct >= 80
+      dashboardUIFX.setText(foundationSummary, pct >= 80
         ? `Aligned to execute. Intention: ${activeIntentionText()}`
         : pct >= 40
         ? `Guard the session. Intention: ${activeIntentionText()}`
-        : "Pressure is rising. Re-anchor before taking risk.";
+        : "Pressure is rising. Re-anchor before taking risk.", { pulse: true, tone: status.tone });
     }
     if (foundationSummaryChip) {
-      foundationSummaryChip.textContent = status.label;
+      const changed = dashboardUIFX.setText(foundationSummaryChip, status.label);
       foundationSummaryChip.classList.remove("positive", "negative", "warning", "info");
       foundationSummaryChip.classList.add(status.tone);
+      if (changed) dashboardUIFX.pulse(foundationSummaryChip, status.tone);
     }
   };
 

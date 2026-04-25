@@ -3,6 +3,7 @@
 
   const config = window.APP_SHELL_CONFIG || {};
   const doc = document;
+  const docEl = doc.documentElement;
   const body = doc.body;
   const focusableSelector = [
     "a[href]",
@@ -50,6 +51,7 @@
     if (menu) menu.classList.remove("open");
     const btn = qs(".moreBtn");
     if (btn) btn.setAttribute("aria-expanded", "false");
+    if (menu) menu.setAttribute("aria-hidden", "true");
   }
 
   function closeQuickPanel() {
@@ -145,7 +147,9 @@
     if (!menu) return;
     closeQuickPanel();
     menu.classList.toggle("open");
-    if (btn) btn.setAttribute("aria-expanded", menu.classList.contains("open") ? "true" : "false");
+    const isOpen = menu.classList.contains("open");
+    if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    menu.setAttribute("aria-hidden", isOpen ? "false" : "true");
   }
 
   function toggleQuickPanel() {
@@ -681,12 +685,125 @@
   }
 
   function initCardStagger() {
-    qsa(".card, .metric, .calcCard, .insightCard").forEach((el, index) => {
+    const revealNodes = qsa([
+      ".card",
+      ".panel",
+      ".metric",
+      ".calcCard",
+      ".insightCard",
+      ".marketPulseSection",
+      ".marketPulseExecutionHeroPanel",
+    ].join(", "));
+    revealNodes.forEach((el, index) => {
       el.style.setProperty("--stagger", String(index % 8));
+      if (el.dataset.motionRevealBound === "1") return;
+      el.dataset.motionRevealBound = "1";
+      if (!window.mcUIFX || !window.mcUIFX.motionAllowed()) return;
+      el.classList.add("ui-reveal-ready");
     });
+    if (window.mcUIFX && window.mcUIFX.motionAllowed()) {
+      window.mcUIFX.revealNodes(revealNodes);
+    } else {
+      revealNodes.forEach((el) => el.classList.add("ui-reveal-enter"));
+    }
+  }
+
+  function initMotionFx() {
+    const LOW_PERF_VALUES = new Set(["low", "low-gpu"]);
+    const motionTimers = new WeakMap();
+    const reducedMotionQuery = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
+
+    const clearTimer = (node) => {
+      const timer = motionTimers.get(node);
+      if (timer) {
+        window.clearTimeout(timer);
+        motionTimers.delete(node);
+      }
+    };
+
+    const reflow = (node) => {
+      void node.offsetWidth;
+    };
+
+    const perfMode = () => String(
+      docEl.getAttribute("data-perf-mode")
+      || storageGet("mc_perf_mode")
+      || ""
+    ).trim().toLowerCase();
+
+    const isLowPerfMode = () =>
+      LOW_PERF_VALUES.has(perfMode())
+      || docEl.classList.contains("perf-mode-low-gpu");
+
+    const isReducedMotion = () => !!reducedMotionQuery?.matches;
+
+    const motionAllowed = ({ essential = false } = {}) => {
+      if (isReducedMotion()) return false;
+      if (!essential && isLowPerfMode()) return false;
+      return true;
+    };
+
+    const restartAnimation = (node, classNames, duration) => {
+      if (!node || !classNames.length) return false;
+      clearTimer(node);
+      classNames.forEach((className) => node.classList.remove(className));
+      reflow(node);
+      classNames.forEach((className) => node.classList.add(className));
+      const timer = window.setTimeout(() => {
+        classNames.forEach((className) => node.classList.remove(className));
+        motionTimers.delete(node);
+      }, duration);
+      motionTimers.set(node, timer);
+      return true;
+    };
+
+    const flashValue = (node, direction = "neutral", { essential = true, duration = 220 } = {}) => {
+      if (!motionAllowed({ essential })) return false;
+      const tone = ["up", "down"].includes(direction) ? direction : "neutral";
+      return restartAnimation(node, ["price-tick", `is-${tone}`], duration);
+    };
+
+    const pulseNode = (node, tone = "neutral", { essential = false, duration = 200 } = {}) => {
+      if (!motionAllowed({ essential })) return false;
+      const normalizedTone = ["positive", "negative", "warning", "info", "neutral"].includes(tone)
+        ? tone
+        : "neutral";
+      return restartAnimation(node, ["status-pulse", `tone-${normalizedTone}`], duration);
+    };
+
+    const revealNodes = (nodes, { essential = false } = {}) => {
+      if (!motionAllowed({ essential })) {
+        (Array.isArray(nodes) ? nodes : []).forEach((node) => {
+          if (!node) return;
+          node.classList.remove("ui-reveal-ready");
+          node.classList.add("ui-reveal-enter");
+        });
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        (Array.isArray(nodes) ? nodes : []).forEach((node, index) => {
+          if (!node) return;
+          node.style.setProperty("--stagger", String(index % 10));
+          node.classList.add("ui-reveal-ready");
+          window.requestAnimationFrame(() => node.classList.add("ui-reveal-enter"));
+        });
+      });
+    };
+
+    window.mcUIFX = {
+      flashValue,
+      isLowPerfMode,
+      isReducedMotion,
+      motionAllowed,
+      pulseNode,
+      revealNodes,
+    };
   }
 
   function init() {
+    initMotionFx();
     initTradingWindowForms();
     initMenus();
     initRowMenus();
