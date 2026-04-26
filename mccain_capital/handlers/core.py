@@ -81,6 +81,10 @@ def market_pulse_news_feed_api():
     return svc.market_pulse_news_feed_api()
 
 
+def market_pulse_context_api():
+    return svc.market_pulse_context_api()
+
+
 def hero_bars_api():
     return svc.hero_bars_api()
 
@@ -123,6 +127,14 @@ def dashboard_brief_update():
 
 def dashboard_pace_update():
     return svc.dashboard_pace_update()
+
+
+def dashboard_reflection_update():
+    return svc.dashboard_reflection_update()
+
+
+def dashboard_behavior_update():
+    return svc.dashboard_behavior_update()
 
 
 def candle_opens_page():

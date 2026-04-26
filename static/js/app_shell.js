@@ -3,6 +3,7 @@
 
   const config = window.APP_SHELL_CONFIG || {};
   const doc = document;
+  const docEl = doc.documentElement;
   const body = doc.body;
   const focusableSelector = [
     "a[href]",
@@ -50,6 +51,7 @@
     if (menu) menu.classList.remove("open");
     const btn = qs(".moreBtn");
     if (btn) btn.setAttribute("aria-expanded", "false");
+    if (menu) menu.setAttribute("aria-hidden", "true");
   }
 
   function closeQuickPanel() {
@@ -145,7 +147,9 @@
     if (!menu) return;
     closeQuickPanel();
     menu.classList.toggle("open");
-    if (btn) btn.setAttribute("aria-expanded", menu.classList.contains("open") ? "true" : "false");
+    const isOpen = menu.classList.contains("open");
+    if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    menu.setAttribute("aria-hidden", isOpen ? "false" : "true");
   }
 
   function toggleQuickPanel() {
@@ -311,7 +315,11 @@
       const href = navShortcutMap[comboBuffer];
       if (href) {
         event.preventDefault();
-        window.location.href = href;
+        if (typeof window.navigateWithShellLoading === "function") {
+          window.navigateWithShellLoading(href);
+        } else {
+          window.location.href = href;
+        }
         return true;
       }
       return false;
@@ -454,11 +462,13 @@
   }
 
   function initThemeAndGuided() {
-    const themeMigrationKey = "mc_theme_v6";
+    const themeMigrationKey = "mc_theme_v9";
     const fontModeKey = "mc_font_mode";
-    const themeOrder = ["galaxy", "cosmic-flare", "new-galaxy", "wallpaper-galaxy", "obsidian", "black", "nebula"];
+    const themeOrder = ["galaxy", "cosmic-flare", "new-galaxy", "grey", "wallpaper-galaxy", "obsidian", "black", "nebula", "cinematic-nebula"];
     const themeLabels = {
       "new-galaxy": "Theme: New Galaxy",
+      "cinematic-nebula": "Theme: Cinematic Nebula",
+      grey: "Theme: Grey",
       "wallpaper-galaxy": "Theme: Wallpaper Galaxy",
       "cosmic-flare": "Theme: Cosmic Flare",
       galaxy: "Theme: MGP",
@@ -467,8 +477,8 @@
       nebula: "Theme: Nebula",
     };
     const fontLabels = {
-      clean: "Font: Clean",
-      hand: "Font: Architects",
+      clean: "Font: Tech",
+      hand: "Font: Tech",
     };
 
     const syncThemeButtons = (theme) => {
@@ -478,7 +488,7 @@
     };
 
     const applyTheme = (theme) => {
-      const normalized = themeOrder.includes(theme) ? theme : "galaxy";
+      const normalized = themeOrder.includes(theme) ? theme : "cinematic-nebula";
       body.setAttribute("data-theme", normalized);
       syncThemeButtons(normalized);
     };
@@ -492,7 +502,7 @@
     };
 
     const applyFontMode = (mode) => {
-      const normalized = mode === "hand" ? "hand" : "clean";
+      const normalized = "clean";
       doc.documentElement.setAttribute("data-font-mode", normalized);
       body.setAttribute("data-font-mode", normalized);
       syncFontButtons(normalized);
@@ -542,19 +552,21 @@
     };
 
     window.toggleAppFont = () => {
-      const current = doc.documentElement.getAttribute("data-font-mode") === "hand" ? "hand" : "clean";
-      applyFontMode(current === "hand" ? "clean" : "hand");
+      applyFontMode("clean");
     };
 
     if (storageGet(themeMigrationKey) !== "1") {
       const savedTheme = storageGet("mc_theme");
-      if (!savedTheme || savedTheme === "cosmic-flare") {
-        storageSet("mc_theme", "galaxy");
+      if (savedTheme === "daylight") {
+        storageSet("mc_theme", "grey");
+      }
+      if (!savedTheme || savedTheme === "cosmic-flare" || savedTheme === "galaxy") {
+        storageSet("mc_theme", "cinematic-nebula");
       }
       storageSet(themeMigrationKey, "1");
     }
 
-    applyTheme(storageGet("mc_theme") || "galaxy");
+    applyTheme(storageGet("mc_theme") || "cinematic-nebula");
     applyFontMode(storageGet(fontModeKey) || doc.documentElement.getAttribute("data-font-mode") || "clean");
     const savedGuide = storageGet("mc_guided_mode");
     const firstRunSeen = storageGet("mc_guided_seen");
@@ -673,12 +685,125 @@
   }
 
   function initCardStagger() {
-    qsa(".card, .metric, .calcCard, .insightCard").forEach((el, index) => {
+    const revealNodes = qsa([
+      ".card",
+      ".panel",
+      ".metric",
+      ".calcCard",
+      ".insightCard",
+      ".marketPulseSection",
+      ".marketPulseExecutionHeroPanel",
+    ].join(", "));
+    revealNodes.forEach((el, index) => {
       el.style.setProperty("--stagger", String(index % 8));
+      if (el.dataset.motionRevealBound === "1") return;
+      el.dataset.motionRevealBound = "1";
+      if (!window.mcUIFX || !window.mcUIFX.motionAllowed()) return;
+      el.classList.add("ui-reveal-ready");
     });
+    if (window.mcUIFX && window.mcUIFX.motionAllowed()) {
+      window.mcUIFX.revealNodes(revealNodes);
+    } else {
+      revealNodes.forEach((el) => el.classList.add("ui-reveal-enter"));
+    }
+  }
+
+  function initMotionFx() {
+    const LOW_PERF_VALUES = new Set(["low", "low-gpu"]);
+    const motionTimers = new WeakMap();
+    const reducedMotionQuery = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
+
+    const clearTimer = (node) => {
+      const timer = motionTimers.get(node);
+      if (timer) {
+        window.clearTimeout(timer);
+        motionTimers.delete(node);
+      }
+    };
+
+    const reflow = (node) => {
+      void node.offsetWidth;
+    };
+
+    const perfMode = () => String(
+      docEl.getAttribute("data-perf-mode")
+      || storageGet("mc_perf_mode")
+      || ""
+    ).trim().toLowerCase();
+
+    const isLowPerfMode = () =>
+      LOW_PERF_VALUES.has(perfMode())
+      || docEl.classList.contains("perf-mode-low-gpu");
+
+    const isReducedMotion = () => !!reducedMotionQuery?.matches;
+
+    const motionAllowed = ({ essential = false } = {}) => {
+      if (isReducedMotion()) return false;
+      if (!essential && isLowPerfMode()) return false;
+      return true;
+    };
+
+    const restartAnimation = (node, classNames, duration) => {
+      if (!node || !classNames.length) return false;
+      clearTimer(node);
+      classNames.forEach((className) => node.classList.remove(className));
+      reflow(node);
+      classNames.forEach((className) => node.classList.add(className));
+      const timer = window.setTimeout(() => {
+        classNames.forEach((className) => node.classList.remove(className));
+        motionTimers.delete(node);
+      }, duration);
+      motionTimers.set(node, timer);
+      return true;
+    };
+
+    const flashValue = (node, direction = "neutral", { essential = true, duration = 220 } = {}) => {
+      if (!motionAllowed({ essential })) return false;
+      const tone = ["up", "down"].includes(direction) ? direction : "neutral";
+      return restartAnimation(node, ["price-tick", `is-${tone}`], duration);
+    };
+
+    const pulseNode = (node, tone = "neutral", { essential = false, duration = 200 } = {}) => {
+      if (!motionAllowed({ essential })) return false;
+      const normalizedTone = ["positive", "negative", "warning", "info", "neutral"].includes(tone)
+        ? tone
+        : "neutral";
+      return restartAnimation(node, ["status-pulse", `tone-${normalizedTone}`], duration);
+    };
+
+    const revealNodes = (nodes, { essential = false } = {}) => {
+      if (!motionAllowed({ essential })) {
+        (Array.isArray(nodes) ? nodes : []).forEach((node) => {
+          if (!node) return;
+          node.classList.remove("ui-reveal-ready");
+          node.classList.add("ui-reveal-enter");
+        });
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        (Array.isArray(nodes) ? nodes : []).forEach((node, index) => {
+          if (!node) return;
+          node.style.setProperty("--stagger", String(index % 10));
+          node.classList.add("ui-reveal-ready");
+          window.requestAnimationFrame(() => node.classList.add("ui-reveal-enter"));
+        });
+      });
+    };
+
+    window.mcUIFX = {
+      flashValue,
+      isLowPerfMode,
+      isReducedMotion,
+      motionAllowed,
+      pulseNode,
+      revealNodes,
+    };
   }
 
   function init() {
+    initMotionFx();
     initTradingWindowForms();
     initMenus();
     initRowMenus();

@@ -778,6 +778,17 @@
   if (!card) return;
   const shell = card.closest(".spxPriorityShell");
   const spotPanel = document.getElementById("spxPrioritySpotPanel");
+  const uiFX = typeof window !== "undefined" ? window.mcUIFX : null;
+  const LIVE_VALUE_IDS = new Set([
+    "marketPulseHeroSpot",
+    "spxPrioritySpot",
+    "spxPriorityChangeLine",
+  ]);
+  const STATUS_IDS = new Set([
+    "marketPulseHeroStateChip",
+    "marketPulseHeroStateContext",
+    "spxPriorityStateChip",
+  ]);
 
   const toneForBadge = (label) => {
     const l = String(label || "").toLowerCase();
@@ -790,7 +801,21 @@
     const node = document.getElementById(id);
     if (!node) return;
     const next = String(value ?? "—");
-    if (node.textContent !== next) node.textContent = next;
+    const previous = String(node.textContent || "");
+    if (previous === next) return;
+    node.textContent = next;
+    if (LIVE_VALUE_IDS.has(id)) {
+      const prevNumeric = Number(previous.replace(/[^0-9+\-.]/g, ""));
+      const nextNumeric = Number(next.replace(/[^0-9+\-.]/g, ""));
+      const direction = Number.isFinite(prevNumeric) && Number.isFinite(nextNumeric)
+        ? nextNumeric > prevNumeric ? "up" : nextNumeric < prevNumeric ? "down" : "neutral"
+        : "neutral";
+      uiFX?.flashValue?.(node, direction, { essential: true });
+      return;
+    }
+    if (STATUS_IDS.has(id)) {
+      uiFX?.pulseNode?.(node, "info");
+    }
   };
 
   const buildTickPingLabel = (asOfIso, provider) => {
@@ -884,7 +909,8 @@
     const prices = payload.prices || {};
     const seriesPoints = payload.series_points || {};
     const gamma = payload.gamma_map || {};
-    const spxTick = prices.SPX || prices["^GSPC"] || null;
+    const activeTicker = String(((current || {}).ticker) || "QQQ").toUpperCase();
+    const playbookTick = prices[activeTicker] || null;
     const vixTick = prices.VIX || prices["^VIX"] || null;
 
     const nextQuotesMap = {
@@ -918,24 +944,26 @@
       nextQuotesMap[key] = nextQuote;
     });
 
-    const nextSpx = { ...(current.spx_quote || {}) };
-    if (spxTick && typeof spxTick === "object") {
-      const tickPrice = asNum(spxTick.price);
-      if (tickPrice !== null) nextSpx.price = tickPrice;
-      const tickPct = asNum(spxTick.pct_change);
-      if (tickPct !== null) nextSpx.change_pct = tickPct;
-      const tickVwap = asNum(spxTick.vwap);
-      if (tickVwap !== null) nextSpx.vwap = tickVwap;
-      if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.as_of = spxTick.as_of;
-      if (typeof spxTick.as_of === "string" && spxTick.as_of) nextSpx.asof = spxTick.as_of;
-      if (typeof spxTick.provider === "string") nextSpx.provider = spxTick.provider;
-      if (typeof spxTick.reason === "string") {
-        nextSpx.reason = spxTick.reason;
-        nextSpx.data_reason = spxTick.reason;
+    const nextPlaybookQuote = { ...((current.playbook_quote || current.spx_quote) || {}) };
+    if (playbookTick && typeof playbookTick === "object") {
+      const tickPrice = asNum(playbookTick.price);
+      if (tickPrice !== null) nextPlaybookQuote.price = tickPrice;
+      const tickPct = asNum(playbookTick.pct_change);
+      if (tickPct !== null) nextPlaybookQuote.change_pct = tickPct;
+      const tickVwap = asNum(playbookTick.vwap);
+      if (tickVwap !== null) nextPlaybookQuote.vwap = tickVwap;
+      if (typeof playbookTick.as_of === "string" && playbookTick.as_of) nextPlaybookQuote.as_of = playbookTick.as_of;
+      if (typeof playbookTick.as_of === "string" && playbookTick.as_of) nextPlaybookQuote.asof = playbookTick.as_of;
+      if (typeof playbookTick.provider === "string") nextPlaybookQuote.provider = playbookTick.provider;
+      if (typeof playbookTick.reason === "string") {
+        nextPlaybookQuote.reason = playbookTick.reason;
+        nextPlaybookQuote.data_reason = playbookTick.reason;
       }
-      nextSpx.data_state = deriveDataState(nextSpx);
-      nextSpx.data_status_label = dataStateLabel(nextSpx.data_state);
-      nextSpx.source_badge_label = sourceBadgeLabel(nextSpx);
+      nextPlaybookQuote.symbol = activeTicker;
+      nextPlaybookQuote.label = activeTicker;
+      nextPlaybookQuote.data_state = deriveDataState(nextPlaybookQuote);
+      nextPlaybookQuote.data_status_label = dataStateLabel(nextPlaybookQuote.data_state);
+      nextPlaybookQuote.source_badge_label = sourceBadgeLabel(nextPlaybookQuote);
     }
 
     const nextVix = { ...(current.vix_quote || {}) };
@@ -960,7 +988,8 @@
     };
     current = {
       ...(current || {}),
-      spx_quote: nextSpx,
+      playbook_quote: nextPlaybookQuote,
+      spx_quote: nextPlaybookQuote,
       vix_quote: nextVix,
       market_now_iso: new Date().toISOString(),
       updated_at: payload.updated_at || (current || {}).updated_at || null,
@@ -973,7 +1002,7 @@
       gamma_snapshot: nextGammaSnapshot,
       execution_model: patchExecutionModelForStream(
         payload.execution_model || current.execution_model,
-        nextSpx,
+        nextPlaybookQuote,
         nextGammaSnapshot
       ),
     };
@@ -1187,15 +1216,34 @@
   const updateStateChip = (node, state, labelOverride = "") => {
     if (!node) return;
     const nextState = String(state || "missing");
-    node.textContent = String(labelOverride || dataStateLabel(nextState));
+    const nextLabel = String(labelOverride || dataStateLabel(nextState));
+    const changed = String(node.textContent || "") !== nextLabel || !node.classList.contains(`state-${nextState}`);
+    node.textContent = nextLabel;
     node.classList.remove("state-live", "state-delayed", "state-cached", "state-missing");
     node.classList.add(`state-${nextState}`);
+    if (changed) {
+      const tone = nextState === "live" ? "positive" : nextState === "missing" ? "negative" : "warning";
+      uiFX?.pulseNode?.(node, tone);
+    }
   };
 
-  const updateTextNode = (node, value) => {
+  const updateTextNode = (node, value, options = {}) => {
     if (!node) return;
     const next = String(value ?? "—");
-    if (node.textContent !== next) node.textContent = next;
+    const previous = String(node.textContent || "");
+    if (previous === next) return false;
+    node.textContent = next;
+    if (options.live) {
+      const prevNumeric = Number(previous.replace(/[^0-9+\-.]/g, ""));
+      const nextNumeric = Number(next.replace(/[^0-9+\-.]/g, ""));
+      const direction = Number.isFinite(prevNumeric) && Number.isFinite(nextNumeric)
+        ? nextNumeric > prevNumeric ? "up" : nextNumeric < prevNumeric ? "down" : "neutral"
+        : (options.direction || "neutral");
+      uiFX?.flashValue?.(node, direction, { essential: true });
+    } else if (options.pulse) {
+      uiFX?.pulseNode?.(node, options.tone || "info");
+    }
+    return true;
   };
 
   const updateSparkNode = (node, points, tone) => {
@@ -1217,9 +1265,15 @@
   const setChipTone = (id, label, tone) => {
     const node = document.getElementById(id);
     if (!node) return;
-    node.textContent = String(label || "—");
+    const next = String(label || "—");
+    const changed = String(node.textContent || "") !== next || (tone && !node.classList.contains(tone));
+    node.textContent = next;
     node.classList.remove("positive", "negative", "warn", "critical", "neutral");
     if (tone) node.classList.add(tone);
+    if (changed) {
+      const pulseTone = tone === "positive" ? "positive" : tone === "negative" || tone === "critical" ? "negative" : tone === "warn" ? "warning" : "info";
+      uiFX?.pulseNode?.(node, pulseTone);
+    }
   };
 
   const gradeTradeability = (score) => {
@@ -1859,6 +1913,8 @@
       const node = document.getElementById(id);
       if (node) node.classList.toggle("is-active", Boolean(active));
       setText(lineId, text);
+      const stateNode = document.getElementById(`${id}State`);
+      if (stateNode) stateNode.textContent = active ? "Ready" : "Pending";
     };
 
     setItem(
@@ -1895,7 +1951,53 @@
       String(triggerValidation?.status_line || (heroState.state === "BLOCKED" ? "BLOCKED — WAIT FOR EDGE" : heroState.state === "READY" ? "READY LOCATION — TRIGGER STILL REQUIRED" : "NO TRIGGER — NO TRADE"))
     );
     setText("marketPulseTriggerFooterLine", String(triggerValidation?.footer_line || heroState.note));
+    syncTriggerChecklistUi();
   };
+
+  const triggerChecklistItems = Array.from(document.querySelectorAll(".marketPulseTriggerItem[data-trigger-step]"));
+  const triggerProgressFill = document.getElementById("marketPulseTriggerProgressFill");
+  const triggerProgressLabel = document.getElementById("marketPulseTriggerProgressLabel");
+  const triggerProgressNext = document.getElementById("marketPulseTriggerProgressNext");
+  let selectedTriggerStep = null;
+
+  const selectTriggerChecklistStep = (step) => {
+    selectedTriggerStep = step || null;
+    triggerChecklistItems.forEach((item) => {
+      const selected = step && item.dataset.triggerStep === step;
+      item.classList.toggle("is-selected", selected);
+      item.setAttribute("aria-pressed", selected ? "true" : "false");
+    });
+  };
+
+  const syncTriggerChecklistUi = () => {
+    if (!triggerChecklistItems.length) return;
+    const activeItems = triggerChecklistItems.filter((item) => item.classList.contains("is-active"));
+    const completeCount = activeItems.length;
+    const nextItem = triggerChecklistItems.find((item) => !item.classList.contains("is-active"));
+    if (triggerProgressFill) {
+      triggerProgressFill.style.width = `${(completeCount / triggerChecklistItems.length) * 100}%`;
+    }
+    if (triggerProgressLabel) {
+      triggerProgressLabel.textContent = `${completeCount}/${triggerChecklistItems.length} complete`;
+    }
+    if (triggerProgressNext) {
+      triggerProgressNext.textContent = nextItem
+        ? `Next: ${String(nextItem.dataset.triggerTitle || "Checklist step")}`
+        : "Checklist complete";
+    }
+    const validSelected = triggerChecklistItems.some((item) => item.dataset.triggerStep === selectedTriggerStep);
+    if (!validSelected) {
+      selectTriggerChecklistStep((activeItems[0] || nextItem || triggerChecklistItems[0]).dataset.triggerStep);
+      return;
+    }
+    selectTriggerChecklistStep(selectedTriggerStep);
+  };
+
+  triggerChecklistItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      selectTriggerChecklistStep(item.dataset.triggerStep);
+    });
+  });
 
   const updateTapeSummary = (quotesBySymbol) => {
     const tracked = tapeCards
@@ -1949,6 +2051,7 @@
 
     const chip = card.querySelector('[data-role="state-chip"]');
     if (chip) {
+      const chipChanged = String(chip.textContent || "") !== watchState;
       chip.textContent = watchState;
       chip.classList.remove("tone-positive", "tone-negative", "tone-neutral");
       chip.classList.add(
@@ -1956,12 +2059,29 @@
           : watchState === "Risk-Off" || watchState === "Weak" ? "tone-negative"
             : "tone-neutral"
       );
+      if (chipChanged) {
+        uiFX?.pulseNode?.(
+          chip,
+          watchState === "Risk-On" || watchState === "Strong"
+            ? "positive"
+            : watchState === "Risk-Off" || watchState === "Weak"
+              ? "negative"
+              : "info"
+        );
+      }
     }
     updateTextNode(card.querySelector('[data-role="freshness"]'), state === "live" ? "Live" : formatEtLabel(asOf));
-    updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2));
+    updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2), {
+      live: true,
+      direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral",
+    });
     updateTextNode(
       card.querySelector('[data-role="change-line"]'),
-      `${formatSigned(pct, 2)}%`
+      `${formatSigned(pct, 2)}%`,
+      {
+        live: true,
+        direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral",
+      }
     );
     updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
     updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
@@ -1981,7 +2101,7 @@
   };
 
   const adaptInput = (base) => {
-    const spx = (base && base.spx_quote) || {};
+    const quote = (base && (base.playbook_quote || base.spx_quote)) || {};
     const gamma = (base && base.gamma_snapshot) || {};
     const vixQuote = (base && base.vix_quote) || {};
 
@@ -2002,23 +2122,23 @@
     const nowIso = base.market_now_iso || null;
     const vixDirection = inferVixDirection(vixQuote, base.vix_direction || "unavailable");
 
-    const dayOpen = asNum(spx.day_open);
-    const sessionHigh = asNum(spx.day_high);
-    const sessionLow = asNum(spx.day_low);
+    const dayOpen = asNum(quote.day_open);
+    const sessionHigh = asNum(quote.day_high);
+    const sessionLow = asNum(quote.day_low);
 
     return {
-      spot: asNum(spx.price),
+      spot: asNum(quote.price),
       dayOpen,
       sessionHigh,
       sessionLow,
-      priorDayHigh: asNum(spx.prior_day_high), // TODO(api): wire prior_day_high in quote payload when available.
-      priorDayLow: asNum(spx.prior_day_low), // TODO(api): wire prior_day_low in quote payload when available.
-      vwap: asNum(spx.vwap), // TODO(api): wire session VWAP from provider stream when available.
+      priorDayHigh: asNum(quote.prior_day_high), // TODO(api): wire prior_day_high in quote payload when available.
+      priorDayLow: asNum(quote.prior_day_low), // TODO(api): wire prior_day_low in quote payload when available.
+      vwap: asNum(quote.vwap), // TODO(api): wire session VWAP from provider stream when available.
       localFlip: localFlipFromSnapshot(gamma),
       localFlipFound: gamma.local_flip_found === true,
       localFlipMissingInBand: localFlipMissingInBand(gamma),
-      overnightHigh: asNum(spx.overnight_high), // TODO(api): wire overnight levels when available.
-      overnightLow: asNum(spx.overnight_low), // TODO(api): wire overnight levels when available.
+      overnightHigh: asNum(quote.overnight_high), // TODO(api): wire overnight levels when available.
+      overnightLow: asNum(quote.overnight_low), // TODO(api): wire overnight levels when available.
       vix: asNum(vixQuote.price),
       vixDirection,
 
@@ -2039,13 +2159,14 @@
       candidateLevels,
       updatedAt: gamma.asof || null,
       marketTimeIso: nowIso,
-      dataState: String(spx.data_state || ""),
-      freshnessLabel: String(spx.freshness_label || ""),
-      freshnessReason: String(spx.data_reason || ""),
+      dataState: String(quote.data_state || ""),
+      freshnessLabel: String(quote.freshness_label || ""),
+      freshnessReason: String(quote.data_reason || ""),
     };
   };
 
   const render = (base) => {
+    const activeTicker = String((base && base.ticker) || "QQQ").toUpperCase();
     const input = adaptInput(base);
     const derived = computeDistanceMetrics(input);
     const executionPlan = buildExecutionPlan(input, derived);
@@ -2066,26 +2187,25 @@
     const badges = Array.isArray(snapshotNarrative.warning_badges) && snapshotNarrative.warning_badges.length
       ? snapshotNarrative.warning_badges
       : buildWarningBadges(input, derived);
-    const spxQuote = (base && base.spx_quote) || {};
-    const spxPoints = pickBestSeries(
-      (((base || {}).series_points || {}).SPX),
-      (((base || {}).series_points || {})["^GSPC"]),
-      (Array.isArray(spxQuote.series) ? spxQuote.series : []),
-      (Array.isArray(spxQuote.mini_series) ? spxQuote.mini_series : [])
+    const playbookQuote = (base && (base.playbook_quote || base.spx_quote)) || {};
+    const quotePoints = pickBestSeries(
+      (((base || {}).series_points || {})[activeTicker]),
+      (Array.isArray(playbookQuote.series) ? playbookQuote.series : []),
+      (Array.isArray(playbookQuote.mini_series) ? playbookQuote.mini_series : [])
     );
-    const spxState = deriveDataState(spxQuote);
-    const spxAbsChange = inferAbsoluteChange(spxQuote.price, spxQuote.change_pct);
+    const quoteState = deriveDataState(playbookQuote);
+    const quoteAbsChange = inferAbsoluteChange(playbookQuote.price, playbookQuote.change_pct);
     const sessionPhase = deriveSessionPhase(base.market_now_iso || base.server_ts || base.updated_at || null);
-    const panelMode = seriesValueCount(spxPoints) >= 2
+    const panelMode = seriesValueCount(quotePoints) >= 2
       ? (sessionPhase === "open" ? "live" : "replay")
       : "reference";
-    const panelState = panelMode === "live" ? spxState : panelMode === "replay" ? "delayed" : "cached";
+    const panelState = panelMode === "live" ? quoteState : panelMode === "replay" ? "delayed" : "cached";
     const panelStateLabel = panelMode === "live" ? dataStateLabel(panelState) : panelMode === "replay" ? "Replay" : "Reference";
     const panelPriceLabel = panelMode === "live" ? "Live Price" : panelMode === "replay" ? "Last Session Close" : "Reference Price";
-    const panelRange = formatRange(spxPoints);
+    const panelRange = formatRange(quotePoints);
     const tickTimeRaw =
-      (base.spx_quote || {}).as_of
-      || (base.spx_quote || {}).asof
+      (playbookQuote || {}).as_of
+      || (playbookQuote || {}).asof
       || base.updated_at
       || base.server_ts
       || base.market_now_iso
@@ -2094,6 +2214,20 @@
       ? String(spxQuote.freshness_label || "Updated just now")
       : formatEtLabel(tickTimeRaw);
     const footerLabel = panelMode === "live" ? "Live" : panelMode === "replay" ? "Replay" : "Reference";
+    const gammaLabel = String(
+      structureSnapshot.gamma_regime_label
+      || ((base || {}).gamma_snapshot || {}).regime_label
+      || structureSnapshot.gamma_regime
+      || "REGIME UNAVAILABLE"
+    );
+    const gammaSub = String(
+      structureSnapshot.gamma_regime_reason_label
+      || structureSnapshot.gamma_regime_subtitle
+      || "Gamma snapshot unavailable"
+    );
+    const biasContext = String(structureSnapshot.bias_context || structureSnapshot.planning_bias_label || "Awaiting valid structure");
+    const biasShort = String(structureSnapshot.bias_label || structureSnapshot.trade_state_label || "WAIT");
+    const biasState = String(structureSnapshot.bias_state || "").toLowerCase();
 
     setText("spxPrioritySpotValue", formatNumber(input.spot, 2));
     setText("spxPriorityPriceLabel", panelPriceLabel);
@@ -2200,7 +2334,7 @@
       "spxPriorityTickPing",
       buildTickPingLabel(
         tickTimeRaw,
-        (base.spx_quote || {}).provider || (base.spx_quote || {}).data_reason
+        (playbookQuote || {}).provider || (playbookQuote || {}).data_reason
       )
     );
     const stateChip = document.getElementById("spxPriorityStateChip");
@@ -2208,13 +2342,44 @@
     if (stateChip) {
       stateChip.classList.toggle("is-hidden", panelMode === "live");
     }
-    setText("spxPrioritySourceBadge", sourceBadgeLabel(spxQuote));
-    setText("marketPulseSourceMode", sourceBadgeLabel(spxQuote));
-    setText("spxPriorityChangeLine", `${formatSigned(spxAbsChange, 2)} · ${formatSigned(spxQuote.change_pct, 2)}%`);
+    setText("spxPrioritySourceBadge", sourceBadgeLabel(playbookQuote));
+    setText("marketPulseSourceMode", sourceBadgeLabel(playbookQuote));
+    setText("spxPriorityChangeLine", `${formatSigned(quoteAbsChange, 2)} · ${formatSigned(playbookQuote.change_pct, 2)}%`);
     setText("spxPriorityFooterMeta", String((model && model.posture_summary) || `${footerLabel} • ${formatNumber(input.spot, 2)} • ${footerTime}`));
-    updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), spxPoints, sparkTone(spxQuote.change_pct));
-    applyGlowState([shell, spotPanel], spxQuote.change_pct);
+    updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), quotePoints, sparkTone(playbookQuote.change_pct));
+    applyGlowState([shell, spotPanel], playbookQuote.change_pct);
     setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
+    setText("marketPulseHeaderGammaLabel", gammaLabel);
+    setText("marketPulseHeaderGammaSub", gammaSub);
+    setText("marketPulseHeaderBiasPrimary", biasContext);
+    setText("marketPulseHeaderBiasSecondary", biasShort);
+
+    const gammaCard = document.getElementById("marketPulseHeaderGammaCard");
+    if (gammaCard) {
+      gammaCard.classList.remove("is-positive", "is-negative", "is-neutral");
+      gammaCard.classList.add(
+        derived.dealerRegime === "Positive Gamma / Mean Reverting"
+          ? "is-positive"
+          : derived.dealerRegime === "Negative Gamma / Momentum Amplifying"
+            ? "is-negative"
+            : "is-neutral"
+      );
+    }
+    const biasCard = document.getElementById("marketPulseHeaderBiasCard");
+    if (biasCard) {
+      biasCard.classList.remove("is-positive", "is-negative", "is-neutral");
+      biasCard.classList.add(
+        biasState === "above_local"
+          ? "is-positive"
+          : biasState === "below_local"
+            ? "is-negative"
+            : "is-neutral"
+      );
+    }
+    const aboveNode = document.getElementById("marketPulseHeaderBiasAbove");
+    const belowNode = document.getElementById("marketPulseHeaderBiasBelow");
+    if (aboveNode) aboveNode.classList.toggle("is-active", biasState === "above_local");
+    if (belowNode) belowNode.classList.toggle("is-active", biasState === "below_local");
 
     setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
@@ -2253,6 +2418,44 @@
   const base = getJson("spxPriorityBasePayload") || {};
   let current = JSON.parse(JSON.stringify(base));
   render(current);
+  const mergePayload = (incoming) => {
+    if (!incoming || typeof incoming !== "object") return current;
+    current = {
+      ...current,
+      ...incoming,
+      playbook_quote: {
+        ...(current.playbook_quote || current.spx_quote || {}),
+        ...(incoming.playbook_quote || incoming.spx_quote || {}),
+      },
+      spx_quote: {
+        ...(current.playbook_quote || current.spx_quote || {}),
+        ...(incoming.playbook_quote || incoming.spx_quote || {}),
+      },
+      vix_quote: { ...(current.vix_quote || {}), ...(incoming.vix_quote || {}) },
+      gamma_snapshot: { ...(current.gamma_snapshot || {}), ...(incoming.gamma_snapshot || {}) },
+      execution_model: { ...(current.execution_model || {}), ...(incoming.execution_model || {}) },
+      market_structure_snapshot: {
+        ...(current.market_structure_snapshot || {}),
+        ...(incoming.market_structure_snapshot || {}),
+      },
+      playbook_view: { ...(current.playbook_view || {}), ...(incoming.playbook_view || {}) },
+      playbook_priority_context: {
+        ...(current.playbook_priority_context || current.spx_priority_context || {}),
+        ...(incoming.playbook_priority_context || incoming.spx_priority_context || {}),
+      },
+      spx_priority_context: {
+        ...(current.playbook_priority_context || current.spx_priority_context || {}),
+        ...(incoming.playbook_priority_context || incoming.spx_priority_context || {}),
+      },
+      execution_chart: { ...(current.execution_chart || {}), ...(incoming.execution_chart || {}) },
+      series_points: { ...(current.series_points || {}), ...(incoming.series_points || {}) },
+      quotes_map: { ...(current.quotes_map || {}), ...(incoming.quotes_map || {}) },
+    };
+    render(current);
+    window.dispatchEvent(new CustomEvent("market-pulse-core-ready"));
+    return current;
+  };
+  window.applyMarketPulseContextPayload = mergePayload;
   window.addEventListener("resize", () => {
     if (pendingRenderTimer !== null) {
       window.clearTimeout(pendingRenderTimer);
@@ -2282,7 +2485,9 @@
   const connectStream = () => {
     closeStream();
     if (!pageVisible) return;
-    stream = new EventSource("/stream/market");
+    const streamUrl = new URL("/stream/market", window.location.origin);
+    streamUrl.searchParams.set("ticker", String((state.base && state.base.ticker) || "QQQ").toUpperCase());
+    stream = new EventSource(streamUrl.toString());
     stream.onopen = () => {
       dispatchStreamStatus("Live stream connected", "Listening for fresh ticks…");
     };

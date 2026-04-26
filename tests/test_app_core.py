@@ -355,6 +355,35 @@ def test_base_shell_includes_market_pulse_transition_overlay(client):
     assert b"showMarketPulseLoading" in resp.data
 
 
+def test_base_shell_generalizes_transition_loader_for_internal_pages(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'window.navigateWithShellLoading' in body
+    assert '"/analytics": { title: "Analytics"' in body
+    assert '"/strat": { title: "The Strat"' in body
+
+
+def test_market_pulse_page_uses_deferred_context_refresh_button(client):
+    resp = client.get("/market-pulse", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="marketPulseContextRefreshBtn"' in body
+    assert "/api/market-pulse/context" in body
+    assert "if (!pageLoaded || !coreReady) return;" in body
+
+
+def test_market_pulse_context_api_returns_playbook_payload(client):
+    resp = client.get("/api/market-pulse/context", follow_redirects=True)
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert "payload" in payload
+    assert "gamma_snapshot" in payload["payload"]
+    assert "execution_model" in payload["payload"]
+    assert "market_structure_snapshot" in payload["payload"]
+
+
 def test_dashboard_renders_daily_brief_card(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
@@ -371,11 +400,106 @@ def test_dashboard_renders_accountability_checklist(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Tools" in body
-    assert "Daily accountability checklist" in body
-    assert "Brief locked" in body
+    assert "Permission to trade checklist" in body
+    assert "Mindset anchored" in body
     assert "Post-session import" in body
-    assert "Journal today" in body
+    assert "Debrief before re-risk" in body
     assert "No debrief or quick capture logged for today yet." in body
+
+
+def test_dashboard_renders_foundation_routine_and_reflection_layers(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Operating State" in body
+    assert "Permission" in body
+    assert "Next Step" in body
+    assert "dashboardCommandDeck" in body
+    assert "5-Day Memory" in body
+    assert "Alignment Before Action" in body
+    assert "Scripture Anchor" in body
+    assert "Be doers of the word, and not hearers only" in body
+    assert "Daily Routine" in body
+    assert "Urgency Check" in body
+    assert "Doer Score" in body
+    assert "Was I a doer today?" in body
+
+
+def test_dashboard_reflection_update_saves_and_renders(client):
+    day = today_iso()
+    save_resp = client.post(
+        "/api/dashboard/reflection",
+        data={
+            "reflection_day": day,
+            "reflection_answer": "no",
+            "reflection_break_alignment": "Forced a setup early.",
+            "reflection_urgency_trigger": "Pressure after missing the first move.",
+            "reflection_obey_tomorrow": "Wait for confirmation before risk.",
+        },
+        follow_redirects=False,
+    )
+    assert save_resp.status_code == 200
+    payload = save_resp.get_json()
+    assert payload["ok"] is True
+    saved = json.loads(get_setting_value(f"dashboard_reflection::{day}", "{}"))
+    assert saved["answer"] == "no"
+    assert saved["break_alignment"] == "Forced a setup early."
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Saved to day" in body
+    assert "Forced a setup early." in body
+    assert "Pressure after missing the first move." in body
+    assert "Wait for confirmation before risk." in body
+
+
+def test_dashboard_behavior_update_saves_daily_summary_and_trend(client):
+    day = today_iso()
+    resp = client.post(
+        "/api/dashboard/behavior",
+        data={
+            "behavior_day": day,
+            "discipline_state": "locked-in",
+            "discipline_mode": "a-plus-only",
+            "gate_count": "3",
+            "routine_done": "12",
+            "routine_total": "16",
+            "alignment_pct": "88",
+            "intention": "Only take confirmed setups.",
+            "reflection_answer": "yes",
+            "increment_urgency": "1",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    saved = json.loads(get_setting_value(f"dashboard_behavior::{day}", "{}"))
+    assert saved["alignment_pct"] == 88
+    assert saved["gate_count"] == 3
+    assert saved["urgency_count"] == 1
+    assert payload["trend"]["doer_streak"] >= 1
+
+
+def test_dashboard_pace_buffer_updates_projection_profit(client):
+    resp = client.post(
+        "/dashboard/pace",
+        data={
+            "dashboard_pace_daily": "750",
+            "dashboard_pace_buffer": "5000",
+            "dashboard_projection_target_date": "2026-05-21",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert get_setting_value("dashboard_pace_buffer", "") == "5000.00"
+
+    dashboard = client.get("/dashboard", follow_redirects=True)
+    assert dashboard.status_code == 200
+    body = dashboard.get_data(as_text=True)
+    assert "Pass buffer ($)" in body
+    assert "Buffer $5,000.00 applied." in body
 
 
 def test_dashboard_accountability_checklist_reflects_today_journal_capture(client):
@@ -670,7 +794,7 @@ def test_dashboard_primary_decision_actions_link_to_market_pulse_trade_gate_and_
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'href="/market-pulse?refresh=1"' in body
+    assert 'href="/market-pulse?ticker=QQQ&amp;refresh=1"' in body
     assert 'href="/ops/trading-window"' in body
     assert 'href="/calendar"' in body
 
@@ -2371,6 +2495,8 @@ def test_candle_opens_page_renders_monthly_market_calendar(client):
     assert b"Trading Days" in resp.data
     assert b"Day reset" in resp.data
     assert b"candleWeekdayInline" in resp.data
+    assert b"candleFocusStrip" in resp.data
+    assert b"Next Reset Cluster" in resp.data
 
 
 def test_trades_page_uses_derived_running_balance(client):

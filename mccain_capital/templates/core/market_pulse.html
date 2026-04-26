@@ -3,7 +3,10 @@
 {% set gamma_snapshot_status_tone = 'positive' if gamma_snapshot_status == 'healthy' else 'warn' if gamma_snapshot_status in ['degraded', 'stale'] else 'negative' %}
 {% set structure_snapshot = market_structure_snapshot or {} %}
 {% set playbook = playbook_view or {} %}
-{% set spx_price_label = playbook.get('spot_label') or ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is not none else '—') %}
+{% set selected_ticker = ticker or 'QQQ' %}
+{% set quote = playbook_quote or spx_quote or {} %}
+{% set priority_context = playbook_priority_context or spx_priority_context or {} %}
+{% set spot_price_label = playbook.get('spot_label') or ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is not none else '—') %}
 {% set market_closed = execution_chart.mode != 'live_session' %}
 {% set model_levels = {
   'spot': structure_snapshot.get('spot'),
@@ -20,7 +23,7 @@
 {% set put_wall_num = model_levels.put_wall if model_levels.put_wall is number else none %}
 {% set next_call_wall_num = structure_snapshot.get('next_call_wall') if structure_snapshot.get('next_call_wall') is number else none %}
 {% set next_put_wall_num = structure_snapshot.get('next_put_wall') if structure_snapshot.get('next_put_wall') is number else none %}
-{% set spot_num = model_levels.spot if model_levels.spot is number else (spx_quote.get('price') if spx_quote.get('price') is number else none) %}
+{% set spot_num = model_levels.spot if model_levels.spot is number else (quote.get('price') if quote.get('price') is number else none) %}
 {% set macro_regime = {
   'state': playbook.get('gamma_regime') or structure_snapshot.get('gamma_regime') or 'unavailable',
   'title': playbook.get('gamma_regime_label') or structure_snapshot.get('gamma_regime_label') or 'REGIME UNAVAILABLE',
@@ -55,10 +58,23 @@
   <div class="toolbar">
     <div class="marketPulsePlaybookHero">
       <div class="marketPulsePlaybookTitleZone">
-        <div class="pill">Market Pulse</div>
-        <h2 class="pageTitle">SPX PLAYBOOK</h2>
+        <div class="marketPulseHeroKicker">Market Pulse</div>
+        <div class="marketPulseTickerRow">
+          <h2 class="pageTitle" id="marketPulseTitle">{{ selected_ticker }} PLAYBOOK</h2>
+          <div class="marketPulseTickerSwitcher" role="tablist" aria-label="Gamma playbook ticker">
+            {% for switch_ticker in supported_tickers %}
+              <a
+                class="marketPulseTickerSwitch{% if switch_ticker == selected_ticker %} is-active{% endif %}"
+                href="/market-pulse?ticker={{ switch_ticker }}{% if feed_mode == 'raw' %}&feed=raw{% endif %}"
+                role="tab"
+                aria-selected="{{ 'true' if switch_ticker == selected_ticker else 'false' }}"
+                data-playbook-ticker-switch="{{ switch_ticker }}"
+              >{{ switch_ticker }}</a>
+            {% endfor %}
+          </div>
+        </div>
         <div class="marketPulseHeaderSubline" id="marketPulseHeaderSubline">Main Flip {{ '%.0f'|format(main_flip_num) if main_flip_num is not none else '—' }} | Local Flip {{ local_flip_label }} | CW {{ '%.0f'|format(call_wall_num) if call_wall_num is not none else '—' }} | PW {{ '%.0f'|format(put_wall_num) if put_wall_num is not none else '—' }}</div>
-        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }} • SPX {{ spx_price_label }}</div>
+        <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }} • {{ selected_ticker }} {{ spot_price_label }}</div>
       </div>
       <div class="marketPulseGammaStateCard {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard">
         <div class="marketPulseGammaStateTop">
@@ -82,12 +98,23 @@
       </div>
     </div>
     <div class="marketPulsePlaybookActions">
-          <a id="marketPulseRefreshLink" class="btn primary" href="/market-pulse">Refresh</a>
+          <button
+            id="marketPulseContextRefreshBtn"
+            class="notifRefreshBtn marketPulseContextRefreshBtn"
+            type="button"
+            aria-label="Refresh gamma context"
+            title="Refresh gamma context"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+              <path d="M21 3v6h-6"></path>
+            </svg>
+          </button>
           <a class="btn" href="/candle-opens">Candle Opens</a>
     </div>
   </div>
   <div class="srOnly" aria-hidden="true">
-    <span>SPX Priority</span>
+    <span>{{ selected_ticker }} Priority</span>
     <span>Trade Read</span>
     <span>Live Data Status</span>
     <span>Source Health</span>
@@ -99,8 +126,8 @@
     <span>{{ gamma_snapshot.get('source_effective_timestamp_note') or '' }}</span>
     <span>Fetch-time freshness proxy</span>
     <span>Gamma Flip</span>
-    <span>Next walls: {{ spx_priority_context.get('next_levels_source_label') or '—' }}</span>
-    <span>Gamma range estimate: {{ spx_priority_context.get('expected_move_source_label') or '—' }}</span>
+    <span>Next walls: {{ priority_context.get('next_levels_source_label') or '—' }}</span>
+    <span>Gamma range estimate: {{ priority_context.get('expected_move_source_label') or '—' }}</span>
     <span>Best Contracts</span>
     <span>No trend</span>
     <span>Awaiting contract rows.</span>
@@ -125,8 +152,8 @@
     {% if gamma_snapshot.get('put_wall_gamma_per_point') is number %}
       <span>{{ '%.1f million'|format((gamma_snapshot.get('put_wall_gamma_per_point') or 0) / 1000000) }}</span>
     {% endif %}
-    {% if spx_quote.get('prior_day_low') is number and spx_quote.get('prior_day_high') is number %}
-      <span>{{ '%.2f - %.2f'|format(spx_quote.get('prior_day_low'), spx_quote.get('prior_day_high')) }}</span>
+    {% if quote.get('prior_day_low') is number and quote.get('prior_day_high') is number %}
+      <span>{{ '%.2f - %.2f'|format(quote.get('prior_day_low'), quote.get('prior_day_high')) }}</span>
     {% endif %}
     {% if options_contracts %}
       {% for contract in options_contracts[:3] %}
@@ -135,6 +162,31 @@
     {% endif %}
   </div>
 </div>
+
+<section class="marketPulseSessionState marketPulseSection {% if guardrail.active %}is-locked{% else %}is-open{% endif %}" aria-label="Market Pulse session and data state">
+  <div class="marketPulseSessionStatePrimary">
+    <span class="marketPulseSessionDot" aria-hidden="true"></span>
+    <div>
+      <div class="marketPulseSessionEyebrow">Session / Data State</div>
+      <strong>{% if guardrail.active %}Trading actions locked{% elif market_closed %}Planning mode{% else %}Execution mode{% endif %}</strong>
+    </div>
+  </div>
+  <div class="marketPulseSessionStateGrid">
+    <div>
+      <span>Guardrail</span>
+      <strong>{% if guardrail.active %}Data unsafe{% else %}Clear{% endif %}</strong>
+    </div>
+    <div>
+      <span>Gamma</span>
+      <strong>{{ gamma_snapshot.get('snapshot_status_label') or macro_regime.subtitle or 'Awaiting snapshot' }}</strong>
+    </div>
+    <div>
+      <span>Trigger</span>
+      <strong>{{ trigger_validation.get('status_badge') or trigger_validation.get('manual_label') or trade_state_label }}</strong>
+    </div>
+  </div>
+  <p>{{ guardrail.message if guardrail.active else (playbook.get('context_footer_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or 'Market Pulse context ready.') }}</p>
+</section>
 
 <section class="card stack12 marketPulseExecutionHero marketPulseSection">
   <div class="toolbar">
@@ -152,8 +204,8 @@
         </div>
         <div class="marketPulseExecutionHeroMetrics">
           <div class="marketPulseExecutionHeroMetric is-spot" id="marketPulseHeroSpotCard">
-            <span class="tiny muted" id="marketPulseHeroSpotLabel">{{ structure_snapshot.get('spot_source_short_label') or 'SPX Spot' }}</span>
-            <strong id="marketPulseHeroSpot">{{ spx_price_label }}</strong>
+            <span class="tiny muted" id="marketPulseHeroSpotLabel">{{ structure_snapshot.get('spot_source_short_label') or (selected_ticker ~ ' Spot') }}</span>
+            <strong id="marketPulseHeroSpot">{{ spot_price_label }}</strong>
           </div>
           <div class="marketPulseExecutionHeroMetric">
             <span class="tiny muted">Gamma Regime</span>
@@ -172,19 +224,48 @@
 
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-rail" aria-label="Execution rail">
         <div class="marketPulseExecutionHeroSectionHead">
-          <span class="tiny muted">SPX Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
+          <span class="tiny muted">{{ selected_ticker }} Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
           <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ playbook.get('action_context_label') or location.read or 'Awaiting valid structure' }}</span>
         </div>
         <div class="marketPulseExecutionHeroChartShell">
           <div class="marketPulseExecutionHeroChartBanner">
             <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ playbook.get('hero_title_label') or (trade_state_label ~ ' - ' ~ (structure_snapshot.get('current_read') or location.zone or 'Awaiting structure')) }}</div>
+            <div class="marketPulseExecutionHeroChartControls" aria-label="Chart display toggles">
+              <button
+                class="marketPulseExecutionHeroChartToggle is-active"
+                id="marketPulseHeroToggleMarkers"
+                type="button"
+                aria-pressed="true"
+                title="Toggle Strat markers"
+              >
+                <span aria-hidden="true">123</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroChartToggle is-active"
+                id="marketPulseHeroToggleLevels"
+                type="button"
+                aria-pressed="true"
+                title="Toggle level lines"
+              >
+                <span aria-hidden="true">≡</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroChartToggle is-active"
+                id="marketPulseHeroToggleDayLevels"
+                type="button"
+                aria-pressed="true"
+                title="Toggle PDH / PDL / CDH / CDL"
+              >
+                <span aria-hidden="true">D</span>
+              </button>
+            </div>
           </div>
           {# NCW / NPW come from gamma_snapshot.next_call_wall_above / next_put_wall_below when available. #}
           <div
             class="marketPulseExecutionHeroChartStage"
             id="spxExecutionHeroChart"
-            aria-label="SPX execution chart"
-            data-symbol="SPX"
+            aria-label="{{ selected_ticker }} execution chart"
+            data-symbol="{{ selected_ticker }}"
             data-interval="5min"
             data-bars-url="{{ url_for('hero_bars_api') }}"
             data-levels-url="{{ url_for('hero_levels_api') }}"
@@ -198,7 +279,8 @@
             data-next-put-wall="{{ next_put_wall_num if next_put_wall_num is not none else '' }}"
           >
             <div class="marketPulseExecutionHeroChartCanvas" id="spxExecutionHeroChartCanvas" aria-hidden="true"></div>
-            <div class="marketPulseExecutionHeroChartEmpty tiny muted" id="spxExecutionHeroChartEmpty">Loading SPX hero chart…</div>
+            <div class="marketPulseExecutionHeroLevelRail" id="spxExecutionHeroLevelRail" aria-hidden="true"></div>
+            <div class="marketPulseExecutionHeroChartEmpty tiny muted" id="spxExecutionHeroChartEmpty">Loading {{ selected_ticker }} hero chart…</div>
           </div>
         </div>
         <div class="marketPulseExecutionHeroRailFooter marketPulseExecutionHeroRailFooter-map">
@@ -221,7 +303,6 @@
         <div class="marketPulseExecutionHeroSectionHead">
           <span class="tiny muted">Trade Decision</span>
           <span class="marketPulseExecutionHeroStateChip tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseHeroStateChip">{{ playbook.get('execution_status_badge') or trigger_validation.get('status_badge') or structure_snapshot.get('trade_state_label') or trade_state_label }}</span>
-          <span class="marketPulseTradeabilityBadge tone-{{ playbook.get('context_tone') or structure_snapshot.get('context_tone') or 'warn' }}" id="marketPulseTradeabilityBadge">{{ playbook.get('execution_status_badge') or trigger_validation.get('status_badge') or structure_snapshot.get('trade_state_label') or 'WATCH' }}</span>
         </div>
         <div class="marketPulseTradeContextLead" id="marketPulseActionLead">{{ playbook.get('execution_status_label') or playbook.get('context_lead_label') or execution_model.posture_summary or 'Execution context pending.' }}</div>
         <div class="marketPulseTradeabilityMetaRow marketPulseTradeabilityMetaRow-compact">
@@ -264,9 +345,9 @@
         </div>
         <div id="spxPrioritySpotPanel" hidden></div>
         <div id="spxPriorityPriceLabel" hidden>{{ execution_chart.price_label or 'Live Price' }}</div>
-        <div id="spxPrioritySpotValue" hidden>{{ spx_price_label }}</div>
-        <div id="spxPriorityChangeLine" hidden>{{ '%+.2f'|format(spx_quote.get('change')) if spx_quote.get('change') is not none else '—' }} · {{ '%+.2f'|format(spx_quote.get('change_pct')) if spx_quote.get('change_pct') is not none else '—' }}%</div>
-        <div id="spxPrioritySourceBadge" hidden>{{ spx_quote.get('source_badge_label') or source_label }}</div>
+        <div id="spxPrioritySpotValue" hidden>{{ spot_price_label }}</div>
+        <div id="spxPriorityChangeLine" hidden>{{ '%+.2f'|format(quote.get('change')) if quote.get('change') is not none else '—' }} · {{ '%+.2f'|format(quote.get('change_pct')) if quote.get('change_pct') is not none else '—' }}%</div>
+        <div id="spxPrioritySourceBadge" hidden>{{ quote.get('source_badge_label') or source_label }}</div>
         <div id="marketPulseSetupLocation" hidden>—</div>
         <div id="spxPriorityTickPing" hidden>—</div>
         <div id="spxPriorityStructureType" hidden>—</div>
@@ -292,35 +373,53 @@
       <span class="pill">Entry Checklist</span>
       <span class="tiny muted marketPulseClampLine" id="marketPulseTriggerHeaderLine">{{ trigger_validation.get('status_badge') or trigger_validation.get('manual_label') or 'Manual confirmation required' }}</span>
     </div>
+    <div class="marketPulseTriggerProgressShell" aria-label="Entry checklist progress">
+      <div class="marketPulseTriggerProgressBar" aria-hidden="true">
+        <span class="marketPulseTriggerProgressFill" id="marketPulseTriggerProgressFill" style="width: {{ '%.2f'|format((((trigger_validation.get('items', {}).get('sweep', {}).get('active')|int) + (trigger_validation.get('items', {}).get('reclaim', {}).get('active')|int) + (trigger_validation.get('items', {}).get('reversal', {}).get('active')|int) + (trigger_validation.get('items', {}).get('volume', {}).get('active')|int)) / 4) * 100 if trigger_validation.get('items') else 0) }}%;"></span>
+      </div>
+      <div class="marketPulseTriggerProgressMeta">
+        {% set trigger_complete_count = ((trigger_validation.get('items', {}).get('sweep', {}).get('active')|int) + (trigger_validation.get('items', {}).get('reclaim', {}).get('active')|int) + (trigger_validation.get('items', {}).get('reversal', {}).get('active')|int) + (trigger_validation.get('items', {}).get('volume', {}).get('active')|int)) %}
+        <strong id="marketPulseTriggerProgressLabel">{{ trigger_complete_count }}/4 complete</strong>
+        <span id="marketPulseTriggerProgressNext">{% if not trigger_validation.get('items', {}).get('sweep', {}).get('active') %}Next: Level touched{% elif not trigger_validation.get('items', {}).get('reclaim', {}).get('active') %}Next: Reclaim / rejection confirmed{% elif not trigger_validation.get('items', {}).get('reversal', {}).get('active') %}Next: Trigger candle printed{% elif not trigger_validation.get('items', {}).get('volume', {}).get('active') %}Next: Participation confirmed{% else %}Checklist complete{% endif %}</span>
+      </div>
+    </div>
     <div class="marketPulseTriggerChecklist">
-      <div class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('sweep', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerSweep">
-        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+      <button class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('sweep', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerSweep" type="button" data-trigger-step="sweep" data-trigger-title="Level touched" aria-pressed="false">
+        <span class="marketPulseTriggerIndex" aria-hidden="true">1</span>
         <div class="marketPulseTriggerCopy">
-          <strong>1. Level touched</strong>
+          <span class="marketPulseTriggerStepState" id="marketPulseTriggerSweepState">{% if trigger_validation.get('items', {}).get('sweep', {}).get('active') %}Ready{% else %}Pending{% endif %}</span>
+          <strong>Level touched</strong>
           <span id="marketPulseTriggerSweepLine">{{ trigger_validation.get('items', {}).get('sweep', {}).get('line') or 'Need sweep into the working level before entry is considered.' }}</span>
         </div>
-      </div>
-      <div class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('reclaim', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerReclaim">
         <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+      </button>
+      <button class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('reclaim', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerReclaim" type="button" data-trigger-step="reclaim" data-trigger-title="Reclaim / rejection confirmed" aria-pressed="false">
+        <span class="marketPulseTriggerIndex" aria-hidden="true">2</span>
         <div class="marketPulseTriggerCopy">
-          <strong>2. Reclaim / rejection confirmed</strong>
+          <span class="marketPulseTriggerStepState" id="marketPulseTriggerReclaimState">{% if trigger_validation.get('items', {}).get('reclaim', {}).get('active') %}Ready{% else %}Pending{% endif %}</span>
+          <strong>Reclaim / rejection confirmed</strong>
           <span id="marketPulseTriggerReclaimLine">{{ trigger_validation.get('items', {}).get('reclaim', {}).get('line') or 'Wait for the level to prove itself after the interaction.' }}</span>
         </div>
-      </div>
-      <div class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('reversal', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerReversal">
         <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+      </button>
+      <button class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('reversal', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerReversal" type="button" data-trigger-step="reversal" data-trigger-title="Trigger candle printed" aria-pressed="false">
+        <span class="marketPulseTriggerIndex" aria-hidden="true">3</span>
         <div class="marketPulseTriggerCopy">
-          <strong>3. Trigger candle printed</strong>
+          <span class="marketPulseTriggerStepState" id="marketPulseTriggerReversalState">{% if trigger_validation.get('items', {}).get('reversal', {}).get('active') %}Ready{% else %}Pending{% endif %}</span>
+          <strong>Trigger candle printed</strong>
           <span id="marketPulseTriggerReversalLine">{{ trigger_validation.get('items', {}).get('reversal', {}).get('line') or 'A clean 5m reversal or continuation trigger still has to print.' }}</span>
         </div>
-      </div>
-      <div class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('volume', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerVolume">
         <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+      </button>
+      <button class="marketPulseTriggerItem{% if trigger_validation.get('items', {}).get('volume', {}).get('active') %} is-active{% endif %}" id="marketPulseTriggerVolume" type="button" data-trigger-step="volume" data-trigger-title="Participation confirmed" aria-pressed="false">
+        <span class="marketPulseTriggerIndex" aria-hidden="true">4</span>
         <div class="marketPulseTriggerCopy">
-          <strong>4. Participation confirmed</strong>
+          <span class="marketPulseTriggerStepState" id="marketPulseTriggerVolumeState">{% if trigger_validation.get('items', {}).get('volume', {}).get('active') %}Ready{% else %}Pending{% endif %}</span>
+          <strong>Participation confirmed</strong>
           <span id="marketPulseTriggerVolumeLine">{{ trigger_validation.get('items', {}).get('volume', {}).get('line') or 'Require real participation before calling the move valid.' }}</span>
         </div>
-      </div>
+        <span class="marketPulseTriggerDot" aria-hidden="true"></span>
+      </button>
     </div>
     <div class="marketPulseTriggerFooter" id="marketPulseTriggerFooter">
       <strong id="marketPulseTriggerStatus">{{ trigger_validation.get('status_line') or 'NO TRIGGER — NO TRADE' }}</strong>
@@ -329,7 +428,7 @@
   </div>
 </section>
 
-{% set spx_priority_change = spx_quote.get('change_pct') if spx_quote else none %}
+{% set spx_priority_change = quote.get('change_pct') if quote else none %}
 {% set spx_priority_tone = 'glow-green' if spx_priority_change is not none and spx_priority_change > 0 else 'glow-red' if spx_priority_change is not none and spx_priority_change < 0 else '' %}
 <section class="marketPulseExecutionContextGrid marketPulseSection">
   {% set structure_values = [spot_num, main_flip_num, local_flip_num, call_wall_num, put_wall_num]|select('number')|list %}
@@ -516,6 +615,7 @@
   </summary>
 {% set whales_items = pulse_feed_items | selectattr('handle', 'equalto', '@unusual_whales') | sort(attribute='published_at', reverse=true) | list %}
 {% set remaining_posts = whales_items if whales_items else [] %}
+{% set high_impact_posts = whales_items | selectattr('impact', 'equalto', 'high') | list %}
 {% set commentary_total_count = whales_items|length %}
 {% set feed_snapshot = market_feed_snapshot or {} %}
 {% set feed_status = feed_snapshot.get('status') or ('live' if whales_items else 'delayed') %}
@@ -567,20 +667,21 @@
         </div>
       </div>
       <div class="marketFeedTabs" role="tablist">
-        <a class="marketFeedTab{% if feed_mode != 'raw' %} is-active{% endif %}" href="/market-pulse?feed=curated#marketFeedSection">Desk Feed</a>
-        <a class="marketFeedTab{% if feed_mode == 'raw' %} is-active{% endif %}" href="/market-pulse?feed=raw#marketFeedSection">All Posts</a>
+        <a class="marketFeedTab{% if feed_mode != 'raw' %} is-active{% endif %}" href="/market-pulse?ticker={{ selected_ticker }}#marketFeedSection">Desk Feed</a>
+        <a class="marketFeedTab{% if feed_mode == 'raw' %} is-active{% endif %}" href="/market-pulse?ticker={{ selected_ticker }}&feed=raw#marketFeedSection">All Posts</a>
       </div>
-      <div class="marketFeedGrid" id="marketFeedLayout">
+      <div class="marketFeedGrid{% if not remaining_posts or not high_impact_posts %} marketFeedGrid--single{% endif %}" id="marketFeedLayout">
         {% if remaining_posts %}
+          {% if high_impact_posts %}
           <aside class="marketFeedRail marketFeedRail-left">
             <div class="marketFeedRail__label">High Impact</div>
             <div class="marketFeedHighShell" id="marketFeedHighShell">
               <div class="marketFeedHighShell__head">
                 <div class="marketFeedHighShell__title">Alerts</div>
-                <div class="marketFeedHighShell__count" id="marketFeedHighCount">{{ (whales_items | selectattr('impact', 'equalto', 'high') | list) | length }}</div>
+                <div class="marketFeedHighShell__count" id="marketFeedHighCount">{{ high_impact_posts|length }}</div>
               </div>
               <div class="marketFeedHighList">
-                {% for item in whales_items if item.impact == 'high' %}
+                {% for item in high_impact_posts %}
                   <article class="marketFeedRow marketFeedRow-high">
                     <div class="marketFeedRow__meta">
                       <span class="live-x-feed-item__tag">HIGH</span>
@@ -610,6 +711,7 @@
               </div>
             </div>
           </aside>
+          {% endif %}
           <section class="marketFeedRail marketFeedRail-right">
             <div class="marketFeedRail__label">Live Feed</div>
             <div class="marketFeedListShell" id="marketFeedListShell">
@@ -682,7 +784,7 @@
           </div>
         </div>
         <div class="marketFeedDock__meta">
-          <span>{{ feed_status_label }}</span>
+          <span id="marketFeedDockStatus">{{ feed_status_label }}</span>
           <span id="marketFeedDockCount">{{ commentary_total_count }} posts</span>
           <span id="marketFeedSourceHealth">{{ pulse_feed_source_note or feed_snapshot.get('source_note') or 'Monitoring provider health' }}</span>
         </div>
@@ -789,20 +891,34 @@
       </div>
       <button class="btn" type="button" data-close-modal="marketPulseLevelsModal">Close</button>
     </div>
+    {% set advanced_levels = [
+      {'label': 'Gamma Flip', 'value': main_flip_num, 'precision': 0},
+      {'label': 'Local Flip', 'value': local_flip_num, 'precision': 0},
+      {'label': 'Call Wall', 'value': call_wall_num, 'precision': 0},
+      {'label': 'Put Wall', 'value': put_wall_num, 'precision': 0},
+      {'label': 'PDH', 'value': quote.get('prior_day_high') if quote else none, 'precision': 2},
+      {'label': 'PDL', 'value': quote.get('prior_day_low') if quote else none, 'precision': 2},
+    ] %}
     <div class="marketPulseModalBody marketPulseModalGrid">
-      {% for level in execution_chart.levels %}
+      {% for level in advanced_levels %}
         <div class="marketPulseModalStat">
           <span class="tiny muted">{{ level.label }}</span>
-          <strong>{{ '%.0f'|format(level.value) }}</strong>
+          <strong>
+            {% if level.value is number %}
+              {{ ('%0.' ~ level.precision ~ 'f')|format(level.value) }}
+            {% else %}
+              —
+            {% endif %}
+          </strong>
         </div>
       {% endfor %}
       <div class="marketPulseModalStat">
         <span class="tiny muted">Next walls</span>
-        <strong>{{ spx_priority_context.get('next_levels_source_label') or '—' }}</strong>
+        <strong>{{ priority_context.get('next_levels_source_label') or '—' }}</strong>
       </div>
       <div class="marketPulseModalStat">
         <span class="tiny muted">Gamma range</span>
-        <strong>{{ spx_priority_context.get('expected_move_source_label') or '—' }}</strong>
+        <strong>{{ priority_context.get('expected_move_source_label') or '—' }}</strong>
       </div>
     </div>
   </div>
@@ -820,7 +936,7 @@
     <div class="marketPulseModalBody marketPulseModalGrid">
       <div class="marketPulseModalStat">
         <span class="tiny muted">Feed mode</span>
-        <strong>{{ spx_quote.get('source_badge_label') or 'Awaiting feed' }}</strong>
+        <strong>{{ quote.get('source_badge_label') or 'Awaiting feed' }}</strong>
       </div>
       <div class="marketPulseModalStat">
         <span class="tiny muted">Gamma snapshot</span>
@@ -851,19 +967,21 @@
      data-market-hours="{{ '1' if market_hours else '0' }}"
      hidden></div>
 
-<script id="spxPriorityBasePayload" type="application/json">{{ {'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else ''}|tojson }}</script>
+<script id="spxPriorityBasePayload" type="application/json">{{ {'ticker': selected_ticker, 'playbook_quote': quote, 'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_structure_snapshot': market_structure_snapshot, 'playbook_view': playbook_view, 'playbook_priority_context': priority_context, 'spx_priority_context': spx_priority_context, 'execution_chart': execution_chart, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else '', 'context_api_url': market_pulse_context_api_url}|tojson }}</script>
 <script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
-<script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}"></script>
+<script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-incremental-20260425a"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>
 <script>
   window.marketFeedItems = {{ whales_items | tojson | safe }};
 (() => {
   const MODE_KEY = "marketPulseViewMode";
+  const TICKER_KEY = "{{ playbook_ticker_storage_key or 'mc_playbook_ticker' }}";
   const modeToggle = document.getElementById("viewModeToggle");
   const streamStatus = document.getElementById("marketPulseStreamStatus");
   const streamFreshness = document.getElementById("marketPulseStreamFreshness");
   const guardMeta = document.getElementById("marketGuardrailMeta");
-  const refreshLink = document.getElementById("marketPulseRefreshLink");
+  const contextRefreshBtn = document.getElementById("marketPulseContextRefreshBtn");
+  const tickerSwitches = Array.from(document.querySelectorAll("[data-playbook-ticker-switch]"));
   const loadingOverlay = document.getElementById("marketPulseLoadingOverlay");
   const loadingTitle = document.getElementById("marketPulseLoadingTitle");
   const loadingSub = document.getElementById("marketPulseLoadingSub");
@@ -896,8 +1014,18 @@
   let bootSettled = false;
   let mobileFoldsInitialized = false;
   let coreReady = false;
-  let chartReady = false;
   let pageLoaded = document.readyState === "complete";
+  let contextRefreshPromise = null;
+  const basePayloadNode = document.getElementById("spxPriorityBasePayload");
+  let basePayload = null;
+  try {
+    basePayload = basePayloadNode ? JSON.parse(basePayloadNode.textContent || "null") : null;
+  } catch (_err) {
+    basePayload = null;
+  }
+  const currentTicker = ((basePayload && basePayload.ticker) || "{{ selected_ticker }}").toUpperCase();
+  const contextApiUrl = (basePayload && basePayload.context_api_url) || "{{ market_pulse_context_api_url }}";
+  storageSet(TICKER_KEY, currentTicker);
 
   const showReloadOverlay = (title, detail) => {
     if (typeof window.showMarketPulseLoading === "function") {
@@ -927,6 +1055,53 @@
     document.body.classList.remove("marketPulseBooting");
     document.body.classList.add("marketPulseReady");
   };
+
+  const setContextRefreshState = (isLoading) => {
+    if (!contextRefreshBtn) return;
+    contextRefreshBtn.disabled = !!isLoading;
+    contextRefreshBtn.classList.toggle("is-loading", !!isLoading);
+    contextRefreshBtn.setAttribute("aria-busy", isLoading ? "true" : "false");
+  };
+
+  const refreshMarketPulseContext = async (forceRefresh = false, showOverlay = false) => {
+    if (contextRefreshPromise) return contextRefreshPromise;
+    setContextRefreshState(true);
+    if (showOverlay) {
+      showReloadOverlay("Market Pulse Sync", "Refreshing gamma, structure, and execution context…");
+    }
+    contextRefreshPromise = (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (forceRefresh) params.set("refresh", "1");
+        const response = await fetch(`${contextApiUrl}?${params.toString()}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const data = await response.json();
+        if (data && data.ok && data.payload && typeof window.applyMarketPulseContextPayload === "function") {
+          window.applyMarketPulseContextPayload(data.payload);
+        }
+      } catch (_err) {
+      } finally {
+        contextRefreshPromise = null;
+        setContextRefreshState(false);
+        if (showOverlay) hideReloadOverlay();
+      }
+    })();
+    return contextRefreshPromise;
+  };
+
+  tickerSwitches.forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const nextTicker = String(link.dataset.playbookTickerSwitch || "").toUpperCase();
+      if (!nextTicker || nextTicker === currentTicker) {
+        event.preventDefault();
+        return;
+      }
+      storageSet(TICKER_KEY, nextTicker);
+      showReloadOverlay(`${nextTicker} Playbook`, `Loading ${nextTicker} gamma, structure, and execution context…`);
+    });
+  });
 
   const syncMobileFolds = () => {
     const isMobile = mobileFoldQuery.matches;
@@ -1021,11 +1196,11 @@
   };
 
   const tryCompleteBoot = () => {
-    if (!pageLoaded || !coreReady || !chartReady) return;
+    if (!pageLoaded || !coreReady) return;
     if (typeof window.updateMarketPulseLoadingStage === "function") {
       window.updateMarketPulseLoadingStage("finalizing", "Market Pulse Sync", "Finalizing execution map and live context…");
     }
-    window.setTimeout(settleBoot, 280);
+    window.setTimeout(settleBoot, 120);
   };
 
   if (modeToggle) {
@@ -1052,19 +1227,10 @@
   applyMode(mode);
   activatePulseTab("data-health");
 
-  if (guardrailActive) {
-    const guardHost = document.createElement("div");
-    guardHost.className = "integrityAlert integrityAlert-critical marketPulseSection";
-    guardHost.textContent = guardrailMessage;
-    const hero = document.querySelector(".pageHero.marketPulseSection");
-    hero?.insertAdjacentElement("afterend", guardHost);
-  }
-
-  if (refreshLink) {
-    refreshLink.addEventListener("click", (event) => {
+  if (contextRefreshBtn) {
+    contextRefreshBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      showReloadOverlay("Market Pulse Sync", "Requesting fresh market, gamma, and news context…");
-      window.location.href = refreshLink.href;
+      refreshMarketPulseContext(true, true);
     });
   }
 
@@ -1075,6 +1241,7 @@
   const feedStatusLabel = document.getElementById("marketFeedStatusLabel");
   const feedUpdated = document.getElementById("marketFeedUpdated");
   const feedCount = document.getElementById("marketFeedCount");
+  const feedDockStatus = document.getElementById("marketFeedDockStatus");
   const feedDockCount = document.getElementById("marketFeedDockCount");
   const feedHighCount = document.getElementById("marketFeedHighCount");
   const feedMoreCount = document.getElementById("marketFeedMoreCount");
@@ -1268,6 +1435,7 @@
       feedStatusChip.classList.toggle("is-warn", status !== "live");
     }
     if (feedStatusLabel) feedStatusLabel.textContent = statusLabel;
+    if (feedDockStatus) feedDockStatus.textContent = statusLabel;
     if (feedUpdated) {
       const updatedAt = data.fetched_at || data.updated_at || "Awaiting refresh";
       feedUpdated.textContent = `Updated ${updatedAt}`;
@@ -1287,6 +1455,7 @@
     const highItems = sorted.filter((item) => item.impact === "high");
     if (feedHighCount) feedHighCount.textContent = String(highItems.length);
     if (feedMoreCount) feedMoreCount.textContent = `${sorted.length} posts`;
+    feedLayout.classList.toggle("marketFeedGrid--single", !sorted.length || !highItems.length);
     if (!sorted.length) {
       feedLayout.innerHTML = `
         <section class="marketFeedEmpty" id="marketFeedEmpty">
@@ -1331,6 +1500,17 @@
         </div>
         ${feedSummary(item) ? `<p class="marketFeedRow__summary">${feedSummary(item)}</p>` : ""}
       </article>`).join("");
+    const highRailHtml = highItems.length ? `
+      <aside class="marketFeedRail marketFeedRail-left">
+        <div class="marketFeedRail__label">High Impact</div>
+        <div class="marketFeedHighShell" id="marketFeedHighShell">
+          <div class="marketFeedHighShell__head">
+            <div class="marketFeedHighShell__title">Alerts</div>
+            <div class="marketFeedHighShell__count">${highItems.length}</div>
+          </div>
+          <div class="marketFeedHighList">${highHtml}</div>
+        </div>
+      </aside>` : "";
     const listHtml = sorted.map((item) => `
       <article class="marketFeedRow">
         <div class="marketFeedRow__meta">
@@ -1352,16 +1532,7 @@
         ${feedSummary(item) ? `<p class="marketFeedRow__summary">${feedSummary(item)}</p>` : ""}
       </article>`).join("");
     feedLayout.innerHTML = `
-      <aside class="marketFeedRail marketFeedRail-left">
-        <div class="marketFeedRail__label">High Impact</div>
-        <div class="marketFeedHighShell" id="marketFeedHighShell">
-          <div class="marketFeedHighShell__head">
-            <div class="marketFeedHighShell__title">Alerts</div>
-            <div class="marketFeedHighShell__count">${highItems.length}</div>
-          </div>
-          <div class="marketFeedHighList">${highHtml}</div>
-        </div>
-      </aside>
+      ${highRailHtml}
       <section class="marketFeedRail marketFeedRail-right">
         <div class="marketFeedRail__label">Live Feed</div>
         <div class="marketFeedListShell" id="marketFeedListShell">
@@ -1505,7 +1676,6 @@
   });
 
   window.addEventListener("market-pulse-chart-ready", () => {
-    chartReady = true;
     tryCompleteBoot();
   });
 
@@ -1516,8 +1686,7 @@
 
   window.setTimeout(() => {
     coreReady = true;
-    chartReady = true;
     settleBoot();
-  }, 2200);
+  }, 900);
 })();
 </script>

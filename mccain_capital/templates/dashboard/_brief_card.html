@@ -32,7 +32,7 @@
         </div>
       </div>
     <div class="rightActions dashboardBriefPrimaryActions">
-        <a class="btn" href="/market-pulse">Market Pulse</a>
+        <a class="btn" href="{{ market_pulse_href }}">Market Pulse</a>
         <a class="btn" href="/ops/trading-window">Trade Gate</a>
         <a class="btn ctaLink" href="/calendar">Open Calendar</a>
     </div>
@@ -69,6 +69,7 @@
         <input type="hidden" name="y" value="{{ dashboard_year }}"/>
         <input type="hidden" name="m" value="{{ dashboard_month }}"/>
         <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+        <input type="hidden" name="ticker" value="{{ selected_ticker }}"/>
         <div class="stack10">
           <label>Market Condition</label>
           <textarea name="brief_focus" placeholder="What matters most today?">{{ daily_brief.focus }}</textarea>
@@ -158,7 +159,7 @@
         </div>
       </details>
       <div class="rightActions">
-        <a class="btn" href="/market-pulse">Market Pulse</a>
+        <a class="btn" href="{{ market_pulse_href }}">Market Pulse</a>
         <a class="btn" href="/ops/trading-window">Trade Gate</a>
         <a class="btn ctaLink" href="/calendar">Open Calendar</a>
       </div>
@@ -169,6 +170,7 @@
           <input type="hidden" name="y" value="{{ dashboard_year }}"/>
           <input type="hidden" name="m" value="{{ dashboard_month }}"/>
           <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+          <input type="hidden" name="ticker" value="{{ selected_ticker }}"/>
           <div class="stack10">
             <label>Market Condition</label>
             <textarea name="brief_focus" placeholder="What matters most today?">{{ daily_brief.focus }}</textarea>
