@@ -6846,12 +6846,7 @@ def get_playbook_ticker_context(value: Any) -> Dict[str, Any]:
 
 
 def _dashboard_tape_symbols(selected_ticker: str) -> List[str]:
-    ticker = get_supported_playbook_ticker(selected_ticker)
-    alternate = next(
-        (item for item in SUPPORTED_PLAYBOOK_TICKERS if item != ticker),
-        DEFAULT_PLAYBOOK_TICKER,
-    )
-    return [ticker, "VIX", alternate, "IWM", "AAPL", "TSLA"]
+    return ["SPY", "QQQ", "VIX", "IWM"]
 
 
 def _market_pulse_quote_for_ticker(
@@ -9672,50 +9667,38 @@ def dashboard():
         intraday_rows_cache[key] = cleaned
         return cleaned
 
-    def _dashboard_sparkline_svg(
-        series: List[float], tone: str, prev_close: Optional[float] = None
-    ) -> str:
-        values = [float(v) for v in series if isinstance(v, (int, float))]
-        if len(values) < 2:
-            return '<div class="marketMiniSparkEmpty">No trend</div>'
-        # Smooth tiny outlier jumps so the mini line stays readable.
-        if len(values) >= 5:
-            smoothed: List[float] = []
-            for idx in range(len(values)):
-                left = max(0, idx - 1)
-                right = min(len(values), idx + 2)
-                window = values[left:right]
-                smoothed.append(sum(window) / float(len(window)))
-            values = smoothed
-        width = 120.0
-        height = 28.0
-        domain = list(values)
-        if isinstance(prev_close, (int, float)):
-            domain.append(float(prev_close))
-        min_v = min(domain)
-        max_v = max(domain)
-        if abs(max_v - min_v) < 1e-9:
-            max_v = min_v + 1.0
-        step = width / max(len(values) - 1, 1)
-        points: List[str] = []
-        for idx, value in enumerate(values):
-            x = idx * step
-            y = ((max_v - value) / (max_v - min_v)) * (height - 2) + 1
-            points.append(f"{x:.2f},{y:.2f}")
-        cls = "up" if tone == "up" else "down" if tone == "down" else "flat"
-        ref_line = ""
-        if isinstance(prev_close, (int, float)):
-            ref_y = ((max_v - float(prev_close)) / (max_v - min_v)) * (height - 2) + 1
-            ref_line = f'<line class="marketMiniSparkRef" x1="0" y1="{ref_y:.2f}" x2="120" y2="{ref_y:.2f}" />'
-        return (
-            '<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">'
-            f"{ref_line}"
-            f'<polyline class="marketMiniSparkLine {cls}" points="{" ".join(points)}" />'
-            "</svg>"
-        )
-
     def _dashboard_mini_series(symbol: str) -> List[float]:
-        points_src = (tape_snapshot.get("series_points") or {}).get(symbol) or []
+        key = str(symbol or "").strip().upper()
+        if not key:
+            return []
+
+        # Match Market Pulse first: its tape cards are driven by quote-level mini series.
+        # Worker tape points can be sparse or too smooth after a cold start.
+        try:
+            pulse_snapshot = _market_pulse_snapshot(force_refresh=False)
+        except Exception:
+            pulse_snapshot = {}
+        for quote in list((pulse_snapshot or {}).get("quotes") or []):
+            if not isinstance(quote, dict):
+                continue
+            quote_symbol = str(quote.get("label") or quote.get("symbol") or "").strip().upper()
+            if quote_symbol != key:
+                continue
+            pulse_src = quote.get("mini_series")
+            if not isinstance(pulse_src, list):
+                pulse_src = quote.get("series") if isinstance(quote.get("series"), list) else []
+            pulse_points: List[float] = []
+            for item in pulse_src[-120:]:
+                if isinstance(item, dict):
+                    value = item.get("v")
+                else:
+                    value = item
+                if isinstance(value, (int, float)):
+                    pulse_points.append(float(value))
+            if len(pulse_points) >= 2:
+                return pulse_points[-40:]
+
+        points_src = (tape_snapshot.get("series_points") or {}).get(key) or []
         points: List[float] = []
         if isinstance(points_src, list):
             for row in points_src:
@@ -9728,7 +9711,7 @@ def dashboard():
                     deduped.append(value)
             if len(deduped) >= 10:
                 return deduped[-40:]
-        raw_src = (tape_snapshot.get("series") or {}).get(symbol) or []
+        raw_src = (tape_snapshot.get("series") or {}).get(key) or []
         if isinstance(raw_src, list):
             raw = [float(v) for v in raw_src if isinstance(v, (int, float))]
             deduped_raw: List[float] = []
@@ -9739,7 +9722,7 @@ def dashboard():
                 return deduped_raw[-40:]
 
         # If cached tape points are too sparse/flat, pull a clean intraday curve directly.
-        rows = _dashboard_intraday_rows(symbol)
+        rows = _dashboard_intraday_rows(key)
         intraday = [
             float(r.get("close"))
             for r in rows[-120:]
@@ -9888,11 +9871,7 @@ def dashboard():
                 tone = "up"
             elif delta < 0:
                 tone = "down"
-        enriched["sparkline_svg"] = _dashboard_sparkline_svg(
-            chart_series,
-            tone,
-            prev_close=prev_close,
-        )
+        enriched["sparkline_svg"] = _market_pulse_sparkline_svg(chart_series[-40:], tone)
 
         change_points = None
         if price is not None and prev_close is not None:
@@ -9940,6 +9919,9 @@ def dashboard():
                 enriched["freshness_label"] = f"{state} · 0s old"
         else:
             enriched["freshness_label"] = f"{state} · 0s old"
+        enriched["market_state_display"] = state
+        enriched["freshness_age_seconds"] = age_s
+        enriched["freshness_band_display"] = "Critical" if age_s >= 900 else state
         if age_s >= 3600:
             age_compact = f"{age_s // 3600}h"
         elif age_s >= 60:
@@ -9967,10 +9949,23 @@ def dashboard():
                 else "flat"
             )
         )
+        pct_change = enriched.get("pct_change")
+        state_label = "MIXED"
+        if symbol == "VIX":
+            if isinstance(pct_change, (int, float)) and float(pct_change) <= -0.35:
+                state_label = "WEAK"
+            elif isinstance(pct_change, (int, float)) and float(pct_change) >= 0.35:
+                state_label = "STRONG"
+        elif isinstance(pct_change, (int, float)) and float(pct_change) >= 0.35:
+            state_label = "RISK-ON"
+        elif isinstance(pct_change, (int, float)) and float(pct_change) <= -0.35:
+            state_label = "RISK-OFF"
         return {
             "symbol": symbol,
             "descriptor": descriptor,
             "row_tone": row_tone,
+            "state_label": state_label,
+            "sparkline_svg": str(enriched.get("sparkline_svg") or ""),
             "price_display": (
                 f"{float(enriched['price']):.2f}"
                 if enriched.get("price") is not None
@@ -10001,6 +9996,11 @@ def dashboard():
             .replace("Live · ", "")
             .replace("Delayed · ", "")
             .replace("Unavailable · ", ""),
+            "market_state_display": str(enriched.get("market_state_display") or "Live"),
+            "freshness_display": (
+                f"{str(enriched.get('freshness_band_display') or 'Critical')} · "
+                f"{int(enriched.get('freshness_age_seconds') or 0)}s old"
+            ),
             "gap_display": str(enriched.get("overnight_gap_compact") or "—"),
             "range_display": str(enriched.get("day_range_compact") or "—"),
             "source_display": str(enriched.get("source_badge_label") or "—"),
@@ -10041,22 +10041,11 @@ def dashboard():
             source_quote,
         )
     dashboard_tape_rows = [
-        _dashboard_tape_row_viewmodel(
-            selected_ticker,
-            dashboard_tape_quotes.get(selected_ticker) or {},
-            f"{selected_ticker} focus",
-        ),
-        _dashboard_tape_row_viewmodel("VIX", dashboard_tape_quotes.get("VIX") or {}, "VIX pulse"),
-        _dashboard_tape_row_viewmodel(
-            alternate_ticker,
-            dashboard_tape_quotes.get(alternate_ticker) or {},
-            f"{alternate_ticker} peer",
-        ),
+        _dashboard_tape_row_viewmodel("SPY", dashboard_tape_quotes.get("SPY") or {}, "market proxy"),
+        _dashboard_tape_row_viewmodel("QQQ", dashboard_tape_quotes.get("QQQ") or {}, "tech proxy"),
+        _dashboard_tape_row_viewmodel("VIX", dashboard_tape_quotes.get("VIX") or {}, "volatility"),
+        _dashboard_tape_row_viewmodel("IWM", dashboard_tape_quotes.get("IWM") or {}, "breadth proxy"),
     ]
-    dashboard_tape_rows.extend(
-        _dashboard_tape_row_viewmodel(symbol, dashboard_tape_quotes.get(symbol) or {})
-        for symbol in ("IWM", "AAPL", "TSLA")
-    )
     journal_today_rows = [dict(r) for r in journal_repo.fetch_entries(d=today_key)]
     journal_capture_count_today = 0
     for row in journal_today_rows:

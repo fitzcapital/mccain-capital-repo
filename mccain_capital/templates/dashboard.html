@@ -466,25 +466,28 @@
           <span class="tiny muted" id="dashboardTapeUpdatedAt">{{ dashboard_tape_updated_label or '—' }}</span>
         </div>
       </div>
-      <div class="liveTapeWatchTableShell">
-        <div class="liveTapeWatchTable">
-        <div class="liveTapeWatchGridRow liveTapeWatchHeaderRow dashboardCoreTapeRow">
-          <div class="liveTapeWatchCell liveTapeWatchCell-icon" aria-hidden="true"></div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-symbol">Symbol</div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-last">Price</div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-chgp">Chg%</div>
-        </div>
+      <div class="liveTapeWatchTableShell dashboardTapeCardStackShell marketPulseTapeShell">
+        <div class="liveTapeWatchTable dashboardTapeCardStack" aria-label="Live tape watchlist">
         {% for row in dashboard_tape_rows %}
-        <button type="button" class="liveTapeWatchGridRow liveTapeWatchRow dashboardCoreTapeRow is-{{ row.row_tone }}" data-watch-symbol="{{ row.symbol }}" aria-expanded="false">
-          <div class="liveTapeWatchCell liveTapeWatchCell-icon"><span class="liveTapeWatchDot"></span></div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-symbol">
-            <span class="liveTapeWatchSymbol">{{ row.symbol }}</span>
+        {% set tape_tone = 'positive' if row.row_tone == 'up' else 'negative' if row.row_tone == 'down' else 'neutral' %}
+        {% set spark_tone = 'pos' if row.row_tone == 'up' else 'neg' if row.row_tone == 'down' else 'flat' %}
+        <button type="button" class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardTapeAssetCard tone-{{ tape_tone }} is-{{ row.row_tone }}" data-watch-symbol="{{ row.symbol }}" aria-expanded="false">
+          <div class="marketPulseWatchCardTop">
+            <div class="k liveTapeWatchSymbol">{{ row.symbol }}</div>
             {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
+            <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state">{{ row.state_label }}</span>
           </div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-last dashboardCoreTapeStat" data-role="last">{{ row.price_display }}</div>
-          <div class="liveTapeWatchCell liveTapeWatchCell-chgp dashboardCoreTapeStat" data-role="chgp">
-            {% if row.change_arrow %}<span class="liveTapeChangeArrow">{{ row.change_arrow }}</span>{% endif %}
-            <span>{{ row.pct_change_display }}</span>
+          <div class="marketMiniSparkWrap tone-{{ tape_tone }} spark-{{ spark_tone }} dashboardTapeSpark" data-role="sparkline">{{ row.sparkline_svg|safe }}</div>
+          <div class="marketPulseWatchValueRow dashboardTapeAssetBody">
+            <div class="v liveTapeWatchCell-last dashboardCoreTapeStat dashboardTapeAssetPrice" data-role="last">{{ row.price_display }}</div>
+            <div class="tiny liveTapeWatchCell-chgp dashboardCoreTapeStat dashboardTapeAssetChange" data-role="chgp">{{ row.pct_change_display }}</div>
+          </div>
+          <div class="tiny muted marketPulseWatchMetaRow dashboardTapeAssetMeta">
+            <span data-role="market-state">{{ row.market_state_display }}</span>
+            <span data-role="row-live">{{ row.freshness_display }}</span>
+          </div>
+          <div class="tiny muted marketPulseWatchRange dashboardTapeAssetRange" data-role="detail-range">
+            {{ row.range_display }}
           </div>
         </button>
         <div class="liveTapeWatchDetail" data-detail-symbol="{{ row.symbol }}" hidden>

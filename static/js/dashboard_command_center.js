@@ -296,9 +296,12 @@ const dashboardUIFX = (() => {
     if (!Number.isFinite(ts)) return { full: `${state} · unavailable`, compact: state };
     const ageS = Math.max(0, (Date.now() - ts) / 1000);
     const compact = ageS >= 60 ? `${Math.floor(ageS / 60)}m` : `${Math.floor(ageS)}s`;
+    const seconds = Math.floor(ageS);
+    const band = seconds >= 900 ? "Critical" : state;
     return {
-      full: `${state} · ${ageS.toFixed(1)}s old`,
+      full: `${band} · ${seconds}s old`,
       compact,
+      state,
     };
   };
 
@@ -327,6 +330,17 @@ const dashboardUIFX = (() => {
     return "missing";
   };
 
+  const tapeStateLabel = (symbol, pct) => {
+    if (symbol === "VIX") {
+      if (pct !== null && pct <= -0.35) return "WEAK";
+      if (pct !== null && pct >= 0.35) return "STRONG";
+      return "MIXED";
+    }
+    if (pct !== null && pct >= 0.35) return "RISK-ON";
+    if (pct !== null && pct <= -0.35) return "RISK-OFF";
+    return "MIXED";
+  };
+
   const setExpandedSymbol = (symbol) => {
     openSymbol = String(symbol || "").toUpperCase();
     rows.forEach((row) => {
@@ -353,6 +367,10 @@ const dashboardUIFX = (() => {
     const state = deriveState(quote);
     const lastNode = row.querySelector('[data-role="last"]');
     const chgpNode = row.querySelector('[data-role="chgp"]');
+    const stateNode = row.querySelector('[data-role="state"]');
+    const rowMarketStateNode = row.querySelector('[data-role="market-state"]');
+    const rowLiveNode = row.querySelector('[data-role="row-live"]');
+    const rowRangeNode = row.querySelector('[data-role="detail-range"]');
     const detailChgNode = detailNode?.querySelector('[data-role="detail-chg"]');
     const detailOpenNode = detailNode?.querySelector('[data-role="detail-open"]');
     const detailPrevNode = detailNode?.querySelector('[data-role="detail-prev"]');
@@ -392,6 +410,18 @@ const dashboardUIFX = (() => {
     row.classList.remove("is-up", "is-down", "is-flat", "is-live", "is-delayed", "is-missing");
     row.classList.add(`is-${stateClass(state)}`);
     row.classList.add(pct > 0 ? "is-up" : pct < 0 ? "is-down" : "is-flat");
+    if (stateNode) dashboardUIFX.setText(stateNode, tapeStateLabel(symbol, pct));
+    if (rowMarketStateNode) dashboardUIFX.setText(rowMarketStateNode, freshness.state);
+    if (rowLiveNode && String((quote || {}).as_of || "").trim()) {
+      dashboardUIFX.setText(rowLiveNode, freshness.full);
+    }
+    if (rowRangeNode && ((quote || {}).day_low !== undefined || (quote || {}).day_high !== undefined)) {
+      const dayLow = asNum((quote || {}).day_low);
+      const dayHigh = asNum((quote || {}).day_high);
+      if (dayLow !== null && dayHigh !== null) {
+        dashboardUIFX.setText(rowRangeNode, `${formatValue(dayLow, 2)} to ${formatValue(dayHigh, 2)}`);
+      }
+    }
 
     if (detailChgNode) {
       if (absChange !== null) {
