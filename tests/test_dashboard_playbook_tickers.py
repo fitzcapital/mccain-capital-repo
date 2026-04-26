@@ -63,4 +63,3 @@ def test_dashboard_daily_brief_localizes_to_selected_ticker():
 
     assert "SPY is below gamma flip 551" in brief["bias_summary"]
     assert "Generated from live SPY" in brief["source_detail"]
-
