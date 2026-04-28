@@ -1248,6 +1248,8 @@
 
   const updateSparkNode = (node, points, tone) => {
     if (!node) return;
+    node.classList.remove("spark-pos", "spark-neg", "spark-flat");
+    node.classList.add(tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat");
     node.innerHTML = buildSparklineSvg(points, tone);
   };
 
@@ -1999,7 +2001,7 @@
     });
   });
 
-  const updateTapeSummary = (quotesBySymbol) => {
+  const updateTapeSummary = (quotesBySymbol, tapeMeta = {}) => {
     const tracked = tapeCards
       .map((card) => String(card.dataset.symbol || "").toUpperCase())
       .filter(Boolean);
@@ -2030,14 +2032,30 @@
     setText("marketPulseMissing", String(missing));
     setText(
       "marketPulseBiggestMove",
-      biggestMove === null ? "—" : `${biggestLabel} ${formatSigned(biggestMove, 2)}%`
+      String(tapeMeta.drag || "").trim()
+        || (biggestMove === null ? "—" : `${biggestLabel} ${formatSigned(biggestMove, 2)}%`)
     );
+    if (String(tapeMeta.risk || "").trim()) setText("marketPulseRiskLabel", tapeMeta.risk);
+    if (Array.isArray(tapeMeta.leaders)) {
+      setText("marketPulseLeaders", tapeMeta.leaders.length ? tapeMeta.leaders.join(", ") : "—");
+    }
+  };
+
+  const applyCoreTapeSnapshot = (quotesBySymbol, seriesBySymbol = {}, tapeMeta = {}) => {
+    const quotes = quotesBySymbol && typeof quotesBySymbol === "object" ? quotesBySymbol : {};
+    const series = seriesBySymbol && typeof seriesBySymbol === "object" ? seriesBySymbol : {};
+    tapeCards.forEach((card) => {
+      const symbol = String(card.dataset.symbol || "").toUpperCase();
+      if (!symbol) return;
+      applyTapeCardUpdate(card, quotes[symbol] || {}, series[symbol] || []);
+    });
+    updateTapeSummary(quotes, tapeMeta);
   };
 
   const applyTapeCardUpdate = (card, quote, points) => {
     if (!card || !quote || typeof quote !== "object") return;
     const price = asNum(quote.price);
-    const pct = asNum(quote.pct_change);
+    const pct = asNum(quote.pct_change ?? quote.change_pct);
     const state = deriveDataState(quote);
     const tone = sparkTone(pct);
     const reason = String(quote.reason || "").trim();
@@ -2053,24 +2071,24 @@
     if (chip) {
       const chipChanged = String(chip.textContent || "") !== watchState;
       chip.textContent = watchState;
+      const watchTone = pct !== null && pct > 0 ? "tone-positive" : pct !== null && pct < 0 ? "tone-negative" : "tone-neutral";
       chip.classList.remove("tone-positive", "tone-negative", "tone-neutral");
-      chip.classList.add(
-        watchState === "Risk-On" || watchState === "Strong" ? "tone-positive"
-          : watchState === "Risk-Off" || watchState === "Weak" ? "tone-negative"
-            : "tone-neutral"
-      );
+      chip.classList.add(watchTone);
       if (chipChanged) {
         uiFX?.pulseNode?.(
           chip,
-          watchState === "Risk-On" || watchState === "Strong"
+          watchTone === "tone-positive"
             ? "positive"
-            : watchState === "Risk-Off" || watchState === "Weak"
+            : watchTone === "tone-negative"
               ? "negative"
               : "info"
         );
       }
     }
-    updateTextNode(card.querySelector('[data-role="freshness"]'), state === "live" ? "Live" : formatEtLabel(asOf));
+    updateTextNode(
+      card.querySelector('[data-role="freshness"]'),
+      String(quote.freshness_label || "").trim() || (state === "live" ? "Live" : formatEtLabel(asOf))
+    );
     updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2), {
       live: true,
       direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral",
@@ -2084,8 +2102,17 @@
       }
     );
     updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
-    updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
-    updateTextNode(card.querySelector('[data-role="range-line"]'), formatRange(points));
+    const hasSeriesPoints = Array.isArray(points) && seriesValueCount(points) >= 2;
+    if (hasSeriesPoints) {
+      updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
+      updateTextNode(card.querySelector('[data-role="range-line"]'), formatRange(points));
+    } else {
+      const sparkNode = card.querySelector('[data-role="sparkline"]');
+      if (sparkNode) {
+        sparkNode.classList.remove("spark-pos", "spark-neg", "spark-flat");
+        sparkNode.classList.add(tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat");
+      }
+    }
 
     const reasonNode = card.querySelector('[data-role="reason-line"]');
     if (reasonNode) {
@@ -2095,9 +2122,9 @@
 
     card.classList.toggle("glow-green", (pct || 0) > 0);
     card.classList.toggle("glow-red", (pct || 0) < 0);
-    card.classList.toggle("tone-positive", watchState === "Risk-On" || watchState === "Strong");
-    card.classList.toggle("tone-negative", watchState === "Risk-Off" || watchState === "Weak");
-    card.classList.toggle("tone-neutral", watchState === "Mixed");
+    card.classList.toggle("tone-positive", pct !== null && pct > 0);
+    card.classList.toggle("tone-negative", pct !== null && pct < 0);
+    card.classList.toggle("tone-neutral", pct === null || pct === 0);
   };
 
   const adaptInput = (base) => {
@@ -2452,10 +2479,32 @@
       quotes_map: { ...(current.quotes_map || {}), ...(incoming.quotes_map || {}) },
     };
     render(current);
+    applyCoreTapeSnapshot(current.quotes_map || {}, current.series_points || {});
     window.dispatchEvent(new CustomEvent("market-pulse-core-ready"));
     return current;
   };
   window.applyMarketPulseContextPayload = mergePayload;
+  window.applyMarketPulseTapePayload = (payload) => {
+    const nextPayload = payload && typeof payload === "object" ? payload : {};
+    current = {
+      ...(current || {}),
+      server_ts: nextPayload.server_ts || (current || {}).server_ts || null,
+      quotes_map: {
+        ...((current || {}).quotes_map || {}),
+        ...(nextPayload.quotes_map || {}),
+      },
+      series_points: {
+        ...((current || {}).series_points || {}),
+        ...(nextPayload.series_points || {}),
+      },
+    };
+    applyCoreTapeSnapshot(
+      current.quotes_map || {},
+      current.series_points || {},
+      nextPayload.tape_meta || {}
+    );
+    return current;
+  };
   window.addEventListener("resize", () => {
     if (pendingRenderTimer !== null) {
       window.clearTimeout(pendingRenderTimer);

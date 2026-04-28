@@ -469,9 +469,10 @@
       <div class="liveTapeWatchTableShell dashboardTapeCardStackShell marketPulseTapeShell">
         <div class="liveTapeWatchTable dashboardTapeCardStack" aria-label="Live tape watchlist">
         {% for row in dashboard_tape_rows %}
-        {% set tape_tone = 'positive' if row.row_tone == 'up' else 'negative' if row.row_tone == 'down' else 'neutral' %}
-        {% set spark_tone = 'pos' if row.row_tone == 'up' else 'neg' if row.row_tone == 'down' else 'flat' %}
-        <button type="button" class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardTapeAssetCard tone-{{ tape_tone }} is-{{ row.row_tone }}" data-watch-symbol="{{ row.symbol }}" aria-expanded="false">
+        {% set tape_tone = 'positive' if row.state_label in ['RISK-ON', 'STRONG'] else 'negative' if row.state_label in ['RISK-OFF', 'WEAK'] else 'neutral' %}
+        {% set spark_tone = 'pos' if tape_tone == 'positive' else 'neg' if tape_tone == 'negative' else 'flat' %}
+        {% set visual_row_tone = 'up' if tape_tone == 'positive' else 'down' if tape_tone == 'negative' else 'flat' %}
+        <button type="button" class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardTapeAssetCard tone-{{ tape_tone }} is-{{ visual_row_tone }}" data-watch-symbol="{{ row.symbol }}" data-tape-tone="{{ tape_tone }}" aria-expanded="false">
           <div class="marketPulseWatchCardTop">
             <div class="k liveTapeWatchSymbol">{{ row.symbol }}</div>
             {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
@@ -572,11 +573,13 @@
               <span class="dashboardAlignmentTrendStat" id="dashboardAlignmentUrgencyValue">{{ dashboard_behavior_trend.urgency_total }} urgency checks / 5d</span>
             </div>
             <div class="dashboardAlignmentScoreRow">
-              <div class="dashboardAlignmentScoreDial" id="dashboardAlignmentScoreDial" style="--alignment-pct: 0%;">
-                <div class="dashboardAlignmentScoreDialInner">
-                  <strong id="dashboardAlignmentScoreValue">0%</strong>
-                  <span id="dashboardAlignmentScoreLabel">Locked on process</span>
+              <div class="dashboardAlignmentScoreMeter">
+                <div class="dashboardAlignmentScoreDial" id="dashboardAlignmentScoreDial" style="--alignment-pct: 0%;">
+                  <div class="dashboardAlignmentScoreDialInner">
+                    <strong id="dashboardAlignmentScoreValue">0%</strong>
+                  </div>
                 </div>
+                <span class="dashboardAlignmentScoreDialLabel" id="dashboardAlignmentScoreLabel">Locked on process</span>
               </div>
               <div class="dashboardAlignmentScoreCopy">
                 <div class="dashboardAlignmentScoreHeadline">Obedience protects capital.</div>

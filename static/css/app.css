@@ -2525,6 +2525,12 @@ body{
         0 0 26px rgba(255,102,153,.14),
         0 14px 34px rgba(0,0,0,.20);
     }
+    .tradingWindowStatusPanel.is-off{
+      border-color:rgba(143,163,184,.26);
+      box-shadow:
+        0 0 0 1px rgba(199,208,217,.06),
+        0 14px 34px rgba(0,0,0,.20);
+    }
     .tradingWindowStatusTop{
       display:flex;
       align-items:center;
@@ -2706,6 +2712,42 @@ body{
       grid-template-columns:minmax(138px, 1fr) minmax(138px, 1fr) minmax(118px, .82fr) auto auto;
       margin-top:0;
       gap:8px 10px;
+    }
+    .tradingWindowFeatureToggle{
+      grid-column:1 / -1;
+      display:flex !important;
+      align-items:center;
+      gap:12px;
+      min-height:64px;
+      padding:12px 14px;
+      border:1px solid rgba(47,107,255,.22);
+      border-radius:14px;
+      background:
+        linear-gradient(180deg, rgba(21,32,44,.86), rgba(11,11,13,.78));
+      box-shadow:inset 0 1px 0 rgba(199,208,217,.05);
+    }
+    .tradingWindowFeatureToggle input[type="checkbox"]{
+      width:22px;
+      height:22px;
+      margin:0;
+      accent-color:var(--brand-blue);
+      flex:0 0 auto;
+    }
+    .tradingWindowFeatureToggle span{
+      display:grid;
+      gap:3px;
+      min-width:0;
+    }
+    .tradingWindowFeatureToggle strong{
+      color:var(--text);
+      font-size:13px;
+      letter-spacing:.05em;
+      text-transform:uppercase;
+    }
+    .tradingWindowFeatureToggle small{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
     }
     .tradingWindowFormCompact label{
       gap:5px;
@@ -12007,6 +12049,39 @@ body.marketPulseReady .marketPulseSection{
 .marketPulseNewsTopline{
   justify-content:space-between;
   align-items:center;
+  gap:8px;
+}
+.marketPulseTapeTopline{
+  justify-content:flex-start;
+  flex-wrap:nowrap;
+  width:auto;
+  min-width:0;
+}
+.marketPulseTapeTopline .marketPulseClampLine{
+  flex:0 1 auto;
+}
+.marketPulseTapeRefreshBtn{
+  flex:0 0 auto;
+  width:30px;
+  height:30px;
+  min-height:30px;
+  margin-left:2px;
+}
+.marketPulseTapeRefreshBtn.is-loading{
+  opacity:1 !important;
+  color:#DCE8FF;
+  border-color:rgba(47,107,255,.48);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(47,107,255,.18), rgba(8,16,30,.62) 62%);
+  box-shadow:
+    0 0 0 1px rgba(47,107,255,.18),
+    0 0 18px rgba(47,107,255,.22);
+}
+.marketPulseTapeRefreshBtn.is-loading svg{
+  animation:marketPulseTapeRefreshSpin .62s linear infinite !important;
+}
+@keyframes marketPulseTapeRefreshSpin{
+  to{transform:rotate(360deg);}
 }
 .marketPulseStructureGrid{
   display:grid;
@@ -22287,6 +22362,140 @@ body[data-theme="new-galaxy"].page-dashboard .dashboardFoldSection{
   color:#9bcfff;
 }
 
+/* Dashboard Doer Score: premium instrument treatment aligned with Analytics KPI rings. */
+.page-dashboard .dashboardAlignmentCard{
+  --dashboard-alignment-ring:#78C7FF;
+  --dashboard-alignment-glow:rgba(80, 145, 255, .18);
+  border-color:color-mix(in srgb, var(--dashboard-alignment-ring) 32%, rgba(76,203,238,.10)) !important;
+  background:
+    radial-gradient(280px 180px at 14% 38%, color-mix(in srgb, var(--dashboard-alignment-ring) 13%, transparent), transparent 74%),
+    radial-gradient(380px 200px at 84% 18%, rgba(47,107,255,.105), transparent 76%),
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.006)),
+    rgba(5, 12, 22, .86) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    0 18px 36px rgba(0,0,0,.22),
+    0 0 34px color-mix(in srgb, var(--dashboard-alignment-ring) 10%, transparent) !important;
+}
+
+.page-dashboard .dashboardAlignmentScoreRow{
+  grid-template-columns:128px minmax(0, 1fr) !important;
+  gap:20px !important;
+}
+
+.page-dashboard .dashboardAlignmentScoreMeter{
+  display:grid;
+  justify-items:center;
+  gap:9px;
+}
+
+.page-dashboard .dashboardAlignmentScoreDial{
+  --dashboard-alignment-ring:#78C7FF;
+  --dashboard-alignment-track:color-mix(in srgb, var(--dashboard-alignment-ring) 16%, rgba(64, 87, 122, .36));
+  width:122px !important;
+  height:122px !important;
+  isolation:isolate;
+  background:
+    radial-gradient(closest-side, rgba(7, 13, 24, .965) 77%, transparent 78% 100%),
+    conic-gradient(var(--dashboard-alignment-ring) 0 var(--alignment-pct), var(--dashboard-alignment-track) var(--alignment-pct) 100%) !important;
+  box-shadow:
+    0 12px 22px rgba(0,0,0,.24),
+    0 0 18px color-mix(in srgb, var(--dashboard-alignment-ring) 17%, transparent),
+    inset 0 1px 0 rgba(255,255,255,.055) !important;
+}
+
+.page-dashboard .dashboardAlignmentScoreDial::before{
+  content:"";
+  position:absolute;
+  inset:10px;
+  z-index:-1;
+  border-radius:50%;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255,255,255,.08), transparent 36%),
+    radial-gradient(circle, color-mix(in srgb, var(--dashboard-alignment-ring) 13%, transparent), transparent 68%);
+  filter:blur(10px);
+  opacity:.64;
+}
+
+.page-dashboard .dashboardAlignmentScoreDial::after{
+  content:"";
+  position:absolute;
+  inset:20px;
+  z-index:0;
+  border-radius:50%;
+  background:
+    radial-gradient(circle at 35% 24%, rgba(255,255,255,.06), transparent 42%),
+    linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.006)),
+    rgba(4, 9, 18, .82);
+  border:1px solid rgba(255,255,255,.055);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    inset 0 -12px 22px rgba(0,0,0,.20);
+}
+
+.page-dashboard .dashboardAlignmentScoreDial[data-alignment-tone="warning"]{
+  --dashboard-alignment-ring:#9DB7FF;
+}
+
+.page-dashboard .dashboardAlignmentScoreDial[data-alignment-tone="negative"],
+.page-dashboard .dashboardAlignmentScoreDial[data-alignment-tone="danger"]{
+  --dashboard-alignment-ring:#F1B06D;
+}
+
+.page-dashboard .dashboardAlignmentScoreDial[data-alignment-tone="positive"]{
+  --dashboard-alignment-ring:#78C7FF;
+}
+
+.page-dashboard .dashboardAlignmentScoreDialInner{
+  inset:20px !important;
+  z-index:1;
+  background:transparent !important;
+  border:0 !important;
+}
+
+.page-dashboard .dashboardAlignmentScoreDialInner strong,
+html[data-font-mode="hand"] body .page-dashboard .dashboardAlignmentScoreDialInner strong{
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif !important;
+  font-size:25px !important;
+  font-weight:800 !important;
+  line-height:1 !important;
+  letter-spacing:0 !important;
+  font-variant-numeric:tabular-nums !important;
+  text-shadow:
+    0 1px 0 rgba(255,255,255,.08),
+    0 0 14px color-mix(in srgb, var(--dashboard-alignment-ring) 18%, transparent) !important;
+}
+
+.page-dashboard .dashboardAlignmentScoreDialLabel{
+  max-width:14ch;
+  font-size:10.5px !important;
+  font-weight:700;
+  line-height:1.16 !important;
+  text-align:center;
+  color:rgba(207, 221, 240, .62) !important;
+}
+
+.page-dashboard .dashboardAlignmentScoreHeadline{
+  color:rgba(245, 250, 255, .96) !important;
+  text-shadow:0 0 16px color-mix(in srgb, var(--dashboard-alignment-ring) 12%, transparent) !important;
+}
+
+.page-dashboard .dashboardAlignmentFoldSummary{
+  border-color:color-mix(in srgb, var(--dashboard-alignment-ring) 18%, rgba(255,255,255,.07)) !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.008)),
+    color-mix(in srgb, var(--dashboard-alignment-ring) 5%, rgba(255,255,255,.018)) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+@media (max-width:720px){
+  .page-dashboard .dashboardAlignmentScoreRow{
+    grid-template-columns:1fr !important;
+    justify-items:center !important;
+    text-align:center !important;
+  }
+}
+
 .page-dashboard .dashboardReflectionPrompt{
   font-size:18px;
   line-height:1.08;
@@ -24433,23 +24642,6 @@ html.perf-mode-low-gpu .marketPulseSection{
 .mobileDock,
 .clockPill{
   border-color:rgba(110, 154, 204, .18) !important;
-}
-
-.page-market-pulse .marketPulseLoadingOverlay{
-  background:
-    radial-gradient(circle at 22% 18%, rgba(63, 159, 255, .14), rgba(63, 159, 255, 0) 28%),
-    radial-gradient(circle at 78% 72%, rgba(62, 213, 255, .10), rgba(62, 213, 255, 0) 34%),
-    linear-gradient(180deg, rgba(6, 14, 28, .72), rgba(5, 11, 22, .82)) !important;
-  backdrop-filter:none !important;
-  -webkit-backdrop-filter:none !important;
-}
-
-.page-market-pulse .marketPulseLoadingCard{
-  background:
-    linear-gradient(145deg, rgba(16, 31, 52, .97), rgba(10, 22, 40, .96) 58%, rgba(9, 24, 44, .96)) !important;
-  box-shadow:
-    0 18px 34px rgba(0, 0, 0, .26),
-    0 0 0 1px rgba(168, 226, 255, .06) inset !important;
 }
 
 /* Final A-track shared workspace polish */
@@ -48682,4 +48874,1883 @@ body[data-theme="cinematic-nebula"] .status-pulse{
   .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketPulseWatchMetaRow{
     justify-content:space-between !important;
   }
+}
+
+/* Cinematic Nebula brand system: final brand pass. Keep blue as identity; green is signal-only. */
+:root{
+  --brand-blue:#2F6BFF;
+  --nebula-blue:#0B1F3A;
+  --void-black:#0B0B0D;
+  --deep-panel:#101923;
+  --panel-slate:#15202C;
+  --silver:#C7D0D9;
+  --muted-silver:#8FA3B8;
+  --status-green:#22C55E;
+  --danger-red:#EF4444;
+  --warning-amber:#F59E0B;
+}
+
+.brand-blue{color:var(--brand-blue) !important;}
+.brand-glow-blue{box-shadow:0 0 22px rgba(47,107,255,.18) !important;}
+.nebula-bg{
+  background:
+    radial-gradient(circle at 20% 10%, rgba(47,107,255,.12), transparent 28%),
+    radial-gradient(circle at 80% 35%, rgba(11,31,58,.35), transparent 35%),
+    radial-gradient(circle at 50% 90%, rgba(47,107,255,.08), transparent 30%),
+    var(--void-black) !important;
+}
+.nebula-bg-subtle{
+  background:
+    radial-gradient(circle at 16% 0%, rgba(47,107,255,.08), transparent 26%),
+    radial-gradient(circle at 82% 26%, rgba(11,31,58,.28), transparent 34%),
+    var(--void-black) !important;
+}
+.premium-card{
+  background:
+    linear-gradient(180deg, rgba(21,32,44,.92), rgba(11,11,13,.92)) !important;
+  border:1px solid rgba(47,107,255,.18) !important;
+  box-shadow:
+    0 16px 32px rgba(0,0,0,.35),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+.premium-border{border-color:rgba(47,107,255,.18) !important;}
+.logo-shell{background:transparent !important;}
+.status-live-green,
+.status-success-green{color:var(--status-green) !important;}
+.status-danger-red{color:var(--danger-red) !important;}
+.status-warning-amber{color:var(--warning-amber) !important;}
+.text-silver{color:var(--silver) !important;}
+.text-muted-silver{color:var(--muted-silver) !important;}
+
+body[data-theme="cinematic-nebula"]{
+  --bg:var(--void-black) !important;
+  --panel:var(--deep-panel) !important;
+  --panel2:#0D141D !important;
+  --surface:var(--deep-panel) !important;
+  --surface2:var(--panel-slate) !important;
+  --surface3:#1A2735 !important;
+  --text:var(--silver) !important;
+  --muted:var(--muted-silver) !important;
+  --gold:var(--silver) !important;
+  --brand-cyan:var(--brand-blue) !important;
+  --brand-gold:var(--silver) !important;
+  --brand-steel:var(--muted-silver) !important;
+  --accent-rgb:47,107,255 !important;
+  --accent-soft-rgb:47,107,255 !important;
+  --tone-info-rgb:47,107,255 !important;
+  --tone-success-rgb:34,197,94 !important;
+  --tone-danger-rgb:239,68,68 !important;
+  --tone-warning-rgb:245,158,11 !important;
+  --green:34,197,94 !important;
+  --red:239,68,68 !important;
+  --border:rgba(47,107,255,.18) !important;
+  --border-strong:rgba(47,107,255,.30) !important;
+  --hairline:rgba(199,208,217,.08) !important;
+  --glow:rgba(47,107,255,.14) !important;
+  --ring:0 0 0 3px rgba(47,107,255,.26) !important;
+  color:var(--silver) !important;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(47,107,255,.12), transparent 28%),
+    radial-gradient(circle at 80% 35%, rgba(11,31,58,.35), transparent 35%),
+    radial-gradient(circle at 50% 90%, rgba(47,107,255,.08), transparent 30%),
+    var(--void-black) !important;
+  background-color:var(--void-black) !important;
+}
+
+body[data-theme="cinematic-nebula"]::before{
+  display:block !important;
+  background:
+    radial-gradient(1px 1px at 8% 14%, rgba(199,208,217,.38), transparent 72%),
+    radial-gradient(1px 1px at 22% 28%, rgba(199,208,217,.24), transparent 72%),
+    radial-gradient(1px 1px at 41% 11%, rgba(199,208,217,.30), transparent 72%),
+    radial-gradient(1px 1px at 64% 23%, rgba(199,208,217,.22), transparent 72%),
+    radial-gradient(1px 1px at 82% 16%, rgba(199,208,217,.32), transparent 72%),
+    radial-gradient(1px 1px at 92% 42%, rgba(199,208,217,.20), transparent 72%),
+    radial-gradient(680px 320px at 18% 5%, rgba(47,107,255,.08), transparent 74%),
+    radial-gradient(760px 360px at 82% 18%, rgba(11,31,58,.28), transparent 78%) !important;
+  opacity:.58 !important;
+  filter:none !important;
+  animation:none !important;
+}
+
+body[data-theme="cinematic-nebula"]::after{
+  display:block !important;
+  background:
+    radial-gradient(1px 1px at 16% 72%, rgba(199,208,217,.18), transparent 72%),
+    radial-gradient(1px 1px at 46% 56%, rgba(199,208,217,.16), transparent 72%),
+    radial-gradient(1px 1px at 74% 76%, rgba(199,208,217,.18), transparent 72%),
+    radial-gradient(900px 520px at 68% 74%, rgba(47,107,255,.045), transparent 84%),
+    radial-gradient(760px 440px at 22% 68%, rgba(76,73,188,.035), transparent 82%) !important;
+  opacity:.48 !important;
+  filter:none !important;
+  animation:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar{
+  background:rgba(11,11,13,.84) !important;
+  border:1px solid rgba(47,107,255,.22) !important;
+  box-shadow:
+    0 0 0 1px rgba(199,208,217,.04),
+    0 18px 40px rgba(0,0,0,.35),
+    0 0 28px rgba(47,107,255,.10) !important;
+  backdrop-filter:blur(14px) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::before{
+  background:linear-gradient(90deg, rgba(47,107,255,0), rgba(47,107,255,.52) 50%, rgba(47,107,255,0)) !important;
+  box-shadow:0 0 18px rgba(47,107,255,.14) !important;
+  opacity:.46 !important;
+  filter:blur(10px) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::after,
+body[data-theme="cinematic-nebula"] .brandText::before{
+  background:none !important;
+  opacity:0 !important;
+}
+
+body[data-theme="cinematic-nebula"] .logo,
+body[data-theme="cinematic-nebula"] .logo-shell{
+  width:54px !important;
+  height:54px !important;
+  background:transparent !important;
+  border:1px solid rgba(199,208,217,.14) !important;
+  border-radius:16px !important;
+  overflow:hidden !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.08),
+    0 0 0 1px rgba(47,107,255,.10),
+    0 0 18px rgba(47,107,255,.14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .logo img{
+  width:100% !important;
+  height:100% !important;
+  object-fit:contain !important;
+  background:transparent !important;
+  padding:3px !important;
+}
+
+body[data-theme="cinematic-nebula"] .brandTitle{
+  color:var(--silver) !important;
+  text-shadow:0 0 18px rgba(47,107,255,.12) !important;
+}
+
+body[data-theme="cinematic-nebula"] .brandSignature,
+body[data-theme="cinematic-nebula"] .sub,
+body[data-theme="cinematic-nebula"] .muted,
+body[data-theme="cinematic-nebula"] .tiny,
+body[data-theme="cinematic-nebula"] .pageSub{
+  color:var(--muted-silver) !important;
+}
+
+body[data-theme="cinematic-nebula"] .mcIcon{
+  color:var(--brand-blue) !important;
+}
+
+body[data-theme="cinematic-nebula"] .nav{
+  border-top-color:rgba(47,107,255,.16) !important;
+}
+
+body[data-theme="cinematic-nebula"] .nav .btn{
+  color:var(--muted-silver) !important;
+  border-color:rgba(199,208,217,.10) !important;
+  background:rgba(16,25,35,.42) !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .nav .btn:hover{
+  color:var(--silver) !important;
+  border-color:rgba(47,107,255,.26) !important;
+  background:rgba(47,107,255,.08) !important;
+}
+
+body[data-theme="cinematic-nebula"] .nav .btn.active,
+body[data-theme="cinematic-nebula"] .btn.active,
+body[data-theme="cinematic-nebula"] .btn.primary{
+  color:#F4F8FF !important;
+  border-color:rgba(47,107,255,.42) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.24), rgba(47,107,255,.10)),
+    rgba(16,25,35,.70) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.08),
+    0 0 18px rgba(47,107,255,.14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::after,
+body[data-theme="cinematic-nebula"] .pill::after,
+body[data-theme="cinematic-nebula"] .btn.primary::after,
+body[data-theme="cinematic-nebula"] .marketPulseTickerOption[aria-selected="true"]::after,
+body[data-theme="cinematic-nebula"] .dashboardTickerOption[aria-selected="true"]::after{
+  background:var(--brand-blue) !important;
+  box-shadow:0 0 10px rgba(47,107,255,.26) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .card,
+  .stat,
+  .metric,
+  .insightCard,
+  .showcaseCard,
+  .heroCard,
+  .primaryCard,
+  .supportCard,
+  .quickPanel,
+  .drawer,
+  .mobileDock,
+  .pageHero,
+  .workspacePanel,
+  .summaryPanel,
+  .marketPulseSection,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionStateCard,
+  .marketPulseChecklistCard,
+  .marketPulseStructureCard,
+  .marketPulseDistanceCard,
+  .marketPulseTapeCard,
+  .dashboardCommandCard,
+  .dashboardFoundationCard,
+  .dashboardBriefCard,
+  .dashboardDecisionCard,
+  .dashboardProjectionCard,
+  .dashboardMilestoneCard,
+  .dashboardStatusDetailCard,
+  .dashboardSnapshotCard,
+  .dashboardMemoryCard,
+  .dashboardPrimaryBand,
+  .dashboardModeShell,
+  .dashboardTapeMonitor,
+  .dashboardCoreTapeCard
+){
+  border-color:rgba(47,107,255,.18) !important;
+  background:
+    linear-gradient(180deg, rgba(21,32,44,.92), rgba(11,11,13,.92)) !important;
+  box-shadow:
+    0 16px 32px rgba(0,0,0,.35),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.card,.stat,.metric,.marketPulseSection,.dashboardTapeMonitor,.dashboardCoreTapeCard)::before,
+body[data-theme="cinematic-nebula"] :where(.card,.stat,.metric,.marketPulseSection,.dashboardTapeMonitor,.dashboardCoreTapeCard)::after{
+  background-image:none !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .clockPill,
+body[data-theme="cinematic-nebula"] .statusBadge,
+body[data-theme="cinematic-nebula"] .trendChip,
+body[data-theme="cinematic-nebula"] .pill{
+  color:var(--silver) !important;
+  border-color:rgba(199,208,217,.12) !important;
+  background:rgba(16,25,35,.62) !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketStatusClock.is-open .marketStatusClockDot,
+body[data-theme="cinematic-nebula"] .tradingWindowPill.is-positive .tradingWindowSignal,
+body[data-theme="cinematic-nebula"] .glow-green{
+  border-color:rgba(34,197,94,.42) !important;
+  box-shadow:0 0 14px rgba(34,197,94,.18) !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketStatusClock.is-open .marketStatusClockDot,
+body[data-theme="cinematic-nebula"] .tradingWindowPill.is-positive .tradingWindowSignal{
+  background:var(--status-green) !important;
+}
+
+body[data-theme="cinematic-nebula"] .glow-red,
+body[data-theme="cinematic-nebula"] .trendChip.negative,
+body[data-theme="cinematic-nebula"] .statusBadge.is-critical{
+  border-color:rgba(239,68,68,.40) !important;
+  box-shadow:0 0 14px rgba(239,68,68,.16) !important;
+}
+
+body[data-theme="cinematic-nebula"] .trendChip.warning,
+body[data-theme="cinematic-nebula"] .statusBadge.is-caution{
+  border-color:rgba(245,158,11,.38) !important;
+  box-shadow:0 0 14px rgba(245,158,11,.12) !important;
+}
+
+body[data-theme="cinematic-nebula"] .notifBadge{
+  background:var(--brand-blue) !important;
+  color:#F4F8FF !important;
+  box-shadow:0 0 12px rgba(47,107,255,.24) !important;
+}
+
+body[data-theme="cinematic-nebula"] .notifBadge.is-high,
+body[data-theme="cinematic-nebula"] .notifItem.is-high{
+  border-color:rgba(239,68,68,.36) !important;
+  box-shadow:0 0 14px rgba(239,68,68,.14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .notifBadge.is-high{
+  background:var(--danger-red) !important;
+}
+
+/* Cinematic Nebula nested-row correction: outer panels get depth; inner rows stay flat. */
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardNonNegotiablesItem,
+  .dashboardFoundationModule,
+  .dashboardFoundationFold,
+  .dashboardFoundationDetailFold,
+  .dashboardRoutineStrip,
+  .dashboardFoundationCreedLine
+){
+  background:rgba(16,25,35,.42) !important;
+  border-color:rgba(199,208,217,.09) !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardNonNegotiablesItem,
+  .dashboardFoundationModule,
+  .dashboardFoundationFold,
+  .dashboardFoundationDetailFold,
+  .dashboardRoutineStrip,
+  .dashboardFoundationCreedLine
+)::before,
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardNonNegotiablesItem,
+  .dashboardFoundationModule,
+  .dashboardFoundationFold,
+  .dashboardFoundationDetailFold,
+  .dashboardRoutineStrip,
+  .dashboardFoundationCreedLine
+)::after{
+  background:none !important;
+  box-shadow:none !important;
+  opacity:0 !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardNonNegotiablesList{
+  gap:7px !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardNonNegotiablesItem{
+  min-height:38px !important;
+  padding:8px 10px !important;
+  border-radius:10px !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardFoundationModule{
+  border-radius:12px !important;
+  padding:9px !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardFoundationFold,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardFoundationDetailFold,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardRoutineStrip{
+  background:rgba(11,31,58,.16) !important;
+  border-radius:12px !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardRoutineStrip{
+  padding:9px 10px !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardRoutineGrid,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardRoutinePhase,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardRoutineChecklist{
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardRoutineItem,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardIntentionPreset,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardAlignmentItem,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardReflectionChoice{
+  background:rgba(11,31,58,.20) !important;
+  border-color:rgba(199,208,217,.10) !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardRoutineItem,
+  .dashboardIntentionPreset,
+  .dashboardAlignmentItem,
+  .dashboardReflectionChoice
+).is-active{
+  background:rgba(47,107,255,.16) !important;
+  border-color:rgba(47,107,255,.34) !important;
+  color:#F4F8FF !important;
+}
+
+/* Cinematic Nebula polish pass: consistent institutional component treatment. */
+body[data-theme="cinematic-nebula"]{
+  --premium-radius:8px;
+  --premium-radius-lg:10px;
+  --premium-hairline:rgba(199,208,217,.10);
+  --premium-blue-border:rgba(47,107,255,.20);
+  --premium-blue-border-strong:rgba(47,107,255,.38);
+  --premium-panel-bg:
+    linear-gradient(180deg, rgba(21,32,44,.88), rgba(11,11,13,.94));
+  --premium-inset-bg:rgba(11,31,58,.18);
+  color:var(--silver);
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .card,
+  .stat,
+  .metric,
+  .marketPulseSection,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionStateCard,
+  .marketPulseChecklistCard,
+  .marketPulseStructureCard,
+  .marketPulseDistanceCard,
+  .marketPulseTapeCard,
+  .dashboardCommandCard,
+  .dashboardFoundationCard,
+  .dashboardBriefCard,
+  .dashboardDecisionCard,
+  .dashboardProjectionCard,
+  .dashboardMilestoneCard,
+  .dashboardStatusDetailCard,
+  .dashboardSnapshotCard,
+  .dashboardMemoryCard,
+  .dashboardPrimaryBand,
+  .dashboardModeShell,
+  .dashboardTapeMonitor,
+  .dashboardCoreTapeCard,
+  .summaryPanel,
+  .workspacePanel
+){
+  border-radius:var(--premium-radius) !important;
+  border-color:var(--premium-blue-border) !important;
+  background:var(--premium-panel-bg) !important;
+  box-shadow:
+    0 14px 28px rgba(0,0,0,.32),
+    inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .card,
+  .stat,
+  .metric,
+  .marketPulseSection,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionHeroPanel,
+  .dashboardCommandCard,
+  .dashboardFoundationCard,
+  .dashboardBriefCard,
+  .dashboardDecisionCard,
+  .dashboardProjectionCard,
+  .dashboardMilestoneCard,
+  .dashboardTapeMonitor,
+  .dashboardCoreTapeCard
+):hover{
+  border-color:rgba(47,107,255,.28) !important;
+  box-shadow:
+    0 16px 30px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(199,208,217,.055),
+    0 0 18px rgba(47,107,255,.055) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  .brandTitle,
+  .sectionTitle,
+  .dashboardSectionTitle,
+  .marketPulseSectionTitle,
+  .marketPulseExecutionHeroSectionTitle
+){
+  color:#F4F8FF !important;
+  letter-spacing:0 !important;
+  text-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .tiny,
+  .muted,
+  .sub,
+  .pageSub,
+  .dashboardOperationalLead,
+  .dashboardSectionKicker,
+  .dashboardBriefEyebrow,
+  .marketPulseEyebrow,
+  .marketPulseExecutionHeroSectionHead .tiny
+){
+  color:var(--muted-silver) !important;
+  text-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .btn,
+  button.btn,
+  a.btn,
+  .dashboardModeToggleButton,
+  .dashboardDecisionRefreshBtn,
+  .dashboardIntentionPreset,
+  .dashboardReflectionChoice,
+  .marketPulseTickerSwitch,
+  .marketPulseExecutionHeroChartToggle
+){
+  border-radius:8px !important;
+  border-color:rgba(199,208,217,.12) !important;
+  background:rgba(16,25,35,.62) !important;
+  color:var(--muted-silver) !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.04) !important;
+  text-shadow:none !important;
+  transition:
+    color .16s ease,
+    border-color .16s ease,
+    background .16s ease,
+    box-shadow .16s ease,
+    transform .16s ease;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .btn,
+  button.btn,
+  a.btn,
+  .dashboardModeToggleButton,
+  .dashboardDecisionRefreshBtn,
+  .dashboardIntentionPreset,
+  .dashboardReflectionChoice,
+  .marketPulseTickerSwitch,
+  .marketPulseExecutionHeroChartToggle
+):hover{
+  color:#F4F8FF !important;
+  border-color:rgba(47,107,255,.32) !important;
+  background:rgba(47,107,255,.10) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.055),
+    0 0 14px rgba(47,107,255,.08) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .btn.active,
+  .btn.primary,
+  .dashboardModeToggleButton.is-active,
+  .dashboardIntentionPreset.is-active,
+  .dashboardReflectionChoice.is-active,
+  .marketPulseTickerSwitch.is-active,
+  .marketPulseTickerOption[aria-selected="true"],
+  .dashboardTickerOption[aria-selected="true"]
+){
+  color:#FFFFFF !important;
+  border-color:var(--premium-blue-border-strong) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.24), rgba(47,107,255,.10)),
+    rgba(16,25,35,.82) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.07),
+    0 0 18px rgba(47,107,255,.12) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.btn.danger,button.danger,a.danger){
+  color:#FEE2E2 !important;
+  border-color:rgba(239,68,68,.34) !important;
+  background:
+    linear-gradient(180deg, rgba(239,68,68,.18), rgba(239,68,68,.08)),
+    rgba(16,25,35,.72) !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.btn.warning,button.warning,a.warning){
+  color:#FEF3C7 !important;
+  border-color:rgba(245,158,11,.34) !important;
+  background:
+    linear-gradient(180deg, rgba(245,158,11,.18), rgba(245,158,11,.08)),
+    rgba(16,25,35,.72) !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.pill,.clockPill,.statusBadge,.trendChip,.liveTapeBadge){
+  border-radius:999px !important;
+  border-color:var(--premium-hairline) !important;
+  background:rgba(16,25,35,.68) !important;
+  color:var(--silver) !important;
+  box-shadow:none !important;
+  text-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.pill,.clockPill,.statusBadge,.trendChip,.liveTapeBadge)::before,
+body[data-theme="cinematic-nebula"] :where(.pill,.clockPill,.statusBadge,.trendChip,.liveTapeBadge)::after{
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.tone-positive,.is-positive,.positive,.status-success-green){
+  color:var(--status-green) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.tone-negative,.is-negative,.negative,.status-danger-red){
+  color:var(--danger-red) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.tone-warning,.is-warning,.warning,.status-warning-amber){
+  color:var(--warning-amber) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardFoundationModule,
+  .dashboardFoundationFold,
+  .dashboardFoundationDetailFold,
+  .dashboardRoutineStrip,
+  .dashboardNonNegotiablesItem,
+  .dashboardRoutineItem,
+  .dashboardAlignmentItem,
+  .dashboardIntentionPreset,
+  .dashboardReflectionChoice,
+  .dashboardStatusChip,
+  .statusChip
+){
+  border-radius:8px !important;
+  border-color:rgba(199,208,217,.085) !important;
+  background:var(--premium-inset-bg) !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardFoundationModule,
+  .dashboardFoundationFold,
+  .dashboardFoundationDetailFold,
+  .dashboardRoutineStrip,
+  .dashboardNonNegotiablesItem,
+  .dashboardRoutineItem,
+  .dashboardAlignmentItem,
+  .dashboardIntentionPreset,
+  .dashboardReflectionChoice,
+  .dashboardStatusChip,
+  .statusChip
+)::before,
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardFoundationModule,
+  .dashboardFoundationFold,
+  .dashboardFoundationDetailFold,
+  .dashboardRoutineStrip,
+  .dashboardNonNegotiablesItem,
+  .dashboardRoutineItem,
+  .dashboardAlignmentItem,
+  .dashboardIntentionPreset,
+  .dashboardReflectionChoice,
+  .dashboardStatusChip,
+  .statusChip
+)::after{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardNonNegotiablesItem{
+  min-height:34px !important;
+  padding:7px 10px !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardRoutineStrip{
+  padding:8px 10px !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard{
+  border-radius:8px !important;
+  border-color:rgba(47,107,255,.18) !important;
+  background:
+    linear-gradient(180deg, rgba(16,25,35,.86), rgba(8,18,32,.94)) !important;
+  box-shadow:
+    0 12px 22px rgba(0,0,0,.28),
+    inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-positive{
+  border-color:rgba(34,197,94,.26) !important;
+  box-shadow:
+    0 12px 22px rgba(0,0,0,.28),
+    inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative{
+  border-color:rgba(239,68,68,.28) !important;
+}
+
+body[data-theme="cinematic-nebula"] input,
+body[data-theme="cinematic-nebula"] select,
+body[data-theme="cinematic-nebula"] textarea{
+  border-radius:8px !important;
+  border-color:rgba(199,208,217,.12) !important;
+  background:rgba(11,11,13,.62) !important;
+  color:#F4F8FF !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] input:focus,
+body[data-theme="cinematic-nebula"] select:focus,
+body[data-theme="cinematic-nebula"] textarea:focus,
+body[data-theme="cinematic-nebula"] :where(.btn,button,a,[tabindex]):focus-visible{
+  outline:2px solid rgba(47,107,255,.42) !important;
+  outline-offset:2px !important;
+}
+
+/* Cinematic Nebula atmosphere boost: brighter brand glow and sparse stars. */
+body[data-theme="cinematic-nebula"]::before{
+  background:
+    radial-gradient(1px 1px at 6% 12%, rgba(199,208,217,.58), transparent 72%),
+    radial-gradient(1px 1px at 13% 42%, rgba(199,208,217,.32), transparent 72%),
+    radial-gradient(1px 1px at 22% 24%, rgba(199,208,217,.44), transparent 72%),
+    radial-gradient(1px 1px at 31% 68%, rgba(199,208,217,.28), transparent 72%),
+    radial-gradient(1.2px 1.2px at 41% 15%, rgba(199,208,217,.50), transparent 72%),
+    radial-gradient(1px 1px at 53% 36%, rgba(199,208,217,.30), transparent 72%),
+    radial-gradient(1.2px 1.2px at 64% 20%, rgba(199,208,217,.46), transparent 72%),
+    radial-gradient(1px 1px at 72% 58%, rgba(199,208,217,.26), transparent 72%),
+    radial-gradient(1.2px 1.2px at 84% 18%, rgba(199,208,217,.48), transparent 72%),
+    radial-gradient(1px 1px at 93% 44%, rgba(199,208,217,.30), transparent 72%),
+    radial-gradient(740px 340px at 14% 0%, rgba(47,107,255,.14), transparent 70%),
+    radial-gradient(900px 420px at 78% 12%, rgba(47,107,255,.07), transparent 78%),
+    radial-gradient(820px 420px at 88% 34%, rgba(11,31,58,.34), transparent 78%) !important;
+  opacity:.82 !important;
+}
+
+body[data-theme="cinematic-nebula"]::after{
+  background:
+    radial-gradient(1px 1px at 9% 76%, rgba(199,208,217,.30), transparent 72%),
+    radial-gradient(1px 1px at 18% 88%, rgba(199,208,217,.22), transparent 72%),
+    radial-gradient(1px 1px at 37% 52%, rgba(199,208,217,.28), transparent 72%),
+    radial-gradient(1.2px 1.2px at 49% 82%, rgba(199,208,217,.30), transparent 72%),
+    radial-gradient(1px 1px at 62% 64%, rgba(199,208,217,.20), transparent 72%),
+    radial-gradient(1.2px 1.2px at 76% 86%, rgba(199,208,217,.30), transparent 72%),
+    radial-gradient(1px 1px at 91% 72%, rgba(199,208,217,.24), transparent 72%),
+    radial-gradient(980px 520px at 18% 0%, rgba(47,107,255,.08), transparent 72%),
+    radial-gradient(760px 420px at 66% 78%, rgba(47,107,255,.055), transparent 82%) !important;
+  opacity:.70 !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar{
+  border-color:rgba(47,107,255,.34) !important;
+  box-shadow:
+    0 0 0 1px rgba(199,208,217,.055),
+    0 18px 42px rgba(0,0,0,.36),
+    0 -10px 34px rgba(47,107,255,.18),
+    0 0 46px rgba(47,107,255,.16) !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar::before{
+  background:
+    linear-gradient(90deg, rgba(47,107,255,0), rgba(47,107,255,.74) 48%, rgba(47,107,255,0)),
+    radial-gradient(320px 52px at 12% 50%, rgba(47,107,255,.42), transparent 72%) !important;
+  box-shadow:
+    0 0 24px rgba(47,107,255,.28),
+    0 0 54px rgba(47,107,255,.14) !important;
+  opacity:.78 !important;
+  filter:blur(8px) !important;
+}
+
+body[data-theme="cinematic-nebula"] .brand{
+  position:relative;
+}
+
+body[data-theme="cinematic-nebula"] .brand::before{
+  content:"";
+  position:absolute;
+  inset:-18px -34px -12px -22px;
+  z-index:-1;
+  pointer-events:none;
+  border-radius:26px;
+  background:
+    radial-gradient(220px 72px at 72px 18px, rgba(47,107,255,.32), transparent 74%),
+    radial-gradient(320px 92px at 188px 24px, rgba(47,107,255,.18), transparent 80%);
+  filter:blur(14px);
+  opacity:.95;
+}
+
+body[data-theme="cinematic-nebula"] .brandTitle{
+  color:#EEF4FF !important;
+  text-shadow:
+    0 0 14px rgba(47,107,255,.30),
+    0 0 34px rgba(47,107,255,.18) !important;
+}
+
+body[data-theme="cinematic-nebula"] .logo,
+body[data-theme="cinematic-nebula"] .logo-shell{
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.10),
+    0 0 0 1px rgba(47,107,255,.18),
+    0 0 22px rgba(47,107,255,.28),
+    0 0 42px rgba(47,107,255,.12) !important;
+}
+
+/* Dashboard blend fix: layout wrappers should not look like boxed cards. */
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardPrimaryBand,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStage,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStageLead,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStageSide,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStageColumn,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStageSection{
+  border-color:transparent !important;
+  background:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  outline:0 !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardPrimaryBand{
+  position:relative;
+  border-radius:0 !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardPrimaryBand::before{
+  content:"";
+  position:absolute;
+  inset:-22px -18px;
+  z-index:-1;
+  pointer-events:none;
+  border-radius:28px;
+  background:
+    radial-gradient(720px 360px at 18% 8%, rgba(47,107,255,.075), transparent 72%),
+    radial-gradient(620px 420px at 78% 20%, rgba(11,31,58,.16), transparent 76%);
+  filter:blur(10px);
+  opacity:.70;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardModeShell::after,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardPrimaryBand::after,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStage::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStage::after,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStageLead::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStageLead::after,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStageSide::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardStageSide::after{
+  display:none !important;
+  background:none !important;
+  box-shadow:none !important;
+}
+
+/* Dashboard command deck blend fix: remove the remaining hard top box. */
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandDeckWrap,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandDeck{
+  border:0 !important;
+  background:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  outline:0 !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard{
+  border-color:rgba(47,107,255,.14) !important;
+  background:
+    linear-gradient(180deg, rgba(11,31,58,.16), rgba(8,18,32,.08)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.035) !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard::after{
+  display:none !important;
+  background:none !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardCommandCard:hover{
+  border-color:rgba(47,107,255,.24) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.10), rgba(8,18,32,.08)) !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.04) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBehaviorTrendCard,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBehaviorTrendFold{
+  border-color:rgba(47,107,255,.12) !important;
+  background:
+    linear-gradient(180deg, rgba(11,31,58,.10), rgba(8,18,32,.045)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBehaviorTrendCard::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBehaviorTrendCard::after,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBehaviorTrendFold::before,
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardBehaviorTrendFold::after{
+  display:none !important;
+  background:none !important;
+  box-shadow:none !important;
+}
+
+/* Dashboard no-slab reset: the dashboard should float on the nebula, not sit on a column. */
+body[data-theme="cinematic-nebula"].page-dashboard .wrap::before,
+body[data-theme="cinematic-nebula"].page-dashboard .wrap::after,
+body[data-theme="cinematic-nebula"].page-dashboard::before,
+body[data-theme="cinematic-nebula"].page-dashboard::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardModeShell::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardModeShell::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardPrimaryBand::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardPrimaryBand::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStage::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStage::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+  animation:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .wrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardModeShell,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardPrimaryBand,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStage,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageLead,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageSide{
+  isolation:auto !important;
+  overflow:visible !important;
+  border:0 !important;
+  background:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardModeShell[data-dashboard-mode] :where(
+  .dashboardHero,
+  .dashboardBriefCard,
+  .dashboardSupportFold,
+  .dashboardAnalyticsPrimary,
+  .dashboardProjectionCard,
+  #advancedDashboardWidgets,
+  .dashboardCoreTapeCard,
+  .dashboardMilestoneCard,
+  .dashboardSignalCard-risk,
+  .dashboardSignalCard-pattern,
+  .dashboardSignalCard-payout,
+  .dataTrustDetails,
+  .showcaseGrid,
+  .dashboardPriorityGrid > .dashboardDecisionCard,
+  .dashboardCommandFold,
+  .dashboardReadinessBarCard,
+  .dashboardHeroPriority
+){
+  opacity:1 !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplineRail,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandDeckWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardSnapshotBar{
+  border-color:rgba(47,107,255,.10) !important;
+  background:
+    linear-gradient(180deg, rgba(11,31,58,.10), rgba(11,11,13,.02)) !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandCard,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardSnapshotCard{
+  background:
+    linear-gradient(180deg, rgba(11,31,58,.18), rgba(11,11,13,.12)) !important;
+  border-color:rgba(47,107,255,.16) !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.03) !important;
+}
+
+/* Cinematic Nebula final alignment: restore stars and make neutral tape blue/silver. */
+body[data-theme="cinematic-nebula"].page-dashboard::before{
+  content:"" !important;
+  display:block !important;
+  position:fixed !important;
+  inset:0 !important;
+  z-index:-2 !important;
+  pointer-events:none !important;
+  background:
+    radial-gradient(1.2px 1.2px at 7% 11%, rgba(199,208,217,.58), transparent 72%),
+    radial-gradient(1px 1px at 15% 38%, rgba(199,208,217,.30), transparent 72%),
+    radial-gradient(1.2px 1.2px at 24% 22%, rgba(199,208,217,.44), transparent 72%),
+    radial-gradient(1px 1px at 34% 64%, rgba(199,208,217,.24), transparent 72%),
+    radial-gradient(1.2px 1.2px at 46% 14%, rgba(199,208,217,.48), transparent 72%),
+    radial-gradient(1px 1px at 58% 35%, rgba(199,208,217,.26), transparent 72%),
+    radial-gradient(1.2px 1.2px at 69% 18%, rgba(199,208,217,.42), transparent 72%),
+    radial-gradient(1px 1px at 82% 48%, rgba(199,208,217,.24), transparent 72%),
+    radial-gradient(1.2px 1.2px at 93% 16%, rgba(199,208,217,.46), transparent 72%),
+    radial-gradient(820px 360px at 16% 0%, rgba(47,107,255,.16), transparent 72%),
+    radial-gradient(900px 460px at 82% 18%, rgba(11,31,58,.36), transparent 78%),
+    radial-gradient(760px 420px at 56% 88%, rgba(47,107,255,.07), transparent 82%) !important;
+  opacity:.82 !important;
+  filter:none !important;
+  animation:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard::after{
+  content:"" !important;
+  display:block !important;
+  position:fixed !important;
+  inset:0 !important;
+  z-index:-3 !important;
+  pointer-events:none !important;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(47,107,255,.13), transparent 30%),
+    radial-gradient(circle at 78% 32%, rgba(11,31,58,.36), transparent 38%),
+    radial-gradient(circle at 50% 92%, rgba(47,107,255,.09), transparent 34%),
+    #0B0B0D !important;
+  opacity:1 !important;
+  filter:none !important;
+  animation:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketMiniSparkLine.flat,
+body[data-theme="cinematic-nebula"] .marketMiniSparkWrap.spark-flat .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"] .marketMiniSparkWrap.tone-neutral .marketMiniSparkLine{
+  stroke:rgba(143,163,184,.96) !important;
+  filter:drop-shadow(0 0 6px rgba(47,107,255,.20)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketMiniSparkArea.flat{
+  fill:rgba(47,107,255,.10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketMiniSparkLine.up,
+body[data-theme="cinematic-nebula"] .marketMiniSparkWrap.spark-pos .marketMiniSparkLine{
+  stroke:rgba(34,197,94,.95) !important;
+  filter:drop-shadow(0 0 6px rgba(34,197,94,.22)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketMiniSparkLine.down,
+body[data-theme="cinematic-nebula"] .marketMiniSparkWrap.spark-neg .marketMiniSparkLine{
+  stroke:rgba(239,68,68,.95) !important;
+  filter:drop-shadow(0 0 6px rgba(239,68,68,.20)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketMiniSparkArea.up{fill:rgba(34,197,94,.14) !important;}
+body[data-theme="cinematic-nebula"] .marketMiniSparkArea.down{fill:rgba(239,68,68,.14) !important;}
+
+body[data-theme="cinematic-nebula"] :where(
+  .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard,
+  .marketPulseTapeShell .marketPulseTapeCard
+){
+  border-color:rgba(47,107,255,.20) !important;
+  background:
+    linear-gradient(180deg, rgba(16,25,35,.90), rgba(8,18,32,.94)) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-neutral,
+  .marketPulseTapeShell .marketPulseTapeCard.tone-neutral
+){
+  border-color:rgba(47,107,255,.24) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 18px rgba(47,107,255,.08) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-positive,
+  .marketPulseTapeShell .marketPulseTapeCard.tone-positive
+){
+  border-color:rgba(34,197,94,.26) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative,
+  .marketPulseTapeShell .marketPulseTapeCard.tone-negative
+){
+  border-color:rgba(239,68,68,.28) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.trendChip.tone-neutral,.marketPulseWatchState.tone-neutral){
+  color:var(--muted-silver) !important;
+  border-color:rgba(47,107,255,.22) !important;
+  background:rgba(47,107,255,.08) !important;
+  box-shadow:none !important;
+}
+
+/* Cinematic Nebula discipline rail: blue owns active state, silver/slate owns rest. */
+body[data-theme="cinematic-nebula"].page-dashboard::before{
+  background:
+    radial-gradient(1.3px 1.3px at 6% 9%, rgba(199,208,217,.72), transparent 72%),
+    radial-gradient(1px 1px at 12% 31%, rgba(199,208,217,.42), transparent 72%),
+    radial-gradient(1.4px 1.4px at 21% 19%, rgba(199,208,217,.62), transparent 72%),
+    radial-gradient(1px 1px at 29% 51%, rgba(199,208,217,.34), transparent 72%),
+    radial-gradient(1.2px 1.2px at 38% 12%, rgba(199,208,217,.55), transparent 72%),
+    radial-gradient(1px 1px at 48% 36%, rgba(199,208,217,.34), transparent 72%),
+    radial-gradient(1.4px 1.4px at 61% 17%, rgba(199,208,217,.58), transparent 72%),
+    radial-gradient(1px 1px at 74% 43%, rgba(199,208,217,.34), transparent 72%),
+    radial-gradient(1.2px 1.2px at 86% 24%, rgba(199,208,217,.52), transparent 72%),
+    radial-gradient(1px 1px at 94% 58%, rgba(199,208,217,.30), transparent 72%),
+    radial-gradient(880px 380px at 16% 0%, rgba(47,107,255,.18), transparent 72%),
+    radial-gradient(960px 480px at 82% 18%, rgba(11,31,58,.38), transparent 78%),
+    radial-gradient(820px 440px at 56% 88%, rgba(47,107,255,.09), transparent 82%) !important;
+  opacity:.92 !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDisciplineRail{
+  border:1px solid rgba(47,107,255,.18) !important;
+  background:
+    linear-gradient(180deg, rgba(21,32,44,.78), rgba(11,11,13,.72)),
+    radial-gradient(720px 140px at 12% 0%, rgba(47,107,255,.09), transparent 70%) !important;
+  box-shadow:
+    0 14px 28px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDisciplineRailLabel{
+  color:rgba(143,163,184,.92) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardDisciplinePill,
+  .dashboardResetTrigger
+){
+  border-color:rgba(199,208,217,.12) !important;
+  background:
+    linear-gradient(180deg, rgba(21,32,44,.72), rgba(11,11,13,.64)) !important;
+  color:var(--muted-silver) !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.04) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard :where(
+  .dashboardDisciplinePill,
+  .dashboardResetTrigger
+):hover{
+  border-color:rgba(47,107,255,.30) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.12), rgba(16,25,35,.72)) !important;
+  color:var(--silver) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 14px rgba(47,107,255,.08) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDisciplinePill.is-active{
+  border-color:rgba(47,107,255,.44) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.24), rgba(47,107,255,.10)),
+    rgba(16,25,35,.82) !important;
+  color:#F4F8FF !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.07),
+    0 0 18px rgba(47,107,255,.14) !important;
+}
+
+body[data-theme="cinematic-nebula"] .page-dashboard .dashboardDisciplineRulePill{
+  border-color:rgba(47,107,255,.28) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.12), rgba(11,31,58,.18)) !important;
+  color:#DCE8FF !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 16px rgba(47,107,255,.08) !important;
+}
+
+/* Cinematic Nebula visibility fix: put stars in the real page background. */
+body[data-theme="cinematic-nebula"].page-dashboard{
+  background:
+    radial-gradient(2px 2px at 5% 9%, rgba(199,208,217,.82), transparent 70%),
+    radial-gradient(1.4px 1.4px at 11% 28%, rgba(199,208,217,.58), transparent 70%),
+    radial-gradient(2px 2px at 19% 17%, rgba(199,208,217,.78), transparent 70%),
+    radial-gradient(1.4px 1.4px at 30% 44%, rgba(199,208,217,.46), transparent 70%),
+    radial-gradient(1.8px 1.8px at 42% 10%, rgba(199,208,217,.68), transparent 70%),
+    radial-gradient(1.4px 1.4px at 54% 31%, rgba(199,208,217,.46), transparent 70%),
+    radial-gradient(2px 2px at 66% 15%, rgba(199,208,217,.72), transparent 70%),
+    radial-gradient(1.4px 1.4px at 79% 39%, rgba(199,208,217,.44), transparent 70%),
+    radial-gradient(1.8px 1.8px at 91% 19%, rgba(199,208,217,.66), transparent 70%),
+    radial-gradient(1.4px 1.4px at 96% 58%, rgba(199,208,217,.42), transparent 70%),
+    radial-gradient(circle at 20% 10%, rgba(47,107,255,.14), transparent 30%),
+    radial-gradient(circle at 78% 32%, rgba(11,31,58,.38), transparent 38%),
+    radial-gradient(circle at 50% 92%, rgba(47,107,255,.10), transparent 34%),
+    #0B0B0D !important;
+  background-attachment:fixed !important;
+}
+
+/* Mixed tape is caution/indecision: amber line and controlled amber glow. */
+body[data-theme="cinematic-nebula"] :where(
+  .marketMiniSparkWrap.tone-neutral .marketMiniSparkLine,
+  .marketMiniSparkWrap.spark-flat .marketMiniSparkLine,
+  .marketMiniSparkLine.flat
+){
+  stroke:rgba(245,158,11,.98) !important;
+  filter:drop-shadow(0 0 7px rgba(245,158,11,.28)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketMiniSparkArea.flat{
+  fill:rgba(245,158,11,.12) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-neutral,
+  .marketPulseTapeShell .marketPulseTapeCard.tone-neutral
+){
+  border-color:rgba(245,158,11,.34) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 24px rgba(245,158,11,.16) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(.trendChip.tone-neutral,.marketPulseWatchState.tone-neutral){
+  color:#FDE68A !important;
+  border-color:rgba(245,158,11,.34) !important;
+  background:rgba(245,158,11,.10) !important;
+  box-shadow:0 0 14px rgba(245,158,11,.10) !important;
+}
+
+body[data-theme="cinematic-nebula"] .brandCommandPulse{
+  color:#DCE8FF !important;
+  font-weight:800 !important;
+  letter-spacing:.08em !important;
+  text-transform:uppercase !important;
+  text-shadow:
+    0 0 10px rgba(47,107,255,.46),
+    0 0 24px rgba(47,107,255,.30),
+    0 0 42px rgba(47,107,255,.18) !important;
+  animation:brandCommandBluePulse 2.8s ease-in-out infinite;
+}
+
+/* Dashboard discipline rail: state colors follow Cinematic Nebula signal roles. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplineRail{
+  border-color:rgba(47,107,255,.18) !important;
+  background:
+    linear-gradient(180deg, rgba(16,25,35,.80), rgba(11,11,13,.72)),
+    radial-gradient(760px 150px at 14% 0%, rgba(47,107,255,.10), transparent 72%) !important;
+  box-shadow:
+    0 14px 30px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplineRailLabel{
+  color:var(--muted-silver) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePill,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardResetTrigger{
+  border-color:rgba(199,208,217,.14) !important;
+  background:
+    linear-gradient(180deg, rgba(21,32,44,.72), rgba(11,11,13,.64)) !important;
+  color:var(--muted-silver) !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.04) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePill:hover,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardResetTrigger:hover{
+  border-color:rgba(47,107,255,.32) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.12), rgba(16,25,35,.72)) !important;
+  color:var(--silver) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 14px rgba(47,107,255,.08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePill[data-discipline-state="locked-in"].is-active{
+  border-color:rgba(47,107,255,.58) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.34), rgba(47,107,255,.14)),
+    rgba(11,31,58,.72) !important;
+  color:#F4F8FF !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.08),
+    0 0 20px rgba(47,107,255,.20) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePillSet[data-discipline-group="state"] .dashboardDisciplinePill[data-discipline-state="locked-in"]:not(.is-active){
+  border-color:rgba(47,107,255,.22) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.08), rgba(11,11,13,.62)) !important;
+  color:#BFD0F7 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePillSet[data-discipline-group="state"] .dashboardDisciplinePill[data-discipline-state="neutral"]:not(.is-active){
+  border-color:rgba(199,208,217,.18) !important;
+  background:
+    linear-gradient(180deg, rgba(199,208,217,.06), rgba(11,11,13,.62)) !important;
+  color:var(--muted-silver) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePillSet[data-discipline-group="state"] .dashboardDisciplinePill[data-discipline-state="urgent"]:not(.is-active){
+  border-color:rgba(245,158,11,.24) !important;
+  background:
+    linear-gradient(180deg, rgba(245,158,11,.08), rgba(11,11,13,.62)) !important;
+  color:#E8C06F !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePillSet[data-discipline-group="state"] .dashboardDisciplinePill[data-discipline-state="frustrated"]:not(.is-active){
+  border-color:rgba(239,68,68,.24) !important;
+  background:
+    linear-gradient(180deg, rgba(239,68,68,.08), rgba(11,11,13,.62)) !important;
+  color:#E59AA0 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePill[data-discipline-state="neutral"].is-active{
+  border-color:rgba(199,208,217,.28) !important;
+  background:
+    linear-gradient(180deg, rgba(199,208,217,.12), rgba(21,32,44,.72)) !important;
+  color:var(--silver) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.07),
+    0 0 14px rgba(199,208,217,.08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePill[data-discipline-state="urgent"].is-active{
+  border-color:rgba(245,158,11,.44) !important;
+  background:
+    linear-gradient(180deg, rgba(245,158,11,.18), rgba(21,32,44,.74)) !important;
+  color:#FDE68A !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.06),
+    0 0 16px rgba(245,158,11,.13) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePill[data-discipline-state="frustrated"].is-active{
+  border-color:rgba(239,68,68,.44) !important;
+  background:
+    linear-gradient(180deg, rgba(239,68,68,.18), rgba(21,32,44,.74)) !important;
+  color:#FCA5A5 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.06),
+    0 0 16px rgba(239,68,68,.13) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplinePill[data-discipline-mode].is-active,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplineRulePill{
+  border-color:rgba(47,107,255,.34) !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.18), rgba(11,31,58,.20)) !important;
+  color:#DCE8FF !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 16px rgba(47,107,255,.10) !important;
+}
+
+@keyframes brandCommandBluePulse{
+  0%, 100%{
+    color:#C7D0D9;
+    text-shadow:
+      0 0 8px rgba(47,107,255,.26),
+      0 0 18px rgba(47,107,255,.16);
+  }
+  50%{
+    color:#F4F8FF;
+    text-shadow:
+      0 0 12px rgba(47,107,255,.62),
+      0 0 30px rgba(47,107,255,.38),
+      0 0 54px rgba(47,107,255,.22);
+  }
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .dashboardTapeAssetCard.tone-neutral .dashboardTapeAssetChange,
+  .dashboardTapeAssetCard.tone-neutral [data-role="chgp"],
+  .dashboardTapeAssetCard.is-flat .dashboardTapeAssetChange,
+  .dashboardTapeAssetCard.is-flat [data-role="chgp"]
+){
+  color:#F59E0B !important;
+  text-shadow:0 0 10px rgba(245,158,11,.22) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine,
+  .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine.up,
+  .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine.down,
+  .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine.flat,
+  .dashboardTapeAssetCard.is-flat .marketMiniSparkLine,
+  .dashboardTapeAssetCard.is-flat .marketMiniSparkLine.up,
+  .dashboardTapeAssetCard.is-flat .marketMiniSparkLine.down,
+  .dashboardTapeAssetCard.is-flat .marketMiniSparkLine.flat
+){
+  stroke:rgba(245,158,11,.98) !important;
+  filter:drop-shadow(0 0 7px rgba(245,158,11,.30)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral{
+  border-color:rgba(245,158,11,.38) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 26px rgba(245,158,11,.18) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .dashboardTapeAssetChange,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .dashboardTapeAssetChange{
+  color:#F59E0B !important;
+  text-shadow:0 0 10px rgba(245,158,11,.24) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .dashboardTapeSpark polyline,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .marketMiniSparkLine.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .marketMiniSparkLine.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .marketMiniSparkLine.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .dashboardTapeSpark polyline,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine.flat{
+  stroke:rgba(245,158,11,.98) !important;
+  filter:drop-shadow(0 0 8px rgba(245,158,11,.34)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .marketPulseWatchState{
+  color:#FDE68A !important;
+  border-color:rgba(245,158,11,.38) !important;
+  background:rgba(245,158,11,.12) !important;
+  box-shadow:0 0 14px rgba(245,158,11,.12) !important;
+}
+
+/* Mixed remains amber at the card/badge level; the sparkline follows the day's move. */
+body[data-theme="cinematic-nebula"] .marketPulseTapeShell .marketMiniSparkWrap.spark-pos .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .marketMiniSparkWrap.spark-pos .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .marketMiniSparkWrap.spark-pos .marketMiniSparkLine{
+  stroke:rgba(34,197,94,.95) !important;
+  filter:drop-shadow(0 0 7px rgba(34,197,94,.28)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketPulseTapeShell .marketMiniSparkWrap.spark-neg .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .marketMiniSparkWrap.spark-neg .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .marketMiniSparkWrap.spark-neg .marketMiniSparkLine{
+  stroke:rgba(239,68,68,.95) !important;
+  filter:drop-shadow(0 0 7px rgba(239,68,68,.26)) !important;
+}
+
+body[data-theme="cinematic-nebula"] .marketPulseTapeShell .marketMiniSparkWrap.spark-flat .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .marketMiniSparkWrap.spark-flat .marketMiniSparkLine,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard[data-tape-tone="neutral"] .marketMiniSparkWrap.spark-flat .marketMiniSparkLine{
+  stroke:rgba(245,158,11,.98) !important;
+  filter:drop-shadow(0 0 7px rgba(245,158,11,.30)) !important;
+}
+
+/* Core Tape manual refresh: final override so later performance rules cannot erase the spin. */
+.page-market-pulse .marketPulseTapeShell.is-refreshing{
+  border-color:rgba(47,107,255,.30) !important;
+  box-shadow:
+    0 16px 32px rgba(0,0,0,.34),
+    0 0 24px rgba(47,107,255,.12),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+
+.page-market-pulse .marketPulseTapeRefreshBtn.is-loading{
+  opacity:1 !important;
+  color:#F4F8FF !important;
+  border-color:rgba(47,107,255,.58) !important;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(47,107,255,.28), rgba(8,16,30,.68) 64%) !important;
+  box-shadow:
+    0 0 0 1px rgba(47,107,255,.22),
+    0 0 20px rgba(47,107,255,.28) !important;
+}
+
+.page-market-pulse .marketPulseTapeRefreshBtn.is-loading svg{
+  animation:marketPulseTapeRefreshSpin .58s linear infinite !important;
+  transform-origin:50% 50% !important;
+  will-change:transform;
+}
+
+@keyframes marketPulseTapeRefreshSpin{
+  from{transform:rotate(0deg);}
+  to{transform:rotate(360deg);}
+}
+
+/* Shared page-transition loader: compact modal, while JS keeps it alive until ready. */
+.marketPulseLoadingOverlay{
+  inset:auto !important;
+  top:12px !important;
+  left:50% !important;
+  bottom:auto !important;
+  right:auto !important;
+  width:max-content !important;
+  max-width:calc(100vw - 28px) !important;
+  height:auto !important;
+  min-height:0 !important;
+  display:block !important;
+  transform:translate(-50%, -8px) !important;
+  z-index:9999 !important;
+  background:transparent !important;
+  overflow:visible !important;
+  pointer-events:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+.marketPulseLoadingOverlay.show{
+  transform:translate(-50%, 0) !important;
+}
+
+.marketPulseLoadingCard{
+  width:min(420px, calc(100vw - 28px)) !important;
+  border-radius:999px !important;
+  padding:8px 12px 9px !important;
+  background-color:#070C16 !important;
+  background:
+    linear-gradient(180deg, #0A121F, #070C16) !important;
+  border-color:rgba(var(--accent-rgb), .18) !important;
+  box-shadow:0 8px 18px rgba(0, 0, 0, .18) !important;
+}
+
+html.perf-mode-low-gpu .page-market-pulse .marketPulseLoadingCard,
+body.page-market-pulse .marketPulseLoadingCard,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseLoadingCard{
+  background-color:#070C16 !important;
+  background-image:linear-gradient(180deg, #0A121F, #070C16) !important;
+}
+
+.page-dashboard #dashboardGammaStrip .dashboardGammaChip-execution#dashboardGammaChip-regime .dashboardGammaChipValue{
+  font-size:clamp(13px, 0.9vw, 18px);
+  line-height:.92;
+  max-width:100%;
+  overflow-wrap:normal;
+  word-break:normal;
+}
+
+/* Analytics KPI donuts: premium instrument tiles, aligned with Trades at a slightly larger scale. */
+.page-analytics .analyticsKpiCard-orbit{
+  --analytics-ring-color:#78C7FF;
+  --analytics-ring-glow:rgba(61, 123, 172, .26);
+  min-height:236px !important;
+  border-radius:18px !important;
+  background:
+    radial-gradient(220px 160px at 50% 26%, color-mix(in srgb, var(--analytics-ring-color) 14%, transparent), transparent 70%),
+    radial-gradient(180px 120px at 52% 34%, rgba(47,107,255,.055), transparent 72%),
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.004)),
+    rgba(5, 12, 22, .70) !important;
+  border-color:color-mix(in srgb, var(--analytics-ring-color) 30%, rgba(76,203,238,.10)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 18px 34px rgba(0,0,0,.18),
+    0 0 28px color-mix(in srgb, var(--analytics-ring-color) 10%, transparent) !important;
+}
+
+.page-analytics .analyticsKpiCard-orbit > .toolbar{
+  display:grid !important;
+  justify-items:center !important;
+  align-content:start !important;
+  gap:8px !important;
+  padding:16px 12px 14px !important;
+}
+
+.page-analytics .analyticsKpiChart{
+  order:1 !important;
+  position:relative !important;
+  isolation:isolate !important;
+  width:178px !important;
+  max-width:100% !important;
+  min-height:178px !important;
+  height:178px !important;
+  margin:2px auto 0 !important;
+  filter:drop-shadow(0 12px 20px rgba(0,0,0,.24));
+}
+
+.page-analytics .analyticsKpiChart::before{
+  content:"";
+  position:absolute;
+  inset:16px;
+  z-index:-1;
+  border-radius:50%;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255,255,255,.075), transparent 34%),
+    radial-gradient(circle, color-mix(in srgb, var(--analytics-ring-color) 14%, transparent), transparent 64%);
+  filter:blur(10px);
+  opacity:.72;
+}
+
+.page-analytics .analyticsKpiChart::after{
+  content:"";
+  position:absolute;
+  inset:30px;
+  z-index:-1;
+  border-radius:50%;
+  background:
+    radial-gradient(circle at 35% 24%, rgba(255,255,255,.06), transparent 42%),
+    linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.006)),
+    rgba(4, 9, 18, .78);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    inset 0 -12px 22px rgba(0,0,0,.18);
+}
+
+.page-analytics .analyticsKpiChart .apexcharts-canvas,
+.page-analytics .analyticsKpiChart svg{
+  position:relative !important;
+  z-index:1 !important;
+  width:178px !important;
+  max-width:100% !important;
+  height:178px !important;
+}
+
+.page-analytics .analyticsKpiChart .apexcharts-radialbar-track path{
+  stroke:color-mix(in srgb, var(--analytics-ring-color) 20%, rgba(91, 116, 148, .30)) !important;
+  filter:
+    drop-shadow(0 0 10px color-mix(in srgb, var(--analytics-ring-color) 12%, transparent))
+    drop-shadow(0 8px 12px rgba(0,0,0,.16));
+}
+
+.page-analytics .analyticsKpiChart .apexcharts-radialbar-area{
+  filter:
+    drop-shadow(0 0 10px color-mix(in srgb, var(--analytics-ring-color) 46%, transparent))
+    drop-shadow(0 0 22px color-mix(in srgb, var(--analytics-ring-color) 24%, transparent));
+}
+
+.page-analytics .analyticsKpiChart .apexcharts-datalabel-value{
+  font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif !important;
+  font-weight:800 !important;
+  letter-spacing:0 !important;
+  font-variant-numeric:tabular-nums !important;
+  text-shadow:
+    0 1px 0 rgba(255,255,255,.08),
+    0 0 14px color-mix(in srgb, var(--analytics-ring-color) 16%, transparent) !important;
+}
+
+.page-analytics .analyticsKpiTopline{
+  order:2 !important;
+  margin-top:2px !important;
+  font-size:12px !important;
+  line-height:1.15 !important;
+  letter-spacing:.13em !important;
+  text-align:center !important;
+  color:rgba(221, 232, 247, .84) !important;
+  text-shadow:0 0 14px color-mix(in srgb, var(--analytics-ring-color) 14%, transparent) !important;
+}
+
+.page-analytics .analyticsKpiContextTop{
+  order:3 !important;
+  max-width:22ch !important;
+  min-height:0 !important;
+  font-size:11.5px !important;
+  line-height:1.24 !important;
+  text-align:center !important;
+  color:rgba(207, 221, 240, .62) !important;
+}
+
+.page-analytics .analyticsKpiFoot{
+  order:4 !important;
+  max-width:24ch !important;
+  min-height:28px !important;
+  margin-top:8px !important;
+  font-size:11.5px !important;
+  line-height:1.24 !important;
+  text-align:center !important;
+  color:rgba(207, 221, 240, .58) !important;
+}
+
+@media (max-width:720px){
+  .page-analytics .analyticsKpiChart,
+  .page-analytics .analyticsKpiChart .apexcharts-canvas,
+  .page-analytics .analyticsKpiChart svg{
+    width:168px !important;
+    height:168px !important;
+  }
+
+  .page-analytics .analyticsKpiChart{
+    min-height:168px !important;
+  }
+}
+
+/* Site-wide label polish: reserve bright underlines for real active navigation only. */
+body[data-theme="cinematic-nebula"] :where(
+  .pill,
+  .trendChip,
+  .statusBadge,
+  .liveTapeBadge,
+  .dashboardStepLabel,
+  .dashboardStepLabel-inline,
+  .dashboardSupportLabel,
+  .dashboardSectionLabel,
+  .analyticsSectionLabel,
+  .marketPulseSectionLabel,
+  .dashboardAlignmentFoldSummary,
+  .dashboardFoundationDetailSummary,
+  .dashboardBriefMoreInfo summary,
+  .syncJobSummaryToggle,
+  .syncAsideFold summary,
+  .opsFoldTable summary
+)::after{
+  display:none !important;
+  content:none !important;
+  width:0 !important;
+  height:0 !important;
+  background:none !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .pill,
+  .trendChip,
+  .statusBadge,
+  .liveTapeBadge,
+  .dashboardStepLabel,
+  .dashboardStepLabel-inline,
+  .dashboardSupportLabel,
+  .dashboardSectionLabel,
+  .analyticsSectionLabel,
+  .marketPulseSectionLabel
+){
+  text-decoration:none !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .pill,
+  .trendChip,
+  .statusBadge,
+  .liveTapeBadge
+){
+  border-color:rgba(199,208,217,.13) !important;
+  background:
+    linear-gradient(180deg, rgba(199,208,217,.045), rgba(199,208,217,.012)),
+    rgba(16,25,35,.62) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .dashboardStepLabel,
+  .dashboardStepLabel-inline,
+  .dashboardSupportLabel,
+  .dashboardSectionLabel,
+  .analyticsSectionLabel,
+  .marketPulseSectionLabel
+)::before{
+  opacity:.55 !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] .topbar .nav .btn.active::after,
+body[data-theme="cinematic-nebula"] .mobileDock .btn.active::after,
+body[data-theme="cinematic-nebula"] .nav .btn.active::after{
+  display:block !important;
+  content:"" !important;
+  height:2px !important;
+  background:linear-gradient(90deg, rgba(47,107,255,0), rgba(120,199,255,.86), rgba(47,107,255,0)) !important;
+  box-shadow:0 0 8px rgba(120,199,255,.18) !important;
+}
+
+/* Tape color reset: MIXED can remain text, but color follows price direction only. */
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard.tone-positive,
+  .dashboardTapeAssetCard.marketPulseTapeCard.tone-positive,
+  .dashboardTapeAssetCard.is-up
+){
+  border-color:rgba(34,197,94,.42) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 24px rgba(34,197,94,.15) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard.tone-negative,
+  .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative,
+  .dashboardTapeAssetCard.is-down
+){
+  border-color:rgba(239,68,68,.42) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05),
+    0 0 24px rgba(239,68,68,.15) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard.tone-neutral,
+  .dashboardTapeAssetCard.marketPulseTapeCard.tone-neutral,
+  .dashboardTapeAssetCard.is-flat
+){
+  border-color:rgba(199,208,217,.18) !important;
+  box-shadow:
+    0 14px 26px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(199,208,217,.05) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .trendChip.tone-positive,
+  .marketPulseWatchState.tone-positive,
+  .marketPulseTapeCard.tone-positive .marketPulseWatchState
+){
+  color:#86EFAC !important;
+  border-color:rgba(34,197,94,.42) !important;
+  background:rgba(34,197,94,.10) !important;
+  box-shadow:0 0 14px rgba(34,197,94,.10) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .trendChip.tone-negative,
+  .marketPulseWatchState.tone-negative,
+  .marketPulseTapeCard.tone-negative .marketPulseWatchState
+){
+  color:#FCA5A5 !important;
+  border-color:rgba(239,68,68,.42) !important;
+  background:rgba(239,68,68,.10) !important;
+  box-shadow:0 0 14px rgba(239,68,68,.10) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .trendChip.tone-neutral,
+  .marketPulseWatchState.tone-neutral,
+  .marketPulseTapeCard.tone-neutral .marketPulseWatchState
+){
+  color:rgba(199,208,217,.76) !important;
+  border-color:rgba(199,208,217,.18) !important;
+  background:rgba(199,208,217,.06) !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard.tone-positive [data-role="change-line"],
+  .marketPulseTapeCard.tone-positive [data-role="chgp"],
+  .dashboardTapeAssetCard.tone-positive [data-role="chgp"],
+  .dashboardTapeAssetCard.is-up [data-role="chgp"],
+  .dashboardTapeAssetCard.tone-positive .dashboardTapeAssetChange,
+  .dashboardTapeAssetCard.is-up .dashboardTapeAssetChange
+){
+  color:#22C55E !important;
+  text-shadow:0 0 10px rgba(34,197,94,.22) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard.tone-negative [data-role="change-line"],
+  .marketPulseTapeCard.tone-negative [data-role="chgp"],
+  .dashboardTapeAssetCard.tone-negative [data-role="chgp"],
+  .dashboardTapeAssetCard.is-down [data-role="chgp"],
+  .dashboardTapeAssetCard.tone-negative .dashboardTapeAssetChange,
+  .dashboardTapeAssetCard.is-down .dashboardTapeAssetChange
+){
+  color:#EF4444 !important;
+  text-shadow:0 0 10px rgba(239,68,68,.22) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard.tone-positive .marketMiniSparkLine,
+  .marketPulseTapeCard .marketMiniSparkWrap.spark-pos .marketMiniSparkLine,
+  .dashboardTapeAssetCard.tone-positive .marketMiniSparkLine,
+  .dashboardTapeAssetCard .marketMiniSparkWrap.spark-pos .marketMiniSparkLine
+){
+  stroke:rgba(34,197,94,.96) !important;
+  filter:drop-shadow(0 0 7px rgba(34,197,94,.28)) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard.tone-negative .marketMiniSparkLine,
+  .marketPulseTapeCard .marketMiniSparkWrap.spark-neg .marketMiniSparkLine,
+  .dashboardTapeAssetCard.tone-negative .marketMiniSparkLine,
+  .dashboardTapeAssetCard .marketMiniSparkWrap.spark-neg .marketMiniSparkLine
+){
+  stroke:rgba(239,68,68,.96) !important;
+  filter:drop-shadow(0 0 7px rgba(239,68,68,.26)) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard.tone-neutral .marketMiniSparkLine,
+  .marketPulseTapeCard .marketMiniSparkWrap.spark-flat .marketMiniSparkLine,
+  .dashboardTapeAssetCard.tone-neutral .marketMiniSparkLine,
+  .dashboardTapeAssetCard .marketMiniSparkWrap.spark-flat .marketMiniSparkLine
+){
+  stroke:rgba(199,208,217,.72) !important;
+  filter:none !important;
 }

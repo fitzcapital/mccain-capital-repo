@@ -101,6 +101,7 @@
           <button
             id="marketPulseContextRefreshBtn"
             class="notifRefreshBtn marketPulseContextRefreshBtn"
+            data-market-pulse-context-refresh
             type="button"
             aria-label="Refresh gamma context"
             title="Refresh gamma context"
@@ -224,7 +225,47 @@
 
       <section class="marketPulseExecutionHeroPanel marketPulseExecutionHeroPanel-rail" aria-label="Execution rail">
         <div class="marketPulseExecutionHeroSectionHead">
-          <span class="tiny muted">{{ selected_ticker }} Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
+          <div class="marketPulseExecutionHeroFrameControl">
+            <span class="tiny muted">{{ selected_ticker }} Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
+            <div class="marketPulseExecutionHeroIntervalGroup" role="group" aria-label="Chart timeframe">
+              <button
+                class="marketPulseExecutionHeroIntervalToggle is-active"
+                type="button"
+                data-hero-chart-interval="5min"
+                aria-pressed="true"
+                title="Show 5 minute candles"
+              >
+                <span aria-hidden="true">5</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="15min"
+                aria-pressed="false"
+                title="Show 15 minute candles"
+              >
+                <span aria-hidden="true">15</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="30min"
+                aria-pressed="false"
+                title="Show 30 minute candles"
+              >
+                <span aria-hidden="true">30</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1h"
+                aria-pressed="false"
+                title="Show 1 hour candles"
+              >
+                <span aria-hidden="true">1H</span>
+              </button>
+            </div>
+          </div>
           <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ playbook.get('action_context_label') or location.read or 'Awaiting valid structure' }}</span>
         </div>
         <div class="marketPulseExecutionHeroChartShell">
@@ -539,12 +580,23 @@
   <div class="toolbar">
     <div class="pillRow marketPulseTapeTopline">
       <span class="pill">Core Tape</span>
-      <span class="tiny muted marketPulseClampLine">Desk watch.</span>
+      <button
+        class="notifRefreshBtn marketPulseTapeRefreshBtn"
+        type="button"
+        data-market-pulse-tape-refresh
+        aria-label="Refresh Core Tape"
+        title="Refresh Core Tape"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+          <path d="M21 3v6h-6"></path>
+        </svg>
+      </button>
     </div>
     <div class="marketPulseWatchStrip">
       <span class="marketPulseWatchStripItem">Breadth <strong><span id="marketPulseAdvancers">{{ stats.advancers }}</span>/<span id="marketPulseDecliners">{{ stats.decliners }}</span></strong></span>
-      <span class="marketPulseWatchStripItem">Risk <strong>{{ context.leadership }}</strong></span>
-      <span class="marketPulseWatchStripItem">Leaders <strong>{{ watch_ns.leaders|join(', ') if watch_ns.leaders else '—' }}</strong></span>
+      <span class="marketPulseWatchStripItem">Risk <strong id="marketPulseRiskLabel">{{ context.leadership }}</strong></span>
+      <span class="marketPulseWatchStripItem">Leaders <strong id="marketPulseLeaders">{{ watch_ns.leaders|join(', ') if watch_ns.leaders else '—' }}</strong></span>
       <span class="marketPulseWatchStripItem">Drag <strong id="marketPulseBiggestMove">{{ watch_ns.laggard }}{% if watch_ns.laggard_move is not none %} {{ '%+.2f'|format(watch_ns.laggard_move) }}%{% endif %}</strong></span>
       <span class="marketPulseWatchStripItem"><strong id="marketPulseMissing">{{ stats.missing }}</strong> missing</span>
     </div>
@@ -570,8 +622,9 @@
         {% set q_change = q.get('change') if q is mapping else none %}
         {% set q_change_pct = q.get('change_pct') if q is mapping else none %}
         {% set delta_val = q_change_pct if q_change_pct is number else q_change if q_change is number else none %}
+        {% set watch_tone = 'positive' if delta_val is not none and delta_val > 0 else 'negative' if delta_val is not none and delta_val < 0 else 'neutral' %}
         {% set spark_tone = 'pos' if delta_val is not none and delta_val > 0 else 'neg' if delta_val is not none and delta_val < 0 else 'flat' %}
-        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if q_change is number and q_change > 0 %}glow-green{% elif q_change is number and q_change < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
+        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if delta_val is not none and delta_val > 0 %}glow-green{% elif delta_val is not none and delta_val < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
           <div class="marketPulseWatchCardTop">
             <div class="k">{{ q.label }}</div>
             <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip">{{ watch_state }}</span>
@@ -967,10 +1020,10 @@
      data-market-hours="{{ '1' if market_hours else '0' }}"
      hidden></div>
 
-<script id="spxPriorityBasePayload" type="application/json">{{ {'ticker': selected_ticker, 'playbook_quote': quote, 'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_structure_snapshot': market_structure_snapshot, 'playbook_view': playbook_view, 'playbook_priority_context': priority_context, 'spx_priority_context': spx_priority_context, 'execution_chart': execution_chart, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else '', 'context_api_url': market_pulse_context_api_url}|tojson }}</script>
+<script id="spxPriorityBasePayload" type="application/json">{{ {'ticker': selected_ticker, 'playbook_quote': quote, 'spx_quote': spx_quote, 'vix_quote': vix_quote, 'gamma_snapshot': gamma_snapshot, 'execution_model': execution_model, 'market_structure_snapshot': market_structure_snapshot, 'playbook_view': playbook_view, 'playbook_priority_context': priority_context, 'spx_priority_context': spx_priority_context, 'execution_chart': execution_chart, 'market_now_iso': market_now_iso, 'server_ts': market_now_iso, 'series_points': series_points, 'quotes_map': quotes_map, 'vix_direction': context.get('vix_direction') if context else '', 'context_api_url': market_pulse_context_api_url, 'tape_api_url': market_pulse_tape_api_url}|tojson }}</script>
 <script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
 <script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-incremental-20260425a"></script>
-<script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}"></script>
+<script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}?v={{ market_now_iso|urlencode }}"></script>
 <script>
   window.marketFeedItems = {{ whales_items | tojson | safe }};
 (() => {
@@ -980,7 +1033,9 @@
   const streamStatus = document.getElementById("marketPulseStreamStatus");
   const streamFreshness = document.getElementById("marketPulseStreamFreshness");
   const guardMeta = document.getElementById("marketGuardrailMeta");
-  const contextRefreshBtn = document.getElementById("marketPulseContextRefreshBtn");
+  const contextRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-context-refresh]"));
+  const tapeRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-tape-refresh]"));
+  const tapeShell = document.querySelector(".marketPulseTapeShell");
   const tickerSwitches = Array.from(document.querySelectorAll("[data-playbook-ticker-switch]"));
   const loadingOverlay = document.getElementById("marketPulseLoadingOverlay");
   const loadingTitle = document.getElementById("marketPulseLoadingTitle");
@@ -1025,6 +1080,7 @@
   }
   const currentTicker = ((basePayload && basePayload.ticker) || "{{ selected_ticker }}").toUpperCase();
   const contextApiUrl = (basePayload && basePayload.context_api_url) || "{{ market_pulse_context_api_url }}";
+  const tapeApiUrl = (basePayload && basePayload.tape_api_url) || "{{ market_pulse_tape_api_url }}";
   storageSet(TICKER_KEY, currentTicker);
 
   const showReloadOverlay = (title, detail) => {
@@ -1057,10 +1113,23 @@
   };
 
   const setContextRefreshState = (isLoading) => {
-    if (!contextRefreshBtn) return;
-    contextRefreshBtn.disabled = !!isLoading;
-    contextRefreshBtn.classList.toggle("is-loading", !!isLoading);
-    contextRefreshBtn.setAttribute("aria-busy", isLoading ? "true" : "false");
+    contextRefreshButtons.forEach((button) => {
+      button.disabled = !!isLoading;
+      button.classList.toggle("is-loading", !!isLoading);
+      button.setAttribute("aria-busy", isLoading ? "true" : "false");
+    });
+  };
+
+  const setTapeRefreshState = (isLoading) => {
+    if (tapeShell) {
+      tapeShell.classList.toggle("is-refreshing", !!isLoading);
+      tapeShell.setAttribute("aria-busy", isLoading ? "true" : "false");
+    }
+    tapeRefreshButtons.forEach((button) => {
+      button.disabled = !!isLoading;
+      button.classList.toggle("is-loading", !!isLoading);
+      button.setAttribute("aria-busy", isLoading ? "true" : "false");
+    });
   };
 
   const refreshMarketPulseContext = async (forceRefresh = false, showOverlay = false) => {
@@ -1073,6 +1142,7 @@
       try {
         const params = new URLSearchParams();
         if (forceRefresh) params.set("refresh", "1");
+        params.set("_", String(Date.now()));
         const response = await fetch(`${contextApiUrl}?${params.toString()}`, {
           cache: "no-store",
           credentials: "same-origin",
@@ -1089,6 +1159,29 @@
       }
     })();
     return contextRefreshPromise;
+  };
+
+  const refreshMarketPulseTape = async () => {
+    setTapeRefreshState(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("refresh", "1");
+      params.set("_", String(Date.now()));
+      const response = await fetch(`${tapeApiUrl}?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      const data = await response.json();
+      const payload = data && data.ok ? data.payload : null;
+      if (payload && typeof window.applyMarketPulseTapePayload === "function") {
+        window.applyMarketPulseTapePayload(payload);
+      }
+    } catch (_err) {
+      // Keep the existing tape visible if a manual refresh fails.
+    } finally {
+      setTapeRefreshState(false);
+    }
   };
 
   tickerSwitches.forEach((link) => {
@@ -1227,12 +1320,19 @@
   applyMode(mode);
   activatePulseTab("data-health");
 
-  if (contextRefreshBtn) {
-    contextRefreshBtn.addEventListener("click", (event) => {
+  contextRefreshButtons.forEach((button) => {
+    button.addEventListener("click", (event) => {
       event.preventDefault();
       refreshMarketPulseContext(true, true);
     });
-  }
+  });
+
+  tapeRefreshButtons.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      refreshMarketPulseTape();
+    });
+  });
 
   const feedRefreshBtn = document.getElementById("marketFeedRefreshBtn");
   const feedEmptyRefreshBtn = document.getElementById("marketFeedEmptyRefreshBtn");
@@ -1261,7 +1361,7 @@
   })();
   let currentFeedItems = Array.isArray(window.marketFeedItems) ? [...window.marketFeedItems] : [];
   let currentFeedLimit = Math.max(15, Math.min(100, currentFeedItems.length || 15));
-  const FEED_LIMIT_STEPS = [15, 30, 50, 75, 100];
+  const FEED_LIMIT_STEPS = [15, 25, 50, 75, 100];
 
   const escapeHtml = (value) => {
     const text = String(value || "");
@@ -1357,7 +1457,7 @@
     const hasHighUnread = items.some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
     const trimmed = [...items]
       .sort((a, b) => itemTimestamp(b) - itemTimestamp(a))
-      .slice(0, 8)
+      .slice(0, 5)
       .map((item) => ({
         title: item.headline || item.text || "Market update",
         text: (() => {
@@ -1387,7 +1487,7 @@
 
   const syncNotifications = (items) => {
     if (!notifList || !Array.isArray(items)) return;
-    const sorted = [...items].sort((a, b) => itemTimestamp(b) - itemTimestamp(a)).slice(0, 8);
+    const sorted = [...items].sort((a, b) => itemTimestamp(b) - itemTimestamp(a)).slice(0, 5);
     const lastSeen = readLastSeen();
     const unread = items.filter((item) => itemTimestamp(item) > lastSeen).length;
     const hasHighUnread = items.some((item) => item.impact === "high" && itemTimestamp(item) > lastSeen);
@@ -1610,15 +1710,13 @@
   if (feedRefreshBtn) {
     feedRefreshBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
-      refreshFeedInPlace(forceRefresh, currentFeedLimit);
+      refreshFeedInPlace(true, Math.max(currentFeedLimit, 25));
     });
   }
   if (feedEmptyRefreshBtn) {
     feedEmptyRefreshBtn.addEventListener("click", (event) => {
       event.preventDefault();
-      const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
-      refreshFeedInPlace(forceRefresh, currentFeedLimit);
+      refreshFeedInPlace(true, Math.max(currentFeedLimit, 25));
     });
   }
 
@@ -1629,8 +1727,7 @@
     const refreshTrigger = event.target.closest("[data-market-feed-refresh='1']");
     if (refreshTrigger) {
       event.preventDefault();
-      const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
-      refreshFeedInPlace(forceRefresh, currentFeedLimit);
+      refreshFeedInPlace(true, Math.max(currentFeedLimit, 25));
       return;
     }
     const loadMoreTrigger = event.target.closest("[data-market-feed-load-more='1']");
@@ -1686,7 +1783,132 @@
 
   window.setTimeout(() => {
     coreReady = true;
-    settleBoot();
-  }, 900);
+    tryCompleteBoot();
+  }, 2600);
+})();
+</script>
+<script>
+(() => {
+  const asNum = (value) => {
+    if (value === null || value === undefined || value === "") return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+  const setText = (node, value) => {
+    if (node) node.textContent = value;
+  };
+  const formatSigned = (value) => {
+    const numeric = asNum(value);
+    return numeric === null ? "—" : `${numeric >= 0 ? "+" : ""}${numeric.toFixed(2)}%`;
+  };
+  const tapeApiUrl = () => {
+    const payloadEl = document.getElementById("spxPriorityBasePayload");
+    if (!payloadEl) return "{{ market_pulse_tape_api_url }}";
+    try {
+      const payload = JSON.parse(payloadEl.textContent || "{}");
+      return payload.tape_api_url || "{{ market_pulse_tape_api_url }}";
+    } catch (_err) {
+      return "{{ market_pulse_tape_api_url }}";
+    }
+  };
+  const tapeButtons = () => Array.from(document.querySelectorAll("[data-market-pulse-tape-refresh]"));
+  const setRefreshState = (loading) => {
+    const shell = document.querySelector(".marketPulseTapeShell");
+    if (shell) {
+      shell.classList.toggle("is-refreshing", loading);
+      shell.setAttribute("aria-busy", loading ? "true" : "false");
+    }
+    tapeButtons().forEach((button) => {
+      button.disabled = loading;
+      button.classList.toggle("is-loading", loading);
+      button.setAttribute("aria-busy", loading ? "true" : "false");
+    });
+  };
+  const watchStateFor = (symbol, pct) => {
+    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) return "RISK-ON";
+    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct <= -0.35) return "RISK-OFF";
+    if (pct !== null && pct >= 0.75) return "STRONG";
+    if (pct !== null && pct <= -0.75) return "WEAK";
+    return "MIXED";
+  };
+    const updateCard = (card, quote) => {
+      if (!card || !quote || typeof quote !== "object") return;
+      const symbol = String(card.dataset.symbol || "").toUpperCase();
+      const price = asNum(quote.price);
+      const pct = asNum(quote.pct_change ?? quote.change_pct);
+      const state = watchStateFor(symbol, pct);
+      const sparkTone = pct !== null && pct > 0 ? "spark-pos" : pct !== null && pct < 0 ? "spark-neg" : "spark-flat";
+      setText(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2));
+      setText(card.querySelector('[data-role="change-line"]'), formatSigned(pct));
+      setText(card.querySelector('[data-role="market-state"]'), quote.market_state || "Live");
+      setText(card.querySelector('[data-role="freshness"]'), quote.freshness_label || "Live");
+      const sparkNode = card.querySelector('[data-role="sparkline"]');
+      if (sparkNode) {
+        sparkNode.classList.remove("spark-pos", "spark-neg", "spark-flat");
+        sparkNode.classList.add(sparkTone);
+      }
+      const chip = card.querySelector('[data-role="state-chip"]');
+    if (chip) {
+      chip.textContent = state;
+      const watchTone = pct !== null && pct > 0 ? "tone-positive" : pct !== null && pct < 0 ? "tone-negative" : "tone-neutral";
+      chip.classList.remove("tone-positive", "tone-negative", "tone-neutral");
+      chip.classList.add(watchTone);
+    }
+    card.classList.toggle("glow-green", (pct || 0) > 0);
+    card.classList.toggle("glow-red", (pct || 0) < 0);
+    card.classList.toggle("tone-positive", pct !== null && pct > 0);
+    card.classList.toggle("tone-negative", pct !== null && pct < 0);
+    card.classList.toggle("tone-neutral", pct === null || pct === 0);
+  };
+  const applyPayload = (payload) => {
+    const quotes = payload && payload.quotes_map && typeof payload.quotes_map === "object"
+      ? payload.quotes_map
+      : {};
+    document.querySelectorAll(".marketPulseTapeCard[data-symbol]").forEach((card) => {
+      const symbol = String(card.dataset.symbol || "").toUpperCase();
+      updateCard(card, quotes[symbol]);
+    });
+    const meta = payload && payload.tape_meta ? payload.tape_meta : {};
+    if (meta.risk) setText(document.getElementById("marketPulseRiskLabel"), meta.risk);
+    if (Array.isArray(meta.leaders)) {
+      setText(document.getElementById("marketPulseLeaders"), meta.leaders.length ? meta.leaders.join(", ") : "—");
+    }
+    if (meta.drag) setText(document.getElementById("marketPulseBiggestMove"), meta.drag);
+    if (meta.missing !== undefined) setText(document.getElementById("marketPulseMissing"), String(meta.missing));
+    if (meta.advancers !== undefined) setText(document.getElementById("marketPulseAdvancers"), String(meta.advancers));
+    if (meta.decliners !== undefined) setText(document.getElementById("marketPulseDecliners"), String(meta.decliners));
+  };
+  window.refreshMarketPulseCoreTape = async () => {
+    if (tapeButtons().some((button) => button.disabled)) return;
+    setRefreshState(true);
+    try {
+      const url = new URL(tapeApiUrl(), window.location.origin);
+      url.searchParams.set("refresh", "1");
+      url.searchParams.set("_", String(Date.now()));
+      const response = await fetch(url.toString(), {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      const data = await response.json();
+      const payload = data && data.ok ? data.payload : null;
+      if (!payload) return;
+      if (typeof window.applyMarketPulseTapePayload === "function") {
+        window.applyMarketPulseTapePayload(payload);
+      }
+      applyPayload(payload);
+    } catch (_err) {
+      // Preserve the current tape if the manual refresh fails.
+    } finally {
+      setRefreshState(false);
+    }
+  };
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-market-pulse-tape-refresh]");
+    if (!trigger) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.refreshMarketPulseCoreTape();
+  }, true);
 })();
 </script>

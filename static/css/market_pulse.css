@@ -1888,7 +1888,784 @@ body.page-market-pulse .marketPulseExecutionHeroLevelRailItem strong{
     font-size:.56rem !important;
   }
 
-  body.page-market-pulse .marketPulseExecutionHeroLevelRailItem strong{
+body.page-market-pulse .marketPulseExecutionHeroLevelRailItem strong{
     font-size:.68rem !important;
+  }
+}
+
+/* Cinematic Nebula chart rail correction: keep execution controls legible in low-GPU mode. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartBanner{
+  background:
+    linear-gradient(180deg, rgba(13, 31, 58, .96), rgba(6, 16, 30, .98)) !important;
+  border-color:rgba(47, 107, 255, .34) !important;
+  box-shadow:inset 0 1px 0 rgba(199, 208, 217, .06) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartBannerMain,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartControls,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartToggle,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRail,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem span,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem strong{
+  font-family:Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif !important;
+  font-style:normal !important;
+  letter-spacing:0 !important;
+  text-shadow:none !important;
+  font-variant-numeric:tabular-nums lining-nums !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartToggle{
+  width:34px !important;
+  height:34px !important;
+  min-width:34px !important;
+  border-radius:10px !important;
+  border-color:rgba(47, 107, 255, .38) !important;
+  background:rgba(16, 25, 35, .94) !important;
+  color:#EAF2FF !important;
+  opacity:1 !important;
+  box-shadow:inset 0 1px 0 rgba(199, 208, 217, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartToggle span{
+  display:block;
+  font-size:.72rem !important;
+  line-height:1 !important;
+  font-weight:800 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartToggle[aria-pressed="true"]{
+  background:
+    linear-gradient(180deg, rgba(47, 107, 255, .34), rgba(47, 107, 255, .14)),
+    rgba(16, 25, 35, .98) !important;
+  border-color:rgba(47, 107, 255, .62) !important;
+  color:#FFFFFF !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartToggle[aria-pressed="false"]{
+  opacity:.62 !important;
+  border-color:rgba(199, 208, 217, .16) !important;
+  color:rgba(199, 208, 217, .72) !important;
+  background:rgba(16, 25, 35, .62) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartStage{
+  border-color:rgba(47, 107, 255, .24) !important;
+  background:
+    linear-gradient(180deg, rgba(5, 15, 28, .98), rgba(3, 10, 20, 1)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRail{
+  width:112px !important;
+  border-left-color:rgba(47, 107, 255, .22) !important;
+  background:
+    linear-gradient(90deg, rgba(5, 15, 28, 0), rgba(8, 18, 32, .72) 22%, rgba(8, 18, 32, .96)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem{
+  right:4px !important;
+  width:104px !important;
+  min-height:34px !important;
+  grid-template-columns:32px minmax(0, 1fr) !important;
+  gap:6px !important;
+  padding:5px 8px !important;
+  border-radius:9px !important;
+  opacity:1 !important;
+  background:rgba(16, 25, 35, .96) !important;
+  border-color:rgba(199, 208, 217, .16) !important;
+  color:#EAF2FF !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem::before{
+  width:14px !important;
+  height:2px !important;
+  background:currentColor !important;
+  opacity:.62 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem span{
+  color:rgba(199, 208, 217, .88) !important;
+  font-size:.64rem !important;
+  line-height:1 !important;
+  font-weight:800 !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem strong{
+  color:#F4F8FF !important;
+  font-size:.82rem !important;
+  line-height:1 !important;
+  font-weight:800 !important;
+  text-align:right !important;
+  white-space:nowrap !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-spot{
+  grid-template-columns:18px minmax(0, 1fr) !important;
+  border-color:rgba(47, 107, 255, .66) !important;
+  background:
+    linear-gradient(180deg, rgba(47, 107, 255, .32), rgba(13, 31, 58, .98)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-main{
+  border-color:rgba(199, 208, 217, .26) !important;
+  background:rgba(21, 32, 44, .96) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-call,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-call-next,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-cdl{
+  border-color:rgba(239, 68, 68, .52) !important;
+  background:rgba(78, 23, 35, .94) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-put,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-put-next,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-cdh{
+  border-color:rgba(34, 197, 94, .46) !important;
+  background:rgba(15, 60, 43, .92) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-local,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-pdl{
+  border-color:rgba(137, 113, 255, .46) !important;
+  background:rgba(42, 34, 84, .94) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-pdh{
+  border-color:rgba(245, 158, 11, .52) !important;
+  background:rgba(78, 56, 19, .94) !important;
+}
+
+@media (max-width:760px){
+  body[data-theme="cinematic-nebula"].page-market-pulse{
+    --mp-exec-level-rail-width:108px;
+  }
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem{
+    width:98px !important;
+    grid-template-columns:30px minmax(0, 1fr) !important;
+  }
+}
+
+/* Final execution readability pass: planning/locked states must not visually dim the chart. */
+body[data-theme="cinematic-nebula"].page-market-pulse :where(
+  .marketPulseExecutionHero,
+  .marketPulseExecutionHeroGrid,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionHeroPanel-state,
+  .marketPulseExecutionHeroPanel-rail,
+  .marketPulseExecutionHeroChartShell,
+  .marketPulseExecutionHeroChartBanner,
+  .marketPulseExecutionHeroChartStage,
+  .marketPulseExecutionHeroChartCanvas,
+  .marketPulseExecutionHeroLevelRail,
+  .marketPulseExecutionHeroLevelRailItem
+){
+  opacity:1 !important;
+  filter:none !important;
+  mix-blend-mode:normal !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroPanel-rail{
+  border-color:rgba(47, 107, 255, .34) !important;
+  background:
+    linear-gradient(180deg, rgba(16, 25, 35, .98), rgba(8, 18, 32, .99)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartStage{
+  background:#071421 !important;
+  border-color:rgba(47, 107, 255, .38) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartCanvas,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartStage > div.tv-lightweight-charts{
+  opacity:1 !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroSectionHead > .tiny,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroMetric .tiny,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroRailFootCell .tiny{
+  color:rgba(199, 208, 217, .92) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroMetric strong,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroRailFootCell strong{
+  color:#F4F8FF !important;
+}
+
+/* Cinematic Nebula Market Pulse polish: one execution surface for SPY and QQQ. */
+body[data-theme="cinematic-nebula"].page-market-pulse{
+  --mp-panel-bg:
+    linear-gradient(180deg, rgba(21,32,44,.90), rgba(11,11,13,.94));
+  --mp-inset-bg:rgba(11,31,58,.18);
+  --mp-blue-border:rgba(47,107,255,.22);
+  --mp-silver-border:rgba(199,208,217,.10);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse :where(
+  .marketPulseSection,
+  .marketPulseCommandHeader-compact,
+  .marketPulseNewsFeedShell-stream,
+  .marketPulseExecutionHero,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionStateCard,
+  .marketPulseChecklistCard,
+  .marketPulseStructureCard,
+  .marketPulseDistanceCard,
+  .marketPulseTapeCard
+){
+  border-radius:8px !important;
+  border-color:var(--mp-blue-border) !important;
+  background:var(--mp-panel-bg) !important;
+  box-shadow:
+    0 14px 28px rgba(0,0,0,.32),
+    inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse :where(
+  .marketPulseSection,
+  .marketPulseCommandHeader-compact,
+  .marketPulseNewsFeedShell-stream,
+  .marketPulseExecutionHero,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionStateCard,
+  .marketPulseChecklistCard,
+  .marketPulseStructureCard,
+  .marketPulseDistanceCard,
+  .marketPulseTapeCard
+)::before,
+body[data-theme="cinematic-nebula"].page-market-pulse :where(
+  .marketPulseSection,
+  .marketPulseCommandHeader-compact,
+  .marketPulseNewsFeedShell-stream,
+  .marketPulseExecutionHero,
+  .marketPulseExecutionHeroPanel,
+  .marketPulseExecutionCard,
+  .marketPulseExecutionStateCard,
+  .marketPulseChecklistCard,
+  .marketPulseStructureCard,
+  .marketPulseDistanceCard,
+  .marketPulseTapeCard
+)::after{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTickerSwitcher{
+  border-color:var(--mp-silver-border) !important;
+  background:rgba(16,25,35,.64) !important;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTickerSwitch{
+  border-radius:8px !important;
+  color:var(--muted-silver) !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTickerSwitch:hover{
+  color:#F4F8FF !important;
+  background:rgba(47,107,255,.10) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTickerSwitch.is-active{
+  color:#FFFFFF !important;
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.26), rgba(47,107,255,.10)),
+    rgba(16,25,35,.72) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.07),
+    0 0 16px rgba(47,107,255,.12) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroGrid{
+  gap:10px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroPanel-state,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroPanel-rail{
+  background:
+    linear-gradient(180deg, rgba(16,25,35,.92), rgba(8,18,32,.96)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartShell{
+  border-radius:8px !important;
+  border-color:var(--mp-blue-border) !important;
+  background:rgba(7,20,33,.96) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.045),
+    0 12px 24px rgba(0,0,0,.28) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartBanner{
+  min-height:44px !important;
+  border-radius:8px !important;
+  background:
+    linear-gradient(180deg, rgba(11,31,58,.92), rgba(7,20,33,.96)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartBannerMain{
+  color:#F4F8FF !important;
+  font-weight:800 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartControls{
+  gap:6px !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroIntervalGroup{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  margin-right:4px;
+  padding:3px;
+  border:1px solid rgba(199,208,217,.10);
+  border-radius:10px;
+  background:rgba(11,31,58,.24);
+}
+
+body.page-market-pulse .marketPulseExecutionHeroFrameControl{
+  position:relative;
+  z-index:4;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroSectionHead .marketPulseExecutionHeroIntervalGroup{
+  padding:2px;
+  border-color:rgba(47,107,255,.22);
+  background:rgba(16,25,35,.72);
+}
+
+body.page-market-pulse .marketPulseExecutionHeroSectionHead .marketPulseExecutionHeroIntervalToggle{
+  width:30px;
+  height:26px;
+  min-width:30px;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroIntervalToggle{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:32px;
+  height:28px;
+  min-width:32px;
+  padding:0;
+  border:1px solid rgba(199,208,217,.12);
+  border-radius:8px;
+  background:rgba(16,25,35,.62);
+  color:rgba(199,208,217,.78);
+  font:800 .68rem/1 Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  letter-spacing:0;
+  cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(199,208,217,.04);
+  transition:
+    color .16s ease,
+    border-color .16s ease,
+    background .16s ease,
+    box-shadow .16s ease;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroIntervalToggle:hover{
+  color:#F4F8FF;
+  border-color:rgba(47,107,255,.32);
+  background:rgba(47,107,255,.10);
+}
+
+body.page-market-pulse .marketPulseExecutionHeroIntervalToggle.is-active{
+  color:#FFFFFF;
+  border-color:rgba(47,107,255,.48);
+  background:
+    linear-gradient(180deg, rgba(47,107,255,.30), rgba(47,107,255,.12)),
+    rgba(16,25,35,.84);
+  box-shadow:
+    inset 0 1px 0 rgba(199,208,217,.07),
+    0 0 14px rgba(47,107,255,.12);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartToggle{
+  border-radius:8px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartToggle[aria-pressed="false"]{
+  opacity:.78 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartToggle[aria-pressed="false"]:hover{
+  opacity:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRail{
+  border-left-color:rgba(199,208,217,.10) !important;
+  background:
+    linear-gradient(90deg, rgba(7,20,33,0), rgba(7,20,33,.72) 28%, rgba(7,20,33,.98)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem{
+  border-radius:8px !important;
+  box-shadow:
+    0 8px 16px rgba(0,0,0,.24),
+    inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-call,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-call-next,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-cdl{
+  color:#F4F8FF !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-put,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-put-next,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-cdh{
+  color:#F4F8FF !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse :where(
+  .marketPulseExecutionHeroMetric,
+  .marketPulseExecutionHeroRailFootCell,
+  .marketPulseExecutionHeroStateItem,
+  .marketPulseExecutionHeroSidebarItem,
+  .marketPulseExecutionSummaryItem,
+  .marketPulseChecklistItem,
+  .marketPulseStructureItem,
+  .marketPulseDistanceItem
+){
+  border-radius:8px !important;
+  border-color:var(--mp-silver-border) !important;
+  background:var(--mp-inset-bg) !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse :where(
+  .marketPulseExecutionHeroMetric,
+  .marketPulseExecutionHeroRailFootCell,
+  .marketPulseExecutionHeroStateItem,
+  .marketPulseExecutionHeroSidebarItem,
+  .marketPulseExecutionSummaryItem,
+  .marketPulseChecklistItem,
+  .marketPulseStructureItem,
+  .marketPulseDistanceItem
+)::before,
+body[data-theme="cinematic-nebula"].page-market-pulse :where(
+  .marketPulseExecutionHeroMetric,
+  .marketPulseExecutionHeroRailFootCell,
+  .marketPulseExecutionHeroStateItem,
+  .marketPulseExecutionHeroSidebarItem,
+  .marketPulseExecutionSummaryItem,
+  .marketPulseChecklistItem,
+  .marketPulseStructureItem,
+  .marketPulseDistanceItem
+)::after{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeCard.tone-positive{
+  border-color:rgba(34,197,94,.26) !important;
+  box-shadow:
+    0 12px 22px rgba(0,0,0,.28),
+    inset 0 1px 0 rgba(199,208,217,.045) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeCard.tone-negative{
+  border-color:rgba(239,68,68,.28) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeCard.tone-neutral,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeCard.tone-cyan{
+  border-color:rgba(47,107,255,.20) !important;
+}
+
+/* Chart timeframe controls must stay visible and clickable across widths. */
+body.page-market-pulse .marketPulseExecutionHeroChartBanner{
+  display:grid !important;
+  grid-template-columns:minmax(0, 1fr) auto !important;
+  align-items:center !important;
+  gap:10px !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroChartBannerMain{
+  min-width:0 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroChartControls{
+  position:relative !important;
+  z-index:3 !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:6px !important;
+  min-width:max-content !important;
+  pointer-events:auto !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroIntervalGroup{
+  flex:0 0 auto !important;
+  min-width:max-content !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroIntervalToggle{
+  appearance:none !important;
+  pointer-events:auto !important;
+}
+
+/* Mixed classification stays amber; sparkline stroke follows the day's trend. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral{
+  border-color:rgba(245,158,11,.38) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 28px rgba(245,158,11,.16),
+    0 0 18px rgba(74,214,255,.08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral .marketPulseWatchState{
+  color:#FDE68A !important;
+  border-color:rgba(245,158,11,.38) !important;
+  background:rgba(245,158,11,.12) !important;
+  box-shadow:0 0 14px rgba(245,158,11,.12) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap.spark-pos .marketMiniSparkLine{
+  stroke:rgba(34,197,94,.95) !important;
+  filter:drop-shadow(0 0 7px rgba(34,197,94,.28)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap.spark-neg .marketMiniSparkLine{
+  stroke:rgba(239,68,68,.95) !important;
+  filter:drop-shadow(0 0 7px rgba(239,68,68,.26)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap.spark-flat .marketMiniSparkLine{
+  stroke:rgba(245,158,11,.98) !important;
+  filter:drop-shadow(0 0 7px rgba(245,158,11,.30)) !important;
+}
+
+/* Final mobile pass: keep Market Pulse scan-first on phone-sized screens. */
+@media (max-width:760px){
+  body.page-market-pulse{
+    --mp-mobile-gap:10px;
+    --mp-mobile-pad:10px;
+  }
+
+  body.page-market-pulse .wrap{
+    padding-inline:10px !important;
+    padding-bottom:104px !important;
+  }
+
+  body.page-market-pulse .marketPulseSection{
+    margin-inline:0 !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHero{
+    padding:10px !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroTopline{
+    grid-template-columns:1fr auto !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroTopline > .pill:first-child{
+    display:none !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroGrid{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:var(--mp-mobile-gap) !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroPanel{
+    padding:var(--mp-mobile-pad) !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroMetrics{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:8px !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroMetric,
+  body.page-market-pulse .marketPulseExecutionHeroDecisionLead,
+  body.page-market-pulse .marketPulseExecutionHeroDecisionCell,
+  body.page-market-pulse .marketPulseExecutionHeroRailFootCell{
+    min-height:0 !important;
+    padding:9px 10px !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroMetric:not(.is-spot){
+    grid-template-columns:minmax(0, .9fr) minmax(0, 1.1fr) !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroChartShell{
+    gap:8px !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroSectionHead,
+  body.page-market-pulse .marketPulseExecutionHeroChartBanner{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    align-items:start !important;
+    gap:8px !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroFrameControl,
+  body.page-market-pulse .marketPulseExecutionHeroChartControls{
+    width:100% !important;
+    justify-content:space-between !important;
+    flex-wrap:wrap !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroIntervalGroup{
+    margin-right:0 !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroChartBannerMain{
+    white-space:normal !important;
+    line-height:1.1 !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroChartStage{
+    min-height:310px !important;
+    height:310px !important;
+    padding:6px !important;
+    padding-right:6px !important;
+    overflow:hidden !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroChartCanvas,
+  body.page-market-pulse .marketPulseExecutionHeroChartStage > div.tv-lightweight-charts{
+    height:298px !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroLevelRail{
+    display:none !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroRailFooter,
+  body.page-market-pulse .marketPulseExecutionHeroDecisionGrid{
+    grid-template-columns:1fr !important;
+    gap:8px !important;
+  }
+
+  body.page-market-pulse .marketPulseWatchStrip{
+    display:grid !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    gap:8px !important;
+  }
+
+  body.page-market-pulse .marketPulseWatchStripItem{
+    min-width:0 !important;
+    justify-content:space-between !important;
+    padding:7px 8px !important;
+  }
+
+  body.page-market-pulse .marketPulseWatchStripItem strong{
+    min-width:0 !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:nowrap !important;
+  }
+
+  body.page-market-pulse .marketPulseTapeRail.marketPulseWatchGrid{
+    grid-template-columns:1fr !important;
+    gap:10px !important;
+  }
+
+  body.page-market-pulse .marketPulseTapeCard{
+    min-height:0 !important;
+    padding:13px 12px !important;
+  }
+
+  body.page-market-pulse .marketPulseWatchCardTop,
+  body.page-market-pulse .marketPulseWatchValueRow,
+  body.page-market-pulse .marketPulseWatchMetaRow{
+    gap:8px !important;
+  }
+
+  body.page-market-pulse .marketMiniSpark{
+    height:34px !important;
+  }
+}
+
+@media (max-width:420px){
+  body.page-market-pulse .marketPulseWatchStrip{
+    grid-template-columns:1fr !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroChartToggle,
+  body.page-market-pulse .marketPulseExecutionHeroIntervalToggle{
+    width:34px !important;
+    min-width:34px !important;
+    height:30px !important;
+  }
+}
+
+@media (max-width:900px){
+  body.page-market-pulse .marketPulseExecutionHeroChartBanner{
+    grid-template-columns:1fr !important;
+    align-items:start !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroChartControls{
+    justify-content:flex-start !important;
+    flex-wrap:wrap !important;
+    min-width:0 !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroFrameControl{
+    flex-wrap:wrap;
+    gap:6px;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroChartBannerMain{
+    white-space:normal !important;
+  }
+}
+
+@media (max-width:760px){
+  body.page-market-pulse .marketPulseExecutionHeroFrameControl,
+  body.page-market-pulse .marketPulseExecutionHeroChartControls{
+    width:100% !important;
+    justify-content:space-between !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroChartStage{
+    min-height:310px !important;
+    height:310px !important;
+    padding:6px !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroLevelRail{
+    display:none !important;
+  }
+
+  body.page-market-pulse .mobileDock{
+    left:8px !important;
+    right:8px !important;
+    bottom:calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+    gap:4px !important;
+    padding:5px !important;
+    border-radius:10px !important;
+  }
+
+  body.page-market-pulse .mobileDock .btn{
+    min-height:46px !important;
+    padding:5px 4px !important;
+    border-radius:8px !important;
+  }
+
+  body.page-market-pulse .mobileDockLabel{
+    font-size:9px !important;
+    line-height:1 !important;
   }
 }

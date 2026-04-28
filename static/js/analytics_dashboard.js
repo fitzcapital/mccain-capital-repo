@@ -90,7 +90,7 @@
       .join("")}`;
   };
 
-  const radialEndColor = (color) => mixHex(color, "#a7bbd0", 0.18);
+  const radialEndColor = (color) => mixHex(color, "#f3fbff", 0.12);
 
   const parseAxisDate = (raw) => {
     const text = String(raw || "").trim();
@@ -694,12 +694,21 @@
 
   const renderRadialKpi = (key, container, payload, color) => {
     if (!container) return;
+    const card = container.closest(".analyticsKpiCard-orbit");
+    const glowColor = mixHex(color, "#07101d", 0.42);
+    container.dataset.ringTone = key;
+    container.style.setProperty("--analytics-ring-color", color);
+    container.style.setProperty("--analytics-ring-glow", glowColor);
+    if (card) {
+      card.style.setProperty("--analytics-ring-color", color);
+      card.style.setProperty("--analytics-ring-glow", glowColor);
+    }
     const centerText = String(payload.center || "");
     const valueFontSize =
-      centerText.length >= 11 ? "21px" :
-      centerText.length >= 8 ? "24px" :
-      centerText.length >= 6 ? "27px" :
-      "30px";
+      centerText.length >= 11 ? "15px" :
+      centerText.length >= 8 ? "18px" :
+      centerText.length >= 6 ? "20px" :
+      "23px";
     mountChart(key, container, {
       chart: {
         type: "radialBar",
@@ -710,7 +719,7 @@
           enabled: !state.hasRendered,
           speed: state.hasRendered ? 180 : 520,
         },
-        height: 250,
+        height: 196,
         fontFamily: CHART_FONT,
       },
       series: [Number(payload.progress || 0)],
@@ -720,54 +729,49 @@
         gradient: {
           shade: "dark",
           type: "horizontal",
-          shadeIntensity: 0.15,
+          shadeIntensity: 0.08,
           gradientToColors: [radialEndColor(color)],
           inverseColors: false,
-          opacityFrom: 1,
-          opacityTo: 1,
+          opacityFrom: 0.96,
+          opacityTo: 0.88,
           stops: [0, 100],
         },
       },
       plotOptions: {
         radialBar: {
-          startAngle: -135,
-          endAngle: 135,
-          offsetY: -8,
+          startAngle: 0,
+          endAngle: 360,
+          offsetY: 0,
           hollow: {
             size: "74%",
-            background: "rgba(3, 10, 18, 0.9)",
+            background: "rgba(7, 13, 24, 0.96)",
             dropShadow: {
               enabled: true,
               top: 0,
               left: 0,
-              blur: 16,
+              blur: 18,
               opacity: 0.24,
             },
           },
           track: {
-            background: "rgba(68, 86, 111, 0.22)",
+            background: "rgba(93, 120, 154, 0.22)",
             strokeWidth: "100%",
             margin: 0,
             dropShadow: {
-              enabled: true,
+              enabled: false,
               top: 0,
               left: 0,
-              blur: 10,
-              opacity: 0.08,
+              blur: 0,
+              opacity: 0,
             },
           },
           dataLabels: {
             name: {
-              show: true,
-              offsetY: 56,
-              color: "#8ea6bf",
-              fontSize: "10px",
-              fontWeight: 700,
-              fontFamily: CHART_FONT,
+              show: false,
             },
             value: {
               show: true,
-              offsetY: -6,
+              offsetY: 7,
               fontSize: valueFontSize,
               fontWeight: 800,
               color: "#f5fbff",
@@ -956,10 +960,10 @@
     setProgress("analyticsTrustMicroProgress", payload.micro.trust.progress);
     setProgress("analyticsEdgeMicroProgress", payload.micro.edge.progress);
 
-    renderRadialKpi("win-rate-kpi", byId("analyticsWinRateChart"), payload.kpis.win_rate, "#53d7ff");
-    renderRadialKpi("expectancy-kpi", byId("analyticsExpectancyChart"), payload.kpis.expectancy, "#8de76d");
-    renderRadialKpi("risk-kpi", byId("analyticsRiskControlChart"), payload.kpis.risk_control, "#ff8a74");
-    renderRadialKpi("review-kpi", byId("analyticsReviewCoverageChart"), payload.kpis.review_coverage, "#f2c96a");
+    renderRadialKpi("win-rate-kpi", byId("analyticsWinRateChart"), payload.kpis.win_rate, "#78C7FF");
+    renderRadialKpi("expectancy-kpi", byId("analyticsExpectancyChart"), payload.kpis.expectancy, "#7ED8A6");
+    renderRadialKpi("risk-kpi", byId("analyticsRiskControlChart"), payload.kpis.risk_control, "#5ED8C2");
+    renderRadialKpi("review-kpi", byId("analyticsReviewCoverageChart"), payload.kpis.review_coverage, "#9DB7FF");
 
     renderEquityChart(byId("analyticsEquityChart"), payload.charts.equity);
     renderDrawdownChart(byId("analyticsDrawdownChart"), payload.charts.drawdown);

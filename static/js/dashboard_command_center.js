@@ -269,14 +269,43 @@ const dashboardUIFX = (() => {
     return p - prior;
   };
 
+  const quotePctChange = (quote) => {
+    const raw = quote || {};
+    const explicit = asNum(
+      raw.pct_change
+        ?? raw.change_pct
+        ?? raw.percent_change
+        ?? raw.change_percent
+        ?? raw.day_change_pct
+    );
+    if (explicit !== null) return explicit;
+    const price = asNum(raw.price);
+    const prior = asNum(raw.prev_close ?? raw.prior_close ?? raw.previous_close ?? raw.close);
+    if (price === null || prior === null || prior <= 0) return null;
+    return ((price - prior) / prior) * 100.0;
+  };
+
   const inferPreviousClose = (quote) => {
     const explicit = asNum((quote || {}).prev_close ?? (quote || {}).prior_close ?? (quote || {}).previous_close);
     if (explicit !== null) return explicit;
     const price = asNum((quote || {}).price);
-    const pct = asNum((quote || {}).pct_change);
+    const pct = quotePctChange(quote);
     if (price === null || pct === null || Math.abs(100.0 + pct) < 1e-9) return null;
     const prior = price / (1 + (pct / 100.0));
     return Number.isFinite(prior) ? prior : null;
+  };
+
+  const applyMixedToneToSparkline = (row, tapeTone, pct) => {
+    const sparkNode = row.querySelector('[data-role="sparkline"]');
+    if (!sparkNode) return;
+    const trendTone = pct !== null && pct > 0 ? "positive" : pct !== null && pct < 0 ? "negative" : "neutral";
+    const sparkClass = trendTone === "positive" ? "spark-pos" : trendTone === "negative" ? "spark-neg" : "spark-flat";
+    sparkNode.classList.remove("tone-positive", "tone-negative", "tone-neutral", "spark-pos", "spark-neg", "spark-flat");
+    sparkNode.classList.add(`tone-${tapeTone}`, sparkClass);
+    sparkNode.querySelectorAll(".marketMiniSparkLine, .marketMiniSparkArea").forEach((node) => {
+      node.classList.remove("up", "down", "flat");
+      node.classList.add(trendTone === "positive" ? "up" : trendTone === "negative" ? "down" : "flat");
+    });
   };
 
   const formatClock = (iso) => {
@@ -291,15 +320,23 @@ const dashboardUIFX = (() => {
     }).format(new Date(ts));
   };
 
+  const compactAgeLabel = (ageS) => {
+    const seconds = Math.max(0, Math.floor(Number(ageS) || 0));
+    if (seconds >= 72 * 3600) return "72h+ old";
+    if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h old`;
+    if (seconds >= 60) return `${Math.floor(seconds / 60)}m old`;
+    return `${seconds}s old`;
+  };
+
   const formatFreshness = (iso, state) => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
     if (!Number.isFinite(ts)) return { full: `${state} · unavailable`, compact: state };
     const ageS = Math.max(0, (Date.now() - ts) / 1000);
-    const compact = ageS >= 60 ? `${Math.floor(ageS / 60)}m` : `${Math.floor(ageS)}s`;
     const seconds = Math.floor(ageS);
+    const compact = compactAgeLabel(seconds).replace(" old", "");
     const band = seconds >= 900 ? "Critical" : state;
     return {
-      full: `${band} · ${seconds}s old`,
+      full: `${band} · ${compactAgeLabel(seconds)}`,
       compact,
       state,
     };
@@ -362,7 +399,7 @@ const dashboardUIFX = (() => {
     const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
     const detailNode = detailPanels.get(symbol);
     const price = asNum((quote || {}).price);
-    const pct = asNum((quote || {}).pct_change);
+    const pct = quotePctChange(quote);
     const absChange = inferAbsoluteChange(price, pct);
     const state = deriveState(quote);
     const lastNode = row.querySelector('[data-role="last"]');
@@ -378,6 +415,8 @@ const dashboardUIFX = (() => {
     const openValue = asNum((quote || {}).day_open ?? (quote || {}).open);
     const prevCloseValue = inferPreviousClose(quote);
     const freshness = formatFreshness((quote || {}).as_of, state);
+    const tapeLabel = tapeStateLabel(symbol, pct);
+    const tapeTone = pct !== null && pct > 0 ? "positive" : pct !== null && pct < 0 ? "negative" : "neutral";
     const hasSeededRowValues = (
       price === null
       && !String((quote || {}).as_of || "").trim()
@@ -394,23 +433,42 @@ const dashboardUIFX = (() => {
 
     if (lastNode) {
       if (price !== null) {
-        dashboardUIFX.setText(lastNode, formatValue(price, 2), { live: true, direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral" });
+        dashboardUIFX.setText(lastNode, formatValue(price, 2), { live: true, direction: tapeTone === "positive" ? "up" : tapeTone === "negative" ? "down" : "neutral" });
       } else if (!hasMeaningfulText(lastNode)) {
         lastNode.textContent = "loading...";
       }
     }
     if (chgpNode) {
       if (pct !== null) {
-        dashboardUIFX.setText(chgpNode, `${formatSigned(pct, 2)}%`, { live: true, direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral" });
+        dashboardUIFX.setText(chgpNode, `${formatSigned(pct, 2)}%`, { live: true, direction: tapeTone === "positive" ? "up" : tapeTone === "negative" ? "down" : "neutral" });
       } else if (!hasMeaningfulText(chgpNode)) {
         chgpNode.textContent = "loading...";
       }
+      chgpNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
+      chgpNode.classList.add(`tone-${tapeTone}`);
     }
 
-    row.classList.remove("is-up", "is-down", "is-flat", "is-live", "is-delayed", "is-missing");
+    row.classList.remove(
+      "is-up",
+      "is-down",
+      "is-flat",
+      "is-live",
+      "is-delayed",
+      "is-missing",
+      "tone-positive",
+      "tone-negative",
+      "tone-neutral"
+    );
     row.classList.add(`is-${stateClass(state)}`);
-    row.classList.add(pct > 0 ? "is-up" : pct < 0 ? "is-down" : "is-flat");
-    if (stateNode) dashboardUIFX.setText(stateNode, tapeStateLabel(symbol, pct));
+    row.classList.add(tapeTone === "positive" ? "is-up" : tapeTone === "negative" ? "is-down" : "is-flat");
+    row.classList.add(`tone-${tapeTone}`);
+    row.dataset.tapeTone = tapeTone;
+    applyMixedToneToSparkline(row, tapeTone, pct);
+    if (stateNode) {
+      dashboardUIFX.setText(stateNode, tapeLabel);
+      stateNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
+      stateNode.classList.add(`tone-${tapeTone}`);
+    }
     if (rowMarketStateNode) dashboardUIFX.setText(rowMarketStateNode, freshness.state);
     if (rowLiveNode && String((quote || {}).as_of || "").trim()) {
       dashboardUIFX.setText(rowLiveNode, freshness.full);
@@ -1303,6 +1361,7 @@ const dashboardUIFX = (() => {
     }
     if (alignmentScoreDial) {
       alignmentScoreDial.style.setProperty("--alignment-pct", `${pct}%`);
+      alignmentScoreDial.dataset.alignmentTone = status.tone;
     }
     if (alignmentScoreValue) dashboardUIFX.setText(alignmentScoreValue, `${pct}%`, { pulse: true, tone: status.tone });
     if (alignmentScoreLabel) dashboardUIFX.setText(alignmentScoreLabel, status.detail, { pulse: true, tone: status.tone });
