@@ -24,6 +24,28 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_SYMBOL = "SPX"
 DEFAULT_INTERVAL = "5min"
+SUPPORTED_INTERVAL_MINUTES = {
+    "5min": 5,
+    "5m": 5,
+    "15min": 15,
+    "15m": 15,
+    "30min": 30,
+    "30m": 30,
+    "1h": 60,
+    "60min": 60,
+    "60m": 60,
+}
+CANONICAL_INTERVALS = {
+    "5m": "5min",
+    "5min": "5min",
+    "15m": "15min",
+    "15min": "15min",
+    "30m": "30min",
+    "30min": "30min",
+    "1h": "1h",
+    "60m": "1h",
+    "60min": "1h",
+}
 DEFAULT_BARS_LIMIT = 480
 LEVEL_UNAVAILABLE = "Unavailable"
 OPENING_SESSION_BAR_THRESHOLD = 10
@@ -109,8 +131,13 @@ def _parse_ts(value: Any) -> Optional[datetime]:
     return parsed.astimezone(app_runtime.TZ)
 
 
+def normalize_interval(interval: str) -> str:
+    raw = str(interval or DEFAULT_INTERVAL).strip().lower()
+    return CANONICAL_INTERVALS.get(raw, DEFAULT_INTERVAL)
+
+
 def _interval_minutes(interval: str) -> int:
-    return 5 if str(interval or DEFAULT_INTERVAL).strip().lower() == "5min" else 1
+    return SUPPORTED_INTERVAL_MINUTES.get(normalize_interval(interval), 5)
 
 
 def _regular_session_target_bar_count(interval: str) -> int:
@@ -350,7 +377,8 @@ def normalize_tradier_timesales(
     """Aggregate provider rows into Lightweight Charts bar format.
 
     Existing market_data_service rows already come from Tradier timesales.
-    We floor timestamps to 5-minute buckets for a stable frontend contract.
+    We floor timestamps to the selected supported timeframe for a stable
+    frontend contract.
     """
 
     interval_minutes = _interval_minutes(interval)
@@ -400,6 +428,7 @@ def normalize_tradier_timesales(
 def get_intraday_bars(
     symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTERVAL
 ) -> Dict[str, Any]:
+    interval = normalize_interval(interval)
     try:
         rows = market_data_service.get_intraday(symbol)
     except Exception as exc:

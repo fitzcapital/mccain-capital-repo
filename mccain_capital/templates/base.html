@@ -133,6 +133,15 @@
         }
       };
 
+      const readPayload = () => {
+        try {
+          const raw = sessionStorage.getItem("mc_page_transition");
+          return raw ? JSON.parse(raw) : null;
+        } catch (_err) {
+          return null;
+        }
+      };
+
       const applyStage = (nextStage, title, detail) => {
         const currentIdx = stageIndex(loaderState.stage);
         const requestedIdx = stageIndex(nextStage);
@@ -175,7 +184,7 @@
         if (onMarketPulsePage || onDashboardPage) scheduleSoftProgress();
         loaderState.failsafeTimer = window.setTimeout(() => {
           if (loaderState.active) complete();
-        }, 4500);
+        }, onMarketPulsePage ? 15000 : 10000);
       };
 
       const hide = (clearFlag = true) => {
@@ -217,7 +226,19 @@
       };
       window.completeDashboardLoading = () => complete();
 
-      clearPayload();
+      const transitionPayload = readPayload();
+      if (transitionPayload && typeof transitionPayload === "object") {
+        show(
+          String(transitionPayload.title || "Loading page"),
+          String(transitionPayload.detail || "Preparing latest view.")
+        );
+      } else {
+        clearPayload();
+      }
+      window.addEventListener("load", () => {
+        if (!loaderState.active || onMarketPulsePage) return;
+        complete();
+      }, { once: true });
       window.addEventListener("pageshow", (event) => {
         if (event.persisted) hide(true);
       });
@@ -234,15 +255,15 @@
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
-        <div class="logo">
-          <img src="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}" alt="logo"/>
+        <div class="logo logo-shell">
+          <img src="{{ url_for('static', filename=logo_filename|default('logo.png')) }}?v={{ static_v }}" alt="McCain Capital logo"/>
         </div>
         <div class="brandText">
           <h1 class="brandTitle">{{ brand_title or 'McCain Capital' }}</h1>
           <div class="brandSignature">
-            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Personal Trading Cockpit</span>
+            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Precision. Strategy. Execution.</span>
           </div>
-          <div class="sub">Execution, review, and risk control.</div>
+          <div class="sub brandCommandPulse">Wait. Confirm. Execute.</div>
         </div>
       </div>
 
@@ -782,6 +803,10 @@
       }
       if (typeof window.showShellLoading === "function") {
         const copy = loaderCopy(targetUrl, link);
+        try {
+          sessionStorage.setItem("mc_page_transition", JSON.stringify(copy));
+        } catch (_err) {
+        }
         window.showShellLoading(copy.title, copy.detail);
       }
     }, true);
@@ -797,6 +822,10 @@
       }
       if (targetUrl.origin === window.location.origin && typeof window.showShellLoading === "function") {
         const copy = loaderCopy(targetUrl, label ? { textContent: label } : null);
+        try {
+          sessionStorage.setItem("mc_page_transition", JSON.stringify(copy));
+        } catch (_err) {
+        }
         window.showShellLoading(copy.title, copy.detail);
       }
       window.location.href = targetUrl.href;
@@ -856,12 +885,10 @@
     });
   })();
 </script>
-{% if active in ['dashboard', 'market-pulse'] %}
 <script>
   (function initNotifications(){
     const onDashboardPage = document.body.classList.contains("page-dashboard");
     const onMarketPulsePage = document.body.classList.contains("page-market-pulse");
-    if (!onDashboardPage && !onMarketPulsePage) return;
     const bellBtn = document.getElementById("notifBellButton");
     const badge = document.getElementById("notifBellBadge");
     const dropdown = document.getElementById("notifDropdown");
@@ -1171,6 +1198,7 @@
           refresh: refreshFlag,
           mode: "curated",
           page: FEED_PAGE,
+          limit: "5",
         });
         const response = await fetch(`/api/market-pulse/news?${params.toString()}`, { cache: "no-store" });
         const payload = await response.json();
@@ -1188,7 +1216,7 @@
         });
         const trimmed = items
           .sort((a, b) => itemTimestamp(b) - itemTimestamp(a))
-          .slice(0, 8)
+          .slice(0, 5)
           .map((item) => ({
             title: item.headline || item.text || "Market update",
             text: item.summary || item.text || "",
@@ -1221,8 +1249,7 @@
         event.preventDefault();
         event.stopPropagation();
         if (refreshBtn.disabled) return;
-        const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
-        await seedFromFeed(forceRefresh, false);
+        await seedFromFeed(true, false);
       });
     }
 
@@ -1234,7 +1261,6 @@
     // Tweet-backed notifications are manual-only. No background polling here.
   })();
 </script>
-{% endif %}
 <script>
   (function initFlashAutoDismiss(){
     const flashNodes = Array.from(document.querySelectorAll(".flashStack .flashMessage"));

@@ -26,7 +26,7 @@ PAGE_CACHE_TTL_SECONDS = {
 COOLDOWN_429_SECONDS = 300
 REFRESH_LOCK_TTL_SECONDS = 20
 DEFAULT_LIMIT = 15
-DEFAULT_DASHBOARD_LIMIT = 8
+DEFAULT_DASHBOARD_LIMIT = 5
 DEFAULT_MARKET_PULSE_LIMIT = 15
 MAX_MARKET_PULSE_LIMIT = 100
 TWITTERAPI_PAGE_SIZE = 100
@@ -1158,7 +1158,7 @@ def build_twitter_feed_snapshot(
     stale_after_seconds = _resolve_stale_after_seconds(page_type)
     store = _load_source_store()
     api_key = _twitterapi_key()
-    if api_key:
+    if api_key and force_refresh:
         sources = dict(store.get("sources") or {})
         for source in TRACKED_SOURCES:
             username = str(source["username"])

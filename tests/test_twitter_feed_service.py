@@ -43,6 +43,7 @@ def test_twitter_feed_classifies_and_aligns_to_structure(monkeypatch):
             "gamma_regime_label": "Negative Gamma",
             "trade_state_label": "WAIT",
         },
+        force_refresh=True,
     )
 
     assert snapshot["status"] == "live"
@@ -72,6 +73,7 @@ def test_twitter_feed_uses_cache_when_fetch_fails(monkeypatch):
     first = svc.build_twitter_feed_snapshot(
         now_et=now,
         market_structure_snapshot={"planning_bias": "bullish_above_local_flip"},
+        force_refresh=True,
     )
     assert first["status"] == "live"
     assert first["items"]
@@ -82,6 +84,7 @@ def test_twitter_feed_uses_cache_when_fetch_fails(monkeypatch):
     second = svc.build_twitter_feed_snapshot(
         now_et=now + timedelta(minutes=6),
         market_structure_snapshot={"planning_bias": "bullish_above_local_flip"},
+        force_refresh=True,
     )
     assert second["status"] == "delayed"
     assert second["items"]
@@ -136,6 +139,27 @@ def test_twitter_feed_never_returns_empty_without_cache(monkeypatch):
     assert snapshot["items"][0]["handle"] == "@unusual_whales"
 
 
+def test_twitter_feed_non_force_is_cache_only(monkeypatch):
+    now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
+    _reset_cache(monkeypatch)
+    calls = {"count": 0}
+
+    def _fake_fetch(**_kwargs):
+        calls["count"] += 1
+        raise AssertionError("non-force feed builds must not call twitterapi.io")
+
+    monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", _fake_fetch)
+
+    snapshot = svc.build_twitter_feed_snapshot(
+        now_et=now,
+        market_structure_snapshot={"planning_bias_label": "Bullish above Local Flip"},
+    )
+
+    assert calls["count"] == 0
+    assert snapshot["status"] == "delayed"
+    assert snapshot["items"]
+
+
 def test_twitter_feed_filters_to_tracked_accounts(monkeypatch):
     now = datetime(2026, 4, 8, 9, 35, tzinfo=app_runtime.TZ)
     _reset_cache(monkeypatch)
@@ -155,6 +179,7 @@ def test_twitter_feed_filters_to_tracked_accounts(monkeypatch):
     snapshot = svc.build_twitter_feed_snapshot(
         now_et=now,
         market_structure_snapshot={"planning_bias": "bullish_above_local_flip"},
+        force_refresh=True,
     )
 
     assert snapshot["status"] == "delayed"
@@ -180,6 +205,7 @@ def test_twitter_feed_normalizes_snake_case_actor_fields(monkeypatch):
     snapshot = svc.build_twitter_feed_snapshot(
         now_et=now,
         market_structure_snapshot={"planning_bias": "bearish_below_local_flip"},
+        force_refresh=True,
     )
 
     assert snapshot["status"] == "live"
@@ -207,7 +233,7 @@ def test_twitter_feed_top_items_preserves_full_page_feed_limit(monkeypatch):
 
     monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", _fake_fetch)
 
-    snapshot = svc.build_twitter_feed_snapshot(now_et=now)
+    snapshot = svc.build_twitter_feed_snapshot(now_et=now, force_refresh=True, limit=24)
 
     assert snapshot["status"] == "live"
     assert len(snapshot["top_items"]) == 24
@@ -232,8 +258,13 @@ def test_run_twitterapi_last_tweets_paginates_until_limit(monkeypatch):
         return (rows, "")
 
     monkeypatch.setattr(svc, "_run_twitterapi_last_tweets_page", _fake_page)
+    monkeypatch.setattr(svc, "TWITTERAPI_MAX_PAGES", 2)
 
-    rows = svc._run_twitterapi_last_tweets(username="unusual_whales", api_key="test-token")
+    rows = svc._run_twitterapi_last_tweets(
+        username="unusual_whales",
+        api_key="test-token",
+        limit=40,
+    )
 
     assert len(rows) == 40
     assert calls[0]["cursor"] == ""
@@ -250,8 +281,8 @@ def test_twitter_feed_cools_down_source_after_429(monkeypatch):
         raise RuntimeError("HTTP Error 429: Too Many Requests")
 
     monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", _fake_fetch)
-    first = svc.build_twitter_feed_snapshot(now_et=now)
-    second = svc.build_twitter_feed_snapshot(now_et=now + timedelta(seconds=30))
+    first = svc.build_twitter_feed_snapshot(now_et=now, force_refresh=True)
+    second = svc.build_twitter_feed_snapshot(now_et=now + timedelta(seconds=30), force_refresh=True)
 
     assert first["status"] == "delayed"
     assert second["status"] == "delayed"
@@ -279,9 +310,9 @@ def test_twitter_feed_uses_last_good_payload_for_single_source(monkeypatch):
         return responses
 
     monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", _fake_fetch)
-    first = svc.build_twitter_feed_snapshot(now_et=now)
+    first = svc.build_twitter_feed_snapshot(now_et=now, force_refresh=True)
     responses = RuntimeError("down")
-    second = svc.build_twitter_feed_snapshot(now_et=now + timedelta(minutes=6))
+    second = svc.build_twitter_feed_snapshot(now_et=now + timedelta(minutes=6), force_refresh=True)
 
     assert first["status"] == "live"
     assert second["status"] == "delayed"

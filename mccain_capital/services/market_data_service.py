@@ -256,7 +256,9 @@ def _massive_symbol(symbol: str) -> str:
     return MASSIVE_SYMBOL_ALIASES.get(sym, sym)
 
 
-def _tradier_quote_map(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+def _tradier_quote_map(
+    symbols: List[str], *, force_refresh: bool = False
+) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     if not _tradier_api_key():
         return out
@@ -264,9 +266,10 @@ def _tradier_quote_map(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     if not clean:
         return out
     cache_key = ",".join(sorted(set(clean)))
-    cached = _quote_cache_get(cache_key)
-    if cached is not None:
-        return cached
+    if not force_refresh:
+        cached = _quote_cache_get(cache_key)
+        if cached is not None:
+            return cached
     mapped = [_tradier_symbol(s) for s in clean]
     payload = _tradier_json("/v1/markets/quotes", {"symbols": ",".join(mapped), "greeks": "false"})
     quotes = ((payload or {}).get("quotes") or {}).get("quote")
@@ -845,12 +848,14 @@ def get_prior_session_intraday(
 
 
 def get_watchlist(
-    symbols: List[str], *, allow_yf_fallback: bool = True
+    symbols: List[str], *, allow_yf_fallback: bool = True, force_refresh: bool = False
 ) -> Dict[str, Dict[str, Any]]:
-    return get_watchlist_tradier(symbols)
+    return get_watchlist_tradier(symbols, force_refresh=force_refresh)
 
 
-def get_watchlist_tradier(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+def get_watchlist_tradier(
+    symbols: List[str], *, force_refresh: bool = False
+) -> Dict[str, Dict[str, Any]]:
     """Return Tradier-only quotes for a symbol list.
 
     This intentionally avoids Massive/Yahoo fallback so callers can present
@@ -858,7 +863,7 @@ def get_watchlist_tradier(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     """
 
     snapshot: Dict[str, Dict[str, Any]] = {}
-    tradier_map = _tradier_quote_map(symbols)
+    tradier_map = _tradier_quote_map(symbols, force_refresh=force_refresh)
     for raw in symbols:
         symbol = str(raw or "").strip().upper()
         if not symbol:

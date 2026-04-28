@@ -1,8 +1,8 @@
 {% set tw = trading_window or {} %}
 {% set is_allowed = tw.state == 'active' and tw.enabled %}
 {% set is_warning = tw.state in ['upcoming', 'pending'] and tw.enabled %}
-{% set status_text = 'TRADING ALLOWED' if is_allowed else 'DO NOT TRADE' %}
-{% set strip_class = 'is-active' if is_allowed else ('is-warning' if is_warning else 'is-stop') %}
+{% set status_text = 'TRADING ALLOWED' if is_allowed else ('TRADING WINDOW OFF' if not tw.enabled else 'DO NOT TRADE') %}
+{% set strip_class = 'is-active' if is_allowed else ('is-warning' if is_warning else ('is-off' if not tw.enabled else 'is-stop')) %}
 {% set next_change = (tw.next_change_minutes ~ ' min') if tw.next_change_minutes is not none else 'Next session' %}
 {% set state_chip = 'Weekend' if tw.state == 'closed' and not tw.using_test_clock and not tw.holiday_name else
                     (tw.holiday_name if tw.state == 'closed' and tw.holiday_name else
@@ -88,9 +88,15 @@
       <div class="toolbar">
       <form method="post" action="/ops/trading-window" class="tradingWindowForm tradingWindowFormCompact">
         <input type="hidden" name="next" value="/ops/trading-window">
-        <input type="hidden" name="tw_enabled" value="{{ '1' if tw.enabled else '0' }}">
         <input type="hidden" name="tw_test_date" value="{{ tw.test_date }}">
         <input type="hidden" name="tw_test_time_et" value="{{ tw.test_time_et }}">
+        <label class="tradingWindowFeatureToggle">
+          <input type="checkbox" name="tw_enabled" value="1" {% if tw.enabled %}checked{% endif %}>
+          <span>
+            <strong>Trading Window</strong>
+            <small>Turn off to remove the session guardrail window until you enable it again.</small>
+          </span>
+        </label>
         <label>
           Start
           <input type="time" name="tw_start_et" value="{{ tw.start_et }}" required>

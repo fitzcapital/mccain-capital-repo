@@ -9,6 +9,7 @@
   const markersToggle = document.getElementById("marketPulseHeroToggleMarkers");
   const levelsToggle = document.getElementById("marketPulseHeroToggleLevels");
   const dayLevelsToggle = document.getElementById("marketPulseHeroToggleDayLevels");
+  const intervalToggles = Array.from(document.querySelectorAll("[data-hero-chart-interval]"));
   const emptyState = document.getElementById("spxExecutionHeroChartEmpty");
   if (!host || !canvas) return;
 
@@ -22,7 +23,32 @@
   const levelsUrl = String(host.dataset.levelsUrl || "/api/hero/levels");
   const streamUrl = String(host.dataset.streamUrl || "/api/hero/stream-session");
   const symbol = String(host.dataset.symbol || "QQQ").toUpperCase();
-  const interval = String(host.dataset.interval || "5min");
+  const DEFAULT_INTERVAL = "5min";
+  const INTERVAL_LABELS = {
+    "5min": "5m",
+    "15min": "15m",
+    "30min": "30m",
+    "1h": "1h",
+  };
+  const INTERVAL_ALIASES = {
+    "5": "5min",
+    "5m": "5min",
+    "5min": "5min",
+    "15": "15min",
+    "15m": "15min",
+    "15min": "15min",
+    "30": "30min",
+    "30m": "30min",
+    "30min": "30min",
+    "1h": "1h",
+    "60": "1h",
+    "60m": "1h",
+    "60min": "1h",
+  };
+  const normalizeInterval = (value) => (
+    INTERVAL_ALIASES[String(value || DEFAULT_INTERVAL).trim().toLowerCase()] || DEFAULT_INTERVAL
+  );
+  let interval = normalizeInterval(host.dataset.interval || DEFAULT_INTERVAL);
   const HERO_CHART_TIMEZONE = "America/New_York";
   const HERO_TIME_AXIS_FORMATTER = new Intl.DateTimeFormat("en-US", {
     timeZone: HERO_CHART_TIMEZONE,
@@ -31,26 +57,26 @@
     hour12: false,
   });
   const HERO_CHART_THEME = {
-    background: "#06111F",
-    panel: "#0B1D33",
-    border: "#163250",
-    textPrimary: "#EAF2FF",
-    textSecondary: "#9CB3D1",
-    gridMajor: "rgba(120, 160, 200, 0.12)",
-    gridMinor: "rgba(120, 160, 200, 0.055)",
-    axis: "rgba(120, 160, 200, 0.16)",
-    bull: "#12B88E",
-    bullBorder: "#19C997",
-    bullWick: "#22D3A6",
-    bear: "#D24A64",
-    bearBorder: "#F05F7C",
-    bearWick: "#FF7890",
-    bullMuted: "rgba(15, 163, 127, 0.56)",
-    bullBorderMuted: "rgba(25, 201, 151, 0.62)",
-    bullWickMuted: "rgba(34, 211, 166, 0.58)",
-    bearMuted: "rgba(194, 59, 87, 0.52)",
-    bearBorderMuted: "rgba(226, 85, 116, 0.60)",
-    bearWickMuted: "rgba(240, 106, 136, 0.58)",
+    background: "#071421",
+    panel: "#0B1F3A",
+    border: "#2F6BFF",
+    textPrimary: "#F4F8FF",
+    textSecondary: "#C7D0D9",
+    gridMajor: "rgba(199, 208, 217, 0.18)",
+    gridMinor: "rgba(199, 208, 217, 0.09)",
+    axis: "rgba(199, 208, 217, 0.30)",
+    bull: "#19C997",
+    bullBorder: "#22C55E",
+    bullWick: "#4ADE80",
+    bear: "#D64D66",
+    bearBorder: "#EF4444",
+    bearWick: "#FB7185",
+    bullMuted: "rgba(25, 201, 151, 0.86)",
+    bullBorderMuted: "rgba(34, 197, 94, 0.92)",
+    bullWickMuted: "rgba(74, 222, 128, 0.88)",
+    bearMuted: "rgba(214, 77, 102, 0.84)",
+    bearBorderMuted: "rgba(239, 68, 68, 0.90)",
+    bearWickMuted: "rgba(251, 113, 133, 0.88)",
     spx: "#63B3FF",
     current: "#C23B57",
     cw: "#C85A72",
@@ -58,7 +84,7 @@
     lf: "#A88BFF",
     npw: "#4DD599",
     pw: "#218A5A",
-    main: "rgba(140,155,180,0.38)",
+    main: "rgba(199,208,217,0.56)",
     labelDark: "rgba(8, 14, 24, 0.88)",
     labelBorder: "rgba(255,255,255,0.08)",
     labelCwBg: "#ff4f79",
@@ -88,7 +114,8 @@
   const LEFT_SCROLL_BUFFER_BARS = 8;
   const DEFAULT_RIGHT_OFFSET_BARS = 5;
   const HERO_CHART_HEIGHT = 600;
-  const HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
+  const LEGACY_HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
+  const HERO_CHART_PREFS_KEY = `mc_hero_chart_display_prefs_${symbol}`;
   const STRAT_MARKER_LIMIT = 96;
   const LEVEL_RAIL_MIN_GAP = 38;
 
@@ -204,6 +231,7 @@
   let resizeObserver = null;
   let barsRequestInFlight = false;
   let levelsRequestInFlight = false;
+  let barsRequestSerial = 0;
   let pageVisible = document.visibilityState !== "hidden";
   let lastMeasuredWidth = 0;
   let lastMeasuredHeight = 0;
@@ -260,7 +288,9 @@
 
   const loadDisplayPrefs = () => {
     try {
-      const raw = window.localStorage.getItem(HERO_CHART_PREFS_KEY);
+      const raw =
+        window.localStorage.getItem(HERO_CHART_PREFS_KEY) ||
+        window.localStorage.getItem(LEGACY_HERO_CHART_PREFS_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (typeof parsed?.showMarkers === "boolean") displayPrefs.showMarkers = parsed.showMarkers;
@@ -494,6 +524,18 @@
     node.textContent = String(state || "WATCH").replaceAll("_", " ");
     node.classList.remove("tone-positive", "tone-warn", "tone-negative");
     node.classList.add(toneClass(state));
+  };
+
+  const syncIntervalControls = () => {
+    const label = INTERVAL_LABELS[interval] || INTERVAL_LABELS[DEFAULT_INTERVAL];
+    document.querySelectorAll(".marketPulseExecutionHeroTimeframe").forEach((node) => {
+      node.textContent = `· ${label}`;
+    });
+    intervalToggles.forEach((button) => {
+      const active = normalizeInterval(button.dataset.heroChartInterval) === interval;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
   };
 
   const fetchJson = async (url) => {
@@ -969,7 +1011,6 @@
     const plottedRows = railRows
       .map((row) => ({ ...row, y: candleSeries.priceToCoordinate(row.value) }))
       .filter((row) => Number.isFinite(row.y))
-      .filter((row) => row.y >= 10 && row.y <= railHeight - 10)
       .sort((a, b) => a.y - b.y);
     if (!plottedRows.length) {
       levelRail.innerHTML = "";
@@ -1044,8 +1085,11 @@
   const updateBars = async ({ fitContent = false } = {}) => {
     if (barsRequestInFlight) return;
     barsRequestInFlight = true;
+    const requestSerial = barsRequestSerial;
+    const requestInterval = interval;
     try {
       const payload = await fetchJson(barsEndpoint());
+      if (requestSerial !== barsRequestSerial || requestInterval !== interval) return;
       const bars = Array.isArray(payload.bars) ? payload.bars : [];
       if (!bars.length) {
         if (emptyState) {
@@ -1266,9 +1310,51 @@
     }
   };
 
+  const bindIntervalToggles = () => {
+    intervalToggles.forEach((button) => {
+      button.addEventListener("click", async () => {
+        const nextInterval = normalizeInterval(button.dataset.heroChartInterval);
+        if (nextInterval === interval) return;
+
+        interval = nextInterval;
+        host.dataset.interval = nextInterval;
+        barsRequestSerial += 1;
+        barsRequestInFlight = false;
+        lastBarsPayload = null;
+        lastBarsSignature = "";
+        lastLiveBarSignature = "";
+        lastMarkerSignature = "";
+        lastDayLevelSignature = "";
+        syncIntervalControls();
+        clearPollTimers();
+        priorSessionSeries.setData([]);
+        candleSeries.setData([]);
+        volumeSeries.setData([]);
+        candleSeries.setMarkers([]);
+        renderLevelRail(lastLevelsPayload);
+        if (emptyState) {
+          emptyState.hidden = false;
+          emptyState.textContent = `Loading ${symbol} ${INTERVAL_LABELS[interval]} chart...`;
+        }
+        try {
+          await updateBars({ fitContent: true });
+        } catch (error) {
+          if (emptyState) {
+            emptyState.hidden = false;
+            emptyState.textContent = `${symbol} ${INTERVAL_LABELS[interval]} chart failed: ${error.message}`;
+          }
+        } finally {
+          startPolling();
+        }
+      });
+    });
+  };
+
   loadDisplayPrefs();
   syncToggleButtons();
+  syncIntervalControls();
   bindDisplayToggles();
+  bindIntervalToggles();
   applyLevelVisibility();
   window.addEventListener("resize", () => {
     window.clearTimeout(resizeTimer);

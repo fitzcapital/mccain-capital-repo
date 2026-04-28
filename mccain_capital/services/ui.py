@@ -156,19 +156,33 @@ def _inject_csrf_inputs(content_html: str, csrf_input: str) -> str:
 
 
 def _static_version(static_root: str) -> str:
-    logo_path = os.path.join(static_root, "logo.png")
-    favicon_path = os.path.join(static_root, "favicon.ico")
+    branding_paths = [
+        os.path.join(static_root, "logo-primary.png"),
+        os.path.join(static_root, "logo-flat.png"),
+        os.path.join(static_root, "logo.png"),
+        os.path.join(static_root, "favicon.ico"),
+        os.path.join(static_root, "icon-192.png"),
+        os.path.join(static_root, "icon-180.png"),
+    ]
     app_css_path = os.path.join(static_root, "css", "app.css")
+    market_pulse_css_path = os.path.join(static_root, "css", "market_pulse.css")
+    dashboard_command_js_path = os.path.join(static_root, "js", "dashboard_command_center.js")
+    hero_chart_js_path = os.path.join(static_root, "js", "spx_hero_chart.js")
+    market_pulse_gamma_js_path = os.path.join(static_root, "js", "market_pulse_gamma_context.js")
     try:
-        return str(
-            int(
-                max(
-                    os.path.getmtime(logo_path),
-                    os.path.getmtime(favicon_path),
-                    os.path.getmtime(app_css_path),
-                )
-            )
-        )
+        mtimes = [
+            os.path.getmtime(path)
+            for path in [
+                *branding_paths,
+                app_css_path,
+                market_pulse_css_path,
+                dashboard_command_js_path,
+                hero_chart_js_path,
+                market_pulse_gamma_js_path,
+            ]
+            if os.path.exists(path)
+        ]
+        return str(int(max(mtimes))) if mtimes else now_iso().replace(":", "").replace("-", "")
     except Exception:
         return now_iso().replace(":", "").replace("-", "")
 
@@ -296,9 +310,24 @@ def _resolve_window_times(
     )
 
 
+def _form_bool(form: Mapping[str, Any], key: str, default: bool = False) -> bool:
+    getlist = getattr(form, "getlist", None)
+    if callable(getlist):
+        values = getlist(key)
+    elif key in form:
+        values = [form.get(key)]
+    else:
+        values = []
+    if not values:
+        return default
+    return any(
+        str(value or "").strip().lower() in {"1", "true", "on", "yes"} for value in values
+    )
+
+
 def save_trading_window_settings(form: Mapping[str, Any]) -> dict[str, Any]:
-    enabled = str(form.get("tw_enabled") or "") in {"1", "true", "on", "yes"}
-    test_mode = str(form.get("tw_test_mode") or "") in {"1", "true", "on", "yes"}
+    enabled = _form_bool(form, "tw_enabled")
+    test_mode = _form_bool(form, "tw_test_mode")
     try:
         upcoming_notice_minutes = int(
             str(form.get("tw_upcoming_notice_minutes") or "").strip()
@@ -395,11 +424,11 @@ def get_trading_window_state() -> dict[str, Any]:
     primary_reason = "Opening volatility protection"
     if not enabled:
         state = "off"
-        state_label = "Do Not Trade"
+        state_label = "Trading Window Off"
         message = "Trading window controls are disabled."
-        rail_label = "Do Not Trade"
+        rail_label = "Window Off"
         rail_detail = "Window disabled"
-        pill_tone = "negative"
+        pill_tone = "neutral"
         show_banner = False
         next_change_minutes = None
         primary_reason = "Window guidance disabled"
@@ -790,6 +819,15 @@ def get_forex_factory_month_feed() -> list[dict] | None:
 
 def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **page_ctx):
     static_root = current_app.static_folder or "static"
+    logo_primary = "logo-primary.png"
+    logo_flat = "logo-flat.png"
+    logo_default = "logo.png"
+    logo_filename = (
+        logo_primary if os.path.exists(os.path.join(static_root, logo_primary)) else logo_default
+    )
+    logo_flat_filename = (
+        logo_flat if os.path.exists(os.path.join(static_root, logo_flat)) else logo_filename
+    )
     top_notice = page_ctx.pop("top_notice", None) or _global_top_notice()
     if isinstance(top_notice, dict):
         text = str(top_notice.get("text") or "")
@@ -807,6 +845,8 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **pag
         "base.html",
         title=title,
         brand_title=APP_TITLE,
+        logo_filename=logo_filename,
+        logo_flat_filename=logo_flat_filename,
         static_v=_static_version(static_root),
         auth_enabled=auth_enabled(),
         authenticated=is_authenticated(),

@@ -155,7 +155,7 @@
       if (refreshBtn) refreshBtn.disabled = true;
       try {
         const refreshFlag = forceRefresh ? "1" : "0";
-        const response = await fetch(`/api/market-pulse/news?refresh=${refreshFlag}&mode=curated&page=market-pulse&limit=100`, { cache: "no-store" });
+        const response = await fetch(`/api/market-pulse/news?refresh=${refreshFlag}&mode=curated&page=market-pulse&limit=50`, { cache: "no-store" });
         const payload = await response.json();
         render(Array.isArray(payload?.items) ? payload.items : []);
       } catch (_err) {
@@ -175,8 +175,8 @@
     }
     if (refreshBtn) {
       refreshBtn.addEventListener("click", (event) => {
-        const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
-        refresh(forceRefresh);
+        event.preventDefault();
+        refresh(true);
       });
     }
 

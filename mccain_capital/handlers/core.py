@@ -85,6 +85,10 @@ def market_pulse_context_api():
     return svc.market_pulse_context_api()
 
 
+def market_pulse_tape_api():
+    return svc.market_pulse_tape_api()
+
+
 def hero_bars_api():
     return svc.hero_bars_api()
 

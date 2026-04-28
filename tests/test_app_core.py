@@ -972,10 +972,35 @@ def test_trading_window_config_follow_redirect_shows_success_feedback(client):
     assert b"Upcoming Notice" in resp.data
 
 
+def test_trading_window_config_can_disable_feature(client):
+    resp = client.post(
+        "/ops/trading-window",
+        data={
+            "tw_start_et": "09:30",
+            "tw_done_by_et": "10:30",
+            "tw_upcoming_notice_minutes": "60",
+            "next": "/ops/trading-window",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert str(get_setting_value("trading_window_enabled", "")) == "0"
+
+    from mccain_capital.services import ui as ui_service
+
+    state = ui_service.get_trading_window_state()
+    assert state["enabled"] is False
+    assert state["state"] == "off"
+    assert state["show_banner"] is False
+    assert b"TRADING WINDOW OFF" in resp.data
+
+
 def test_trading_window_settings_page_renders_form(client):
     resp = client.get("/ops/trading-window", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Session Guardrail Settings" in resp.data
+    assert b'name="tw_enabled"' in resp.data
+    assert b"Turn off to remove the session guardrail window" in resp.data
     assert b'input type="time" name="tw_done_by_et"' in resp.data
     assert b"tw_hard_stop_et" not in resp.data
 

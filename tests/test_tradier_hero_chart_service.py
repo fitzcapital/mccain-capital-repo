@@ -49,6 +49,48 @@ def test_normalize_tradier_timesales_aggregates_to_five_minute_bars():
     assert bars[1]["close"] == 6602.5
 
 
+def test_normalize_tradier_timesales_supports_chart_timeframes():
+    rows = [
+        {
+            "ts": "2026-04-06T09:31:00-04:00",
+            "open": 6600.0,
+            "high": 6601.0,
+            "low": 6599.5,
+            "close": 6600.5,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-06T09:44:00-04:00",
+            "open": 6600.5,
+            "high": 6604.0,
+            "low": 6600.0,
+            "close": 6603.5,
+            "volume": 150,
+        },
+        {
+            "ts": "2026-04-06T10:02:00-04:00",
+            "open": 6603.5,
+            "high": 6605.0,
+            "low": 6602.0,
+            "close": 6604.5,
+            "volume": 200,
+        },
+    ]
+
+    fifteen_minute_bars = svc.normalize_tradier_timesales(rows, interval="15min")
+    hourly_bars = svc.normalize_tradier_timesales(rows, interval="1h")
+
+    assert svc.normalize_interval("15m") == "15min"
+    assert svc.normalize_interval("60min") == "1h"
+    assert len(fifteen_minute_bars) == 2
+    assert fifteen_minute_bars[0]["open"] == 6600.0
+    assert fifteen_minute_bars[0]["close"] == 6603.5
+    assert fifteen_minute_bars[0]["volume"] == 250.0
+    assert len(hourly_bars) == 2
+    assert hourly_bars[0]["time"] == _ts(2026, 4, 6, 9, 0)
+    assert hourly_bars[1]["time"] == _ts(2026, 4, 6, 10, 0)
+
+
 def test_derive_hero_state_above_call_wall_prefers_next_call_wall():
     payload = svc.derive_hero_state(6611.83, 6571, 6605, 6550, 6615, 6570)
 

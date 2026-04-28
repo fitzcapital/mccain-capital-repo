@@ -62,6 +62,12 @@ def register(app):
         view_func=h.market_pulse_context_api,
         methods=["GET"],
     )
+    app.add_url_rule(
+        "/api/market-pulse/tape",
+        endpoint="market_pulse_tape_api",
+        view_func=h.market_pulse_tape_api,
+        methods=["GET"],
+    )
     app.add_url_rule("/api/hero/bars", endpoint="hero_bars_api", view_func=h.hero_bars_api)
     app.add_url_rule("/api/hero/levels", endpoint="hero_levels_api", view_func=h.hero_levels_api)
     app.add_url_rule(
