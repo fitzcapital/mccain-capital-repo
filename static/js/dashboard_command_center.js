@@ -1017,10 +1017,18 @@ const dashboardUIFX = (() => {
   const syncTradeActions = () => {
     const blocked = modeBlocksNewRisk();
     tradeActionLinks.forEach((link) => {
-      link.setAttribute("aria-disabled", blocked ? "true" : "false");
-      link.classList.toggle("isDisabled", blocked);
-      link.classList.toggle("is-guarded", blocked);
-      link.title = blocked
+      let targetPath = "";
+      try {
+        targetPath = new URL(link.getAttribute("href") || "", window.location.href).pathname;
+      } catch (_err) {
+        targetPath = "";
+      }
+      const isMarketPulseNavigation = targetPath === "/market-pulse";
+      const shouldGuard = blocked && !isMarketPulseNavigation;
+      link.setAttribute("aria-disabled", shouldGuard ? "true" : "false");
+      link.classList.toggle("isDisabled", shouldGuard);
+      link.classList.toggle("is-guarded", shouldGuard);
+      link.title = shouldGuard
         ? (
           uiState.disciplineMode === "done-for-day"
             ? "Done for Day blocks new risk."

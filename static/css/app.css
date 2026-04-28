@@ -50754,3 +50754,283 @@ body[data-theme="cinematic-nebula"] :where(
   stroke:rgba(199,208,217,.72) !important;
   filter:none !important;
 }
+
+/* App-wide mobile cleanup: keep pages dense, readable, and clear of the dock. */
+@media (max-width:760px){
+  html,
+  body{
+    max-width:100%;
+    overflow-x:hidden;
+  }
+
+  body[data-theme="cinematic-nebula"]{
+    --shell-pad-x:10px;
+    --shell-pad-y:10px;
+    --layout-grid-gap:10px;
+    --page-flow-gap:10px;
+  }
+
+  .wrap{
+    width:100%;
+    max-width:100%;
+    padding:10px 10px calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    overflow-x:hidden;
+  }
+
+  body[data-theme="cinematic-nebula"] .topbar{
+    width:auto;
+    margin:8px 8px 10px !important;
+    padding:9px !important;
+    grid-template-columns:minmax(0, 1fr) auto !important;
+    gap:8px !important;
+    border-radius:12px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .brand{
+    gap:8px !important;
+    min-width:0 !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .logo{
+    width:42px !important;
+    height:42px !important;
+    flex:0 0 42px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .brandTitle{
+    font-size:clamp(15px, 4.7vw, 18px) !important;
+    line-height:1.05 !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .brandSignature{
+    font-size:8px !important;
+    line-height:1.05 !important;
+    letter-spacing:.12em !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .topRight{
+    grid-column:1 / -1;
+    width:100%;
+    min-width:0;
+  }
+
+  body[data-theme="cinematic-nebula"] .headerInfoCluster,
+  body[data-theme="cinematic-nebula"] .statusRow{
+    width:100%;
+    min-width:0;
+  }
+
+  body[data-theme="cinematic-nebula"] .statusRow{
+    display:grid !important;
+    grid-template-columns:minmax(0, 1fr) auto !important;
+    gap:7px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .topNoticePill,
+  body[data-theme="cinematic-nebula"] .tradingWindowPillGroup,
+  body[data-theme="cinematic-nebula"] .marketStatusClock{
+    min-width:0 !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .topNoticePill,
+  body[data-theme="cinematic-nebula"] .tradingWindowPill,
+  body[data-theme="cinematic-nebula"] .marketStatusClock{
+    width:100% !important;
+    min-height:36px !important;
+    padding:8px 10px !important;
+    border-radius:12px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .notifBell{
+    grid-column:2;
+    grid-row:2;
+  }
+
+  body[data-theme="cinematic-nebula"] .notifBellButton{
+    width:40px !important;
+    height:40px !important;
+    border-radius:12px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .mobileDock{
+    left:8px !important;
+    right:8px !important;
+    bottom:calc(7px + env(safe-area-inset-bottom, 0px)) !important;
+    width:auto !important;
+    gap:4px !important;
+    padding:5px !important;
+    border:1px solid rgba(47,107,255,.22) !important;
+    border-radius:12px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .mobileDock::before{
+    top:4px !important;
+    height:2px !important;
+    opacity:.65 !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .mobileDock .btn{
+    min-height:48px !important;
+    padding:7px 3px 6px !important;
+    border-radius:9px !important;
+    font-size:9.5px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .mobileDockLabel{
+    line-height:1 !important;
+    overflow-wrap:anywhere !important;
+  }
+
+  body[data-theme="cinematic-nebula"] :where(
+    .card,
+    .stat,
+    .metric,
+    .primaryCard,
+    .supportCard,
+    .heroCard,
+    .dashboardCommandCard,
+    .dashboardFoundationCard,
+    .dashboardBriefCard,
+    .dashboardDecisionCard,
+    .dashboardProjectionCard,
+    .dashboardMilestoneCard,
+    .dashboardStatusDetailCard,
+    .dashboardSnapshotCard,
+    .dashboardMemoryCard,
+    .marketPulseSection,
+    .marketPulseExecutionHeroPanel,
+    .marketPulseTapeCard
+  ){
+    border-radius:10px !important;
+  }
+
+  .toolbar,
+  .heroCard > .toolbar,
+  .primaryCard > .toolbar,
+  .supportCard > .toolbar{
+    padding:10px !important;
+    gap:9px !important;
+  }
+
+  .btn{
+    min-height:36px;
+  }
+}
+
+/* Dashboard mobile cleanup: single-column work surface, compact controls, no hidden bottom content. */
+@media (max-width:760px){
+  .page-dashboard .dashboardStage,
+  .page-dashboard .dashboardStageLead,
+  .page-dashboard .dashboardStageSide,
+  .page-dashboard .dashboardModeShell,
+  .page-dashboard .dashboardPrimaryBand,
+  .page-dashboard .dashboardCommandBody,
+  .page-dashboard .dashboardDecisionGrid,
+  .page-dashboard .dashboardBriefStructuredGrid,
+  .page-dashboard .dashboardBriefQuickGrid,
+  .page-dashboard .dashboardBriefSecondaryGrid,
+  .page-dashboard .dashboardHealthGrid,
+  .page-dashboard .session-health-grid,
+  .page-dashboard .dashboardSnapshotBar,
+  .page-dashboard .dashboardStatusOrbitRow,
+  .page-dashboard .dashboardCoreTapeRow,
+  .page-dashboard .dashboardTapeCardStack,
+  .page-dashboard .dashboardMilestoneMission,
+  .page-dashboard .dashboardMilestoneMeta{
+    grid-template-columns:1fr !important;
+  }
+
+  .page-dashboard .dashboardModeShell,
+  .page-dashboard .dashboardPrimaryBand,
+  .page-dashboard .dashboardStage{
+    gap:10px !important;
+  }
+
+  .page-dashboard .dashboardDisciplineRail,
+  .page-dashboard .dashboardHeroPrimaryActions,
+  .page-dashboard .dashboardBriefPrimaryActions,
+  .page-dashboard .dashboardCommandActions,
+  .page-dashboard .rightActions,
+  .page-dashboard .leftActions{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:8px !important;
+  }
+
+  .page-dashboard .dashboardDisciplinePillSet{
+    display:grid !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    gap:7px !important;
+    width:100%;
+  }
+
+  .page-dashboard .dashboardDisciplinePill,
+  .page-dashboard .dashboardResetTrigger,
+  .page-dashboard .dashboardDecisionCard .btn,
+  .page-dashboard .dashboardCommandActions .btn,
+  .page-dashboard .dashboardHeroPrimaryActions .btn{
+    width:100% !important;
+    min-width:0 !important;
+    justify-content:center !important;
+  }
+
+  .page-dashboard .dashboardCommandCard,
+  .page-dashboard .dashboardFoundationCard,
+  .page-dashboard .dashboardBriefCard,
+  .page-dashboard .dashboardDecisionCard,
+  .page-dashboard .dashboardProjectionCard,
+  .page-dashboard .dashboardMilestoneCard,
+  .page-dashboard .dashboardStatusDetailCard,
+  .page-dashboard .dashboardMemoryCard{
+    padding:0 !important;
+  }
+
+  .page-dashboard .dashboardAlignmentScoreRow{
+    grid-template-columns:1fr !important;
+    justify-items:center !important;
+    text-align:center !important;
+    gap:12px !important;
+  }
+
+  .page-dashboard .dashboardAlignmentScoreDial{
+    width:150px !important;
+    height:150px !important;
+  }
+
+  .page-dashboard .dashboardAlignmentScoreDialInner{
+    inset:18px !important;
+  }
+
+  .page-dashboard .dashboardAlignmentScoreValue,
+  .page-dashboard #dashboardAlignmentScoreValue{
+    font-size:2rem !important;
+  }
+
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard{
+    min-height:136px !important;
+    padding:12px !important;
+  }
+
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWrap,
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .dashboardTapeSpark{
+    height:32px !important;
+    max-width:150px !important;
+  }
+}
+
+@media (max-width:420px){
+  body[data-theme="cinematic-nebula"] .statusRow{
+    grid-template-columns:1fr auto !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .clockPill,
+  body[data-theme="cinematic-nebula"] .topNoticePill,
+  body[data-theme="cinematic-nebula"] .tradingWindowPill,
+  body[data-theme="cinematic-nebula"] .marketStatusClock{
+    font-size:10px !important;
+  }
+
+  .page-dashboard .dashboardDisciplinePillSet{
+    grid-template-columns:1fr !important;
+  }
+}
