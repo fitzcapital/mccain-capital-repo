@@ -64,7 +64,7 @@
           {% endif %}
         </div>
       </div>
-      <div class="actionRow workspaceHeroActions">
+      <div class="actionRow workspaceHeroActions" data-preserve-primary="true">
         <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">Live Sync</a>
         <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">Upload</a>
         <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">Reconcile</a>

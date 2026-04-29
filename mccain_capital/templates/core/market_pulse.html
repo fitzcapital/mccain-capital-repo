@@ -175,7 +175,7 @@
   <div class="marketPulseSessionStateGrid">
     <div>
       <span>Guardrail</span>
-      <strong>{% if guardrail.active %}Data unsafe{% else %}Clear{% endif %}</strong>
+      <strong>{% if guardrail.active %}Data unsafe{% elif market_closed %}Closed session{% else %}Clear{% endif %}</strong>
     </div>
     <div>
       <span>Gamma</span>
@@ -186,7 +186,7 @@
       <strong>{{ trigger_validation.get('status_badge') or trigger_validation.get('manual_label') or trade_state_label }}</strong>
     </div>
   </div>
-  <p>{{ guardrail.message if guardrail.active else (playbook.get('context_footer_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or 'Market Pulse context ready.') }}</p>
+  <p>{{ guardrail.message if guardrail.active else ('Closed-session planning: live trading stays locked; use the latest quote and gamma context for prep only.' if market_closed else (playbook.get('context_footer_label') or structure_snapshot.get('plan_note') or execution_model.posture_summary or 'Market Pulse context ready.')) }}</p>
 </section>
 
 <section class="card stack12 marketPulseExecutionHero marketPulseSection">
@@ -321,7 +321,7 @@
           >
             <div class="marketPulseExecutionHeroChartCanvas" id="spxExecutionHeroChartCanvas" aria-hidden="true"></div>
             <div class="marketPulseExecutionHeroLevelRail" id="spxExecutionHeroLevelRail" aria-hidden="true"></div>
-            <div class="marketPulseExecutionHeroChartEmpty tiny muted" id="spxExecutionHeroChartEmpty">Loading {{ selected_ticker }} hero chart…</div>
+            <div class="marketPulseExecutionHeroChartEmpty tiny muted" id="spxExecutionHeroChartEmpty">Loading {{ selected_ticker }} chart · open TradingView if unavailable.</div>
           </div>
         </div>
         <div class="marketPulseExecutionHeroRailFooter marketPulseExecutionHeroRailFooter-map">
@@ -603,22 +603,9 @@
     <div class="marketPulseTapeRail marketPulseWatchGrid" data-no-mobile-compact="1">
       {% for q in core_quotes %}
         {% set q_pct = q.change_pct if q.change_pct is number else none %}
-        {% if q.symbol in ['SPY','QQQ','IWM'] and q_pct is not none and q_pct >= 0.35 %}
-          {% set watch_state = 'Risk-On' %}
-          {% set watch_tone = 'positive' %}
-        {% elif q.symbol in ['SPY','QQQ','IWM'] and q_pct is not none and q_pct <= -0.35 %}
-          {% set watch_state = 'Risk-Off' %}
-          {% set watch_tone = 'negative' %}
-        {% elif q_pct is not none and q_pct >= 0.75 %}
-          {% set watch_state = 'Strong' %}
-          {% set watch_tone = 'positive' %}
-        {% elif q_pct is not none and q_pct <= -0.75 %}
-          {% set watch_state = 'Weak' %}
-          {% set watch_tone = 'negative' %}
-        {% else %}
-          {% set watch_state = 'Mixed' %}
-          {% set watch_tone = 'neutral' %}
-        {% endif %}
+        {% set watch_state = q.watch_state or 'Mixed' %}
+        {% set watch_tone = q.watch_tone or 'neutral' %}
+        {% set watch_title = q.watch_state_title or 'No clean tape edge yet.' %}
         {% set q_change = q.get('change') if q is mapping else none %}
         {% set q_change_pct = q.get('change_pct') if q is mapping else none %}
         {% set delta_val = q_change_pct if q_change_pct is number else q_change if q_change is number else none %}
@@ -627,7 +614,7 @@
         <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if delta_val is not none and delta_val > 0 %}glow-green{% elif delta_val is not none and delta_val < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
           <div class="marketPulseWatchCardTop">
             <div class="k">{{ q.label }}</div>
-            <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip">{{ watch_state }}</span>
+            <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip" title="{{ watch_title }}">{{ watch_state }}</span>
           </div>
           <div class="marketMiniSparkWrap tone-{{ watch_tone }} spark-{{ spark_tone }}" data-role="sparkline">{{ q.sparkline_svg|safe }}</div>
           <div class="marketPulseWatchValueRow">
@@ -661,7 +648,7 @@
   </div>
 </section>
 
-<details class="marketPulseFold marketPulseSection" id="marketPulseFeedFold">
+<details class="marketPulseFold marketPulseSection" id="marketPulseFeedFold" open>
   <summary class="marketPulseFoldSummary">
     <span class="pill">Market Feed</span>
     <span class="tiny muted">Real-time market commentary from curated sources.</span>
@@ -672,7 +659,7 @@
 {% set commentary_total_count = whales_items|length %}
 {% set feed_snapshot = market_feed_snapshot or {} %}
 {% set feed_status = feed_snapshot.get('status') or ('live' if whales_items else 'delayed') %}
-{% set feed_status_label = 'Live' if feed_status == 'live' else 'Delayed' %}
+{% set feed_status_label = 'Live' if feed_status == 'live' else 'Standby' %}
 {% set feed_status_tone = 'is-live' if feed_status == 'live' else 'is-warn' %}
 {% set feed_updated_label = fetched_at or feed_snapshot.get('updated_at') or 'Awaiting refresh' %}
 {% set feed_mode = request.args.get('feed', 'curated') %}
@@ -806,8 +793,8 @@
           </section>
         {% else %}
           <section class="marketFeedEmpty" id="marketFeedEmpty">
-            <div class="marketFeedEmpty__title">Feed not loaded yet</div>
-            <p class="marketFeedEmpty__body">Tweets are manual-load only on this page. Use refresh when you want the latest posts or open the source directly on X.</p>
+            <div class="marketFeedEmpty__title">Source standby</div>
+            <p class="marketFeedEmpty__body">The provider feed is unavailable right now. Refresh for another pull or open Unusual Whales directly on X.</p>
             <div class="marketFeedEmpty__actions">
               <button class="marketFeedActionBtn" id="marketFeedEmptyRefreshBtn" type="button" aria-label="Refresh Feed" title="Refresh Feed">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1529,7 +1516,7 @@
 
   const updateFeedMeta = (data, items) => {
     const status = String(data.status || (items.length ? "live" : "delayed"));
-    const statusLabel = status === "live" ? "Live" : "Delayed";
+    const statusLabel = status === "live" ? "Live" : "Standby";
     if (feedStatusChip) {
       feedStatusChip.classList.toggle("is-live", status === "live");
       feedStatusChip.classList.toggle("is-warn", status !== "live");
@@ -1559,8 +1546,8 @@
     if (!sorted.length) {
       feedLayout.innerHTML = `
         <section class="marketFeedEmpty" id="marketFeedEmpty">
-          <div class="marketFeedEmpty__title">Feed temporarily unavailable</div>
-          <p class="marketFeedEmpty__body">Latest Unusual Whales posts are not available right now. Use refresh for another pull or open the source directly on X.</p>
+          <div class="marketFeedEmpty__title">Source standby</div>
+          <p class="marketFeedEmpty__body">The provider feed is unavailable right now. Refresh for another pull or open Unusual Whales directly on X.</p>
           <div class="marketFeedEmpty__actions">
             <button class="marketFeedActionBtn" data-market-feed-refresh="1" type="button" aria-label="Refresh Feed" title="Refresh Feed">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1825,11 +1812,23 @@
     });
   };
   const watchStateFor = (symbol, pct) => {
-    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) return "RISK-ON";
-    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct <= -0.35) return "RISK-OFF";
-    if (pct !== null && pct >= 0.75) return "STRONG";
-    if (pct !== null && pct <= -0.75) return "WEAK";
-    return "MIXED";
+    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) return {
+      label: "RISK-ON",
+      title: "Broad tape supports long risk.",
+    };
+    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct <= -0.35) return {
+      label: "RISK-OFF",
+      title: "Broad tape is defensive; long risk needs extra confirmation.",
+    };
+    if (pct !== null && pct >= 0.75) return {
+      label: "STRONG",
+      title: "Symbol is leading or showing strong upside pressure.",
+    };
+    if (pct !== null && pct <= -0.75) return {
+      label: "WEAK",
+      title: "Symbol is lagging or under downside pressure.",
+    };
+    return { label: "MIXED", title: "No clean tape edge yet." };
   };
     const updateCard = (card, quote) => {
       if (!card || !quote || typeof quote !== "object") return;
@@ -1849,7 +1848,8 @@
       }
       const chip = card.querySelector('[data-role="state-chip"]');
     if (chip) {
-      chip.textContent = state;
+      chip.textContent = state.label;
+      chip.title = state.title;
       const watchTone = pct !== null && pct > 0 ? "tone-positive" : pct !== null && pct < 0 ? "tone-negative" : "tone-neutral";
       chip.classList.remove("tone-positive", "tone-negative", "tone-neutral");
       chip.classList.add(watchTone);

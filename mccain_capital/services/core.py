@@ -17,6 +17,7 @@ from email.utils import parsedate_to_datetime
 import html
 import json
 import logging
+import math
 import os
 import re
 import tempfile
@@ -3089,12 +3090,106 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
         points.append(f"{x:.2f},{y:.2f}")
     area_points = "0.00,28.00 " + " ".join(points) + " 120.00,28.00"
     cls = "up" if tone == "up" else "down" if tone == "down" else "flat"
+    baseline_y = ((max_v - values[0]) / (max_v - min_v)) * (height - 2) + 1
+    marker_stride = max(1, len(points) // 8)
+    marker_points = [
+        (idx, point)
+        for idx, point in enumerate(points)
+        if idx == 0 or idx == len(points) - 1 or idx % marker_stride == 0
+    ]
+    markers = "".join(
+        f'<circle class="marketMiniSparkPoint {cls}'
+        f'{" start" if idx == 0 else " end" if idx == len(points) - 1 else ""}" '
+        f'cx="{point.split(",")[0]}" '
+        f'cy="{point.split(",")[1]}" r="1.55" />'
+        for idx, point in marker_points
+    )
     return (
         '<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">'
+        '<line class="marketMiniSparkGuide" x1="0" y1="7" x2="120" y2="7" />'
+        f'<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" '
+        f'y1="{baseline_y:.2f}" x2="120" y2="{baseline_y:.2f}" />'
+        '<line class="marketMiniSparkGuide" x1="0" y1="21" x2="120" y2="21" />'
         f'<polygon class="marketMiniSparkArea {cls}" points="{area_points}" />'
         f'<polyline class="marketMiniSparkLine {cls}" points="{" ".join(points)}" />'
+        f"{markers}"
         "</svg>"
     )
+
+
+def _market_pulse_resolve_sparkline_values(quote: Dict[str, Any]) -> List[float]:
+    values: List[float] = []
+    for source_key in ("mini_series", "series", "prior_session_series"):
+        source = quote.get(source_key)
+        if not isinstance(source, list):
+            continue
+        source_values: List[float] = []
+        for item in source[-120:]:
+            value = item.get("v") if isinstance(item, dict) else item
+            if isinstance(value, (int, float)):
+                source_values.append(float(value))
+        if len(source_values) >= 4:
+            values = source_values[-40:]
+            break
+
+    if len(values) >= 4:
+        return values
+
+    symbol = str(quote.get("label") or quote.get("symbol") or "").strip().upper()
+    if not symbol:
+        return values
+    replay_points, _replay_day = _market_pulse_cached_replay_series(symbol)
+    replay_values = [
+        float(point.get("v"))
+        for point in replay_points[-120:]
+        if isinstance(point, dict) and isinstance(point.get("v"), (int, float))
+    ]
+    return replay_values[-40:] if len(replay_values) >= 8 else values
+
+
+def _market_pulse_tape_state(symbol: str, pct_change: Any) -> Dict[str, str]:
+    ticker = str(symbol or "").strip().upper()
+    try:
+        pct = float(pct_change) if pct_change is not None else None
+    except (TypeError, ValueError):
+        pct = None
+    if pct is not None and not math.isfinite(pct):
+        pct = None
+    if ticker in {"SPY", "QQQ", "IWM"}:
+        if pct is not None and pct >= 0.35:
+            return {
+                "label": "RISK-ON",
+                "display": "Risk-On",
+                "tone": "positive",
+                "title": "Broad tape supports long risk.",
+            }
+        if pct is not None and pct <= -0.35:
+            return {
+                "label": "RISK-OFF",
+                "display": "Risk-Off",
+                "tone": "negative",
+                "title": "Broad tape is defensive; long risk needs extra confirmation.",
+            }
+    if pct is not None and pct >= 0.75:
+        return {
+            "label": "STRONG",
+            "display": "Strong",
+            "tone": "positive",
+            "title": "Symbol is leading or showing strong upside pressure.",
+        }
+    if pct is not None and pct <= -0.75:
+        return {
+            "label": "WEAK",
+            "display": "Weak",
+            "tone": "negative",
+            "title": "Symbol is lagging or under downside pressure.",
+        }
+    return {
+        "label": "MIXED",
+        "display": "Mixed",
+        "tone": "neutral",
+        "title": "No clean tape edge yet.",
+    }
 
 
 def _market_data_age_label(age_s: Any) -> str:
@@ -3116,6 +3211,7 @@ def _market_pulse_enrich_quotes(
 ) -> List[Dict[str, Any]]:
     enriched: List[Dict[str, Any]] = []
     now_epoch = int(now_et.timestamp())
+    market_open = _market_pulse_market_hours(now_et)
     for row in quotes:
         if not isinstance(row, dict):
             continue
@@ -3127,6 +3223,14 @@ def _market_pulse_enrich_quotes(
         if state == "missing":
             band = "critical"
             fresh_label = "No live data"
+        elif not market_open and age_s <= 72 * 3600:
+            band = "warn"
+            if state == "delayed":
+                fresh_label = "Closed · delayed fallback"
+            elif state == "cached":
+                fresh_label = f"Closed · last snapshot {age_label}"
+            else:
+                fresh_label = f"Closed · last quote {age_label}"
         elif state == "delayed":
             band = "warn"
             fresh_label = "Delayed fallback"
@@ -3145,19 +3249,28 @@ def _market_pulse_enrich_quotes(
         q["freshness_band"] = band
         q["freshness_age_s"] = age_s
         q["freshness_label"] = fresh_label
+        if not market_open and state != "missing":
+            q["market_state"] = "Closed"
         q["freshness_reason"] = str(q.get("data_reason") or "")
         source_badge = _quote_source_badge(q)
         q["source_badge_label"] = source_badge["label"]
         q["source_badge_tone"] = source_badge["tone"]
+        tape_state = _market_pulse_tape_state(
+            str(q.get("label") or q.get("symbol") or ""),
+            q.get("change_pct") if q.get("change_pct") is not None else q.get("pct_change"),
+        )
+        q["watch_state"] = tape_state["display"]
+        q["watch_state_label"] = tape_state["label"]
+        q["watch_tone"] = tape_state["tone"]
+        q["watch_state_title"] = tape_state["title"]
 
-        mini = q.get("mini_series")
-        if not isinstance(mini, list):
-            mini = []
-        if not mini and isinstance(q.get("series"), list):
-            mini = [
-                float(p.get("v"))
-                for p in q.get("series")
-                if isinstance(p, dict) and isinstance(p.get("v"), (int, float))
+        mini = _market_pulse_resolve_sparkline_values(q)
+        if len(mini) >= 4:
+            q["mini_series"] = mini[-40:]
+            q["series"] = [
+                {"v": float(value), "close": float(value)}
+                for value in mini[-40:]
+                if isinstance(value, (int, float))
             ]
         tone = "flat"
         if len(mini) >= 2:
@@ -3205,6 +3318,12 @@ def _market_pulse_alert(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
             "show": True,
             "tone": "critical",
             "message": f"Critical stale data on {len(critical)} tickers: {names}{more}. Verify before entry.",
+        }
+    if warn and all(str(q.get("freshness_label") or "").startswith("Closed ·") for q in warn):
+        return {
+            "show": True,
+            "tone": "warn",
+            "message": "Closed-session quotes loaded. Use this for planning only until live data resumes.",
         }
     names = ", ".join(str(q.get("label") or "") for q in warn[:4])
     more = f" +{len(warn)-4} more" if len(warn) > 4 else ""
@@ -9741,7 +9860,7 @@ def dashboard():
                     value = item
                 if isinstance(value, (int, float)):
                     pulse_points.append(float(value))
-            if len(pulse_points) >= 2:
+            if len(pulse_points) >= 4:
                 return pulse_points[-40:]
 
         points_src = (tape_snapshot.get("series_points") or {}).get(key) or []
@@ -9755,7 +9874,7 @@ def dashboard():
             for value in points[-120:]:
                 if not deduped or abs(deduped[-1] - value) > 0.01:
                     deduped.append(value)
-            if len(deduped) >= 10:
+            if len(deduped) >= 4:
                 return deduped[-40:]
         raw_src = (tape_snapshot.get("series") or {}).get(key) or []
         if isinstance(raw_src, list):
@@ -9764,7 +9883,7 @@ def dashboard():
             for value in raw[-120:]:
                 if not deduped_raw or abs(deduped_raw[-1] - value) > 0.01:
                     deduped_raw.append(value)
-            if len(deduped_raw) >= 10:
+            if len(deduped_raw) >= 4:
                 return deduped_raw[-40:]
 
         # If cached tape points are too sparse/flat, pull a clean intraday curve directly.
@@ -9780,6 +9899,15 @@ def dashboard():
                 deduped_intraday.append(value)
         if deduped_intraday:
             return deduped_intraday[-40:]
+
+        replay_points, _replay_day = _market_pulse_cached_replay_series(key)
+        replay_values = [
+            float(point.get("v"))
+            for point in replay_points[-120:]
+            if isinstance(point, dict) and isinstance(point.get("v"), (int, float))
+        ]
+        if len(replay_values) >= 8:
+            return replay_values[-40:]
         return []
 
     def _float_or_none(value: Any) -> Optional[float]:
@@ -10008,21 +10136,14 @@ def dashboard():
             )
             if isinstance(prev_close, (int, float)) and float(prev_close) > 0:
                 pct_change = ((float(enriched["price"]) - float(prev_close)) / float(prev_close)) * 100.0
-        state_label = "MIXED"
-        if symbol == "VIX":
-            if isinstance(pct_change, (int, float)) and float(pct_change) <= -0.35:
-                state_label = "WEAK"
-            elif isinstance(pct_change, (int, float)) and float(pct_change) >= 0.35:
-                state_label = "STRONG"
-        elif isinstance(pct_change, (int, float)) and float(pct_change) >= 0.35:
-            state_label = "RISK-ON"
-        elif isinstance(pct_change, (int, float)) and float(pct_change) <= -0.35:
-            state_label = "RISK-OFF"
+        tape_state = _market_pulse_tape_state(symbol, pct_change)
         return {
             "symbol": symbol,
             "descriptor": descriptor,
             "row_tone": row_tone,
-            "state_label": state_label,
+            "state_label": tape_state["label"],
+            "state_title": tape_state["title"],
+            "tape_tone": tape_state["tone"],
             "sparkline_svg": str(enriched.get("sparkline_svg") or ""),
             "price_display": (
                 f"{float(enriched['price']):.2f}"
@@ -10535,6 +10656,19 @@ def dashboard_tape_refresh_api():
             if isinstance(quote.get("price"), (int, float)):
                 prices[sym] = quote
 
+    series_points: Dict[str, List[Dict[str, float]]] = {}
+    for sym in symbols:
+        quote = dict(prices.get(sym) or {})
+        quote.setdefault("symbol", sym)
+        quote.setdefault("label", sym)
+        spark_values = _market_pulse_resolve_sparkline_values(quote)
+        if len(spark_values) >= 4:
+            series_points[sym] = [
+                {"v": float(value), "close": float(value)}
+                for value in spark_values[-40:]
+                if isinstance(value, (int, float))
+            ]
+
     updated_raw = str(snapshot.get("updated_at") or app_runtime.now_iso())
     updated_label = _format_iso_et_label(updated_raw)
     if updated_label:
@@ -10546,6 +10680,7 @@ def dashboard_tape_refresh_api():
         {
             "ok": True,
             "quotes": {sym: dict(prices.get(sym) or {}) for sym in symbols},
+            "series_points": series_points,
             "updated_at": updated_raw,
             "updated_label": updated_label or "—",
         }
@@ -10875,6 +11010,19 @@ def market_pulse_page():
         for q in quotes
         if isinstance(q, dict) and str(q.get("label") or q.get("symbol") or "").strip()
     }
+    for q in quotes:
+        if not isinstance(q, dict):
+            continue
+        label = str(q.get("label") or q.get("symbol") or "").strip()
+        if not label or label in series_points:
+            continue
+        fallback_values = [
+            float(value)
+            for value in list(q.get("mini_series") or [])[-40:]
+            if isinstance(value, (int, float))
+        ]
+        if len(fallback_values) >= 4:
+            series_points[label] = [{"v": value, "close": value} for value in fallback_values]
     context = _market_pulse_context(quotes)
     macro_events: List[Dict[str, Any]] = []
     playbook_snapshot = get_or_build_market_pulse_snapshot(
@@ -11214,7 +11362,7 @@ def market_pulse_tape_api():
                 label = label_by_symbol.get(symbol, symbol)
                 if not q:
                     continue
-                if len(points) >= 2:
+                if len(points) >= 4:
                     series_points[label] = points
                     q["series"] = points
                     q["mini_series"] = [

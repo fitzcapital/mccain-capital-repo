@@ -352,101 +352,117 @@
     });
   }
 
+  function getEasternClockParts(now) {
+    const etParts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    const part = (type) => etParts.find((item) => item.type === type)?.value || "";
+    const rawHour = String(part("hour") || "0").padStart(2, "0");
+    const hour = rawHour === "24" ? "00" : rawHour;
+    const minute = String(part("minute") || "0").padStart(2, "0");
+    const second = String(part("second") || "0").padStart(2, "0");
+    return {
+      weekday: part("weekday"),
+      year: Number(part("year") || 0),
+      month: Number(part("month") || 1),
+      day: Number(part("day") || 1),
+      hour: Number(hour),
+      minute: Number(minute),
+      second: Number(second),
+      timeLabel: `${hour}:${minute}:${second}`,
+    };
+  }
+
+  function getMarketClockState(now = new Date()) {
+    const et = getEasternClockParts(now);
+    const etNow = new Date(Date.UTC(
+      et.year,
+      Math.max(0, et.month - 1),
+      et.day,
+      et.hour,
+      et.minute,
+      et.second
+    ));
+    const nySeconds = (et.hour * 3600) + (et.minute * 60) + et.second;
+    const isWeekend = et.weekday === "Sat" || et.weekday === "Sun";
+    const marketOpenSeconds = 9 * 3600 + 30 * 60;
+    const marketCloseSeconds = 16 * 3600;
+
+    const formatDuration = (secondsUntil) => {
+      const totalMinutes = Math.max(1, Math.ceil(Number(secondsUntil || 0) / 60));
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+      if (hours > 0) return `${hours}h`;
+      return `${minutes}m`;
+    };
+
+    const nextMarketOpen = (() => {
+      const next = new Date(etNow.getTime());
+      if (!isWeekend && nySeconds < marketOpenSeconds) {
+        next.setUTCHours(9, 30, 0, 0);
+        return next;
+      }
+      if (!isWeekend && nySeconds < marketCloseSeconds) return null;
+      next.setUTCDate(next.getUTCDate() + 1);
+      next.setUTCHours(9, 30, 0, 0);
+      while (next.getUTCDay() === 0 || next.getUTCDay() === 6) {
+        next.setUTCDate(next.getUTCDate() + 1);
+      }
+      return next;
+    })();
+
+    if (!isWeekend && nySeconds < marketOpenSeconds) {
+      return {
+        state: "premarket",
+        timeLabel: et.timeLabel,
+        statusText: `Opens in ${formatDuration(marketOpenSeconds - nySeconds)}`,
+        modeTitle: "US regular session opens at 9:30 AM ET",
+      };
+    }
+    if (!isWeekend && nySeconds < marketCloseSeconds) {
+      return {
+        state: "open",
+        timeLabel: et.timeLabel,
+        statusText: `Closes in ${formatDuration(marketCloseSeconds - nySeconds)}`,
+        modeTitle: "US regular market is open until 4:00 PM ET",
+      };
+    }
+
+    const nextOpenSeconds = nextMarketOpen
+      ? Math.max(60, Math.floor((nextMarketOpen.getTime() - etNow.getTime()) / 1000))
+      : 0;
+    return {
+      state: "closed",
+      timeLabel: et.timeLabel,
+      statusText: nextMarketOpen ? `Opens in ${formatDuration(nextOpenSeconds)}` : "Closed",
+      modeTitle: "US regular market session is closed",
+    };
+  }
+
   function updateETClock() {
     try {
-      const now = new Date();
-      const etParts = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).formatToParts(now);
-      const part = (type) => etParts.find((item) => item.type === type)?.value || "";
-      const weekday = part("weekday");
-      const etYear = Number(part("year") || 0);
-      const etMonth = Number(part("month") || 1);
-      const etDay = Number(part("day") || 1);
-      const timeStr = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(now);
-      const timeMain = timeStr;
-      const secondsPart = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        second: "2-digit",
-      }).format(now);
-      const hm = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(now).split(":");
-      const nySeconds =
-        (Number(hm[0] || 0) * 3600) +
-        (Number(hm[1] || 0) * 60) +
-        Number(secondsPart || 0);
-      const formatDuration = (secondsUntil) => {
-        const totalMinutes = Math.max(1, Math.ceil(Number(secondsUntil || 0) / 60));
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-        if (hours > 0) return `${hours}h`;
-        return `${minutes}m`;
-      };
+      const marketClock = getMarketClockState();
       const clock = doc.getElementById("etClock");
       const meridiemNode = doc.getElementById("etClockMeridiem");
       const statusClock = doc.getElementById("marketStatusClock");
       const countdown = doc.getElementById("marketStatusCountdown");
-      if (clock) clock.textContent = `${timeMain}:${secondsPart}`;
+      if (clock) clock.textContent = marketClock.timeLabel;
       if (meridiemNode) meridiemNode.textContent = "";
       if (statusClock) {
-        const etNow = new Date(Date.UTC(etYear, Math.max(0, etMonth - 1), etDay, Number(hm[0] || 0), Number(hm[1] || 0), Number(secondsPart || 0)));
-        const isWeekend = weekday === "Sat" || weekday === "Sun";
-        const marketOpenSeconds = 9 * 3600 + 30 * 60;
-        const marketCloseSeconds = 16 * 3600;
-        const nextMarketOpen = (() => {
-          const next = new Date(etNow.getTime());
-          if (!isWeekend && nySeconds < marketOpenSeconds) {
-            next.setUTCHours(9, 30, 0, 0);
-            return next;
-          }
-          if (!isWeekend && nySeconds < marketCloseSeconds) {
-            return null;
-          }
-          next.setUTCDate(next.getUTCDate() + 1);
-          next.setUTCHours(9, 30, 0, 0);
-          while (next.getUTCDay() === 0 || next.getUTCDay() === 6) {
-            next.setUTCDate(next.getUTCDate() + 1);
-          }
-          return next;
-        })();
-        const nextOpenSeconds = nextMarketOpen
-          ? Math.max(60, Math.floor((nextMarketOpen.getTime() - etNow.getTime()) / 1000))
-          : 0;
-        let state = "closed";
-        let statusText = nextMarketOpen ? `Opens in ${formatDuration(nextOpenSeconds)}` : "Open";
-        let modeTitle = "US regular market session is closed";
-        if (!isWeekend && nySeconds < marketOpenSeconds) {
-          state = "premarket";
-          statusText = `Opens in ${formatDuration(marketOpenSeconds - nySeconds)}`;
-          modeTitle = "US regular session opens at 9:30 AM ET";
-        } else if (!isWeekend && nySeconds < marketCloseSeconds) {
-          state = "open";
-          statusText = `${formatDuration(marketCloseSeconds - nySeconds)} to close`;
-          modeTitle = "US regular market is open until 4:00 PM ET";
-        }
         statusClock.classList.remove("is-loading", "is-open", "is-premarket", "is-closed");
-        statusClock.classList.add(`is-${state}`);
-        statusClock.dataset.marketState = state;
-        statusClock.title = `${timeMain}:${secondsPart} ET · ${statusText}. ${modeTitle}.`;
-        if (countdown) countdown.textContent = statusText;
+        statusClock.classList.add(`is-${marketClock.state}`);
+        statusClock.dataset.marketState = marketClock.state;
+        statusClock.title = `${marketClock.timeLabel} ET · ${marketClock.statusText}. ${marketClock.modeTitle}.`;
+        if (countdown) countdown.textContent = marketClock.statusText;
       }
     } catch (err) {
       console.error(err);
@@ -587,6 +603,7 @@
     );
     const candidates = [];
     scopes.forEach((scope) => {
+      if (scope.dataset.preservePrimary === "true") return;
       scope.querySelectorAll(".btn, button.btn").forEach((btn) => {
         if (btn.disabled || btn.offsetParent === null || isExcluded(btn)) return;
         candidates.push(btn);

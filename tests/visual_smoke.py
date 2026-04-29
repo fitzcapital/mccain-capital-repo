@@ -24,8 +24,15 @@ FONT_MODE = os.environ.get("VISUAL_SMOKE_FONT_MODE") or ""
 
 SCENARIOS = [
     ("desktop-dashboard", "/dashboard", {"width": 1600, "height": 1000}, None),
+    ("desktop-dashboard-menu", "/dashboard", {"width": 1600, "height": 1000}, ".moreBtn"),
     ("desktop-market-pulse", "/market-pulse?refresh=1", {"width": 1600, "height": 1100}, None),
     ("desktop-trades", "/trades", {"width": 1600, "height": 1100}, None),
+    (
+        "desktop-statement-reconcile",
+        "/trades/upload/statement?ws=reconcile",
+        {"width": 1600, "height": 1100},
+        None,
+    ),
     ("desktop-journal", "/journal", {"width": 1600, "height": 1000}, None),
     ("desktop-weekly-review", "/journal/review/weekly", {"width": 1600, "height": 1000}, None),
     ("desktop-calculator", "/calculator", {"width": 1600, "height": 1000}, None),
@@ -39,6 +46,12 @@ SCENARIOS = [
     ),
     ("mobile-market-pulse-390x844", "/market-pulse?refresh=1", {"width": 390, "height": 844}, None),
     ("mobile-trades-390x844", "/trades", {"width": 390, "height": 844}, None),
+    (
+        "mobile-statement-reconcile-390x844",
+        "/trades/upload/statement?ws=reconcile",
+        {"width": 390, "height": 844},
+        None,
+    ),
     ("mobile-journal-390x844", "/journal", {"width": 390, "height": 844}, None),
     ("mobile-weekly-review-390x844", "/journal/review/weekly", {"width": 390, "height": 844}, None),
     ("mobile-calculator-390x844", "/calculator", {"width": 390, "height": 844}, None),
@@ -57,6 +70,85 @@ SCENARIOS = [
 ]
 
 
+def _assert_tape_visuals(page, name: str) -> None:
+    if "dashboard" not in name and "market-pulse" not in name:
+        return
+    if "menu" in name:
+        return
+    result = page.evaluate(
+        """
+        () => {
+          const cards = Array.from(document.querySelectorAll(
+            '.marketPulseTapeCard, .dashboardTapeAssetCard'
+          ));
+          const lines = cards.flatMap((card) => Array.from(card.querySelectorAll(
+            'polyline.marketMiniSparkLine'
+          )));
+          const points = cards.flatMap((card) => Array.from(card.querySelectorAll(
+            '.marketMiniSparkPoint'
+          )));
+          const guides = cards.flatMap((card) => Array.from(card.querySelectorAll(
+            '.marketMiniSparkGuide'
+          )));
+          const multiPointLines = lines.filter((line) => {
+            const raw = String(line.getAttribute('points') || '').trim();
+            return raw ? raw.split(/\\s+/).length >= 4 : false;
+          }).length;
+          return {
+            cards: cards.length,
+            lines: lines.length,
+            points: points.length,
+            guides: guides.length,
+            multiPointLines,
+          };
+        }
+        """
+    )
+    if result["lines"] and (
+        result["multiPointLines"] != result["lines"]
+        or result["points"] < result["multiPointLines"] * 3
+        or result["guides"] < result["multiPointLines"] * 2
+    ):
+        raise RuntimeError(f"{name} tape sparklines lack multi-point detail: {result}")
+
+
+def _assert_topbar_menu_visuals(page, name: str) -> None:
+    if name != "desktop-dashboard-menu":
+        return
+    result = page.evaluate(
+        """
+        () => {
+          const menu = document.querySelector('.moreMenu');
+          if (!menu) return { missing: true };
+          const styles = getComputedStyle(menu);
+          const before = getComputedStyle(menu, '::before');
+          const after = getComputedStyle(menu, '::after');
+          return {
+            missing: false,
+            visible: styles.display !== 'none' && styles.visibility !== 'hidden',
+            borderColor: styles.borderColor,
+            boxShadow: styles.boxShadow,
+            beforeOpacity: before.opacity,
+            beforeBackground: before.backgroundImage,
+            afterOpacity: after.opacity,
+            afterBackground: after.backgroundImage,
+          };
+        }
+        """
+    )
+    if (
+        result.get("missing")
+        or not result.get("visible")
+        or "31, 79, 179" not in result.get("borderColor", "")
+        or "31, 79, 179" not in result.get("boxShadow", "")
+        or result.get("beforeOpacity") != "0"
+        or result.get("beforeBackground") != "none"
+        or result.get("afterOpacity") != "0"
+        or result.get("afterBackground") != "none"
+    ):
+        raise RuntimeError(f"{name} topbar menu visual contract failed: {result}")
+
+
 def _capture(page, name: str, path: str, tap_selector: str | None = None) -> None:
     url = f"{BASE_URL}{path}"
     page.goto(url, wait_until="domcontentloaded", timeout=45000)
@@ -73,6 +165,8 @@ def _capture(page, name: str, path: str, tap_selector: str | None = None) -> Non
             page.wait_for_timeout(200)
         except PlaywrightTimeoutError:
             print(f"[visual_smoke] optional tap skipped for {name}: {tap_selector}")
+    _assert_tape_visuals(page, name)
+    _assert_topbar_menu_visuals(page, name)
     page.screenshot(path=str(OUT_DIR / f"{name}.png"), full_page=True)
 
 

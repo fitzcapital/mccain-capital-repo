@@ -254,6 +254,61 @@ const dashboardUIFX = (() => {
     });
   };
 
+  const seriesValues = (points) => (Array.isArray(points) ? points : [])
+    .map((row) => (row && typeof row === "object" ? asNum(row.v ?? row.close) : asNum(row)))
+    .filter((value) => value !== null);
+
+  const buildSparklineSvg = (points, tone) => {
+    const values = seriesValues(points);
+    if (values.length < 4) {
+      return '<div class="marketMiniSparkEmpty">No trend</div>';
+    }
+    const width = 120;
+    const height = 28;
+    let minV = Math.min(...values);
+    let maxV = Math.max(...values);
+    if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
+    const step = width / Math.max(values.length - 1, 1);
+    const pts = values.map((value, index) => {
+      const x = index * step;
+      const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    });
+    const cls = tone === "up" ? "up" : tone === "down" ? "down" : "flat";
+    const baselineY = (((maxV - values[0]) / (maxV - minV)) * (height - 2) + 1).toFixed(2);
+    const areaPoints = `0.00,28.00 ${pts.join(" ")} 120.00,28.00`;
+    const markerStride = Math.max(1, Math.floor(pts.length / 8));
+    const selected = pts.filter(
+      (_point, index) => index === 0 || index === pts.length - 1 || index % markerStride === 0
+    );
+    const markers = selected
+      .map((point, index) => {
+        const [x, y] = point.split(",");
+        const endpoint = index === 0 ? " start" : index === selected.length - 1 ? " end" : "";
+        return `<circle class="marketMiniSparkPoint ${cls}${endpoint}" cx="${x}" cy="${y}" r="1.55" />`;
+      })
+      .join("");
+    return (
+      `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="7" x2="120" y2="7" />`
+      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="120" y2="${baselineY}" />`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="21" x2="120" y2="21" />`
+      + `<polygon class="marketMiniSparkArea ${cls}" points="${areaPoints}" />`
+      + `<polyline class="marketMiniSparkLine ${cls}" points="${pts.join(" ")}" />`
+      + markers
+      + `</svg>`
+    );
+  };
+
+  const updateSparkNode = (node, points, tone) => {
+    if (!node || seriesValues(points).length < 4) return false;
+    const sparkClass = tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat";
+    node.classList.remove("spark-pos", "spark-neg", "spark-flat");
+    node.classList.add(sparkClass);
+    node.innerHTML = buildSparklineSvg(points, tone);
+    return true;
+  };
+
   const hasMeaningfulText = (node) => {
     if (!node) return false;
     const text = String(node.textContent || "").trim().toLowerCase();
@@ -302,7 +357,7 @@ const dashboardUIFX = (() => {
     const sparkClass = trendTone === "positive" ? "spark-pos" : trendTone === "negative" ? "spark-neg" : "spark-flat";
     sparkNode.classList.remove("tone-positive", "tone-negative", "tone-neutral", "spark-pos", "spark-neg", "spark-flat");
     sparkNode.classList.add(`tone-${tapeTone}`, sparkClass);
-    sparkNode.querySelectorAll(".marketMiniSparkLine, .marketMiniSparkArea").forEach((node) => {
+    sparkNode.querySelectorAll(".marketMiniSparkLine, .marketMiniSparkArea, .marketMiniSparkPoint").forEach((node) => {
       node.classList.remove("up", "down", "flat");
       node.classList.add(trendTone === "positive" ? "up" : trendTone === "negative" ? "down" : "flat");
     });
@@ -367,15 +422,42 @@ const dashboardUIFX = (() => {
     return "missing";
   };
 
-  const tapeStateLabel = (symbol, pct) => {
-    if (symbol === "VIX") {
-      if (pct !== null && pct <= -0.35) return "WEAK";
-      if (pct !== null && pct >= 0.35) return "STRONG";
-      return "MIXED";
+  const tapeStateFor = (symbol, pct) => {
+    if (["SPY", "QQQ", "IWM"].includes(symbol)) {
+      if (pct !== null && pct >= 0.35) {
+        return {
+          label: "RISK-ON",
+          tone: "positive",
+          title: "Broad tape supports long risk.",
+        };
+      }
+      if (pct !== null && pct <= -0.35) {
+        return {
+          label: "RISK-OFF",
+          tone: "negative",
+          title: "Broad tape is defensive; long risk needs extra confirmation.",
+        };
+      }
     }
-    if (pct !== null && pct >= 0.35) return "RISK-ON";
-    if (pct !== null && pct <= -0.35) return "RISK-OFF";
-    return "MIXED";
+    if (pct !== null && pct >= 0.75) {
+      return {
+        label: "STRONG",
+        tone: "positive",
+        title: "Symbol is leading or showing strong upside pressure.",
+      };
+    }
+    if (pct !== null && pct <= -0.75) {
+      return {
+        label: "WEAK",
+        tone: "negative",
+        title: "Symbol is lagging or under downside pressure.",
+      };
+    }
+    return {
+      label: "MIXED",
+      tone: "neutral",
+      title: "No clean tape edge yet.",
+    };
   };
 
   const setExpandedSymbol = (symbol) => {
@@ -415,8 +497,9 @@ const dashboardUIFX = (() => {
     const openValue = asNum((quote || {}).day_open ?? (quote || {}).open);
     const prevCloseValue = inferPreviousClose(quote);
     const freshness = formatFreshness((quote || {}).as_of, state);
-    const tapeLabel = tapeStateLabel(symbol, pct);
-    const tapeTone = pct !== null && pct > 0 ? "positive" : pct !== null && pct < 0 ? "negative" : "neutral";
+    const tapeState = tapeStateFor(symbol, pct);
+    const tapeLabel = tapeState.label;
+    const tapeTone = tapeState.tone;
     const hasSeededRowValues = (
       price === null
       && !String((quote || {}).as_of || "").trim()
@@ -463,9 +546,12 @@ const dashboardUIFX = (() => {
     row.classList.add(tapeTone === "positive" ? "is-up" : tapeTone === "negative" ? "is-down" : "is-flat");
     row.classList.add(`tone-${tapeTone}`);
     row.dataset.tapeTone = tapeTone;
-    applyMixedToneToSparkline(row, tapeTone, pct);
+    if (!updateSparkNode(row.querySelector('[data-role="sparkline"]'), points, pct > 0 ? "up" : pct < 0 ? "down" : "flat")) {
+      applyMixedToneToSparkline(row, tapeTone, pct);
+    }
     if (stateNode) {
       dashboardUIFX.setText(stateNode, tapeLabel);
+      stateNode.title = tapeState.title;
       stateNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
       stateNode.classList.add(`tone-${tapeTone}`);
     }
@@ -523,11 +609,12 @@ const dashboardUIFX = (() => {
     return hasMeaningfulText(lastNode) && String(lastNode.textContent || "").trim().toLowerCase() !== "loading...";
   });
 
-  const applyTapeSnapshot = (quotes, updatedLabel) => {
+  const applyTapeSnapshot = (quotes, updatedLabel, seriesPoints = {}) => {
     const payload = quotes && typeof quotes === "object" ? quotes : {};
+    const series = seriesPoints && typeof seriesPoints === "object" ? seriesPoints : {};
     rows.forEach((row) => {
       const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
-      updateRow(row, payload[symbol] || {}, []);
+      updateRow(row, payload[symbol] || {}, series[symbol] || []);
     });
     if (updatedLabel && updatedNode) {
       updatedNode.textContent = updatedLabel;
@@ -837,7 +924,7 @@ const dashboardUIFX = (() => {
         if (!response.ok || !payload || payload.ok === false) {
           throw new Error("tape_refresh_failed");
         }
-        applyTapeSnapshot(payload.quotes || {}, payload.updated_label || "");
+        applyTapeSnapshot(payload.quotes || {}, payload.updated_label || "", payload.series_points || {});
         if (tapeHasRenderableValues()) {
           setStreamStatus("Live", payload.updated_label || "just now");
         }

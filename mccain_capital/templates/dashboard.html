@@ -469,14 +469,14 @@
       <div class="liveTapeWatchTableShell dashboardTapeCardStackShell marketPulseTapeShell">
         <div class="liveTapeWatchTable dashboardTapeCardStack" aria-label="Live tape watchlist">
         {% for row in dashboard_tape_rows %}
-        {% set tape_tone = 'positive' if row.state_label in ['RISK-ON', 'STRONG'] else 'negative' if row.state_label in ['RISK-OFF', 'WEAK'] else 'neutral' %}
+        {% set tape_tone = row.tape_tone or ('positive' if row.state_label in ['RISK-ON', 'STRONG'] else 'negative' if row.state_label in ['RISK-OFF', 'WEAK'] else 'neutral') %}
         {% set spark_tone = 'pos' if tape_tone == 'positive' else 'neg' if tape_tone == 'negative' else 'flat' %}
         {% set visual_row_tone = 'up' if tape_tone == 'positive' else 'down' if tape_tone == 'negative' else 'flat' %}
         <button type="button" class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardTapeAssetCard tone-{{ tape_tone }} is-{{ visual_row_tone }}" data-watch-symbol="{{ row.symbol }}" data-tape-tone="{{ tape_tone }}" aria-expanded="false">
           <div class="marketPulseWatchCardTop">
             <div class="k liveTapeWatchSymbol">{{ row.symbol }}</div>
             {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
-            <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state">{{ row.state_label }}</span>
+            <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state" title="{{ row.state_title or 'No clean tape edge yet.' }}">{{ row.state_label }}</span>
           </div>
           <div class="marketMiniSparkWrap tone-{{ tape_tone }} spark-{{ spark_tone }} dashboardTapeSpark" data-role="sparkline">{{ row.sparkline_svg|safe }}</div>
           <div class="marketPulseWatchValueRow dashboardTapeAssetBody">

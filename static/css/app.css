@@ -4897,9 +4897,29 @@ body{
       display:inline-flex;
       align-items:center;
       gap:6px;
+      font-variant-numeric:tabular-nums;
       min-width:0;
       flex:0 0 auto;
     }
+    .marketStatusClock .clockTime{
+      min-width:8ch;
+      text-align:left;
+    }
+    .marketMiniSparkGuide{
+      stroke:rgba(143, 177, 216, .18);
+      stroke-width:.55;
+      vector-effect:non-scaling-stroke;
+    }
+    .marketMiniSparkPoint{
+      fill:currentColor;
+      stroke:rgba(3, 8, 16, .9);
+      stroke-width:.75;
+      vector-effect:non-scaling-stroke;
+      opacity:.86;
+    }
+    .marketMiniSparkPoint.up{ color:rgba(78, 219, 164, .95); }
+    .marketMiniSparkPoint.down{ color:rgba(255, 102, 133, .95); }
+    .marketMiniSparkPoint.flat{ color:rgba(181, 197, 217, .9); }
     .marketStatusClockMeridiem{
       font-size:12px;
       font-weight:700;
@@ -51033,4 +51053,152 @@ body[data-theme="cinematic-nebula"] :where(
   .page-dashboard .dashboardDisciplinePillSet{
     grid-template-columns:1fr !important;
   }
+}
+
+/* Final topbar menu color correction: deep blue, no cyan/green halo. */
+body[data-theme="cinematic-nebula"] .moreMenu,
+body[data-theme="cinematic-nebula"] .moreMenu.open{
+  border-color:rgba(31, 79, 179, .46) !important;
+  background:
+    linear-gradient(180deg, rgba(8, 22, 48, .985), rgba(3, 10, 24, .998)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(129, 163, 235, .08),
+    inset 0 0 0 1px rgba(8, 25, 61, .88),
+    0 26px 64px rgba(0, 0, 0, .68),
+    0 0 30px rgba(31, 79, 179, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu::before,
+body[data-theme="cinematic-nebula"] .moreMenu::after{
+  background:none !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  opacity:0 !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .hr{
+  border-color:rgba(31, 79, 179, .32) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .btn{
+  border-color:rgba(31, 79, 179, .16) !important;
+  background:
+    linear-gradient(180deg, rgba(8, 23, 48, .72), rgba(4, 13, 29, .88)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(129, 163, 235, .04),
+    0 0 0 1px rgba(8, 25, 61, .28) !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .btn::before,
+body[data-theme="cinematic-nebula"] .moreMenu .btn::after{
+  background:none !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  opacity:0 !important;
+}
+
+body[data-theme="cinematic-nebula"] .moreMenu .btn:hover,
+body[data-theme="cinematic-nebula"] .moreMenu .btn.active{
+  border-color:rgba(47, 107, 255, .42) !important;
+  background:
+    linear-gradient(180deg, rgba(17, 43, 93, .86), rgba(6, 18, 42, .96)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(149, 186, 255, .10),
+    inset 0 0 0 1px rgba(14, 40, 94, .72),
+    0 10px 20px rgba(0, 0, 0, .24),
+    0 0 18px rgba(31, 79, 179, .18) !important;
+}
+
+/* Final tape polish: data-first sparklines with readable points and reference rails. */
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSpark{
+  overflow:visible;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkGuide{
+  stroke:rgba(129, 163, 235, .20) !important;
+  stroke-width:.6 !important;
+  vector-effect:non-scaling-stroke;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkBaseline{
+  stroke:rgba(199, 208, 217, .28) !important;
+  stroke-dasharray:3 3;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkArea{
+  display:block !important;
+  opacity:.55;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkLine{
+  stroke-width:2.35 !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkPoint{
+  fill:currentColor !important;
+  stroke:rgba(3, 8, 16, .92) !important;
+  stroke-width:.75 !important;
+  opacity:.88;
+  vector-effect:non-scaling-stroke;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkPoint.start{
+  opacity:.58;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkPoint.end{
+  opacity:1;
+  r:1.95;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkPoint.up{
+  color:#22C55E !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkPoint.down{
+  color:#EF4444 !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketMiniSparkPoint.flat{
+  color:rgba(199, 208, 217, .88) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .marketPulseTapeCard,
+  .dashboardTapeAssetCard
+) .marketPulseWatchState{
+  letter-spacing:.02em;
 }

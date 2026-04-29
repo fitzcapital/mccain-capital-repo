@@ -2,6 +2,7 @@
 
 from datetime import datetime
 import json
+from zoneinfo import ZoneInfo
 
 from mccain_capital.runtime import db, get_setting_value, now_iso, set_setting_value, today_iso
 from mccain_capital.services import core as core_service
@@ -38,6 +39,35 @@ def test_core_pages_are_reachable(client):
     ]:
         resp = client.get(path, follow_redirects=True)
         assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
+
+
+def test_primary_app_surfaces_are_reachable(client):
+    for path in [
+        "/market-pulse",
+        "/trades",
+        "/journal",
+        "/journal/review/weekly",
+        "/calendar",
+        "/calculator",
+        "/analytics?tab=performance",
+        "/payouts",
+        "/self-control",
+        "/strategies",
+        "/playbook",
+        "/strat",
+        "/ops/alerts",
+    ]:
+        resp = client.get(path, follow_redirects=True)
+        assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
+
+
+def test_statement_workspace_preserves_active_lane_cta(client):
+    resp = client.get("/trades/upload/statement?ws=reconcile", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'class="actionRow workspaceHeroActions" data-preserve-primary="true"' in body
+    assert 'class="btn primary" href="/trades/upload/statement?ws=reconcile"' in body
+    assert 'class="btn " href="/trades/upload/statement?ws=upload"' in body
 
 
 def test_trades_page_uses_action_specific_hero_and_trust_badges(client):
@@ -371,6 +401,8 @@ def test_market_pulse_page_uses_deferred_context_refresh_button(client):
     assert 'id="marketPulseContextRefreshBtn"' in body
     assert "/api/market-pulse/context" in body
     assert "if (!pageLoaded || !coreReady) return;" in body
+    assert 'id="marketPulseFeedFold" open' in body
+    assert "Source standby" in body
 
 
 def test_market_pulse_context_api_returns_playbook_payload(client):
@@ -388,7 +420,7 @@ def test_dashboard_renders_daily_brief_card(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Daily Brief" in resp.data
-    assert b"Auto-generated" in resp.data
+    assert b"Building the next-session brief" in resp.data
     assert b"More Info" in resp.data
     assert b"Active Level" in resp.data
     assert b"Execution Triggers" in resp.data
@@ -553,7 +585,7 @@ def test_dashboard_brief_shows_manual_state_and_can_reset(client):
         follow_redirects=False,
     )
 
-    tuned = client.get("/dashboard", follow_redirects=True)
+    tuned = client.get("/api/dashboard/planning", follow_redirects=True)
     assert tuned.status_code == 200
     assert b"Manually tuned" in tuned.data
 
@@ -564,7 +596,7 @@ def test_dashboard_brief_shows_manual_state_and_can_reset(client):
     )
     assert reset.status_code == 302
 
-    refreshed = client.get("/dashboard", follow_redirects=True)
+    refreshed = client.get("/api/dashboard/planning", follow_redirects=True)
     assert refreshed.status_code == 200
     assert b"Auto-generated" in refreshed.data
 
@@ -1491,6 +1523,174 @@ def test_market_pulse_guardrail_activates_on_threshold():
     guard = core_service._market_pulse_guardrail(quotes)
     assert guard["active"] is True
     assert guard["critical_count"] >= guard["threshold"]
+
+
+def test_market_pulse_closed_session_quotes_do_not_trigger_unsafe_guardrail():
+    now_et = datetime(2026, 3, 5, 19, 45, tzinfo=ZoneInfo("America/New_York"))
+    now_epoch = int(now_et.timestamp())
+    quotes = [
+        {
+            "label": "SPY",
+            "data_state": "live",
+            "asof_epoch": now_epoch - (5 * 3600),
+            "mini_series": [710.0, 711.0, 710.5, 711.2],
+        },
+        {
+            "label": "QQQ",
+            "data_state": "cached",
+            "asof_epoch": now_epoch - (5 * 3600),
+            "mini_series": [657.0, 658.0, 657.5, 657.2],
+        },
+    ]
+
+    enriched = core_service._market_pulse_enrich_quotes(quotes, now_et)
+    guard = core_service._market_pulse_guardrail(enriched)
+    alert = core_service._market_pulse_alert(enriched)
+
+    assert {q["freshness_band"] for q in enriched} == {"warn"}
+    assert {q["market_state"] for q in enriched} == {"Closed"}
+    assert all(str(q["freshness_label"]).startswith("Closed ·") for q in enriched)
+    assert guard["active"] is False
+    assert alert["message"].startswith("Closed-session quotes loaded")
+
+
+def test_market_pulse_sparkline_renders_guides_and_points():
+    svg = core_service._market_pulse_sparkline_svg([10.0, 11.0, 10.5, 12.0, 11.75], "up")
+
+    assert "marketMiniSparkGuide" in svg
+    assert "marketMiniSparkBaseline" in svg
+    assert "marketMiniSparkPoint up" in svg
+    assert "marketMiniSparkPoint up start" in svg
+    assert "marketMiniSparkPoint up end" in svg
+    assert svg.count("<circle") >= 3
+    assert "10.0,11.0" not in svg
+
+
+def test_market_pulse_tape_state_uses_consistent_thresholds():
+    assert core_service._market_pulse_tape_state("SPY", -0.36)["label"] == "RISK-OFF"
+    assert core_service._market_pulse_tape_state("QQQ", 0.36)["label"] == "RISK-ON"
+    assert core_service._market_pulse_tape_state("VIX", 0.40)["label"] == "MIXED"
+    assert core_service._market_pulse_tape_state("VIX", 0.80)["label"] == "STRONG"
+    assert core_service._market_pulse_tape_state("AAPL", -0.80)["label"] == "WEAK"
+
+
+def test_market_pulse_enrich_quotes_uses_replay_when_quote_series_is_sparse(monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "_market_pulse_cached_replay_series",
+        lambda _symbol: (
+            [{"v": value} for value in [10.0, 11.0, 10.5, 12.0, 11.75, 12.4, 12.1, 12.8]],
+            "2026-03-05",
+        ),
+    )
+
+    [quote] = core_service._market_pulse_enrich_quotes(
+        [{"label": "SPY", "price": 101.0, "mini_series": [100.0, 101.0]}],
+        core_service.app_runtime.now_et(),
+    )
+
+    assert len(quote["mini_series"]) >= 8
+    assert len(quote["series"]) >= 8
+    assert "marketMiniSparkPoint" in quote["sparkline_svg"]
+
+
+def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
+    from mccain_capital.services import market_worker
+
+    def quote(symbol: str, price: float, pct: float, series: list[float]) -> dict:
+        return {
+            "symbol": symbol,
+            "label": symbol,
+            "price": price,
+            "pct_change": pct,
+            "as_of": "2026-03-05T15:55:00-05:00",
+            "provider": "tradier",
+            "reason": "tradier_live_quote",
+            "mini_series": series,
+        }
+
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "updated_at": "2026-03-05T15:55:00-05:00",
+            "prices": {
+                "QQQ": quote("QQQ", 657.55, -1.01, [660.0, 659.2, 658.4, 658.0, 657.55]),
+                "SPY": quote("SPY", 711.69, -0.49, [715.2, 714.1, 713.0, 712.2, 711.69]),
+                "VIX": quote("VIX", 17.83, -1.06, [18.6, 18.4, 18.2, 18.0, 17.83]),
+                "IWM": quote("IWM", 273.91, -1.17, [277.1, 276.4, 275.2, 274.4, 273.91]),
+            },
+        },
+    )
+
+    resp = client.get("/api/dashboard/tape?ticker=QQQ", follow_redirects=True)
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert sorted(payload["series_points"]) == ["IWM", "QQQ", "SPY", "VIX"]
+    assert len(payload["series_points"]["SPY"]) == 5
+
+
+def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatch):
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
+
+    def quote(symbol: str, price: float, pct: float) -> dict:
+        return {
+            "symbol": symbol,
+            "label": symbol,
+            "price": price,
+            "pct_change": pct,
+            "provider": "tradier",
+            "reason": "tradier_stream_trade",
+            "as_of": "2026-03-17T15:00:00-04:00",
+        }
+
+    series = {
+        "QQQ": [664.28, 662.90, 661.30, 659.10, 657.55],
+        "SPY": [715.23, 714.40, 713.35, 712.20, 711.69],
+        "VIX": [18.67, 18.38, 18.12, 17.95, 17.83],
+        "IWM": [277.15, 276.40, 275.35, 274.50, 273.91],
+    }
+    prices = {
+        "QQQ": quote("QQQ", 657.55, -1.01),
+        "SPY": quote("SPY", 711.69, -0.49),
+        "VIX": quote("VIX", 17.83, -1.06),
+        "IWM": quote("IWM", 273.91, -1.17),
+    }
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "prices": prices,
+            "series": series,
+            "series_points": {
+                symbol: [{"v": value, "close": value} for value in values]
+                for symbol, values in series.items()
+            },
+            "updated_at": "2026-03-17T15:00:00-04:00",
+        },
+    )
+    monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
+    monkeypatch.setattr(market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist",
+        lambda _symbols, allow_yf_fallback=False: {},
+    )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert body.count("marketMiniSparkPoint") >= 12
+    assert body.count("marketMiniSparkGuide") >= 8
+    assert body.count("marketMiniSparkBaseline") >= 4
+    assert "Broad tape is defensive" in body
 
 
 def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):

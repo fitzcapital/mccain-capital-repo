@@ -1145,11 +1145,43 @@
     return "flat";
   };
 
+  const tapeStateFor = (symbol, pctChange) => {
+    const ticker = String(symbol || "").toUpperCase();
+    const pct = asNum(pctChange);
+    if (["SPY", "QQQ", "IWM"].includes(ticker)) {
+      if (pct !== null && pct >= 0.35) {
+        return { label: "Risk-On", tone: "positive", title: "Broad tape supports long risk." };
+      }
+      if (pct !== null && pct <= -0.35) {
+        return {
+          label: "Risk-Off",
+          tone: "negative",
+          title: "Broad tape is defensive; long risk needs extra confirmation.",
+        };
+      }
+    }
+    if (pct !== null && pct >= 0.75) {
+      return {
+        label: "Strong",
+        tone: "positive",
+        title: "Symbol is leading or showing strong upside pressure.",
+      };
+    }
+    if (pct !== null && pct <= -0.75) {
+      return {
+        label: "Weak",
+        tone: "negative",
+        title: "Symbol is lagging or under downside pressure.",
+      };
+    }
+    return { label: "Mixed", tone: "neutral", title: "No clean tape edge yet." };
+  };
+
   const buildSparklineSvg = (points, tone) => {
     const values = (Array.isArray(points) ? points : [])
       .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
       .filter((value) => value !== null);
-    if (values.length < 2) {
+    if (values.length < 4) {
       return '<div class="marketMiniSparkEmpty">No trend</div>';
     }
     const width = 120;
@@ -1163,9 +1195,26 @@
       const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     });
+    const areaPoints = `0.00,28.00 ${pts.join(" ")} 120.00,28.00`;
+    const baselineY = (((maxV - values[0]) / (maxV - minV)) * (height - 2) + 1).toFixed(2);
+    const markerStride = Math.max(1, Math.floor(pts.length / 8));
+    const selected = pts
+      .filter((_point, index) => index === 0 || index === pts.length - 1 || index % markerStride === 0);
+    const markers = selected
+      .map((point, index) => {
+        const [x, y] = point.split(",");
+        const endpoint = index === 0 ? " start" : index === selected.length - 1 ? " end" : "";
+        return `<circle class="marketMiniSparkPoint ${tone}${endpoint}" cx="${x}" cy="${y}" r="1.55" />`;
+      })
+      .join("");
     return (
       `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="7" x2="120" y2="7" />`
+      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="120" y2="${baselineY}" />`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="21" x2="120" y2="21" />`
+      + `<polygon class="marketMiniSparkArea ${tone}" points="${areaPoints}" />`
       + `<polyline class="marketMiniSparkLine ${tone}" points="${pts.join(" ")}" />`
+      + markers
       + `</svg>`
     );
   };
@@ -2061,17 +2110,14 @@
     const reason = String(quote.reason || "").trim();
     const asOf = String(quote.as_of || quote.asof || "").trim();
     const symbol = String(card.dataset.symbol || "").toUpperCase();
-    let watchState = "Mixed";
-    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) watchState = "Risk-On";
-    else if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct <= -0.35) watchState = "Risk-Off";
-    else if (pct !== null && pct >= 0.75) watchState = "Strong";
-    else if (pct !== null && pct <= -0.75) watchState = "Weak";
+    const watchState = tapeStateFor(symbol, pct);
 
     const chip = card.querySelector('[data-role="state-chip"]');
     if (chip) {
-      const chipChanged = String(chip.textContent || "") !== watchState;
-      chip.textContent = watchState;
-      const watchTone = pct !== null && pct > 0 ? "tone-positive" : pct !== null && pct < 0 ? "tone-negative" : "tone-neutral";
+      const chipChanged = String(chip.textContent || "") !== watchState.label;
+      chip.textContent = watchState.label;
+      chip.title = watchState.title;
+      const watchTone = `tone-${watchState.tone}`;
       chip.classList.remove("tone-positive", "tone-negative", "tone-neutral");
       chip.classList.add(watchTone);
       if (chipChanged) {
@@ -2102,7 +2148,7 @@
       }
     );
     updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
-    const hasSeriesPoints = Array.isArray(points) && seriesValueCount(points) >= 2;
+    const hasSeriesPoints = Array.isArray(points) && seriesValueCount(points) >= 4;
     if (hasSeriesPoints) {
       updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
       updateTextNode(card.querySelector('[data-role="range-line"]'), formatRange(points));

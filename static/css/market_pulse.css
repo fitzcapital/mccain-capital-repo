@@ -2920,6 +2920,111 @@ body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .mar
   filter:none !important;
 }
 
+/* Final Market Pulse A-pass: mobile feed, closed-session state, and chart fallback. */
+body.page-market-pulse .marketPulseExecutionHeroChartEmpty{
+  inset:auto 16px 16px auto;
+  max-width:min(420px, calc(100% - 32px));
+  padding:9px 12px;
+  border:1px solid rgba(122, 163, 214, .18);
+  border-radius:12px;
+  background:rgba(4, 12, 24, .78);
+  color:rgba(214, 226, 244, .78);
+  box-shadow:0 14px 28px rgba(0, 0, 0, .24);
+  white-space:normal;
+}
+
+body.page-market-pulse .marketPulseSessionState:not(.is-locked) .marketPulseSessionDot{
+  background:#7aa3d6;
+  box-shadow:0 0 0 5px rgba(70, 113, 190, .14);
+}
+
+body.page-market-pulse .marketFeedPanel .marketFeedCommandBar{
+  min-width:0;
+  overflow:visible;
+}
+
+body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__left,
+body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__center,
+body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__right,
+body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__identity,
+body.page-market-pulse .marketFeedPanel .marketFeedCommand__meta{
+  min-width:0;
+}
+
+body.page-market-pulse .marketFeedPanel .marketFeedCommand__title,
+body.page-market-pulse .marketFeedPanel .marketFeedCommand__sub,
+body.page-market-pulse .marketFeedPanel .marketFeedCommand__metaItem{
+  max-width:100%;
+  overflow-wrap:anywhere;
+}
+
+@media (max-width:760px){
+  body.page-market-pulse .marketPulseNewsFeedShell > .toolbar{
+    padding:14px !important;
+    gap:12px !important;
+  }
+
+  body.page-market-pulse .marketFeedPanel .marketFeedCommandBar{
+    grid-template-columns:1fr !important;
+    gap:12px !important;
+    padding:0 0 12px !important;
+    overflow:visible !important;
+  }
+
+  body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__left,
+  body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__center,
+  body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__right{
+    width:100% !important;
+    align-self:start !important;
+    justify-content:flex-start !important;
+    justify-items:start !important;
+    text-align:left !important;
+  }
+
+  body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__identity{
+    display:grid !important;
+    grid-template-columns:32px minmax(0, 1fr) !important;
+    gap:10px !important;
+    align-items:center !important;
+    width:100% !important;
+  }
+
+  body.page-market-pulse .marketFeedPanel .marketFeedCommand__title{
+    font-size:clamp(.96rem, 4.6vw, 1.08rem) !important;
+    line-height:1.08 !important;
+    white-space:normal !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+  }
+
+  body.page-market-pulse .marketFeedPanel .marketFeedCommand__sub,
+  body.page-market-pulse .marketFeedPanel .marketFeedCommand__metaItem{
+    white-space:normal !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+    line-height:1.22 !important;
+  }
+
+  body.page-market-pulse .marketFeedPanel .marketFeedCommandBar__right{
+    display:flex !important;
+    gap:8px !important;
+  }
+
+  body.page-market-pulse .marketFeedPanel .marketFeedEmpty{
+    grid-template-columns:1fr !important;
+    min-height:0 !important;
+    padding:16px !important;
+    gap:9px !important;
+    text-align:left !important;
+  }
+
+  body.page-market-pulse .marketFeedPanel .marketFeedEmpty__actions{
+    grid-column:auto !important;
+    grid-row:auto !important;
+    justify-content:flex-start !important;
+  }
+}
+
 /* Final mobile/tablet entry checklist polish: never squeeze the footer copy. */
 @media (max-width:980px){
   body.page-market-pulse .marketPulseTriggerValidationShell > .toolbar{
