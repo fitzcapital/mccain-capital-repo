@@ -1812,11 +1812,11 @@
     });
   };
   const watchStateFor = (symbol, pct) => {
-    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) return {
+    if (["SPX", "SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) return {
       label: "RISK-ON",
       title: "Broad tape supports long risk.",
     };
-    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct <= -0.35) return {
+    if (["SPX", "SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct <= -0.35) return {
       label: "RISK-OFF",
       title: "Broad tape is defensive; long risk needs extra confirmation.",
     };

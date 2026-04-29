@@ -95,7 +95,7 @@ const dashboardUIFX = (() => {
 
   const storageKey = String(shell.dataset.playbookTickerStorageKey || "mc_playbook_ticker");
   const selectedTicker = String(shell.dataset.selectedTicker || "QQQ").toUpperCase();
-  const supportedTickers = new Set(["QQQ", "SPY"]);
+  const supportedTickers = new Set(["QQQ", "SPY", "SPX"]);
   const switchLinks = Array.from(document.querySelectorAll("[data-dashboard-ticker-switch]"));
 
   const normalizeTicker = (value) => {

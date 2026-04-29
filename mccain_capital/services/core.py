@@ -99,7 +99,7 @@ MARKET_PULSE_X_RSS_URLS: Tuple[str, ...] = (
 MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
     {"handle": "unusual_whales", "label": "Unusual Whales", "lane": "Options Flow"},
 )
-SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("QQQ", "SPY")
+SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("QQQ", "SPY", "SPX")
 DEFAULT_PLAYBOOK_TICKER = "QQQ"
 PLAYBOOK_TICKER_STORAGE_KEY = "mc_playbook_ticker"
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
@@ -3155,7 +3155,7 @@ def _market_pulse_tape_state(symbol: str, pct_change: Any) -> Dict[str, str]:
         pct = None
     if pct is not None and not math.isfinite(pct):
         pct = None
-    if ticker in {"SPY", "QQQ", "IWM"}:
+    if ticker in {"SPX", "SPY", "QQQ", "IWM"}:
         if pct is not None and pct >= 0.35:
             return {
                 "label": "RISK-ON",

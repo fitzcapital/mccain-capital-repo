@@ -302,7 +302,6 @@
               <span class="marketStatusClockTimeGroup">
                 <span id="etClock" class="clockTime">--:--</span>
                 <span id="etClockMeridiem" class="marketStatusClockMeridiem">--</span>
-                <span class="marketStatusClockSuffix">ET</span>
               </span>
               <span class="marketStatusClockDivider" aria-hidden="true">·</span>
               <span id="marketStatusCountdown" class="marketStatusClockCountdown">Loading</span>
@@ -407,6 +406,7 @@
           <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
+          <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment">Life Alignment</a>
           <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
           <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
         </div>
@@ -430,6 +430,7 @@
             <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
             <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
             <a class="btn {% if active=='life-journal' %}active{% endif %}" href="/journal/life">Life Journal</a>
+            <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment">Life Alignment</a>
             <a class="btn {% if active=='self-control' %}active{% endif %}" href="/self-control">Self-Control</a>
             <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
             <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
@@ -641,6 +642,7 @@
             <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
             <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
             <a class="btn {% if active=='life-journal' %}primary{% endif %}" href="/journal/life">Life Journal</a>
+            <a class="btn {% if active=='life-alignment' %}primary{% endif %}" href="/life-alignment">Life Alignment</a>
             <a class="btn {% if active=='self-control' %}primary{% endif %}" href="/self-control">Self-Control</a>
             <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
@@ -737,6 +739,7 @@
       "/candle-opens": { title: "Candle Opens", detail: "Loading session timing and open-window references." },
       "/trades": { title: "Trades", detail: "Loading executions, open positions, and trade history." },
       "/journal": { title: "Journal", detail: "Loading review notes and trading journal entries." },
+      "/life-alignment": { title: "Life Alignment", detail: "Loading habits, streaks, and accountability dashboard." },
       "/analytics": { title: "Analytics", detail: "Loading performance curves and edge reads." },
       "/calendar": { title: "Calendar", detail: "Loading trading days and events." },
     };

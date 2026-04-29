@@ -51202,3 +51202,957 @@ body[data-theme="cinematic-nebula"] :where(
 ) .marketPulseWatchState{
   letter-spacing:.02em;
 }
+
+/* Final header clock correction: live seconds with a compact, intentional cockpit pill. */
+body[data-theme="cinematic-nebula"] .topRight .marketStatusClock,
+body[data-theme="cinematic-nebula"] .headerInfoCluster .marketStatusClock,
+body[data-theme="cinematic-nebula"] #marketStatusClock{
+  min-height:44px !important;
+  height:auto !important;
+  padding:8px 16px !important;
+  gap:6px !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  white-space:nowrap !important;
+  font-size:14px !important;
+  line-height:1 !important;
+  color:rgba(226, 236, 248, .95) !important;
+  background:
+    linear-gradient(180deg, rgba(17, 32, 52, .86), rgba(8, 15, 27, .9)),
+    radial-gradient(circle at 20% 20%, rgba(40, 93, 171, .22), transparent 58%) !important;
+  border-color:rgba(72, 105, 150, .55) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .06),
+    inset 0 -10px 26px rgba(0, 0, 0, .18),
+    0 0 0 1px rgba(19, 34, 56, .34),
+    0 12px 28px rgba(0, 12, 28, .28) !important;
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockTimeGroup{
+  gap:0 !important;
+  flex:0 0 auto !important;
+  align-items:baseline !important;
+  min-width:0 !important;
+  width:auto !important;
+  margin:0 !important;
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .clockTime{
+  min-width:7.15ch !important;
+  width:auto !important;
+  display:inline-block !important;
+  text-align:left !important;
+  font-size:16px !important;
+  line-height:1 !important;
+  font-weight:850 !important;
+  font-variant-numeric:tabular-nums !important;
+  letter-spacing:0 !important;
+  color:rgba(237, 245, 255, .97) !important;
+  text-shadow:0 0 12px rgba(83, 140, 220, .16) !important;
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockSuffix{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockDivider{
+  flex:0 0 auto !important;
+  width:1px !important;
+  margin:0 !important;
+  height:16px !important;
+  overflow:hidden !important;
+  color:transparent !important;
+  background:linear-gradient(180deg, transparent, rgba(106, 138, 181, .62), transparent) !important;
+  font-size:10px !important;
+  line-height:1 !important;
+  opacity:.9 !important;
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockCountdown{
+  flex:0 0 auto !important;
+  width:auto !important;
+  margin:0 !important;
+  font-size:13.5px !important;
+  line-height:1.5;
+  font-weight:780 !important;
+  color:rgba(201, 217, 234, .82) !important;
+}
+
+@media (max-width:760px){
+  body[data-theme="cinematic-nebula"] #marketStatusClock{
+    min-height:40px !important;
+    padding:7px 11px !important;
+    gap:5px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] #marketStatusClock .clockTime{
+    min-width:7.15ch !important;
+    font-size:14px !important;
+  }
+
+  body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockCountdown{
+    font-size:12px !important;
+  }
+}
+
+/* Playbook optimization pass: denser doctrine layout with sharper hierarchy. */
+body[data-theme="cinematic-nebula"] .page-playbook{
+  max-width:1180px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookHero,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrinePanel,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookReflectionCard,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookReminderCard,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookUtilityCard{
+  border-radius:12px;
+  background:
+    radial-gradient(90% 120% at 100% 0%, rgba(66, 118, 184, .10), transparent 48%),
+    linear-gradient(180deg, rgba(11, 23, 39, .92), rgba(4, 13, 24, .96));
+  border-color:rgba(82, 128, 182, .24);
+  box-shadow:
+    inset 0 1px 0 rgba(226, 239, 255, .045),
+    0 16px 34px rgba(0, 10, 24, .24);
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookHero > .toolbar,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrinePanel > .toolbar,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookReflectionCard > .toolbar,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookReminderCard > .toolbar,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookUtilityCard > .toolbar{
+  padding:14px;
+  gap:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookHero{
+  margin-bottom:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookHeroInner{
+  grid-template-columns:minmax(0, 1.55fr) minmax(260px, .62fr);
+  gap:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookHeroCopy{
+  gap:8px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookHeroTitle{
+  max-width:100%;
+  font-size:clamp(34px, 3.1vw, 46px);
+  line-height:.98;
+  letter-spacing:0;
+  text-wrap:balance;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookHeroSub{
+  max-width:680px;
+  font-size:13px;
+  line-height:1.35;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookJumpRow{
+  gap:6px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookJumpChip{
+  padding:5px 10px;
+  font-size:10px;
+  letter-spacing:.08em;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookHeroSignal{
+  border-radius:10px;
+  min-height:0;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSignalLead{
+  margin-top:4px;
+  font-size:17px;
+  line-height:1.08;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSignalBody{
+  margin-top:6px;
+  font-size:12px;
+  line-height:1.35;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSummaryGrid{
+  gap:8px;
+  margin-top:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSummaryCard{
+  min-height:84px;
+  padding:12px 13px 13px;
+  border-radius:10px;
+  background:
+    linear-gradient(180deg, rgba(15, 29, 48, .84), rgba(5, 15, 27, .9));
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSummaryCard::before{
+  height:2px;
+  border-radius:10px 10px 0 0;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSummaryLabel{
+  font-size:10px;
+  letter-spacing:.14em;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSummaryBody{
+  margin-top:8px;
+  font-size:14px;
+  line-height:1.25;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookLayout{
+  grid-template-columns:minmax(0, 1fr) minmax(230px, 280px);
+  gap:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookMainColumn{
+  gap:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrineTitle{
+  margin:8px 0 5px;
+  font-size:clamp(22px, 1.9vw, 29px);
+  line-height:1.02;
+  letter-spacing:0;
+  text-wrap:balance;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrineIntro{
+  max-width:760px;
+  font-size:12px;
+  line-height:1.34;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookQuickTileGrid{
+  gap:7px;
+  margin-top:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookQuickTile{
+  padding:9px 11px;
+  border-radius:9px;
+  font-size:11px;
+  line-height:1.15;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrineGrid{
+  gap:8px;
+  margin-top:10px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrineCard{
+  padding:12px;
+  border-radius:10px;
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgba(255, 255, 255, .035), transparent 52%),
+    rgba(5, 15, 27, .7);
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrineCardTop h3{
+  margin:0 0 8px;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.02em;
+  color:rgba(239, 246, 255, .94);
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookList,
+body[data-theme="cinematic-nebula"] .page-playbook .playbookStepList{
+  padding-left:15px;
+  gap:5px;
+  font-size:11.5px;
+  line-height:1.35;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookList.is-tight{
+  gap:5px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSignalGrid{
+  gap:5px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSignalChip{
+  padding:5px 8px;
+  font-size:9px;
+  letter-spacing:.08em;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookQuoteStack{
+  gap:6px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookQuoteCard{
+  padding:9px 11px;
+  border-radius:8px;
+  font-size:11.5px;
+  line-height:1.25;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSidebarSticky{
+  top:88px;
+  gap:8px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookUtilityLead{
+  margin-top:7px;
+  font-size:18px;
+  line-height:1.12;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSidebarLinks{
+  gap:6px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookSidebarLink{
+  min-height:28px;
+  padding:6px 9px;
+  border-radius:7px;
+  font-size:11px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookFooterGrid{
+  gap:8px;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookFooterTitle{
+  margin:8px 0 10px;
+  font-size:22px;
+  line-height:1.05;
+  letter-spacing:0;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookReminderLead{
+  font-size:20px;
+  line-height:1.08;
+}
+
+body[data-theme="cinematic-nebula"] .page-playbook .playbookReminderBody{
+  margin-top:8px;
+  font-size:12px;
+  line-height:1.35;
+}
+
+@media (min-width:1181px){
+  body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrinePanel:nth-of-type(2) .playbookDoctrineGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width:900px){
+  body[data-theme="cinematic-nebula"] .page-playbook{
+    max-width:none;
+  }
+
+  body[data-theme="cinematic-nebula"] .page-playbook .playbookHero > .toolbar,
+  body[data-theme="cinematic-nebula"] .page-playbook .playbookDoctrinePanel > .toolbar,
+  body[data-theme="cinematic-nebula"] .page-playbook .playbookReflectionCard > .toolbar,
+  body[data-theme="cinematic-nebula"] .page-playbook .playbookReminderCard > .toolbar,
+  body[data-theme="cinematic-nebula"] .page-playbook .playbookUtilityCard > .toolbar{
+    padding:12px;
+  }
+
+  body[data-theme="cinematic-nebula"] .page-playbook .playbookHeroTitle{
+    font-size:clamp(30px, 8vw, 40px);
+  }
+}
+
+/* Firefox desktop playbook tuning: the handwritten face renders large, so tighten harder. */
+@media (min-width:901px){
+  body[data-theme="cinematic-nebula"].page-playbook{
+    width:auto;
+    max-width:none;
+    font-size:13px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .wrap{
+    width:min(calc(100% - 48px), 1280px);
+    max-width:1280px;
+    margin-inline:auto;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookHero > .toolbar,
+  body[data-theme="cinematic-nebula"].page-playbook .playbookDoctrinePanel > .toolbar,
+  body[data-theme="cinematic-nebula"].page-playbook .playbookReflectionCard > .toolbar,
+  body[data-theme="cinematic-nebula"].page-playbook .playbookReminderCard > .toolbar,
+  body[data-theme="cinematic-nebula"].page-playbook .playbookUtilityCard > .toolbar{
+    padding:12px;
+    gap:8px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookHeroInner{
+    grid-template-columns:minmax(0, 1.75fr) minmax(240px, .55fr);
+    gap:8px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookHeroTitle{
+    max-width:720px;
+    font-size:clamp(31px, 2.55vw, 40px);
+    line-height:1.02;
+    white-space:normal !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookHeroSub{
+    max-width:650px;
+    font-size:12.5px;
+    line-height:1.32;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookJumpChip{
+    padding:4px 9px;
+    font-size:9px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSignalEyebrow,
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSummaryLabel{
+    font-size:9px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSignalLead{
+    font-size:15.5px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSignalBody{
+    font-size:11.5px;
+    line-height:1.34;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSummaryGrid{
+    gap:7px;
+    margin-top:8px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSummaryCard{
+    min-height:72px;
+    padding:10px 11px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSummaryBody{
+    margin-top:6px;
+    font-size:13px;
+    line-height:1.26;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookLayout{
+    grid-template-columns:minmax(0, 1fr) minmax(220px, 260px);
+    gap:9px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookDoctrineTitle{
+    margin:6px 0 4px;
+    font-size:clamp(22px, 1.75vw, 28px);
+    line-height:1.03;
+    white-space:normal !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookDoctrineIntro{
+    font-size:11.5px;
+    line-height:1.32;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookDoctrineGrid{
+    gap:7px;
+    margin-top:8px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookDoctrineCard{
+    padding:10px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookDoctrineCardTop h3{
+    margin-bottom:6px;
+    font-size:12px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookList,
+  body[data-theme="cinematic-nebula"].page-playbook .playbookStepList{
+    gap:4px;
+    font-size:15.5px;
+    line-height:1.32;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookQuickTile{
+    padding:7px 9px;
+    font-size:10.5px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSignalChip{
+    padding:4px 7px;
+    font-size:8.75px;
+  }
+
+body[data-theme="cinematic-nebula"].page-playbook .playbookQuoteCard{
+    padding:7px 9px;
+    font-size:14.25px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookUtilityLead{
+    font-size:17px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookSidebarLink{
+    min-height:25px;
+    font-size:10.5px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookFooterTitle{
+    font-size:21px;
+  }
+
+  body[data-theme="cinematic-nebula"].page-playbook .playbookReminderLead{
+    font-size:18px;
+  }
+}
+
+/* Life Alignment base styles outside playbook desktop media scope. */
+.life-alignment-page{display:grid;gap:18px;max-width:1420px;margin:0 auto}
+.lifeAlignmentHero,.lifeAlignmentProgressSection,.lifeAlignmentAnalytics{padding:18px;border-color:rgba(75,207,231,.24);background:radial-gradient(circle at 14% 12%,rgba(43,116,255,.18),transparent 34%),radial-gradient(circle at 88% 28%,rgba(20,198,166,.12),transparent 38%),rgba(3,13,25,.84)}
+.lifeAlignmentHero{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,390px);gap:18px;align-items:center}
+.lifeAlignmentHeroCopy .pageTitle{margin:6px 0 4px;font-size:clamp(34px,4vw,58px)}
+.lifeAlignmentHeroMeta,.lifeAlignmentActions,.lifeAlignmentAnalyticsSummary{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.lifeAlignmentScoreCard{display:flex;align-items:center;gap:18px;padding:18px;border:1px solid rgba(77,151,255,.32);border-radius:18px;background:rgba(5,18,34,.74)}
+.lifeAlignmentScoreRing{--score:0%;width:112px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;background:radial-gradient(circle,rgba(4,13,25,.96) 57%,transparent 58%),conic-gradient(#62e6ff var(--score),rgba(45,72,112,.38) 0);box-shadow:0 0 28px rgba(55,128,255,.28)}
+.lifeAlignmentScoreRing span{font-size:38px;font-weight:900;line-height:1;color:var(--text)}
+.lifeAlignmentGrid{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(280px,.8fr);gap:18px}
+.lifeAlignmentSideStack{display:grid;align-content:start;gap:18px}
+.lifeAlignmentCheckIn,.lifeAlignmentJournalCard,.lifeAlignmentReminder,.lifeAlignmentMetric,.lifeAlignmentChartPanel{padding:18px;border-color:rgba(75,207,231,.22);background:rgba(4,15,29,.86)}
+.lifeAlignmentFormGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.lifeAlignmentForm label{display:grid;gap:6px;min-width:0}
+.lifeAlignmentForm label span{color:rgba(199,214,232,.82);font-size:13px;font-weight:800;letter-spacing:.04em}
+.lifeAlignmentForm input,.lifeAlignmentForm select,.lifeAlignmentForm textarea{width:100%;min-width:0}
+.lifeAlignmentChecks{display:grid;gap:8px;align-content:center;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(255,255,255,.03)}
+.lifeAlignmentCheck{display:flex!important;grid-template-columns:none!important;align-items:center;gap:8px!important}
+.lifeAlignmentCheck input{width:auto}.lifeAlignmentWide{grid-column:1/-1}.lifeAlignmentActions{margin-top:14px}
+.lifeAlignmentError{margin-top:12px;color:#ff8da9;font-weight:800}
+.lifeAlignmentMetricGrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.lifeAlignmentMetric{display:grid;gap:4px;padding:15px}.lifeAlignmentMetric span,.lifeAlignmentMetric small{color:var(--muted);font-weight:800}.lifeAlignmentMetric strong{color:var(--text);font-size:34px;line-height:1}
+.lifeAlignmentProgressGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.lifeAlignmentProgressItem{display:grid;gap:10px;padding:14px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:rgba(255,255,255,.03)}
+.lifeAlignmentProgressItem>div:first-child{display:flex;justify-content:space-between;gap:12px;color:var(--muted)}.lifeAlignmentProgressItem strong{color:var(--text)}
+.lifeAlignmentProgressBar{height:10px;overflow:hidden;border-radius:999px;background:rgba(46,69,100,.38)}.lifeAlignmentProgressBar span{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,#35d18a,#68e7ff);box-shadow:0 0 18px rgba(104,231,255,.35);transition:width .22s ease}
+.lifeAlignmentAnalyticsSummary{margin:8px 0 16px}.lifeAlignmentAnalyticsSummary span{padding:8px 11px;border:1px solid rgba(255,255,255,.08);border-radius:999px;color:var(--muted);background:rgba(255,255,255,.03)}.lifeAlignmentAnalyticsSummary strong{color:var(--text)}
+.lifeAlignmentChartGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.lifeAlignmentChartPanel{min-width:0;border:1px solid rgba(255,255,255,.08);border-radius:16px}.lifeAlignmentChartPanel h4{margin:0 0 10px;color:var(--text);font-size:16px}
+.lifeAlignmentChart{height:160px;display:flex;align-items:end;gap:4px;min-width:0}.lifeAlignmentChart svg{width:100%;height:100%;overflow:visible}.lifeAlignmentChartBase{stroke:rgba(255,255,255,.12);stroke-width:1}.lifeAlignmentBar{flex:1 1 0;min-width:3px;border-radius:999px 999px 3px 3px;opacity:.9}
+.lifeAlignmentWorkoutGrid{display:grid;grid-template-columns:repeat(15,minmax(10px,1fr));gap:6px;min-height:90px;align-content:center}.lifeAlignmentWorkoutGrid span{aspect-ratio:1;border-radius:6px;background:rgba(84,104,136,.28);border:1px solid rgba(255,255,255,.07)}.lifeAlignmentWorkoutGrid span.is-complete{background:linear-gradient(135deg,#32d17c,#52dfff);box-shadow:0 0 16px rgba(57,217,130,.25)}
+.lifeAlignmentJournalCard h3,.lifeAlignmentReminder h3{margin:8px 0;color:var(--text)}.lifeAlignmentJournalCard p,.lifeAlignmentReminder p{color:var(--muted)}
+.lifeAlignmentToast{position:fixed;right:24px;bottom:24px;z-index:60;padding:12px 16px;border:1px solid rgba(77,151,255,.45);border-radius:14px;color:var(--text);background:rgba(5,18,34,.94);box-shadow:0 12px 34px rgba(0,0,0,.32),0 0 22px rgba(77,151,255,.24)}
+.lifeJournalAlignmentBridge{margin:16px 0;padding:16px;border-color:rgba(75,207,231,.22);background:rgba(4,15,29,.8)}.lifeJournalAlignmentBridge h3{margin:6px 0}
+@media (max-width:980px){.lifeAlignmentHero,.lifeAlignmentGrid,.lifeAlignmentProgressGrid,.lifeAlignmentChartGrid{grid-template-columns:1fr}.lifeAlignmentFormGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.lifeAlignmentMetricGrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:640px){.life-alignment-page{gap:12px}.lifeAlignmentHero{padding:16px}.lifeAlignmentScoreCard{align-items:flex-start}.lifeAlignmentScoreRing{width:88px}.lifeAlignmentFormGrid,.lifeAlignmentMetricGrid{grid-template-columns:1fr}.lifeAlignmentWorkoutGrid{grid-template-columns:repeat(10,minmax(10px,1fr))}}
+
+.life-alignment-page .lifeAlignmentHeroStatus{display:grid;gap:12px;min-width:0}
+.life-alignment-page [hidden]{display:none!important}
+.life-alignment-page .lifeAlignmentStatusGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.life-alignment-page .lifeAlignmentStatusTile{padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(255,255,255,.035)}
+.life-alignment-page .lifeAlignmentStatusTile span{display:block;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.life-alignment-page .lifeAlignmentStatusTile strong{display:block;margin-top:4px;color:var(--text);font-size:15px;line-height:1.1}
+.life-alignment-page .lifeAlignmentMissing,.life-alignment-page .lifeAlignmentRuleMessage,.life-alignment-page .lifeAlignmentLockBanner,.life-alignment-page .lifeAlignmentLockConfirm{padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);color:rgba(222,234,249,.84);font-weight:800}
+.life-alignment-page .lifeAlignmentRuleMessage[data-rule-state="no"]{border-color:rgba(255,85,118,.42);background:rgba(255,72,105,.12);color:#ff9bb0}
+.life-alignment-page .lifeAlignmentRuleMessage[data-rule-state="yes"]{border-color:rgba(54,217,130,.35);background:rgba(54,217,130,.10);color:#9af2c0}
+.life-alignment-page .lifeAlignmentMission{padding:10px 12px;border-radius:14px;border:1px solid rgba(104,231,255,.18);background:rgba(104,231,255,.06);color:rgba(224,241,255,.9);font-weight:900;line-height:1.35}
+.life-alignment-page #lifeRulesStatus[data-rule-state="yes"]{color:#95f5bf}
+.life-alignment-page #lifeRulesStatus[data-rule-state="no"]{color:#ff8da9}
+.life-alignment-page #lifeRulesStatus[data-rule-state="not_yet"]{color:#ffd27c}
+.life-alignment-page .lifeAlignmentScorePillRow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.life-alignment-page .lifeAlignmentLockedBadge{border-color:rgba(54,217,130,.45);color:#b9ffd5;background:rgba(54,217,130,.12)}
+.life-alignment-page .lifeAlignmentLockBanner{border-color:rgba(104,231,255,.34);color:#bdefff}
+.life-alignment-page .lifeAlignmentLockConfirm{display:grid;gap:4px;border-color:rgba(54,217,130,.36);background:rgba(54,217,130,.1);color:#c9ffe1}
+.life-alignment-page .lifeAlignmentScoreCard[data-score-state="off-track"]{border-color:rgba(255,85,118,.42);box-shadow:0 0 24px rgba(255,85,118,.14)}
+.life-alignment-page .lifeAlignmentScoreCard[data-score-state="off-track"] .lifeAlignmentScoreRing{background:radial-gradient(circle,rgba(4,13,25,.96) 57%,transparent 58%),conic-gradient(#ff5878 var(--score),rgba(45,72,112,.38) 0)}
+.life-alignment-page .lifeAlignmentScoreCard[data-score-state="building"]{border-color:rgba(255,199,89,.42);box-shadow:0 0 24px rgba(255,199,89,.13)}
+.life-alignment-page .lifeAlignmentScoreCard[data-score-state="building"] .lifeAlignmentScoreRing{background:radial-gradient(circle,rgba(4,13,25,.96) 57%,transparent 58%),conic-gradient(#ffc857 var(--score),rgba(45,72,112,.38) 0)}
+.life-alignment-page .lifeAlignmentScoreCard[data-score-state="locked-in"]{border-color:rgba(54,217,130,.42);box-shadow:0 0 28px rgba(54,217,130,.15)}
+.life-alignment-page .lifeAlignmentScoreCard[data-score-state="locked-in"] .lifeAlignmentScoreRing{background:radial-gradient(circle,rgba(4,13,25,.96) 57%,transparent 58%),conic-gradient(#35d18a var(--score),rgba(45,72,112,.38) 0)}
+.life-alignment-page .lifeAlignmentFastCheck{padding:18px;border-color:rgba(75,207,231,.24);background:rgba(4,15,29,.86)}
+.life-alignment-page .lifeAlignmentFastGrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.life-alignment-page .lifeAlignmentToggle{display:flex;align-items:center;gap:10px;min-width:0;padding:12px;border:1px solid rgba(255,255,255,.09);border-radius:16px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));color:var(--text);font-weight:900}
+.life-alignment-page .lifeAlignmentToggle input{width:18px;height:18px;accent-color:#52dfff;flex:0 0 auto}
+.life-alignment-page .lifeAlignmentToggle:has(input:checked){border-color:rgba(54,217,130,.42);background:rgba(54,217,130,.1);box-shadow:0 0 20px rgba(54,217,130,.12)}
+.life-alignment-page[data-locked="true"] .lifeAlignmentToggle,.life-alignment-page[data-locked="true"] .lifeAlignmentForm input,.life-alignment-page[data-locked="true"] .lifeAlignmentForm select,.life-alignment-page[data-locked="true"] .lifeAlignmentForm textarea{opacity:.62}
+.life-alignment-page .btn.secondary{border-color:rgba(104,151,214,.28);background:rgba(255,255,255,.035);color:rgba(225,237,251,.86)}
+.life-alignment-page .btn.subtleDanger{border-color:rgba(255,85,118,.28);background:rgba(255,85,118,.08);color:#ff9db0}
+.life-alignment-page .btn:disabled{opacity:.48;cursor:not-allowed;filter:saturate(.7)}
+.life-alignment-page .lifeAlignmentMetric[data-streak-state="muted"]{opacity:.66;filter:saturate(.65)}
+.life-alignment-page .lifeAlignmentMetric[data-streak-state="active"]{border-color:rgba(104,151,214,.28)}
+.life-alignment-page .lifeAlignmentMetric[data-streak-state="glow"]{border-color:rgba(104,231,255,.38);box-shadow:0 0 24px rgba(104,231,255,.14)}
+.life-alignment-page .lifeAlignmentMetric[data-streak-state="locked"]{border-color:rgba(54,217,130,.44);box-shadow:0 0 30px rgba(54,217,130,.18)}
+.life-alignment-page .lifeAlignmentProgressItem em{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:999px;border:1px solid rgba(255,255,255,.1);font-style:normal;font-size:10px;font-weight:900;letter-spacing:.04em;color:rgba(222,234,249,.82)}
+.life-alignment-page .lifeAlignmentProgressItem small{color:rgba(174,193,215,.76);font-size:12px;line-height:1.35}
+.life-alignment-page .lifeAlignmentInsights{margin:0 0 16px;padding:14px;border:1px solid rgba(75,207,231,.22);border-radius:16px;background:rgba(255,255,255,.035)}
+.life-alignment-page .lifeAlignmentInsights ul,.life-alignment-page .lifeAlignmentJournalPrompts{margin:10px 0 0;padding-left:18px;color:rgba(222,234,249,.82);line-height:1.55}
+.life-alignment-page .lifeAlignmentInsights li::marker,.life-alignment-page .lifeAlignmentJournalPrompts li::marker{color:#ffc857}
+.life-alignment-page #lifeAccountabilityPrimary{font-size:24px;line-height:1.12;margin-bottom:8px}
+.life-alignment-page #lifeAccountabilitySupport{font-size:15px;color:rgba(210,225,243,.78)}
+.life-alignment-page .lifeAlignmentReminder .btn{margin-top:10px}
+@media (max-width:980px){.life-alignment-page .lifeAlignmentFastGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.life-alignment-page .lifeAlignmentStatusGrid{grid-template-columns:1fr}}
+@media (max-width:640px){.life-alignment-page .lifeAlignmentFastGrid{grid-template-columns:1fr}.life-alignment-page .lifeAlignmentScoreCard{flex-direction:column}.life-alignment-page .lifeAlignmentStatusTile strong{font-size:14px}}
+
+/* Life Alignment polish pass: tighter command-center layout and cleaner hierarchy. */
+.life-alignment-page{
+  max-width:1180px;
+  gap:14px;
+}
+.life-alignment-page .lifeAlignmentHero,
+.life-alignment-page .lifeAlignmentFastCheck,
+.life-alignment-page .lifeAlignmentProgressSection,
+.life-alignment-page .lifeAlignmentAnalytics,
+.life-alignment-page .lifeAlignmentJournalCard,
+.life-alignment-page .lifeAlignmentReminder,
+.life-alignment-page .lifeAlignmentMetric,
+.life-alignment-page .lifeAlignmentCheckIn{
+  border-radius:12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 18px 42px rgba(0, 10, 24, .24);
+}
+.life-alignment-page .lifeAlignmentHero{
+  min-height:0 !important;
+  grid-template-columns:minmax(0, 1fr) minmax(380px, 440px);
+  align-items:center;
+  gap:22px;
+  padding:20px 18px !important;
+  background:
+    radial-gradient(70% 130% at 9% 20%, rgba(43, 116, 255, .16), transparent 48%),
+    radial-gradient(70% 120% at 92% 16%, rgba(20, 198, 166, .13), transparent 44%),
+    linear-gradient(180deg, rgba(5, 20, 36, .92), rgba(3, 13, 25, .96)) !important;
+}
+.life-alignment-page .lifeAlignmentHeroCopy{
+  align-self:center;
+  max-width:650px;
+  padding-left:2px;
+}
+.life-alignment-page .lifeAlignmentHeroCopy .pageTitle{
+  font-size:clamp(40px, 4vw, 56px);
+  line-height:.98;
+  max-width:620px;
+}
+.life-alignment-page .lifeAlignmentHeroCopy .summaryLead{
+  max-width:520px;
+  margin-top:6px;
+  color:rgba(205, 220, 239, .78);
+}
+.life-alignment-page .lifeAlignmentHeroStatus{
+  gap:8px;
+}
+.life-alignment-page .lifeAlignmentScoreCard{
+  gap:13px;
+  padding:12px 14px;
+  border-radius:14px;
+}
+.life-alignment-page .lifeAlignmentScoreCard h3{
+  margin:4px 0 3px;
+  font-size:18px;
+  line-height:1.1;
+}
+.life-alignment-page .lifeAlignmentScoreCard p{
+  margin:0;
+  color:rgba(210, 224, 242, .72);
+}
+.life-alignment-page .lifeAlignmentScoreRing{
+  width:78px;
+}
+.life-alignment-page .lifeAlignmentScoreRing span{
+  font-size:31px;
+}
+.life-alignment-page .lifeAlignmentStatusGrid{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:6px;
+}
+.life-alignment-page .lifeAlignmentStatusTile{
+  min-height:54px;
+  padding:8px 10px;
+  border-radius:10px;
+}
+.life-alignment-page .lifeAlignmentStatusTile span{
+  font-size:9.5px;
+  line-height:1.05;
+}
+.life-alignment-page .lifeAlignmentStatusTile strong{
+  font-size:11px;
+  line-height:1.05;
+  overflow-wrap:anywhere;
+}
+.life-alignment-page .lifeAlignmentMissing,
+.life-alignment-page .lifeAlignmentMission,
+.life-alignment-page .lifeAlignmentRuleMessage,
+.life-alignment-page .lifeAlignmentLockConfirm{
+  padding:8px 10px;
+  border-radius:10px;
+  font-size:12.5px;
+  line-height:1.28;
+}
+.life-alignment-page .lifeAlignmentMission{
+  border-color:rgba(104,231,255,.24);
+  background:
+    linear-gradient(180deg, rgba(32, 91, 130, .16), rgba(32, 91, 130, .06)),
+    rgba(4, 18, 32, .78);
+}
+.life-alignment-page .lifeAlignmentFastCheck{
+  padding:14px !important;
+  background:
+    radial-gradient(80% 130% at 15% 0%, rgba(20, 198, 166, .12), transparent 48%),
+    rgba(4,15,29,.9) !important;
+}
+.life-alignment-page .lifeAlignmentFastCheck > .toolbar{
+  align-items:end;
+}
+.life-alignment-page .lifeAlignmentFastCheck h3{
+  margin:5px 0 0;
+  font-size:18px;
+}
+.life-alignment-page .lifeAlignmentFastGrid{
+  margin-top:11px;
+  gap:7px;
+}
+.life-alignment-page .lifeAlignmentToggle{
+  min-height:40px;
+  padding:9px 11px;
+  border-radius:10px;
+  text-transform:uppercase;
+  font-size:11px;
+  letter-spacing:.05em;
+}
+.life-alignment-page .lifeAlignmentActions{
+  gap:8px;
+}
+.life-alignment-page .lifeAlignmentActions .btn{
+  min-height:32px;
+  padding:7px 12px;
+  border-radius:8px;
+}
+.life-alignment-page .lifeAlignmentGrid{
+  grid-template-columns:minmax(0, 1.45fr) minmax(300px, .8fr);
+  gap:14px;
+}
+.life-alignment-page .lifeAlignmentGrid:has(#lifeDetailsPanel[hidden]){
+  grid-template-columns:1fr;
+}
+.life-alignment-page .lifeAlignmentGrid:has(#lifeDetailsPanel[hidden]) .lifeAlignmentSideStack{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+.life-alignment-page .lifeAlignmentJournalCard,
+.life-alignment-page .lifeAlignmentReminder{
+  min-height:0;
+  padding:15px;
+  background:
+    linear-gradient(180deg, rgba(8, 25, 43, .92), rgba(3, 13, 24, .94)),
+    radial-gradient(circle at 80% 0%, rgba(104, 231, 255, .1), transparent 46%);
+}
+.life-alignment-page .lifeAlignmentJournalCard h3,
+.life-alignment-page .lifeAlignmentReminder h3{
+  font-size:20px;
+  line-height:1.1;
+}
+.life-alignment-page .lifeAlignmentJournalPrompts{
+  display:grid;
+  gap:2px;
+  margin-top:8px;
+}
+.life-alignment-page #lifeAccountabilityPrimary{
+  font-size:28px;
+  line-height:1.02;
+}
+.life-alignment-page #lifeAccountabilitySupport{
+  margin-top:2px;
+  font-size:15px;
+}
+.life-alignment-page .lifeAlignmentMetricGrid{
+  grid-template-columns:repeat(6, minmax(0, 1fr));
+  gap:8px;
+}
+.life-alignment-page .lifeAlignmentMetric{
+  position:relative;
+  min-height:94px;
+  padding:12px 12px 11px;
+  border-radius:10px;
+  overflow:hidden;
+}
+.life-alignment-page .lifeAlignmentMetric::before{
+  content:"";
+  position:absolute;
+  inset:0 0 auto;
+  height:2px;
+  background:linear-gradient(90deg, rgba(104, 231, 255, .48), rgba(54, 217, 130, .28), transparent);
+  opacity:.72;
+}
+.life-alignment-page .lifeAlignmentMetric strong{
+  font-size:31px;
+  margin-top:0;
+  line-height:.96;
+}
+.life-alignment-page .lifeAlignmentMetric small{
+  line-height:1.25;
+  font-size:12px;
+}
+.life-alignment-page .lifeAlignmentProgressSection,
+.life-alignment-page .lifeAlignmentAnalytics{
+  padding:16px !important;
+}
+.life-alignment-page .lifeAlignmentProgressGrid{
+  gap:10px;
+}
+.life-alignment-page .lifeAlignmentProgressItem{
+  padding:12px;
+  border-radius:10px;
+}
+.life-alignment-page .lifeAlignmentProgressItem > div:first-child{
+  align-items:center;
+}
+.life-alignment-page .lifeAlignmentAnalyticsSummary{
+  gap:7px;
+}
+.life-alignment-page .lifeAlignmentAnalyticsSummary span{
+  border-radius:999px;
+  font-size:13px;
+}
+.life-alignment-page .lifeAlignmentChartPanel{
+  padding:15px;
+  border-radius:10px;
+  background:
+    linear-gradient(180deg, rgba(8, 22, 38, .88), rgba(2, 12, 23, .94));
+}
+.life-alignment-page .lifeAlignmentChart{
+  height:126px;
+  overflow:hidden;
+}
+@media (min-width:981px){
+  .life-alignment-page .lifeAlignmentHero{
+    min-height:210px !important;
+  }
+  .life-alignment-page .lifeAlignmentFastCheck{
+    display:grid;
+    grid-template-columns:minmax(190px, .28fr) minmax(0, 1fr);
+    column-gap:16px;
+    align-items:end;
+  }
+  .life-alignment-page .lifeAlignmentFastCheck > .toolbar{
+    display:grid;
+    align-content:start;
+    gap:10px;
+  }
+  .life-alignment-page .lifeAlignmentFastGrid{
+    margin-top:0;
+  }
+  .life-alignment-page .lifeAlignmentFastCheck > .lifeAlignmentActions{
+    grid-column:2;
+    margin-top:10px;
+  }
+  .life-alignment-page .lifeAlignmentGrid:has(#lifeDetailsPanel[hidden]) .lifeAlignmentJournalCard,
+  .life-alignment-page .lifeAlignmentGrid:has(#lifeDetailsPanel[hidden]) .lifeAlignmentReminder{
+    min-height:180px;
+  }
+  .life-alignment-page .lifeAlignmentReminder{
+    display:grid;
+    align-content:center;
+  }
+}
+@media (max-width:980px){
+  .life-alignment-page{
+    max-width:none;
+  }
+  .life-alignment-page .lifeAlignmentHero,
+  .life-alignment-page .lifeAlignmentGrid:has(#lifeDetailsPanel[hidden]) .lifeAlignmentSideStack{
+    grid-template-columns:1fr;
+  }
+  .life-alignment-page .lifeAlignmentFastCheck{
+    display:block;
+  }
+  .life-alignment-page .lifeAlignmentFastCheck > .lifeAlignmentActions{
+    grid-column:auto;
+  }
+  .life-alignment-page .lifeAlignmentHeroCopy .pageTitle{
+    font-size:clamp(34px, 8vw, 48px);
+  }
+  .life-alignment-page .lifeAlignmentMetricGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width:640px){
+  .life-alignment-page .lifeAlignmentHero,
+  .life-alignment-page .lifeAlignmentFastCheck,
+  .life-alignment-page .lifeAlignmentProgressSection,
+  .life-alignment-page .lifeAlignmentAnalytics{
+    padding:14px !important;
+  }
+  .life-alignment-page .lifeAlignmentStatusGrid,
+  .life-alignment-page .lifeAlignmentMetricGrid{
+    grid-template-columns:1fr;
+  }
+  .life-alignment-page{
+    padding-bottom:130px;
+  }
+  .life-alignment-page .lifeAlignmentHero{
+    gap:12px;
+    margin-bottom:74px;
+  }
+  .life-alignment-page .lifeAlignmentHeroCopy .pageTitle{
+    font-size:clamp(30px, 11vw, 35px);
+    line-height:1;
+    max-width:620px;
+    margin-bottom:2px;
+  }
+  .life-alignment-page .lifeAlignmentHeroCopy .summaryLead{
+    display:none;
+  }
+  .life-alignment-page .lifeAlignmentHeroMeta{
+    gap:4px;
+  }
+  .life-alignment-page .lifeAlignmentHeroMeta .trendChip{
+    font-size:9px;
+    padding:3px 6px;
+  }
+  .life-alignment-page .lifeAlignmentHeroMeta .trendChip:nth-child(3){
+    display:none;
+  }
+  .life-alignment-page .lifeAlignmentScoreCard{
+    flex-direction:row !important;
+    align-items:center !important;
+    padding:10px;
+    gap:10px;
+  }
+  .life-alignment-page .lifeAlignmentScoreRing{
+    width:56px;
+  }
+  .life-alignment-page .lifeAlignmentScoreRing span{
+    font-size:23px;
+  }
+  .life-alignment-page .lifeAlignmentScoreCard h3{
+    font-size:15px;
+    line-height:1.08;
+  }
+  .life-alignment-page .lifeAlignmentScoreCard p{
+    font-size:11.5px;
+    line-height:1.25;
+  }
+  .life-alignment-page .lifeAlignmentStatusGrid{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:5px;
+  }
+  .life-alignment-page .lifeAlignmentStatusTile{
+    min-height:46px;
+    padding:7px 6px;
+  }
+  .life-alignment-page .lifeAlignmentStatusTile span{
+    font-size:8px;
+  }
+  .life-alignment-page .lifeAlignmentStatusTile strong{
+    font-size:11px;
+  }
+  .life-alignment-page .lifeAlignmentMissing,
+  .life-alignment-page .lifeAlignmentMission,
+  .life-alignment-page .lifeAlignmentRuleMessage{
+    font-size:10.5px;
+    padding:6px 8px;
+  }
+}

@@ -1567,6 +1567,7 @@ def test_market_pulse_sparkline_renders_guides_and_points():
 
 
 def test_market_pulse_tape_state_uses_consistent_thresholds():
+    assert core_service._market_pulse_tape_state("SPX", -0.36)["label"] == "RISK-OFF"
     assert core_service._market_pulse_tape_state("SPY", -0.36)["label"] == "RISK-OFF"
     assert core_service._market_pulse_tape_state("QQQ", 0.36)["label"] == "RISK-ON"
     assert core_service._market_pulse_tape_state("VIX", 0.40)["label"] == "MIXED"

@@ -378,11 +378,31 @@
       minute: Number(minute),
       second: Number(second),
       timeLabel: `${hour}:${minute}:${second}`,
+      preciseTimeLabel: `${hour}:${minute}:${second}`,
+    };
+  }
+
+  function getLocalClockParts(now) {
+    const localParts = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    const part = (type) => localParts.find((item) => item.type === type)?.value || "";
+    const rawHour = String(part("hour") || "0").padStart(2, "0");
+    const hour = rawHour === "24" ? "00" : rawHour;
+    const minute = String(part("minute") || "0").padStart(2, "0");
+    const second = String(part("second") || "0").padStart(2, "0");
+    return {
+      timeLabel: `${hour}:${minute}:${second}`,
+      preciseTimeLabel: `${hour}:${minute}:${second}`,
     };
   }
 
   function getMarketClockState(now = new Date()) {
     const et = getEasternClockParts(now);
+    const local = getLocalClockParts(now);
     const etNow = new Date(Date.UTC(
       et.year,
       Math.max(0, et.month - 1),
@@ -423,7 +443,8 @@
     if (!isWeekend && nySeconds < marketOpenSeconds) {
       return {
         state: "premarket",
-        timeLabel: et.timeLabel,
+        timeLabel: local.timeLabel,
+        preciseTimeLabel: local.preciseTimeLabel,
         statusText: `Opens in ${formatDuration(marketOpenSeconds - nySeconds)}`,
         modeTitle: "US regular session opens at 9:30 AM ET",
       };
@@ -431,7 +452,8 @@
     if (!isWeekend && nySeconds < marketCloseSeconds) {
       return {
         state: "open",
-        timeLabel: et.timeLabel,
+        timeLabel: local.timeLabel,
+        preciseTimeLabel: local.preciseTimeLabel,
         statusText: `Closes in ${formatDuration(marketCloseSeconds - nySeconds)}`,
         modeTitle: "US regular market is open until 4:00 PM ET",
       };
@@ -442,7 +464,8 @@
       : 0;
     return {
       state: "closed",
-      timeLabel: et.timeLabel,
+      timeLabel: local.timeLabel,
+      preciseTimeLabel: local.preciseTimeLabel,
       statusText: nextMarketOpen ? `Opens in ${formatDuration(nextOpenSeconds)}` : "Closed",
       modeTitle: "US regular market session is closed",
     };
@@ -461,7 +484,7 @@
         statusClock.classList.remove("is-loading", "is-open", "is-premarket", "is-closed");
         statusClock.classList.add(`is-${marketClock.state}`);
         statusClock.dataset.marketState = marketClock.state;
-        statusClock.title = `${marketClock.timeLabel} ET · ${marketClock.statusText}. ${marketClock.modeTitle}.`;
+        statusClock.title = `${marketClock.preciseTimeLabel || marketClock.timeLabel} local · ${marketClock.statusText}. ${marketClock.modeTitle}.`;
         if (countdown) countdown.textContent = marketClock.statusText;
       }
     } catch (err) {

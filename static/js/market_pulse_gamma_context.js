@@ -1148,7 +1148,7 @@
   const tapeStateFor = (symbol, pctChange) => {
     const ticker = String(symbol || "").toUpperCase();
     const pct = asNum(pctChange);
-    if (["SPY", "QQQ", "IWM"].includes(ticker)) {
+    if (["SPX", "SPY", "QQQ", "IWM"].includes(ticker)) {
       if (pct !== null && pct >= 0.35) {
         return { label: "Risk-On", tone: "positive", title: "Broad tape supports long risk." };
       }
