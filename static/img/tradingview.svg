@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="TradingView">
+  <rect width="96" height="96" rx="21" fill="#111317"/>
+  <path fill="#f7f8fb" d="M18 32h32v14H39v24H25V46h-7V32z"/>
+  <circle cx="58" cy="39" r="10" fill="#f7f8fb"/>
+  <path fill="#f7f8fb" d="M72 32h18L73 70H55l17-38z"/>
+</svg>

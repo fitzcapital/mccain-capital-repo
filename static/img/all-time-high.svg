@@ -26,6 +26,7 @@
   <rect width="96" height="96" rx="18" fill="#05100d"/>
   <path d="M48 7 82 17v29c0 21-13 36-34 43-21-7-34-22-34-43V17L48 7Z" fill="url(#athFrame)" stroke="url(#athStroke)" stroke-width="3"/>
   <path d="M48 13 76 21v25c0 17-10 29-28 36-18-7-28-19-28-36V21l28-8Z" fill="#07100d" stroke="rgba(255,255,255,.16)" stroke-width="1.5"/>
+  <text x="48" y="28" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="13" font-weight="900" fill="#ffe45f" letter-spacing="1">ATH</text>
   <g filter="url(#athSoftGlow)">
     <path d="M26 70h7V58h8v12h7V49h8v21h7V38h8v32" fill="none" stroke="#25f06b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M29 62 45 49l10 8 21-27" fill="none" stroke="url(#athLine)" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>

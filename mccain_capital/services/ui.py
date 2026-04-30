@@ -817,6 +817,15 @@ def get_forex_factory_month_feed() -> list[dict] | None:
     )
 
 
+def _profile_context() -> dict:
+    try:
+        from mccain_capital.services.profile import profile_template_context
+
+        return profile_template_context()
+    except Exception:
+        return {}
+
+
 def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **page_ctx):
     static_root = current_app.static_folder or "static"
     logo_primary = "logo-primary.png"
@@ -851,6 +860,8 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **pag
         auth_enabled=auth_enabled(),
         authenticated=is_authenticated(),
         auth_username=effective_username(),
+        **_profile_context(),
+        current_date=app_runtime.today_iso(),
         system_status=get_system_status(),
         top_notice=top_notice,
         vanquish_lock=vanquish_lock,

@@ -43,6 +43,25 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule("/logout", endpoint="logout_page", view_func=h.logout_page)
+    app.add_url_rule("/profile", endpoint="profile_page", view_func=h.profile_page)
+    app.add_url_rule(
+        "/profile/details",
+        endpoint="profile_update_details",
+        view_func=h.profile_update_details,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/profile/password",
+        endpoint="profile_update_password",
+        view_func=h.profile_update_password,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/profile/admin/user",
+        endpoint="profile_admin_update_user",
+        view_func=h.profile_admin_update_user,
+        methods=["POST"],
+    )
     app.add_url_rule("/healthz", endpoint="healthz", view_func=h.healthz)
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)

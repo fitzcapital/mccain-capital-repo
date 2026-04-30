@@ -3,6 +3,7 @@
 from mccain_capital.services import auth_passkeys as passkeys_svc
 from mccain_capital.services import core as svc
 from mccain_capital.services import goals as goals_svc
+from mccain_capital.services import profile as profile_svc
 
 
 def home():
@@ -43,6 +44,22 @@ def passkeys_delete():
 
 def logout_page():
     return svc.logout_page()
+
+
+def profile_page():
+    return profile_svc.profile_page()
+
+
+def profile_update_details():
+    return profile_svc.update_profile_details()
+
+
+def profile_update_password():
+    return profile_svc.update_password()
+
+
+def profile_admin_update_user():
+    return profile_svc.admin_update_user()
 
 
 def healthz():

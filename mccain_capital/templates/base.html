@@ -418,23 +418,38 @@
           </button>
 
           <div id="moreMenu" class="moreMenu" role="menu" aria-hidden="true">
-            {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
+            {% if auth_enabled %}
+              <a class="menuProfileCard" href="/profile">
+                <span class="menuProfileAvatar" style="--avatar-color: {{ auth_avatar_color|default('#58a6ff') }}">
+                  {% if auth_profile and auth_profile.photo_data_url %}
+                    <img src="{{ auth_profile.photo_data_url }}" alt="" aria-hidden="true">
+                  {% else %}
+                    <span>{{ (auth_profile.avatar_initials if auth_profile else auth_username[:2])|upper }}</span>
+                  {% endif %}
+                </span>
+                <span class="menuProfileText">
+                  <span>{{ auth_display_name|default(auth_username) }}</span>
+                  <small>{{ "Admin Profile" if auth_is_admin|default(false) else "Profile" }}</small>
+                </span>
+              </a>
+            {% endif %}
             <div class="menuTitle">Core</div>
-            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse">Market Pulse</a>
-            <a class="btn {% if request.path == '/ops/trading-window' %}active{% endif %}" href="/ops/trading-window">Trading Window</a>
-            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
+            <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="menuItemIcon">🧭</span><span>Dashboard</span></a>
+            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="menuItemIcon">📈</span><span>Market Pulse</span></a>
+            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="menuItemIcon">🕯️</span><span>Candle Opens</span></a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
             <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook">Playbook</a>
             <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
             <div class="hr"></div>
             <div class="menuTitle">Review</div>
-            <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
-            <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
+            <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades"><span class="menuItemIcon">📒</span><span>Trades</span></a>
+            <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal"><span class="menuItemIcon">✍️</span><span>Journal</span></a>
             <a class="btn {% if active=='life-journal' %}active{% endif %}" href="/journal/life">Life Journal</a>
-            <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment">Life Alignment</a>
-            <a class="btn {% if active=='self-control' %}active{% endif %}" href="/self-control">Self-Control</a>
-            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
-            <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
+            <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment"><span class="menuItemIcon">💪</span><span>Life Alignment</span></a>
+            <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget"><span class="menuItemIcon">💰</span><span>Budget</span></a>
+            <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics"><span class="menuItemIcon">📊</span><span>Analytics</span></a>
+            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar"><span class="menuItemIcon">📅</span><span>Calendar</span></a>
+            <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator"><span class="menuItemIcon">🧮</span><span>Planner</span></a>
             {% if active == 'dashboard' %}
               <div class="hr"></div>
               <div class="menuTitle">Dashboard Mode</div>
@@ -449,25 +464,14 @@
             <div class="menuTitle">Ops</div>
             <a class="btn" href="/trades/upload/statement">Live Upload</a>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
-            <a class="btn" href="/ops/notifications-test">Notifications Lab</a>
+            <a class="btn {% if active=='profile' %}active{% endif %}" href="/profile"><span class="menuItemIcon">👤</span><span>Profile</span></a>
+            <a class="btn" href="/setup"><span class="menuItemIcon">🔐</span><span>Login Setup</span></a>
             <div class="hr"></div>
-            <div class="menuTitle">Business</div>
-            <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget">Budget Command</a>
-            <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
-            <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">Income Tracker</a>
-            <div class="hr"></div>
-            <div class="menuTitle">System</div>
-            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/backups">Auto Backups</a>
-            <form method="post" action="/admin/backup" class="inlineForm">
-              <button class="btn" type="submit">Download Backup</button>
-            </form>
-            <a class="btn" href="/admin/restore">Restore Backup</a>
-            <a class="btn" href="/auth/passkeys">Passkeys</a>
-            <a class="btn" href="/setup">Login Setup</a>
-            <div class="hr"></div>
-            <div class="menuTitle">Extra</div>
-            <a class="btn {% if active=='books' %}active{% endif %}" href="/books">Books</a>
-            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
+            <div class="menuTitle">Links</div>
+            <a class="btn menuIconLink" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">
+              <img src="{{ url_for('static', filename='img/tradingview.svg') }}" alt="" aria-hidden="true">
+              <span>TradingView</span>
+            </a>
             <a class="btn menuIconLink" href="https://discord.com/channels/905973099969798164/905973099969798168" target="_blank" rel="noopener">
               <img src="{{ url_for('static', filename='img/all-time-high.svg') }}" alt="" aria-hidden="true">
               <span>All Time High</span>
@@ -477,15 +481,19 @@
               <span>Crystal Academy</span>
             </a>
             {% if vanquish_lock and vanquish_lock.active %}
-              <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
+              <a class="btn menuIconLink guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">
+                <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                <span>Vanquish Trader (Locked)</span>
+              </a>
             {% else %}
-              <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+              <a class="btn menuIconLink" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                <span>Vanquish Trader</span>
+              </a>
             {% endif %}
-            <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
-            <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: MGP</button>
             {% if auth_enabled %}
               <div class="hr"></div>
+              <div class="menuFooterMeta">McCain Capital · {{ current_date|default('2026-04-30') }}</div>
               {% if authenticated %}
                 <a class="btn danger" href="/logout">Sign Out</a>
               {% else %}
@@ -623,6 +631,22 @@
           <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
         </div>
 
+        {% if auth_enabled %}
+          <a class="menuProfileCard drawerProfileCard" href="/profile">
+            <span class="menuProfileAvatar" style="--avatar-color: {{ auth_avatar_color|default('#58a6ff') }}">
+              {% if auth_profile and auth_profile.photo_data_url %}
+                <img src="{{ auth_profile.photo_data_url }}" alt="" aria-hidden="true">
+              {% else %}
+                <span>{{ (auth_profile.avatar_initials if auth_profile else auth_username[:2])|upper }}</span>
+              {% endif %}
+            </span>
+            <span class="menuProfileText">
+              <span>{{ auth_display_name|default(auth_username) }}</span>
+              <small>{{ "Admin Profile" if auth_is_admin|default(false) else "Profile" }}</small>
+            </span>
+          </a>
+        {% endif %}
+
         <section class="drawerSection drawerSectionActions">
           <div class="drawerSectionTitle">Quick Actions</div>
           <div class="drawerQuickGrid">
@@ -686,6 +710,7 @@
               <button class="btn" type="submit">Download Backup</button>
             </form>
             <a class="btn" href="/admin/restore">Restore Backup</a>
+            <a class="btn {% if active=='profile' %}primary{% endif %}" href="/profile">Profile</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
             <a class="btn" href="/setup">Login Setup</a>
           </div>
@@ -695,7 +720,10 @@
             <div class="drawerSectionTitle">Extra</div>
             <div class="drawerStack">
               <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">Books</a>
-              <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
+              <a class="btn menuIconLink" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/tradingview.svg') }}" alt="" aria-hidden="true">
+                <span>TradingView</span>
+              </a>
               <a class="btn menuIconLink" href="https://discord.com/channels/905973099969798164/905973099969798168" target="_blank" rel="noopener">
                 <img src="{{ url_for('static', filename='img/all-time-high.svg') }}" alt="" aria-hidden="true">
                 <span>All Time High</span>
@@ -705,10 +733,16 @@
                 <span>Crystal Academy</span>
               </a>
               {% if vanquish_lock and vanquish_lock.active %}
-                <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
+                <a class="btn menuIconLink guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">
+                  <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                  <span>Vanquish Trader (Locked)</span>
+                </a>
               {% else %}
-              <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
-            {% endif %}
+                <a class="btn menuIconLink" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">
+                  <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                  <span>Vanquish Trader</span>
+                </a>
+              {% endif %}
             <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: MGP</button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
