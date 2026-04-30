@@ -478,14 +478,46 @@
       const meridiemNode = doc.getElementById("etClockMeridiem");
       const statusClock = doc.getElementById("marketStatusClock");
       const countdown = doc.getElementById("marketStatusCountdown");
-      if (clock) clock.textContent = marketClock.timeLabel;
+      const mobileSessionLabel = doc.getElementById("mobileMarketSessionLabel");
+      const isCompactHeader = window.matchMedia
+        ? window.matchMedia("(max-width: 768px)").matches
+        : false;
+      const compactTime = marketClock.timeLabel.split(":").slice(0, 2).join(":");
+      const compactStatus = marketClock.statusText
+        .replace(/^Closes in\s+/i, "")
+        .replace(/^Opens in\s+/i, "")
+        .replace(/^Closed$/i, "closed");
+      const compactStatusShort = compactStatus.includes("h")
+        ? compactStatus.replace(/\s+\d+m$/i, "")
+        : compactStatus;
+      if (clock) clock.textContent = isCompactHeader ? compactTime : marketClock.timeLabel;
       if (meridiemNode) meridiemNode.textContent = "";
       if (statusClock) {
         statusClock.classList.remove("is-loading", "is-open", "is-premarket", "is-closed");
         statusClock.classList.add(`is-${marketClock.state}`);
         statusClock.dataset.marketState = marketClock.state;
         statusClock.title = `${marketClock.preciseTimeLabel || marketClock.timeLabel} local · ${marketClock.statusText}. ${marketClock.modeTitle}.`;
-        if (countdown) countdown.textContent = marketClock.statusText;
+        if (countdown) {
+          countdown.textContent = isCompactHeader
+            ? (compactStatusShort !== "closed" && !compactStatusShort.includes("h")
+              ? `${compactStatusShort} left`
+              : compactStatusShort)
+            : marketClock.statusText;
+        }
+      }
+      if (mobileSessionLabel) {
+        const mobileSessionState = marketClock.state === "open"
+          ? "open"
+          : marketClock.state === "premarket"
+            ? "premarket"
+            : "closed";
+        mobileSessionLabel.textContent = mobileSessionState === "open"
+          ? "Open"
+          : mobileSessionState === "premarket"
+            ? "Premarket"
+            : "Closed";
+        const mobileMeta = mobileSessionLabel.closest(".mobileTopbarMeta");
+        if (mobileMeta) mobileMeta.dataset.sessionState = mobileSessionState;
       }
     } catch (err) {
       console.error(err);

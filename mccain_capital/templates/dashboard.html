@@ -48,6 +48,19 @@
   data-playbook-ticker-storage-key="{{ playbook_ticker_storage_key }}"
 >
 <section class="dashboardDisciplineRail card" aria-label="Discipline rail">
+  <button
+    class="dashboardDisciplineMobileToggle"
+    id="dashboardDisciplineMobileToggle"
+    type="button"
+    aria-expanded="false"
+  >
+    <span>
+      State: <strong id="dashboardMobileStateSummary">Locked In</strong>
+      <span aria-hidden="true"> · </span>
+      Mode: <strong id="dashboardMobileModeSummary">A+ Only</strong>
+    </span>
+    <span class="dashboardDisciplineToggleCue" id="dashboardDisciplineToggleCue">Expand</span>
+  </button>
   <div class="dashboardDisciplineRailGroup">
     <span class="dashboardDisciplineRailLabel">State</span>
     <div class="dashboardDisciplinePillSet" role="radiogroup" aria-label="Trading state" data-discipline-group="state">

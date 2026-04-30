@@ -1021,6 +1021,11 @@ const dashboardUIFX = (() => {
 
   const stateButtons = Array.from(document.querySelectorAll("[data-discipline-state]"));
   const modeButtons = Array.from(document.querySelectorAll("[data-discipline-mode]"));
+  const disciplineRail = document.querySelector(".dashboardDisciplineRail");
+  const disciplineMobileToggle = document.getElementById("dashboardDisciplineMobileToggle");
+  const mobileStateSummary = document.getElementById("dashboardMobileStateSummary");
+  const mobileModeSummary = document.getElementById("dashboardMobileModeSummary");
+  const disciplineToggleCue = document.getElementById("dashboardDisciplineToggleCue");
   const gateButtons = Array.from(document.querySelectorAll("[data-trade-gate-toggle]"));
   const gateStatus = document.getElementById("dashboardTradeGateStatus");
   const gateNote = document.getElementById("dashboardTradeGateNote");
@@ -1175,12 +1180,34 @@ const dashboardUIFX = (() => {
     shell.dataset.disciplineMode = uiState.disciplineMode;
   };
 
+  const formatDisciplineLabel = (value) => String(value || "")
+    .replace(/^a-plus-only$/, "A+ Only")
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word === "a" ? "A+" : word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+  const syncMobileDisciplineSummary = () => {
+    if (mobileStateSummary) {
+      mobileStateSummary.textContent = formatDisciplineLabel(uiState.disciplineState);
+    }
+    if (mobileModeSummary) {
+      mobileModeSummary.textContent = formatDisciplineLabel(uiState.disciplineMode);
+    }
+    if (disciplineMobileToggle && disciplineRail) {
+      const expanded = disciplineRail.classList.contains("is-mobile-expanded");
+      disciplineMobileToggle.setAttribute("aria-expanded", String(expanded));
+      if (disciplineToggleCue) disciplineToggleCue.textContent = expanded ? "Collapse" : "Expand";
+    }
+  };
+
   const applyUiState = () => {
     syncShellState();
     syncButtonGroup(stateButtons, "disciplineState", uiState.disciplineState);
     syncButtonGroup(modeButtons, "disciplineMode", uiState.disciplineMode);
     syncGateButtons();
     syncTradeActions();
+    syncMobileDisciplineSummary();
     emitDisciplineState();
   };
 
@@ -1201,6 +1228,13 @@ const dashboardUIFX = (() => {
   };
 
   applyUiState();
+
+  if (disciplineMobileToggle && disciplineRail) {
+    disciplineMobileToggle.addEventListener("click", () => {
+      disciplineRail.classList.toggle("is-mobile-expanded");
+      syncMobileDisciplineSummary();
+    });
+  }
 
   stateButtons.forEach((button) => {
     button.addEventListener("click", () => {
