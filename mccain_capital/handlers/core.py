@@ -97,6 +97,10 @@ def hero_levels_api():
     return svc.hero_levels_api()
 
 
+def hero_quote_api():
+    return svc.hero_quote_api()
+
+
 def hero_stream_session_api():
     return svc.hero_stream_session_api()
 

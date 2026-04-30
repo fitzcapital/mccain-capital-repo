@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="All Time High">
+  <defs>
+    <linearGradient id="athFrame" x1="18" y1="8" x2="78" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1c3027"/>
+      <stop offset=".48" stop-color="#070b0b"/>
+      <stop offset="1" stop-color="#14231c"/>
+    </linearGradient>
+    <linearGradient id="athStroke" x1="24" y1="82" x2="78" y2="14" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22f66d"/>
+      <stop offset="1" stop-color="#caff78"/>
+    </linearGradient>
+    <linearGradient id="athLine" x1="24" y1="70" x2="76" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#16d965"/>
+      <stop offset=".55" stop-color="#5dff7c"/>
+      <stop offset="1" stop-color="#e1ff87"/>
+    </linearGradient>
+    <filter id="athSoftGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="1.4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 .1 0 0 0 0 1 0 0 0 0 .38 0 0 0 .55 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="96" height="96" rx="18" fill="#05100d"/>
+  <path d="M48 7 82 17v29c0 21-13 36-34 43-21-7-34-22-34-43V17L48 7Z" fill="url(#athFrame)" stroke="url(#athStroke)" stroke-width="3"/>
+  <path d="M48 13 76 21v25c0 17-10 29-28 36-18-7-28-19-28-36V21l28-8Z" fill="#07100d" stroke="rgba(255,255,255,.16)" stroke-width="1.5"/>
+  <g filter="url(#athSoftGlow)">
+    <path d="M26 70h7V58h8v12h7V49h8v21h7V38h8v32" fill="none" stroke="#25f06b" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M29 62 45 49l10 8 21-27" fill="none" stroke="url(#athLine)" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M67 30h10v10" fill="none" stroke="#dcff83" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

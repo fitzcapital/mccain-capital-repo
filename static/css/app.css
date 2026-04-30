@@ -19898,6 +19898,34 @@ body[data-theme="cinematic-nebula"] .moreMenu .btn.active{
     0 0 12px rgba(255, 98, 210, .07) !important;
 }
 
+.menuIconLink{
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  min-height:48px !important;
+  padding-top:8px !important;
+  padding-bottom:8px !important;
+  line-height:1.42 !important;
+  min-width:0;
+}
+
+.menuIconLink img{
+  width:26px;
+  height:26px;
+  flex:0 0 26px;
+  border-radius:8px;
+  object-fit:cover;
+  box-shadow:0 0 12px rgba(80, 218, 255, .14);
+}
+
+.menuIconLink span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  line-height:1.42;
+  padding-bottom:2px;
+}
+
 body[data-theme="cinematic-nebula"] .clockPill::after,
 body[data-theme="cinematic-nebula"] .themeToggle::after,
 body[data-theme="cinematic-nebula"] .statusBadge::after{

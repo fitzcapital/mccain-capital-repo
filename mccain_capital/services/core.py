@@ -11551,6 +11551,15 @@ def hero_levels_api():
     )
 
 
+def hero_quote_api():
+    from mccain_capital.services import tradier_hero_chart_service as hero_service
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    symbol = get_supported_playbook_ticker(request.args.get("symbol") or request.args.get("ticker"))
+    return jsonify(hero_service.get_live_quote(symbol=symbol, force_refresh=False))
+
+
 def hero_stream_session_api():
     from mccain_capital.services import tradier_hero_chart_service as hero_service
 

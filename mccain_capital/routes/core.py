@@ -70,6 +70,7 @@ def register(app):
     )
     app.add_url_rule("/api/hero/bars", endpoint="hero_bars_api", view_func=h.hero_bars_api)
     app.add_url_rule("/api/hero/levels", endpoint="hero_levels_api", view_func=h.hero_levels_api)
+    app.add_url_rule("/api/hero/quote", endpoint="hero_quote_api", view_func=h.hero_quote_api)
     app.add_url_rule(
         "/api/hero/stream-session",
         endpoint="hero_stream_session_api",

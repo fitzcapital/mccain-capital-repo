@@ -422,3 +422,26 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
     assert payload["live_session_bar_count"] == 2
     assert payload["previous_session_bar_count"] == 2
     assert payload["current_session_bar_count"] == 1
+
+
+def test_hero_quote_api_returns_live_quote(client, monkeypatch):
+    monkeypatch.setattr(
+        hero_service,
+        "get_live_quote",
+        lambda symbol="QQQ", force_refresh=False: {
+            "symbol": symbol,
+            "price": 7138.8,
+            "pct_change": 0.12,
+            "provider": "tradier",
+            "reason": "",
+            "as_of": "2026-04-30T10:45:00-04:00",
+        },
+    )
+
+    response = client.get("/api/hero/quote?symbol=SPX")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["symbol"] == "SPX"
+    assert payload["price"] == 7138.8
+    assert payload["provider"] == "tradier"

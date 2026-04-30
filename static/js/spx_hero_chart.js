@@ -21,6 +21,7 @@
 
   const barsUrl = String(host.dataset.barsUrl || "/api/hero/bars");
   const levelsUrl = String(host.dataset.levelsUrl || "/api/hero/levels");
+  const quoteUrl = String(host.dataset.quoteUrl || "/api/hero/quote");
   const streamUrl = String(host.dataset.streamUrl || "/api/hero/stream-session");
   const symbol = String(host.dataset.symbol || "QQQ").toUpperCase();
   const DEFAULT_INTERVAL = "5min";
@@ -213,9 +214,10 @@
 
   let priceLines = [];
   let dayLevelLines = [];
-  let polling = { bars_interval_ms: 45000, levels_interval_ms: 20000 };
+  let polling = { bars_interval_ms: 45000, levels_interval_ms: 20000, quote_interval_ms: 5000 };
   let barsTimer = null;
   let levelsTimer = null;
+  let quoteTimer = null;
   let initialized = false;
   let lastBarsPayload = null;
   let lastLevelsPayload = null;
@@ -223,6 +225,7 @@
   let lastAppliedLevelsSignature = "";
   let lastBarsSignature = "";
   let lastLiveBarSignature = "";
+  let lastQuotePatchSignature = "";
   let lastMarkerSignature = "";
   let lastDayLevelSignature = "";
   let pendingLevelsPayload = null;
@@ -241,6 +244,7 @@
   const LEVEL_RENDER_DEBOUNCE_MS = 120;
   const HIDDEN_BARS_INTERVAL_MS = 120000;
   const HIDDEN_LEVELS_INTERVAL_MS = 60000;
+  const HIDDEN_QUOTE_INTERVAL_MS = 15000;
   const RESIZE_DEBOUNCE_MS = 140;
   const HERO_LEVEL_KEYS = [
     "main_flip",
@@ -547,6 +551,7 @@
   const barsEndpoint = () =>
     `${barsUrl}?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}`;
   const levelsEndpoint = () => `${levelsUrl}?symbol=${encodeURIComponent(symbol)}`;
+  const quoteEndpoint = () => `${quoteUrl}?symbol=${encodeURIComponent(symbol)}`;
 
   const isValidHeroLevel = (value) => {
     const numeric = asNum(value);
@@ -1205,11 +1210,58 @@
     }
   };
 
+  const updateQuotePatch = async () => {
+    if (!initialized || barsRequestInFlight) return;
+    const bars = Array.isArray(lastBarsPayload?.bars) ? lastBarsPayload.bars : [];
+    if (!bars.length) return;
+
+    const payload = await fetchJson(quoteEndpoint());
+    const price = asNum(payload?.price);
+    if (price === null || price <= 0) return;
+
+    const signature = [
+      Number(price).toFixed(4),
+      String(payload?.as_of || ""),
+      String(payload?.provider || ""),
+    ].join("|");
+    if (signature === lastQuotePatchSignature) return;
+
+    const latestIndex = bars.length - 1;
+    const latest = bars[latestIndex];
+    const open = asNum(latest.open) ?? price;
+    const high = asNum(latest.high) ?? price;
+    const low = asNum(latest.low) ?? price;
+    const patched = {
+      ...latest,
+      open,
+      high: Math.max(high, price),
+      low: Math.min(low, price),
+      close: price,
+    };
+    bars[latestIndex] = patched;
+    lastBarsPayload = {
+      ...lastBarsPayload,
+      bars,
+    };
+
+    candleSeries.update(patched);
+    lastLiveBarSignature = liveBarSignature(patched, latest);
+    lastQuotePatchSignature = signature;
+    setText("marketPulseHeroSpot", fmt(price, 2));
+    setSpotTrendTone(detectShortTermTrend(bars));
+    if (lastLevelsPayload) {
+      updateOverlayLines(lastLevelsPayload);
+      applyFrameBounds(bars, lastLevelsPayload);
+    }
+  };
+
   const clearPollTimers = () => {
     window.clearTimeout(barsTimer);
     window.clearTimeout(levelsTimer);
+    window.clearTimeout(quoteTimer);
     barsTimer = null;
     levelsTimer = null;
+    quoteTimer = null;
   };
 
   const scheduleBarsPoll = (delay) => {
@@ -1244,10 +1296,25 @@
     }, Math.max(0, Number(delay) || intervalMs));
   };
 
+  const scheduleQuotePoll = (delay) => {
+    window.clearTimeout(quoteTimer);
+    if (!pageVisible) return;
+    const intervalMs = Math.max(2000, Number(polling.quote_interval_ms) || 5000);
+    quoteTimer = window.setTimeout(async () => {
+      try {
+        await updateQuotePatch();
+      } catch (_) {
+      } finally {
+        scheduleQuotePoll(intervalMs);
+      }
+    }, Math.max(0, Number(delay) || intervalMs));
+  };
+
   const startPolling = () => {
     clearPollTimers();
     scheduleBarsPoll(Math.min(Math.max(15000, Number(polling.bars_interval_ms) || 45000), HIDDEN_BARS_INTERVAL_MS));
     scheduleLevelsPoll(Math.min(Math.max(10000, Number(polling.levels_interval_ms) || 20000), HIDDEN_LEVELS_INTERVAL_MS));
+    scheduleQuotePoll(Math.min(Math.max(2000, Number(polling.quote_interval_ms) || 5000), HIDDEN_QUOTE_INTERVAL_MS));
   };
 
   const boot = async () => {
@@ -1323,6 +1390,7 @@
         lastBarsPayload = null;
         lastBarsSignature = "";
         lastLiveBarSignature = "";
+        lastQuotePatchSignature = "";
         lastMarkerSignature = "";
         lastDayLevelSignature = "";
         syncIntervalControls();
@@ -1381,6 +1449,7 @@
     resize();
     scheduleBarsPoll(0);
     scheduleLevelsPoll(0);
+    scheduleQuotePoll(0);
   });
   resize();
   boot();

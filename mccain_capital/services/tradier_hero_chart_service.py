@@ -510,9 +510,16 @@ def get_intraday_bars(
     return payload
 
 
-def get_live_quote(symbol: str = DEFAULT_SYMBOL) -> Dict[str, Any]:
+def get_live_quote(symbol: str = DEFAULT_SYMBOL, *, force_refresh: bool = False) -> Dict[str, Any]:
     try:
-        quote = dict((market_data_service.get_watchlist_tradier([symbol]).get(symbol) or {}))
+        quote = dict(
+            (
+                market_data_service.get_watchlist_tradier(
+                    [symbol], force_refresh=force_refresh
+                ).get(symbol)
+                or {}
+            )
+        )
     except Exception as exc:
         LOGGER.warning("hero chart quote fetch failed for %s: %s", symbol, exc)
         quote = {}
@@ -721,6 +728,7 @@ def get_stream_session_payload() -> Dict[str, Any]:
         "mode": "polling",
         "enabled": False,
         "symbol": DEFAULT_SYMBOL,
-        "bars_interval_ms": 30000,
+        "bars_interval_ms": 15000,
         "levels_interval_ms": 10000,
+        "quote_interval_ms": 3000,
     }
