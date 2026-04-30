@@ -1262,6 +1262,31 @@
     return "Feed unavailable";
   };
 
+  const compactAgeLabel = (ageS) => {
+    const seconds = Math.max(0, Math.floor(Number(ageS) || 0));
+    if (seconds >= 72 * 3600) return "72h+ old";
+    if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h old`;
+    if (seconds >= 60) return `${Math.floor(seconds / 60)}m old`;
+    return `${seconds}s old`;
+  };
+
+  const dashboardTapeFreshnessLabel = (label, state, asOf) => {
+    const stateLabel = dataStateLabel(state);
+    const ts = typeof asOf === "string" ? Date.parse(asOf) : NaN;
+    if (Number.isFinite(ts)) {
+      const ageS = Math.max(0, (Date.now() - ts) / 1000);
+      const band = ageS >= 900 ? "Critical" : stateLabel;
+      return `${band} · ${compactAgeLabel(ageS)}`;
+    }
+    let text = String(label || "").trim();
+    if (!text) return state === "live" ? "Live" : "Awaiting refresh";
+    text = text
+      .replace(/^Closed\s*·\s*last quote\s*/i, "Critical · ")
+      .replace(/^Closed\s*·\s*last snapshot\s*/i, "Critical · ")
+      .replace(/last quote\s*/i, "");
+    return text.trim() || stateLabel;
+  };
+
   const updateStateChip = (node, state, labelOverride = "") => {
     if (!node) return;
     const nextState = String(state || "missing");
@@ -2133,7 +2158,11 @@
     }
     updateTextNode(
       card.querySelector('[data-role="freshness"]'),
-      String(quote.freshness_label || "").trim() || (state === "live" ? "Live" : formatEtLabel(asOf))
+      dashboardTapeFreshnessLabel(
+        String(quote.freshness_label || "").trim() || (state === "live" ? "Live" : formatEtLabel(asOf)),
+        state,
+        asOf
+      )
     );
     updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2), {
       live: true,

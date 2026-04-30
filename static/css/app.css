@@ -51278,6 +51278,167 @@ body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockCountdo
   color:rgba(201, 217, 234, .82) !important;
 }
 
+/* Core Tape containment: keep state chips, percent moves, and quote freshness inside cards. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell{
+  overflow:hidden !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchGrid{
+  grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)) !important;
+  gap:12px !important;
+  align-items:stretch !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard{
+  min-width:0 !important;
+  min-height:188px !important;
+  overflow:hidden !important;
+  padding:15px 16px !important;
+  display:grid !important;
+  grid-template-rows:auto 32px auto auto auto !important;
+  gap:10px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchCardTop,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchValueRow,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchMetaRow{
+  min-width:0 !important;
+  width:100% !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchCardTop{
+  display:grid !important;
+  grid-template-columns:minmax(0, 1fr) auto !important;
+  gap:8px !important;
+  align-items:start !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard .k{
+  min-width:0 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  font-size:clamp(.86rem, 1vw, 1rem) !important;
+  line-height:1.15 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchState{
+  max-width:112px !important;
+  min-width:0 !important;
+  height:26px !important;
+  justify-content:center !important;
+  padding:0 10px !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  font-size:clamp(.68rem, .78vw, .78rem) !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap{
+  justify-self:center !important;
+  align-self:center !important;
+  width:56% !important;
+  max-width:145px !important;
+  height:25px !important;
+  min-width:112px !important;
+  margin:0 auto -1px !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkLine{
+  stroke-width:2.8 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap svg,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSpark{
+  width:100% !important;
+  height:100% !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchValueRow{
+  display:grid !important;
+  grid-template-columns:minmax(0, 1fr) minmax(62px, auto) !important;
+  gap:8px !important;
+  align-items:baseline !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard .v{
+  min-width:0 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  font-size:clamp(1.4rem, 1.1vw, 1.9rem) !important;
+  line-height:1.08 !important;
+  font-variant-numeric:tabular-nums !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard [data-role="change-line"]{
+  min-width:0 !important;
+  max-width:100% !important;
+  overflow:hidden !important;
+  text-overflow:clip !important;
+  white-space:nowrap !important;
+  text-align:right !important;
+  font-size:clamp(.78rem, .92vw, 1rem) !important;
+  line-height:1.15 !important;
+  font-variant-numeric:tabular-nums !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchMetaRow{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  gap:0 !important;
+  align-items:center !important;
+  color:rgba(178, 195, 219, .86) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchMetaRow [data-role="market-state"]{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchMetaRow span{
+  min-width:0 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  font-size:clamp(.72rem, .82vw, .88rem) !important;
+  line-height:1.1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchMetaRow [data-role="freshness"]{
+  text-align:left !important;
+  font-size:clamp(.82rem, .9vw, .98rem) !important;
+  line-height:1.25 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchRange{
+  min-width:0 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  font-size:clamp(.74rem, .86vw, .9rem) !important;
+  line-height:1.25 !important;
+}
+
+@media (min-width:1500px){
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchGrid{
+    grid-template-columns:repeat(5, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width:980px){
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width:640px){
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchGrid{
+    grid-template-columns:1fr !important;
+  }
+}
+
 @media (max-width:760px){
   body[data-theme="cinematic-nebula"] #marketStatusClock{
     min-height:40px !important;
@@ -52154,5 +52315,1560 @@ body[data-theme="cinematic-nebula"].page-playbook .playbookQuoteCard{
   .life-alignment-page .lifeAlignmentRuleMessage{
     font-size:10.5px;
     padding:6px 8px;
+  }
+}
+
+/* Budget Command Center */
+body.page-budget .wrap{
+  --app-shell-max:1500px;
+}
+
+.budget-command-page{
+  display:grid;
+  gap:16px;
+  width:100%;
+  max-width:var(--app-shell-max, 1440px);
+  margin:0 auto;
+  padding:16px 0 90px;
+}
+.budget-command-page,
+.budget-command-page *{
+  box-sizing:border-box;
+}
+.budget-command-page p,
+.budget-command-page span,
+.budget-command-page div,
+.budget-command-page td,
+.budget-command-page th{
+  overflow-wrap:anywhere;
+}
+.budget-command-page .card,
+.budget-command-page .budgetHero,
+.budget-command-page .budgetQuickPanel,
+.budget-command-page .budgetListPanel,
+.budget-command-page .budgetIncomePlan,
+.budget-command-page .budgetAnalytics,
+.budget-command-page .budgetSetupPanel,
+.budget-command-page .budgetMonthlyMap,
+.budget-command-page .budgetSidebarCard,
+.budget-command-page .budgetAnalyticsFold{
+  border-radius:12px;
+  border-color:rgba(75,207,231,.23);
+  background:
+    radial-gradient(80% 110% at 12% 0%, rgba(43,116,255,.12), transparent 48%),
+    linear-gradient(180deg, rgba(5,20,36,.93), rgba(3,13,25,.96));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 18px 42px rgba(0,10,24,.24);
+  min-width:0;
+}
+.budget-command-page .budgetHero{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(430px,520px);
+  align-items:center;
+  gap:16px;
+  padding:16px;
+}
+.budget-command-page .pageTitle{
+  margin:5px 0 3px;
+  font-size:clamp(32px,3.2vw,46px);
+  line-height:.96;
+}
+.budget-command-page .summaryLead{max-width:560px;margin:0 0 10px;color:rgba(205,220,239,.78)}
+.budgetZoneTitle{
+  display:none;
+  align-items:center;
+  gap:8px;
+  margin:4px 0 -6px;
+}
+.budgetZoneTitle span{
+  display:grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  border:1px solid rgba(104,231,255,.22);
+  border-radius:999px;
+  color:#68e7ff;
+  background:rgba(104,231,255,.06);
+  font-size:11px;
+  font-weight:950;
+}
+.budgetZoneTitle h3{
+  margin:0;
+  color:rgba(222,234,249,.86);
+  font-size:13px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.budgetMiniSummary{
+  position:sticky;
+  top:8px;
+  z-index:20;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(180px,1fr));
+  gap:8px;
+  padding:7px;
+  border:1px solid rgba(104,231,255,.2);
+  border-radius:12px;
+  background:rgba(4,16,31,.92);
+  box-shadow:0 12px 30px rgba(0,0,0,.22),0 0 24px rgba(43,116,255,.14);
+  backdrop-filter:blur(14px);
+}
+.budgetMiniSummary div{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:7px 9px;
+  border-radius:9px;
+  background:rgba(255,255,255,.035);
+}
+.budgetMiniSummary span{
+  color:var(--muted);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+}
+.budgetMiniSummary strong{
+  color:var(--text);
+  font-size:13px;
+  font-weight:950;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.budgetHeroMeta,.budgetEntryTabs,.budgetFilters,.budgetCategoryChips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  align-items:center;
+}
+.budgetHeroPanel{
+  display:grid;
+  grid-template-columns:68px minmax(0,1fr);
+  gap:10px;
+  align-items:center;
+  padding:10px;
+  border:1px solid rgba(104,231,255,.22);
+  border-radius:14px;
+  background:rgba(5,18,34,.72);
+}
+.budgetHeroPanel p{grid-column:1/-1;margin:0;color:rgba(210,225,243,.8);font-weight:800}
+.budgetScoreRing{
+  --score:0%;
+  width:66px;
+  aspect-ratio:1;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(4,13,25,.98) 57%,transparent 58%),conic-gradient(#68e7ff var(--score),rgba(45,72,112,.38) 0);
+}
+.budgetScoreRing span{font-size:26px;font-weight:950;color:var(--text)}
+.budgetHeroPanel[data-score-state="danger"]{border-color:rgba(255,85,118,.42);box-shadow:0 0 28px rgba(255,85,118,.12)}
+.budgetHeroPanel[data-score-state="danger"] .budgetScoreRing{background:radial-gradient(circle,rgba(4,13,25,.98) 57%,transparent 58%),conic-gradient(#ff5878 var(--score),rgba(45,72,112,.38) 0)}
+.budgetHeroPanel[data-score-state="tight"] .budgetScoreRing{background:radial-gradient(circle,rgba(4,13,25,.98) 57%,transparent 58%),conic-gradient(#ffc857 var(--score),rgba(45,72,112,.38) 0)}
+.budgetHeroPanel[data-score-state="stable"] .budgetScoreRing{background:radial-gradient(circle,rgba(4,13,25,.98) 57%,transparent 58%),conic-gradient(#68e7ff var(--score),rgba(45,72,112,.38) 0)}
+.budgetHeroPanel[data-score-state="strong"] .budgetScoreRing{background:radial-gradient(circle,rgba(4,13,25,.98) 57%,transparent 58%),conic-gradient(#35d18a var(--score),rgba(45,72,112,.38) 0)}
+.budgetHeroStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.budgetHeroStats div,.budgetStat,.budgetMiniCard,.budgetChartPanel,.budgetWarningGrid>div{
+  min-width:0;
+  padding:12px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  background:rgba(255,255,255,.035);
+}
+.budgetHeroStats span,.budgetStat span,.budgetIncomeGrid span{display:block;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.budgetHeroStats strong,.budgetStat strong,.budgetIncomeGrid strong{display:block;margin-top:4px;color:var(--text);font-size:20px;line-height:1}
+.budgetOverviewGrid,.budgetIncomeGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(136px,1fr));
+  gap:10px;
+}
+.budgetStat{position:relative;overflow:hidden;min-width:0;min-height:74px;padding:10px}
+.budget-command-page .metric-card{min-width:0;overflow:hidden}
+.budget-command-page .metric-value,
+.budget-command-page .money,
+.budget-command-page .amount{
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.budget-command-page .metric-value{
+  font-size:clamp(1.1rem,2vw,1.6rem);
+}
+.budget-command-page .metric-label{
+  font-size:.72rem;
+  letter-spacing:.04em;
+}
+.budgetStat::before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,rgba(104,231,255,.5),rgba(54,217,130,.25),transparent)}
+.budgetStatCash strong{color:#95f5bf}
+.budgetQuickPanel,.budgetListPanel,.budgetIncomePlan,.budgetAnalytics,.budgetActionStrip,.budgetSetupPanel,.budgetMonthlyMap{padding:16px}
+.budgetDashboardGrid{
+  display:grid;
+  grid-template-columns:minmax(0,1.7fr) minmax(340px,.9fr);
+  gap:18px;
+  align-items:start;
+}
+.budgetDashboardMain,
+.budgetIntelligenceSidebar{
+  display:grid;
+  gap:14px;
+  min-width:0;
+}
+.budgetIntelligenceSidebar{
+  position:sticky;
+  top:74px;
+  align-self:start;
+}
+.budgetSidebarCard,
+.budgetAnalyticsFold{
+  padding:16px;
+}
+.budget-command-page .dashboard-card,
+.budget-command-page .chart-card,
+.budget-command-page .budgetSidebarCard,
+.budget-command-page .budgetAnalyticsFold{
+  min-width:0;
+  overflow:hidden;
+}
+.budgetCircleGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.budgetCircleCard{
+  display:grid;
+  justify-items:center;
+  align-content:center;
+  gap:7px;
+  min-height:134px;
+  padding:12px 10px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(104,231,255,.12), transparent 54%),
+    rgba(255,255,255,.03);
+}
+.budgetCircleCard[data-ring-state="strong"]{border-color:rgba(54,217,130,.26);box-shadow:0 0 22px rgba(54,217,130,.08)}
+.budgetCircleCard[data-ring-state="tight"]{border-color:rgba(255,200,87,.28);box-shadow:0 0 22px rgba(255,200,87,.07)}
+.budgetCircleCard[data-ring-state="danger"]{border-color:rgba(255,120,149,.3);box-shadow:0 0 22px rgba(255,120,149,.08)}
+.budgetCircleRing{
+  --value:0;
+  --ring-color:#68e7ff;
+  width:78px;
+  aspect-ratio:1;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:
+    radial-gradient(circle, rgba(4,13,25,.98) 56%, transparent 57%),
+    conic-gradient(var(--ring-color) calc(var(--value) * 1%), rgba(45,72,112,.38) 0);
+  box-shadow:inset 0 0 18px rgba(104,231,255,.08),0 0 18px color-mix(in srgb, var(--ring-color) 22%, transparent);
+}
+.budgetCircleRing strong{
+  color:var(--text);
+  font-size:19px;
+  line-height:1;
+  font-weight:950;
+  font-variant-numeric:tabular-nums;
+}
+.budgetCircleCard span{
+  color:rgba(199,214,232,.78);
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.05em;
+  text-align:center;
+  text-transform:uppercase;
+}
+.budgetFlowMap{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);
+  gap:8px;
+  align-items:stretch;
+  margin-top:12px;
+}
+.budgetFlowBlock{
+  min-width:0;
+  display:grid;
+  align-content:center;
+  gap:4px;
+  padding:11px 10px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.032);
+}
+.budgetFlowBlock span,
+.budgetFlowBlock small{
+  color:rgba(199,214,232,.72);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+.budgetFlowBlock strong{
+  color:var(--text);
+  font-size:clamp(17px,1.4vw,22px);
+  line-height:1;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.budgetFlowBlock.is-strong strong{color:#95f5bf}
+.budgetFlowBlock.is-stable strong{color:#68e7ff}
+.budgetFlowBlock.is-tight strong{color:#ffd27c}
+.budgetFlowBlock.is-danger strong{color:#ff9bb0}
+.budgetFlowArrow{
+  display:grid;
+  place-items:center;
+  color:rgba(104,231,255,.6);
+  font-weight:950;
+}
+.budgetRatioList{
+  display:grid;
+  gap:10px;
+  margin-top:12px;
+}
+.budgetRatioRow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:4px 10px;
+  align-items:center;
+}
+.budgetRatioRow span{
+  color:rgba(222,234,249,.86);
+  font-weight:900;
+}
+.budgetRatioRow strong{
+  color:var(--text);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.budgetRatioRow div{
+  grid-column:1/-1;
+  height:8px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(46,69,100,.42);
+}
+.budgetRatioRow i{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#2b74ff,#68e7ff);
+}
+.budgetRatioRow small{
+  color:rgba(199,214,232,.68);
+  font-variant-numeric:tabular-nums;
+}
+.budgetSignalGrid,
+.budgetImproveList{
+  display:grid;
+  gap:8px;
+  margin-top:12px;
+}
+.budgetSignalCard,
+.budgetImproveItem{
+  min-width:0;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  background:rgba(255,255,255,.032);
+}
+.budgetSignalCard span{
+  display:block;
+  color:rgba(199,214,232,.7);
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+}
+.budgetSignalCard strong,
+.budgetImproveItem strong{
+  display:block;
+  margin-top:4px;
+  color:var(--text);
+  line-height:1.2;
+}
+.budgetMiniChartGrid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:10px;
+  margin-top:12px;
+}
+.budgetMiniChart{
+  min-height:170px;
+  max-height:260px;
+  overflow:hidden;
+  padding:12px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.028);
+}
+.budgetMiniChart h4{
+  margin:0 0 10px;
+  color:var(--text);
+  font-size:14px;
+}
+.budgetImproveItem span,
+.budgetImproveItem small{
+  display:block;
+  margin-top:4px;
+  color:rgba(199,214,232,.76);
+  line-height:1.3;
+}
+.budgetTableNote{
+  padding:8px 10px;
+  border:1px solid rgba(104,231,255,.12);
+  border-radius:10px;
+  color:rgba(199,214,232,.72);
+  background:rgba(104,231,255,.035);
+  font-size:12px;
+  font-weight:800;
+}
+.budgetPaycheckLoad{
+  height:8px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(46,69,100,.42);
+}
+.budgetPaycheckLoad span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#35d18a,#68e7ff);
+}
+.budgetPaycheckFooter{
+  padding:8px 10px;
+  border-radius:9px;
+  border:1px solid rgba(255,255,255,.08);
+  color:rgba(222,234,249,.84);
+  background:rgba(255,255,255,.03);
+  font-weight:950;
+}
+.budgetPaycheckFooter.is-strong{color:#95f5bf;border-color:rgba(54,217,130,.28)}
+.budgetPaycheckFooter.is-tight{color:#ffd27c;border-color:rgba(255,200,87,.32)}
+.budgetPaycheckFooter.is-danger{color:#ff9bb0;border-color:rgba(255,120,149,.32)}
+.budgetStackedBar{
+  display:flex;
+  height:15px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(46,69,100,.38);
+}
+.budgetStackedBar i,
+.budgetStackedBar b,
+.budgetStackedBar em{
+  display:block;
+  height:100%;
+}
+.budgetStackedBar i{background:#35d18a}
+.budgetStackedBar b{background:#68e7ff}
+.budgetStackedBar em{background:#ffc857}
+.budgetStackedLegend{
+  display:grid;
+  gap:5px;
+  margin-top:9px;
+  color:rgba(222,234,249,.78);
+  font-size:12px;
+}
+.budgetActionStrip{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(420px,.75fr);
+  gap:14px;
+  align-items:center;
+  border-color:rgba(104,231,255,.28)!important;
+  background:
+    radial-gradient(70% 120% at 0% 0%, rgba(54,217,130,.13), transparent 52%),
+    linear-gradient(180deg, rgba(4,24,39,.96), rgba(3,13,25,.98)) !important;
+}
+.budgetActionStrip h3{margin:6px 0 0;font-size:clamp(18px,1.7vw,25px);line-height:1.08;color:var(--text)}
+.budgetActionGrid{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:8px}
+.budgetActionGrid div{padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.035)}
+.budgetActionGrid span{display:block;color:var(--muted);font-size:10px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.budgetActionGrid strong{display:block;margin-top:4px;color:var(--text);font-size:18px}
+.budgetProfileForm,.budgetEntryForm,.budgetSetupGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:8px;
+  margin-top:10px;
+}
+.budgetEntryForm[hidden],.budgetProfileForm[hidden]{display:none!important}
+.budgetEntryForm label,.budgetProfileForm label,.budgetSetupGrid label,.budgetImportBox label{display:grid;gap:5px;min-width:0}
+.budgetEntryForm label span,.budgetProfileForm label span,.budgetSetupGrid label span,.budgetImportBox label span{color:rgba(199,214,232,.82);font-size:12px;font-weight:900;letter-spacing:.04em}
+.budgetEntryForm input,.budgetEntryForm select,.budgetProfileForm input,.budgetSetupGrid input,.budgetSetupGrid select,.budgetImportBox textarea,.budgetPreviewRow input,.budgetPreviewRow select{width:100%;min-width:0}
+.budgetEntryForm input,.budgetEntryForm select,.budgetProfileForm input,.budgetSetupGrid input,.budgetSetupGrid select,.budgetImportBox textarea,.budgetPreviewRow input,.budgetPreviewRow select{
+  min-height:34px;
+  border-radius:8px;
+}
+.budgetEntryForm .btn,.budgetSetupGrid .btn{
+  align-self:end;
+}
+.budgetImportBox textarea{resize:vertical;min-height:120px;max-height:220px;overflow-y:auto}
+.budgetWide{grid-column:span 2}
+.budgetCheck{display:flex!important;align-items:center;gap:8px;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.03)}
+.budgetCheck input{width:auto}
+.budgetTwoColumn{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(420px,.75fr);gap:14px;align-items:start}
+.budgetListPanel{align-self:start}
+.budgetBillsChargesZone .budgetListPanel{min-height:0}
+.budgetBillsChargesZone .budgetListPanel:first-child .budgetTable{max-height:440px;overflow:auto;padding-right:2px}
+.budgetBillsChargesZone .budgetListPanel:last-child .budgetTable{max-height:240px;overflow:auto}
+.budgetTable{display:grid;gap:6px;margin-top:10px}
+.budgetRow{
+  display:grid;
+  grid-template-columns:minmax(220px,1.7fr) minmax(110px,.65fr) minmax(108px,.6fr) minmax(82px,.42fr) minmax(82px,.44fr) minmax(96px,.5fr) minmax(96px,.52fr);
+  gap:9px;
+  align-items:center;
+  padding:10px 11px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  background:rgba(255,255,255,.03);
+  min-width:0;
+}
+.budgetChargeRow{grid-template-columns:minmax(240px,1.5fr) minmax(110px,.5fr) minmax(92px,.44fr) minmax(180px,.8fr) auto}
+.budgetRowHead{position:sticky;top:0;z-index:2;padding:6px 10px;background:rgba(6,24,43,.96);border-style:solid}
+.budgetRowHead span{font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:rgba(199,214,232,.72)}
+.budgetRow strong,.budgetMiniTop strong{color:var(--text)}
+.budgetRow span,.budgetMiniCard p{color:rgba(199,214,232,.76)}
+.budgetRow strong{font-size:14px;line-height:1.15}
+.budgetRow span{font-size:12px;line-height:1.25}
+.budgetRow>*{min-width:0;overflow-wrap:anywhere}
+.budgetRow>div:first-child strong,
+.budgetRow>div:first-child span{display:block}
+.budgetRow>div:nth-child(3),.budgetRow .amount{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;color:rgba(236,247,255,.94);font-weight:950}
+.budgetRowActions{display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end}
+.budgetRowActions .btn{
+  min-height:28px;
+  padding:4px 8px;
+  font-size:11px;
+}
+.budgetTag,.budgetDuePill{display:inline-flex;align-items:center;padding:3px 7px;border:1px solid rgba(255,255,255,.1);border-radius:999px;color:rgba(222,234,249,.82);font-size:11px;font-weight:900;white-space:nowrap}
+.budgetDuePill{border-color:rgba(104,231,255,.22);background:rgba(104,231,255,.055);color:rgba(217,236,255,.9)}
+.budgetTag.isGood{color:#95f5bf;border-color:rgba(54,217,130,.35)}
+.budgetTag.isWarn{color:#ffd27c;border-color:rgba(255,199,89,.35)}
+.budgetTag.isBad{color:#ff9bb0;border-color:rgba(255,85,118,.35)}
+.budgetCardGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.budgetCardGrid>.btn{justify-self:start}
+.budgetMiniTop{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.budgetProgress{height:10px;overflow:hidden;border-radius:999px;background:rgba(46,69,100,.38);margin:10px 0}
+.budgetProgress span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,#35d18a,#68e7ff);box-shadow:0 0 18px rgba(104,231,255,.32)}
+.budgetWarningGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.budgetWarningGrid h4,.budgetChartPanel h4{margin:0 0 10px;color:var(--text)}
+.budgetWarningGrid ul{margin:0;padding-left:18px;color:rgba(222,234,249,.82);line-height:1.5}
+.budgetWarningGrid li::marker{color:#ffc857}
+.budgetChartGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.budgetBars{display:grid;gap:8px;min-height:150px;align-content:center}
+.budgetBarRow{display:grid;grid-template-columns:minmax(90px,1fr) auto;gap:8px;align-items:center;color:rgba(222,234,249,.82)}
+.budgetBarRow div{grid-column:1/-1;height:8px;border-radius:999px;background:rgba(46,69,100,.38);overflow:hidden}
+.budgetBarRow i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#2b74ff,#68e7ff)}
+.budgetLineChart{min-height:150px;display:grid;align-items:center}.budgetLineChart svg{width:100%;height:150px}
+.budgetDueGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.budgetDueGrid span{display:grid;gap:4px;min-height:46px;padding:7px;border:1px solid rgba(255,255,255,.08);border-radius:8px;color:var(--text);background:rgba(255,255,255,.03)}
+.budgetDueGrid b{font-size:11px;color:var(--muted)}
+.budgetDebtSummary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-height:150px;align-content:center}
+.budgetDebtSummary strong{font-size:22px;color:var(--text)}.budgetDebtSummary span{color:var(--muted)}
+.budgetEmpty{padding:12px;border:1px dashed rgba(104,231,255,.15);border-radius:10px;color:rgba(199,214,232,.78);background:rgba(104,231,255,.035);font-weight:800}
+.budgetMonthlyMap{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(560px,.85fr);
+  gap:14px;
+  align-items:center;
+}
+.budgetMonthlyMap h3{margin:6px 0 5px;font-size:20px;line-height:1.1;color:var(--text)}
+.budgetMonthlyMap p{margin:0;color:rgba(199,214,232,.78)}
+.budgetMapGrid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px}
+.budgetMapGrid div,.budgetSetupItem,.budgetAllocationItem{
+  min-width:0;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  background:rgba(255,255,255,.035);
+}
+.budgetMapGrid span,.budgetAllocationStats span{display:block;color:var(--muted);font-size:10px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.budgetMapGrid strong{display:block;margin-top:4px;color:var(--text);font-size:clamp(16px,1.8vw,22px);line-height:1.05;overflow-wrap:anywhere}
+.budgetSetupPanel{display:grid;gap:14px}
+.budgetSetupFold{
+  padding:0 !important;
+  overflow:hidden;
+}
+.budgetSetupFold[open]{
+  padding:16px !important;
+}
+.budgetSetupSummary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:14px 16px;
+  cursor:pointer;
+  list-style:none;
+}
+.budgetSetupSummary::-webkit-details-marker{display:none}
+.budgetSetupSummary h3{
+  margin:5px 0 0;
+  color:var(--text);
+  font-size:16px;
+  line-height:1.1;
+}
+.budgetSetupSummary>span{
+  flex:0 0 auto;
+  max-width:280px;
+  padding:5px 9px;
+  border:1px solid rgba(104,231,255,.18);
+  border-radius:999px;
+  color:rgba(199,214,232,.78);
+  background:rgba(104,231,255,.045);
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  white-space:nowrap;
+}
+.budgetSetupFold[open] .budgetSetupSummary{
+  margin:-16px -16px 0;
+  border-bottom:1px solid rgba(104,231,255,.14);
+  background:rgba(255,255,255,.02);
+}
+.budgetSetupToolbar{
+  margin-top:14px;
+}
+.budgetSetupTabs{display:flex;flex-wrap:wrap;gap:8px}
+.budgetSetupPane[hidden]{display:none!important}
+.budgetSetupPane{display:grid;gap:12px}
+.budgetImportBox{padding-top:0;border-top:0}
+.budgetSetupItems{display:grid;gap:8px;margin-top:10px}
+.budgetSetupHeader,.budgetAllocationTop{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  color:var(--text);
+}
+.budgetSetupHeader span,.budgetAllocationTop span{color:var(--muted);font-size:11px;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
+.budgetSetupItem{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(180px,.8fr) auto;
+  gap:10px;
+  align-items:center;
+}
+.budgetImportActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.budgetImportPreview{margin-top:10px;overflow:auto;max-height:300px;border-radius:10px}
+.budgetPreviewTable{display:grid;gap:6px;min-width:860px}
+.budgetPreviewHead,.budgetPreviewRow{
+  display:grid;
+  grid-template-columns:minmax(150px,1.2fr) 100px 70px 120px 120px 130px minmax(170px,1.2fr);
+  gap:6px;
+  align-items:center;
+}
+.budgetPreviewHead span{color:var(--muted);font-size:10px;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
+.budgetAllocationSection{display:grid;grid-template-columns:1fr;gap:14px;align-items:start}
+.budgetPaycheckGrid{display:grid;grid-template-columns:repeat(3,minmax(300px,1fr));gap:12px;margin-top:12px}
+.budgetAllocationCard{display:grid;gap:10px;min-width:0;padding:14px;border:1px solid rgba(104,231,255,.18);border-radius:12px;background:rgba(255,255,255,.025)}
+.budgetAllocationTop strong{font-size:clamp(20px,1.8vw,26px);color:var(--text)}
+.budgetAllocationTotals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.budgetAllocationTotals div{
+  display:grid;
+  gap:3px;
+  padding:8px;
+  border-radius:8px;
+  background:rgba(255,255,255,.035);
+}
+.budgetAllocationTotals span{color:var(--muted);font-size:10px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.budgetAllocationTotals strong{color:var(--text);font-size:15px}
+.budgetAllocationItem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:9px 10px}
+.budgetAllocationItem span{color:var(--text);font-weight:900;overflow-wrap:anywhere}
+.budgetAllocationItem strong{color:#95f5bf}
+.budgetAllocationItem small{grid-column:1/-1;color:rgba(199,214,232,.68)}
+.budgetAllocationCard .budgetEmpty{
+  min-height:96px;
+}
+.budgetFlawPanel{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(320px,.65fr);
+  gap:14px;
+}
+.budgetFlawPanel .toolbar{align-self:start}
+.budgetFlawPanel .budgetInsightList{margin-top:0}
+.budgetFlawPanel .budgetGoalAllocation{padding-top:0;border-top:0}
+.budgetInsightList{margin:10px 0 14px;padding-left:18px;color:rgba(222,234,249,.84);line-height:1.45}
+.budgetInsightList li::marker{color:#ffc857}
+.budgetGoalAllocation{padding-top:12px;border-top:1px solid rgba(104,231,255,.14)}
+.budgetCurrentHeader{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:8px;
+  color:var(--text);
+}
+.budgetCurrentHeader span{color:var(--muted);font-weight:900}
+.budgetCurrentScroll{display:grid;gap:7px;max-height:320px;overflow:auto;padding-right:2px}
+.budgetCurrentRow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  padding:9px 10px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  background:rgba(255,255,255,.03);
+}
+.budgetCurrentRow strong{color:var(--text)}
+.budgetCurrentRow span{display:block;margin-top:2px;color:var(--muted);font-size:11px}
+.budgetChartPanel{min-height:190px;max-height:250px;overflow:hidden}
+.budgetChartPanel .budgetEmpty{min-height:118px;display:grid;place-items:center;text-align:center}
+.budget-command-page .btn{
+  min-height:34px;
+  padding:6px 10px;
+}
+.budget-command-page .btn.danger{
+  opacity:.82;
+}
+.budgetToast{position:fixed;right:24px;bottom:24px;z-index:60;padding:12px 16px;border:1px solid rgba(77,151,255,.45);border-radius:14px;color:var(--text);background:rgba(5,18,34,.94);box-shadow:0 12px 34px rgba(0,0,0,.32),0 0 22px rgba(77,151,255,.24)}
+@media (max-width:980px){
+  .budget-command-page .budgetHero,.budgetDashboardGrid,.budgetTwoColumn,.budgetWarningGrid,.budgetChartGrid,.budgetActionStrip,.budgetMonthlyMap,.budgetPaycheckGrid,.budgetAllocationSection{grid-template-columns:1fr}
+  .budgetIntelligenceSidebar{position:static}
+  .budgetFlawPanel{grid-template-columns:1fr}
+  .budgetOverviewGrid,.budgetIncomeGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .budgetProfileForm,.budgetEntryForm{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .budgetRow,.budgetChargeRow{grid-template-columns:1fr 1fr}.budgetRowHead{display:none}.budgetRowActions{justify-content:flex-start}.budgetWide{grid-column:1/-1}
+  .budgetRow>div:nth-child(3){text-align:left}
+  .budgetMapGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .budgetSetupItem{grid-template-columns:1fr}
+}
+@media (min-width:981px) and (max-width:1240px){
+  .budget-command-page{
+    padding-inline:0;
+  }
+  .budgetMiniSummary{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .budget-command-page .budgetHero,
+  .budgetDashboardGrid,
+  .budgetMonthlyMap,
+  .budgetActionStrip,
+  .budgetTwoColumn{
+    grid-template-columns:1fr;
+  }
+  .budgetIntelligenceSidebar{position:static}
+  .budgetChartGrid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .budgetPaycheckGrid{
+    grid-template-columns:1fr;
+  }
+}
+@media (max-width:640px){
+  .budget-command-page{gap:12px;padding:12px 10px 130px}
+  .budgetMiniSummary{position:static;grid-template-columns:1fr 1fr}
+  .budgetCircleGrid,
+  .budgetFlowMap,
+  .budgetMiniChartGrid{grid-template-columns:1fr}
+  .budgetFlowArrow{display:none}
+  .budgetSetupSummary{display:grid}
+  .budgetSetupSummary>span{max-width:none;white-space:normal}
+  .budgetMiniSummary div{display:grid;gap:2px;justify-content:stretch}
+  .budget-command-page .budgetHero,.budgetQuickPanel,.budgetListPanel,.budgetIncomePlan,.budgetAnalytics,.budgetSetupPanel,.budgetMonthlyMap{padding:14px}
+  .budget-command-page .pageTitle{font-size:clamp(30px,11vw,36px)}
+  .budgetHeroPanel{grid-template-columns:70px 1fr}.budgetScoreRing{width:66px}.budgetScoreRing span{font-size:25px}
+  .budgetHeroStats,.budgetOverviewGrid,.budgetIncomeGrid,.budgetProfileForm,.budgetEntryForm,.budgetSetupGrid,.budgetCardGrid,.budgetDebtSummary,.budgetMapGrid,.budgetAllocationStats{grid-template-columns:1fr}
+  .budgetHeroPanel{gap:9px;padding:10px}
+  .budgetHeroPanel p{font-size:11px;line-height:1.2}
+  .budgetHeroPanel .budgetHeroStats{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .budgetHeroStats div{padding:8px 6px}
+  .budgetHeroStats span{font-size:8px;line-height:1.05}
+  .budgetHeroStats strong{font-size:14px;line-height:1.05}
+  .budgetEntryTabs .btn,.budgetFilters .btn,.budgetCategoryChips .btn{min-height:30px;padding:6px 9px;font-size:11px}
+  .budgetChartPanel{max-height:none}
+}
+
+/* Budget A+ density pass: make the dashboard read like an ops panel, not a long form. */
+@media (min-width:981px){
+  body.page-budget .wrap{
+    --app-shell-max:1560px;
+  }
+  .budget-command-page{
+    gap:12px;
+    padding-top:12px;
+  }
+  .budget-command-page .budgetHero{
+    grid-template-columns:minmax(0,1fr) minmax(360px,460px);
+    padding:13px 15px;
+  }
+  .budget-command-page .pageTitle{
+    font-size:clamp(30px,2.65vw,42px);
+  }
+  .budgetHeroPanel{
+    grid-template-columns:54px minmax(0,1fr);
+    gap:8px;
+    padding:8px 9px;
+  }
+  .budgetScoreRing{
+    width:54px;
+  }
+  .budgetScoreRing span{
+    font-size:22px;
+  }
+  .budgetHeroStats div{
+    padding:8px;
+  }
+  .budgetHeroStats span{
+    font-size:9px;
+  }
+  .budgetHeroStats strong{
+    font-size:16px;
+  }
+  .budgetHeroPanel p{
+    font-size:12px;
+    line-height:1.2;
+  }
+  .budgetMiniSummary{
+    padding:5px;
+  }
+  .budgetOverviewGrid{
+    grid-template-columns:repeat(9, minmax(0, 1fr));
+    gap:7px;
+  }
+  .budgetStat{
+    min-height:62px;
+    padding:8px;
+  }
+  .budget-command-page .metric-label{
+    font-size:.62rem;
+    line-height:1.05;
+  }
+  .budget-command-page .metric-value{
+    font-size:clamp(.92rem,1.05vw,1.28rem);
+    line-height:1.02;
+  }
+  .budgetDashboardGrid{
+    grid-template-columns:minmax(0,1.62fr) minmax(390px,.9fr);
+    gap:12px;
+  }
+  .budgetDashboardMain,
+  .budgetIntelligenceSidebar{
+    gap:10px;
+  }
+  .budgetQuickPanel,
+  .budgetListPanel,
+  .budgetIncomePlan,
+  .budgetSidebarCard,
+  .budgetAnalyticsFold{
+    padding:12px;
+  }
+  .budgetQuickPanel .toolbar,
+  .budgetListPanel .toolbar,
+  .budgetSidebarCard .toolbar{
+    margin-bottom:6px;
+  }
+  .budgetQuickPanel h3,
+  .budgetListPanel h3,
+  .budgetSidebarCard h3,
+  .budgetIncomePlan h3{
+    font-size:16px;
+    line-height:1.05;
+    margin:3px 0 0;
+  }
+  .budgetEntryTabs,
+  .budgetFilters,
+  .budgetCategoryChips{
+    gap:5px;
+  }
+  .budget-command-page .btn{
+    min-height:28px;
+    padding:5px 8px;
+    font-size:11px;
+  }
+  .budgetProfileForm,
+  .budgetEntryForm,
+  .budgetSetupGrid{
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:7px;
+  }
+  .budgetEntryForm label span,
+  .budgetProfileForm label span,
+  .budgetSetupGrid label span{
+    font-size:10px;
+    line-height:1.05;
+  }
+  .budgetEntryForm input,
+  .budgetEntryForm select,
+  .budgetProfileForm input,
+  .budgetSetupGrid input,
+  .budgetSetupGrid select{
+    min-height:30px;
+    font-size:12px;
+  }
+  .budgetTwoColumn{
+    grid-template-columns:minmax(0,1.08fr) minmax(300px,.75fr);
+    gap:10px;
+  }
+  .budgetBillsChargesZone .budgetListPanel:first-child .budgetTable{
+    max-height:330px;
+  }
+  .budgetBillsChargesZone .budgetListPanel:last-child .budgetTable{
+    max-height:170px;
+  }
+  .budgetRow{
+    grid-template-columns:minmax(150px,1.45fr) minmax(78px,.58fr) minmax(84px,.56fr) minmax(58px,.38fr) minmax(66px,.42fr) minmax(76px,.44fr) minmax(72px,.42fr);
+    gap:6px;
+    padding:7px 8px;
+    border-radius:8px;
+  }
+  .budgetRow strong{
+    font-size:12px;
+  }
+  .budgetRow span,
+  .budgetRow div{
+    font-size:11px;
+  }
+  .budgetRowActions .btn{
+    min-height:24px;
+    padding:3px 6px;
+    font-size:10px;
+  }
+  .budgetPaycheckGrid{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:9px;
+  }
+  .budgetAllocationCard{
+    gap:7px;
+    padding:10px;
+  }
+  .budgetAllocationTop strong{
+    font-size:19px;
+  }
+  .budgetAllocationTotals{
+    gap:5px;
+  }
+  .budgetAllocationTotals div{
+    padding:6px;
+  }
+  .budgetAllocationTotals span{
+    font-size:8px;
+  }
+  .budgetAllocationTotals strong{
+    font-size:12px;
+  }
+  .budgetAllocationCard{
+    max-height:520px;
+    overflow:auto;
+  }
+  .budgetAllocationItem{
+    padding:7px 8px;
+    border-radius:8px;
+  }
+  .budgetAllocationItem span,
+  .budgetAllocationItem strong{
+    font-size:12px;
+  }
+  .budgetAllocationItem small{
+    font-size:10px;
+  }
+  .budgetPaycheckFooter{
+    padding:6px 8px;
+    font-size:11px;
+  }
+  .budgetFlawPanel{
+    grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);
+    gap:10px;
+  }
+  .budgetIncomeGrid{
+    grid-template-columns:repeat(6, minmax(0, 1fr));
+    gap:8px;
+  }
+  .budgetIncomeGrid div{
+    min-width:0;
+  }
+  .budgetIncomeGrid span{
+    font-size:9px;
+    line-height:1.05;
+  }
+  .budgetIncomeGrid strong{
+    font-size:16px;
+  }
+  .budgetCircleGrid{
+    grid-template-columns:repeat(5, minmax(0, 1fr));
+    gap:6px;
+  }
+  .budgetCircleCard{
+    min-height:82px;
+    padding:8px 5px;
+    gap:4px;
+  }
+  .budgetCircleRing{
+    width:48px;
+  }
+  .budgetCircleRing strong{
+    font-size:13px;
+  }
+  .budgetCircleCard span{
+    font-size:8px;
+    line-height:1.05;
+  }
+  .budgetFlowMap{
+    grid-template-columns:1fr;
+    gap:7px;
+  }
+  .budgetFlowArrow{
+    display:none;
+  }
+  .budgetFlowBlock{
+    padding:8px 9px;
+  }
+  .budgetFlowBlock strong{
+    font-size:17px;
+  }
+  .budgetRatioList{
+    gap:7px;
+    margin-top:9px;
+  }
+  .budgetRatioRow{
+    gap:2px 8px;
+  }
+  .budgetRatioRow span,
+  .budgetRatioRow strong,
+  .budgetRatioRow small{
+    font-size:11px;
+  }
+  .budgetRatioRow div{
+    height:6px;
+  }
+  .budgetSignalGrid,
+  .budgetImproveList{
+    gap:6px;
+    margin-top:9px;
+  }
+  .budgetSignalCard,
+  .budgetImproveItem{
+    padding:8px;
+  }
+  .budgetSignalCard span{
+    font-size:8px;
+  }
+  .budgetSignalCard strong,
+  .budgetImproveItem strong{
+    font-size:12px;
+  }
+  .budgetImproveItem span,
+  .budgetImproveItem small{
+    font-size:10px;
+  }
+  .budgetMiniChartGrid{
+    gap:7px;
+    margin-top:9px;
+  }
+  .budgetMiniChart{
+    min-height:118px;
+    max-height:155px;
+    padding:9px;
+  }
+  .budgetMiniChart h4{
+    font-size:12px;
+    margin-bottom:7px;
+  }
+  .budgetMiniChart .budgetBars{
+    min-height:auto;
+    gap:5px;
+  }
+  .budgetMiniChart .budgetBarRow{
+    gap:4px 7px;
+    font-size:10px;
+  }
+  .budgetMiniChart .budgetBarRow div{
+    height:6px;
+  }
+  .budgetStackedLegend{
+    font-size:10px;
+  }
+  .budgetAnalyticsFold:not([open]) .budgetSetupSummary{
+    padding-block:10px;
+  }
+  .budgetAnalyticsFold[open]{
+    margin-top:2px;
+  }
+  .budgetChartGrid{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:9px;
+  }
+  .budgetChartPanel{
+    min-height:150px;
+    max-height:205px;
+    padding:10px;
+  }
+}
+
+/* Budget cutoff fixes: reduce cramped table columns and keep secondary analytics collapsed. */
+.budgetAnalyticsFold:not([open]) > :not(summary){
+  display:none !important;
+}
+.budgetBillRow{
+  grid-template-columns:minmax(170px,1.55fr) minmax(86px,.55fr) minmax(64px,.42fr) minmax(130px,.8fr) minmax(82px,.45fr);
+}
+.budgetBillRowHead{
+  position:sticky;
+  top:0;
+  z-index:2;
+  padding:6px 10px;
+  background:rgba(6,24,43,.96);
+  border-style:solid;
+}
+.budgetBillStatus{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  min-width:0;
+}
+.budgetBillRow > div:first-child span{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+@media (min-width:981px){
+  .budgetBillRow{
+    grid-template-columns:minmax(170px,1.65fr) minmax(82px,.5fr) minmax(56px,.36fr) minmax(112px,.68fr) minmax(70px,.38fr) !important;
+  }
+  .budgetBillRow .budgetTag,
+  .budgetBillRow .budgetDuePill{
+    padding:2px 6px;
+    font-size:9px;
+    line-height:1.1;
+  }
+  .budgetBillRow > div:first-child strong{
+    font-size:12px;
+  }
+  .budgetBillRow > div:first-child span{
+    font-size:10px;
+  }
+  .budgetBillRow .amount{
+    font-size:11px;
+  }
+}
+@media (max-width:980px){
+  .budgetBillRow,
+  .budgetBillRowHead{
+    grid-template-columns:1fr 1fr;
+  }
+  .budgetBillRowHead{
+    display:none;
+  }
+}
+
+/* Budget analytics must never crop when expanded. */
+body.page-budget .quickLauncher{
+  display:none;
+}
+body.page-budget .mobileDock{
+  display:none;
+}
+body.page-budget .budget-command-page{
+  padding-bottom:120px;
+}
+body.page-budget .budgetAnalyticsFold[open]{
+  overflow:visible;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetChartGrid{
+  align-items:stretch;
+  grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetChartPanel{
+  min-height:260px;
+  max-height:none;
+  overflow:visible;
+  display:grid;
+  align-content:start;
+  gap:10px;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetBars{
+  min-height:0;
+  align-content:start;
+  gap:9px;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetBarRow{
+  gap:6px 10px;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetDueGrid{
+  grid-template-columns:repeat(auto-fit, minmax(88px, 1fr));
+  align-content:start;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetDueGrid .budgetDueTile{
+  min-height:0;
+  padding:8px 9px;
+  gap:4px;
+  overflow:hidden;
+  align-content:center;
+  overflow-wrap:normal;
+  word-break:normal;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetDueGrid .budgetDueLabel{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  overflow-wrap:normal;
+  word-break:normal;
+  color:rgba(223,235,250,.9);
+  font-size:14px;
+  line-height:1.05;
+  font-weight:950;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetDueGrid b{
+  font-size:10px;
+  line-height:1.1;
+  white-space:nowrap;
+  overflow-wrap:normal;
+  word-break:normal;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetLineChart{
+  min-height:170px;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetLineChart svg{
+  height:170px;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetDebtSummary{
+  min-height:210px;
+}
+@media (min-width:981px){
+  body.page-budget .budgetAnalyticsFold[open] .budgetChartPanel{
+    min-height:245px;
+    padding:12px;
+  }
+}
+
+/* Budget hierarchy refinement: keep the command center readable instead of dense. */
+body.page-budget .budget-command-page{
+  gap:16px;
+  font-size:13px;
+}
+body.page-budget .budget-command-page .card,
+body.page-budget .budget-command-page .budgetHero,
+body.page-budget .budget-command-page .budgetQuickPanel,
+body.page-budget .budget-command-page .budgetListPanel,
+body.page-budget .budget-command-page .budgetIncomePlan,
+body.page-budget .budget-command-page .budgetAnalytics,
+body.page-budget .budget-command-page .budgetSetupPanel,
+body.page-budget .budget-command-page .budgetSidebarCard,
+body.page-budget .budget-command-page .budgetAnalyticsFold{
+  border-color:rgba(104,231,255,.16);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 12px 28px rgba(0,10,24,.18);
+}
+body.page-budget .budget-command-page .budgetHero,
+body.page-budget .budget-command-page .budgetStatCash,
+body.page-budget .budget-command-page .budgetWarningGrid > div{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 18px 42px rgba(0,10,24,.24), 0 0 24px rgba(77,151,255,.1);
+}
+body.page-budget .budgetDashboardGrid{
+  grid-template-columns:minmax(0, 2fr) minmax(300px, .85fr);
+  gap:20px;
+}
+body.page-budget .budgetDashboardMain,
+body.page-budget .budgetIntelligenceSidebar{
+  gap:16px;
+}
+body.page-budget .budgetQuickPanel,
+body.page-budget .budgetListPanel,
+body.page-budget .budgetIncomePlan,
+body.page-budget .budgetSidebarCard,
+body.page-budget .budgetAnalyticsFold{
+  padding:18px;
+}
+body.page-budget .budgetMiniCard,
+body.page-budget .budgetChartPanel,
+body.page-budget .budgetWarningGrid > div,
+body.page-budget .budgetSignalCard,
+body.page-budget .budgetImproveItem,
+body.page-budget .budgetFlowBlock,
+body.page-budget .budgetMapGrid div,
+body.page-budget .budgetAllocationItem{
+  padding:14px;
+}
+body.page-budget .budgetIntelligenceSidebar{
+  gap:14px;
+}
+body.page-budget .budgetCircleGrid{
+  grid-template-columns:repeat(5, minmax(0, 1fr));
+  gap:8px;
+}
+body.page-budget .budgetCircleCard{
+  min-height:96px;
+  padding:10px 6px;
+}
+body.page-budget .budgetCircleRing{
+  width:54px;
+}
+body.page-budget .budgetCircleRing strong{
+  font-size:14px;
+}
+body.page-budget .budgetCircleCard span{
+  font-size:9px;
+  line-height:1.12;
+}
+body.page-budget .budgetMiniChartGrid{
+  gap:10px;
+}
+body.page-budget .budgetMiniChart{
+  min-height:138px;
+  max-height:190px;
+  padding:12px;
+}
+body.page-budget .budgetMiniChart h4{
+  font-size:13px;
+}
+body.page-budget .budgetSetupFold > .budgetSetupSummary,
+body.page-budget .budgetAnalyticsFold > .budgetSetupSummary{
+  padding:16px 18px;
+}
+body.page-budget .budgetSetupFold:not([open]) > .budgetSetupSummary{
+  min-height:92px;
+  overflow:hidden;
+}
+body.page-budget .budgetSetupFold:not([open]) .budgetSetupSummary > div{
+  min-width:0;
+}
+body.page-budget .budgetSetupFold:not([open]) .budgetSetupSummary h3{
+  max-width:760px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.page-budget .budgetSetupFold:not([open]) .budgetSetupSummary > span{
+  max-width:420px;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.page-budget .budgetSetupFold[open]{
+  padding:18px !important;
+}
+body.page-budget .budgetSetupFold[open] .budgetSetupSummary{
+  margin:-18px -18px 0;
+}
+body.page-budget .budgetSetupTabs{
+  margin-top:10px;
+}
+body.page-budget .budgetInnerFold,
+body.page-budget .budgetQuickNote{
+  min-width:0;
+  border:1px solid rgba(104,231,255,.14);
+  border-radius:11px;
+  background:rgba(255,255,255,.026);
+}
+body.page-budget .budgetInnerFold{
+  margin-top:4px;
+  padding:0;
+}
+body.page-budget .budgetInnerFold > summary,
+body.page-budget .budgetQuickNote > summary,
+body.page-budget .budgetCompactFold > summary{
+  cursor:pointer;
+  list-style:none;
+}
+body.page-budget .budgetInnerFold > summary::-webkit-details-marker,
+body.page-budget .budgetQuickNote > summary::-webkit-details-marker,
+body.page-budget .budgetCompactFold > summary::-webkit-details-marker{
+  display:none;
+}
+body.page-budget .budgetInnerFold > summary{
+  padding:10px 12px;
+  color:rgba(218,233,249,.86);
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+body.page-budget .budgetInnerFold[open]{
+  padding:0 12px 12px;
+}
+body.page-budget .budgetInnerFold[open] > summary{
+  margin:0 -12px;
+}
+body.page-budget .budgetOptionalDates{
+  display:none !important;
+}
+body.page-budget #budgetMonthlySetupForm{
+  grid-template-columns:minmax(170px,1fr) minmax(150px,.8fr) minmax(150px,.8fr) auto;
+  align-items:end;
+  gap:12px;
+}
+body.page-budget #budgetLineItemForm{
+  margin-top:0;
+}
+body.page-budget #budgetChargeForm{
+  grid-template-columns:132px minmax(180px,1fr) minmax(150px,.85fr) minmax(120px,.62fr) minmax(120px,.62fr) minmax(92px,.42fr) auto;
+  align-items:end;
+  gap:10px;
+}
+body.page-budget #budgetChargeForm .budgetQuickNote{
+  align-self:end;
+}
+body.page-budget .budgetQuickNote > summary{
+  min-height:34px;
+  display:grid;
+  place-items:center;
+  padding:6px 10px;
+  color:rgba(205,220,239,.82);
+  font-size:11px;
+  font-weight:900;
+}
+body.page-budget .budgetQuickNote[open]{
+  grid-column:1 / -1;
+  padding:10px;
+  display:grid;
+  grid-template-columns:minmax(160px,.35fr) minmax(260px,1fr);
+  gap:10px;
+}
+body.page-budget .budgetQuickNote[open] > summary{
+  grid-column:1 / -1;
+  place-items:start;
+  min-height:0;
+  padding:0;
+}
+body.page-budget .budgetBillsChargesZone{
+  grid-template-columns:minmax(0,1fr) minmax(320px,.72fr);
+  gap:16px;
+  align-items:start;
+}
+body.page-budget .budgetBillsChargesZone .budgetListPanel:last-child{
+  min-height:0;
+}
+body.page-budget .budgetBillsChargesZone .budgetListPanel:last-child .budgetTable{
+  max-height:180px;
+}
+body.page-budget .budgetRow strong{
+  font-size:13px;
+}
+body.page-budget .budgetRow span,
+body.page-budget .budgetRow div,
+body.page-budget .budgetTableNote{
+  font-size:12px;
+}
+body.page-budget .budgetPaycheckGrid{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:14px;
+}
+body.page-budget .budgetAllocationCard{
+  max-height:none;
+  min-height:0;
+  padding:14px;
+  gap:10px;
+}
+body.page-budget .budgetAllocationTop strong{
+  font-size:clamp(22px, 1.65vw, 28px);
+}
+body.page-budget .budgetAllocationTotals strong{
+  font-size:14px;
+}
+body.page-budget .budgetPaycheckLoad{
+  height:10px;
+}
+body.page-budget .budgetFlawPanel{
+  grid-template-columns:minmax(0, 1fr) minmax(300px, .72fr);
+  gap:16px;
+  align-items:start;
+}
+body.page-budget .budgetInsightList{
+  margin:4px 0 0;
+  font-size:13px;
+  line-height:1.5;
+}
+body.page-budget .budgetGoalAllocation .budgetMapGrid{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+body.page-budget .budgetCompactRow{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:16px;
+}
+body.page-budget .budgetCompactFold{
+  padding:0 !important;
+  overflow:hidden;
+}
+body.page-budget .budgetCompactFold > summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:88px;
+  padding:16px 18px;
+}
+body.page-budget .budgetCompactFold > summary span{
+  flex:0 0 auto;
+  padding:5px 10px;
+  border:1px solid rgba(104,231,255,.18);
+  border-radius:999px;
+  color:rgba(205,220,239,.84);
+  font-size:11px;
+  font-weight:900;
+}
+body.page-budget .budgetCompactFold[open]{
+  padding:0 18px 18px !important;
+}
+body.page-budget .budgetCompactFold[open] > summary{
+  margin:0 -18px 14px;
+  border-bottom:1px solid rgba(104,231,255,.13);
+}
+body.page-budget .budgetAnalyticsFold:not([open]){
+  padding:0;
+}
+body.page-budget .budgetAnalyticsFold:not([open]) > .budgetSetupSummary{
+  padding:14px 18px;
+}
+body.page-budget .budgetAnalyticsFold:not([open]) .budgetSetupSummary h3{
+  display:none;
+}
+body.page-budget .budgetAnalyticsFold:not([open]) .pill{
+  margin:0;
+}
+body.page-budget .budgetChartGrid{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:14px;
+}
+body.page-budget .budgetAnalyticsFold[open] .budgetChartPanel{
+  min-height:220px;
+}
+@media (min-width:981px){
+  body.page-budget .wrap{
+    --app-shell-max:1600px;
+  }
+  body.page-budget .budgetDashboardGrid{
+    grid-template-columns:minmax(0, 2fr) minmax(300px, .85fr) !important;
+    gap:20px !important;
+  }
+  body.page-budget .budgetOverviewGrid{
+    gap:10px;
+  }
+  body.page-budget .budgetStat{
+    min-height:72px;
+    padding:11px;
+  }
+  body.page-budget .budget-command-page .metric-label{
+    font-size:.68rem;
+  }
+  body.page-budget .budget-command-page .metric-value{
+    font-size:clamp(1rem, 1.12vw, 1.42rem);
+  }
+}
+@media (max-width:1240px){
+  body.page-budget .budgetDashboardGrid,
+  body.page-budget .budgetBillsChargesZone,
+  body.page-budget .budgetFlawPanel,
+  body.page-budget .budgetCompactRow{
+    grid-template-columns:1fr;
+  }
+  body.page-budget .budgetIntelligenceSidebar{
+    position:static;
+  }
+}
+@media (max-width:980px){
+  body.page-budget .budgetMiniSummary{
+    position:static;
+  }
+  body.page-budget #budgetMonthlySetupForm,
+  body.page-budget #budgetChargeForm,
+  body.page-budget .budgetPaycheckGrid,
+  body.page-budget .budgetGoalAllocation .budgetMapGrid,
+  body.page-budget .budgetChartGrid{
+    grid-template-columns:1fr;
+  }
+  body.page-budget .budgetQuickNote[open]{
+    grid-template-columns:1fr;
   }
 }

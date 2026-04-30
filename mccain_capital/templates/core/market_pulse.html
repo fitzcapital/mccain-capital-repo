@@ -636,8 +636,8 @@
             </div>
           </div>
           <div class="tiny muted marketPulseWatchMetaRow">
-            <span data-role="market-state">{{ q.market_state }}</span>
-            <span data-role="freshness">{{ q.freshness_label or (q.asof or fetched_at) }}</span>
+            <span data-role="market-state" hidden>{{ q.market_state }}</span>
+            <span data-role="freshness">{{ (q.freshness_label or (q.asof or fetched_at))|replace('Closed · last quote ', 'Critical · ')|replace('Closed · last snapshot ', 'Critical · ')|replace('last quote ', '') }}</span>
           </div>
           <div class="tiny muted" data-role="reason-line" hidden></div>
           <div class="tiny muted" data-role="source-badge" hidden>{{ q.source_badge_label or q.source_label or source_label }}</div>
@@ -1829,7 +1829,30 @@
       title: "Symbol is lagging or under downside pressure.",
     };
     return { label: "MIXED", title: "No clean tape edge yet." };
-  };
+    };
+    const compactAgeLabel = (ageS) => {
+      const seconds = Math.max(0, Math.floor(Number(ageS) || 0));
+      if (seconds >= 72 * 3600) return "72h+ old";
+      if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h old`;
+      if (seconds >= 60) return `${Math.floor(seconds / 60)}m old`;
+      return `${seconds}s old`;
+    };
+    const dashboardTapeFreshnessLabel = (label, state, asOf) => {
+      const stateText = String(state || "").trim();
+      const ts = typeof asOf === "string" ? Date.parse(asOf) : NaN;
+      if (Number.isFinite(ts)) {
+        const ageS = Math.max(0, (Date.now() - ts) / 1000);
+        const band = ageS >= 900 ? "Critical" : stateText || "Live";
+        return `${band} · ${compactAgeLabel(ageS)}`;
+      }
+      let text = String(label || "").trim();
+      if (!text) return stateText || "Live";
+      return text
+        .replace(/^Closed\s*·\s*last quote\s*/i, "Critical · ")
+        .replace(/^Closed\s*·\s*last snapshot\s*/i, "Critical · ")
+        .replace(/last quote\s*/i, "")
+        .trim() || stateText || "Live";
+    };
     const updateCard = (card, quote) => {
       if (!card || !quote || typeof quote !== "object") return;
       const symbol = String(card.dataset.symbol || "").toUpperCase();
@@ -1840,7 +1863,14 @@
       setText(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2));
       setText(card.querySelector('[data-role="change-line"]'), formatSigned(pct));
       setText(card.querySelector('[data-role="market-state"]'), quote.market_state || "Live");
-      setText(card.querySelector('[data-role="freshness"]'), quote.freshness_label || "Live");
+      setText(
+        card.querySelector('[data-role="freshness"]'),
+        dashboardTapeFreshnessLabel(
+          quote.freshness_label || "Live",
+          quote.market_state || "Live",
+          quote.as_of || quote.asof || ""
+        )
+      );
       const sparkNode = card.querySelector('[data-role="sparkline"]');
       if (sparkNode) {
         sparkNode.classList.remove("spark-pos", "spark-neg", "spark-flat");

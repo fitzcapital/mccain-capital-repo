@@ -407,6 +407,7 @@
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
           <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment">Life Alignment</a>
+          <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget">Budget</a>
           <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
           <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
         </div>
@@ -451,6 +452,7 @@
             <a class="btn" href="/ops/notifications-test">Notifications Lab</a>
             <div class="hr"></div>
             <div class="menuTitle">Business</div>
+            <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget">Budget Command</a>
             <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
             <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">Income Tracker</a>
             <div class="hr"></div>
@@ -643,6 +645,7 @@
             <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
             <a class="btn {% if active=='life-journal' %}primary{% endif %}" href="/journal/life">Life Journal</a>
             <a class="btn {% if active=='life-alignment' %}primary{% endif %}" href="/life-alignment">Life Alignment</a>
+            <a class="btn {% if active=='budget' %}primary{% endif %}" href="/budget">Budget</a>
             <a class="btn {% if active=='self-control' %}primary{% endif %}" href="/self-control">Self-Control</a>
             <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
@@ -659,8 +662,9 @@
         </section>
 
         <section class="drawerSection drawerSectionSystem">
-          <div class="drawerSectionTitle">Business</div>
-          <div class="drawerStack">
+            <div class="drawerSectionTitle">Business</div>
+            <div class="drawerStack">
+            <a class="btn {% if active=='budget' %}primary{% endif %}" href="/budget">Budget Command</a>
             <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payouts</a>
             <a class="btn {% if active=='goals' %}primary{% endif %}" href="/goals">Income Tracker</a>
           </div>
@@ -740,6 +744,7 @@
       "/trades": { title: "Trades", detail: "Loading executions, open positions, and trade history." },
       "/journal": { title: "Journal", detail: "Loading review notes and trading journal entries." },
       "/life-alignment": { title: "Life Alignment", detail: "Loading habits, streaks, and accountability dashboard." },
+      "/budget": { title: "Budget Command", detail: "Loading cashflow, bills, leaks, and income goals." },
       "/analytics": { title: "Analytics", detail: "Loading performance curves and edge reads." },
       "/calendar": { title: "Calendar", detail: "Loading trading days and events." },
     };
