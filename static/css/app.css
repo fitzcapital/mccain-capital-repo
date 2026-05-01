@@ -4802,6 +4802,28 @@ body{
       border-color:rgba(120,180,255,.15);
       background:linear-gradient(135deg, rgba(16, 27, 43, .90), rgba(11, 19, 31, .94));
     }
+    body.page-candle-opens .topNoticePill[class*="is-today-"]{
+      border-color:rgba(124, 215, 255, .20);
+      background:
+        radial-gradient(circle at left, rgba(74, 159, 255, .12), transparent 48%),
+        linear-gradient(135deg, rgba(9, 24, 42, .92), rgba(5, 12, 23, .96));
+    }
+    body.page-candle-opens .topNoticePill.is-today-quiet .topNoticeSignal{
+      background:#8fa4bb;
+      box-shadow:0 0 10px rgba(143,164,187,.22);
+    }
+    body.page-candle-opens .topNoticePill.is-today-light .topNoticeSignal{
+      background:#7fd4ff;
+      box-shadow:0 0 12px rgba(127,212,255,.30);
+    }
+    body.page-candle-opens .topNoticePill.is-today-medium .topNoticeSignal{
+      background:#ffd36e;
+      box-shadow:0 0 12px rgba(255,211,110,.32);
+    }
+    body.page-candle-opens .topNoticePill.is-today-high .topNoticeSignal{
+      background:#37e7a0;
+      box-shadow:0 0 13px rgba(55,231,160,.36);
+    }
     .topNoticeSignal{
       width:8px;
       height:8px;
@@ -14039,6 +14061,106 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
   padding:5px 9px;
   font-size:11px;
 }
+.candleTodayPill{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:34px;
+  max-width:100%;
+  padding:7px 11px;
+  border-radius:999px;
+  border:1px solid rgba(124, 215, 255, .18);
+  background:rgba(8, 18, 32, .76);
+  color:rgba(226, 238, 255, .78);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  font-size:11px;
+  font-weight:800;
+  line-height:1.1;
+  white-space:nowrap;
+}
+.candleTodayPill strong{
+  color:var(--text);
+  font-weight:900;
+}
+.candleTodayDot{
+  width:8px;
+  height:8px;
+  flex:0 0 auto;
+  border-radius:999px;
+  background:#7fd4ff;
+  box-shadow:0 0 12px rgba(127, 212, 255, .28);
+}
+.candleTodayPill.is-quiet .candleTodayDot{background:#8fa4bb; box-shadow:0 0 10px rgba(143,164,187,.20)}
+.candleTodayPill.is-light .candleTodayDot{background:#7fd4ff; box-shadow:0 0 12px rgba(127,212,255,.28)}
+.candleTodayPill.is-medium .candleTodayDot{background:#ffd36e; box-shadow:0 0 13px rgba(255,211,110,.30)}
+.candleTodayPill.is-high .candleTodayDot{background:#37e7a0; box-shadow:0 0 14px rgba(55,231,160,.34)}
+.candleTodaySnapshot{
+  display:grid;
+  grid-template-columns:minmax(170px, .55fr) minmax(0, 1fr);
+  gap:12px;
+  align-items:stretch;
+  margin-bottom:14px;
+  border-color:rgba(124, 215, 255, .16);
+  background:
+    radial-gradient(circle at top left, rgba(74, 159, 255, .10), transparent 44%),
+    linear-gradient(180deg, rgba(7, 18, 32, .92), rgba(5, 12, 23, .96));
+}
+.candleTodaySnapshotDate{
+  margin-top:8px;
+  font-size:20px;
+  line-height:1.05;
+  font-weight:900;
+  color:var(--text);
+}
+.candleTodaySnapshotGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:8px;
+}
+.candleTodaySnapshotGrid > div{
+  min-width:0;
+  padding:10px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.07);
+  background:rgba(255,255,255,.026);
+}
+.candleTodaySnapshotGrid span,
+.candleTodaySnapshotGrid small{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.candleTodaySnapshotGrid span{
+  font-size:8.5px;
+  font-weight:900;
+  letter-spacing:.09em;
+  text-transform:uppercase;
+  color:rgba(223, 238, 255, .52);
+}
+.candleTodaySnapshotGrid strong{
+  display:block;
+  margin-top:5px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:15px;
+  line-height:1.05;
+  color:var(--text);
+}
+.candleTodaySnapshotGrid small{
+  margin-top:5px;
+  font-size:10px;
+  line-height:1.2;
+  color:rgba(207,224,243,.64);
+}
+.candleTodaySnapshot.is-high{
+  border-color:rgba(55,231,160,.22);
+  box-shadow:0 0 18px rgba(55,231,160,.08);
+}
+.candleTodaySnapshot.is-medium{
+  border-color:rgba(255,211,110,.22);
+}
 .candleShell{
   overflow:hidden;
 }
@@ -14632,6 +14754,27 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
     0 0 24px rgba(255, 190, 78, .18),
     0 0 22px rgba(0, 140, 255, .12);
 }
+.candleCell.is-today,
+.mobileCandleDay.is-today{
+  outline:2px solid rgba(91, 230, 255, .74);
+  outline-offset:-5px;
+}
+.candleCell.is-today{
+  box-shadow:
+    inset 0 0 0 1px rgba(91, 230, 255, .22),
+    0 0 18px rgba(91, 230, 255, .16);
+}
+.candleCell.is-today .candleDate::after,
+.mobileCandleDay.is-today .mobileCandleDate::after{
+  content:"Today";
+  display:block;
+  margin-top:3px;
+  font-size:8px;
+  line-height:1;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:rgba(123, 229, 255, .92);
+}
 .candleCell.is-largest-cluster,
 .mobileCandleDay.is-largest-cluster{
   box-shadow:
@@ -14674,6 +14817,10 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
     inset 0 0 0 1px rgba(123, 213, 255, .36),
     0 0 0 1px rgba(123, 213, 255, .20),
     0 0 24px rgba(0, 140, 255, .18) !important;
+}
+.candleCell.is-selected.is-today,
+.mobileCandleDay.is-selected.is-today{
+  outline-color:rgba(255, 226, 136, .86);
 }
 .candleCell.is-summary-linked,
 .mobileCandleDay.is-summary-linked{
@@ -15201,6 +15348,20 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
   }
   .candleHero .pageTitle{
     font-size:clamp(17px, 8vw, 28px);
+  }
+  .candleHero .actionRow{
+    justify-content:flex-start;
+    gap:7px;
+  }
+  .candleTodaySnapshot{
+    grid-template-columns:1fr;
+    padding:12px;
+  }
+  .candleTodaySnapshotDate{
+    font-size:18px;
+  }
+  .candleTodaySnapshotGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
   }
   .candleMetricStrip{
     grid-template-columns:1fr 1fr;
@@ -51972,6 +52133,67 @@ body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockCountdo
   color:rgba(201, 217, 234, .82) !important;
 }
 
+body[data-theme="cinematic-nebula"] #marketStatusClock{
+  gap:10px !important;
+  padding-inline:18px !important;
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusDateDensity{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  min-width:0;
+  flex:0 1 auto;
+  color:rgba(226, 236, 248, .92);
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusDateText{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:14px;
+  line-height:1.2;
+  font-weight:840;
+  color:rgba(229, 239, 252, .94);
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusDensityIcon{
+  display:inline-grid;
+  place-items:center;
+  width:18px;
+  height:18px;
+  flex:0 0 auto;
+  border-radius:999px;
+  font-size:13px;
+  line-height:1;
+  color:#7fd4ff;
+  text-shadow:0 0 12px rgba(127, 212, 255, .26);
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusDateDensity.is-today-quiet .marketStatusDensityIcon{
+  color:#8fa4bb;
+  text-shadow:0 0 10px rgba(143,164,187,.20);
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusDateDensity.is-today-light .marketStatusDensityIcon{
+  color:#7fd4ff;
+  text-shadow:0 0 12px rgba(127,212,255,.28);
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusDateDensity.is-today-medium .marketStatusDensityIcon{
+  color:#ffd36e;
+  text-shadow:0 0 12px rgba(255,211,110,.30);
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusDateDensity.is-today-high .marketStatusDensityIcon{
+  color:#37e7a0;
+  text-shadow:0 0 13px rgba(55,231,160,.34);
+}
+
+body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockDividerDate{
+  margin-inline:0 2px !important;
+}
+
 /* Core Tape containment: keep state chips, percent moves, and quote freshness inside cards. */
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell{
   overflow:hidden !important;
@@ -52494,6 +52716,11 @@ body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .mar
     height:6px !important;
     flex-basis:6px !important;
     box-shadow:0 0 0 2px rgba(61,220,132,.07) !important;
+  }
+
+  .topbar #marketStatusClock .marketStatusDateDensity,
+  .topbar #marketStatusClock .marketStatusClockDividerDate{
+    display:none !important;
   }
 
   .topbar #marketStatusClock .marketStatusClockTimeGroup{

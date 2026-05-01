@@ -20,6 +20,34 @@
   </div>
 </div>
 
+<div class="card candleTodaySnapshot is-{{ today_snapshot.importance_class }}" data-today-date="{{ today_snapshot.iso }}">
+  <div>
+    <div class="pill">Today Snapshot</div>
+    <div class="candleTodaySnapshotDate">{{ today_snapshot.date_label }}</div>
+  </div>
+  <div class="candleTodaySnapshotGrid">
+    <div>
+      <span>Importance</span>
+      <strong>{{ today_snapshot.importance_label }}</strong>
+    </div>
+    <div>
+      <span>Resets</span>
+      <strong>{{ today_snapshot.reset_count }}</strong>
+      <small>{{ today_snapshot.reset_detail }}</small>
+    </div>
+    <div>
+      <span>Macro</span>
+      <strong>{{ today_snapshot.macro_count }}</strong>
+      <small>{% if next_macro_notice %}Next: {{ next_macro_notice.text }}{% else %}{{ today_snapshot.session_label }}{% endif %}</small>
+    </div>
+    <div>
+      <span>Tags</span>
+      <strong>{{ today_snapshot.timing_tags_label }}</strong>
+      <small>{% if today_snapshot.in_display_month %}Calendar anchored{% else %}Open this month to anchor{% endif %}</small>
+    </div>
+  </div>
+</div>
+
 <div class="metricStrip metricStripCompact candleMetricStrip" data-no-mobile-compact="1">
   <div class="metric">
     <div class="label">Trading Days</div>
@@ -283,7 +311,7 @@
             <div class="mobileCandleWeekGrid">
               {% for cell in week %}
                 {% if cell.in_month %}
-                  <div class="mobileCandleDay importance-{{ cell.importance_label|lower }}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cluster_dates.next == cell.iso %} is-next-cluster{% endif %}{% if cluster_dates.largest == cell.iso %} is-largest-cluster{% endif %}{% if cluster_dates.overlap == cell.iso %} is-macro-overlap{% endif %}" role="button" tabindex="0" aria-label="Open details for {{ cell.iso }}" data-candle-day data-date="{{ cell.iso }}" data-weekday="{{ cell.weekday_label }}" data-day="{{ cell.day }}" data-status="{% if cell.is_holiday %}{{ cell.holiday_name }}{% elif cell.is_weekend %}Weekend{% elif cell.is_trading %}Trading session{% else %}Out of month{% endif %}" data-importance="{{ cell.importance_label }}" data-timing-tags="{{ cell.timing_tags_label }}" data-day-cycles="{{ cell.day_detail }}" data-week-cycles="{{ cell.week_detail }}" data-month-cycles="{{ cell.month_detail }}" data-macro="{{ cell.macro_detail }}" data-reset-count="{{ cell.reset_count }}" data-macro-count="{{ cell.macro_count }}">
+                  <div class="mobileCandleDay importance-{{ cell.importance_label|lower }}{% if cell.iso == today_snapshot.iso %} is-today{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cluster_dates.next == cell.iso %} is-next-cluster{% endif %}{% if cluster_dates.largest == cell.iso %} is-largest-cluster{% endif %}{% if cluster_dates.overlap == cell.iso %} is-macro-overlap{% endif %}" role="button" tabindex="0" aria-label="Open details for {{ cell.iso }}" data-candle-day data-date="{{ cell.iso }}" data-is-today="{% if cell.iso == today_snapshot.iso %}1{% else %}0{% endif %}" data-weekday="{{ cell.weekday_label }}" data-day="{{ cell.day }}" data-status="{% if cell.is_holiday %}{{ cell.holiday_name }}{% elif cell.is_weekend %}Weekend{% elif cell.is_trading %}Trading session{% else %}Out of month{% endif %}" data-importance="{{ cell.importance_label }}" data-timing-tags="{{ cell.timing_tags_label }}" data-day-cycles="{{ cell.day_detail }}" data-week-cycles="{{ cell.week_detail }}" data-month-cycles="{{ cell.month_detail }}" data-macro="{{ cell.macro_detail }}" data-reset-count="{{ cell.reset_count }}" data-macro-count="{{ cell.macro_count }}">
                     {% set mobile_tags = namespace(shown=0) %}
                     {% set mobile_news = namespace(high=0, medium=0) %}
                     {% for event in cell.news_events %}
@@ -373,7 +401,7 @@
         <div class="candleWeekday">Sat</div>
         {% for week in weeks %}
           {% for cell in week %}
-            <div class="candleCell importance-{{ cell.importance_label|lower }}{% if not cell.in_month %} is-muted{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cell.day_labels %} has-day-signal{% endif %}{% if cell.week_labels %} has-week-signal{% endif %}{% if cell.is_key_news_day %} has-key-news is-{{ cell.news_focus_key }}{% endif %}{% if cell.has_curated_news %} has-curated-news{% endif %}{% if cell.is_quiet_day %} is-quiet{% endif %}{% if cell.is_dense_day %} is-dense{% endif %}{% if cluster_dates.next == cell.iso %} is-next-cluster{% endif %}{% if cluster_dates.largest == cell.iso %} is-largest-cluster{% endif %}{% if cluster_dates.overlap == cell.iso %} is-macro-overlap{% endif %}"{% if cell.in_month %} id="day-{{ cell.iso }}" role="button" tabindex="0" aria-label="Open details for {{ cell.iso }}" data-candle-day data-date="{{ cell.iso }}" data-weekday="{{ cell.weekday_label }}" data-day="{{ cell.day }}" data-status="{% if cell.is_holiday %}{{ cell.holiday_name }}{% elif cell.is_weekend %}Weekend{% elif cell.is_trading %}Trading session{% else %}Out of month{% endif %}" data-importance="{{ cell.importance_label }}" data-timing-tags="{{ cell.timing_tags_label }}" data-day-cycles="{{ cell.day_detail }}" data-week-cycles="{{ cell.week_detail }}" data-month-cycles="{{ cell.month_detail }}" data-macro="{{ cell.macro_detail }}" data-reset-count="{{ cell.reset_count }}" data-macro-count="{{ cell.macro_count }}"{% endif %}>
+            <div class="candleCell importance-{{ cell.importance_label|lower }}{% if cell.iso == today_snapshot.iso %} is-today{% endif %}{% if not cell.in_month %} is-muted{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cell.day_labels %} has-day-signal{% endif %}{% if cell.week_labels %} has-week-signal{% endif %}{% if cell.is_key_news_day %} has-key-news is-{{ cell.news_focus_key }}{% endif %}{% if cell.has_curated_news %} has-curated-news{% endif %}{% if cell.is_quiet_day %} is-quiet{% endif %}{% if cell.is_dense_day %} is-dense{% endif %}{% if cluster_dates.next == cell.iso %} is-next-cluster{% endif %}{% if cluster_dates.largest == cell.iso %} is-largest-cluster{% endif %}{% if cluster_dates.overlap == cell.iso %} is-macro-overlap{% endif %}"{% if cell.in_month %} id="day-{{ cell.iso }}" role="button" tabindex="0" aria-label="Open details for {{ cell.iso }}" data-candle-day data-date="{{ cell.iso }}" data-is-today="{% if cell.iso == today_snapshot.iso %}1{% else %}0{% endif %}" data-weekday="{{ cell.weekday_label }}" data-day="{{ cell.day }}" data-status="{% if cell.is_holiday %}{{ cell.holiday_name }}{% elif cell.is_weekend %}Weekend{% elif cell.is_trading %}Trading session{% else %}Out of month{% endif %}" data-importance="{{ cell.importance_label }}" data-timing-tags="{{ cell.timing_tags_label }}" data-day-cycles="{{ cell.day_detail }}" data-week-cycles="{{ cell.week_detail }}" data-month-cycles="{{ cell.month_detail }}" data-macro="{{ cell.macro_detail }}" data-reset-count="{{ cell.reset_count }}" data-macro-count="{{ cell.macro_count }}"{% endif %}>
             {% set desktop_tags = namespace(shown=0) %}
             {% set desktop_news = namespace(high=0, medium=0) %}
             {% for event in cell.news_events %}
@@ -553,8 +581,8 @@
     macro: panel.querySelector("[data-candle-detail-macro]"),
   };
   const selectDay = (day) => {
-    days.forEach((item) => item.classList.toggle("is-selected", item === day));
     const date = day.dataset.date || "";
+    days.forEach((item) => item.classList.toggle("is-selected", item.dataset.date === date));
     const weekday = day.dataset.weekday || "";
     if (fields.date) fields.date.textContent = `${weekday} ${date}`;
     if (fields.status) {
@@ -604,7 +632,18 @@
       button.closest(".candleTags")?.classList.toggle("is-expanded", !expanded);
     });
   });
-  const active = days.find((day) => day.classList.contains("has-signal")) || days[0];
-  if (active) selectDay(active);
+  const active =
+    document.querySelector(".candleCell[data-is-today='1']") ||
+    document.querySelector("[data-candle-day][data-is-today='1']") ||
+    days.find((day) => day.classList.contains("has-signal")) ||
+    days[0];
+  if (active) {
+    selectDay(active);
+    if (active.dataset.isToday === "1") {
+      window.requestAnimationFrame(() => {
+        active.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      });
+    }
+  }
 })();
 </script>

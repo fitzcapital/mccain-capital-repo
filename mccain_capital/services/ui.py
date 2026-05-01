@@ -850,6 +850,8 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **pag
         vanquish_lock = get_vanquish_profit_lock_state()
     if not isinstance(trading_window, dict):
         trading_window = get_trading_window_state()
+    now_et = app_runtime.now_et()
+    header_date_label = f"{now_et.strftime('%a %b')} {now_et.day}, {now_et.year}"
     return render_template(
         "base.html",
         title=title,
@@ -862,6 +864,7 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **pag
         auth_username=effective_username(),
         **_profile_context(),
         current_date=app_runtime.today_iso(),
+        header_date_label=header_date_label,
         system_status=get_system_status(),
         top_notice=top_notice,
         vanquish_lock=vanquish_lock,

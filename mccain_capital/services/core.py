@@ -11954,7 +11954,7 @@ def candle_opens_page():
         content,
         active="candle-opens",
         title=f"{model['month_name']} Candle Opens",
-        top_notice=model["top_notice"],
+        top_notice=model["today_top_notice"],
     )
 
 
@@ -12497,6 +12497,102 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         weeks=weeks,
         news_top_days=list(news_overlay["top_days"] or []),
     )
+    today_cell = next(
+        (
+            day
+            for week in weeks
+            for day in week
+            if day.get("in_month") and str(day.get("iso") or "") == anchor.isoformat()
+        ),
+        None,
+    )
+    if today_cell is None:
+        today_session_index = session_index
+        today_week_index = week_index
+        today_week_open_dates = week_open_dates
+        today_month_index = month_index
+        today_month_open_dates = month_open_dates
+        if anchor.year != year:
+            today_session_index = _trading_day_index_map(anchor.year)
+            today_week_index, today_week_open_dates = _trading_week_index_map(anchor.year)
+            today_month_index, today_month_open_dates = _trading_month_index_map(anchor.year)
+        today_holiday_name = _market_holiday_name(anchor)
+        today_is_trading = anchor.weekday() < 5 and not today_holiday_name
+        today_day_labels: List[str] = []
+        today_week_labels: List[str] = []
+        today_month_labels: List[str] = []
+        if today_is_trading:
+            today_idx = today_session_index.get(anchor)
+            if today_idx is not None:
+                today_day_labels = [
+                    f"{span}D" for span in DAY_OPEN_INTERVALS if today_idx % span == 1
+                ]
+            if anchor in today_week_open_dates:
+                today_widx = today_week_index.get(anchor)
+                if today_widx is not None:
+                    today_week_labels = [
+                        f"{span}W" for span in WEEK_OPEN_INTERVALS if today_widx % span == 1
+                    ]
+            if anchor in today_month_open_dates:
+                today_midx = today_month_index.get(anchor)
+                if today_midx is not None:
+                    today_month_labels = [
+                        f"{span}M" for span in MONTH_OPEN_INTERVALS if today_midx % span == 1
+                    ]
+        today_events = list(news_overlay["events_by_day"].get(anchor.isoformat(), []))
+        if not today_events and (anchor.year, anchor.month) != (year, month):
+            today_overlay = _forex_factory_usd_window_events(anchor, anchor)
+            today_events = list(today_overlay["events_by_day"].get(anchor.isoformat(), []))
+        today_importance = _candle_day_importance(
+            today_day_labels,
+            today_week_labels,
+            today_month_labels,
+            today_events,
+        )
+        today_cell = {
+            "iso": anchor.isoformat(),
+            "weekday_label": anchor.strftime("%a"),
+            "reset_count": len(today_day_labels) + len(today_week_labels) + len(today_month_labels),
+            "macro_count": len(today_events),
+            "importance_score": today_importance["score"],
+            "importance_label": today_importance["label"],
+            "timing_tags": today_importance["timing_tags"],
+            "timing_tags_label": " · ".join(today_importance["timing_tags"]) or "Quiet Day",
+            "reset_detail": ", ".join(today_day_labels + today_week_labels + today_month_labels)
+            or "No reset markers",
+            "hidden_reset_detail": _candle_grouped_reset_detail(
+                today_day_labels,
+                today_week_labels,
+                today_month_labels,
+            ),
+        }
+    today_snapshot = {
+        "iso": anchor.isoformat(),
+        "date_label": f"{anchor.strftime('%a %b')} {anchor.day}, {anchor.year}",
+        "importance_label": str(today_cell.get("importance_label") or "Quiet"),
+        "importance_class": str(today_cell.get("importance_label") or "Quiet").lower(),
+        "reset_count": int(today_cell.get("reset_count") or 0),
+        "macro_count": int(today_cell.get("macro_count") or 0),
+        "reset_detail": str(today_cell.get("reset_detail") or "No reset markers"),
+        "hidden_reset_detail": str(today_cell.get("hidden_reset_detail") or "No hidden resets"),
+        "timing_tags": list(today_cell.get("timing_tags") or []),
+        "timing_tags_label": str(today_cell.get("timing_tags_label") or "Quiet Day"),
+        "in_display_month": (anchor.year, anchor.month) == (year, month),
+        "session_label": _market_pulse_session_phase(now_et).replace("afterhours", "after hours").title(),
+    }
+    top_notice = _candle_page_top_notice(now_et, news_overlay["events"])
+    today_top_notice = {
+        "label": "Today",
+        "text": f"{today_snapshot['date_label']} · {today_snapshot['importance_label']}",
+        "date_text": today_snapshot["date_label"],
+        "density_label": today_snapshot["importance_label"],
+        "detail": (
+            f"{today_snapshot['reset_count']} resets · "
+            f"{today_snapshot['macro_count']} macro · {today_snapshot['timing_tags_label']}"
+        ),
+        "href": f"#day-{today_snapshot['iso']}" if today_snapshot["in_display_month"] else "",
+        "level": f"today-{today_snapshot['importance_class']}",
+    }
     return {
         "month_name": month_name,
         "year": year,
@@ -12528,7 +12624,9 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         "focus_cards": focus_cards,
         "cluster_summaries": cluster_summaries,
         "cluster_dates": cluster_dates,
-        "top_notice": _candle_page_top_notice(now_et, news_overlay["events"]),
+        "today_snapshot": today_snapshot,
+        "today_top_notice": today_top_notice,
+        "next_macro_notice": top_notice,
     }
 
 
