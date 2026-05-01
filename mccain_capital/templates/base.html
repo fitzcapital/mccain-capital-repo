@@ -470,11 +470,19 @@
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
             <a class="btn {% if active=='profile' %}active{% endif %}" href="/profile"><span class="menuItemIcon">👤</span><span>Profile</span></a>
             <a class="btn" href="/setup"><span class="menuItemIcon">🔐</span><span>Login Setup</span></a>
+            <button class="btn menuThemeSwitch" type="button" onclick="toggleTheme()" aria-label="Switch visual theme">
+              <span class="menuThemeSwitchIcon" aria-hidden="true">✦</span>
+              <span data-theme-toggle-label>Theme: Cinematic Nebula</span>
+            </button>
             <div class="hr"></div>
             <div class="menuTitle">Links</div>
             <a class="btn menuIconLink" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">
               <img src="{{ url_for('static', filename='img/tradingview.svg') }}" alt="" aria-hidden="true">
               <span>TradingView</span>
+            </a>
+            <a class="btn menuIconLink" href="https://x.com/" target="_blank" rel="noopener">
+              <img src="{{ url_for('static', filename='img/x-logo.svg') }}" alt="" aria-hidden="true">
+              <span>X.com</span>
             </a>
             <a class="btn menuIconLink" href="https://discord.com/channels/905973099969798164/905973099969798168" target="_blank" rel="noopener">
               <img src="{{ url_for('static', filename='img/all-time-high.svg') }}" alt="" aria-hidden="true">
@@ -728,6 +736,10 @@
                 <img src="{{ url_for('static', filename='img/tradingview.svg') }}" alt="" aria-hidden="true">
                 <span>TradingView</span>
               </a>
+              <a class="btn menuIconLink" href="https://x.com/" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/x-logo.svg') }}" alt="" aria-hidden="true">
+                <span>X.com</span>
+              </a>
               <a class="btn menuIconLink" href="https://discord.com/channels/905973099969798164/905973099969798168" target="_blank" rel="noopener">
                 <img src="{{ url_for('static', filename='img/all-time-high.svg') }}" alt="" aria-hidden="true">
                 <span>All Time High</span>
@@ -747,7 +759,10 @@
                   <span>Vanquish Trader</span>
                 </a>
               {% endif %}
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: MGP</button>
+            <button class="btn themeToggle drawerThemeSwitch" type="button" onclick="toggleTheme()" aria-label="Switch visual theme">
+              <span class="menuThemeSwitchIcon" aria-hidden="true">✦</span>
+              <span data-theme-toggle-label>Theme: Cinematic Nebula</span>
+            </button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}

@@ -533,9 +533,9 @@
   }
 
   function initThemeAndGuided() {
-    const themeMigrationKey = "mc_theme_v9";
+    const themeMigrationKey = "mc_theme_v10";
     const fontModeKey = "mc_font_mode";
-    const themeOrder = ["galaxy", "cosmic-flare", "new-galaxy", "grey", "wallpaper-galaxy", "obsidian", "black", "nebula", "cinematic-nebula"];
+    const themeOrder = ["cinematic-nebula", "new-galaxy", "cosmic-flare", "galaxy", "obsidian", "black", "nebula", "grey", "wallpaper-galaxy"];
     const themeLabels = {
       "new-galaxy": "Theme: New Galaxy",
       "cinematic-nebula": "Theme: Cinematic Nebula",
@@ -611,7 +611,7 @@
     };
 
     window.toggleTheme = () => {
-      const current = body.getAttribute("data-theme") || "galaxy";
+      const current = body.getAttribute("data-theme") || "cinematic-nebula";
       const idx = themeOrder.indexOf(current);
       const next = themeOrder[(idx + 1) % themeOrder.length];
       storageSet("mc_theme", next);
@@ -627,13 +627,7 @@
     };
 
     if (storageGet(themeMigrationKey) !== "1") {
-      const savedTheme = storageGet("mc_theme");
-      if (savedTheme === "daylight") {
-        storageSet("mc_theme", "grey");
-      }
-      if (!savedTheme || savedTheme === "cosmic-flare" || savedTheme === "galaxy") {
-        storageSet("mc_theme", "cinematic-nebula");
-      }
+      storageSet("mc_theme", "cinematic-nebula");
       storageSet(themeMigrationKey, "1");
     }
 
