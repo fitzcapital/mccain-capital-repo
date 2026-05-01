@@ -12426,6 +12426,7 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
                             f"{span}M" for span in MONTH_OPEN_INTERVALS if midx % span == 1
                         ]
                 total_signals += len(day_labels) + len(week_labels) + len(month_labels)
+            importance = _candle_day_importance(day_labels, week_labels, month_labels, day_news)
             cells.append(
                 {
                     "day": day.day,
@@ -12459,12 +12460,36 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
                         and not month_labels
                         and not day_news
                     ),
+                    "reset_count": len(day_labels) + len(week_labels) + len(month_labels),
+                    "macro_count": len(day_news),
+                    "day_detail": ", ".join(day_labels) or "None",
+                    "week_detail": ", ".join(week_labels) or "None",
+                    "month_detail": ", ".join(month_labels) or "None",
+                    "macro_detail": _candle_macro_detail(day_news),
+                    "importance_score": importance["score"],
+                    "importance_label": importance["label"],
+                    "timing_tags": importance["timing_tags"],
+                    "timing_tags_label": " · ".join(importance["timing_tags"]) or "Quiet Day",
+                    "hidden_reset_detail": _candle_grouped_reset_detail(
+                        day_labels,
+                        week_labels,
+                        month_labels,
+                    ),
+                    "reset_detail": ", ".join(day_labels + week_labels + month_labels)
+                    or "No reset markers",
                     "labels": day_labels + week_labels + month_labels,
                 }
             )
         weeks.append(cells)
 
     month_name = date(year, month, 1).strftime("%B %Y")
+    cluster_summaries = _build_candle_cluster_summaries(
+        anchor=anchor,
+        year=year,
+        month=month,
+        weeks=weeks,
+    )
+    cluster_dates = {item.get("kind"): item.get("iso") for item in cluster_summaries}
     focus_cards = _build_candle_focus_cards(
         anchor=anchor,
         year=year,
@@ -12501,8 +12526,177 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         "news_confidence_label": news_overlay["confidence_label"],
         "news_top_days": news_overlay["top_days"],
         "focus_cards": focus_cards,
+        "cluster_summaries": cluster_summaries,
+        "cluster_dates": cluster_dates,
         "top_notice": _candle_page_top_notice(now_et, news_overlay["events"]),
     }
+
+
+def _candle_day_importance(
+    day_labels: List[str],
+    week_labels: List[str],
+    month_labels: List[str],
+    news_events: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Score timing density only: reset cycles, macro severity, and reset/macro overlap."""
+    reset_count = len(day_labels) + len(week_labels) + len(month_labels)
+    score = len(day_labels) + (2 * len(week_labels)) + (3 if month_labels else 0)
+    high_macros = sum(1 for event in news_events if str(event.get("impact_class") or "") == "high")
+    medium_macros = sum(1 for event in news_events if str(event.get("impact_class") or "") == "medium")
+    score += (4 * high_macros) + (2 * medium_macros)
+    if reset_count and news_events:
+        score += 3
+    if score >= 6:
+        label = "High"
+    elif score >= 3:
+        label = "Medium"
+    elif score >= 1:
+        label = "Light"
+    else:
+        label = "Quiet"
+
+    timing_tags = []
+    if reset_count >= 3:
+        timing_tags.append("Reset Cluster")
+    if day_labels:
+        timing_tags.append("Day Open")
+    if week_labels:
+        timing_tags.append("Week Open")
+    if month_labels:
+        timing_tags.append("Month Open")
+    if news_events and reset_count:
+        timing_tags.append("Macro Collision")
+    elif news_events:
+        timing_tags.append("Macro Event")
+    if not timing_tags:
+        timing_tags.append("Quiet Day")
+    return {
+        "score": score,
+        "label": label,
+        "timing_tags": timing_tags,
+    }
+
+
+def _candle_grouped_reset_detail(
+    day_labels: List[str],
+    week_labels: List[str],
+    month_labels: List[str],
+) -> str:
+    groups = [
+        f"Day: {', '.join(day_labels)}" if day_labels else "",
+        f"Week: {', '.join(week_labels)}" if week_labels else "",
+        f"Month: {', '.join(month_labels)}" if month_labels else "",
+    ]
+    return " · ".join(group for group in groups if group) or "No hidden resets"
+
+
+def _candle_macro_detail(events: List[Dict[str, Any]]) -> str:
+    if not events:
+        return "No macro markers"
+    parts = []
+    for event in events[:4]:
+        time_label = str(event.get("time_label") or "").strip()
+        title = str(event.get("title") or "Macro event").strip()
+        parts.append(f"{time_label} {title}".strip())
+    remaining = len(events) - len(parts)
+    if remaining > 0:
+        parts.append(f"+{remaining} more")
+    return " · ".join(parts)
+
+
+def _candle_cluster_summary(day: Optional[Dict[str, Any]], fallback_title: str) -> Dict[str, str]:
+    if not day:
+        return {
+            "kind": "empty",
+            "iso": "",
+            "title": fallback_title,
+            "date": "None scheduled",
+            "headline": "No qualifying cluster in this month.",
+            "meta": "Calendar is clear for this cluster type.",
+            "href": "#",
+            "tone": "quiet",
+        }
+    reset_count = int(day.get("reset_count") or 0)
+    macro_count = int(day.get("macro_count") or 0)
+    total = reset_count + macro_count
+    return {
+        "kind": "cluster",
+        "iso": str(day["iso"]),
+        "title": fallback_title,
+        "date": datetime.strptime(str(day["iso"]), "%Y-%m-%d").strftime("%a, %b %d"),
+        "headline": f"{total} timing marker{'s' if total != 1 else ''}",
+        "meta": " · ".join(
+            part
+            for part in [
+                f"{reset_count} reset{'s' if reset_count != 1 else ''}" if reset_count else "",
+                f"{macro_count} macro" if macro_count else "",
+                str(day.get("reset_detail") or ""),
+            ]
+            if part
+        ),
+        "href": f"#day-{day['iso']}",
+        "tone": "overlap" if reset_count and macro_count else ("reset" if reset_count else "macro"),
+    }
+
+
+def _build_candle_cluster_summaries(
+    *,
+    anchor: date,
+    year: int,
+    month: int,
+    weeks: List[List[Dict[str, Any]]],
+) -> List[Dict[str, str]]:
+    month_days = [
+        day
+        for week in weeks
+        for day in week
+        if day.get("in_month") and day.get("is_trading")
+    ]
+    if not month_days:
+        return []
+
+    active_days = [
+        day
+        for day in month_days
+        if date.fromisoformat(str(day.get("iso"))) >= anchor
+    ]
+    horizon_days = active_days or month_days
+
+    def cluster_score(day: Dict[str, Any]) -> tuple[int, int, int]:
+        reset_count = int(day.get("reset_count") or 0)
+        macro_count = int(day.get("macro_count") or 0)
+        return (reset_count + macro_count, reset_count, macro_count)
+
+    next_reset = next((day for day in horizon_days if int(day.get("reset_count") or 0)), None)
+    largest = max(month_days, key=cluster_score, default=None)
+    if largest and cluster_score(largest)[0] == 0:
+        largest = None
+    overlap = next(
+        (
+            day
+            for day in horizon_days
+            if int(day.get("reset_count") or 0) and int(day.get("macro_count") or 0)
+        ),
+        None,
+    )
+    if overlap is None:
+        overlap = max(
+            (
+                day
+                for day in month_days
+                if int(day.get("reset_count") or 0) and int(day.get("macro_count") or 0)
+            ),
+            key=cluster_score,
+            default=None,
+        )
+
+    next_summary = _candle_cluster_summary(next_reset, "Next reset cluster")
+    next_summary["kind"] = "next"
+    largest_summary = _candle_cluster_summary(largest, "Largest cluster this month")
+    largest_summary["kind"] = "largest"
+    overlap_summary = _candle_cluster_summary(overlap, "Macro / reset overlap")
+    overlap_summary["kind"] = "overlap"
+    return [next_summary, largest_summary, overlap_summary]
 
 
 def _candle_page_top_notice(

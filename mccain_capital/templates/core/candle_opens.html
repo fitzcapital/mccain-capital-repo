@@ -4,7 +4,7 @@
       <div>
         <div class="pill">🕯️ Timing Map</div>
         <div class="pageTitleRow candleTitleRow">
-          <h2 class="pageTitle">{{ month_name }} Candle Opens</h2>
+          <h2 class="pageTitle">{{ month_name }} Opportunity Density</h2>
           <details class="candleInlineNote">
             <summary class="candleInlineNoteToggle" aria-label="Candle opens help">?</summary>
             <div class="candleInlineNoteBody">Day intervals use the market-session count from the first session of the year. Week and month intervals print on the first tradable session that qualifies.</div>
@@ -75,6 +75,19 @@
 </div>
 {% endif %}
 
+{% if cluster_summaries %}
+<div class="candleClusterStrip" aria-label="Reset cluster summaries">
+  {% for item in cluster_summaries %}
+    <a class="card candleClusterCard is-{{ item.tone }}" href="{{ item.href }}" data-candle-summary-card data-target-date="{{ item.iso }}">
+      <div class="candleClusterEyebrow">{{ item.title }}</div>
+      <div class="candleClusterDate">{{ item.date }}</div>
+      <div class="candleClusterHeadline">{{ item.headline }}</div>
+      <div class="candleClusterMeta">{{ item.meta }}</div>
+    </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="card candleCyclePanel">
   <div class="toolbar">
     <div class="pill">Cycles</div>
@@ -98,7 +111,7 @@
 <details class="card candleMacroFold" data-mobile-default="closed">
   <summary class="candleMacroSummary">
     <span class="pill">Macro Events</span>
-    <span class="candleMacroSummaryTitle">{{ news_week_range }}</span>
+    <span class="candleMacroSummaryTitle">{{ news_high + news_medium }} USD orange/red events this month</span>
     <span class="tiny muted">{{ news_summary }}</span>
   </summary>
   <div class="candleMacroBody">
@@ -270,7 +283,7 @@
             <div class="mobileCandleWeekGrid">
               {% for cell in week %}
                 {% if cell.in_month %}
-                  <div class="mobileCandleDay{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}">
+                  <div class="mobileCandleDay importance-{{ cell.importance_label|lower }}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cluster_dates.next == cell.iso %} is-next-cluster{% endif %}{% if cluster_dates.largest == cell.iso %} is-largest-cluster{% endif %}{% if cluster_dates.overlap == cell.iso %} is-macro-overlap{% endif %}" role="button" tabindex="0" aria-label="Open details for {{ cell.iso }}" data-candle-day data-date="{{ cell.iso }}" data-weekday="{{ cell.weekday_label }}" data-day="{{ cell.day }}" data-status="{% if cell.is_holiday %}{{ cell.holiday_name }}{% elif cell.is_weekend %}Weekend{% elif cell.is_trading %}Trading session{% else %}Out of month{% endif %}" data-importance="{{ cell.importance_label }}" data-timing-tags="{{ cell.timing_tags_label }}" data-day-cycles="{{ cell.day_detail }}" data-week-cycles="{{ cell.week_detail }}" data-month-cycles="{{ cell.month_detail }}" data-macro="{{ cell.macro_detail }}" data-reset-count="{{ cell.reset_count }}" data-macro-count="{{ cell.macro_count }}">
                     {% set mobile_tags = namespace(shown=0) %}
                     {% set mobile_news = namespace(high=0, medium=0) %}
                     {% for event in cell.news_events %}
@@ -287,6 +300,14 @@
                       </div>
                       <div class="mobileCandleDate">{{ cell.day }}</div>
                     </div>
+                    <div class="candleCellSignalLabels">
+                      {% if cell.reset_count >= 3 %}
+                        <span class="candleMiniSignal">Cluster</span>
+                      {% endif %}
+                      {% if cell.reset_count and cell.macro_count %}
+                        <span class="candleMiniSignal is-macro">Macro + Reset</span>
+                      {% endif %}
+                    </div>
                     {% if cell.is_holiday %}
                       <div class="mobileCandleMeta">{{ cell.holiday_name }}</div>
                     {% elif cell.is_weekend %}
@@ -297,25 +318,26 @@
                     {% if cell.labels %}
                       <div class="mobileCandleTags">
                         {% for label in cell.day_labels %}
-                          {% if mobile_tags.shown < 4 %}
+                          {% if mobile_tags.shown < 3 %}
                             <span class="candleTag">{{ label }}</span>
                             {% set mobile_tags.shown = mobile_tags.shown + 1 %}
                           {% endif %}
                         {% endfor %}
                         {% for label in cell.week_labels %}
-                          {% if mobile_tags.shown < 4 %}
+                          {% if mobile_tags.shown < 3 %}
                             <span class="candleTag candleTagWeek">{{ label }}</span>
                             {% set mobile_tags.shown = mobile_tags.shown + 1 %}
                           {% endif %}
                         {% endfor %}
                         {% for label in cell.month_labels %}
-                          {% if mobile_tags.shown < 4 %}
+                          {% if mobile_tags.shown < 3 %}
                             <span class="candleTag candleTagMonth">{{ label }}</span>
                             {% set mobile_tags.shown = mobile_tags.shown + 1 %}
                           {% endif %}
                         {% endfor %}
                         {% if (cell.labels|length) > mobile_tags.shown %}
-                          <span class="candleTag candleTagOverflow">+{{ (cell.labels|length) - mobile_tags.shown }}</span>
+                          <button class="candleTag candleTagOverflow" type="button" aria-expanded="false" aria-label="{{ (cell.labels|length) - mobile_tags.shown }} more reset markers: {{ cell.hidden_reset_detail }}" data-tooltip="{{ cell.hidden_reset_detail }}">+{{ (cell.labels|length) - mobile_tags.shown }} more</button>
+                          <span class="candleHiddenResetList">{{ cell.hidden_reset_detail }}</span>
                         {% endif %}
                       </div>
                     {% endif %}
@@ -339,18 +361,19 @@
         {% endif %}
       {% endfor %}
     </div>
-    <div class="candleBoard" style="--candle-mark: url('{{ url_for('static', filename='logo.png') }}');">
-      <div class="candleBoardGlow"></div>
-      <div class="candleWeekday">Sun</div>
-      <div class="candleWeekday">Mon</div>
-      <div class="candleWeekday">Tue</div>
-      <div class="candleWeekday">Wed</div>
-      <div class="candleWeekday">Thu</div>
-      <div class="candleWeekday">Fri</div>
-      <div class="candleWeekday">Sat</div>
-      {% for week in weeks %}
-        {% for cell in week %}
-          <div class="candleCell{% if not cell.in_month %} is-muted{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cell.day_labels %} has-day-signal{% endif %}{% if cell.week_labels %} has-week-signal{% endif %}{% if cell.is_key_news_day %} has-key-news is-{{ cell.news_focus_key }}{% endif %}{% if cell.has_curated_news %} has-curated-news{% endif %}{% if cell.is_quiet_day %} is-quiet{% endif %}{% if cell.is_dense_day %} is-dense{% endif %}"{% if cell.in_month %} id="day-{{ cell.iso }}"{% endif %}>
+    <div class="candleCalendarLayout">
+      <div class="candleBoard" style="--candle-mark: url('{{ url_for('static', filename='logo.png') }}');">
+        <div class="candleBoardGlow"></div>
+        <div class="candleWeekday">Sun</div>
+        <div class="candleWeekday">Mon</div>
+        <div class="candleWeekday">Tue</div>
+        <div class="candleWeekday">Wed</div>
+        <div class="candleWeekday">Thu</div>
+        <div class="candleWeekday">Fri</div>
+        <div class="candleWeekday">Sat</div>
+        {% for week in weeks %}
+          {% for cell in week %}
+            <div class="candleCell importance-{{ cell.importance_label|lower }}{% if not cell.in_month %} is-muted{% endif %}{% if cell.is_weekend %} is-weekend{% endif %}{% if cell.is_holiday %} is-holiday{% endif %}{% if cell.labels %} has-signal{% endif %}{% if cell.day_labels %} has-day-signal{% endif %}{% if cell.week_labels %} has-week-signal{% endif %}{% if cell.is_key_news_day %} has-key-news is-{{ cell.news_focus_key }}{% endif %}{% if cell.has_curated_news %} has-curated-news{% endif %}{% if cell.is_quiet_day %} is-quiet{% endif %}{% if cell.is_dense_day %} is-dense{% endif %}{% if cluster_dates.next == cell.iso %} is-next-cluster{% endif %}{% if cluster_dates.largest == cell.iso %} is-largest-cluster{% endif %}{% if cluster_dates.overlap == cell.iso %} is-macro-overlap{% endif %}"{% if cell.in_month %} id="day-{{ cell.iso }}" role="button" tabindex="0" aria-label="Open details for {{ cell.iso }}" data-candle-day data-date="{{ cell.iso }}" data-weekday="{{ cell.weekday_label }}" data-day="{{ cell.day }}" data-status="{% if cell.is_holiday %}{{ cell.holiday_name }}{% elif cell.is_weekend %}Weekend{% elif cell.is_trading %}Trading session{% else %}Out of month{% endif %}" data-importance="{{ cell.importance_label }}" data-timing-tags="{{ cell.timing_tags_label }}" data-day-cycles="{{ cell.day_detail }}" data-week-cycles="{{ cell.week_detail }}" data-month-cycles="{{ cell.month_detail }}" data-macro="{{ cell.macro_detail }}" data-reset-count="{{ cell.reset_count }}" data-macro-count="{{ cell.macro_count }}"{% endif %}>
             {% set desktop_tags = namespace(shown=0) %}
             {% set desktop_news = namespace(high=0, medium=0) %}
             {% for event in cell.news_events %}
@@ -369,6 +392,17 @@
               {% if cell.is_key_news_day %}
                 <div class="candleKeyMacroTag">{{ cell.news_focus_label }}</div>
               {% endif %}
+              <div class="candleCellSignalLabels">
+                {% if cell.reset_count >= 3 %}
+                  <span class="candleMiniSignal">Cluster</span>
+                {% endif %}
+                {% if cell.reset_count and cell.macro_count %}
+                  <span class="candleMiniSignal is-macro">Macro + Reset</span>
+                {% endif %}
+                {% if cell.is_quiet_day %}
+                  <span class="candleMiniSignal is-quiet-label">Quiet</span>
+                {% endif %}
+              </div>
               {% if cell.is_holiday %}
                 <div class="candleMeta">{{ cell.holiday_name }}</div>
               {% elif cell.in_month and cell.is_weekend %}
@@ -382,26 +416,36 @@
                 {% if cell.labels %}
                   <div class="candleTagRail">
                     <div class="candleTags">
-                      {% for label in cell.day_labels %}
-                        {% if desktop_tags.shown < 3 %}
-                          <span class="candleTag">{{ label }}</span>
-                          {% set desktop_tags.shown = desktop_tags.shown + 1 %}
-                        {% endif %}
-                      {% endfor %}
-                      {% for label in cell.week_labels %}
-                        {% if desktop_tags.shown < 3 %}
-                          <span class="candleTag candleTagWeek">{{ label }}</span>
-                          {% set desktop_tags.shown = desktop_tags.shown + 1 %}
-                        {% endif %}
-                      {% endfor %}
-                      {% for label in cell.month_labels %}
-                        {% if desktop_tags.shown < 3 %}
-                          <span class="candleTag candleTagMonth">{{ label }}</span>
-                          {% set desktop_tags.shown = desktop_tags.shown + 1 %}
-                        {% endif %}
-                      {% endfor %}
+                      {% if cell.day_labels %}
+                        <span class="candleTagGroupLabel">Day</span>
+                        {% for label in cell.day_labels %}
+                          {% if desktop_tags.shown < 3 %}
+                            <span class="candleTag">{{ label }}</span>
+                            {% set desktop_tags.shown = desktop_tags.shown + 1 %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endif %}
+                      {% if cell.week_labels and desktop_tags.shown < 3 %}
+                        <span class="candleTagGroupLabel candleTagGroupWeek">Week</span>
+                        {% for label in cell.week_labels %}
+                          {% if desktop_tags.shown < 3 %}
+                            <span class="candleTag candleTagWeek">{{ label }}</span>
+                            {% set desktop_tags.shown = desktop_tags.shown + 1 %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endif %}
+                      {% if cell.month_labels and desktop_tags.shown < 3 %}
+                        <span class="candleTagGroupLabel candleTagGroupMonth">Month</span>
+                        {% for label in cell.month_labels %}
+                          {% if desktop_tags.shown < 3 %}
+                            <span class="candleTag candleTagMonth">{{ label }}</span>
+                            {% set desktop_tags.shown = desktop_tags.shown + 1 %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endif %}
                       {% if (cell.labels|length) > desktop_tags.shown %}
-                        <span class="candleTag candleTagOverflow">+{{ (cell.labels|length) - desktop_tags.shown }}</span>
+                        <button class="candleTag candleTagOverflow" type="button" aria-expanded="false" aria-label="{{ (cell.labels|length) - desktop_tags.shown }} more reset markers: {{ cell.hidden_reset_detail }}" data-tooltip="{{ cell.hidden_reset_detail }}">+{{ (cell.labels|length) - desktop_tags.shown }} more</button>
+                        <span class="candleHiddenResetList">{{ cell.hidden_reset_detail }}</span>
                       {% endif %}
                     </div>
                   </div>
@@ -423,8 +467,52 @@
               </div>
             {% endif %}
           </div>
+          {% endfor %}
         {% endfor %}
-      {% endfor %}
+      </div>
+
+      <aside class="candleDayDetailPanel" aria-live="polite">
+        <div class="pill">Day Profile</div>
+        <div class="candleDayDetailDate" data-candle-detail-date>Click a calendar date</div>
+        <div class="candleDayDetailStatus" data-candle-detail-status>Full timing detail will appear here.</div>
+        <div class="candleDayProfileGrid">
+          <div>
+            <span>Importance</span>
+            <strong data-candle-detail-importance>Quiet</strong>
+          </div>
+          <div>
+            <span>Resets</span>
+            <strong data-candle-detail-resets>0</strong>
+          </div>
+          <div>
+            <span>Macro</span>
+            <strong data-candle-detail-macro-count>0</strong>
+          </div>
+        </div>
+        <div class="candleTimingTags" data-candle-detail-tags>Quiet Day</div>
+        <div class="candleDayDetailGrid">
+          <div class="candleDayDetailBlock">
+            <span>Day cycles</span>
+            <strong data-candle-detail-day>None</strong>
+          </div>
+          <div class="candleDayDetailBlock">
+            <span>Week cycles</span>
+            <strong data-candle-detail-week>None</strong>
+          </div>
+          <div class="candleDayDetailBlock">
+            <span>Month cycles</span>
+            <strong data-candle-detail-month>None</strong>
+          </div>
+          <div class="candleDayDetailBlock is-macro">
+            <span>Macro events</span>
+            <strong data-candle-detail-macro>No macro markers</strong>
+          </div>
+          <div class="candleDayDetailBlock">
+            <span>Notes</span>
+            <strong>Timing context only. No execution rule attached.</strong>
+          </div>
+        </div>
+      </aside>
     </div>
   </div>
 </div>
@@ -448,5 +536,75 @@
   applyMobileFolds();
   openHashTarget();
   window.addEventListener("hashchange", openHashTarget);
+
+  const days = Array.from(document.querySelectorAll("[data-candle-day]"));
+  const panel = document.querySelector(".candleDayDetailPanel");
+  if (!panel || !days.length) return;
+  const fields = {
+    date: panel.querySelector("[data-candle-detail-date]"),
+    status: panel.querySelector("[data-candle-detail-status]"),
+    importance: panel.querySelector("[data-candle-detail-importance]"),
+    resets: panel.querySelector("[data-candle-detail-resets]"),
+    macroCount: panel.querySelector("[data-candle-detail-macro-count]"),
+    tags: panel.querySelector("[data-candle-detail-tags]"),
+    day: panel.querySelector("[data-candle-detail-day]"),
+    week: panel.querySelector("[data-candle-detail-week]"),
+    month: panel.querySelector("[data-candle-detail-month]"),
+    macro: panel.querySelector("[data-candle-detail-macro]"),
+  };
+  const selectDay = (day) => {
+    days.forEach((item) => item.classList.toggle("is-selected", item === day));
+    const date = day.dataset.date || "";
+    const weekday = day.dataset.weekday || "";
+    if (fields.date) fields.date.textContent = `${weekday} ${date}`;
+    if (fields.status) {
+      const resets = Number(day.dataset.resetCount || 0);
+      const macros = Number(day.dataset.macroCount || 0);
+      fields.status.textContent = `${day.dataset.status || "Trading session"} · ${resets} resets · ${macros} macro`;
+    }
+    if (fields.importance) fields.importance.textContent = day.dataset.importance || "Quiet";
+    if (fields.resets) fields.resets.textContent = day.dataset.resetCount || "0";
+    if (fields.macroCount) fields.macroCount.textContent = day.dataset.macroCount || "0";
+    if (fields.tags) fields.tags.textContent = day.dataset.timingTags || "Quiet Day";
+    if (fields.day) fields.day.textContent = day.dataset.dayCycles || "None";
+    if (fields.week) fields.week.textContent = day.dataset.weekCycles || "None";
+    if (fields.month) fields.month.textContent = day.dataset.monthCycles || "None";
+    if (fields.macro) fields.macro.textContent = day.dataset.macro || "No macro markers";
+  };
+  days.forEach((day) => {
+    day.addEventListener("click", () => selectDay(day));
+    day.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectDay(day);
+      }
+    });
+  });
+  Array.from(document.querySelectorAll("[data-candle-summary-card]")).forEach((card) => {
+    const targetDate = card.dataset.targetDate || "";
+    const target = targetDate ? days.find((day) => day.dataset.date === targetDate) : null;
+    if (!target) return;
+    const setLinked = (on) => target.classList.toggle("is-summary-linked", on);
+    card.addEventListener("mouseenter", () => setLinked(true));
+    card.addEventListener("mouseleave", () => setLinked(false));
+    card.addEventListener("focus", () => setLinked(true));
+    card.addEventListener("blur", () => setLinked(false));
+    card.addEventListener("click", (event) => {
+      event.preventDefault();
+      selectDay(target);
+      target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    });
+  });
+  Array.from(document.querySelectorAll(".candleTagOverflow")).forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", expanded ? "false" : "true");
+      button.closest(".candleTags")?.classList.toggle("is-expanded", !expanded);
+    });
+  });
+  const active = days.find((day) => day.classList.contains("has-signal")) || days[0];
+  if (active) selectDay(active);
 })();
 </script>
