@@ -6,7 +6,7 @@ import json
 import os
 import uuid
 from calendar import monthrange
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from flask import jsonify, render_template, request

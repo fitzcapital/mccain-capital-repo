@@ -3114,3 +3114,121 @@ body.page-market-pulse .marketFeedPanel .marketFeedCommand__metaItem{
     overflow-wrap:normal !important;
   }
 }
+
+@media (max-width:760px){
+  body.is-mobile-app.page-market-pulse .marketPulseCommandHeader-compact{
+    overflow:visible !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulseCommandHeader-compact > .toolbar{
+    padding:14px !important;
+    gap:14px !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulsePlaybookHero{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:14px !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulsePlaybookTitleZone{
+    gap:10px !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulseTickerRow{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:10px !important;
+    align-items:stretch !important;
+    justify-content:stretch !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulseHeroKicker{
+    min-height:28px !important;
+    padding:5px 10px !important;
+    border-radius:999px !important;
+    font-size:11px !important;
+    line-height:1 !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .pageTitle,
+  body.is-mobile-app.page-market-pulse #marketPulseTitle{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",system-ui,sans-serif !important;
+    font-size:clamp(30px, 10vw, 42px) !important;
+    line-height:1.02 !important;
+    letter-spacing:0 !important;
+    max-width:100% !important;
+    overflow-wrap:anywhere !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulseTickerSwitcher{
+    width:100% !important;
+    max-width:100% !important;
+    display:grid !important;
+    grid-template-columns:repeat(3, minmax(0, 1fr)) !important;
+    gap:6px !important;
+    padding:6px !important;
+    border-radius:16px !important;
+    overflow:hidden !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulseTickerSwitch{
+    min-width:0 !important;
+    width:100% !important;
+    min-height:44px !important;
+    padding:0 8px !important;
+    border-radius:12px !important;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif !important;
+    font-size:13px !important;
+    font-weight:800 !important;
+    letter-spacing:0 !important;
+    text-transform:none !important;
+    transform:none !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulseTickerSwitch.is-active::after{
+    inset:4px !important;
+    border-radius:10px !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulseHeaderSubline{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif !important;
+    font-size:15px !important;
+    line-height:1.32 !important;
+    font-weight:700 !important;
+    overflow-wrap:anywhere !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulsePlaybookMeta{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif !important;
+    font-size:13px !important;
+    line-height:1.3 !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .marketPulseGammaStateCard,
+  body.is-mobile-app.page-market-pulse .marketPulseBiasCard{
+    min-height:auto !important;
+    padding:14px !important;
+    border-radius:16px !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .wrap{
+    padding-bottom:calc(168px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .mobileAppTabBar,
+  body.is-mobile-app.page-market-pulse .mobileDock{
+    bottom:calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+    left:max(8px, env(safe-area-inset-left, 0px)) !important;
+    right:max(8px, env(safe-area-inset-right, 0px)) !important;
+    width:auto !important;
+    border-radius:18px !important;
+  }
+
+  body.is-mobile-app.page-market-pulse .mobileAppTabBar .btn,
+  body.is-mobile-app.page-market-pulse .mobileDock .btn{
+    min-height:52px !important;
+    border-radius:14px !important;
+    font-size:10px !important;
+  }
+}

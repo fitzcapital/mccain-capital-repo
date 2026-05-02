@@ -112,7 +112,7 @@ def test_twitter_feed_merges_fresh_posts_with_cached_archive(monkeypatch):
         ]
 
     monkeypatch.setattr(svc, "_run_twitterapi_last_tweets", fake_fetch)
-    first = svc.build_twitter_feed_snapshot(now_et=now, force_refresh=True)
+    svc.build_twitter_feed_snapshot(now_et=now, force_refresh=True)
     second = svc.build_twitter_feed_snapshot(now_et=now + timedelta(minutes=5), force_refresh=True)
 
     urls = {item["url"] for item in second["items"]}

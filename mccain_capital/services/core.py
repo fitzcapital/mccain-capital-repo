@@ -2505,7 +2505,6 @@ def _market_pulse_snapshot(force_refresh: bool = False) -> Dict[str, Any]:
 
     started = time.perf_counter()
     now_et = app_runtime.now_et()
-    anchor = now_et.date()
     fetched_label = now_et.strftime("%b %d, %Y %I:%M:%S %p ET")
     fetched_at = _market_pulse_cache.get("fetched_at")
     cached_payload = _market_pulse_cache.get("payload")
@@ -3223,17 +3222,12 @@ def _market_pulse_enrich_quotes(
         if state == "missing":
             band = "critical"
             fresh_label = "No live data"
-        elif not market_open and age_s <= 72 * 3600:
-            band = "warn"
-            if state == "delayed":
-                fresh_label = "Closed · delayed fallback"
-            elif state == "cached":
-                fresh_label = f"Closed · last snapshot {age_label}"
-            else:
-                fresh_label = f"Closed · last quote {age_label}"
         elif state == "delayed":
             band = "warn"
             fresh_label = "Delayed fallback"
+        elif state == "cached" and not market_open and age_s > 3600:
+            band = "warn"
+            fresh_label = f"Closed · last snapshot {age_label}"
         elif state == "cached":
             band = "critical"
             fresh_label = "Cached snapshot"
@@ -3243,6 +3237,9 @@ def _market_pulse_enrich_quotes(
         elif age_s <= 180:
             band = "warn"
             fresh_label = f"Stale · {age_label}"
+        elif not market_open and age_s <= 72 * 3600:
+            band = "warn"
+            fresh_label = f"Closed · last quote {age_label}"
         else:
             band = "critical"
             fresh_label = f"Critical · {age_label}"
@@ -6215,10 +6212,6 @@ def get_or_build_market_pulse_snapshot(
         session_mode=session_mode,
         now_et=now_et,
     )
-    resolved_levels = {
-        key: dict(value or {}).get("value")
-        for key, value in dict(gamma_resolution.get("level_meta") or {}).items()
-    }
     resolved_spx_quote = _market_pulse_apply_resolved_spot(spx_quote, spot_meta)
     resolved_gamma_snapshot = _market_pulse_apply_resolved_levels(gamma_snapshot, gamma_resolution)
     active_quote = dict(resolved_spx_quote)
@@ -10219,6 +10212,7 @@ def dashboard():
             symbol,
             source_quote,
         )
+    dashboard_spx_diagnostic = _enrich_dashboard_quote("SPX", dict(tape_prices.get("SPX") or {}))
     dashboard_tape_rows = [
         _dashboard_tape_row_viewmodel("SPY", dashboard_tape_quotes.get("SPY") or {}, "market proxy"),
         _dashboard_tape_row_viewmodel("QQQ", dashboard_tape_quotes.get("QQQ") or {}, "tech proxy"),
@@ -10410,6 +10404,7 @@ def dashboard():
         dashboard_instrument=dashboard_instrument,
         dashboard_vix=dashboard_vix,
         dashboard_tape_quotes=dashboard_tape_quotes,
+        dashboard_spx_diagnostic=dashboard_spx_diagnostic,
         dashboard_tape_rows=dashboard_tape_rows,
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
@@ -11048,20 +11043,44 @@ def market_pulse_page():
     execution_model = dict(playbook_snapshot.get("execution_model") or {})
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     playbook_view = dict(playbook_snapshot.get("playbook_view") or {})
+    try:
+        news_snapshot = _market_news_snapshot(
+            now_et=now_et,
+            quotes=quotes,
+            context=context,
+            market_structure_snapshot=market_structure_snapshot,
+            macro_events=macro_events,
+            force_refresh_feed=force_refresh,
+            page_type="market-pulse",
+        )
+    except TypeError:
+        news_snapshot = _market_news_snapshot()
+    if not isinstance(news_snapshot, dict):
+        news_snapshot = {}
     news_snapshot = {
-        "macro_events": list(macro_events or []),
-        "market_items": [],
-        "pulse_feed_items": [],
-        "pulse_feed_accounts": list(MARKET_PULSE_X_ACCOUNTS),
-        "watchlist_items": [],
-        "market_feed_snapshot": {
-            "status": "idle",
-            "source_note": "Feed loads on demand. Use refresh when you want the latest posts.",
-            "raw_items": [],
-        },
-        "pulse_feed_available": False,
-        "pulse_feed_source_note": "Feed loads on demand. Use refresh when you want the latest posts.",
-        "fetched_at": "",
+        "macro_events": list(news_snapshot.get("macro_events") or macro_events or []),
+        "market_items": list(news_snapshot.get("market_items") or []),
+        "pulse_feed_items": list(news_snapshot.get("pulse_feed_items") or []),
+        "pulse_feed_accounts": list(
+            news_snapshot.get("pulse_feed_accounts") or MARKET_PULSE_X_ACCOUNTS
+        ),
+        "watchlist_items": list(news_snapshot.get("watchlist_items") or []),
+        "market_feed_snapshot": dict(
+            news_snapshot.get("market_feed_snapshot")
+            or {
+                "status": "idle",
+                "source_note": "Feed loads on demand. Use refresh when you want the latest posts.",
+                "raw_items": [],
+            }
+        ),
+        "pulse_feed_available": bool(news_snapshot.get("pulse_feed_available")),
+        "pulse_feed_source_note": str(
+            news_snapshot.get("pulse_feed_source_note")
+            or news_snapshot.get("source_note")
+            or "Feed loads on demand. Use refresh when you want the latest posts."
+        ),
+        "source_note": str(news_snapshot.get("source_note") or ""),
+        "fetched_at": str(news_snapshot.get("fetched_at") or ""),
     }
     execution_chart_payload = {**execution_chart, "execution_model": execution_model}
     alert = _market_pulse_alert(quotes)

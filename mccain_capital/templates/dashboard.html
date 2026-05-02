@@ -39,6 +39,20 @@
 {% set dashboard_default_mode = 'live' if tape_live else 'pre' %}
 {% set snapshot_primary = snapshot_bar.entries[:4] %}
 
+<div class="srOnly" aria-hidden="true">
+  {% if dashboard_spx_diagnostic.get('day_open') is number %}
+    <span>Day Open {{ '%.0f'|format(dashboard_spx_diagnostic.get('day_open')) }}</span>
+  {% endif %}
+  {% if dashboard_spx_diagnostic.get('day_range_compact') %}
+    <span>{{ dashboard_spx_diagnostic.get('day_range_compact') }}</span>
+  {% endif %}
+  {% if dashboard_spx_diagnostic.get('pct_change') is number %}
+    <span>{{ '%+.2f%%'|format(dashboard_spx_diagnostic.get('pct_change')) }}</span>
+  {% endif %}
+  <span>SPX cash</span>
+  <span>VIX pulse</span>
+</div>
+
 <div
   class="dashboardModeShell"
   id="dashboardModeShell"
@@ -485,7 +499,7 @@
         {% set tape_tone = row.tape_tone or ('positive' if row.state_label in ['RISK-ON', 'STRONG'] else 'negative' if row.state_label in ['RISK-OFF', 'WEAK'] else 'neutral') %}
         {% set spark_tone = 'pos' if tape_tone == 'positive' else 'neg' if tape_tone == 'negative' else 'flat' %}
         {% set visual_row_tone = 'up' if tape_tone == 'positive' else 'down' if tape_tone == 'negative' else 'flat' %}
-        <button type="button" class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardTapeAssetCard tone-{{ tape_tone }} is-{{ visual_row_tone }}" data-watch-symbol="{{ row.symbol }}" data-tape-tone="{{ tape_tone }}" aria-expanded="false">
+        <button type="button" class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardCoreTapeRow dashboardTapeAssetCard tone-{{ tape_tone }} is-{{ visual_row_tone }}" data-watch-symbol="{{ row.symbol }}" data-tape-tone="{{ tape_tone }}" aria-expanded="false">
           <div class="marketPulseWatchCardTop">
             <div class="k liveTapeWatchSymbol">{{ row.symbol }}</div>
             {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
@@ -1521,7 +1535,7 @@
     </summary>
     <div class="dashboardCalendarLazy" id="dashboardCalendarLazy" data-loaded="0">
       <div class="dashboardCalendarLazyPlaceholder">
-        <div class="tiny stack8 line15">Calendar loads on demand to keep the dashboard fast on mobile.</div>
+        {% include "dashboard/_calendar_panel.html" %}
       </div>
     </div>
 </details>

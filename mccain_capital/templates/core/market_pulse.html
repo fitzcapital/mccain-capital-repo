@@ -120,6 +120,12 @@
     <span>Live Data Status</span>
     <span>Source Health</span>
     <span>Tape Drivers</span>
+    <span>SPX Priority</span>
+    <span><a href="/market-pulse?refresh=1">Refresh Market Pulse</a></span>
+    {% set spx_range_quote = spx_quote if spx_quote.get('prior_day_low') is number and spx_quote.get('prior_day_high') is number else quotes_map.get('SPX', {}) %}
+    {% if spx_range_quote.get('prior_day_low') is number and spx_range_quote.get('prior_day_high') is number %}
+      <span>{{ '%.2f - %.2f'|format(spx_range_quote.get('prior_day_low'), spx_range_quote.get('prior_day_high')) }}</span>
+    {% endif %}
     <span>Loading Market Pulse</span>
     <span id="marketPulseSetupHeadline">{{ playbook.get('context_lead_label') or structure_snapshot.get('plan_note') or (execution_model.posture_summary if execution_model else 'Awaiting market posture.') }}</span>
     <span id="marketPulseTradeReadState">{{ playbook.get('trade_state_label') or 'WAIT' }}</span>

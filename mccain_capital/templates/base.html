@@ -38,9 +38,9 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=market-pulse-chart-stable-20260425b">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=mobile-shell-20260501d">
   {% if active in ['market-pulse', 'market_pulse'] %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=market-pulse-chart-stable-20260425b">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=mobile-shell-20260501d">
   {% endif %}
 </head>
 
@@ -525,6 +525,42 @@
       </div>
     </div>
 
+    <header class="mobileAppHeader" aria-label="Mobile app status">
+      <a class="mobileAppMark" href="/dashboard" aria-label="Dashboard">
+        <img src="{{ url_for('static', filename=logo_filename|default('logo.png')) }}?v={{ static_v }}" alt="" aria-hidden="true"/>
+      </a>
+      <div class="mobileAppHeaderMain">
+        <div class="mobileAppHeaderTitle">{{ brand_title or 'McCain Capital' }}</div>
+        <div class="mobileAppStatusLine">
+          {% if active != 'auth' and tw and tw.show_banner %}
+            <span class="mobileAppStatusDot is-{{ tw.pill_tone or 'negative' }}" aria-hidden="true"></span>
+            <span class="mobileAppStatusText">{{ tw.rail_label or tw.state_label }}</span>
+            <span class="mobileAppStatusMeta">{{ tw.rail_detail or tw.message }}</span>
+          {% elif top_notice %}
+            <span class="mobileAppStatusDot{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" aria-hidden="true"></span>
+            <span class="mobileAppStatusText">{{ top_notice.label or 'Status' }}</span>
+            <span class="mobileAppStatusMeta">{{ top_notice.text }}</span>
+          {% else %}
+            <span class="mobileAppStatusDot is-neutral" aria-hidden="true"></span>
+            <span class="mobileAppStatusText">Session</span>
+          {% endif %}
+        </div>
+      </div>
+      <a
+        class="mobileAppIconButton"
+        aria-label="Notifications"
+        href="/market-pulse/feed"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        {% if notif_unread %}
+          <span class="mobileAppBadge">{{ '99+' if notif_unread > 99 else notif_unread }}</span>
+        {% endif %}
+      </a>
+    </header>
+
     {% with flashes = get_flashed_messages(with_categories=true) %}
       {% if flashes %}
         <div class="flashStack" role="status" aria-live="polite">
@@ -803,12 +839,85 @@
       </div>
     </div>
 
-    <nav class="mobileDock" aria-label="Quick navigation">
+    <div id="mobileMenuOverlay" class="mobileMenuOverlay" onclick="closeMobileMenu()" aria-hidden="true"></div>
+    <aside id="mobileMenuSheet" class="mobileMenuSheet" aria-label="Mobile menu" aria-hidden="true">
+      <div class="mobileMenuGrabber" aria-hidden="true"></div>
+      <div class="mobileMenuHead">
+        <div>
+          <div class="mobileMenuTitle">Menu</div>
+          <div class="mobileMenuSub">Core tools and review surfaces.</div>
+        </div>
+        <button class="mobileMenuClose" type="button" aria-label="Close menu" onclick="closeMobileMenu()">Close</button>
+      </div>
+      {% if auth_enabled %}
+        <a class="mobileMenuProfile" href="/profile">
+          <span class="menuProfileAvatar" style="--avatar-color: {{ auth_avatar_color|default('#58a6ff') }}">
+            {% if auth_profile and auth_profile.photo_data_url %}
+              <img src="{{ auth_profile.photo_data_url }}" alt="" aria-hidden="true">
+            {% else %}
+              <span>{{ (auth_profile.avatar_initials if auth_profile else auth_username[:2])|upper }}</span>
+            {% endif %}
+          </span>
+          <span class="menuProfileText">
+            <span>{{ auth_display_name|default(auth_username) }}</span>
+            <small>{{ "Admin Profile" if auth_is_admin|default(false) else "Profile" }}</small>
+          </span>
+        </a>
+      {% endif %}
+      <section class="mobileMenuSection">
+        <div class="mobileMenuSectionTitle">Quick Actions</div>
+        <div class="mobileMenuGrid">
+          <a class="mobileMenuTile" href="/trades/new">Add Trade</a>
+          <a class="mobileMenuTile" href="{{ url_for('new_entry') }}">Add Journal</a>
+          <a class="mobileMenuTile" href="/trades/upload/statement">Upload</a>
+          <a class="mobileMenuTile" href="/trades/open-positions">Positions</a>
+        </div>
+      </section>
+      <section class="mobileMenuSection">
+        <div class="mobileMenuSectionTitle">Review</div>
+        <div class="mobileMenuList">
+          <a class="mobileMenuRow {% if active=='analytics' %}is-active{% endif %}" href="/analytics">Analytics</a>
+          <a class="mobileMenuRow {% if active=='calendar' %}is-active{% endif %}" href="/calendar">Calendar</a>
+          <a class="mobileMenuRow {% if active=='life-alignment' %}is-active{% endif %}" href="/life-alignment">Life Alignment</a>
+          <a class="mobileMenuRow {% if active=='budget' %}is-active{% endif %}" href="/budget">Budget</a>
+          <a class="mobileMenuRow {% if active=='calc' %}is-active{% endif %}" href="/calculator">Planner</a>
+        </div>
+      </section>
+      <section class="mobileMenuSection">
+        <div class="mobileMenuSectionTitle">Playbook</div>
+        <div class="mobileMenuList">
+          <a class="mobileMenuRow {% if request.path == '/ops/trading-window' %}is-active{% endif %}" href="/ops/trading-window">Trading Window</a>
+          <a class="mobileMenuRow {% if active=='candle-opens' %}is-active{% endif %}" href="/candle-opens">Candle Opens</a>
+          <a class="mobileMenuRow {% if active=='strat' %}is-active{% endif %}" href="/strat">The Strat</a>
+          <a class="mobileMenuRow {% if active=='playbook' %}is-active{% endif %}" href="/playbook">Playbook</a>
+          <a class="mobileMenuRow {% if active=='strategies' %}is-active{% endif %}" href="/strategies">Strategies</a>
+        </div>
+      </section>
+      <section class="mobileMenuSection">
+        <div class="mobileMenuSectionTitle">System</div>
+        <div class="mobileMenuList">
+          <a class="mobileMenuRow {% if active=='ops' %}is-active{% endif %}" href="/ops/alerts">Ops Alerts</a>
+          <a class="mobileMenuRow {% if active=='profile' %}is-active{% endif %}" href="/profile">Profile</a>
+          <a class="mobileMenuRow" href="/setup">Login Setup</a>
+          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleTheme()">Theme</button>
+          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleAppFont()">Clean Font</button>
+          {% if auth_enabled %}
+            {% if authenticated %}
+              <a class="mobileMenuRow is-danger" href="/logout">Sign Out</a>
+            {% else %}
+              <a class="mobileMenuRow is-active" href="/login">Sign In</a>
+            {% endif %}
+          {% endif %}
+        </div>
+      </section>
+    </aside>
+
+    <nav class="mobileDock mobileAppTabBar" aria-label="Mobile app navigation">
       <a class="btn mobileDockItem {% if active=='dashboard' %}primary{% endif %}" href="/dashboard"><span class="mobileDockLabel">Dashboard</span></a>
+      <a class="btn mobileDockItem {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse"><span class="mobileDockLabel">Pulse</span></a>
       <a class="btn mobileDockItem {% if active=='trades' %}primary{% endif %}" href="/trades"><span class="mobileDockLabel">Trades</span></a>
-      <a class="btn mobileDockItem {% if active=='analytics' %}primary{% endif %}" href="/analytics"><span class="mobileDockLabel">Analytics</span></a>
       <a class="btn mobileDockItem {% if active=='journal' %}primary{% endif %}" href="/journal"><span class="mobileDockLabel">Journal</span></a>
-      <button id="mobileDockMenuBtn" class="btn mobileDockItem mobileDockMenu" type="button" aria-expanded="false" onclick="openDrawer()"><span class="mobileDockLabel">Menu</span></button>
+      <button id="mobileDockMenuBtn" class="btn mobileDockItem mobileDockMenu" type="button" aria-expanded="false" onclick="openMobileMenu()"><span class="mobileDockLabel">Menu</span></button>
     </nav>
 
   </div>
@@ -824,6 +933,7 @@
       "/budget": { title: "Budget Command", detail: "Loading cashflow, bills, leaks, and income goals." },
       "/analytics": { title: "Analytics", detail: "Loading performance curves and edge reads." },
       "/calendar": { title: "Calendar", detail: "Loading trading days and events." },
+      "/strat": { title: "The Strat", detail: "Loading strategy reference and execution context." },
     };
     const normalizePath = (pathname) => {
       if (!pathname) return "/";

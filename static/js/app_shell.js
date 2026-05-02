@@ -34,8 +34,13 @@
   const qsa = (selector) => Array.from(doc.querySelectorAll(selector));
 
   let previousDrawerFocus = null;
+  let previousMobileMenuFocus = null;
   let clockTimer = null;
   let drawerResizeTimer = null;
+
+  function isMobileAppViewport() {
+    return window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+  }
 
   function focusWithoutScroll(target) {
     if (!target || typeof target.focus !== "function") return;
@@ -66,10 +71,15 @@
   }
 
   function syncDrawerToggles(isOpen) {
-    ["menuToggleBtn", "mobileDockMenuBtn"].forEach((id) => {
+    ["menuToggleBtn"].forEach((id) => {
       const btn = doc.getElementById(id);
       if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
     });
+  }
+
+  function syncMobileMenuToggle(isOpen) {
+    const btn = doc.getElementById("mobileDockMenuBtn");
+    if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
   }
 
   function getDrawerFocusable() {
@@ -111,6 +121,10 @@
   }
 
   function openDrawer() {
+    if (isMobileAppViewport()) {
+      openMobileMenu();
+      return;
+    }
     const drawer = doc.getElementById("drawer");
     const overlay = doc.getElementById("drawerOverlay");
     if (!drawer || !overlay) return;
@@ -139,6 +153,77 @@
       focusWithoutScroll(previousDrawerFocus);
     }
     previousDrawerFocus = null;
+  }
+
+  function getMobileMenuFocusable() {
+    const sheet = doc.getElementById("mobileMenuSheet");
+    if (!sheet) return [];
+    return qsa("#mobileMenuSheet " + focusableSelector).filter((el) => el.offsetParent !== null);
+  }
+
+  function handleMobileMenuKeydown(event) {
+    if (event.key === "Escape") {
+      closeMobileMenu();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = getMobileMenuFocusable();
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = doc.activeElement;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function focusMobileMenuPrimary() {
+    const target = getMobileMenuFocusable()[0];
+    focusWithoutScroll(target);
+  }
+
+  function openMobileMenu() {
+    const sheet = doc.getElementById("mobileMenuSheet");
+    const overlay = doc.getElementById("mobileMenuOverlay");
+    if (!sheet || !overlay) return;
+    previousMobileMenuFocus = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
+    closeMoreMenu();
+    closeQuickPanel();
+    closeDrawer();
+    sheet.classList.add("open");
+    overlay.classList.add("open");
+    sheet.setAttribute("aria-hidden", "false");
+    overlay.setAttribute("aria-hidden", "false");
+    body.classList.add("mobile-menu-open");
+    syncMobileMenuToggle(true);
+    doc.addEventListener("keydown", handleMobileMenuKeydown, true);
+    window.requestAnimationFrame(focusMobileMenuPrimary);
+  }
+
+  function closeMobileMenu() {
+    const sheet = doc.getElementById("mobileMenuSheet");
+    const overlay = doc.getElementById("mobileMenuOverlay");
+    if (sheet) {
+      sheet.classList.remove("open");
+      sheet.setAttribute("aria-hidden", "true");
+    }
+    if (overlay) {
+      overlay.classList.remove("open");
+      overlay.setAttribute("aria-hidden", "true");
+    }
+    body.classList.remove("mobile-menu-open");
+    syncMobileMenuToggle(false);
+    doc.removeEventListener("keydown", handleMobileMenuKeydown, true);
+    if (previousMobileMenuFocus && doc.contains(previousMobileMenuFocus)) {
+      focusWithoutScroll(previousMobileMenuFocus);
+    }
+    previousMobileMenuFocus = null;
   }
 
   function toggleMoreMenu() {
@@ -190,6 +275,8 @@
     window.toggleQuickPanel = toggleQuickPanel;
     window.openDrawer = openDrawer;
     window.closeDrawer = closeDrawer;
+    window.openMobileMenu = openMobileMenu;
+    window.closeMobileMenu = closeMobileMenu;
 
     window.addEventListener("click", (event) => {
       const target = event.target;
@@ -211,6 +298,13 @@
     });
 
     doc.addEventListener("click", (event) => {
+      const target = event.target;
+      const link = target.closest && target.closest("#mobileMenuSheet a");
+      const button = target.closest && target.closest("#mobileMenuSheet button.mobileMenuRow");
+      if (link || button) closeMobileMenu();
+    });
+
+    doc.addEventListener("click", (event) => {
       const link = event.target.closest && event.target.closest("a[href]");
       if (!link) return;
       if ((link.getAttribute("target") || "").toLowerCase() === "_blank") return;
@@ -219,11 +313,13 @@
       closeMoreMenu();
       closeQuickPanel();
       if (link.closest && link.closest("#drawer")) closeDrawer();
+      if (link.closest && link.closest("#mobileMenuSheet")) closeMobileMenu();
     }, true);
 
     ["pageshow", "pagehide"].forEach((name) => {
       window.addEventListener(name, () => {
         closeDrawer();
+        closeMobileMenu();
         closeMoreMenu();
         closeQuickPanel();
         syncDrawerScrollLock();
@@ -235,9 +331,17 @@
       window.clearTimeout(drawerResizeTimer);
       drawerResizeTimer = window.setTimeout(() => {
         closeDrawer();
+        closeMobileMenu();
         syncDrawerScrollLock();
       }, 120);
     });
+
+    const syncMobileViewportClass = () => {
+      body.classList.toggle("is-mobile-app", isMobileAppViewport());
+      if (!isMobileAppViewport()) closeMobileMenu();
+    };
+    syncMobileViewportClass();
+    window.addEventListener("resize", syncMobileViewportClass);
   }
 
   function initRowMenus() {
