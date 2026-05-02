@@ -499,43 +499,45 @@
         {% endfor %}
       </div>
 
-      <aside class="candleDayDetailPanel" aria-live="polite">
-        <div class="pill">Day Profile</div>
-        <div class="candleDayDetailDate" data-candle-detail-date>Click a calendar date</div>
-        <div class="candleDayDetailStatus" data-candle-detail-status>Full timing detail will appear here.</div>
-        <div class="candleDayProfileGrid">
-          <div>
+      <aside class="candleDayDetailPanel calendar-day-profile day-profile-card" aria-live="polite">
+        <div class="day-profile-header">
+          <div class="pill day-profile-label">Day Profile</div>
+          <div class="candleDayDetailDate day-profile-date" data-candle-detail-date>Click a calendar date</div>
+          <div class="candleDayDetailStatus day-profile-summary" data-candle-detail-status>Full timing detail will appear here.</div>
+        </div>
+        <div class="candleDayProfileGrid day-profile-stats">
+          <div class="day-profile-stat">
             <span>Importance</span>
             <strong data-candle-detail-importance>Quiet</strong>
           </div>
-          <div>
+          <div class="day-profile-stat">
             <span>Resets</span>
             <strong data-candle-detail-resets>0</strong>
           </div>
-          <div>
+          <div class="day-profile-stat">
             <span>Macro</span>
             <strong data-candle-detail-macro-count>0</strong>
           </div>
         </div>
-        <div class="candleTimingTags" data-candle-detail-tags>Quiet Day</div>
+        <div class="candleTimingTags day-profile-section compact" data-candle-detail-tags>Quiet Day</div>
         <div class="candleDayDetailGrid">
-          <div class="candleDayDetailBlock">
+          <div class="candleDayDetailBlock day-profile-section compact">
             <span>Day cycles</span>
             <strong data-candle-detail-day>None</strong>
           </div>
-          <div class="candleDayDetailBlock">
+          <div class="candleDayDetailBlock day-profile-section compact">
             <span>Week cycles</span>
             <strong data-candle-detail-week>None</strong>
           </div>
-          <div class="candleDayDetailBlock">
+          <div class="candleDayDetailBlock day-profile-section compact">
             <span>Month cycles</span>
             <strong data-candle-detail-month>None</strong>
           </div>
-          <div class="candleDayDetailBlock is-macro">
+          <div class="candleDayDetailBlock day-profile-section compact is-macro">
             <span>Macro events</span>
             <strong data-candle-detail-macro>No macro markers</strong>
           </div>
-          <div class="candleDayDetailBlock">
+          <div class="candleDayDetailBlock day-profile-section compact">
             <span>Notes</span>
             <strong>Timing context only. No execution rule attached.</strong>
           </div>

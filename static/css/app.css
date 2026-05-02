@@ -15237,6 +15237,200 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
 .candleDayDetailBlock.is-macro{
   border-color:rgba(255, 116, 146, .13);
 }
+
+.page-candle-opens .candleCalendarLayout{
+  align-items:start;
+}
+
+.page-candle-opens .calendar-day-profile,
+.page-candle-opens .day-profile-card{
+  gap:10px;
+  min-height:0;
+  padding:14px;
+  align-self:start;
+  border-radius:18px;
+  background:
+    radial-gradient(120% 95% at 100% 0%, rgba(74, 159, 255, .13), transparent 44%),
+    linear-gradient(180deg, rgba(10, 22, 38, .97), rgba(5, 12, 23, .985));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 18px rgba(0, 140, 255, .08);
+}
+
+.page-candle-opens .day-profile-header{
+  display:grid;
+  gap:6px;
+  padding:2px 0 11px;
+  border-bottom:1px solid rgba(122, 214, 255, .12);
+}
+
+.page-candle-opens .day-profile-label{
+  justify-self:start;
+  min-height:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  color:rgba(217, 232, 251, .74);
+  font-size:9px;
+  font-weight:900;
+  line-height:1;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+.page-candle-opens .day-profile-date{
+  margin:0;
+  font-size:20px;
+  font-weight:900;
+  line-height:1.08;
+  letter-spacing:0;
+  color:rgba(245, 249, 255, .96);
+  text-wrap:balance;
+}
+
+.page-candle-opens .day-profile-summary{
+  max-width:100%;
+  font-size:12px;
+  line-height:1.35;
+  color:rgba(202, 220, 242, .72);
+}
+
+.page-candle-opens .day-profile-stats{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:8px;
+}
+
+.page-candle-opens .day-profile-stat,
+.page-candle-opens .candleDayProfileGrid > div{
+  display:grid;
+  align-content:center;
+  min-width:0;
+  min-height:68px;
+  padding:10px 11px;
+  border-radius:12px;
+  border:1px solid rgba(122, 214, 255, .10);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.014)),
+    rgba(10, 19, 33, .58);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.page-candle-opens .day-profile-stat span,
+.page-candle-opens .candleDayProfileGrid span,
+.page-candle-opens .day-profile-section span,
+.page-candle-opens .candleDayDetailBlock span{
+  display:block;
+  font-size:9px;
+  font-weight:900;
+  line-height:1;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+  color:rgba(207, 224, 246, .54);
+}
+
+.page-candle-opens .day-profile-stat strong,
+.page-candle-opens .candleDayProfileGrid strong{
+  display:block;
+  margin-top:7px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:15px;
+  font-weight:850;
+  line-height:1.08;
+  color:rgba(245, 249, 255, .95);
+}
+
+.page-candle-opens .day-profile-section,
+.page-candle-opens .candleDayDetailBlock,
+.page-candle-opens .candleTimingTags{
+  min-height:58px;
+  padding:10px 12px;
+  border-radius:13px;
+  border:1px solid rgba(122, 214, 255, .10);
+  background:rgba(10, 19, 33, .55);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.018);
+}
+
+.page-candle-opens .day-profile-section.compact{
+  min-height:56px;
+}
+
+.page-candle-opens .candleTimingTags.day-profile-section{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  border-color:rgba(255, 210, 112, .14);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(255, 190, 78, .065), transparent 50%),
+    rgba(10, 19, 33, .55);
+  color:rgba(245, 229, 188, .84);
+  font-size:13px;
+  font-weight:760;
+  line-height:1.25;
+}
+
+.page-candle-opens .candleDayDetailGrid{
+  gap:8px;
+}
+
+.page-candle-opens .candleDayDetailBlock{
+  gap:6px;
+  align-content:center;
+}
+
+.page-candle-opens .candleDayDetailBlock strong{
+  display:block;
+  margin-top:0;
+  font-size:13px;
+  font-weight:800;
+  line-height:1.28;
+  color:rgba(242, 248, 255, .92);
+}
+
+.page-candle-opens .candleDayDetailBlock.is-macro{
+  border-color:rgba(255, 116, 146, .16);
+  background:
+    radial-gradient(110% 100% at 100% 0%, rgba(255, 80, 120, .055), transparent 52%),
+    rgba(10, 19, 33, .55);
+}
+
+@media (max-width: 720px){
+  .page-candle-opens .calendar-day-profile,
+  .page-candle-opens .day-profile-card{
+    padding:12px;
+  }
+
+  .page-candle-opens .day-profile-date{
+    font-size:18px;
+  }
+}
+
+@media (max-width: 420px){
+  .page-candle-opens .day-profile-stats,
+  .page-candle-opens .candleDayProfileGrid{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .page-candle-opens .day-profile-stat,
+  .page-candle-opens .candleDayProfileGrid > div{
+    min-height:64px;
+    padding:9px 8px;
+  }
+
+  .page-candle-opens .day-profile-stat span,
+  .page-candle-opens .candleDayProfileGrid span{
+    font-size:8px;
+  }
+
+  .page-candle-opens .day-profile-stat strong,
+  .page-candle-opens .candleDayProfileGrid strong{
+    font-size:13px;
+  }
+}
 .dayCard-muted{
   border-color:rgba(255,255,255,.05);
   box-shadow:none;
@@ -15706,7 +15900,7 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
     padding:11px 12px;
   }
   .candleDayProfileGrid{
-    grid-template-columns:1fr;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
   }
 }
 
