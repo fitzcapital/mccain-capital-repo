@@ -491,6 +491,7 @@
             <span class="budgetTag">${bill.essential ? "Essential" : "Flexible"}</span>
           </div>
           <div class="budgetRowActions">
+            ${bill.paid ? "" : `<button class="btn budgetPaidButton" data-mark-paid="${bill.id}" type="button">Paid</button>`}
             <button class="btn" data-edit="bill" data-id="${bill.id}" type="button">Edit</button>
             <button class="btn danger" data-delete="bill" data-id="${bill.id}" type="button">Delete</button>
           </div>
@@ -938,6 +939,7 @@
   document.addEventListener("click", async (event) => {
     const edit = event.target.closest("[data-edit]");
     const del = event.target.closest("[data-delete]");
+    const markPaid = event.target.closest("[data-mark-paid]");
     const filter = event.target.closest("[data-filter]");
     const categoryFilter = event.target.closest("[data-category-filter]");
     const toggleBills = event.target.closest("#budgetToggleBillsButton");
@@ -962,6 +964,23 @@
     if (toggleBills) {
       state.showAllBills = !state.showAllBills;
       renderBills();
+    }
+    if (markPaid) {
+      const bill = (state.data.bills || []).find((row) => row.id === markPaid.dataset.markPaid);
+      if (!bill) return;
+      markPaid.disabled = true;
+      try {
+        await api("/api/budget/bill", {
+          method: "POST",
+          body: JSON.stringify({ ...bill, paid: true }),
+        });
+        await refresh();
+        showToast(`${bill.name || "Bill"} marked paid.`);
+      } catch (error) {
+        markPaid.disabled = false;
+        showToast(error.message || "Could not mark bill paid.");
+      }
+      return;
     }
     if (edit) {
       const type = edit.dataset.edit;

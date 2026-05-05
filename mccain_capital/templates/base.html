@@ -271,21 +271,6 @@
         <div class="topRight">
           <div class="headerInfoCluster">
           <div class="statusRow">
-            {% if top_notice and not density_clock_notice %}
-              {% if top_notice.href %}
-                <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
-                  <span class="topNoticeSignal" aria-hidden="true"></span>
-                  {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
-                  <span class="topNoticeText">{{ top_notice.text }}</span>
-                </a>
-              {% else %}
-                <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
-                  <span class="topNoticeSignal" aria-hidden="true"></span>
-                  {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
-                  <span class="topNoticeText">{{ top_notice.text }}</span>
-                </div>
-              {% endif %}
-            {% endif %}
             {% if active != 'auth' and tw and tw.show_banner %}
               <div class="tradingWindowPillGroup">
                 <div class="clockPill tradingWindowPill is-{{ tw.pill_tone or 'negative' }}" title="{{ tw.message }}">
@@ -298,8 +283,45 @@
                 </div>
               </div>
             {% endif %}
-            <div id="marketStatusClock" class="clockPill cockpitPill marketStatusClock is-loading" aria-label="Market status and Eastern time">
-              <span class="marketStatusDateDensity{% if density_clock_notice %} is-{{ top_notice.level }}{% endif %}" title="{% if density_clock_notice %}{{ top_notice.detail or top_notice.text }}{% else %}Current date{% endif %}">
+            <div class="market-status-cluster">
+            {% if top_notice and not density_clock_notice %}
+              {% set notice_events = top_notice.events if top_notice.events is defined and top_notice.events else [] %}
+              {% if notice_events %}
+              {% if top_notice.href %}
+                <a class="clockPill topNoticePill macro-folder-chip{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
+                    {% for notice_event in notice_events[:1] %}
+                      <span class="macroEventMiniChip macro-{{ notice_event.level or top_notice.level or 'high' }}" title="{{ notice_event.detail or top_notice.detail or top_notice.text }}">
+                        <span class="macro-folder macro-{{ notice_event.level or top_notice.level or 'high' }}" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" class="folder-icon" focusable="false">
+                            <path d="M3 7.5h5.2l2 2H21v7.2a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 16.7Z"></path>
+                            <path d="M3 7.5V6.8A1.8 1.8 0 0 1 4.8 5h4.4l2 2h8A1.8 1.8 0 0 1 21 8.8v.7"></path>
+                          </svg>
+                        </span>
+                        <span class="macroEventMiniText">{{ notice_event.label }} {{ notice_event.time_short }}</span>
+                      </span>
+                    {% endfor %}
+                    <span class="macroNoticeCount" aria-label="{{ top_notice.count or 1 }} upcoming macro event">{{ top_notice.count or 1 }}</span>
+                </a>
+              {% else %}
+                <div class="clockPill topNoticePill macro-folder-chip{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
+                    {% for notice_event in notice_events[:1] %}
+                      <span class="macroEventMiniChip macro-{{ notice_event.level or top_notice.level or 'high' }}" title="{{ notice_event.detail or top_notice.detail or top_notice.text }}">
+                        <span class="macro-folder macro-{{ notice_event.level or top_notice.level or 'high' }}" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" class="folder-icon" focusable="false">
+                            <path d="M3 7.5h5.2l2 2H21v7.2a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 16.7Z"></path>
+                            <path d="M3 7.5V6.8A1.8 1.8 0 0 1 4.8 5h4.4l2 2h8A1.8 1.8 0 0 1 21 8.8v.7"></path>
+                          </svg>
+                        </span>
+                        <span class="macroEventMiniText">{{ notice_event.label }} {{ notice_event.time_short }}</span>
+                      </span>
+                    {% endfor %}
+                    <span class="macroNoticeCount" aria-label="{{ top_notice.count or 1 }} upcoming macro event">{{ top_notice.count or 1 }}</span>
+                </div>
+              {% endif %}
+              {% endif %}
+            {% endif %}
+            <div id="marketStatusClock" class="clockPill cockpitPill marketStatusClock market-clock-pill is-loading" aria-label="Market status and Eastern time">
+              <span class="marketStatusDateDensity clock-section{% if density_clock_notice %} is-{{ top_notice.level }}{% endif %}" title="{% if density_clock_notice %}{{ top_notice.detail or top_notice.text }}{% else %}Current date{% endif %}">
                 <span class="marketStatusDateText">{{ header_date_label or current_date }}</span>
                 {% if density_clock_notice %}
                   <span class="marketStatusDensityIcon" aria-label="{{ top_notice.density_label or 'Timing density' }}">◉</span>
@@ -307,12 +329,13 @@
               </span>
               <span class="marketStatusClockDivider marketStatusClockDividerDate" aria-hidden="true">·</span>
               <span class="marketStatusClockDot" aria-hidden="true"></span>
-              <span class="marketStatusClockTimeGroup">
-                <span id="etClock" class="clockTime">--:--</span>
-                <span id="etClockMeridiem" class="marketStatusClockMeridiem">--</span>
+              <span id="marketStatusStateLabel" class="marketStatusStateLabel market-state">Market</span>
+              <span class="marketStatusClockDivider marketStatusClockDividerState" aria-hidden="true">·</span>
+              <span class="marketStatusClockTimeGroup clock-section">
+                <span id="etClock" class="clockTime clock-time">--:--</span>
               </span>
               <span class="marketStatusClockDivider" aria-hidden="true">·</span>
-              <span id="marketStatusCountdown" class="marketStatusClockCountdown">Loading</span>
+              <span id="marketStatusCountdown" class="marketStatusClockCountdown clock-countdown">Loading</span>
             </div>
             <div class="notifBell">
               <button class="notifBellButton" id="notifBellButton" type="button" aria-expanded="false" aria-controls="notifDropdown" aria-label="Notifications">
@@ -394,6 +417,7 @@
                 </div>
               </div>
             </div>
+            </div>
           </div>
         </div>
         <div class="mobileTopbarMeta" aria-hidden="true">
@@ -459,6 +483,7 @@
             <a class="btn {% if active=='life-journal' %}active{% endif %}" href="/journal/life">Life Journal</a>
             <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment"><span class="menuItemIcon">💪</span><span>Life Alignment</span></a>
             <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget"><span class="menuItemIcon">💰</span><span>Budget</span></a>
+            <a class="btn {% if active=='forward-pace' %}active{% endif %}" href="/forward-pace"><span class="menuItemIcon">📐</span><span>Forward Pace</span></a>
             <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics"><span class="menuItemIcon">📊</span><span>Analytics</span></a>
             <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar"><span class="menuItemIcon">📅</span><span>Calendar</span></a>
             <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator"><span class="menuItemIcon">🧮</span><span>Planner</span></a>
@@ -734,6 +759,7 @@
             <a class="btn {% if active=='life-journal' %}primary{% endif %}" href="/journal/life">Life Journal</a>
             <a class="btn {% if active=='life-alignment' %}primary{% endif %}" href="/life-alignment">Life Alignment</a>
             <a class="btn {% if active=='budget' %}primary{% endif %}" href="/budget">Budget</a>
+            <a class="btn {% if active=='forward-pace' %}primary{% endif %}" href="/forward-pace">Forward Pace</a>
             <a class="btn {% if active=='self-control' %}primary{% endif %}" href="/self-control">Self-Control</a>
             <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
@@ -753,6 +779,7 @@
             <div class="drawerSectionTitle">Business</div>
             <div class="drawerStack">
             <a class="btn {% if active=='budget' %}primary{% endif %}" href="/budget">Budget Command</a>
+            <a class="btn {% if active=='forward-pace' %}primary{% endif %}" href="/forward-pace">Forward Pace</a>
             <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payouts</a>
             <a class="btn {% if active=='goals' %}primary{% endif %}" href="/goals">Income Tracker</a>
           </div>
@@ -880,6 +907,7 @@
           <a class="mobileMenuRow {% if active=='calendar' %}is-active{% endif %}" href="/calendar">Calendar</a>
           <a class="mobileMenuRow {% if active=='life-alignment' %}is-active{% endif %}" href="/life-alignment">Life Alignment</a>
           <a class="mobileMenuRow {% if active=='budget' %}is-active{% endif %}" href="/budget">Budget</a>
+          <a class="mobileMenuRow {% if active=='forward-pace' %}is-active{% endif %}" href="/forward-pace">Forward Pace</a>
           <a class="mobileMenuRow {% if active=='calc' %}is-active{% endif %}" href="/calculator">Planner</a>
         </div>
       </section>

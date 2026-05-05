@@ -655,20 +655,75 @@ def get_vanquish_profit_lock_state() -> dict:
     }
 
 
+def macro_event_short_label(title: str, impact: str = "High") -> str:
+    normalized = re.sub(r"\s+", " ", str(title or "").strip()).lower()
+    patterns = (
+        ("fomc", "FOMC"),
+        ("fed chair", "Fed"),
+        ("rate decision", "FOMC"),
+        ("non-farm", "NFP"),
+        ("nonfarm", "NFP"),
+        ("payroll", "NFP"),
+        ("unemployment", "Jobs"),
+        ("job openings", "JOLTS"),
+        ("cpi", "CPI"),
+        ("ppi", "PPI"),
+        ("pce", "PCE"),
+        ("inflation", "Inflation"),
+        ("gdp", "GDP"),
+        ("retail sales", "Retail"),
+        ("ism", "ISM"),
+        ("pmi", "PMI"),
+    )
+    for needle, label in patterns:
+        if needle in normalized:
+            return label
+    impact_label = str(impact or "High").strip().title() or "High"
+    return f"{impact_label} Impact"
+
+
+def _macro_notice_detail(
+    *,
+    title: str,
+    impact: str,
+    starts_at: datetime,
+    forecast: str = "",
+    previous: str = "",
+) -> str:
+    parts = [
+        title,
+        f"{impact} impact",
+        starts_at.strftime("%b %-d %I:%M %p ET"),
+    ]
+    if forecast:
+        parts.append(f"Forecast {forecast}")
+    if previous:
+        parts.append(f"Previous {previous}")
+    return " · ".join(parts)
+
+
 def _global_top_notice() -> dict | None:
     now_et = datetime.now(TZ)
-    payload = get_forex_factory_feed()
+    payload: list[dict] = []
+    weekly_payload = get_forex_factory_feed()
+    next_week_payload = get_forex_factory_next_week_feed()
+    if isinstance(weekly_payload, list):
+        payload.extend(weekly_payload)
+    if isinstance(next_week_payload, list):
+        payload.extend(next_week_payload)
 
-    if not isinstance(payload, list):
+    if not payload:
         return None
 
     cutoff = now_et - timedelta(minutes=1)
+    events: list[dict] = []
     for row in payload:
         if not isinstance(row, dict):
             continue
         if str(row.get("country") or "").upper() != "USD":
             continue
-        if str(row.get("impact") or "").title() != "High":
+        impact = str(row.get("impact") or "").title()
+        if impact not in {"High", "Medium", "Low"}:
             continue
         raw_date = str(row.get("date") or "").strip()
         if not raw_date:
@@ -681,17 +736,42 @@ def _global_top_notice() -> dict | None:
             continue
         day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "
         title = str(row.get("title") or "USD high impact").strip() or "USD high impact"
-        compact_title = re.sub(r"\s+", " ", title)
-        if len(compact_title) > 28:
-            compact_title = f"{compact_title[:25].rstrip()}..."
-        detail_href = f"/candle-opens?y={starts_at.year}&m={starts_at.month}#news-day-{starts_at.date().isoformat()}"
-        return {
-            "text": f"{day_prefix}{starts_at.strftime('%-I:%M %p ET')} · {compact_title}",
-            "detail": f"High impact · {starts_at.strftime('%b %-d %I:%M %p ET')} · {title}",
-            "href": detail_href,
-            "level": "high",
-        }
-    return None
+        forecast = str(row.get("forecast") or "").strip()
+        previous = str(row.get("previous") or "").strip()
+        event_detail = _macro_notice_detail(
+            title=title,
+            impact=impact,
+            starts_at=starts_at,
+            forecast=forecast,
+            previous=previous,
+        )
+        events.append(
+            {
+                "label": macro_event_short_label(title, impact),
+                "time_short": starts_at.strftime("%-I:%M"),
+                "time_label": f"{day_prefix}{starts_at.strftime('%-I:%M %p ET')}",
+                "detail": event_detail,
+                "level": impact.lower(),
+                "starts_at": starts_at.isoformat(),
+            }
+        )
+    if not events:
+        return None
+    events.sort(key=lambda item: str(item.get("starts_at") or ""))
+    first = events[0]
+    first_starts_at = datetime.fromisoformat(str(first["starts_at"]))
+    detail_href = (
+        f"/candle-opens?y={first_starts_at.year}&m={first_starts_at.month}"
+        f"#news-day-{first_starts_at.date().isoformat()}"
+    )
+    return {
+        "text": f"{first['label']} {first['time_short']}",
+        "detail": str(first.get("detail") or ""),
+        "href": detail_href,
+        "level": str(first.get("level") or "high"),
+        "count": 1,
+        "events": [first],
+    }
 
 
 def get_forex_factory_feed() -> list[dict] | None:

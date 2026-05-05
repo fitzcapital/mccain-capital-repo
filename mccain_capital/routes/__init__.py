@@ -4,6 +4,7 @@ from mccain_capital.routes import (
     books,
     budget,
     core,
+    forward_pace,
     journal,
     life_alignment,
     self_control,
@@ -18,6 +19,7 @@ def register_all_routes(app):
     journal.register(app)
     life_alignment.register(app)
     budget.register(app)
+    forward_pace.register(app)
     self_control.register(app)
     trades.register(app)
     strategies.register(app)

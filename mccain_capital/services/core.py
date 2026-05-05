@@ -52,6 +52,7 @@ from mccain_capital.services.ui import (
     get_forex_factory_month_feed,
     get_forex_factory_next_week_feed,
     get_system_status,
+    macro_event_short_label,
     render_page,
     save_trading_window_settings,
 )
@@ -9560,7 +9561,7 @@ def dashboard():
     scope_active = scope_enabled and scope_mode_raw != "all"
     scope_start = str(scope.get("start_date") or "")
     scope_starting_balance = float(scope.get("starting_balance") or 50000.0)
-    anchor = trades_repo.latest_trade_day() or app_runtime.now_et().date()
+    anchor = app_runtime.now_et().date()
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
     calendar_scope_label = "Active Account" if scope_active else "All History"
@@ -10445,7 +10446,7 @@ def dashboard_calendar_fragment():
     scope_active = scope_enabled and scope_mode_raw != "all"
     scope_start = str(scope.get("start_date") or "")
     scope_starting_balance = float(scope.get("starting_balance") or 50000.0)
-    anchor = trades_repo.latest_trade_day() or app_runtime.now_et().date()
+    anchor = app_runtime.now_et().date()
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
     calendar_scope_label = "Active Account" if scope_active else "All History"
@@ -12820,9 +12821,11 @@ def _candle_page_top_notice(
     now_et: datetime,
     news_events: List[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
     for event in news_events:
         raw = str(event.get("starts_at") or "")
-        if not raw or str(event.get("impact_class") or "") != "high":
+        impact_class = str(event.get("impact_class") or "").strip().lower()
+        if not raw or impact_class not in {"high", "medium", "low"}:
             continue
         try:
             starts_at = datetime.fromisoformat(raw)
@@ -12831,14 +12834,35 @@ def _candle_page_top_notice(
         if starts_at < now_et:
             continue
         day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "
-        return {
-            "label": "Red Folder",
-            "text": f"🔴 {day_prefix}{event['time_label']}",
-            "detail": event["tooltip"],
-            "href": event.get("jump_href") or "",
-            "level": "high",
-        }
-    return None
+        event_title = str(event.get("title") or "USD macro event").strip() or "USD macro event"
+        impact_label = str(event.get("impact") or impact_class.title()).title()
+        events.append(
+            {
+                "label": macro_event_short_label(event_title, impact_label),
+                "time_short": starts_at.strftime("%-I:%M"),
+                "time_label": f"{day_prefix}{event['time_label']}",
+                "detail": str(event.get("tooltip") or ""),
+                "level": impact_class,
+                "starts_at": starts_at.isoformat(),
+            }
+        )
+    if not events:
+        return None
+    events.sort(key=lambda item: str(item.get("starts_at") or ""))
+    first = events[0]
+    first_starts_at = datetime.fromisoformat(str(first["starts_at"]))
+    return {
+        "label": "Macro",
+        "text": f"{first['label']} {first['time_short']}",
+        "detail": str(first.get("detail") or ""),
+        "href": (
+            f"/candle-opens?y={first_starts_at.year}&m={first_starts_at.month}"
+            f"#news-day-{first_starts_at.date().isoformat()}"
+        ),
+        "level": str(first.get("level") or "high"),
+        "count": 1,
+        "events": [first],
+    }
 
 
 def _build_candle_focus_cards(
@@ -12916,12 +12940,12 @@ def _build_candle_focus_cards(
                         part
                         for part in [
                             (
-                                f"{int(next_macro.get('high_count') or 0)} red"
+                                f"{int(next_macro.get('high_count') or 0)} high"
                                 if int(next_macro.get("high_count") or 0)
                                 else ""
                             ),
                             (
-                                f"{int(next_macro.get('medium_count') or 0)} orange"
+                                f"{int(next_macro.get('medium_count') or 0)} medium"
                                 if int(next_macro.get("medium_count") or 0)
                                 else ""
                             ),
@@ -12986,7 +13010,7 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
         "total": 0,
         "high_count": 0,
         "medium_count": 0,
-        "summary": "USD red/orange events unavailable for this month.",
+        "summary": "USD high/medium macro folders unavailable for this month.",
         "fallback_used": False,
         "fallback_count": 0,
         "provider_count": 0,
@@ -13053,7 +13077,6 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
             "starts_at": raw_date,
             "time_label": time_label,
             "impact_class": "high" if impact == "High" else "medium",
-            "icon": "🔴" if impact == "High" else "🟠",
             "source": "feed",
             "source_label": "Live calendar",
             "jump_href": (
@@ -13104,7 +13127,6 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
             "starts_at": fallback_at.isoformat(),
             "time_label": time_label,
             "impact_class": impact_class,
-            "icon": "🔴" if impact_class == "high" else "🟠",
             "source": "curated",
             "source_label": "Curated backup",
             "jump_href": (
@@ -13201,7 +13223,7 @@ def _forex_factory_usd_window_events(start_day: date, end_day: date) -> Dict[str
     )[:3]
 
     if events:
-        summary = f"{len(events)} USD red/orange events in selected month."
+        summary = f"{len(events)} USD high/medium macro folders in selected month."
         source_mode = "live"
         source_note = "Live calendar coverage is carrying the full month."
         confidence_label = "High confidence"
