@@ -1,11 +1,12 @@
 """Core app behavior tests."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from zoneinfo import ZoneInfo
 
 from mccain_capital.runtime import db, get_setting_value, now_iso, set_setting_value, today_iso
 from mccain_capital.services import core as core_service
+from mccain_capital.services import ui as ui_service
 from werkzeug.security import generate_password_hash
 
 
@@ -1146,6 +1147,190 @@ def test_candle_opens_sorts_events_by_actual_timestamp(monkeypatch):
     assert "JOLTS Job Openings" in titles[2:]
 
 
+def test_candle_opens_includes_low_impact_yellow_macro_folders(monkeypatch):
+    monkeypatch.setattr(
+        core_service,
+        "get_forex_factory_month_feed",
+        lambda: [
+            {
+                "country": "USD",
+                "impact": "Low",
+                "title": "Mortgage Delinquencies",
+                "date": "2026-05-06T09:00:00-04:00",
+            }
+        ],
+    )
+    monkeypatch.setattr(core_service, "get_forex_factory_feed", lambda: [])
+    monkeypatch.setattr(core_service, "get_forex_factory_next_week_feed", lambda: [])
+
+    out = core_service._forex_factory_usd_window_events(
+        core_service.date(2026, 5, 6), core_service.date(2026, 5, 6)
+    )
+
+    assert out["low_count"] == 1
+    assert out["total"] == 1
+    assert out["high_count"] == 0
+    assert out["medium_count"] == 0
+    assert "0 USD high/medium macro folders" in out["summary"]
+    event = out["events"][0]
+    assert event["impact"] == "Low"
+    assert event["impact_class"] == "low"
+    assert out["days"][0]["low_count"] == 1
+
+
+def test_global_top_notice_counts_next_24h_and_prioritizes_red(monkeypatch):
+    now_et = datetime(2026, 5, 6, 17, 45, tzinfo=ZoneInfo("America/New_York"))
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now_et if tz else now_et.replace(tzinfo=None)
+
+    def row(hours, impact, title):
+        starts_at = now_et + timedelta(hours=hours)
+        return {
+            "country": "USD",
+            "impact": impact,
+            "title": title,
+            "date": starts_at.isoformat(),
+        }
+
+    monkeypatch.setattr(ui_service, "datetime", FixedDateTime)
+    monkeypatch.setattr(
+        ui_service,
+        "get_forex_factory_feed",
+        lambda: [
+            row(1, "High", "Initial Jobless Claims"),
+            row(2, "Medium", "Fed Balance Sheet"),
+            row(3, "Low", "Low Impact Ignored"),
+            row(25, "High", "Outside Window"),
+        ],
+    )
+    monkeypatch.setattr(ui_service, "get_forex_factory_next_week_feed", lambda: [])
+
+    notice = ui_service._global_top_notice()
+
+    assert notice is not None
+    assert notice["count"] == 2
+    assert notice["level"] == "high"
+    assert [event["title"] for event in notice["events"]] == [
+        "Initial Jobless Claims",
+        "Fed Balance Sheet",
+    ]
+    assert all(event["href"].startswith("/candle-opens?") for event in notice["events"])
+
+
+def test_global_top_notice_ignores_low_only_events(monkeypatch):
+    now_et = datetime(2026, 5, 6, 17, 45, tzinfo=ZoneInfo("America/New_York"))
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now_et if tz else now_et.replace(tzinfo=None)
+
+    monkeypatch.setattr(ui_service, "datetime", FixedDateTime)
+    monkeypatch.setattr(
+        ui_service,
+        "get_forex_factory_feed",
+        lambda: [
+            {
+                "country": "USD",
+                "impact": "Low",
+                "title": "Low Impact Only",
+                "date": (now_et + timedelta(hours=1)).isoformat(),
+            }
+        ],
+    )
+    monkeypatch.setattr(ui_service, "get_forex_factory_next_week_feed", lambda: [])
+
+    assert ui_service._global_top_notice() is None
+
+
+def test_candle_page_top_notice_counts_next_24h_and_prioritizes_red():
+    now_et = datetime(2026, 5, 6, 17, 45, tzinfo=ZoneInfo("America/New_York"))
+
+    def event(hours, impact_class, title):
+        starts_at = now_et + timedelta(hours=hours)
+        return {
+            "title": title,
+            "impact": impact_class.title(),
+            "impact_class": impact_class,
+            "starts_at": starts_at.isoformat(),
+            "time_label": starts_at.strftime("%-I:%M %p ET"),
+            "tooltip": f"{impact_class.title()} impact • {title}",
+        }
+
+    notice = core_service._candle_page_top_notice(
+        now_et,
+        [
+            event(1, "high", "Challenger Job Cuts y/y"),
+            event(3, "medium", "Natural Gas Storage"),
+            event(4, "low", "Low Impact Ignored"),
+            event(25, "high", "Outside Window"),
+        ],
+    )
+
+    assert notice is not None
+    assert notice["count"] == 2
+    assert notice["level"] == "high"
+    assert [event["title"] for event in notice["events"]] == [
+        "Challenger Job Cuts y/y",
+        "Natural Gas Storage",
+    ]
+    assert notice["href"] == "/candle-opens?y=2026&m=5#news-day-2026-05-06"
+
+
+def test_candle_page_top_notice_uses_orange_for_medium_plus_low():
+    now_et = datetime(2026, 5, 6, 17, 45, tzinfo=ZoneInfo("America/New_York"))
+
+    def event(hours, impact_class, title):
+        starts_at = now_et + timedelta(hours=hours)
+        return {
+            "title": title,
+            "impact": impact_class.title(),
+            "impact_class": impact_class,
+            "starts_at": starts_at.isoformat(),
+            "time_label": starts_at.strftime("%-I:%M %p ET"),
+            "tooltip": f"{impact_class.title()} impact • {title}",
+        }
+
+    notice = core_service._candle_page_top_notice(
+        now_et,
+        [
+            event(1, "medium", "Natural Gas Storage"),
+            event(2, "low", "Low Impact Ignored"),
+        ],
+    )
+
+    assert notice is not None
+    assert notice["count"] == 1
+    assert notice["level"] == "medium"
+    assert [event["title"] for event in notice["events"]] == ["Natural Gas Storage"]
+
+
+def test_candle_page_top_notice_keeps_single_impact_level():
+    now_et = datetime(2026, 5, 6, 17, 45, tzinfo=ZoneInfo("America/New_York"))
+    events = []
+    for hours, title in ((1, "Initial Jobless Claims"), (2, "Continuing Claims")):
+        starts_at = now_et + timedelta(hours=hours)
+        events.append(
+            {
+                "title": title,
+                "impact": "High",
+                "impact_class": "high",
+                "starts_at": starts_at.isoformat(),
+                "time_label": starts_at.strftime("%-I:%M %p ET"),
+                "tooltip": f"High impact • {title}",
+            }
+        )
+
+    notice = core_service._candle_page_top_notice(now_et, events)
+
+    assert notice is not None
+    assert notice["count"] == 2
+    assert notice["level"] == "high"
+
+
 def test_candle_open_calendar_surfaces_key_macro_days(monkeypatch):
     monkeypatch.setattr(
         core_service,
@@ -1634,6 +1819,63 @@ def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
     assert len(payload["series_points"]["SPY"]) == 5
 
 
+def test_dashboard_tape_refresh_backfills_vix_intraday_curve(client, monkeypatch):
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
+
+    def quote(symbol: str, price: float, pct: float) -> dict:
+        return {
+            "symbol": symbol,
+            "label": symbol,
+            "price": price,
+            "pct_change": pct,
+            "as_of": "2026-03-05T15:55:00-05:00",
+            "provider": "tradier",
+            "reason": "tradier_live_quote",
+        }
+
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "updated_at": "2026-03-05T15:55:00-05:00",
+            "prices": {
+                "SPY": quote("SPY", 711.69, -0.49),
+                "QQQ": quote("QQQ", 657.55, -1.01),
+                "VIX": quote("VIX", 17.39, 0.06),
+                "IWM": quote("IWM", 273.91, -1.17),
+            },
+            "series_points": {},
+            "series": {},
+        },
+    )
+    monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
+    monkeypatch.setattr(
+        market_data_service,
+        "get_intraday",
+        lambda symbol: (
+            [{"close": value} for value in [17.10, 17.18, 17.09, 17.31, 17.24, 17.39]]
+            if symbol == "VIX"
+            else []
+        ),
+    )
+
+    resp = client.get("/api/dashboard/tape?ticker=SPY", follow_redirects=True)
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert [row["v"] for row in payload["series_points"]["VIX"]] == [
+        17.1,
+        17.18,
+        17.09,
+        17.31,
+        17.24,
+        17.39,
+    ]
+    assert payload["quotes"]["VIX"]["mini_series"][-1] == 17.39
+
+
 def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatch):
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
@@ -1692,6 +1934,56 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
     assert body.count("marketMiniSparkGuide") >= 8
     assert body.count("marketMiniSparkBaseline") >= 4
     assert "Broad tape is defensive" in body
+
+
+def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, monkeypatch):
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
+
+    def quote(symbol: str, price: float, pct: float, extra: dict | None = None) -> dict:
+        payload = {
+            "symbol": symbol,
+            "label": symbol,
+            "price": price,
+            "pct_change": pct,
+            "provider": "tradier",
+            "reason": "tradier_live_quote",
+            "as_of": "2026-03-17T15:00:00-04:00",
+        }
+        if extra:
+            payload.update(extra)
+        return payload
+
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "prices": {
+                "SPX": quote("SPX", 6780.25, 0.12),
+                "QQQ": quote("QQQ", 657.55, -0.10),
+                "VIX": quote("VIX", 17.39, 0.06, {"mini_series": [17.10, 17.22, 17.50, 17.39]}),
+                "IWM": quote("IWM", 286.23, 1.51),
+            },
+            "series_points": {},
+            "series": {},
+            "updated_at": "2026-03-17T15:00:00-04:00",
+        },
+    )
+    monkeypatch.setattr(core_service, "_market_pulse_snapshot", lambda **_: {"quotes": []})
+    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None))
+    monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
+    monkeypatch.setattr(market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
+    monkeypatch.setattr(market_data_service, "get_watchlist", lambda *_args, **_kwargs: {})
+
+    resp = client.get("/dashboard", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "VIX" in body
+    assert "17.10-17.50" in body
+    assert "marketMiniSparkPoint" in body
 
 
 def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):
@@ -2080,6 +2372,8 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"dashboardCoreTapeRow" in resp.data
     assert b"dashboardCoreTapeStat" in resp.data
     assert b"dashboardTapeStreamStatus" in resp.data
+    assert b"Market Tape" in resp.data
+    assert b"Live Tape" not in resp.data
     assert b"dashboardGapLine" in resp.data
     assert b"Gap O/N:" in resp.data
     assert b"Tradier Live Quote" in resp.data
@@ -2088,6 +2382,78 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"-0.09%" in resp.data
     assert b"6773.42-6775.80" in resp.data
     assert b"VIX pulse" in resp.data
+    assert b"Live \xc2\xb7" not in resp.data
+    assert b"Delayed \xc2\xb7" not in resp.data
+    assert b'data-role="market-state">Live</span>' not in resp.data
+    assert b"Freshness" in resp.data
+    assert b"dashboardTapeAssetStatus is-" in resp.data
+
+
+def test_dashboard_tape_cached_rows_have_non_live_tone(client, monkeypatch):
+    from mccain_capital.services import market_data_service
+    from mccain_capital.services import market_worker
+
+    now_iso = core_service.app_runtime.now_et().isoformat()
+    monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "prices": {
+                "SPY": {
+                    "price": 732.90,
+                    "pct_change": 0.10,
+                    "provider": "yfinance",
+                    "reason": "cached_snapshot",
+                    "as_of": now_iso,
+                },
+                "QQQ": {
+                    "price": 695.77,
+                    "pct_change": 0.10,
+                    "provider": "yfinance",
+                    "reason": "cached_snapshot",
+                    "as_of": now_iso,
+                },
+                "SPX": {
+                    "price": 6775.80,
+                    "pct_change": 0.10,
+                    "provider": "yfinance",
+                    "reason": "cached_snapshot",
+                    "as_of": now_iso,
+                },
+                "VIX": {
+                    "price": None,
+                    "pct_change": None,
+                    "provider": "",
+                    "reason": "unavailable",
+                    "as_of": "",
+                },
+                "IWM": {
+                    "price": 286.23,
+                    "pct_change": 0.10,
+                    "provider": "yfinance",
+                    "reason": "cached_snapshot",
+                    "as_of": now_iso,
+                },
+            },
+            "series_points": {},
+            "series": {},
+            "updated_at": now_iso,
+        },
+    )
+    monkeypatch.setattr(core_service, "_market_pulse_snapshot", lambda **_: {"quotes": []})
+    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None))
+    monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
+    monkeypatch.setattr(market_data_service, "get_watchlist", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
+
+    resp = client.get("/dashboard", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "dashboardTapeAssetStatus is-delayed" in body
+    assert "dashboardTapeAssetStatus is-missing" in body
+    assert "Cached ·" not in body
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):

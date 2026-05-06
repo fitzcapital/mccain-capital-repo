@@ -260,7 +260,7 @@ const dashboardUIFX = (() => {
 
   const buildSparklineSvg = (points, tone) => {
     const values = seriesValues(points);
-    if (values.length < 4) {
+    if (values.length < 2) {
       return '<div class="marketMiniSparkEmpty">No trend</div>';
     }
     const width = 120;
@@ -301,7 +301,7 @@ const dashboardUIFX = (() => {
   };
 
   const updateSparkNode = (node, points, tone) => {
-    if (!node || seriesValues(points).length < 4) return false;
+    if (!node || seriesValues(points).length < 2) return false;
     const sparkClass = tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat";
     node.classList.remove("spark-pos", "spark-neg", "spark-flat");
     node.classList.add(sparkClass);
@@ -385,15 +385,18 @@ const dashboardUIFX = (() => {
 
   const formatFreshness = (iso, state) => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
-    if (!Number.isFinite(ts)) return { full: `${state} · unavailable`, compact: state };
+    if (!Number.isFinite(ts)) {
+      return { full: "unavailable", compact: "unavailable", band: "Unavailable", tone: "missing" };
+    }
     const ageS = Math.max(0, (Date.now() - ts) / 1000);
     const seconds = Math.floor(ageS);
     const compact = compactAgeLabel(seconds).replace(" old", "");
     const band = seconds >= 900 ? "Critical" : state;
     return {
-      full: `${band} · ${compactAgeLabel(seconds)}`,
+      full: compactAgeLabel(seconds),
       compact,
-      state,
+      band,
+      tone: stateClass(band === "Critical" ? band : state),
     };
   };
 
@@ -418,8 +421,30 @@ const dashboardUIFX = (() => {
 
   const stateClass = (state) => {
     if (state === "Live") return "live";
-    if (state === "Delayed") return "delayed";
+    if (state === "Delayed" || state === "Cached") return "delayed";
+    if (state === "Critical") return "critical";
     return "missing";
+  };
+
+  const quoteSeriesPoints = (quote) => {
+    const raw = quote || {};
+    const candidates = [raw.mini_series, raw.series, raw.prior_session_series];
+    for (const source of candidates) {
+      const values = seriesValues(source);
+      if (values.length >= 2) return values;
+    }
+    return [];
+  };
+
+  const displayRangeFromPoints = (points) => {
+    const values = seriesValues(points);
+    if (values.length < 2) return "";
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    if (!Number.isFinite(low) || !Number.isFinite(high)) return "";
+    return Math.abs(high - low) < 0.01
+      ? formatValue(high, 2)
+      : `${formatValue(low, 2)}-${formatValue(high, 2)}`;
   };
 
   const tapeStateFor = (symbol, pct) => {
@@ -497,6 +522,7 @@ const dashboardUIFX = (() => {
     const openValue = asNum((quote || {}).day_open ?? (quote || {}).open);
     const prevCloseValue = inferPreviousClose(quote);
     const freshness = formatFreshness((quote || {}).as_of, state);
+    const usablePoints = seriesValues(points).length >= 2 ? points : quoteSeriesPoints(quote);
     const tapeState = tapeStateFor(symbol, pct);
     const tapeLabel = tapeState.label;
     const tapeTone = tapeState.tone;
@@ -537,16 +563,17 @@ const dashboardUIFX = (() => {
       "is-flat",
       "is-live",
       "is-delayed",
+      "is-critical",
       "is-missing",
       "tone-positive",
       "tone-negative",
       "tone-neutral"
     );
-    row.classList.add(`is-${stateClass(state)}`);
+    row.classList.add(`is-${freshness.tone}`);
     row.classList.add(tapeTone === "positive" ? "is-up" : tapeTone === "negative" ? "is-down" : "is-flat");
     row.classList.add(`tone-${tapeTone}`);
     row.dataset.tapeTone = tapeTone;
-    if (!updateSparkNode(row.querySelector('[data-role="sparkline"]'), points, pct > 0 ? "up" : pct < 0 ? "down" : "flat")) {
+    if (!updateSparkNode(row.querySelector('[data-role="sparkline"]'), usablePoints, pct > 0 ? "up" : pct < 0 ? "down" : "flat")) {
       applyMixedToneToSparkline(row, tapeTone, pct);
     }
     if (stateNode) {
@@ -555,7 +582,14 @@ const dashboardUIFX = (() => {
       stateNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
       stateNode.classList.add(`tone-${tapeTone}`);
     }
-    if (rowMarketStateNode) dashboardUIFX.setText(rowMarketStateNode, freshness.state);
+    [rowMarketStateNode, rowLiveNode, detailLiveNode].forEach((node) => {
+      if (!node) return;
+      node.classList.remove("is-live", "is-delayed", "is-critical", "is-missing");
+      node.classList.add(`is-${freshness.tone}`);
+    });
+    if (rowMarketStateNode) {
+      dashboardUIFX.setText(rowMarketStateNode, freshness.band === "Live" ? "" : freshness.band);
+    }
     if (rowLiveNode && String((quote || {}).as_of || "").trim()) {
       dashboardUIFX.setText(rowLiveNode, freshness.full);
     }
@@ -565,6 +599,9 @@ const dashboardUIFX = (() => {
       if (dayLow !== null && dayHigh !== null) {
         dashboardUIFX.setText(rowRangeNode, `${formatValue(dayLow, 2)} to ${formatValue(dayHigh, 2)}`);
       }
+    } else if (rowRangeNode) {
+      const derivedRange = displayRangeFromPoints(usablePoints);
+      if (derivedRange) dashboardUIFX.setText(rowRangeNode, derivedRange);
     }
 
     if (detailChgNode) {
@@ -580,11 +617,19 @@ const dashboardUIFX = (() => {
   };
 
   const setStreamStatus = (label, detail) => {
-    const statusChanged = dashboardUIFX.setText(statusNode, label, { pulse: true, tone: label.toLowerCase().includes("retry") ? "warning" : "info" });
-    statusNode.dataset.tone = label.toLowerCase().includes("retry")
+    const normalized = String(label || "").toLowerCase();
+    const statusChanged = dashboardUIFX.setText(statusNode, label, { pulse: true, tone: normalized.includes("retry") ? "warning" : "info" });
+    statusNode.dataset.tone = (
+      normalized.includes("retry")
+      || normalized.includes("delayed")
+      || normalized.includes("cached")
+      || normalized.includes("paused")
+    )
       ? "delayed"
-      : label.toLowerCase().includes("connect")
+      : normalized.includes("connect")
       ? "off"
+      : normalized.includes("unavailable") || normalized.includes("error")
+      ? "missing"
       : "live";
     dashboardUIFX.setText(updatedNode, detail, { pulse: statusChanged, tone: "info" });
   };

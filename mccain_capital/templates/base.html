@@ -287,37 +287,54 @@
             {% if top_notice and not density_clock_notice %}
               {% set notice_events = top_notice.events if top_notice.events is defined and top_notice.events else [] %}
               {% if notice_events %}
-              {% if top_notice.href %}
-                <a class="clockPill topNoticePill macro-folder-chip{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
-                    {% for notice_event in notice_events[:1] %}
-                      <span class="macroEventMiniChip macro-{{ notice_event.level or top_notice.level or 'high' }}" title="{{ notice_event.detail or top_notice.detail or top_notice.text }}">
-                        <span class="macro-folder macro-{{ notice_event.level or top_notice.level or 'high' }}" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" class="folder-icon" focusable="false">
-                            <path d="M3 7.5h5.2l2 2H21v7.2a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 16.7Z"></path>
-                            <path d="M3 7.5V6.8A1.8 1.8 0 0 1 4.8 5h4.4l2 2h8A1.8 1.8 0 0 1 21 8.8v.7"></path>
-                          </svg>
-                        </span>
-                        <span class="macroEventMiniText">{{ notice_event.label }} {{ notice_event.time_short }}</span>
+                {% set notice_level = top_notice.level or 'high' %}
+                {% set notice_first = notice_events[0] %}
+                <div class="topNoticeMenuHost" data-macro-notice-menu>
+                  <button class="clockPill topNoticePill macro-folder-chip is-{{ notice_level }}" type="button" aria-haspopup="menu" aria-expanded="false" title="{{ top_notice.detail or top_notice.text }}" data-macro-notice-trigger>
+                    <span class="macroEventMiniChip macro-{{ notice_level }}" title="{{ notice_first.detail or top_notice.detail or top_notice.text }}">
+                      <span class="macro-folder macro-{{ notice_level }}" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" class="folder-icon" focusable="false">
+                          <path d="M3 7.5h5.2l2 2H21v7.2a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 16.7Z"></path>
+                          <path d="M3 7.5V6.8A1.8 1.8 0 0 1 4.8 5h4.4l2 2h8A1.8 1.8 0 0 1 21 8.8v.7"></path>
+                        </svg>
                       </span>
-                    {% endfor %}
-                    <span class="macroNoticeCount" aria-label="{{ top_notice.count or 1 }} upcoming macro event">{{ top_notice.count or 1 }}</span>
-                </a>
-              {% else %}
-                <div class="clockPill topNoticePill macro-folder-chip{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
-                    {% for notice_event in notice_events[:1] %}
-                      <span class="macroEventMiniChip macro-{{ notice_event.level or top_notice.level or 'high' }}" title="{{ notice_event.detail or top_notice.detail or top_notice.text }}">
-                        <span class="macro-folder macro-{{ notice_event.level or top_notice.level or 'high' }}" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" class="folder-icon" focusable="false">
-                            <path d="M3 7.5h5.2l2 2H21v7.2a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 16.7Z"></path>
-                            <path d="M3 7.5V6.8A1.8 1.8 0 0 1 4.8 5h4.4l2 2h8A1.8 1.8 0 0 1 21 8.8v.7"></path>
-                          </svg>
-                        </span>
-                        <span class="macroEventMiniText">{{ notice_event.label }} {{ notice_event.time_short }}</span>
-                      </span>
-                    {% endfor %}
-                    <span class="macroNoticeCount" aria-label="{{ top_notice.count or 1 }} upcoming macro event">{{ top_notice.count or 1 }}</span>
+                      {% if top_notice.count %}
+                        <span class="macroNoticeCount" aria-label="{{ top_notice.count }} upcoming macro event{% if top_notice.count != 1 %}s{% endif %}">{{ top_notice.count }}</span>
+                      {% endif %}
+                      <span class="macroEventMiniText">{{ notice_first.label }} {{ notice_first.time_short }}</span>
+                    </span>
+                  </button>
+                  <div class="macroNoticePreview" role="menu" aria-label="Upcoming macro events">
+                    <div class="macroNoticePreviewHead">
+                      <span>Next 24h Macro</span>
+                      <strong>{{ top_notice.count or notice_events|length }}</strong>
+                    </div>
+                    <div class="macroNoticePreviewList">
+                      {% for notice_event in notice_events %}
+                        <div class="macroNoticePreviewRow is-{{ notice_event.level or 'high' }}">
+                          <span class="macro-folder macro-{{ notice_event.level or 'high' }}" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" class="folder-icon" focusable="false">
+                              <path d="M3 7.5h5.2l2 2H21v7.2a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 16.7Z"></path>
+                              <path d="M3 7.5V6.8A1.8 1.8 0 0 1 4.8 5h4.4l2 2h8A1.8 1.8 0 0 1 21 8.8v.7"></path>
+                            </svg>
+                          </span>
+                          <span class="macroNoticePreviewText">
+                            <strong>{{ notice_event.title or notice_event.label }}</strong>
+                            <small>{{ notice_event.time_label or notice_event.time_short }} · {{ (notice_event.level or 'high')|title }} impact</small>
+                          </span>
+                          {% if notice_event.href or top_notice.href %}
+                            <a class="macroNoticePreviewLink" href="{{ notice_event.href or top_notice.href }}" aria-label="Open {{ notice_event.title or notice_event.label }} on Candle Opens">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path>
+                                <path d="M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path>
+                              </svg>
+                            </a>
+                          {% endif %}
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
                 </div>
-              {% endif %}
               {% endif %}
             {% endif %}
             <div id="marketStatusClock" class="clockPill cockpitPill marketStatusClock market-clock-pill is-loading" aria-label="Market status and Eastern time">
@@ -1071,6 +1088,48 @@
       }
       return originalFetch(input, init);
     };
+  })();
+</script>
+<script>
+  (function initMacroNoticePreview(){
+    const hosts = Array.from(document.querySelectorAll("[data-macro-notice-menu]"));
+    if (!hosts.length) return;
+
+    const closeHost = (host) => {
+      host.classList.remove("is-open");
+      host.querySelector("[data-macro-notice-trigger]")?.setAttribute("aria-expanded", "false");
+    };
+    const closeAll = (except = null) => {
+      hosts.forEach((host) => {
+        if (host !== except) closeHost(host);
+      });
+    };
+
+    hosts.forEach((host) => {
+      const trigger = host.querySelector("[data-macro-notice-trigger]");
+      if (!trigger) return;
+      trigger.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const opening = !host.classList.contains("is-open");
+        closeAll(host);
+        host.classList.toggle("is-open", opening);
+        trigger.setAttribute("aria-expanded", opening ? "true" : "false");
+      });
+      host.querySelectorAll(".macroNoticePreviewLink").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          event.stopPropagation();
+        });
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (hosts.some((host) => host.contains(event.target))) return;
+      closeAll();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeAll();
+    });
   })();
 </script>
 <script>

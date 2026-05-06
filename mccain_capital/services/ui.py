@@ -716,6 +716,7 @@ def _global_top_notice() -> dict | None:
         return None
 
     cutoff = now_et - timedelta(minutes=1)
+    horizon = now_et + timedelta(hours=24)
     events: list[dict] = []
     for row in payload:
         if not isinstance(row, dict):
@@ -723,7 +724,7 @@ def _global_top_notice() -> dict | None:
         if str(row.get("country") or "").upper() != "USD":
             continue
         impact = str(row.get("impact") or "").title()
-        if impact not in {"High", "Medium", "Low"}:
+        if impact not in {"High", "Medium"}:
             continue
         raw_date = str(row.get("date") or "").strip()
         if not raw_date:
@@ -732,7 +733,9 @@ def _global_top_notice() -> dict | None:
             starts_at = datetime.fromisoformat(raw_date)
         except ValueError:
             continue
-        if starts_at < cutoff:
+        if starts_at.tzinfo is None:
+            starts_at = starts_at.replace(tzinfo=TZ)
+        if starts_at < cutoff or starts_at > horizon:
             continue
         day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "
         title = str(row.get("title") or "USD high impact").strip() or "USD high impact"
@@ -751,26 +754,29 @@ def _global_top_notice() -> dict | None:
                 "time_short": starts_at.strftime("%-I:%M"),
                 "time_label": f"{day_prefix}{starts_at.strftime('%-I:%M %p ET')}",
                 "detail": event_detail,
+                "href": (
+                    f"/candle-opens?y={starts_at.year}&m={starts_at.month}"
+                    f"#news-day-{starts_at.date().isoformat()}"
+                ),
                 "level": impact.lower(),
                 "starts_at": starts_at.isoformat(),
+                "title": title,
             }
         )
     if not events:
         return None
     events.sort(key=lambda item: str(item.get("starts_at") or ""))
     first = events[0]
-    first_starts_at = datetime.fromisoformat(str(first["starts_at"]))
-    detail_href = (
-        f"/candle-opens?y={first_starts_at.year}&m={first_starts_at.month}"
-        f"#news-day-{first_starts_at.date().isoformat()}"
-    )
+    levels = {str(event.get("level") or "") for event in events}
+    notice_level = "high" if "high" in levels else "medium"
     return {
+        "label": "Macro",
         "text": f"{first['label']} {first['time_short']}",
         "detail": str(first.get("detail") or ""),
-        "href": detail_href,
-        "level": str(first.get("level") or "high"),
-        "count": 1,
-        "events": [first],
+        "href": str(first.get("href") or ""),
+        "level": notice_level,
+        "count": len(events),
+        "events": events,
     }
 
 

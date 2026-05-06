@@ -4873,6 +4873,16 @@ body{
       --macro-folder-color:var(--macro-impact-low);
       --macro-folder-glow:rgba(234,179,8,.18);
     }
+    .macro-folder.macro-mixed{
+      --macro-folder-color:#5aa8ff;
+      --macro-folder-glow:rgba(90,168,255,.34);
+    }
+    .topNoticeMenuHost{
+      position:relative;
+      display:inline-flex;
+      flex:0 1 auto;
+      min-width:0;
+    }
     .topNoticePill .macro-folder{
       width:17px;
       height:17px;
@@ -4901,6 +4911,125 @@ body{
         0 0 12px rgba(239,68,68,.24);
       font-variant-numeric:tabular-nums;
     }
+    .topNoticePill.is-mixed{
+      border-color:rgba(90,168,255,.30);
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,.025),
+        0 6px 18px rgba(0,0,0,.25),
+        0 0 18px rgba(90,168,255,.12);
+    }
+    .topNoticePill.is-mixed .macroNoticeCount{
+      border-color:rgba(90,168,255,.42);
+      background:linear-gradient(180deg, rgba(90,168,255,.34), rgba(22,56,100,.52));
+      color:rgba(235,246,255,.98);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 0 12px rgba(90,168,255,.26);
+    }
+    .macroNoticePreview{
+      position:absolute;
+      top:calc(100% + 8px);
+      right:0;
+      z-index:80;
+      width:min(360px, calc(100vw - 24px));
+      display:none;
+      padding:10px;
+      border:1px solid rgba(90,168,255,.24);
+      border-radius:14px;
+      background:linear-gradient(180deg, rgba(9,21,38,.98), rgba(5,12,23,.98));
+      box-shadow:0 18px 44px rgba(0,0,0,.42), 0 0 24px rgba(90,168,255,.14);
+      color:var(--text);
+    }
+    .topNoticeMenuHost.is-open .macroNoticePreview{
+      display:block;
+    }
+    .macroNoticePreviewHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:2px 2px 8px;
+      color:rgba(219,232,248,.78);
+      font-size:10px;
+      font-weight:900;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+    .macroNoticePreviewHead strong{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:22px;
+      height:20px;
+      padding:0 7px;
+      border-radius:999px;
+      border:1px solid rgba(90,168,255,.30);
+      background:rgba(90,168,255,.12);
+      color:rgba(235,246,255,.95);
+      font-size:11px;
+      font-variant-numeric:tabular-nums;
+    }
+    .macroNoticePreviewList{
+      display:grid;
+      gap:6px;
+    }
+    .macroNoticePreviewRow{
+      display:grid;
+      grid-template-columns:18px minmax(0, 1fr) 30px;
+      align-items:center;
+      gap:8px;
+      min-width:0;
+      padding:8px;
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:10px;
+      background:rgba(255,255,255,.035);
+    }
+    .macroNoticePreviewText{
+      display:grid;
+      gap:3px;
+      min-width:0;
+    }
+    .macroNoticePreviewText strong,
+    .macroNoticePreviewText small{
+      display:block;
+      min-width:0;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .macroNoticePreviewText strong{
+      color:rgba(239,246,255,.95);
+      font-size:12px;
+      font-weight:900;
+      line-height:1.18;
+    }
+    .macroNoticePreviewText small{
+      color:rgba(199,214,232,.72);
+      font-size:10px;
+      font-weight:800;
+      line-height:1.2;
+    }
+    .macroNoticePreviewLink{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:30px;
+      height:30px;
+      border-radius:9px;
+      border:1px solid rgba(90,168,255,.24);
+      background:rgba(90,168,255,.10);
+      color:rgba(218,235,255,.92);
+      text-decoration:none;
+    }
+    .macroNoticePreviewLink svg{
+      width:15px;
+      height:15px;
+    }
+    .macroNoticePreviewLink:hover{
+      border-color:rgba(90,168,255,.42);
+      background:rgba(90,168,255,.18);
+      color:#fff;
+    }
     .topNoticeLabel{
       font-size:11px;
       font-weight:900;
@@ -4920,6 +5049,11 @@ body{
     a.topNoticePill{
       text-decoration:none;
       color:inherit;
+    }
+    button.topNoticePill{
+      color:inherit;
+      font:inherit;
+      cursor:pointer;
     }
     .market-status-cluster{
       margin-left:auto;
@@ -5038,8 +5172,7 @@ body{
         border-color:rgba(234,179,8,.22);
       }
       .topNoticePill .topNoticeText,
-      .topNoticePill .topNoticeLabel,
-      .topNoticePill .macroNoticeCount{
+      .topNoticePill .topNoticeLabel{
         display:none;
       }
     }
@@ -14799,7 +14932,8 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
   border-bottom:1px solid rgba(255,255,255,.08);
 }
 .candleMacroFold[open]{
-  max-height:820px;
+  max-height:none;
+  overflow:visible;
 }
 .candleMacroFold[open] > .candleMacroSummary::after{
   content:"−";
@@ -14890,6 +15024,11 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
 .candleNewsChip.is-medium{
   border-color:rgba(249,115,22,.24);
   background:rgba(249,115,22,.10);
+}
+.newsCountChip.is-low,
+.candleNewsChip.is-low{
+  border-color:rgba(234,179,8,.26);
+  background:rgba(234,179,8,.10);
 }
 .newsCountChip.is-curated{
   border-color:rgba(96,165,250,.24);
@@ -15105,6 +15244,9 @@ body.marketPulseExecutionMode .marketPulseOpsFold{
 }
 .candleNewsEventRow.is-medium .candleNewsEventTime{
   color:#ffb06f;
+}
+.candleNewsEventRow.is-low .candleNewsEventTime{
+  color:#f6d45a;
 }
 .candleSourceChip{
   display:inline-flex;
@@ -17370,6 +17512,12 @@ body.modalOpen{
   border-color:rgba(255, 111, 111, .55);
   background:rgba(122, 33, 33, .44);
   color:#ffd3d3;
+}
+
+.liveTapeBadge[data-tone="missing"]{
+  border-color:rgba(255, 82, 112, .62);
+  background:rgba(136, 31, 47, .48);
+  color:#ffd6dd;
 }
 
 .liveTapeAge{
@@ -46424,6 +46572,12 @@ html[data-font-mode="hand"] .page-market-pulse #marketPulseHeroTradeability{
   overflow-wrap:break-word;
 }
 
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartBannerMain{
+  color:#F4F8FF !important;
+  font-weight:800 !important;
+  line-height:1.5;
+}
+
 .marketPulseExecutionHeroChartStage{
   position:relative;
   min-height:580px;
@@ -46437,6 +46591,88 @@ html[data-font-mode="hand"] .page-market-pulse #marketPulseHeroTradeability{
     inset 0 0 0 1px rgba(255,255,255,.02),
     0 16px 30px rgba(3, 8, 17, .18);
   overflow:hidden;
+}
+
+.marketPulseExecutionHeroLevelRail{
+  position:absolute;
+  inset:10px 8px 8px auto;
+  width:212px;
+  pointer-events:none;
+  z-index:4;
+}
+
+.marketPulseExecutionHeroLevelRailItem{
+  position:absolute;
+  right:8px;
+  display:grid;
+  grid-template-columns:minmax(34px, auto) minmax(0, 1fr);
+  align-items:center;
+  gap:12px;
+  width:198px;
+  min-height:34px;
+  padding:7px 13px;
+  border:1px solid rgba(128, 166, 210, .28);
+  border-radius:11px;
+  background:rgba(9, 18, 31, .88);
+  box-shadow:0 8px 18px rgba(2, 8, 18, .20);
+  transform:translateY(-50%);
+  box-sizing:border-box;
+  overflow:hidden;
+}
+
+.marketPulseExecutionHeroLevelRailItem span,
+.marketPulseExecutionHeroLevelRailItem strong{
+  min-width:0;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.marketPulseExecutionHeroLevelRailItem span{
+  color:rgba(213, 226, 242, .86);
+  font-size:.76rem;
+  font-weight:850;
+  letter-spacing:.02em;
+}
+
+.marketPulseExecutionHeroLevelRailItem strong{
+  color:#F4F8FF;
+  font-size:clamp(.9rem, .9vw, 1.04rem);
+  font-weight:900;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+  overflow:hidden;
+  text-overflow:clip;
+}
+
+.marketPulseExecutionHeroLevelRailItem.is-cdh,
+.marketPulseExecutionHeroLevelRailItem.is-pdh,
+.marketPulseExecutionHeroLevelRailItem.is-put,
+.marketPulseExecutionHeroLevelRailItem.is-put-next{
+  border-color:rgba(73, 218, 142, .62);
+  background:linear-gradient(180deg, rgba(12, 88, 49, .86), rgba(8, 55, 35, .88));
+}
+
+.marketPulseExecutionHeroLevelRailItem.is-cdl,
+.marketPulseExecutionHeroLevelRailItem.is-call,
+.marketPulseExecutionHeroLevelRailItem.is-call-next{
+  border-color:rgba(255, 73, 104, .64);
+  background:linear-gradient(180deg, rgba(108, 24, 41, .88), rgba(75, 16, 30, .90));
+}
+
+.marketPulseExecutionHeroLevelRailItem.is-local{
+  border-color:rgba(162, 124, 255, .58);
+  background:linear-gradient(180deg, rgba(62, 45, 112, .88), rgba(41, 31, 81, .90));
+}
+
+.marketPulseExecutionHeroLevelRailItem.is-spot,
+.marketPulseExecutionHeroLevelRailItem.is-p{
+  border-color:rgba(47, 107, 255, .72);
+  background:linear-gradient(180deg, rgba(24, 59, 132, .88), rgba(13, 38, 92, .90));
+}
+
+.marketPulseExecutionHeroLevelRailItem.is-main{
+  border-color:rgba(220, 232, 245, .38);
+  background:linear-gradient(180deg, rgba(30, 39, 48, .90), rgba(20, 28, 38, .92));
 }
 
 .marketPulseExecutionHeroChartCanvas,
@@ -50241,6 +50477,35 @@ body[data-theme="cinematic-nebula"] .status-pulse{
   white-space:nowrap !important;
 }
 
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness{
+  display:inline-flex !important;
+  align-items:center !important;
+  min-width:0 !important;
+  color:rgba(198, 214, 236, .82) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus{
+  font-weight:800 !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-live,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-live{
+  color:#65f2bd !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-delayed,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-delayed{
+  color:#ffb650 !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-critical,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-critical,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-missing,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-missing{
+  color:#ff7895 !important;
+}
+
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketPulseWatchRange{
   justify-content:flex-start !important;
   margin-top:-1px !important;
@@ -52933,19 +53198,16 @@ body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockDivider
 
   body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip{
     position:relative !important;
-    display:inline-grid !important;
-    grid-template-columns:18px 22px !important;
+    display:inline-flex !important;
     align-items:center !important;
     justify-content:center !important;
-    justify-items:center !important;
     width:auto !important;
     height:42px !important;
-    min-width:74px !important;
-    max-width:84px !important;
+    min-width:58px !important;
+    max-width:64px !important;
     min-height:42px !important;
     flex:0 0 auto !important;
     padding:0 !important;
-    column-gap:10px !important;
     overflow:visible !important;
     border-radius:999px !important;
     border-color:rgba(91, 121, 166, .38) !important;
@@ -52954,6 +53216,7 @@ body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockDivider
   }
 
   body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip .macroEventMiniChip{
+    position:relative !important;
     display:inline-grid !important;
     place-items:center !important;
     width:18px !important;
@@ -52976,27 +53239,63 @@ body[data-theme="cinematic-nebula"] #marketStatusClock .marketStatusClockDivider
     vertical-align:middle !important;
   }
 
+  body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip .macro-folder{
+    color:var(--macro-folder-color) !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip.is-high .macro-folder{
+    --macro-folder-color:var(--macro-impact-high) !important;
+    --macro-folder-glow:rgba(239,68,68,.24) !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip.is-medium .macro-folder{
+    --macro-folder-color:var(--macro-impact-medium) !important;
+    --macro-folder-glow:rgba(249,115,22,.22) !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip.is-low .macro-folder{
+    --macro-folder-color:var(--macro-impact-low) !important;
+    --macro-folder-glow:rgba(234,179,8,.18) !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip.is-mixed .macro-folder{
+    --macro-folder-color:#5aa8ff !important;
+    --macro-folder-glow:rgba(90, 168, 255, .34) !important;
+  }
+
   body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip .macroNoticeCount{
+    position:absolute !important;
+    top:-9px !important;
+    right:-12px !important;
     display:inline-flex !important;
     align-items:center !important;
     justify-content:center !important;
-    width:22px !important;
-    min-width:22px !important;
-    height:22px !important;
-    padding:0 !important;
-    flex:0 0 22px !important;
+    min-width:18px !important;
+    width:auto !important;
+    height:18px !important;
+    padding:0 5px !important;
+    flex:0 0 auto !important;
     margin:0 !important;
     border-radius:999px !important;
-    border:1px solid rgba(255, 119, 140, .46) !important;
-    background:linear-gradient(180deg, rgba(142, 45, 71, .82), rgba(72, 27, 44, .88)) !important;
-    color:rgba(255, 226, 234, .96) !important;
-    font-size:11px !important;
-    font-weight:900 !important;
+    border:1px solid rgba(255, 120, 143, .44) !important;
+    background:rgba(255, 94, 128, .95) !important;
+    color:#fff !important;
+    font-size:10px !important;
+    font-weight:800 !important;
     line-height:1 !important;
     transform:none !important;
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.12),
-      0 0 12px rgba(239,68,68,.24) !important;
+      0 0 0 1px rgba(255,255,255,.08) inset,
+      0 0 14px rgba(255, 94, 128, .45) !important;
+    z-index:2 !important;
+  }
+
+  body[data-theme="cinematic-nebula"] .market-status-cluster .macro-folder-chip.is-mixed .macroNoticeCount{
+    border-color:rgba(90,168,255,.44) !important;
+    background:rgba(90,168,255,.95) !important;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.08) inset,
+      0 0 14px rgba(90,168,255,.45) !important;
   }
 
   body[data-theme="cinematic-nebula"] #marketStatusClock{
