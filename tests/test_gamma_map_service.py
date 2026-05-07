@@ -347,11 +347,34 @@ def test_complete_basket_snapshot_is_healthy(monkeypatch):
 
     assert snapshot["warning_state"]["snapshot_status"] == SnapshotStatus.HEALTHY.value
     assert snapshot["source_metadata"]["included_expiries"] == ["2026-03-19", "2026-03-20"]
-    assert snapshot["local_flip_found"] is True
-    assert snapshot["local_flip_aggregated_gamma"] is not None
-    assert snapshot["local_flip_distance_from_spot"] is not None
+    assert snapshot["local_flip_found"] is False
+    assert snapshot["local_flip_aggregated_gamma"] is None
+    assert snapshot["local_flip_distance_from_spot"] is None
     assert snapshot["local_flip_window_used"]["rows_considered"] >= 2
     assert snapshot["local_flip_expiries_used"] == ["2026-03-19", "2026-03-20"]
+
+
+def test_identify_levels_suppresses_local_flip_outside_wall_span_and_uses_next_wall_beyond_primary():
+    aggregated = _aggregated_df(
+        [
+            {"strike": 7300.0, "net_gex": -8.0},
+            {"strike": 7330.0, "net_gex": -10.0},
+            {"strike": 7340.0, "net_gex": 4.0},
+            {"strike": 7345.0, "net_gex": -12.0},
+            {"strike": 7400.0, "net_gex": 20.0},
+            {"strike": 7480.0, "net_gex": 2.0},
+            {"strike": 7490.0, "net_gex": -2.0},
+        ]
+    )
+
+    levels = svc.identify_levels(aggregated, 7345.12)
+
+    assert levels["put_wall"] == 7345.0
+    assert levels["call_wall"] == 7400.0
+    assert levels["local_flip"] is None
+    assert levels["local_flip_found"] is False
+    assert levels["next_call_wall_above"] == 7480.0
+    assert levels["next_put_wall_below"] == 7330.0
 
 
 def test_single_expiry_snapshot_is_degraded(monkeypatch):

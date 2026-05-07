@@ -1766,7 +1766,13 @@ def compute_local_gamma_flip(
     }
 
 
-def compute_secondary_gamma_levels(grouped_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
+def compute_secondary_gamma_levels(
+    grouped_df: pd.DataFrame,
+    spot: float,
+    *,
+    call_wall: Optional[float] = None,
+    put_wall: Optional[float] = None,
+) -> Dict[str, Any]:
     if grouped_df.empty:
         return {
             "top_3_positive_gamma_strikes": [],
@@ -1794,6 +1800,16 @@ def compute_secondary_gamma_levels(grouped_df: pd.DataFrame, spot: float) -> Dic
     top_negative = [float(v) for v in negative["strike"].head(3).tolist()]
     above_spot = positive[positive["strike"] > float(spot)]
     below_spot = negative[negative["strike"] < float(spot)]
+    above_call_wall = (
+        positive[positive["strike"] > float(call_wall)]
+        if call_wall is not None
+        else above_spot
+    )
+    below_put_wall = (
+        negative[negative["strike"] < float(put_wall)]
+        if put_wall is not None
+        else below_spot
+    )
     return {
         "top_3_positive_gamma_strikes": top_positive,
         "top_3_negative_gamma_strikes": top_negative,
@@ -1803,8 +1819,12 @@ def compute_secondary_gamma_levels(grouped_df: pd.DataFrame, spot: float) -> Dic
         "nearest_negative_gamma_below_spot": (
             float(below_spot["strike"].max()) if not below_spot.empty else None
         ),
-        "next_call_wall_above": float(above_spot["strike"].min()) if not above_spot.empty else None,
-        "next_put_wall_below": float(below_spot["strike"].max()) if not below_spot.empty else None,
+        "next_call_wall_above": (
+            float(above_call_wall["strike"].min()) if not above_call_wall.empty else None
+        ),
+        "next_put_wall_below": (
+            float(below_put_wall["strike"].max()) if not below_put_wall.empty else None
+        ),
     }
 
 
@@ -1834,12 +1854,29 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
     net_gex = compute_net_gex_total(aggregated)
     call_wall_row = compute_call_wall(aggregated, float(spot))
     put_wall_row = compute_put_wall(aggregated, float(spot))
-    local_flip = compute_local_gamma_flip(aggregated, float(spot))
-    secondary = compute_secondary_gamma_levels(aggregated, float(spot))
     call_wall = call_wall_row["strike"] if call_wall_row else None
     put_wall = put_wall_row["strike"] if put_wall_row else None
+    local_flip = compute_local_gamma_flip(aggregated, float(spot))
+    secondary = compute_secondary_gamma_levels(
+        aggregated,
+        float(spot),
+        call_wall=call_wall,
+        put_wall=put_wall,
+    )
     call_wall_gamma_per_point = abs(float(call_wall_row["net_gex"])) if call_wall_row else None
     put_wall_gamma_per_point = abs(float(put_wall_row["net_gex"])) if put_wall_row else None
+    local_flip_value = local_flip.get("value")
+    local_flip_in_wall_span = (
+        local_flip_value is not None
+        and call_wall is not None
+        and put_wall is not None
+        and float(put_wall) <= float(local_flip_value) <= float(call_wall)
+    )
+    if local_flip_value is not None and call_wall is not None and put_wall is not None:
+        local_flip_found = bool(local_flip_in_wall_span)
+        local_flip_value = float(local_flip_value) if local_flip_in_wall_span else None
+    else:
+        local_flip_found = bool(local_flip.get("found"))
 
     return {
         "net_gex": net_gex,
@@ -1847,9 +1884,11 @@ def identify_levels(expo_df: pd.DataFrame, spot: float) -> Dict[str, Any]:
         "gamma_walls_top3": secondary.get("top_3_positive_gamma_strikes") or [],
         "void_zone": _identify_void_zone(aggregated),
         "gamma_flip": compute_gamma_flip(aggregated, float(spot)),
-        "local_flip": local_flip.get("value"),
-        "local_flip_found": bool(local_flip.get("found")),
-        "local_flip_distance_from_spot": local_flip.get("distance_from_spot"),
+        "local_flip": local_flip_value,
+        "local_flip_found": local_flip_found,
+        "local_flip_distance_from_spot": (
+            local_flip.get("distance_from_spot") if local_flip_value is not None else None
+        ),
         "local_flip_window_used": dict(local_flip.get("window_used") or {}),
         "call_wall": call_wall,
         "put_wall": put_wall,

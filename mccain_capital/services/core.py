@@ -4552,6 +4552,8 @@ def _market_pulse_gamma_failure_reason(gamma_snapshot: Dict[str, Any]) -> str:
         if not text:
             continue
         lowered = text.lower()
+        if "fetched successfully" in lowered or "current enough to trust" in lowered:
+            continue
         if "tradier" in lowered or "access token" in lowered or "options chain" in lowered:
             return text
     return ""
@@ -4561,6 +4563,8 @@ def _market_pulse_gamma_failure_label(reason: str) -> str:
     normalized = str(reason or "").strip()
     lowered = normalized.lower()
     if not normalized:
+        return ""
+    if "fetched successfully" in lowered or "current enough to trust" in lowered:
         return ""
     if "access token not approved" in lowered:
         return "Tradier token not approved"
@@ -4710,6 +4714,7 @@ def _market_pulse_gamma_regime_viewmodel(
 ) -> Dict[str, str]:
     regime_text = str(gamma_snapshot.get("regime") or "").strip()
     regime_lower = regime_text.lower().replace("-", "_").replace(" ", "_")
+    has_directional_regime = regime_lower not in {"", "unavailable", "invalid", "unknown"}
     normalized_regime_status = str(regime_status or "").strip().lower()
     if not normalized_regime_status:
         normalized_regime_status = (
@@ -4719,6 +4724,38 @@ def _market_pulse_gamma_regime_viewmodel(
         )
 
     if gamma_data_status == "invalid" or normalized_regime_status == "unavailable":
+        if has_directional_regime:
+            unavailable_subtitle = "Execution levels unavailable"
+            if "strong_negative" in regime_lower:
+                return {
+                    "gamma_regime": "negative",
+                    "gamma_regime_label": "Negative Gamma",
+                    "gamma_regime_subtitle": unavailable_subtitle,
+                }
+            if "negative" in regime_lower:
+                return {
+                    "gamma_regime": "negative",
+                    "gamma_regime_label": "Negative Gamma",
+                    "gamma_regime_subtitle": unavailable_subtitle,
+                }
+            if "strong_positive" in regime_lower:
+                return {
+                    "gamma_regime": "positive",
+                    "gamma_regime_label": "Positive Gamma",
+                    "gamma_regime_subtitle": unavailable_subtitle,
+                }
+            if "positive" in regime_lower:
+                return {
+                    "gamma_regime": "positive",
+                    "gamma_regime_label": "Positive Gamma",
+                    "gamma_regime_subtitle": unavailable_subtitle,
+                }
+            if "neutral" in regime_lower or "flip" in regime_lower:
+                return {
+                    "gamma_regime": "neutral",
+                    "gamma_regime_label": "Neutral Gamma",
+                    "gamma_regime_subtitle": unavailable_subtitle,
+                }
         return {
             "gamma_regime": "unavailable",
             "gamma_regime_label": "Regime Unavailable",
