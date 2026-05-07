@@ -1145,11 +1145,43 @@
     return "flat";
   };
 
+  const tapeStateFor = (symbol, pctChange) => {
+    const ticker = String(symbol || "").toUpperCase();
+    const pct = asNum(pctChange);
+    if (["SPX", "SPY", "QQQ", "IWM"].includes(ticker)) {
+      if (pct !== null && pct >= 0.35) {
+        return { label: "Risk-On", tone: "positive", title: "Broad tape supports long risk." };
+      }
+      if (pct !== null && pct <= -0.35) {
+        return {
+          label: "Risk-Off",
+          tone: "negative",
+          title: "Broad tape is defensive; long risk needs extra confirmation.",
+        };
+      }
+    }
+    if (pct !== null && pct >= 0.75) {
+      return {
+        label: "Strong",
+        tone: "positive",
+        title: "Symbol is leading or showing strong upside pressure.",
+      };
+    }
+    if (pct !== null && pct <= -0.75) {
+      return {
+        label: "Weak",
+        tone: "negative",
+        title: "Symbol is lagging or under downside pressure.",
+      };
+    }
+    return { label: "Mixed", tone: "neutral", title: "No clean tape edge yet." };
+  };
+
   const buildSparklineSvg = (points, tone) => {
     const values = (Array.isArray(points) ? points : [])
       .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
       .filter((value) => value !== null);
-    if (values.length < 2) {
+    if (values.length < 4) {
       return '<div class="marketMiniSparkEmpty">No trend</div>';
     }
     const width = 120;
@@ -1163,9 +1195,26 @@
       const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     });
+    const areaPoints = `0.00,28.00 ${pts.join(" ")} 120.00,28.00`;
+    const baselineY = (((maxV - values[0]) / (maxV - minV)) * (height - 2) + 1).toFixed(2);
+    const markerStride = Math.max(1, Math.floor(pts.length / 8));
+    const selected = pts
+      .filter((_point, index) => index === 0 || index === pts.length - 1 || index % markerStride === 0);
+    const markers = selected
+      .map((point, index) => {
+        const [x, y] = point.split(",");
+        const endpoint = index === 0 ? " start" : index === selected.length - 1 ? " end" : "";
+        return `<circle class="marketMiniSparkPoint ${tone}${endpoint}" cx="${x}" cy="${y}" r="1.55" />`;
+      })
+      .join("");
     return (
       `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="7" x2="120" y2="7" />`
+      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="120" y2="${baselineY}" />`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="21" x2="120" y2="21" />`
+      + `<polygon class="marketMiniSparkArea ${tone}" points="${areaPoints}" />`
       + `<polyline class="marketMiniSparkLine ${tone}" points="${pts.join(" ")}" />`
+      + markers
       + `</svg>`
     );
   };
@@ -1213,6 +1262,31 @@
     return "Feed unavailable";
   };
 
+  const compactAgeLabel = (ageS) => {
+    const seconds = Math.max(0, Math.floor(Number(ageS) || 0));
+    if (seconds >= 72 * 3600) return "72h+ old";
+    if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h old`;
+    if (seconds >= 60) return `${Math.floor(seconds / 60)}m old`;
+    return `${seconds}s old`;
+  };
+
+  const dashboardTapeFreshnessLabel = (label, state, asOf) => {
+    const stateLabel = dataStateLabel(state);
+    const ts = typeof asOf === "string" ? Date.parse(asOf) : NaN;
+    if (Number.isFinite(ts)) {
+      const ageS = Math.max(0, (Date.now() - ts) / 1000);
+      const band = ageS >= 900 ? "Critical" : stateLabel;
+      return `${band} · ${compactAgeLabel(ageS)}`;
+    }
+    let text = String(label || "").trim();
+    if (!text) return state === "live" ? "Live" : "Awaiting refresh";
+    text = text
+      .replace(/^Closed\s*·\s*last quote\s*/i, "Critical · ")
+      .replace(/^Closed\s*·\s*last snapshot\s*/i, "Critical · ")
+      .replace(/last quote\s*/i, "");
+    return text.trim() || stateLabel;
+  };
+
   const updateStateChip = (node, state, labelOverride = "") => {
     if (!node) return;
     const nextState = String(state || "missing");
@@ -1248,6 +1322,8 @@
 
   const updateSparkNode = (node, points, tone) => {
     if (!node) return;
+    node.classList.remove("spark-pos", "spark-neg", "spark-flat");
+    node.classList.add(tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat");
     node.innerHTML = buildSparklineSvg(points, tone);
   };
 
@@ -1999,7 +2075,7 @@
     });
   });
 
-  const updateTapeSummary = (quotesBySymbol) => {
+  const updateTapeSummary = (quotesBySymbol, tapeMeta = {}) => {
     const tracked = tapeCards
       .map((card) => String(card.dataset.symbol || "").toUpperCase())
       .filter(Boolean);
@@ -2030,47 +2106,64 @@
     setText("marketPulseMissing", String(missing));
     setText(
       "marketPulseBiggestMove",
-      biggestMove === null ? "—" : `${biggestLabel} ${formatSigned(biggestMove, 2)}%`
+      String(tapeMeta.drag || "").trim()
+        || (biggestMove === null ? "—" : `${biggestLabel} ${formatSigned(biggestMove, 2)}%`)
     );
+    if (String(tapeMeta.risk || "").trim()) setText("marketPulseRiskLabel", tapeMeta.risk);
+    if (Array.isArray(tapeMeta.leaders)) {
+      setText("marketPulseLeaders", tapeMeta.leaders.length ? tapeMeta.leaders.join(", ") : "—");
+    }
+  };
+
+  const applyCoreTapeSnapshot = (quotesBySymbol, seriesBySymbol = {}, tapeMeta = {}) => {
+    const quotes = quotesBySymbol && typeof quotesBySymbol === "object" ? quotesBySymbol : {};
+    const series = seriesBySymbol && typeof seriesBySymbol === "object" ? seriesBySymbol : {};
+    tapeCards.forEach((card) => {
+      const symbol = String(card.dataset.symbol || "").toUpperCase();
+      if (!symbol) return;
+      applyTapeCardUpdate(card, quotes[symbol] || {}, series[symbol] || []);
+    });
+    updateTapeSummary(quotes, tapeMeta);
   };
 
   const applyTapeCardUpdate = (card, quote, points) => {
     if (!card || !quote || typeof quote !== "object") return;
     const price = asNum(quote.price);
-    const pct = asNum(quote.pct_change);
+    const pct = asNum(quote.pct_change ?? quote.change_pct);
     const state = deriveDataState(quote);
     const tone = sparkTone(pct);
     const reason = String(quote.reason || "").trim();
     const asOf = String(quote.as_of || quote.asof || "").trim();
     const symbol = String(card.dataset.symbol || "").toUpperCase();
-    let watchState = "Mixed";
-    if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) watchState = "Risk-On";
-    else if (["SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct <= -0.35) watchState = "Risk-Off";
-    else if (pct !== null && pct >= 0.75) watchState = "Strong";
-    else if (pct !== null && pct <= -0.75) watchState = "Weak";
+    const watchState = tapeStateFor(symbol, pct);
 
     const chip = card.querySelector('[data-role="state-chip"]');
     if (chip) {
-      const chipChanged = String(chip.textContent || "") !== watchState;
-      chip.textContent = watchState;
+      const chipChanged = String(chip.textContent || "") !== watchState.label;
+      chip.textContent = watchState.label;
+      chip.title = watchState.title;
+      const watchTone = `tone-${watchState.tone}`;
       chip.classList.remove("tone-positive", "tone-negative", "tone-neutral");
-      chip.classList.add(
-        watchState === "Risk-On" || watchState === "Strong" ? "tone-positive"
-          : watchState === "Risk-Off" || watchState === "Weak" ? "tone-negative"
-            : "tone-neutral"
-      );
+      chip.classList.add(watchTone);
       if (chipChanged) {
         uiFX?.pulseNode?.(
           chip,
-          watchState === "Risk-On" || watchState === "Strong"
+          watchTone === "tone-positive"
             ? "positive"
-            : watchState === "Risk-Off" || watchState === "Weak"
+            : watchTone === "tone-negative"
               ? "negative"
               : "info"
         );
       }
     }
-    updateTextNode(card.querySelector('[data-role="freshness"]'), state === "live" ? "Live" : formatEtLabel(asOf));
+    updateTextNode(
+      card.querySelector('[data-role="freshness"]'),
+      dashboardTapeFreshnessLabel(
+        String(quote.freshness_label || "").trim() || (state === "live" ? "Live" : formatEtLabel(asOf)),
+        state,
+        asOf
+      )
+    );
     updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2), {
       live: true,
       direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral",
@@ -2084,8 +2177,17 @@
       }
     );
     updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
-    updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
-    updateTextNode(card.querySelector('[data-role="range-line"]'), formatRange(points));
+    const hasSeriesPoints = Array.isArray(points) && seriesValueCount(points) >= 4;
+    if (hasSeriesPoints) {
+      updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
+      updateTextNode(card.querySelector('[data-role="range-line"]'), formatRange(points));
+    } else {
+      const sparkNode = card.querySelector('[data-role="sparkline"]');
+      if (sparkNode) {
+        sparkNode.classList.remove("spark-pos", "spark-neg", "spark-flat");
+        sparkNode.classList.add(tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat");
+      }
+    }
 
     const reasonNode = card.querySelector('[data-role="reason-line"]');
     if (reasonNode) {
@@ -2095,9 +2197,9 @@
 
     card.classList.toggle("glow-green", (pct || 0) > 0);
     card.classList.toggle("glow-red", (pct || 0) < 0);
-    card.classList.toggle("tone-positive", watchState === "Risk-On" || watchState === "Strong");
-    card.classList.toggle("tone-negative", watchState === "Risk-Off" || watchState === "Weak");
-    card.classList.toggle("tone-neutral", watchState === "Mixed");
+    card.classList.toggle("tone-positive", pct !== null && pct > 0);
+    card.classList.toggle("tone-negative", pct !== null && pct < 0);
+    card.classList.toggle("tone-neutral", pct === null || pct === 0);
   };
 
   const adaptInput = (base) => {
@@ -2452,10 +2554,32 @@
       quotes_map: { ...(current.quotes_map || {}), ...(incoming.quotes_map || {}) },
     };
     render(current);
+    applyCoreTapeSnapshot(current.quotes_map || {}, current.series_points || {});
     window.dispatchEvent(new CustomEvent("market-pulse-core-ready"));
     return current;
   };
   window.applyMarketPulseContextPayload = mergePayload;
+  window.applyMarketPulseTapePayload = (payload) => {
+    const nextPayload = payload && typeof payload === "object" ? payload : {};
+    current = {
+      ...(current || {}),
+      server_ts: nextPayload.server_ts || (current || {}).server_ts || null,
+      quotes_map: {
+        ...((current || {}).quotes_map || {}),
+        ...(nextPayload.quotes_map || {}),
+      },
+      series_points: {
+        ...((current || {}).series_points || {}),
+        ...(nextPayload.series_points || {}),
+      },
+    };
+    applyCoreTapeSnapshot(
+      current.quotes_map || {},
+      current.series_points || {},
+      nextPayload.tape_meta || {}
+    );
+    return current;
+  };
   window.addEventListener("resize", () => {
     if (pendingRenderTimer !== null) {
       window.clearTimeout(pendingRenderTimer);

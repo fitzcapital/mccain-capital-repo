@@ -24,6 +24,32 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_SYMBOL = "SPX"
 DEFAULT_INTERVAL = "5min"
+SUPPORTED_INTERVAL_MINUTES = {
+    "5min": 5,
+    "5m": 5,
+    "15min": 15,
+    "15m": 15,
+    "30min": 30,
+    "30m": 30,
+    "1h": 60,
+    "60min": 60,
+    "60m": 60,
+}
+CANONICAL_INTERVALS = {
+    "5": "5min",
+    "5m": "5min",
+    "5min": "5min",
+    "15": "15min",
+    "15m": "15min",
+    "15min": "15min",
+    "30": "30min",
+    "30m": "30min",
+    "30min": "30min",
+    "1h": "1h",
+    "60": "1h",
+    "60m": "1h",
+    "60min": "1h",
+}
 DEFAULT_BARS_LIMIT = 480
 LEVEL_UNAVAILABLE = "Unavailable"
 OPENING_SESSION_BAR_THRESHOLD = 10
@@ -38,6 +64,13 @@ def _as_float(value: Any) -> Optional[float]:
         return float(value) if value is not None else None
     except Exception:
         return None
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
 
 
 def _session_phase(now_et: datetime) -> str:
@@ -109,8 +142,13 @@ def _parse_ts(value: Any) -> Optional[datetime]:
     return parsed.astimezone(app_runtime.TZ)
 
 
+def normalize_interval(interval: str) -> str:
+    raw = str(interval or DEFAULT_INTERVAL).strip().lower()
+    return CANONICAL_INTERVALS.get(raw, DEFAULT_INTERVAL)
+
+
 def _interval_minutes(interval: str) -> int:
-    return 5 if str(interval or DEFAULT_INTERVAL).strip().lower() == "5min" else 1
+    return SUPPORTED_INTERVAL_MINUTES.get(normalize_interval(interval), 5)
 
 
 def _regular_session_target_bar_count(interval: str) -> int:
@@ -344,13 +382,46 @@ def _synthetic_quote_bar(
     ]
 
 
+def _iso_from_bar_time(value: Any) -> str:
+    numeric = _as_float(value)
+    if numeric is None:
+        return ""
+    try:
+        return datetime.fromtimestamp(int(numeric), tz=app_runtime.TZ).isoformat()
+    except Exception:
+        return ""
+
+
+def _with_poll_metadata(payload: Dict[str, Any], *, now_et: datetime) -> Dict[str, Any]:
+    bars = list(payload.get("bars") or [])
+    latest_bar = bars[-1] if bars else {}
+    previous_count = max(0, _as_int(payload.get("previous_session_bar_count")))
+    current_count = max(0, _as_int(payload.get("current_session_bar_count")))
+    first_current = bars[previous_count] if current_count > 0 and previous_count < len(bars) else {}
+    return {
+        **payload,
+        "fetched_at": now_et.isoformat(),
+        "latest_bar_time": _iso_from_bar_time(latest_bar.get("time")),
+        "first_current_bar_time": _iso_from_bar_time(first_current.get("time")),
+        "session_metadata": {
+            "phase": _session_phase(now_et),
+            "previous_session_day": str(payload.get("previous_session_day") or ""),
+            "current_session_day": str(payload.get("current_session_day") or ""),
+            "previous_session_bar_count": previous_count,
+            "current_session_bar_count": current_count,
+            "opening_session_mode": bool(payload.get("opening_session_mode")),
+        },
+    }
+
+
 def normalize_tradier_timesales(
     rows: List[Dict[str, Any]], *, interval: str = DEFAULT_INTERVAL, limit: int = DEFAULT_BARS_LIMIT
 ) -> List[Dict[str, Any]]:
     """Aggregate provider rows into Lightweight Charts bar format.
 
     Existing market_data_service rows already come from Tradier timesales.
-    We floor timestamps to 5-minute buckets for a stable frontend contract.
+    We floor timestamps to the selected supported timeframe for a stable
+    frontend contract.
     """
 
     interval_minutes = _interval_minutes(interval)
@@ -400,6 +471,7 @@ def normalize_tradier_timesales(
 def get_intraday_bars(
     symbol: str = DEFAULT_SYMBOL, interval: str = DEFAULT_INTERVAL
 ) -> Dict[str, Any]:
+    interval = normalize_interval(interval)
     try:
         rows = market_data_service.get_intraday(symbol)
     except Exception as exc:
@@ -444,7 +516,7 @@ def get_intraday_bars(
                 interval=interval,
             )
         )
-        return payload
+        return _with_poll_metadata(payload, now_et=now_et)
 
     if _session_phase(now_et) != "open":
         two_session_payload = _two_session_regular_bars(
@@ -454,7 +526,7 @@ def get_intraday_bars(
             interval=interval,
         )
         payload.update(two_session_payload)
-        return payload
+        return _with_poll_metadata(payload, now_et=now_et)
 
     if not normalized_current:
         quote_price = _as_float(get_live_quote(symbol_name).get("price"))
@@ -469,7 +541,7 @@ def get_intraday_bars(
                 interval=interval,
             )
         )
-        return payload
+        return _with_poll_metadata(payload, now_et=now_et)
 
     framing = _opening_session_carryover_bars(
         current_bars=normalized_current,
@@ -478,12 +550,19 @@ def get_intraday_bars(
         interval=interval,
     )
     payload.update(framing)
-    return payload
+    return _with_poll_metadata(payload, now_et=now_et)
 
 
-def get_live_quote(symbol: str = DEFAULT_SYMBOL) -> Dict[str, Any]:
+def get_live_quote(symbol: str = DEFAULT_SYMBOL, *, force_refresh: bool = False) -> Dict[str, Any]:
     try:
-        quote = dict((market_data_service.get_watchlist_tradier([symbol]).get(symbol) or {}))
+        quote = dict(
+            (
+                market_data_service.get_watchlist(
+                    [symbol], allow_yf_fallback=False, force_refresh=force_refresh
+                ).get(symbol)
+                or {}
+            )
+        )
     except Exception as exc:
         LOGGER.warning("hero chart quote fetch failed for %s: %s", symbol, exc)
         quote = {}
@@ -692,6 +771,15 @@ def get_stream_session_payload() -> Dict[str, Any]:
         "mode": "polling",
         "enabled": False,
         "symbol": DEFAULT_SYMBOL,
-        "bars_interval_ms": 30000,
-        "levels_interval_ms": 10000,
+        "session_phase": _session_phase(app_runtime.now_et()),
+        "bars_interval_ms": 10000,
+        "quote_interval_ms": 3000,
+        "levels_interval_ms": 45000,
+        "closed_bars_interval_ms": 180000,
+        "closed_quote_interval_ms": 60000,
+        "closed_levels_interval_ms": 600000,
+        "hidden_bars_interval_ms": 120000,
+        "hidden_quote_interval_ms": 15000,
+        "hidden_levels_interval_ms": 300000,
+        "bar_boundary_grace_ms": 3000,
     }

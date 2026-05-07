@@ -38,9 +38,9 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=market-pulse-chart-stable-20260425b">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=mobile-shell-20260501d">
   {% if active in ['market-pulse', 'market_pulse'] %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=market-pulse-chart-stable-20260425b">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=mobile-shell-20260501d">
   {% endif %}
 </head>
 
@@ -133,6 +133,15 @@
         }
       };
 
+      const readPayload = () => {
+        try {
+          const raw = sessionStorage.getItem("mc_page_transition");
+          return raw ? JSON.parse(raw) : null;
+        } catch (_err) {
+          return null;
+        }
+      };
+
       const applyStage = (nextStage, title, detail) => {
         const currentIdx = stageIndex(loaderState.stage);
         const requestedIdx = stageIndex(nextStage);
@@ -175,7 +184,7 @@
         if (onMarketPulsePage || onDashboardPage) scheduleSoftProgress();
         loaderState.failsafeTimer = window.setTimeout(() => {
           if (loaderState.active) complete();
-        }, 4500);
+        }, onMarketPulsePage ? 15000 : 10000);
       };
 
       const hide = (clearFlag = true) => {
@@ -217,7 +226,19 @@
       };
       window.completeDashboardLoading = () => complete();
 
-      clearPayload();
+      const transitionPayload = readPayload();
+      if (transitionPayload && typeof transitionPayload === "object") {
+        show(
+          String(transitionPayload.title || "Loading page"),
+          String(transitionPayload.detail || "Preparing latest view.")
+        );
+      } else {
+        clearPayload();
+      }
+      window.addEventListener("load", () => {
+        if (!loaderState.active || onMarketPulsePage) return;
+        complete();
+      }, { once: true });
       window.addEventListener("pageshow", (event) => {
         if (event.persisted) hide(true);
       });
@@ -231,39 +252,25 @@
   {% set tw = trading_window if trading_window is defined else {} %}
   {% set notif_unread = notifications_unread_count or 0 %}
   {% set notif_items = notifications or [] %}
+  {% set density_clock_notice = active == 'candle-opens' and top_notice and (top_notice.level|string).startswith('today-') %}
   <div class="wrap">
     <div class="topbar">
       <div class="brand">
-        <div class="logo">
-          <img src="{{ url_for('static', filename='logo.png') }}?v={{ static_v }}" alt="logo"/>
+        <div class="logo logo-shell">
+          <img src="{{ url_for('static', filename=logo_filename|default('logo.png')) }}?v={{ static_v }}" alt="McCain Capital logo"/>
         </div>
         <div class="brandText">
           <h1 class="brandTitle">{{ brand_title or 'McCain Capital' }}</h1>
           <div class="brandSignature">
-            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Personal Trading Cockpit</span>
+            <span class="mcMark"><svg class="mcIcon"><use href="#mc-orbit"></use></svg> Precision. Strategy. Execution.</span>
           </div>
-          <div class="sub">Execution, review, and risk control.</div>
+          <div class="sub brandCommandPulse">Wait. Confirm. Execute.</div>
         </div>
       </div>
 
         <div class="topRight">
           <div class="headerInfoCluster">
           <div class="statusRow">
-            {% if top_notice %}
-              {% if top_notice.href %}
-                <a class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" href="{{ top_notice.href }}" title="{{ top_notice.detail or top_notice.text }}">
-                  <span class="topNoticeSignal" aria-hidden="true"></span>
-                  {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
-                  <span class="topNoticeText">{{ top_notice.text }}</span>
-                </a>
-              {% else %}
-                <div class="clockPill topNoticePill{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" title="{{ top_notice.detail or top_notice.text }}">
-                  <span class="topNoticeSignal" aria-hidden="true"></span>
-                  {% if top_notice.label and top_notice.level not in ['high', 'medium'] %}<span class="topNoticeLabel">{{ top_notice.label }}</span>{% endif %}
-                  <span class="topNoticeText">{{ top_notice.text }}</span>
-                </div>
-              {% endif %}
-            {% endif %}
             {% if active != 'auth' and tw and tw.show_banner %}
               <div class="tradingWindowPillGroup">
                 <div class="clockPill tradingWindowPill is-{{ tw.pill_tone or 'negative' }}" title="{{ tw.message }}">
@@ -276,15 +283,76 @@
                 </div>
               </div>
             {% endif %}
-            <div id="marketStatusClock" class="clockPill cockpitPill marketStatusClock is-loading" aria-label="Market status and Eastern time">
+            <div class="market-status-cluster">
+            {% if top_notice and not density_clock_notice %}
+              {% set notice_events = top_notice.events if top_notice.events is defined and top_notice.events else [] %}
+              {% if notice_events %}
+                {% set notice_level = top_notice.level or 'high' %}
+                {% set notice_first = notice_events[0] %}
+                <div class="topNoticeMenuHost" data-macro-notice-menu>
+                  <button class="clockPill topNoticePill macro-folder-chip is-{{ notice_level }}" type="button" aria-haspopup="menu" aria-expanded="false" title="{{ top_notice.detail or top_notice.text }}" data-macro-notice-trigger>
+                    <span class="macroEventMiniChip macro-{{ notice_level }}" title="{{ notice_first.detail or top_notice.detail or top_notice.text }}">
+                      <span class="macro-folder macro-{{ notice_level }}" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" class="folder-icon" focusable="false">
+                          <path d="M3 7.5h5.2l2 2H21v7.2a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 16.7Z"></path>
+                          <path d="M3 7.5V6.8A1.8 1.8 0 0 1 4.8 5h4.4l2 2h8A1.8 1.8 0 0 1 21 8.8v.7"></path>
+                        </svg>
+                      </span>
+                      {% if top_notice.count %}
+                        <span class="macroNoticeCount" aria-label="{{ top_notice.count }} upcoming macro event{% if top_notice.count != 1 %}s{% endif %}">{{ top_notice.count }}</span>
+                      {% endif %}
+                      <span class="macroEventMiniText">{{ notice_first.label }} {{ notice_first.time_short }}</span>
+                    </span>
+                  </button>
+                  <div class="macroNoticePreview" role="menu" aria-label="Upcoming macro events">
+                    <div class="macroNoticePreviewHead">
+                      <span>Next 24h Macro</span>
+                      <strong>{{ top_notice.count or notice_events|length }}</strong>
+                    </div>
+                    <div class="macroNoticePreviewList">
+                      {% for notice_event in notice_events %}
+                        <div class="macroNoticePreviewRow is-{{ notice_event.level or 'high' }}">
+                          <span class="macro-folder macro-{{ notice_event.level or 'high' }}" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" class="folder-icon" focusable="false">
+                              <path d="M3 7.5h5.2l2 2H21v7.2a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 16.7Z"></path>
+                              <path d="M3 7.5V6.8A1.8 1.8 0 0 1 4.8 5h4.4l2 2h8A1.8 1.8 0 0 1 21 8.8v.7"></path>
+                            </svg>
+                          </span>
+                          <span class="macroNoticePreviewText">
+                            <strong>{{ notice_event.title or notice_event.label }}</strong>
+                            <small>{{ notice_event.time_label or notice_event.time_short }} · {{ (notice_event.level or 'high')|title }} impact</small>
+                          </span>
+                          {% if notice_event.href or top_notice.href %}
+                            <a class="macroNoticePreviewLink" href="{{ notice_event.href or top_notice.href }}" aria-label="Open {{ notice_event.title or notice_event.label }} on Candle Opens">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path>
+                                <path d="M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path>
+                              </svg>
+                            </a>
+                          {% endif %}
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+            {% endif %}
+            <div id="marketStatusClock" class="clockPill cockpitPill marketStatusClock market-clock-pill is-loading" aria-label="Market status and Eastern time">
+              <span class="marketStatusDateDensity clock-section{% if density_clock_notice %} is-{{ top_notice.level }}{% endif %}" title="{% if density_clock_notice %}{{ top_notice.detail or top_notice.text }}{% else %}Current date{% endif %}">
+                <span class="marketStatusDateText">{{ header_date_label or current_date }}</span>
+                {% if density_clock_notice %}
+                  <span class="marketStatusDensityIcon" aria-label="{{ top_notice.density_label or 'Timing density' }}">◉</span>
+                {% endif %}
+              </span>
+              <span class="marketStatusClockDivider marketStatusClockDividerDate" aria-hidden="true">·</span>
               <span class="marketStatusClockDot" aria-hidden="true"></span>
-              <span class="marketStatusClockTimeGroup">
-                <span id="etClock" class="clockTime">--:--</span>
-                <span id="etClockMeridiem" class="marketStatusClockMeridiem">--</span>
-                <span class="marketStatusClockSuffix">ET</span>
+              <span id="marketStatusStateLabel" class="marketStatusStateLabel market-state">Market</span>
+              <span class="marketStatusClockDivider marketStatusClockDividerState" aria-hidden="true">·</span>
+              <span class="marketStatusClockTimeGroup clock-section">
+                <span id="etClock" class="clockTime clock-time">--:--</span>
               </span>
               <span class="marketStatusClockDivider" aria-hidden="true">·</span>
-              <span id="marketStatusCountdown" class="marketStatusClockCountdown">Loading</span>
+              <span id="marketStatusCountdown" class="marketStatusClockCountdown clock-countdown">Loading</span>
             </div>
             <div class="notifBell">
               <button class="notifBellButton" id="notifBellButton" type="button" aria-expanded="false" aria-controls="notifDropdown" aria-label="Notifications">
@@ -366,7 +434,12 @@
                 </div>
               </div>
             </div>
+            </div>
           </div>
+        </div>
+        <div class="mobileTopbarMeta" aria-hidden="true">
+          <span class="mobileTopbarCommand">Wait · Confirm · Execute</span>
+          <span class="mobileTopbarSession" id="mobileMarketSessionLabel">Session</span>
         </div>
 
         <button id="menuToggleBtn" class="hamburger" type="button" aria-label="Open menu" aria-expanded="false" onclick="openDrawer()">
@@ -386,6 +459,8 @@
           <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
+          <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment">Life Alignment</a>
+          <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget">Budget</a>
           <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
           <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
         </div>
@@ -396,22 +471,39 @@
           </button>
 
           <div id="moreMenu" class="moreMenu" role="menu" aria-hidden="true">
-            {% if auth_enabled %}<div class="menuTitle">Signed in as {{ auth_username }}</div>{% endif %}
+            {% if auth_enabled %}
+              <a class="menuProfileCard" href="/profile">
+                <span class="menuProfileAvatar" style="--avatar-color: {{ auth_avatar_color|default('#58a6ff') }}">
+                  {% if auth_profile and auth_profile.photo_data_url %}
+                    <img src="{{ auth_profile.photo_data_url }}" alt="" aria-hidden="true">
+                  {% else %}
+                    <span>{{ (auth_profile.avatar_initials if auth_profile else auth_username[:2])|upper }}</span>
+                  {% endif %}
+                </span>
+                <span class="menuProfileText">
+                  <span>{{ auth_display_name|default(auth_username) }}</span>
+                  <small>{{ "Admin Profile" if auth_is_admin|default(false) else "Profile" }}</small>
+                </span>
+              </a>
+            {% endif %}
             <div class="menuTitle">Core</div>
-            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse">Market Pulse</a>
-            <a class="btn {% if request.path == '/ops/trading-window' %}active{% endif %}" href="/ops/trading-window">Trading Window</a>
-            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
+            <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="menuItemIcon">🧭</span><span>Dashboard</span></a>
+            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="menuItemIcon">📈</span><span>Market Pulse</span></a>
+            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="menuItemIcon">🕯️</span><span>Candle Opens</span></a>
             <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
             <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook">Playbook</a>
             <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
             <div class="hr"></div>
             <div class="menuTitle">Review</div>
-            <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
-            <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
+            <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades"><span class="menuItemIcon">📒</span><span>Trades</span></a>
+            <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal"><span class="menuItemIcon">✍️</span><span>Journal</span></a>
             <a class="btn {% if active=='life-journal' %}active{% endif %}" href="/journal/life">Life Journal</a>
-            <a class="btn {% if active=='self-control' %}active{% endif %}" href="/self-control">Self-Control</a>
-            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
-            <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator">Planner</a>
+            <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment"><span class="menuItemIcon">💪</span><span>Life Alignment</span></a>
+            <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget"><span class="menuItemIcon">💰</span><span>Budget</span></a>
+            <a class="btn {% if active=='forward-pace' %}active{% endif %}" href="/forward-pace"><span class="menuItemIcon">📐</span><span>Forward Pace</span></a>
+            <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics"><span class="menuItemIcon">📊</span><span>Analytics</span></a>
+            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar"><span class="menuItemIcon">📅</span><span>Calendar</span></a>
+            <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator"><span class="menuItemIcon">🧮</span><span>Planner</span></a>
             {% if active == 'dashboard' %}
               <div class="hr"></div>
               <div class="menuTitle">Dashboard Mode</div>
@@ -426,34 +518,44 @@
             <div class="menuTitle">Ops</div>
             <a class="btn" href="/trades/upload/statement">Live Upload</a>
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
-            <a class="btn" href="/ops/notifications-test">Notifications Lab</a>
+            <a class="btn {% if active=='profile' %}active{% endif %}" href="/profile"><span class="menuItemIcon">👤</span><span>Profile</span></a>
+            <a class="btn" href="/setup"><span class="menuItemIcon">🔐</span><span>Login Setup</span></a>
+            <button class="btn menuThemeSwitch" type="button" onclick="toggleTheme()" aria-label="Switch visual theme">
+              <span class="menuThemeSwitchIcon" aria-hidden="true">✦</span>
+              <span data-theme-toggle-label>Theme: Cinematic Nebula</span>
+            </button>
             <div class="hr"></div>
-            <div class="menuTitle">Business</div>
-            <a class="btn {% if active=='payouts' %}active{% endif %}" href="/payouts">Payouts</a>
-            <a class="btn {% if active=='goals' %}active{% endif %}" href="/goals">Income Tracker</a>
-            <div class="hr"></div>
-            <div class="menuTitle">System</div>
-            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/backups">Auto Backups</a>
-            <form method="post" action="/admin/backup" class="inlineForm">
-              <button class="btn" type="submit">Download Backup</button>
-            </form>
-            <a class="btn" href="/admin/restore">Restore Backup</a>
-            <a class="btn" href="/auth/passkeys">Passkeys</a>
-            <a class="btn" href="/setup">Login Setup</a>
-            <div class="hr"></div>
-            <div class="menuTitle">Extra</div>
-            <a class="btn {% if active=='books' %}active{% endif %}" href="/books">Books</a>
-            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
+            <div class="menuTitle">Links</div>
+            <a class="btn menuIconLink" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">
+              <img src="{{ url_for('static', filename='img/tradingview.svg') }}" alt="" aria-hidden="true">
+              <span>TradingView</span>
+            </a>
+            <a class="btn menuIconLink" href="https://x.com/" target="_blank" rel="noopener">
+              <img src="{{ url_for('static', filename='img/x-logo.svg') }}" alt="" aria-hidden="true">
+              <span>X.com</span>
+            </a>
+            <a class="btn menuIconLink" href="https://discord.com/channels/905973099969798164/905973099969798168" target="_blank" rel="noopener">
+              <img src="{{ url_for('static', filename='img/all-time-high.svg') }}" alt="" aria-hidden="true">
+              <span>All Time High</span>
+            </a>
+            <a class="btn menuIconLink" href="https://discord.com/channels/1099387609064673392/1107601128000061490" target="_blank" rel="noopener">
+              <img src="{{ url_for('static', filename='img/crystal-academy.svg') }}" alt="" aria-hidden="true">
+              <span>Crystal Academy</span>
+            </a>
             {% if vanquish_lock and vanquish_lock.active %}
-              <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
+              <a class="btn menuIconLink guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">
+                <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                <span>Vanquish Trader (Locked)</span>
+              </a>
             {% else %}
-              <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
+              <a class="btn menuIconLink" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                <span>Vanquish Trader</span>
+              </a>
             {% endif %}
-            <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
-            <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: MGP</button>
             {% if auth_enabled %}
               <div class="hr"></div>
+              <div class="menuFooterMeta">McCain Capital · {{ current_date|default('2026-04-30') }}</div>
               {% if authenticated %}
                 <a class="btn danger" href="/logout">Sign Out</a>
               {% else %}
@@ -464,6 +566,42 @@
         </div>
       </div>
     </div>
+
+    <header class="mobileAppHeader" aria-label="Mobile app status">
+      <a class="mobileAppMark" href="/dashboard" aria-label="Dashboard">
+        <img src="{{ url_for('static', filename=logo_filename|default('logo.png')) }}?v={{ static_v }}" alt="" aria-hidden="true"/>
+      </a>
+      <div class="mobileAppHeaderMain">
+        <div class="mobileAppHeaderTitle">{{ brand_title or 'McCain Capital' }}</div>
+        <div class="mobileAppStatusLine">
+          {% if active != 'auth' and tw and tw.show_banner %}
+            <span class="mobileAppStatusDot is-{{ tw.pill_tone or 'negative' }}" aria-hidden="true"></span>
+            <span class="mobileAppStatusText">{{ tw.rail_label or tw.state_label }}</span>
+            <span class="mobileAppStatusMeta">{{ tw.rail_detail or tw.message }}</span>
+          {% elif top_notice %}
+            <span class="mobileAppStatusDot{% if top_notice.level %} is-{{ top_notice.level }}{% endif %}" aria-hidden="true"></span>
+            <span class="mobileAppStatusText">{{ top_notice.label or 'Status' }}</span>
+            <span class="mobileAppStatusMeta">{{ top_notice.text }}</span>
+          {% else %}
+            <span class="mobileAppStatusDot is-neutral" aria-hidden="true"></span>
+            <span class="mobileAppStatusText">Session</span>
+          {% endif %}
+        </div>
+      </div>
+      <a
+        class="mobileAppIconButton"
+        aria-label="Notifications"
+        href="/market-pulse/feed"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        {% if notif_unread %}
+          <span class="mobileAppBadge">{{ '99+' if notif_unread > 99 else notif_unread }}</span>
+        {% endif %}
+      </a>
+    </header>
 
     {% with flashes = get_flashed_messages(with_categories=true) %}
       {% if flashes %}
@@ -591,6 +729,22 @@
           <button class="drawerClose" type="button" aria-label="Close menu" onclick="closeDrawer()">✕</button>
         </div>
 
+        {% if auth_enabled %}
+          <a class="menuProfileCard drawerProfileCard" href="/profile">
+            <span class="menuProfileAvatar" style="--avatar-color: {{ auth_avatar_color|default('#58a6ff') }}">
+              {% if auth_profile and auth_profile.photo_data_url %}
+                <img src="{{ auth_profile.photo_data_url }}" alt="" aria-hidden="true">
+              {% else %}
+                <span>{{ (auth_profile.avatar_initials if auth_profile else auth_username[:2])|upper }}</span>
+              {% endif %}
+            </span>
+            <span class="menuProfileText">
+              <span>{{ auth_display_name|default(auth_username) }}</span>
+              <small>{{ "Admin Profile" if auth_is_admin|default(false) else "Profile" }}</small>
+            </span>
+          </a>
+        {% endif %}
+
         <section class="drawerSection drawerSectionActions">
           <div class="drawerSectionTitle">Quick Actions</div>
           <div class="drawerQuickGrid">
@@ -620,6 +774,9 @@
             <a class="btn {% if active=='trades' %}primary{% endif %}" href="/trades">Trades</a>
             <a class="btn {% if active=='journal' %}primary{% endif %}" href="/journal">Journal</a>
             <a class="btn {% if active=='life-journal' %}primary{% endif %}" href="/journal/life">Life Journal</a>
+            <a class="btn {% if active=='life-alignment' %}primary{% endif %}" href="/life-alignment">Life Alignment</a>
+            <a class="btn {% if active=='budget' %}primary{% endif %}" href="/budget">Budget</a>
+            <a class="btn {% if active=='forward-pace' %}primary{% endif %}" href="/forward-pace">Forward Pace</a>
             <a class="btn {% if active=='self-control' %}primary{% endif %}" href="/self-control">Self-Control</a>
             <a class="btn {% if active=='analytics' %}primary{% endif %}" href="/analytics">Analytics</a>
             <a class="btn {% if active=='calendar' %}primary{% endif %}" href="/calendar">Calendar</a>
@@ -636,8 +793,10 @@
         </section>
 
         <section class="drawerSection drawerSectionSystem">
-          <div class="drawerSectionTitle">Business</div>
-          <div class="drawerStack">
+            <div class="drawerSectionTitle">Business</div>
+            <div class="drawerStack">
+            <a class="btn {% if active=='budget' %}primary{% endif %}" href="/budget">Budget Command</a>
+            <a class="btn {% if active=='forward-pace' %}primary{% endif %}" href="/forward-pace">Forward Pace</a>
             <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payouts</a>
             <a class="btn {% if active=='goals' %}primary{% endif %}" href="/goals">Income Tracker</a>
           </div>
@@ -651,22 +810,47 @@
               <button class="btn" type="submit">Download Backup</button>
             </form>
             <a class="btn" href="/admin/restore">Restore Backup</a>
+            <a class="btn {% if active=='profile' %}primary{% endif %}" href="/profile">Profile</a>
             <a class="btn" href="/auth/passkeys">Passkeys</a>
             <a class="btn" href="/setup">Login Setup</a>
           </div>
         </section>
 
         <section class="drawerSection drawerSectionSystem">
-          <div class="drawerSectionTitle">Extra</div>
-          <div class="drawerStack">
-            <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">Books</a>
-            <a class="btn" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">TradingView</a>
-            {% if vanquish_lock and vanquish_lock.active %}
-              <a class="btn guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">Prop Firm (Locked)</a>
-            {% else %}
-              <a class="btn" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">Prop Firm</a>
-            {% endif %}
-            <button class="btn themeToggle" type="button" data-theme-toggle-label onclick="toggleTheme()">Theme: MGP</button>
+            <div class="drawerSectionTitle">Extra</div>
+            <div class="drawerStack">
+              <a class="btn {% if active=='books' %}primary{% endif %}" href="/books">Books</a>
+              <a class="btn menuIconLink" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/tradingview.svg') }}" alt="" aria-hidden="true">
+                <span>TradingView</span>
+              </a>
+              <a class="btn menuIconLink" href="https://x.com/" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/x-logo.svg') }}" alt="" aria-hidden="true">
+                <span>X.com</span>
+              </a>
+              <a class="btn menuIconLink" href="https://discord.com/channels/905973099969798164/905973099969798168" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/all-time-high.svg') }}" alt="" aria-hidden="true">
+                <span>All Time High</span>
+              </a>
+              <a class="btn menuIconLink" href="https://discord.com/channels/1099387609064673392/1107601128000061490" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/crystal-academy.svg') }}" alt="" aria-hidden="true">
+                <span>Crystal Academy</span>
+              </a>
+              {% if vanquish_lock and vanquish_lock.active %}
+                <a class="btn menuIconLink guardrailBlocked" href="#" aria-disabled="true" title="{{ vanquish_lock.reason or 'Vanquish locked until market close' }}">
+                  <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                  <span>Vanquish Trader (Locked)</span>
+                </a>
+              {% else %}
+                <a class="btn menuIconLink" href="https://trade.vanquishtrader.com/" target="_blank" rel="noopener">
+                  <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                  <span>Vanquish Trader</span>
+                </a>
+              {% endif %}
+            <button class="btn themeToggle drawerThemeSwitch" type="button" onclick="toggleTheme()" aria-label="Switch visual theme">
+              <span class="menuThemeSwitchIcon" aria-hidden="true">✦</span>
+              <span data-theme-toggle-label>Theme: Cinematic Nebula</span>
+            </button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
             {% if auth_enabled %}
@@ -699,12 +883,86 @@
       </div>
     </div>
 
-    <nav class="mobileDock" aria-label="Quick navigation">
+    <div id="mobileMenuOverlay" class="mobileMenuOverlay" onclick="closeMobileMenu()" aria-hidden="true"></div>
+    <aside id="mobileMenuSheet" class="mobileMenuSheet" aria-label="Mobile menu" aria-hidden="true">
+      <div class="mobileMenuGrabber" aria-hidden="true"></div>
+      <div class="mobileMenuHead">
+        <div>
+          <div class="mobileMenuTitle">Menu</div>
+          <div class="mobileMenuSub">Core tools and review surfaces.</div>
+        </div>
+        <button class="mobileMenuClose" type="button" aria-label="Close menu" onclick="closeMobileMenu()">Close</button>
+      </div>
+      {% if auth_enabled %}
+        <a class="mobileMenuProfile" href="/profile">
+          <span class="menuProfileAvatar" style="--avatar-color: {{ auth_avatar_color|default('#58a6ff') }}">
+            {% if auth_profile and auth_profile.photo_data_url %}
+              <img src="{{ auth_profile.photo_data_url }}" alt="" aria-hidden="true">
+            {% else %}
+              <span>{{ (auth_profile.avatar_initials if auth_profile else auth_username[:2])|upper }}</span>
+            {% endif %}
+          </span>
+          <span class="menuProfileText">
+            <span>{{ auth_display_name|default(auth_username) }}</span>
+            <small>{{ "Admin Profile" if auth_is_admin|default(false) else "Profile" }}</small>
+          </span>
+        </a>
+      {% endif %}
+      <section class="mobileMenuSection">
+        <div class="mobileMenuSectionTitle">Quick Actions</div>
+        <div class="mobileMenuGrid">
+          <a class="mobileMenuTile" href="/trades/new">Add Trade</a>
+          <a class="mobileMenuTile" href="{{ url_for('new_entry') }}">Add Journal</a>
+          <a class="mobileMenuTile" href="/trades/upload/statement">Upload</a>
+          <a class="mobileMenuTile" href="/trades/open-positions">Positions</a>
+        </div>
+      </section>
+      <section class="mobileMenuSection">
+        <div class="mobileMenuSectionTitle">Review</div>
+        <div class="mobileMenuList">
+          <a class="mobileMenuRow {% if active=='analytics' %}is-active{% endif %}" href="/analytics">Analytics</a>
+          <a class="mobileMenuRow {% if active=='calendar' %}is-active{% endif %}" href="/calendar">Calendar</a>
+          <a class="mobileMenuRow {% if active=='life-alignment' %}is-active{% endif %}" href="/life-alignment">Life Alignment</a>
+          <a class="mobileMenuRow {% if active=='budget' %}is-active{% endif %}" href="/budget">Budget</a>
+          <a class="mobileMenuRow {% if active=='forward-pace' %}is-active{% endif %}" href="/forward-pace">Forward Pace</a>
+          <a class="mobileMenuRow {% if active=='calc' %}is-active{% endif %}" href="/calculator">Planner</a>
+        </div>
+      </section>
+      <section class="mobileMenuSection">
+        <div class="mobileMenuSectionTitle">Playbook</div>
+        <div class="mobileMenuList">
+          <a class="mobileMenuRow {% if request.path == '/ops/trading-window' %}is-active{% endif %}" href="/ops/trading-window">Trading Window</a>
+          <a class="mobileMenuRow {% if active=='candle-opens' %}is-active{% endif %}" href="/candle-opens">Candle Opens</a>
+          <a class="mobileMenuRow {% if active=='strat' %}is-active{% endif %}" href="/strat">The Strat</a>
+          <a class="mobileMenuRow {% if active=='playbook' %}is-active{% endif %}" href="/playbook">Playbook</a>
+          <a class="mobileMenuRow {% if active=='strategies' %}is-active{% endif %}" href="/strategies">Strategies</a>
+        </div>
+      </section>
+      <section class="mobileMenuSection">
+        <div class="mobileMenuSectionTitle">System</div>
+        <div class="mobileMenuList">
+          <a class="mobileMenuRow {% if active=='ops' %}is-active{% endif %}" href="/ops/alerts">Ops Alerts</a>
+          <a class="mobileMenuRow {% if active=='profile' %}is-active{% endif %}" href="/profile">Profile</a>
+          <a class="mobileMenuRow" href="/setup">Login Setup</a>
+          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleTheme()">Theme</button>
+          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleAppFont()">Clean Font</button>
+          {% if auth_enabled %}
+            {% if authenticated %}
+              <a class="mobileMenuRow is-danger" href="/logout">Sign Out</a>
+            {% else %}
+              <a class="mobileMenuRow is-active" href="/login">Sign In</a>
+            {% endif %}
+          {% endif %}
+        </div>
+      </section>
+    </aside>
+
+    <nav class="mobileDock mobileAppTabBar" aria-label="Mobile app navigation">
       <a class="btn mobileDockItem {% if active=='dashboard' %}primary{% endif %}" href="/dashboard"><span class="mobileDockLabel">Dashboard</span></a>
+      <a class="btn mobileDockItem {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse"><span class="mobileDockLabel">Pulse</span></a>
       <a class="btn mobileDockItem {% if active=='trades' %}primary{% endif %}" href="/trades"><span class="mobileDockLabel">Trades</span></a>
-      <a class="btn mobileDockItem {% if active=='analytics' %}primary{% endif %}" href="/analytics"><span class="mobileDockLabel">Analytics</span></a>
       <a class="btn mobileDockItem {% if active=='journal' %}primary{% endif %}" href="/journal"><span class="mobileDockLabel">Journal</span></a>
-      <button id="mobileDockMenuBtn" class="btn mobileDockItem mobileDockMenu" type="button" aria-expanded="false" onclick="openDrawer()"><span class="mobileDockLabel">Menu</span></button>
+      <button id="mobileDockMenuBtn" class="btn mobileDockItem mobileDockMenu" type="button" aria-expanded="false" onclick="openMobileMenu()"><span class="mobileDockLabel">Menu</span></button>
     </nav>
 
   </div>
@@ -716,8 +974,11 @@
       "/candle-opens": { title: "Candle Opens", detail: "Loading session timing and open-window references." },
       "/trades": { title: "Trades", detail: "Loading executions, open positions, and trade history." },
       "/journal": { title: "Journal", detail: "Loading review notes and trading journal entries." },
+      "/life-alignment": { title: "Life Alignment", detail: "Loading habits, streaks, and accountability dashboard." },
+      "/budget": { title: "Budget Command", detail: "Loading cashflow, bills, leaks, and income goals." },
       "/analytics": { title: "Analytics", detail: "Loading performance curves and edge reads." },
       "/calendar": { title: "Calendar", detail: "Loading trading days and events." },
+      "/strat": { title: "The Strat", detail: "Loading strategy reference and execution context." },
     };
     const normalizePath = (pathname) => {
       if (!pathname) return "/";
@@ -782,6 +1043,10 @@
       }
       if (typeof window.showShellLoading === "function") {
         const copy = loaderCopy(targetUrl, link);
+        try {
+          sessionStorage.setItem("mc_page_transition", JSON.stringify(copy));
+        } catch (_err) {
+        }
         window.showShellLoading(copy.title, copy.detail);
       }
     }, true);
@@ -797,6 +1062,10 @@
       }
       if (targetUrl.origin === window.location.origin && typeof window.showShellLoading === "function") {
         const copy = loaderCopy(targetUrl, label ? { textContent: label } : null);
+        try {
+          sessionStorage.setItem("mc_page_transition", JSON.stringify(copy));
+        } catch (_err) {
+        }
         window.showShellLoading(copy.title, copy.detail);
       }
       window.location.href = targetUrl.href;
@@ -819,6 +1088,48 @@
       }
       return originalFetch(input, init);
     };
+  })();
+</script>
+<script>
+  (function initMacroNoticePreview(){
+    const hosts = Array.from(document.querySelectorAll("[data-macro-notice-menu]"));
+    if (!hosts.length) return;
+
+    const closeHost = (host) => {
+      host.classList.remove("is-open");
+      host.querySelector("[data-macro-notice-trigger]")?.setAttribute("aria-expanded", "false");
+    };
+    const closeAll = (except = null) => {
+      hosts.forEach((host) => {
+        if (host !== except) closeHost(host);
+      });
+    };
+
+    hosts.forEach((host) => {
+      const trigger = host.querySelector("[data-macro-notice-trigger]");
+      if (!trigger) return;
+      trigger.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const opening = !host.classList.contains("is-open");
+        closeAll(host);
+        host.classList.toggle("is-open", opening);
+        trigger.setAttribute("aria-expanded", opening ? "true" : "false");
+      });
+      host.querySelectorAll(".macroNoticePreviewLink").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          event.stopPropagation();
+        });
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (hosts.some((host) => host.contains(event.target))) return;
+      closeAll();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeAll();
+    });
   })();
 </script>
 <script>
@@ -856,12 +1167,10 @@
     });
   })();
 </script>
-{% if active in ['dashboard', 'market-pulse'] %}
 <script>
   (function initNotifications(){
     const onDashboardPage = document.body.classList.contains("page-dashboard");
     const onMarketPulsePage = document.body.classList.contains("page-market-pulse");
-    if (!onDashboardPage && !onMarketPulsePage) return;
     const bellBtn = document.getElementById("notifBellButton");
     const badge = document.getElementById("notifBellBadge");
     const dropdown = document.getElementById("notifDropdown");
@@ -949,8 +1258,27 @@
     };
 
     const itemTimestamp = (item) => {
-      const value = Date.parse(item?.published_at || "");
-      return Number.isNaN(value) ? 0 : value;
+      const isoValue = item?.published_at || item?.timestamp || item?.created_at || item?.createdAt || "";
+      const parsedIso = Date.parse(isoValue);
+      if (!Number.isNaN(parsedIso)) return parsedIso;
+      const epochValue = Number(item?.datetime || item?.published_ts || item?.timestamp_ms || 0);
+      if (!Number.isFinite(epochValue) || epochValue <= 0) return 0;
+      return epochValue > 100000000000 ? epochValue : epochValue * 1000;
+    };
+
+    const readStoredItems = () => {
+      try {
+        const raw = window.localStorage?.getItem(ITEMS_KEY);
+        const items = raw ? JSON.parse(raw) : [];
+        return Array.isArray(items) ? items : [];
+      } catch (_err) {
+        return [];
+      }
+    };
+
+    const newestItemIso = (items) => {
+      const newest = (items || []).reduce((maxTs, item) => Math.max(maxTs, itemTimestamp(item)), 0);
+      return newest > 0 ? new Date(newest).toISOString() : "";
     };
 
     const readLastReadAt = () => {
@@ -1062,11 +1390,8 @@
       badge?.classList.toggle("is-high", high);
       applyLastReadLabel();
       if (dropdownList) {
-        try {
-          const raw = window.localStorage?.getItem(ITEMS_KEY);
-          const items = raw ? JSON.parse(raw) : null;
-          if (Array.isArray(items)) renderItems(items);
-        } catch (_err) {}
+        const items = readStoredItems();
+        if (items.length) renderItems(items);
       }
     };
     applyOverrides();
@@ -1074,14 +1399,7 @@
     const clearNotifications = () => {
       if (!window.localStorage) return;
       let latestSeenIso = "";
-      try {
-        const raw = window.localStorage.getItem(ITEMS_KEY);
-        const items = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(items) && items.length) {
-          const newest = items.reduce((maxTs, item) => Math.max(maxTs, itemTimestamp(item)), 0);
-          if (newest > 0) latestSeenIso = new Date(newest).toISOString();
-        }
-      } catch (_err) {}
+      latestSeenIso = newestItemIso(readStoredItems());
       if (latestSeenIso) {
         window.localStorage.setItem(LAST_SEEN_KEY, latestSeenIso);
       }
@@ -1109,6 +1427,14 @@
       bellBtn.setAttribute("aria-expanded", next ? "true" : "false");
       if (next) {
         const timestamp = writeLastReadAt(new Date().toISOString());
+        const latestSeenIso = newestItemIso(readStoredItems());
+        if (latestSeenIso && window.localStorage) {
+          window.localStorage.setItem(LAST_SEEN_KEY, latestSeenIso);
+          window.localStorage.setItem(COUNT_KEY, "0");
+          window.localStorage.setItem(HIGH_KEY, "0");
+          applyBadgeCount(0);
+          badge?.classList.remove("is-high");
+        }
         applyLastReadLabel(timestamp);
       }
     };
@@ -1171,13 +1497,16 @@
           refresh: refreshFlag,
           mode: "curated",
           page: FEED_PAGE,
+          limit: "5",
         });
         const response = await fetch(`/api/market-pulse/news?${params.toString()}`, { cache: "no-store" });
         const payload = await response.json();
         if (!payload || payload.ok === false) return;
         const items = Array.isArray(payload.items) ? payload.items : [];
-        const lastSeenRaw = window.localStorage?.getItem("marketFeedLastSeen") || "";
-        const lastSeen = lastSeenRaw ? Date.parse(lastSeenRaw) : 0;
+        const lastSeenRaw = window.localStorage?.getItem(LAST_SEEN_KEY) || "";
+        const lastReadAt = readLastReadAt();
+        const parsedLastSeen = lastSeenRaw ? Date.parse(lastSeenRaw) : 0;
+        const lastSeen = Math.max(Number.isNaN(parsedLastSeen) ? 0 : parsedLastSeen, lastReadAt);
         const unread = items.filter((item) => {
           const ts = itemTimestamp(item);
           return ts > lastSeen;
@@ -1188,20 +1517,31 @@
         });
         const trimmed = items
           .sort((a, b) => itemTimestamp(b) - itemTimestamp(a))
-          .slice(0, 8)
+          .slice(0, 5)
           .map((item) => ({
             title: item.headline || item.text || "Market update",
             text: item.summary || item.text || "",
-            time_label: item.age_label && item.published_et_label ? `${item.age_label} · ${item.published_et_label}` : (item.published_et_label || formatEt(item.published_at)),
-            published_at: item.published_at || "",
+            time_label: item.age_label && item.published_et_label ? `${item.age_label} · ${item.published_et_label}` : (item.published_et_label || item.published_label || item.absolute_label || formatEt(item.published_at)),
+            published_at: item.published_at || (item.datetime ? new Date(Number(item.datetime) * 1000).toISOString() : ""),
+            datetime: item.datetime || 0,
             url: item.url || "",
             priority: item.impact === "high" ? "high" : "normal",
           }));
-        window.localStorage?.setItem(COUNT_KEY, String(unread));
-        window.localStorage?.setItem(HIGH_KEY, hasHighUnread ? "1" : "0");
         window.localStorage?.setItem(ITEMS_KEY, JSON.stringify(trimmed));
+        if (dropdown?.classList.contains("is-open")) {
+          const latestSeenIso = newestItemIso(trimmed);
+          if (latestSeenIso) window.localStorage?.setItem(LAST_SEEN_KEY, latestSeenIso);
+          window.localStorage?.setItem(COUNT_KEY, "0");
+          window.localStorage?.setItem(HIGH_KEY, "0");
+          writeLastReadAt(new Date().toISOString());
+        } else {
+          window.localStorage?.setItem(COUNT_KEY, String(unread));
+          window.localStorage?.setItem(HIGH_KEY, hasHighUnread ? "1" : "0");
+        }
         applyOverrides();
       } catch (_err) {
+        console.warn("Notification refresh failed", _err);
+        if (dropdownCount) dropdownCount.textContent = "Refresh failed";
       } finally {
         const elapsed = Date.now() - startedAt;
         const minimumVisibleMs = showShellStatus ? 450 : 650;
@@ -1221,8 +1561,7 @@
         event.preventDefault();
         event.stopPropagation();
         if (refreshBtn.disabled) return;
-        const forceRefresh = !!(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
-        await seedFromFeed(forceRefresh, false);
+        await seedFromFeed(true, false);
       });
     }
 
@@ -1234,7 +1573,6 @@
     // Tweet-backed notifications are manual-only. No background polling here.
   })();
 </script>
-{% endif %}
 <script>
   (function initFlashAutoDismiss(){
     const flashNodes = Array.from(document.querySelectorAll(".flashStack .flashMessage"));

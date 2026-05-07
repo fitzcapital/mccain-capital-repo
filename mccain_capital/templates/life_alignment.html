@@ -1,0 +1,289 @@
+<div class="life-alignment-page" id="lifeAlignmentApp" data-today="{{ today }}" data-journal-logged="{{ '1' if journal_preview.logged else '0' }}">
+  <section class="card lifeAlignmentHero">
+    <div class="lifeAlignmentHeroCopy">
+      <div class="pill">Life Alignment</div>
+      <h2 class="pageTitle">Life Alignment</h2>
+      <p class="summaryLead">Build the man who can follow the plan.</p>
+      <div class="lifeAlignmentHeroMeta">
+        <span class="trendChip" data-life-today-date>{{ today }}</span>
+        <span class="trendChip">Private accountability</span>
+        <span class="trendChip">Clean days stacked</span>
+      </div>
+    </div>
+
+    <div class="lifeAlignmentHeroStatus" aria-live="polite">
+      <div class="lifeAlignmentScoreCard" id="lifeAlignmentScoreCard">
+        <div class="lifeAlignmentScoreRing" id="lifeScoreRing" style="--score:0%">
+          <span id="lifeAlignmentScore">0</span>
+        </div>
+        <div>
+          <div class="lifeAlignmentScorePillRow">
+            <div class="pill">Today</div>
+            <div class="trendChip lifeAlignmentLockedBadge" id="lifeLockedBadge" hidden>LOCKED</div>
+          </div>
+          <h3>Today's Alignment Score</h3>
+          <p id="lifeScoreMessage">Start with one small win.</p>
+        </div>
+      </div>
+      <div class="lifeAlignmentUnlockedState" id="lifeUnlockedState">
+        <div class="lifeAlignmentStatusGrid">
+        <div class="lifeAlignmentStatusTile">
+          <span>Today's Mode</span>
+          <strong id="lifeTodayMode">NOT STARTED</strong>
+        </div>
+        <div class="lifeAlignmentStatusTile">
+          <span>Daily Status</span>
+          <strong id="lifeDailyStatus">NOT LOGGED</strong>
+        </div>
+        <div class="lifeAlignmentStatusTile">
+          <span>Core Rules</span>
+          <strong id="lifeRulesStatus">NOT YET</strong>
+        </div>
+      </div>
+        <div class="lifeAlignmentMissing" id="lifeMissingToday">Missing: Water, Workout, Walk, Devotion, Journal</div>
+        <div class="lifeAlignmentMission" id="lifeTodayMission">Today’s Mission: Start with one controllable.</div>
+        <div class="lifeAlignmentRuleMessage" id="lifeRuleMessage" hidden></div>
+      </div>
+      <div class="lifeAlignmentLockConfirm" id="lifeLockConfirm" hidden>
+        <strong>✅ Professional Day Complete</strong>
+        <span>You executed your plan.</span>
+        <span>Final Alignment Score: <b id="lifeFinalScore">0/100</b></span>
+        <span>Tomorrow starts clean.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card lifeAlignmentFastCheck">
+    <div class="toolbar">
+      <div>
+        <div class="pill">Fast Check-In</div>
+        <h3>Move the day forward</h3>
+      </div>
+      <button class="btn" type="button" id="lifeDetailsToggle" aria-expanded="false">Show Details</button>
+    </div>
+    <div class="lifeAlignmentFastGrid">
+      <label class="lifeAlignmentToggle"><input type="checkbox" data-fast-toggle="water"><span>Water goal hit</span></label>
+      <label class="lifeAlignmentToggle"><input type="checkbox" data-fast-toggle="workout"><span>Workout done</span></label>
+      <label class="lifeAlignmentToggle"><input type="checkbox" data-fast-toggle="walk"><span>Walk done</span></label>
+      <label class="lifeAlignmentToggle"><input type="checkbox" data-fast-toggle="devotion"><span>Devotion done</span></label>
+      <label class="lifeAlignmentToggle"><input type="checkbox" data-fast-toggle="journal"><span>Journal done</span></label>
+    </div>
+    <div class="lifeAlignmentActions">
+      <button class="btn primary" type="button" id="lifeFastSaveButton">Save Today's Alignment</button>
+      <button class="btn secondary" type="button" id="lifeLockButton">End Day / Lock In</button>
+      <button class="btn subtleDanger" type="button" id="lifeUnlockButton" hidden>Unlock Day</button>
+    </div>
+  </section>
+
+  <div class="lifeAlignmentGrid">
+    <section class="card controlPanel lifeAlignmentCheckIn" id="lifeDetailsPanel" hidden>
+      <div class="toolbar">
+        <div>
+          <div class="pill">Daily Check-In</div>
+          <h3>Log the controllables</h3>
+        </div>
+      </div>
+
+      <form method="post" id="lifeAlignmentForm" class="lifeAlignmentForm">
+        <div class="lifeAlignmentFormGrid">
+          <label>
+            <span>Water intake oz</span>
+            <input type="number" min="0" step="1" name="water_oz" inputmode="decimal">
+          </label>
+          <label>
+            <span>Water goal oz</span>
+            <input type="number" min="0" step="1" name="water_goal_oz" inputmode="decimal">
+          </label>
+          <label>
+            <span>Workout type</span>
+            <select name="workout_type">
+              <option>Push-ups / Squats</option>
+              <option>Walk</option>
+              <option>Full Body</option>
+              <option>Mobility</option>
+              <option>Rest / Recovery</option>
+            </select>
+          </label>
+          <label>
+            <span>Mood</span>
+            <select name="mood">
+              <option value="low">Low</option>
+              <option value="neutral">Neutral</option>
+              <option value="good">Good</option>
+              <option value="strong">Strong</option>
+            </select>
+          </label>
+          <label>
+            <span>Push-ups</span>
+            <input type="number" min="0" step="1" name="pushups" inputmode="numeric">
+          </label>
+          <label>
+            <span>Squats</span>
+            <input type="number" min="0" step="1" name="squats" inputmode="numeric">
+          </label>
+          <label>
+            <span>Walk minutes</span>
+            <input type="number" min="0" step="1" name="walk_minutes" inputmode="numeric">
+          </label>
+          <label>
+            <span>Steps</span>
+            <input type="number" min="0" step="1" name="steps" inputmode="numeric">
+          </label>
+          <label>
+            <span>Sleep hours</span>
+            <input type="number" min="0" step="0.25" name="sleep_hours" inputmode="decimal">
+          </label>
+          <label>
+            <span>Did I follow my rules today?</span>
+            <select name="followed_rules">
+              <option value="not_yet">Not yet</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </label>
+          <div class="lifeAlignmentChecks">
+            <label class="lifeAlignmentCheck">
+              <input type="checkbox" name="workout_completed">
+              <span>Workout completed</span>
+            </label>
+            <label class="lifeAlignmentCheck">
+              <input type="checkbox" name="devotion_completed">
+              <span>Devotion completed</span>
+            </label>
+            <label class="lifeAlignmentCheck">
+              <input type="checkbox" name="journal_completed">
+              <span>Journal completed</span>
+            </label>
+          </div>
+          <label class="lifeAlignmentWide">
+            <span>Notes</span>
+            <textarea name="notes" rows="5" placeholder="What needs to be remembered from today?"></textarea>
+          </label>
+        </div>
+        <div class="lifeAlignmentActions">
+          <button class="btn primary" type="submit">Save Today's Alignment</button>
+          <a class="btn secondary" href="/journal/life">Open Personal Life Journal</a>
+        </div>
+        <div class="lifeAlignmentError" id="lifeAlignmentError" role="alert" hidden></div>
+      </form>
+    </section>
+
+    <aside class="lifeAlignmentSideStack">
+      <section class="card lifeAlignmentJournalCard">
+        <div class="pill">Today's Reflection</div>
+        {% if journal_preview.logged %}
+          <h3>Reflection logged today</h3>
+          <p id="lifeJournalPreview">{{ journal_preview.text }}</p>
+          <div class="trendChip">+15 discipline score impact</div>
+        {% else %}
+          <h3>Reflection not logged yet</h3>
+          <p id="lifeJournalPreview">{{ journal_preview.text }}</p>
+          <ul class="lifeAlignmentJournalPrompts">
+            <li>What did I do well today?</li>
+            <li>Where did I break discipline?</li>
+            <li>What is one adjustment for tomorrow?</li>
+          </ul>
+        {% endif %}
+        <div class="lifeAlignmentActions">
+          <a class="btn secondary" href="/journal/life">Open Personal Life Journal</a>
+          <a class="btn secondary" href="/journal/life?d={{ today }}">Write Today's Reflection</a>
+        </div>
+      </section>
+
+      <section class="card lifeAlignmentReminder">
+        <div class="pill">Accountability</div>
+        <h3 id="lifeAccountabilityPrimary">Less is more.</h3>
+        <p id="lifeAccountabilitySupport">Stack clean days.</p>
+        <button class="btn" type="button" id="lifeMessageRefresh">Refresh Reminder</button>
+      </section>
+    </aside>
+  </div>
+
+  <section class="lifeAlignmentMetricGrid" aria-label="Consistency metrics">
+    <div class="card lifeAlignmentMetric" id="metricWorkoutCard"><span>💪 Workout</span><strong id="metricWorkoutStreak">0</strong><small id="metricWorkoutMeta">day streak</small></div>
+    <div class="card lifeAlignmentMetric" id="metricWaterCard"><span>💧 Water</span><strong id="metricWaterStreak">0</strong><small id="metricWaterMeta">day streak</small></div>
+    <div class="card lifeAlignmentMetric" id="metricJournalCard"><span>📓 Journal</span><strong id="metricJournalStreak">0</strong><small id="metricJournalMeta">day streak</small></div>
+    <div class="card lifeAlignmentMetric" id="metricDevotionCard"><span>🙏 Devotion</span><strong id="metricDevotionStreak">0</strong><small id="metricDevotionMeta">day streak</small></div>
+    <div class="card lifeAlignmentMetric"><span>🔥 Weekly</span><strong id="metricWeeklyCompletion">0%</strong><small>completion</small></div>
+    <div class="card lifeAlignmentMetric"><span>🔥 Monthly</span><strong id="metricMonthlyCompletion">0%</strong><small>completion</small></div>
+  </section>
+
+  <section class="card lifeAlignmentProgressSection">
+    <div class="toolbar">
+      <div>
+        <div class="pill">Habit Progress</div>
+        <h3>Execution Progress</h3>
+      </div>
+    </div>
+    <div class="lifeAlignmentProgressGrid">
+      <div class="lifeAlignmentProgressItem">
+        <div><span>Water intake <em id="progressWaterStatus">MISSING</em></span><strong id="progressWaterText">0 / 100 oz</strong></div>
+        <div class="lifeAlignmentProgressBar"><span id="progressWaterFill"></span></div>
+        <small id="progressWaterFeedback">Hydrate before you negotiate with yourself.</small>
+      </div>
+      <div class="lifeAlignmentProgressItem">
+        <div><span>Walk minutes <em id="progressWalkStatus">MISSING</em></span><strong id="progressWalkText">0 / 20 min</strong></div>
+        <div class="lifeAlignmentProgressBar"><span id="progressWalkFill"></span></div>
+        <small id="progressWalkFeedback">Get the 20-minute walk done.</small>
+      </div>
+      <div class="lifeAlignmentProgressItem">
+        <div><span>Sleep <em id="progressSleepStatus">MISSING</em></span><strong id="progressSleepText">0 / 7 hr</strong></div>
+        <div class="lifeAlignmentProgressBar"><span id="progressSleepFill"></span></div>
+        <small id="progressSleepFeedback">Prioritize rest tonight.</small>
+      </div>
+      <div class="lifeAlignmentProgressItem">
+        <div><span>Discipline score <em id="progressScoreStatus">OFF TRACK</em></span><strong id="progressScoreText">0 / 100</strong></div>
+        <div class="lifeAlignmentProgressBar"><span id="progressScoreFill"></span></div>
+        <small id="progressScoreFeedback">Start with one controllable.</small>
+      </div>
+    </div>
+  </section>
+
+  <section class="card lifeAlignmentAnalytics">
+    <div class="toolbar">
+      <div>
+        <div class="pill">Analytics</div>
+        <h3>Last 30 days</h3>
+      </div>
+    </div>
+    <div class="lifeAlignmentAnalyticsSummary">
+      <span>Average water <strong id="metricAverageWater">0 oz</strong></span>
+      <span>Average sleep <strong id="metricAverageSleep">0 hr</strong></span>
+      <span>Monthly workouts <strong id="metricMonthlyWorkouts">0</strong></span>
+      <span>Monthly walk minutes <strong id="metricMonthlyWalk">0</strong></span>
+      <span>Average score <strong id="metricAverageScore">0</strong></span>
+      <span>Locked days <strong id="metricLockedDays">0</strong></span>
+      <span>Rule breaks <strong id="metricRuleBreaks">0</strong></span>
+    </div>
+    <div class="lifeAlignmentInsights">
+      <div class="pill">Accountability Insights</div>
+      <ul id="lifeInsightList">
+        <li>Loading insights...</li>
+      </ul>
+    </div>
+    <div class="lifeAlignmentChartGrid">
+      <div class="lifeAlignmentChartPanel">
+        <h4>Alignment score</h4>
+        <div id="lifeScoreChart" class="lifeAlignmentChart" aria-label="Last 30 days alignment score"></div>
+      </div>
+      <div class="lifeAlignmentChartPanel">
+        <h4>Water intake</h4>
+        <div id="lifeWaterChart" class="lifeAlignmentChart" aria-label="Water intake bar chart"></div>
+      </div>
+      <div class="lifeAlignmentChartPanel">
+        <h4>Workout completion</h4>
+        <div id="lifeWorkoutGrid" class="lifeAlignmentWorkoutGrid" aria-label="Workout completion grid"></div>
+      </div>
+      <div class="lifeAlignmentChartPanel">
+        <h4>Walking minutes</h4>
+        <div id="lifeWalkChart" class="lifeAlignmentChart" aria-label="Walking minutes trend"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="lifeAlignmentToast" id="lifeAlignmentToast" role="status" aria-live="polite" hidden>
+    Alignment logged. Keep stacking.
+  </div>
+</div>
+
+<script defer src="{{ url_for('static', filename='js/life_alignment.js') }}"></script>

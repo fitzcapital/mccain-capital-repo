@@ -3,6 +3,7 @@
 from mccain_capital.services import auth_passkeys as passkeys_svc
 from mccain_capital.services import core as svc
 from mccain_capital.services import goals as goals_svc
+from mccain_capital.services import profile as profile_svc
 
 
 def home():
@@ -45,6 +46,22 @@ def logout_page():
     return svc.logout_page()
 
 
+def profile_page():
+    return profile_svc.profile_page()
+
+
+def profile_update_details():
+    return profile_svc.update_profile_details()
+
+
+def profile_update_password():
+    return profile_svc.update_password()
+
+
+def profile_admin_update_user():
+    return profile_svc.admin_update_user()
+
+
 def healthz():
     return svc.healthz()
 
@@ -85,12 +102,20 @@ def market_pulse_context_api():
     return svc.market_pulse_context_api()
 
 
+def market_pulse_tape_api():
+    return svc.market_pulse_tape_api()
+
+
 def hero_bars_api():
     return svc.hero_bars_api()
 
 
 def hero_levels_api():
     return svc.hero_levels_api()
+
+
+def hero_quote_api():
+    return svc.hero_quote_api()
 
 
 def hero_stream_session_api():

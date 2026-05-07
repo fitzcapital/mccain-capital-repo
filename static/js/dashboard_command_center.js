@@ -95,7 +95,7 @@ const dashboardUIFX = (() => {
 
   const storageKey = String(shell.dataset.playbookTickerStorageKey || "mc_playbook_ticker");
   const selectedTicker = String(shell.dataset.selectedTicker || "QQQ").toUpperCase();
-  const supportedTickers = new Set(["QQQ", "SPY"]);
+  const supportedTickers = new Set(["QQQ", "SPY", "SPX"]);
   const switchLinks = Array.from(document.querySelectorAll("[data-dashboard-ticker-switch]"));
 
   const normalizeTicker = (value) => {
@@ -254,6 +254,61 @@ const dashboardUIFX = (() => {
     });
   };
 
+  const seriesValues = (points) => (Array.isArray(points) ? points : [])
+    .map((row) => (row && typeof row === "object" ? asNum(row.v ?? row.close) : asNum(row)))
+    .filter((value) => value !== null);
+
+  const buildSparklineSvg = (points, tone) => {
+    const values = seriesValues(points);
+    if (values.length < 2) {
+      return '<div class="marketMiniSparkEmpty">No trend</div>';
+    }
+    const width = 120;
+    const height = 28;
+    let minV = Math.min(...values);
+    let maxV = Math.max(...values);
+    if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
+    const step = width / Math.max(values.length - 1, 1);
+    const pts = values.map((value, index) => {
+      const x = index * step;
+      const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    });
+    const cls = tone === "up" ? "up" : tone === "down" ? "down" : "flat";
+    const baselineY = (((maxV - values[0]) / (maxV - minV)) * (height - 2) + 1).toFixed(2);
+    const areaPoints = `0.00,28.00 ${pts.join(" ")} 120.00,28.00`;
+    const markerStride = Math.max(1, Math.floor(pts.length / 8));
+    const selected = pts.filter(
+      (_point, index) => index === 0 || index === pts.length - 1 || index % markerStride === 0
+    );
+    const markers = selected
+      .map((point, index) => {
+        const [x, y] = point.split(",");
+        const endpoint = index === 0 ? " start" : index === selected.length - 1 ? " end" : "";
+        return `<circle class="marketMiniSparkPoint ${cls}${endpoint}" cx="${x}" cy="${y}" r="1.55" />`;
+      })
+      .join("");
+    return (
+      `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="7" x2="120" y2="7" />`
+      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="120" y2="${baselineY}" />`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="21" x2="120" y2="21" />`
+      + `<polygon class="marketMiniSparkArea ${cls}" points="${areaPoints}" />`
+      + `<polyline class="marketMiniSparkLine ${cls}" points="${pts.join(" ")}" />`
+      + markers
+      + `</svg>`
+    );
+  };
+
+  const updateSparkNode = (node, points, tone) => {
+    if (!node || seriesValues(points).length < 2) return false;
+    const sparkClass = tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat";
+    node.classList.remove("spark-pos", "spark-neg", "spark-flat");
+    node.classList.add(sparkClass);
+    node.innerHTML = buildSparklineSvg(points, tone);
+    return true;
+  };
+
   const hasMeaningfulText = (node) => {
     if (!node) return false;
     const text = String(node.textContent || "").trim().toLowerCase();
@@ -269,14 +324,43 @@ const dashboardUIFX = (() => {
     return p - prior;
   };
 
+  const quotePctChange = (quote) => {
+    const raw = quote || {};
+    const explicit = asNum(
+      raw.pct_change
+        ?? raw.change_pct
+        ?? raw.percent_change
+        ?? raw.change_percent
+        ?? raw.day_change_pct
+    );
+    if (explicit !== null) return explicit;
+    const price = asNum(raw.price);
+    const prior = asNum(raw.prev_close ?? raw.prior_close ?? raw.previous_close ?? raw.close);
+    if (price === null || prior === null || prior <= 0) return null;
+    return ((price - prior) / prior) * 100.0;
+  };
+
   const inferPreviousClose = (quote) => {
     const explicit = asNum((quote || {}).prev_close ?? (quote || {}).prior_close ?? (quote || {}).previous_close);
     if (explicit !== null) return explicit;
     const price = asNum((quote || {}).price);
-    const pct = asNum((quote || {}).pct_change);
+    const pct = quotePctChange(quote);
     if (price === null || pct === null || Math.abs(100.0 + pct) < 1e-9) return null;
     const prior = price / (1 + (pct / 100.0));
     return Number.isFinite(prior) ? prior : null;
+  };
+
+  const applyMixedToneToSparkline = (row, tapeTone, pct) => {
+    const sparkNode = row.querySelector('[data-role="sparkline"]');
+    if (!sparkNode) return;
+    const trendTone = pct !== null && pct > 0 ? "positive" : pct !== null && pct < 0 ? "negative" : "neutral";
+    const sparkClass = trendTone === "positive" ? "spark-pos" : trendTone === "negative" ? "spark-neg" : "spark-flat";
+    sparkNode.classList.remove("tone-positive", "tone-negative", "tone-neutral", "spark-pos", "spark-neg", "spark-flat");
+    sparkNode.classList.add(`tone-${tapeTone}`, sparkClass);
+    sparkNode.querySelectorAll(".marketMiniSparkLine, .marketMiniSparkArea, .marketMiniSparkPoint").forEach((node) => {
+      node.classList.remove("up", "down", "flat");
+      node.classList.add(trendTone === "positive" ? "up" : trendTone === "negative" ? "down" : "flat");
+    });
   };
 
   const formatClock = (iso) => {
@@ -291,17 +375,35 @@ const dashboardUIFX = (() => {
     }).format(new Date(ts));
   };
 
+  const compactAgeLabel = (ageS) => {
+    const seconds = Math.max(0, Math.floor(Number(ageS) || 0));
+    if (seconds >= 72 * 3600) return "72h+ old";
+    if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h old`;
+    if (seconds >= 60) return `${Math.floor(seconds / 60)}m old`;
+    return `${seconds}s old`;
+  };
+
   const formatFreshness = (iso, state) => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
-    if (!Number.isFinite(ts)) return { full: `${state} · unavailable`, compact: state };
+    if (!Number.isFinite(ts)) {
+      return {
+        full: "unavailable",
+        compact: "unavailable",
+        band: "Unavailable",
+        status: "Unavailable",
+        tone: "missing",
+      };
+    }
     const ageS = Math.max(0, (Date.now() - ts) / 1000);
-    const compact = ageS >= 60 ? `${Math.floor(ageS / 60)}m` : `${Math.floor(ageS)}s`;
     const seconds = Math.floor(ageS);
+    const compact = compactAgeLabel(seconds).replace(" old", "");
     const band = seconds >= 900 ? "Critical" : state;
     return {
-      full: `${band} · ${seconds}s old`,
+      full: compactAgeLabel(seconds),
       compact,
-      state,
+      band,
+      status: band === "Live" ? "" : band,
+      tone: stateClass(band === "Critical" ? band : state),
     };
   };
 
@@ -326,19 +428,68 @@ const dashboardUIFX = (() => {
 
   const stateClass = (state) => {
     if (state === "Live") return "live";
-    if (state === "Delayed") return "delayed";
+    if (state === "Delayed" || state === "Cached") return "delayed";
+    if (state === "Critical") return "critical";
     return "missing";
   };
 
-  const tapeStateLabel = (symbol, pct) => {
-    if (symbol === "VIX") {
-      if (pct !== null && pct <= -0.35) return "WEAK";
-      if (pct !== null && pct >= 0.35) return "STRONG";
-      return "MIXED";
+  const quoteSeriesPoints = (quote) => {
+    const raw = quote || {};
+    const candidates = [raw.mini_series, raw.series, raw.prior_session_series];
+    for (const source of candidates) {
+      const values = seriesValues(source);
+      if (values.length >= 2) return values;
     }
-    if (pct !== null && pct >= 0.35) return "RISK-ON";
-    if (pct !== null && pct <= -0.35) return "RISK-OFF";
-    return "MIXED";
+    return [];
+  };
+
+  const displayRangeFromPoints = (points) => {
+    const values = seriesValues(points);
+    if (values.length < 2) return "";
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    if (!Number.isFinite(low) || !Number.isFinite(high)) return "";
+    return Math.abs(high - low) < 0.01
+      ? formatValue(high, 2)
+      : `${formatValue(low, 2)}-${formatValue(high, 2)}`;
+  };
+
+  const tapeStateFor = (symbol, pct) => {
+    if (["SPY", "QQQ", "IWM"].includes(symbol)) {
+      if (pct !== null && pct >= 0.35) {
+        return {
+          label: "RISK-ON",
+          tone: "positive",
+          title: "Broad tape supports long risk.",
+        };
+      }
+      if (pct !== null && pct <= -0.35) {
+        return {
+          label: "RISK-OFF",
+          tone: "negative",
+          title: "Broad tape is defensive; long risk needs extra confirmation.",
+        };
+      }
+    }
+    if (pct !== null && pct >= 0.75) {
+      return {
+        label: "STRONG",
+        tone: "positive",
+        title: "Symbol is leading or showing strong upside pressure.",
+      };
+    }
+    if (pct !== null && pct <= -0.75) {
+      return {
+        label: "WEAK",
+        tone: "negative",
+        title: "Symbol is lagging or under downside pressure.",
+      };
+    }
+    return {
+      label: "MIXED",
+      tone: "neutral",
+      title: "No clean tape edge yet.",
+    };
   };
 
   const setExpandedSymbol = (symbol) => {
@@ -362,7 +513,7 @@ const dashboardUIFX = (() => {
     const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
     const detailNode = detailPanels.get(symbol);
     const price = asNum((quote || {}).price);
-    const pct = asNum((quote || {}).pct_change);
+    const pct = quotePctChange(quote);
     const absChange = inferAbsoluteChange(price, pct);
     const state = deriveState(quote);
     const lastNode = row.querySelector('[data-role="last"]');
@@ -378,6 +529,10 @@ const dashboardUIFX = (() => {
     const openValue = asNum((quote || {}).day_open ?? (quote || {}).open);
     const prevCloseValue = inferPreviousClose(quote);
     const freshness = formatFreshness((quote || {}).as_of, state);
+    const usablePoints = seriesValues(points).length >= 2 ? points : quoteSeriesPoints(quote);
+    const tapeState = tapeStateFor(symbol, pct);
+    const tapeLabel = tapeState.label;
+    const tapeTone = tapeState.tone;
     const hasSeededRowValues = (
       price === null
       && !String((quote || {}).as_of || "").trim()
@@ -394,24 +549,54 @@ const dashboardUIFX = (() => {
 
     if (lastNode) {
       if (price !== null) {
-        dashboardUIFX.setText(lastNode, formatValue(price, 2), { live: true, direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral" });
+        dashboardUIFX.setText(lastNode, formatValue(price, 2), { live: true, direction: tapeTone === "positive" ? "up" : tapeTone === "negative" ? "down" : "neutral" });
       } else if (!hasMeaningfulText(lastNode)) {
         lastNode.textContent = "loading...";
       }
     }
     if (chgpNode) {
       if (pct !== null) {
-        dashboardUIFX.setText(chgpNode, `${formatSigned(pct, 2)}%`, { live: true, direction: pct > 0 ? "up" : pct < 0 ? "down" : "neutral" });
+        dashboardUIFX.setText(chgpNode, `${formatSigned(pct, 2)}%`, { live: true, direction: tapeTone === "positive" ? "up" : tapeTone === "negative" ? "down" : "neutral" });
       } else if (!hasMeaningfulText(chgpNode)) {
         chgpNode.textContent = "loading...";
       }
+      chgpNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
+      chgpNode.classList.add(`tone-${tapeTone}`);
     }
 
-    row.classList.remove("is-up", "is-down", "is-flat", "is-live", "is-delayed", "is-missing");
-    row.classList.add(`is-${stateClass(state)}`);
-    row.classList.add(pct > 0 ? "is-up" : pct < 0 ? "is-down" : "is-flat");
-    if (stateNode) dashboardUIFX.setText(stateNode, tapeStateLabel(symbol, pct));
-    if (rowMarketStateNode) dashboardUIFX.setText(rowMarketStateNode, freshness.state);
+    row.classList.remove(
+      "is-up",
+      "is-down",
+      "is-flat",
+      "is-live",
+      "is-delayed",
+      "is-critical",
+      "is-missing",
+      "tone-positive",
+      "tone-negative",
+      "tone-neutral"
+    );
+    row.classList.add(`is-${freshness.tone}`);
+    row.classList.add(tapeTone === "positive" ? "is-up" : tapeTone === "negative" ? "is-down" : "is-flat");
+    row.classList.add(`tone-${tapeTone}`);
+    row.dataset.tapeTone = tapeTone;
+    if (!updateSparkNode(row.querySelector('[data-role="sparkline"]'), usablePoints, pct > 0 ? "up" : pct < 0 ? "down" : "flat")) {
+      applyMixedToneToSparkline(row, tapeTone, pct);
+    }
+    if (stateNode) {
+      dashboardUIFX.setText(stateNode, tapeLabel);
+      stateNode.title = tapeState.title;
+      stateNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
+      stateNode.classList.add(`tone-${tapeTone}`);
+    }
+    [rowMarketStateNode, rowLiveNode, detailLiveNode].forEach((node) => {
+      if (!node) return;
+      node.classList.remove("is-live", "is-delayed", "is-critical", "is-missing");
+      node.classList.add(`is-${freshness.tone}`);
+    });
+    if (rowMarketStateNode) {
+      dashboardUIFX.setText(rowMarketStateNode, freshness.status);
+    }
     if (rowLiveNode && String((quote || {}).as_of || "").trim()) {
       dashboardUIFX.setText(rowLiveNode, freshness.full);
     }
@@ -421,6 +606,9 @@ const dashboardUIFX = (() => {
       if (dayLow !== null && dayHigh !== null) {
         dashboardUIFX.setText(rowRangeNode, `${formatValue(dayLow, 2)} to ${formatValue(dayHigh, 2)}`);
       }
+    } else if (rowRangeNode) {
+      const derivedRange = displayRangeFromPoints(usablePoints);
+      if (derivedRange) dashboardUIFX.setText(rowRangeNode, derivedRange);
     }
 
     if (detailChgNode) {
@@ -436,11 +624,19 @@ const dashboardUIFX = (() => {
   };
 
   const setStreamStatus = (label, detail) => {
-    const statusChanged = dashboardUIFX.setText(statusNode, label, { pulse: true, tone: label.toLowerCase().includes("retry") ? "warning" : "info" });
-    statusNode.dataset.tone = label.toLowerCase().includes("retry")
+    const normalized = String(label || "").toLowerCase();
+    const statusChanged = dashboardUIFX.setText(statusNode, label, { pulse: true, tone: normalized.includes("retry") ? "warning" : "info" });
+    statusNode.dataset.tone = (
+      normalized.includes("retry")
+      || normalized.includes("delayed")
+      || normalized.includes("cached")
+      || normalized.includes("paused")
+    )
       ? "delayed"
-      : label.toLowerCase().includes("connect")
+      : normalized.includes("connect")
       ? "off"
+      : normalized.includes("unavailable") || normalized.includes("error")
+      ? "missing"
       : "live";
     dashboardUIFX.setText(updatedNode, detail, { pulse: statusChanged, tone: "info" });
   };
@@ -465,11 +661,12 @@ const dashboardUIFX = (() => {
     return hasMeaningfulText(lastNode) && String(lastNode.textContent || "").trim().toLowerCase() !== "loading...";
   });
 
-  const applyTapeSnapshot = (quotes, updatedLabel) => {
+  const applyTapeSnapshot = (quotes, updatedLabel, seriesPoints = {}) => {
     const payload = quotes && typeof quotes === "object" ? quotes : {};
+    const series = seriesPoints && typeof seriesPoints === "object" ? seriesPoints : {};
     rows.forEach((row) => {
       const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
-      updateRow(row, payload[symbol] || {}, []);
+      updateRow(row, payload[symbol] || {}, series[symbol] || []);
     });
     if (updatedLabel && updatedNode) {
       updatedNode.textContent = updatedLabel;
@@ -779,7 +976,7 @@ const dashboardUIFX = (() => {
         if (!response.ok || !payload || payload.ok === false) {
           throw new Error("tape_refresh_failed");
         }
-        applyTapeSnapshot(payload.quotes || {}, payload.updated_label || "");
+        applyTapeSnapshot(payload.quotes || {}, payload.updated_label || "", payload.series_points || {});
         if (tapeHasRenderableValues()) {
           setStreamStatus("Live", payload.updated_label || "just now");
         }
@@ -876,6 +1073,11 @@ const dashboardUIFX = (() => {
 
   const stateButtons = Array.from(document.querySelectorAll("[data-discipline-state]"));
   const modeButtons = Array.from(document.querySelectorAll("[data-discipline-mode]"));
+  const disciplineRail = document.querySelector(".dashboardDisciplineRail");
+  const disciplineMobileToggle = document.getElementById("dashboardDisciplineMobileToggle");
+  const mobileStateSummary = document.getElementById("dashboardMobileStateSummary");
+  const mobileModeSummary = document.getElementById("dashboardMobileModeSummary");
+  const disciplineToggleCue = document.getElementById("dashboardDisciplineToggleCue");
   const gateButtons = Array.from(document.querySelectorAll("[data-trade-gate-toggle]"));
   const gateStatus = document.getElementById("dashboardTradeGateStatus");
   const gateNote = document.getElementById("dashboardTradeGateNote");
@@ -959,10 +1161,18 @@ const dashboardUIFX = (() => {
   const syncTradeActions = () => {
     const blocked = modeBlocksNewRisk();
     tradeActionLinks.forEach((link) => {
-      link.setAttribute("aria-disabled", blocked ? "true" : "false");
-      link.classList.toggle("isDisabled", blocked);
-      link.classList.toggle("is-guarded", blocked);
-      link.title = blocked
+      let targetPath = "";
+      try {
+        targetPath = new URL(link.getAttribute("href") || "", window.location.href).pathname;
+      } catch (_err) {
+        targetPath = "";
+      }
+      const isMarketPulseNavigation = targetPath === "/market-pulse";
+      const shouldGuard = blocked && !isMarketPulseNavigation;
+      link.setAttribute("aria-disabled", shouldGuard ? "true" : "false");
+      link.classList.toggle("isDisabled", shouldGuard);
+      link.classList.toggle("is-guarded", shouldGuard);
+      link.title = shouldGuard
         ? (
           uiState.disciplineMode === "done-for-day"
             ? "Done for Day blocks new risk."
@@ -1022,12 +1232,34 @@ const dashboardUIFX = (() => {
     shell.dataset.disciplineMode = uiState.disciplineMode;
   };
 
+  const formatDisciplineLabel = (value) => String(value || "")
+    .replace(/^a-plus-only$/, "A+ Only")
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word === "a" ? "A+" : word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+  const syncMobileDisciplineSummary = () => {
+    if (mobileStateSummary) {
+      mobileStateSummary.textContent = formatDisciplineLabel(uiState.disciplineState);
+    }
+    if (mobileModeSummary) {
+      mobileModeSummary.textContent = formatDisciplineLabel(uiState.disciplineMode);
+    }
+    if (disciplineMobileToggle && disciplineRail) {
+      const expanded = disciplineRail.classList.contains("is-mobile-expanded");
+      disciplineMobileToggle.setAttribute("aria-expanded", String(expanded));
+      if (disciplineToggleCue) disciplineToggleCue.textContent = expanded ? "Collapse" : "Expand";
+    }
+  };
+
   const applyUiState = () => {
     syncShellState();
     syncButtonGroup(stateButtons, "disciplineState", uiState.disciplineState);
     syncButtonGroup(modeButtons, "disciplineMode", uiState.disciplineMode);
     syncGateButtons();
     syncTradeActions();
+    syncMobileDisciplineSummary();
     emitDisciplineState();
   };
 
@@ -1048,6 +1280,13 @@ const dashboardUIFX = (() => {
   };
 
   applyUiState();
+
+  if (disciplineMobileToggle && disciplineRail) {
+    disciplineMobileToggle.addEventListener("click", () => {
+      disciplineRail.classList.toggle("is-mobile-expanded");
+      syncMobileDisciplineSummary();
+    });
+  }
 
   stateButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -1303,6 +1542,7 @@ const dashboardUIFX = (() => {
     }
     if (alignmentScoreDial) {
       alignmentScoreDial.style.setProperty("--alignment-pct", `${pct}%`);
+      alignmentScoreDial.dataset.alignmentTone = status.tone;
     }
     if (alignmentScoreValue) dashboardUIFX.setText(alignmentScoreValue, `${pct}%`, { pulse: true, tone: status.tone });
     if (alignmentScoreLabel) dashboardUIFX.setText(alignmentScoreLabel, status.detail, { pulse: true, tone: status.tone });

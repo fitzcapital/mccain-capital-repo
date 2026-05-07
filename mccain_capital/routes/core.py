@@ -43,6 +43,25 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule("/logout", endpoint="logout_page", view_func=h.logout_page)
+    app.add_url_rule("/profile", endpoint="profile_page", view_func=h.profile_page)
+    app.add_url_rule(
+        "/profile/details",
+        endpoint="profile_update_details",
+        view_func=h.profile_update_details,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/profile/password",
+        endpoint="profile_update_password",
+        view_func=h.profile_update_password,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/profile/admin/user",
+        endpoint="profile_admin_update_user",
+        view_func=h.profile_admin_update_user,
+        methods=["POST"],
+    )
     app.add_url_rule("/healthz", endpoint="healthz", view_func=h.healthz)
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)
@@ -62,8 +81,15 @@ def register(app):
         view_func=h.market_pulse_context_api,
         methods=["GET"],
     )
+    app.add_url_rule(
+        "/api/market-pulse/tape",
+        endpoint="market_pulse_tape_api",
+        view_func=h.market_pulse_tape_api,
+        methods=["GET"],
+    )
     app.add_url_rule("/api/hero/bars", endpoint="hero_bars_api", view_func=h.hero_bars_api)
     app.add_url_rule("/api/hero/levels", endpoint="hero_levels_api", view_func=h.hero_levels_api)
+    app.add_url_rule("/api/hero/quote", endpoint="hero_quote_api", view_func=h.hero_quote_api)
     app.add_url_rule(
         "/api/hero/stream-session",
         endpoint="hero_stream_session_api",

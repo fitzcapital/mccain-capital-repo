@@ -1,0 +1,101 @@
+<div class="forwardPacePage" id="forwardPaceApp" data-today="{{ today }}">
+  <section class="forwardPaceHero">
+    <div>
+      <div class="pill">Forward Pace</div>
+      <h2 class="pageTitle">Projection Command</h2>
+      <p class="pageSub">Model weekly payouts, tax drag, buffers, and projected balance structure.</p>
+    </div>
+    <div class="forwardPaceHeroActions">
+      <button class="btn primary" id="forwardPacePdfButton" type="button">Download PDF</button>
+      <a class="btn" href="/budget">Budget Command</a>
+    </div>
+  </section>
+
+  <section class="forwardPaceGrid">
+    <form class="forwardPacePanel forwardPaceControls" id="forwardPaceForm">
+      <div class="forwardPaceSectionHead">
+        <span>Inputs</span>
+        <strong>Cashflow Model</strong>
+      </div>
+      <div class="forwardPaceFormGrid">
+        <label>
+          <span>Base Account</span>
+          <input name="base_balance" type="number" min="0" step="100" value="50000">
+        </label>
+        <label>
+          <span>Gross Payout</span>
+          <input name="gross_payout" type="number" min="0" step="25" value="250">
+        </label>
+        <label>
+          <span>Payouts / Week</span>
+          <input name="payouts_per_week" type="number" min="1" max="14" step="1" value="5">
+        </label>
+        <label>
+          <span>Projection Weeks</span>
+          <input name="weeks" type="number" min="1" max="104" step="1" value="12">
+        </label>
+        <label>
+          <span>Fixed Buffer</span>
+          <input name="fixed_buffer" type="number" min="0" step="100" value="5000">
+        </label>
+        <label>
+          <span>Weekly Buffer %</span>
+          <input name="buffer_rate" type="number" min="0" max="90" step="1" value="10">
+        </label>
+        <label>
+          <span>Start Date</span>
+          <input name="start_date" type="date" value="{{ today }}">
+        </label>
+        <label>
+          <span>Filing Status</span>
+          <select name="filing_status">
+            <option value="single">Single</option>
+            <option value="married_joint">Married Joint</option>
+            <option value="head_household">Head of Household</option>
+          </select>
+        </label>
+        <label class="forwardPaceWide">
+          <span>State</span>
+          <select name="state">
+            {% for abbr, name in states %}
+              <option value="{{ abbr }}" {% if abbr == 'GA' %}selected{% endif %}>{{ name }} · {{ abbr }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <p class="forwardPaceFinePrint">Tax is an automatic planning estimate using 2026 federal brackets and a state planning rate.</p>
+    </form>
+
+    <section class="forwardPacePanel forwardPaceSummary">
+      <div class="forwardPaceSectionHead">
+        <span>Output</span>
+        <strong id="forwardPaceHeadline">$0 / week</strong>
+      </div>
+      <div class="forwardPacePrimaryMetric">
+        <span>Projected Balance</span>
+        <strong id="forwardPaceProjectedBalance">$0.00</strong>
+        <small id="forwardPaceProjectedMeta">After tax and buffer.</small>
+      </div>
+      <div class="forwardPaceMetricGrid">
+        <div><span>Gross</span><strong id="forwardPaceWeeklyGross">$0.00</strong></div>
+        <div><span>Tax</span><strong id="forwardPaceWeeklyTax">$0.00</strong></div>
+        <div><span>Buffer</span><strong id="forwardPaceWeeklyBuffer">$0.00</strong></div>
+        <div><span>Net Pace</span><strong id="forwardPaceWeeklyNet">$0.00</strong></div>
+      </div>
+      <div class="forwardPaceTaxStrip">
+        <div><span>Federal Annual</span><strong id="forwardPaceFederalTax">$0.00</strong></div>
+        <div><span>State Rate</span><strong id="forwardPaceStateRate">0%</strong></div>
+        <div><span>Effective Tax</span><strong id="forwardPaceEffectiveTax">0%</strong></div>
+      </div>
+    </section>
+  </section>
+
+  <section class="forwardPacePanel forwardPaceStructure">
+    <div class="forwardPaceSectionHead">
+      <span>Structure</span>
+      <strong>Weekly Payout Schedule</strong>
+    </div>
+    <div class="forwardPaceSchedule" id="forwardPaceSchedule"></div>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='js/forward_pace.js') }}?v={{ static_v }}"></script>

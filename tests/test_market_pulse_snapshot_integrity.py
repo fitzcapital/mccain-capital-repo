@@ -240,6 +240,15 @@ def test_gamma_reason_label_explains_partial_and_fallback_states():
     )
 
 
+def test_gamma_failure_label_ignores_successful_tradier_fetch_text():
+    assert (
+        core._market_pulse_gamma_failure_label(
+            "Tradier live options chain fetched successfully."
+        )
+        == ""
+    )
+
+
 def test_canonical_playbook_view_softens_copy_for_unconfirmed_planning_bias():
     playbook = core._build_playbook_view_model(
         market_structure_snapshot={
@@ -497,6 +506,18 @@ def test_structure_snapshot_partial_board_missing_main_flip_stays_unconfirmed():
     assert snapshot["gamma_regime_reason_label"] == "Waiting on main flip"
     assert snapshot["gamma_regime_missing_reason"] == "waiting_on_main_flip"
     assert snapshot["gamma_regime_confidence"] == "Low"
+
+
+def test_gamma_regime_viewmodel_preserves_signal_when_execution_levels_unavailable():
+    regime = core._market_pulse_gamma_regime_viewmodel(
+        {"regime": "strong_positive"},
+        gamma_data_status="invalid",
+        regime_status="unavailable",
+        missing_reason="no_usable_snapshot",
+    )
+    assert regime["gamma_regime"] == "positive"
+    assert regime["gamma_regime_label"] == "Positive Gamma"
+    assert regime["gamma_regime_subtitle"] == "Execution levels unavailable"
 
 
 def test_structure_snapshot_fresh_valid_board_remains_confirmed():

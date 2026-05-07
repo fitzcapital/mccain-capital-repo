@@ -179,7 +179,7 @@ def test_get_intraday_uses_short_lived_curve_cache(monkeypatch):
     assert first is not second
 
 
-def test_get_intraday_uses_market_worker_series_points_when_tradier_empty(monkeypatch):
+def test_get_intraday_does_not_use_market_worker_when_tradier_empty(monkeypatch):
     monkeypatch.setattr(market_data_service, "_INTRADAY_CURVE_CACHE", {})
     monkeypatch.setattr(
         app_runtime,
@@ -203,14 +203,7 @@ def test_get_intraday_uses_market_worker_series_points_when_tradier_empty(monkey
 
     rows = market_data_service.get_intraday("SPX")
 
-    assert len(rows) == 2
-    assert rows[0]["ts"] == "2026-04-10T09:35:00-04:00"
-    assert rows[0]["open"] == 6828.25
-    assert rows[0]["high"] == 6829.10
-    assert rows[0]["low"] == 6828.25
-    assert rows[0]["close"] == 6829.10
-    assert rows[1]["ts"] == "2026-04-10T09:36:00-04:00"
-    assert rows[1]["close"] == 6830.50
+    assert rows == []
 
 
 def test_get_prior_session_intraday_uses_short_lived_curve_cache(monkeypatch):
@@ -268,7 +261,7 @@ def test_get_watchlist_is_tradier_only(monkeypatch):
     monkeypatch.setattr(
         market_data_service,
         "_tradier_quote_map",
-        lambda symbols: {
+        lambda symbols, force_refresh=False: {
             "SPX": {
                 "price": None,
                 "pct_change": None,

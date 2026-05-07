@@ -1,0 +1,165 @@
+<div class="profilePage">
+  <div class="profileHero card">
+    <div class="profileHeroIdentity">
+      <div class="profileAvatar profileAvatarLarge" style="--avatar-color: {{ avatar_colors.get(profile.avatar_color, '#58a6ff') }}">
+        {% if profile.photo_data_url %}
+          <img src="{{ profile.photo_data_url }}" alt="{{ profile.display_name }} profile photo">
+        {% else %}
+          <span>{{ profile.avatar_initials }}</span>
+        {% endif %}
+      </div>
+      <div>
+        <div class="pill">Profile Command</div>
+        <h2 class="pageTitle">{{ profile.display_name }}</h2>
+        <div class="pageSub">{{ profile.title }} · {{ "Admin profile" if profile.is_admin else "Standard profile" }}</div>
+        <div class="badgeRow stack10">
+          <span class="trustBadge">{{ "Admin" if profile.is_admin else "Standard User" }}</span>
+          <span class="trustBadge">{{ "Passkey Enabled" if passkey_count > 0 else "Passkey Ready" }}</span>
+          <span class="trustBadge">Updated {{ profile.updated_at[:10] if profile.updated_at else "today" }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="profileHeroActions">
+      <a class="btn primary" href="/auth/passkeys">Manage Passkeys</a>
+      <a class="btn" href="/setup">Login Setup</a>
+    </div>
+  </div>
+
+  <div class="profileGrid">
+    <section class="card profilePanel">
+      <div class="toolbar">
+        <div class="pill">Identity</div>
+        <h3 class="cardTitle">Photo, icon, and public details</h3>
+        <form class="profileForm" method="post" action="{{ url_for('profile_update_details') }}" enctype="multipart/form-data" data-profile-form>
+          <div class="profileFormGrid">
+            <label>
+              Display Name
+              <input type="text" name="display_name" value="{{ profile.display_name }}" maxlength="80">
+            </label>
+            <label>
+              Title
+              <input type="text" name="title" value="{{ profile.title }}" maxlength="80">
+            </label>
+            <label>
+              Email
+              <input type="email" name="email" value="{{ profile.email }}" maxlength="120" placeholder="optional">
+            </label>
+            <label>
+              Initials
+              <input type="text" name="avatar_initials" value="{{ profile.avatar_initials }}" maxlength="3">
+            </label>
+            <label>
+              Avatar Color
+              <select name="avatar_color">
+                {% for key, color in avatar_colors.items() %}
+                  <option value="{{ key }}" {% if profile.avatar_color == key %}selected{% endif %}>{{ key|title }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              Profile Photo
+              <input type="file" name="photo" accept="image/png,image/jpeg,image/webp,image/gif" data-profile-photo-input>
+              <input type="hidden" name="photo_data_url" data-profile-photo-data>
+            </label>
+          </div>
+          <div class="profileUploadPreview" data-profile-photo-preview aria-live="polite">
+            <div class="profileUploadThumb">
+              {% if profile.photo_data_url %}
+                <img src="{{ profile.photo_data_url }}" alt="" aria-hidden="true">
+              {% else %}
+                <span>{{ profile.avatar_initials }}</span>
+              {% endif %}
+            </div>
+            <div>
+              <div class="profileUploadStatus" data-profile-photo-status>Recommended: square image, under 750 KB.</div>
+              <div class="tiny line16">Large portraits are compressed in the browser before save when possible.</div>
+            </div>
+          </div>
+          <label class="profileCheck">
+            <input type="checkbox" name="remove_photo" value="1">
+            Remove current photo
+          </label>
+          <div class="rightActions stack12">
+            <button class="btn primary" type="submit">Save Profile</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card profilePanel">
+      <div class="toolbar">
+        <div class="pill">Security</div>
+        <h3 class="cardTitle">Security control</h3>
+        <div class="profileSecurityGrid">
+          <form class="profileForm" method="post" action="{{ url_for('profile_update_password') }}">
+            <div class="profileSubhead">Password Update</div>
+            <label>
+              Current Password
+              <input type="password" name="current_password" autocomplete="current-password" required>
+            </label>
+            <label>
+              New Password
+              <input type="password" name="new_password" autocomplete="new-password" minlength="8" required>
+            </label>
+            <label>
+              Confirm New Password
+              <input type="password" name="confirm_password" autocomplete="new-password" minlength="8" required>
+            </label>
+            <div class="rightActions stack12">
+              <button class="btn primary" type="submit">Update Password</button>
+            </div>
+          </form>
+          <div class="profilePasskeyCard">
+            <div class="pill">Passkeys</div>
+            <div class="profilePasskeyCount">{{ passkey_count }}</div>
+            <div class="profilePasskeyStatus">{{ passkey_count }} passkey{{ "" if passkey_count == 1 else "s" }} enabled</div>
+            <div class="tiny line16">Use Face ID, Touch ID, or a trusted device for faster sign-in.</div>
+            <a class="btn stack12" href="/auth/passkeys">Open Passkey Control</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  {% if is_admin %}
+    <section class="card profileAdminPanel">
+      <div class="toolbar">
+        <div class="pill">Admin</div>
+        <h3 class="cardTitle">User directory controls</h3>
+        <div class="tiny line16">Admin users can update profile labels, usernames, avatar initials, and access level. The primary app password remains controlled by the signed-in account.</div>
+        <div class="profileUserTable">
+          <div class="profileUserHeader">
+            <span>User</span>
+            <span>Display</span>
+            <span>Role</span>
+            <span>Initials</span>
+            <span>Color</span>
+            <span>Access</span>
+            <span>Actions</span>
+          </div>
+          {% for row in profiles %}
+            <form class="profileUserRow" method="post" action="{{ url_for('profile_admin_update_user') }}">
+              <input type="hidden" name="original_username" value="{{ row.username }}">
+              <input type="text" name="username" value="{{ row.username }}" maxlength="40" aria-label="Username">
+              <input type="text" name="display_name" value="{{ row.display_name }}" maxlength="80" aria-label="Display name">
+              <input type="text" name="title" value="{{ row.title }}" maxlength="80" aria-label="Title">
+              <input type="text" name="avatar_initials" value="{{ row.avatar_initials }}" maxlength="3" aria-label="Initials">
+              <select name="avatar_color" aria-label="Avatar color">
+                {% for key, color in avatar_colors.items() %}
+                  <option value="{{ key }}" {% if row.avatar_color == key %}selected{% endif %}>{{ key|title }}</option>
+                {% endfor %}
+              </select>
+              <label class="profileCheck compact">
+                <input type="checkbox" name="is_admin" value="1" {% if row.is_admin %}checked{% endif %}>
+                Admin
+              </label>
+              <button class="btn" type="submit">Update</button>
+            </form>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  {% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='js/profile.js') }}"></script>

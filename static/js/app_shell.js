@@ -34,8 +34,13 @@
   const qsa = (selector) => Array.from(doc.querySelectorAll(selector));
 
   let previousDrawerFocus = null;
+  let previousMobileMenuFocus = null;
   let clockTimer = null;
   let drawerResizeTimer = null;
+
+  function isMobileAppViewport() {
+    return window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+  }
 
   function focusWithoutScroll(target) {
     if (!target || typeof target.focus !== "function") return;
@@ -66,10 +71,15 @@
   }
 
   function syncDrawerToggles(isOpen) {
-    ["menuToggleBtn", "mobileDockMenuBtn"].forEach((id) => {
+    ["menuToggleBtn"].forEach((id) => {
       const btn = doc.getElementById(id);
       if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
     });
+  }
+
+  function syncMobileMenuToggle(isOpen) {
+    const btn = doc.getElementById("mobileDockMenuBtn");
+    if (btn) btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
   }
 
   function getDrawerFocusable() {
@@ -111,6 +121,10 @@
   }
 
   function openDrawer() {
+    if (isMobileAppViewport()) {
+      openMobileMenu();
+      return;
+    }
     const drawer = doc.getElementById("drawer");
     const overlay = doc.getElementById("drawerOverlay");
     if (!drawer || !overlay) return;
@@ -139,6 +153,77 @@
       focusWithoutScroll(previousDrawerFocus);
     }
     previousDrawerFocus = null;
+  }
+
+  function getMobileMenuFocusable() {
+    const sheet = doc.getElementById("mobileMenuSheet");
+    if (!sheet) return [];
+    return qsa("#mobileMenuSheet " + focusableSelector).filter((el) => el.offsetParent !== null);
+  }
+
+  function handleMobileMenuKeydown(event) {
+    if (event.key === "Escape") {
+      closeMobileMenu();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = getMobileMenuFocusable();
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = doc.activeElement;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function focusMobileMenuPrimary() {
+    const target = getMobileMenuFocusable()[0];
+    focusWithoutScroll(target);
+  }
+
+  function openMobileMenu() {
+    const sheet = doc.getElementById("mobileMenuSheet");
+    const overlay = doc.getElementById("mobileMenuOverlay");
+    if (!sheet || !overlay) return;
+    previousMobileMenuFocus = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
+    closeMoreMenu();
+    closeQuickPanel();
+    closeDrawer();
+    sheet.classList.add("open");
+    overlay.classList.add("open");
+    sheet.setAttribute("aria-hidden", "false");
+    overlay.setAttribute("aria-hidden", "false");
+    body.classList.add("mobile-menu-open");
+    syncMobileMenuToggle(true);
+    doc.addEventListener("keydown", handleMobileMenuKeydown, true);
+    window.requestAnimationFrame(focusMobileMenuPrimary);
+  }
+
+  function closeMobileMenu() {
+    const sheet = doc.getElementById("mobileMenuSheet");
+    const overlay = doc.getElementById("mobileMenuOverlay");
+    if (sheet) {
+      sheet.classList.remove("open");
+      sheet.setAttribute("aria-hidden", "true");
+    }
+    if (overlay) {
+      overlay.classList.remove("open");
+      overlay.setAttribute("aria-hidden", "true");
+    }
+    body.classList.remove("mobile-menu-open");
+    syncMobileMenuToggle(false);
+    doc.removeEventListener("keydown", handleMobileMenuKeydown, true);
+    if (previousMobileMenuFocus && doc.contains(previousMobileMenuFocus)) {
+      focusWithoutScroll(previousMobileMenuFocus);
+    }
+    previousMobileMenuFocus = null;
   }
 
   function toggleMoreMenu() {
@@ -190,6 +275,8 @@
     window.toggleQuickPanel = toggleQuickPanel;
     window.openDrawer = openDrawer;
     window.closeDrawer = closeDrawer;
+    window.openMobileMenu = openMobileMenu;
+    window.closeMobileMenu = closeMobileMenu;
 
     window.addEventListener("click", (event) => {
       const target = event.target;
@@ -211,6 +298,13 @@
     });
 
     doc.addEventListener("click", (event) => {
+      const target = event.target;
+      const link = target.closest && target.closest("#mobileMenuSheet a");
+      const button = target.closest && target.closest("#mobileMenuSheet button.mobileMenuRow");
+      if (link || button) closeMobileMenu();
+    });
+
+    doc.addEventListener("click", (event) => {
       const link = event.target.closest && event.target.closest("a[href]");
       if (!link) return;
       if ((link.getAttribute("target") || "").toLowerCase() === "_blank") return;
@@ -219,11 +313,13 @@
       closeMoreMenu();
       closeQuickPanel();
       if (link.closest && link.closest("#drawer")) closeDrawer();
+      if (link.closest && link.closest("#mobileMenuSheet")) closeMobileMenu();
     }, true);
 
     ["pageshow", "pagehide"].forEach((name) => {
       window.addEventListener(name, () => {
         closeDrawer();
+        closeMobileMenu();
         closeMoreMenu();
         closeQuickPanel();
         syncDrawerScrollLock();
@@ -235,9 +331,17 @@
       window.clearTimeout(drawerResizeTimer);
       drawerResizeTimer = window.setTimeout(() => {
         closeDrawer();
+        closeMobileMenu();
         syncDrawerScrollLock();
       }, 120);
     });
+
+    const syncMobileViewportClass = () => {
+      body.classList.toggle("is-mobile-app", isMobileAppViewport());
+      if (!isMobileAppViewport()) closeMobileMenu();
+    };
+    syncMobileViewportClass();
+    window.addEventListener("resize", syncMobileViewportClass);
   }
 
   function initRowMenus() {
@@ -352,101 +456,176 @@
     });
   }
 
+  function getEasternClockParts(now) {
+    const etParts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    const part = (type) => etParts.find((item) => item.type === type)?.value || "";
+    const rawHour = String(part("hour") || "0").padStart(2, "0");
+    const hour = rawHour === "24" ? "00" : rawHour;
+    const hourNumber = Number(hour);
+    const minute = String(part("minute") || "0").padStart(2, "0");
+    const second = String(part("second") || "0").padStart(2, "0");
+    return {
+      weekday: part("weekday"),
+      year: Number(part("year") || 0),
+      month: Number(part("month") || 1),
+      day: Number(part("day") || 1),
+      hour: hourNumber,
+      minute: Number(minute),
+      second: Number(second),
+      timeLabel: `${hour}:${minute}:${second}`,
+      preciseTimeLabel: `${hour}:${minute}:${second}`,
+      displayTimeLabel: `${hour}:${minute}:${second}`,
+    };
+  }
+
+  function getLocalClockParts(now) {
+    const localParts = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    const part = (type) => localParts.find((item) => item.type === type)?.value || "";
+    const rawHour = String(part("hour") || "0").padStart(2, "0");
+    const hour = rawHour === "24" ? "00" : rawHour;
+    const minute = String(part("minute") || "0").padStart(2, "0");
+    const second = String(part("second") || "0").padStart(2, "0");
+    return {
+      timeLabel: `${hour}:${minute}:${second}`,
+      preciseTimeLabel: `${hour}:${minute}:${second}`,
+    };
+  }
+
+  function getMarketClockState(now = new Date()) {
+    const et = getEasternClockParts(now);
+    const etNow = new Date(Date.UTC(
+      et.year,
+      Math.max(0, et.month - 1),
+      et.day,
+      et.hour,
+      et.minute,
+      et.second
+    ));
+    const nySeconds = (et.hour * 3600) + (et.minute * 60) + et.second;
+    const isWeekend = et.weekday === "Sat" || et.weekday === "Sun";
+    const marketOpenSeconds = 9 * 3600 + 30 * 60;
+    const marketCloseSeconds = 16 * 3600;
+
+    const formatDuration = (secondsUntil) => {
+      const totalMinutes = Math.max(1, Math.ceil(Number(secondsUntil || 0) / 60));
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+      if (hours > 0) return `${hours}h`;
+      return `${minutes}m`;
+    };
+
+    const nextMarketOpen = (() => {
+      const next = new Date(etNow.getTime());
+      if (!isWeekend && nySeconds < marketOpenSeconds) {
+        next.setUTCHours(9, 30, 0, 0);
+        return next;
+      }
+      if (!isWeekend && nySeconds < marketCloseSeconds) return null;
+      next.setUTCDate(next.getUTCDate() + 1);
+      next.setUTCHours(9, 30, 0, 0);
+      while (next.getUTCDay() === 0 || next.getUTCDay() === 6) {
+        next.setUTCDate(next.getUTCDate() + 1);
+      }
+      return next;
+    })();
+
+    if (!isWeekend && nySeconds < marketOpenSeconds) {
+      return {
+        state: "premarket",
+        timeLabel: et.displayTimeLabel,
+        stateLabel: "Pre-Market",
+        preciseTimeLabel: et.preciseTimeLabel,
+        statusText: `Opens in ${formatDuration(marketOpenSeconds - nySeconds)}`,
+        modeTitle: "US regular session opens at 9:30 AM ET",
+      };
+    }
+    if (!isWeekend && nySeconds < marketCloseSeconds) {
+      return {
+        state: "open",
+        timeLabel: et.displayTimeLabel,
+        stateLabel: "Market Open",
+        preciseTimeLabel: et.preciseTimeLabel,
+        statusText: `Closes in ${formatDuration(marketCloseSeconds - nySeconds)}`,
+        modeTitle: "US regular market is open until 4:00 PM ET",
+      };
+    }
+
+    const nextOpenSeconds = nextMarketOpen
+      ? Math.max(60, Math.floor((nextMarketOpen.getTime() - etNow.getTime()) / 1000))
+      : 0;
+    return {
+      state: "closed",
+      timeLabel: et.displayTimeLabel,
+      stateLabel: "Market Closed",
+      preciseTimeLabel: et.preciseTimeLabel,
+      statusText: nextMarketOpen ? `Opens in ${formatDuration(nextOpenSeconds)}` : "Closed",
+      modeTitle: "US regular market session is closed",
+    };
+  }
+
   function updateETClock() {
     try {
-      const now = new Date();
-      const etParts = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }).formatToParts(now);
-      const part = (type) => etParts.find((item) => item.type === type)?.value || "";
-      const weekday = part("weekday");
-      const etYear = Number(part("year") || 0);
-      const etMonth = Number(part("month") || 1);
-      const etDay = Number(part("day") || 1);
-      const timeStr = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(now);
-      const timeMain = timeStr;
-      const secondsPart = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        second: "2-digit",
-      }).format(now);
-      const hm = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(now).split(":");
-      const nySeconds =
-        (Number(hm[0] || 0) * 3600) +
-        (Number(hm[1] || 0) * 60) +
-        Number(secondsPart || 0);
-      const formatDuration = (secondsUntil) => {
-        const totalMinutes = Math.max(1, Math.ceil(Number(secondsUntil || 0) / 60));
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-        if (hours > 0) return `${hours}h`;
-        return `${minutes}m`;
-      };
+      const marketClock = getMarketClockState();
       const clock = doc.getElementById("etClock");
-      const meridiemNode = doc.getElementById("etClockMeridiem");
       const statusClock = doc.getElementById("marketStatusClock");
+      const stateLabelNode = doc.getElementById("marketStatusStateLabel");
       const countdown = doc.getElementById("marketStatusCountdown");
-      if (clock) clock.textContent = `${timeMain}:${secondsPart}`;
-      if (meridiemNode) meridiemNode.textContent = "";
+      const mobileSessionLabel = doc.getElementById("mobileMarketSessionLabel");
+      const isCompactHeader = window.matchMedia
+        ? window.matchMedia("(max-width: 768px)").matches
+        : false;
+      const compactTime = marketClock.timeLabel.split(":").slice(0, 2).join(":");
+      const compactStatus = marketClock.statusText
+        .replace(/^Closes in\s+/i, "")
+        .replace(/^Opens in\s+/i, "")
+        .replace(/^Closed$/i, "closed");
+      const compactStatusShort = compactStatus.includes("h")
+        ? compactStatus.replace(/\s+\d+m$/i, "")
+        : compactStatus;
+      if (clock) clock.textContent = isCompactHeader ? compactTime : marketClock.timeLabel;
+      if (stateLabelNode) stateLabelNode.textContent = marketClock.stateLabel || "Market";
       if (statusClock) {
-        const etNow = new Date(Date.UTC(etYear, Math.max(0, etMonth - 1), etDay, Number(hm[0] || 0), Number(hm[1] || 0), Number(secondsPart || 0)));
-        const isWeekend = weekday === "Sat" || weekday === "Sun";
-        const marketOpenSeconds = 9 * 3600 + 30 * 60;
-        const marketCloseSeconds = 16 * 3600;
-        const nextMarketOpen = (() => {
-          const next = new Date(etNow.getTime());
-          if (!isWeekend && nySeconds < marketOpenSeconds) {
-            next.setUTCHours(9, 30, 0, 0);
-            return next;
-          }
-          if (!isWeekend && nySeconds < marketCloseSeconds) {
-            return null;
-          }
-          next.setUTCDate(next.getUTCDate() + 1);
-          next.setUTCHours(9, 30, 0, 0);
-          while (next.getUTCDay() === 0 || next.getUTCDay() === 6) {
-            next.setUTCDate(next.getUTCDate() + 1);
-          }
-          return next;
-        })();
-        const nextOpenSeconds = nextMarketOpen
-          ? Math.max(60, Math.floor((nextMarketOpen.getTime() - etNow.getTime()) / 1000))
-          : 0;
-        let state = "closed";
-        let statusText = nextMarketOpen ? `Opens in ${formatDuration(nextOpenSeconds)}` : "Open";
-        let modeTitle = "US regular market session is closed";
-        if (!isWeekend && nySeconds < marketOpenSeconds) {
-          state = "premarket";
-          statusText = `Opens in ${formatDuration(marketOpenSeconds - nySeconds)}`;
-          modeTitle = "US regular session opens at 9:30 AM ET";
-        } else if (!isWeekend && nySeconds < marketCloseSeconds) {
-          state = "open";
-          statusText = `${formatDuration(marketCloseSeconds - nySeconds)} to close`;
-          modeTitle = "US regular market is open until 4:00 PM ET";
-        }
         statusClock.classList.remove("is-loading", "is-open", "is-premarket", "is-closed");
-        statusClock.classList.add(`is-${state}`);
-        statusClock.dataset.marketState = state;
-        statusClock.title = `${timeMain}:${secondsPart} ET · ${statusText}. ${modeTitle}.`;
-        if (countdown) countdown.textContent = statusText;
+        statusClock.classList.add(`is-${marketClock.state}`);
+        statusClock.dataset.marketState = marketClock.state;
+        statusClock.title = `${marketClock.preciseTimeLabel || marketClock.timeLabel} · ${marketClock.statusText}. ${marketClock.modeTitle}.`;
+        if (countdown) {
+          countdown.textContent = isCompactHeader
+            ? (compactStatusShort !== "closed" && !compactStatusShort.includes("h")
+              ? `${compactStatusShort} left`
+              : compactStatusShort)
+            : marketClock.statusText;
+        }
+      }
+      if (mobileSessionLabel) {
+        const mobileSessionState = marketClock.state === "open"
+          ? "open"
+          : marketClock.state === "premarket"
+            ? "premarket"
+            : "closed";
+        mobileSessionLabel.textContent = mobileSessionState === "open"
+          ? "Open"
+          : mobileSessionState === "premarket"
+            ? "Premarket"
+            : "Closed";
+        const mobileMeta = mobileSessionLabel.closest(".mobileTopbarMeta");
+        if (mobileMeta) mobileMeta.dataset.sessionState = mobileSessionState;
       }
     } catch (err) {
       console.error(err);
@@ -462,9 +641,9 @@
   }
 
   function initThemeAndGuided() {
-    const themeMigrationKey = "mc_theme_v9";
+    const themeMigrationKey = "mc_theme_v10";
     const fontModeKey = "mc_font_mode";
-    const themeOrder = ["galaxy", "cosmic-flare", "new-galaxy", "grey", "wallpaper-galaxy", "obsidian", "black", "nebula", "cinematic-nebula"];
+    const themeOrder = ["cinematic-nebula", "new-galaxy", "cosmic-flare", "galaxy", "obsidian", "black", "nebula", "grey", "wallpaper-galaxy"];
     const themeLabels = {
       "new-galaxy": "Theme: New Galaxy",
       "cinematic-nebula": "Theme: Cinematic Nebula",
@@ -540,7 +719,7 @@
     };
 
     window.toggleTheme = () => {
-      const current = body.getAttribute("data-theme") || "galaxy";
+      const current = body.getAttribute("data-theme") || "cinematic-nebula";
       const idx = themeOrder.indexOf(current);
       const next = themeOrder[(idx + 1) % themeOrder.length];
       storageSet("mc_theme", next);
@@ -556,13 +735,7 @@
     };
 
     if (storageGet(themeMigrationKey) !== "1") {
-      const savedTheme = storageGet("mc_theme");
-      if (savedTheme === "daylight") {
-        storageSet("mc_theme", "grey");
-      }
-      if (!savedTheme || savedTheme === "cosmic-flare" || savedTheme === "galaxy") {
-        storageSet("mc_theme", "cinematic-nebula");
-      }
+      storageSet("mc_theme", "cinematic-nebula");
       storageSet(themeMigrationKey, "1");
     }
 
@@ -587,6 +760,7 @@
     );
     const candidates = [];
     scopes.forEach((scope) => {
+      if (scope.dataset.preservePrimary === "true") return;
       scope.querySelectorAll(".btn, button.btn").forEach((btn) => {
         if (btn.disabled || btn.offsetParent === null || isExcluded(btn)) return;
         candidates.push(btn);

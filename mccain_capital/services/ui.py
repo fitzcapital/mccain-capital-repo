@@ -156,19 +156,33 @@ def _inject_csrf_inputs(content_html: str, csrf_input: str) -> str:
 
 
 def _static_version(static_root: str) -> str:
-    logo_path = os.path.join(static_root, "logo.png")
-    favicon_path = os.path.join(static_root, "favicon.ico")
+    branding_paths = [
+        os.path.join(static_root, "logo-primary.png"),
+        os.path.join(static_root, "logo-flat.png"),
+        os.path.join(static_root, "logo.png"),
+        os.path.join(static_root, "favicon.ico"),
+        os.path.join(static_root, "icon-192.png"),
+        os.path.join(static_root, "icon-180.png"),
+    ]
     app_css_path = os.path.join(static_root, "css", "app.css")
+    market_pulse_css_path = os.path.join(static_root, "css", "market_pulse.css")
+    dashboard_command_js_path = os.path.join(static_root, "js", "dashboard_command_center.js")
+    hero_chart_js_path = os.path.join(static_root, "js", "spx_hero_chart.js")
+    market_pulse_gamma_js_path = os.path.join(static_root, "js", "market_pulse_gamma_context.js")
     try:
-        return str(
-            int(
-                max(
-                    os.path.getmtime(logo_path),
-                    os.path.getmtime(favicon_path),
-                    os.path.getmtime(app_css_path),
-                )
-            )
-        )
+        mtimes = [
+            os.path.getmtime(path)
+            for path in [
+                *branding_paths,
+                app_css_path,
+                market_pulse_css_path,
+                dashboard_command_js_path,
+                hero_chart_js_path,
+                market_pulse_gamma_js_path,
+            ]
+            if os.path.exists(path)
+        ]
+        return str(int(max(mtimes))) if mtimes else now_iso().replace(":", "").replace("-", "")
     except Exception:
         return now_iso().replace(":", "").replace("-", "")
 
@@ -296,9 +310,24 @@ def _resolve_window_times(
     )
 
 
+def _form_bool(form: Mapping[str, Any], key: str, default: bool = False) -> bool:
+    getlist = getattr(form, "getlist", None)
+    if callable(getlist):
+        values = getlist(key)
+    elif key in form:
+        values = [form.get(key)]
+    else:
+        values = []
+    if not values:
+        return default
+    return any(
+        str(value or "").strip().lower() in {"1", "true", "on", "yes"} for value in values
+    )
+
+
 def save_trading_window_settings(form: Mapping[str, Any]) -> dict[str, Any]:
-    enabled = str(form.get("tw_enabled") or "") in {"1", "true", "on", "yes"}
-    test_mode = str(form.get("tw_test_mode") or "") in {"1", "true", "on", "yes"}
+    enabled = _form_bool(form, "tw_enabled")
+    test_mode = _form_bool(form, "tw_test_mode")
     try:
         upcoming_notice_minutes = int(
             str(form.get("tw_upcoming_notice_minutes") or "").strip()
@@ -395,11 +424,11 @@ def get_trading_window_state() -> dict[str, Any]:
     primary_reason = "Opening volatility protection"
     if not enabled:
         state = "off"
-        state_label = "Do Not Trade"
+        state_label = "Trading Window Off"
         message = "Trading window controls are disabled."
-        rail_label = "Do Not Trade"
+        rail_label = "Window Off"
         rail_detail = "Window disabled"
-        pill_tone = "negative"
+        pill_tone = "neutral"
         show_banner = False
         next_change_minutes = None
         primary_reason = "Window guidance disabled"
@@ -626,20 +655,76 @@ def get_vanquish_profit_lock_state() -> dict:
     }
 
 
+def macro_event_short_label(title: str, impact: str = "High") -> str:
+    normalized = re.sub(r"\s+", " ", str(title or "").strip()).lower()
+    patterns = (
+        ("fomc", "FOMC"),
+        ("fed chair", "Fed"),
+        ("rate decision", "FOMC"),
+        ("non-farm", "NFP"),
+        ("nonfarm", "NFP"),
+        ("payroll", "NFP"),
+        ("unemployment", "Jobs"),
+        ("job openings", "JOLTS"),
+        ("cpi", "CPI"),
+        ("ppi", "PPI"),
+        ("pce", "PCE"),
+        ("inflation", "Inflation"),
+        ("gdp", "GDP"),
+        ("retail sales", "Retail"),
+        ("ism", "ISM"),
+        ("pmi", "PMI"),
+    )
+    for needle, label in patterns:
+        if needle in normalized:
+            return label
+    impact_label = str(impact or "High").strip().title() or "High"
+    return f"{impact_label} Impact"
+
+
+def _macro_notice_detail(
+    *,
+    title: str,
+    impact: str,
+    starts_at: datetime,
+    forecast: str = "",
+    previous: str = "",
+) -> str:
+    parts = [
+        title,
+        f"{impact} impact",
+        starts_at.strftime("%b %-d %I:%M %p ET"),
+    ]
+    if forecast:
+        parts.append(f"Forecast {forecast}")
+    if previous:
+        parts.append(f"Previous {previous}")
+    return " · ".join(parts)
+
+
 def _global_top_notice() -> dict | None:
     now_et = datetime.now(TZ)
-    payload = get_forex_factory_feed()
+    payload: list[dict] = []
+    weekly_payload = get_forex_factory_feed()
+    next_week_payload = get_forex_factory_next_week_feed()
+    if isinstance(weekly_payload, list):
+        payload.extend(weekly_payload)
+    if isinstance(next_week_payload, list):
+        payload.extend(next_week_payload)
 
-    if not isinstance(payload, list):
+    if not payload:
         return None
 
     cutoff = now_et - timedelta(minutes=1)
+    horizon = now_et + timedelta(hours=24)
+    events: list[dict] = []
     for row in payload:
         if not isinstance(row, dict):
             continue
         if str(row.get("country") or "").upper() != "USD":
             continue
-        if str(row.get("impact") or "").title() != "High":
+        impact = str(row.get("impact") or "").title()
+        if impact not in {"High", "Medium"}:
             continue
         raw_date = str(row.get("date") or "").strip()
         if not raw_date:
@@ -648,21 +733,51 @@ def _global_top_notice() -> dict | None:
             starts_at = datetime.fromisoformat(raw_date)
         except ValueError:
             continue
-        if starts_at < cutoff:
+        if starts_at.tzinfo is None:
+            starts_at = starts_at.replace(tzinfo=TZ)
+        if starts_at < cutoff or starts_at > horizon:
             continue
         day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "
         title = str(row.get("title") or "USD high impact").strip() or "USD high impact"
-        compact_title = re.sub(r"\s+", " ", title)
-        if len(compact_title) > 28:
-            compact_title = f"{compact_title[:25].rstrip()}..."
-        detail_href = f"/candle-opens?y={starts_at.year}&m={starts_at.month}#news-day-{starts_at.date().isoformat()}"
-        return {
-            "text": f"{day_prefix}{starts_at.strftime('%-I:%M %p ET')} · {compact_title}",
-            "detail": f"High impact · {starts_at.strftime('%b %-d %I:%M %p ET')} · {title}",
-            "href": detail_href,
-            "level": "high",
-        }
-    return None
+        forecast = str(row.get("forecast") or "").strip()
+        previous = str(row.get("previous") or "").strip()
+        event_detail = _macro_notice_detail(
+            title=title,
+            impact=impact,
+            starts_at=starts_at,
+            forecast=forecast,
+            previous=previous,
+        )
+        events.append(
+            {
+                "label": macro_event_short_label(title, impact),
+                "time_short": starts_at.strftime("%-I:%M"),
+                "time_label": f"{day_prefix}{starts_at.strftime('%-I:%M %p ET')}",
+                "detail": event_detail,
+                "href": (
+                    f"/candle-opens?y={starts_at.year}&m={starts_at.month}"
+                    f"#news-day-{starts_at.date().isoformat()}"
+                ),
+                "level": impact.lower(),
+                "starts_at": starts_at.isoformat(),
+                "title": title,
+            }
+        )
+    if not events:
+        return None
+    events.sort(key=lambda item: str(item.get("starts_at") or ""))
+    first = events[0]
+    levels = {str(event.get("level") or "") for event in events}
+    notice_level = "high" if "high" in levels else "medium"
+    return {
+        "label": "Macro",
+        "text": f"{first['label']} {first['time_short']}",
+        "detail": str(first.get("detail") or ""),
+        "href": str(first.get("href") or ""),
+        "level": notice_level,
+        "count": len(events),
+        "events": events,
+    }
 
 
 def get_forex_factory_feed() -> list[dict] | None:
@@ -788,8 +903,26 @@ def get_forex_factory_month_feed() -> list[dict] | None:
     )
 
 
+def _profile_context() -> dict:
+    try:
+        from mccain_capital.services.profile import profile_template_context
+
+        return profile_template_context()
+    except Exception:
+        return {}
+
+
 def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **page_ctx):
     static_root = current_app.static_folder or "static"
+    logo_primary = "logo-primary.png"
+    logo_flat = "logo-flat.png"
+    logo_default = "logo.png"
+    logo_filename = (
+        logo_primary if os.path.exists(os.path.join(static_root, logo_primary)) else logo_default
+    )
+    logo_flat_filename = (
+        logo_flat if os.path.exists(os.path.join(static_root, logo_flat)) else logo_filename
+    )
     top_notice = page_ctx.pop("top_notice", None) or _global_top_notice()
     if isinstance(top_notice, dict):
         text = str(top_notice.get("text") or "")
@@ -803,14 +936,21 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **pag
         vanquish_lock = get_vanquish_profit_lock_state()
     if not isinstance(trading_window, dict):
         trading_window = get_trading_window_state()
+    now_et = app_runtime.now_et()
+    header_date_label = f"{now_et.strftime('%a %b')} {now_et.day}, {now_et.year}"
     return render_template(
         "base.html",
         title=title,
         brand_title=APP_TITLE,
+        logo_filename=logo_filename,
+        logo_flat_filename=logo_flat_filename,
         static_v=_static_version(static_root),
         auth_enabled=auth_enabled(),
         authenticated=is_authenticated(),
         auth_username=effective_username(),
+        **_profile_context(),
+        current_date=app_runtime.today_iso(),
+        header_date_label=header_date_label,
         system_status=get_system_status(),
         top_notice=top_notice,
         vanquish_lock=vanquish_lock,
