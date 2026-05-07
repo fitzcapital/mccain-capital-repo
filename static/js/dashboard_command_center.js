@@ -386,7 +386,13 @@ const dashboardUIFX = (() => {
   const formatFreshness = (iso, state) => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
     if (!Number.isFinite(ts)) {
-      return { full: "unavailable", compact: "unavailable", band: "Unavailable", tone: "missing" };
+      return {
+        full: "unavailable",
+        compact: "unavailable",
+        band: "Unavailable",
+        status: "Unavailable",
+        tone: "missing",
+      };
     }
     const ageS = Math.max(0, (Date.now() - ts) / 1000);
     const seconds = Math.floor(ageS);
@@ -396,6 +402,7 @@ const dashboardUIFX = (() => {
       full: compactAgeLabel(seconds),
       compact,
       band,
+      status: band === "Live" ? "" : band,
       tone: stateClass(band === "Critical" ? band : state),
     };
   };
@@ -588,7 +595,7 @@ const dashboardUIFX = (() => {
       node.classList.add(`is-${freshness.tone}`);
     });
     if (rowMarketStateNode) {
-      dashboardUIFX.setText(rowMarketStateNode, freshness.band === "Live" ? "" : freshness.band);
+      dashboardUIFX.setText(rowMarketStateNode, freshness.status);
     }
     if (rowLiveNode && String((quote || {}).as_of || "").trim()) {
       dashboardUIFX.setText(rowLiveNode, freshness.full);

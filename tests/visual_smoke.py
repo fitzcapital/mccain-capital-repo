@@ -25,6 +25,7 @@ FONT_MODE = os.environ.get("VISUAL_SMOKE_FONT_MODE") or ""
 SCENARIOS = [
     ("desktop-dashboard", "/dashboard", {"width": 1600, "height": 1000}, None),
     ("desktop-dashboard-menu", "/dashboard", {"width": 1600, "height": 1000}, ".moreBtn"),
+    ("desktop-candle-opens-macro", "/candle-opens", {"width": 1600, "height": 1100}, ".candleMacroSummary"),
     ("desktop-market-pulse", "/market-pulse?refresh=1", {"width": 1600, "height": 1100}, None),
     ("desktop-trades", "/trades", {"width": 1600, "height": 1100}, None),
     (
@@ -38,6 +39,12 @@ SCENARIOS = [
     ("desktop-calculator", "/calculator", {"width": 1600, "height": 1000}, None),
     ("desktop-analytics", "/analytics?tab=performance", {"width": 1600, "height": 1100}, None),
     ("mobile-dashboard-390x844", "/dashboard", {"width": 390, "height": 844}, None),
+    (
+        "mobile-candle-opens-macro-390x844",
+        "/candle-opens",
+        {"width": 390, "height": 844},
+        ".candleMacroSummary",
+    ),
     (
         "mobile-dashboard-menu-390x844",
         "/dashboard",
@@ -149,6 +156,157 @@ def _assert_topbar_menu_visuals(page, name: str) -> None:
         raise RuntimeError(f"{name} topbar menu visual contract failed: {result}")
 
 
+def _assert_candle_macro_visuals(page, name: str) -> None:
+    if "candle-opens-macro" not in name:
+        return
+    result = page.evaluate(
+        """
+        () => {
+          const fold = document.querySelector('.candleMacroFold');
+          const markerGrid = document.querySelector('.candleNewsDayGrid');
+          const cards = Array.from(document.querySelectorAll('.candleNewsDayCard'));
+          const onCandlePage = document.body.classList.contains('page-candle-opens');
+          if (!fold) return { missingFold: true, onCandlePage };
+          const styles = getComputedStyle(fold);
+          const rect = fold.getBoundingClientRect();
+          const lastCard = cards.length ? cards[cards.length - 1].getBoundingClientRect() : null;
+          return {
+            missingFold: false,
+            open: fold.hasAttribute('open'),
+            maxHeight: styles.maxHeight,
+            overflow: styles.overflow,
+            markerGrid: Boolean(markerGrid),
+            cards: cards.length,
+            foldHeight: rect.height,
+            lastCardBottom: lastCard ? lastCard.bottom : 0,
+            foldBottom: rect.bottom,
+          };
+        }
+        """
+    )
+    if result.get("missingFold") and not result.get("onCandlePage"):
+        return
+    if (
+        (result.get("missingFold") and result.get("onCandlePage"))
+        or not result.get("open")
+        or result.get("maxHeight") != "none"
+        or result.get("overflow") != "visible"
+    ):
+        raise RuntimeError(f"{name} macro accordion open-state contract failed: {result}")
+    if result.get("markerGrid") and result.get("cards", 0) > 1:
+        # The last marker card should be inside the open fold flow, not clipped by a fixed height.
+        if result.get("lastCardBottom", 0) > result.get("foldBottom", 0) + 2:
+            raise RuntimeError(f"{name} macro markers appear clipped: {result}")
+
+
+def _assert_execution_rail_visuals(page, name: str) -> None:
+    if "market-pulse" not in name:
+        return
+    result = page.evaluate(
+        """
+        () => {
+          const rail = document.querySelector('.marketPulseExecutionHeroLevelRail');
+          const items = Array.from(document.querySelectorAll('.marketPulseExecutionHeroLevelRailItem'));
+          if (!rail || !items.length) return { present: false };
+          const railRect = rail.getBoundingClientRect();
+          const spills = items.map((item) => {
+            const rect = item.getBoundingClientRect();
+            const label = item.querySelector('span')?.getBoundingClientRect();
+            const value = item.querySelector('strong')?.getBoundingClientRect();
+            return {
+              text: item.textContent.trim(),
+              left: rect.left,
+              right: rect.right,
+              railLeft: railRect.left,
+              railRight: railRect.right,
+              labelRight: label ? label.right : 0,
+              valueRight: value ? value.right : 0,
+            };
+          }).filter((row) => (
+            row.left < row.railLeft - 20
+            || row.right > row.railRight + 1
+            || row.valueRight > row.right + 1
+            || row.labelRight > row.right + 1
+          ));
+          return { present: true, items: items.length, spills };
+        }
+        """
+    )
+    if result.get("present") and result.get("spills"):
+        raise RuntimeError(f"{name} execution rail spills outside its container: {result}")
+
+
+def _assert_hero_chart_controls(page, name: str) -> None:
+    if "market-pulse" not in name:
+        return
+    result = page.evaluate(
+        """
+        () => {
+          const status = document.querySelector('#marketPulseHeroPollStatus');
+          const host = document.querySelector('#spxExecutionHeroChart');
+          const toggles = {
+            markers: document.querySelector('#marketPulseHeroToggleMarkers'),
+            levels: document.querySelector('#marketPulseHeroToggleLevels'),
+            day: document.querySelector('#marketPulseHeroToggleDayLevels'),
+          };
+          if (!host) {
+            return {
+              hasHost: false,
+              authGate: Boolean(document.querySelector('input[type="password"]')),
+              statusText: '',
+              toggleCount: 0,
+            };
+          }
+          const railItems = () => Array.from(
+            document.querySelectorAll('.marketPulseExecutionHeroLevelRailItem')
+          ).map((item) => Array.from(item.classList).join(' '));
+          const click = (node) => node && node.click();
+          const before = railItems();
+          click(toggles.day);
+          const dayOff = railItems();
+          click(toggles.levels);
+          const levelsOffDayOff = railItems();
+          click(toggles.levels);
+          click(toggles.day);
+          const restored = railItems();
+          const hasDayRows = (rows) => rows.some((text) => /is-(pdh|pdl|cdh|cdl)/.test(text));
+          const hasLevelRows = (rows) => rows.some((text) => /is-(main|spot|call|call-next|local|put|put-next)/.test(text));
+          return {
+            hasHost: Boolean(host),
+            statusText: status ? status.textContent.trim() : '',
+            toggleCount: Object.values(toggles).filter(Boolean).length,
+            beforeCount: before.length,
+            restoredCount: restored.length,
+            dayRowsBefore: hasDayRows(before),
+            levelRowsBefore: hasLevelRows(before),
+            dayRowsAfterDayOff: hasDayRows(dayOff),
+            levelRowsAfterLevelsOff: hasLevelRows(levelsOffDayOff),
+            hasSessionBreakWhenExpected: !host?.classList.contains('has-session-break')
+              || !document.querySelector('#spxExecutionHeroSessionBreak')?.hidden,
+          };
+        }
+        """
+    )
+    if result.get("authGate") and not result.get("hasHost"):
+        return
+    if (
+        (not result.get("hasHost") and not result.get("authGate"))
+        or result.get("toggleCount") != 3
+        or "Bars" not in result.get("statusText", "")
+        or "Quote" not in result.get("statusText", "")
+        or "Levels" not in result.get("statusText", "")
+        or "Levels pending" in result.get("statusText", "")
+        or "Levels error" in result.get("statusText", "")
+        or result.get("beforeCount", 0) <= 0
+        or result.get("restoredCount", 0) <= 0
+        or not result.get("levelRowsBefore")
+        or (result.get("dayRowsBefore") and result.get("dayRowsAfterDayOff"))
+        or result.get("levelRowsAfterLevelsOff")
+        or not result.get("hasSessionBreakWhenExpected")
+    ):
+        raise RuntimeError(f"{name} hero chart controls contract failed: {result}")
+
+
 def _capture(page, name: str, path: str, tap_selector: str | None = None) -> None:
     url = f"{BASE_URL}{path}"
     page.goto(url, wait_until="domcontentloaded", timeout=45000)
@@ -167,6 +325,9 @@ def _capture(page, name: str, path: str, tap_selector: str | None = None) -> Non
             print(f"[visual_smoke] optional tap skipped for {name}: {tap_selector}")
     _assert_tape_visuals(page, name)
     _assert_topbar_menu_visuals(page, name)
+    _assert_candle_macro_visuals(page, name)
+    _assert_execution_rail_visuals(page, name)
+    _assert_hero_chart_controls(page, name)
     page.screenshot(path=str(OUT_DIR / f"{name}.png"), full_page=True)
 
 

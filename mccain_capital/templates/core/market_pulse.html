@@ -307,6 +307,13 @@
               </button>
             </div>
           </div>
+          <div
+            class="marketPulseExecutionHeroPollStatus is-pending"
+            id="marketPulseHeroPollStatus"
+            aria-live="polite"
+          >
+            Bars pending · Quote pending · Levels pending
+          </div>
           {# NCW / NPW come from gamma_snapshot.next_call_wall_above / next_put_wall_below when available. #}
           <div
             class="marketPulseExecutionHeroChartStage"
@@ -327,6 +334,7 @@
             data-next-put-wall="{{ next_put_wall_num if next_put_wall_num is not none else '' }}"
           >
             <div class="marketPulseExecutionHeroChartCanvas" id="spxExecutionHeroChartCanvas" aria-hidden="true"></div>
+            <div class="marketPulseExecutionHeroSessionBreak" id="spxExecutionHeroSessionBreak" hidden>Today</div>
             <div class="marketPulseExecutionHeroLevelRail" id="spxExecutionHeroLevelRail" aria-hidden="true"></div>
             <div class="marketPulseExecutionHeroChartEmpty tiny muted" id="spxExecutionHeroChartEmpty">Loading {{ selected_ticker }} chart · open TradingView if unavailable.</div>
           </div>

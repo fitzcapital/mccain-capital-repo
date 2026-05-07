@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
@@ -13,6 +15,7 @@ import re
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -85,6 +88,12 @@ _RUNTIME_STATE: Dict[str, Any] = {
     "bootstrap_in_progress": False,
     "last_bootstrap_attempted_at": "",
     "last_bootstrap_failed_at": "",
+}
+_TRADIER_CHAIN_STATUS: Dict[str, Any] = {
+    "ok": False,
+    "error": "",
+    "status_code": 0,
+    "path": "",
 }
 
 _COMPACT_TICKER = re.compile(r"^(?:O:)?(SPXW|SPX)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
@@ -414,15 +423,6 @@ def _resolve_spx_anchor(
     )
     trusted_source = str(trusted_snapshot.get("spot_source") or "").strip().lower()
     trusted_is_fallback = bool(trusted_snapshot.get("spot_is_fallback"))
-    prior_close_value, prior_close_timestamp = _spx_prior_close_anchor(spot_snapshot, now_et=now_et)
-    last_valid_quote = _market_pulse_spx_quote_anchor()
-    last_valid_quote_value = _safe_float(last_valid_quote.get("price"))
-    last_valid_quote_timestamp = str(
-        last_valid_quote.get("asof")
-        or last_valid_quote.get("as_of")
-        or spot_snapshot.get("source_timestamp")
-        or _now_iso()
-    )
 
     if live_value is not None:
         return {
@@ -437,6 +437,15 @@ def _resolve_spx_anchor(
             "session_mode": session_mode,
             "state": "LIVE_SESSION" if session_mode == "rth" else "AFTER_HOURS_VALID",
         }
+
+    last_valid_quote = _market_pulse_spx_quote_anchor()
+    last_valid_quote_value = _safe_float(last_valid_quote.get("price"))
+    last_valid_quote_timestamp = str(
+        last_valid_quote.get("asof")
+        or last_valid_quote.get("as_of")
+        or spot_snapshot.get("source_timestamp")
+        or _now_iso()
+    )
 
     if session_mode == "rth":
         if last_valid_quote_value is not None:
@@ -497,6 +506,7 @@ def _resolve_spx_anchor(
             "state": "AFTER_HOURS_VALID",
         }
 
+    prior_close_value, prior_close_timestamp = _spx_prior_close_anchor(spot_snapshot, now_et=now_et)
     if prior_close_value is not None:
         return {
             "spot_price": float(prior_close_value),
@@ -890,8 +900,16 @@ def _load_cached_gamma_csv() -> Tuple[pd.DataFrame, str, str]:
 
 
 def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
+    global _TRADIER_CHAIN_STATUS
+
     key = _tradier_api_key()
     if not key:
+        _TRADIER_CHAIN_STATUS = {
+            "ok": False,
+            "error": "tradier_api_key_missing",
+            "status_code": 0,
+            "path": path,
+        }
         return None
     base = (os.environ.get("TRADIER_BASE_URL") or "https://api.tradier.com").strip().rstrip("/")
     url = base + path + "?" + urllib.parse.urlencode(params)
@@ -907,8 +925,43 @@ def _tradier_json(path: str, params: Dict[str, Any]) -> Dict[str, Any] | None:
         with urllib.request.urlopen(req, timeout=12) as resp:
             body = resp.read().decode("utf-8", errors="ignore")
             parsed = json.loads(body)
+            _TRADIER_CHAIN_STATUS = {
+                "ok": True,
+                "error": "",
+                "status_code": int(getattr(resp, "status", 200) or 200),
+                "path": path,
+            }
             return parsed if isinstance(parsed, dict) else None
-    except Exception:
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = ""
+        message = body or str(exc)
+        try:
+            parsed = json.loads(body) if body else {}
+            fault = parsed.get("fault") if isinstance(parsed, dict) else {}
+            if isinstance(fault, dict):
+                message = str(fault.get("faultstring") or message)
+        except Exception:
+            pass
+        _TRADIER_CHAIN_STATUS = {
+            "ok": False,
+            "error": message,
+            "status_code": int(getattr(exc, "code", 0) or 0),
+            "path": path,
+        }
+        LOGGER.warning("Tradier gamma chain request failed: %s", message)
+        return None
+    except Exception as exc:
+        _TRADIER_CHAIN_STATUS = {
+            "ok": False,
+            "error": str(exc) or exc.__class__.__name__,
+            "status_code": 0,
+            "path": path,
+        }
+        LOGGER.warning("Tradier gamma chain request failed: %s", _TRADIER_CHAIN_STATUS["error"])
         return None
 
 
@@ -960,11 +1013,33 @@ def _fetch_spx_chain_from_tradier(expiry_set: set[str]) -> pd.DataFrame:
         return pd.DataFrame()
     rows: Dict[Tuple[str, float], Dict[str, Any]] = {}
     seen = 0
-    for expiry in sorted(expiry_set):
-        payload = _tradier_json(
+    expiries = sorted(str(expiry) for expiry in expiry_set if str(expiry))
+    if not expiries:
+        return pd.DataFrame()
+    max_workers = min(
+        len(expiries),
+        max(1, int(float(os.environ.get("TRADIER_CHAIN_WORKERS") or 2))),
+    )
+
+    def _fetch_expiry(expiry: str) -> Tuple[str, Dict[str, Any] | None]:
+        return expiry, _tradier_json(
             "/v1/markets/options/chains",
             {"symbol": "SPX", "expiration": expiry, "greeks": "true"},
         )
+
+    payloads: List[Tuple[str, Dict[str, Any] | None]] = []
+    if max_workers <= 1:
+        payloads = [_fetch_expiry(expiry) for expiry in expiries]
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_fetch_expiry, expiry) for expiry in expiries]
+            for future in as_completed(futures):
+                try:
+                    payloads.append(future.result())
+                except Exception:
+                    continue
+
+    for expiry, payload in payloads:
         options = ((payload or {}).get("options") or {}).get("option")
         if isinstance(options, dict):
             opts = [options]
@@ -1105,15 +1180,23 @@ def load_gamma_source(expiries: Optional[List[str]] = None) -> Dict[str, Any]:
         basket = [today, _next_trading_day_iso(today)]
     raw = fetch_spx_chain_for_expiries(basket)
     fetch_timestamp = _now_iso()
+    tradier_status = dict(_TRADIER_CHAIN_STATUS)
+    tradier_error = str(tradier_status.get("error") or "")
     source_file_path = ""
     source_effective_timestamp = fetch_timestamp
     source_effective_timestamp_source = "fetch_fallback"
-    source_effective_timestamp_note = (
-        "Exchange-native chain timestamp unavailable; using fetch timestamp."
-    )
+    source_effective_timestamp_note = "Tradier live options chain fetched successfully."
     if raw.empty:
-        cached_raw, cached_path, cached_timestamp = _load_cached_gamma_csv()
-        if not cached_raw.empty:
+        source_effective_timestamp_note = (
+            f"Tradier live options chain unavailable: {tradier_error}"
+            if tradier_error
+            else "Tradier live options chain returned no rows."
+        )
+        use_cached_source = not tradier_error or tradier_error == "tradier_api_key_missing"
+        cached_raw, cached_path, cached_timestamp = (
+            _load_cached_gamma_csv() if use_cached_source else (pd.DataFrame(), "", "")
+        )
+        if use_cached_source and not cached_raw.empty:
             raw = cached_raw
             source_file_path = cached_path
             source_effective_timestamp = cached_timestamp or fetch_timestamp
@@ -1134,6 +1217,8 @@ def load_gamma_source(expiries: Optional[List[str]] = None) -> Dict[str, Any]:
         "source_timestamp": source_effective_timestamp,
         "contracts_seen": int(raw.attrs.get("contracts_seen") or len(raw.index) or 0),
         "source_file_path": source_file_path,
+        "tradier_status": tradier_status,
+        "source_error_reason": tradier_error,
     }
 
 
@@ -2232,6 +2317,14 @@ def get_or_build_market_pulse_snapshot(force_refresh: bool = False) -> Dict[str,
                 anchor.get("fallback_reason")
                 or "Invalid Snapshot: SPX spot unavailable for gamma build."
             ),
+            source_metadata=source_metadata,
+            current_snapshot=current_snapshot,
+        )
+
+    source_error_reason = str(source.get("source_error_reason") or "").strip()
+    if source["raw"].empty and source_error_reason:
+        return _internal_invalid_snapshot(
+            reason=f"Invalid Snapshot: Tradier live options chain unavailable: {source_error_reason}",
             source_metadata=source_metadata,
             current_snapshot=current_snapshot,
         )

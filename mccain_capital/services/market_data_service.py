@@ -36,9 +36,17 @@ MARKET_CURVE_CACHE_TTL_SECONDS = 15
 TRADIER_QUOTE_CACHE_TTL_SECONDS = max(
     1.0, float(os.environ.get("TRADIER_QUOTE_CACHE_TTL_SECONDS", "2") or 2)
 )
+YFINANCE_FALLBACK_TIMEOUT_SECONDS = max(
+    1.0, float(os.environ.get("YFINANCE_FALLBACK_TIMEOUT_SECONDS", "2") or 2)
+)
+YFINANCE_CIRCUIT_BREAKER_SECONDS = max(
+    30.0, float(os.environ.get("YFINANCE_CIRCUIT_BREAKER_SECONDS", "600") or 600)
+)
 _INTRADAY_CURVE_CACHE: Dict[str, Dict[str, Any]] = {}
 _PRIOR_SESSION_CURVE_CACHE: Dict[str, Dict[str, Any]] = {}
 _TRADIER_QUOTE_CACHE: Dict[str, Dict[str, Any]] = {}
+_YFINANCE_DISABLED_UNTIL: Optional[datetime] = None
+_YFINANCE_MODULE: Any = None
 
 
 def _now_iso() -> str:
@@ -493,7 +501,7 @@ def _massive_error_code(path: str, params: Dict[str, Any]) -> str:
 
 
 def _massive_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
-    return _massive_intraday_rows_for_date(symbol, date.today())
+    return _massive_intraday_rows_for_date(symbol, app_runtime.now_et().date())
 
 
 def _massive_intraday_rows_for_date(symbol: str, session_day: date) -> List[Dict[str, Any]]:
@@ -628,9 +636,14 @@ def _massive_bulk_stock_quotes(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
 
 
 def _load_yfinance():
+    global _YFINANCE_MODULE
+
+    if _YFINANCE_MODULE is not None:
+        return _YFINANCE_MODULE
     try:
         import yfinance as yf  # type: ignore
 
+        _YFINANCE_MODULE = yf
         return yf
     except Exception:
         return None
@@ -641,7 +654,28 @@ def _yf_symbol(symbol: str) -> str:
     return YF_SYMBOL_ALIASES.get(sym, sym)
 
 
+def _yf_fallback_available() -> bool:
+    disabled_until = _YFINANCE_DISABLED_UNTIL
+    return disabled_until is None or datetime.now(timezone.utc) >= disabled_until
+
+
+def _yf_note_failure() -> None:
+    global _YFINANCE_DISABLED_UNTIL
+
+    _YFINANCE_DISABLED_UNTIL = datetime.now(timezone.utc) + timedelta(
+        seconds=YFINANCE_CIRCUIT_BREAKER_SECONDS
+    )
+
+
+def _yf_note_success() -> None:
+    global _YFINANCE_DISABLED_UNTIL
+
+    _YFINANCE_DISABLED_UNTIL = None
+
+
 def _yf_ticker(symbol: str):
+    if not _yf_fallback_available():
+        return None
     yf = _load_yfinance()
     if yf is None:
         return None
@@ -660,9 +694,59 @@ def _yf_history_period(symbol: str, *, period: str, prepost: bool):
     if ticker is None:
         return None
     try:
-        return ticker.history(period=period, interval="1m", prepost=prepost)
+        hist = ticker.history(
+            period=period,
+            interval="1m",
+            prepost=prepost,
+            timeout=YFINANCE_FALLBACK_TIMEOUT_SECONDS,
+        )
+        _yf_note_success()
+        return hist
     except Exception:
+        _yf_note_failure()
         return None
+
+
+def _yf_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
+    if not _yf_fallback_available():
+        return []
+    hist = _yf_history(symbol)
+    if hist is None:
+        return []
+    try:
+        if hist.empty:
+            return []
+    except Exception:
+        return []
+
+    out: List[Dict[str, Any]] = []
+    try:
+        for index, row in hist.iterrows():
+            try:
+                dt = index.to_pydatetime()
+            except Exception:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=app_runtime.TZ)
+            close = _safe_float(row.get("Close"))
+            open_ = _safe_float(row.get("Open"))
+            high = _safe_float(row.get("High"))
+            low = _safe_float(row.get("Low"))
+            if close is None or open_ is None or high is None or low is None:
+                continue
+            out.append(
+                {
+                    "ts": dt.astimezone(timezone.utc).isoformat(timespec="seconds"),
+                    "open": float(open_),
+                    "high": float(high),
+                    "low": float(low),
+                    "close": float(close),
+                    "volume": float(_safe_float(row.get("Volume")) or 0.0),
+                }
+            )
+    except Exception:
+        return []
+    return out
 
 
 def _yf_previous_close(ticker) -> Optional[float]:
@@ -677,14 +761,6 @@ def _yf_previous_close(ticker) -> Optional[float]:
                     return val
     except Exception:
         pass
-    try:
-        info = getattr(ticker, "info", None) or {}
-        for key in ("previousClose", "regularMarketPreviousClose", "regularMarketPrice"):
-            val = _safe_float(info.get(key))
-            if val is not None and val > 0:
-                return val
-    except Exception:
-        pass
     return None
 
 
@@ -696,7 +772,7 @@ def _yf_last_price(ticker, hist) -> Optional[float]:
                 return float(close.iloc[-1])
     except Exception:
         pass
-    return _yf_previous_close(ticker)
+    return None
 
 
 def _yf_pct_change(hist, previous_close: Optional[float]) -> Optional[float]:
@@ -722,9 +798,17 @@ def _yf_pct_change(hist, previous_close: Optional[float]) -> Optional[float]:
 
 
 def _yf_watch_quote(symbol: str) -> Dict[str, Any]:
+    if not _yf_fallback_available():
+        return {
+            "price": None,
+            "pct_change": None,
+            "as_of": _now_iso(),
+            "provider": "yfinance",
+            "reason": "yfinance_circuit_open",
+        }
     ticker = _yf_ticker(symbol)
     hist = _yf_history(symbol)
-    prev = _yf_previous_close(ticker)
+    prev = _yf_previous_close(ticker) if hist is not None else None
     price = _yf_last_price(ticker, hist)
     pct = _yf_pct_change(hist, prev)
     return {
@@ -796,21 +880,9 @@ def get_intraday(symbol: str) -> List[Dict[str, Any]]:
         return cached_rows
 
     tradier_rows = _tradier_intraday_rows(symbol)
-    if len(tradier_rows) >= 20:
-        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
     if tradier_rows:
         return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, tradier_rows)
-    now_et = app_runtime.now_et()
-    session_day = now_et.date()
-    session_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
-    if now_et < session_open:
-        session_day = _previous_trading_day(session_day)
-    stream_rows = _stream_intraday_rows_for_date(symbol, session_day)
-    if len(stream_rows) >= 5:
-        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, stream_rows)
-    if stream_rows:
-        return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, stream_rows)
-    return []
+    return _curve_cache_set(_INTRADAY_CURVE_CACHE, cache_key, [])
 
 
 def _previous_trading_day(anchor_day: date) -> date:
@@ -839,12 +911,7 @@ def get_prior_session_intraday(
         return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
     if tradier_rows:
         return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
-    massive_rows = _massive_intraday_rows_for_date(symbol, session_day)
-    if len(massive_rows) >= 20:
-        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, massive_rows)
-    if massive_rows:
-        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, massive_rows)
-    return []
+    return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, [])
 
 
 def get_watchlist(
@@ -885,31 +952,9 @@ def get_watchlist_massive(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     return get_watchlist_tradier(symbols)
 
 
-def get_watchlist_with_fallback(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
-    """Return quotes with fallback providers for symbols missing Tradier data.
+def get_watchlist_with_fallback(
+    symbols: List[str], *, force_refresh: bool = False
+) -> Dict[str, Dict[str, Any]]:
+    """Compatibility wrapper: app market data is Tradier-only."""
 
-    This keeps strict broker-grade paths separate from looser context-only
-    consumers such as journal market notes, where a missing VIX reading is
-    worse than using a clearly-labeled fallback source.
-    """
-
-    snapshot = get_watchlist_tradier(symbols)
-    for raw in symbols:
-        symbol = str(raw or "").strip().upper()
-        if not symbol:
-            continue
-        quote = dict(snapshot.get(symbol) or {})
-        if _safe_float(quote.get("price")) is not None:
-            continue
-        intraday_quote = _intraday_quote_fallback(symbol)
-        if _safe_float(intraday_quote.get("price")) is not None:
-            snapshot[symbol] = intraday_quote
-            continue
-        massive_quote = _massive_watch_quote(symbol)
-        if _safe_float(massive_quote.get("price")) is not None:
-            snapshot[symbol] = massive_quote
-            continue
-        yf_quote = _yf_watch_quote(symbol)
-        if _safe_float(yf_quote.get("price")) is not None:
-            snapshot[symbol] = yf_quote
-    return snapshot
+    return get_watchlist_tradier(symbols, force_refresh=force_refresh)

@@ -91,6 +91,43 @@ def test_normalize_tradier_timesales_supports_chart_timeframes():
     assert hourly_bars[1]["time"] == _ts(2026, 4, 6, 10, 0)
 
 
+def test_intraday_payload_keeps_canonical_interval_metadata(monkeypatch):
+    now_et = datetime(2026, 4, 7, 11, 0, tzinfo=svc.app_runtime.TZ)
+    monkeypatch.setattr(svc.app_runtime, "now_et", lambda: now_et)
+    rows = [
+        {
+            "ts": "2026-04-07T09:31:00-04:00",
+            "open": 6600.0,
+            "high": 6601.0,
+            "low": 6599.5,
+            "close": 6600.5,
+            "volume": 100,
+        },
+        {
+            "ts": "2026-04-07T10:02:00-04:00",
+            "open": 6600.5,
+            "high": 6605.0,
+            "low": 6600.0,
+            "close": 6604.5,
+            "volume": 200,
+        },
+    ]
+    monkeypatch.setattr(svc.market_data_service, "get_intraday", lambda symbol: rows)
+    monkeypatch.setattr(
+        svc.market_data_service,
+        "get_prior_session_intraday",
+        lambda symbol, anchor_session_day=None: [],
+    )
+
+    assert svc.get_intraday_bars(symbol="SPX", interval="5")["interval"] == "5min"
+    assert svc.get_intraday_bars(symbol="SPX", interval="15m")["interval"] == "15min"
+    assert svc.get_intraday_bars(symbol="SPX", interval="30")["interval"] == "30min"
+    hourly = svc.get_intraday_bars(symbol="SPX", interval="60m")
+    assert hourly["interval"] == "1h"
+    assert hourly["fetched_at"] == now_et.isoformat()
+    assert hourly["session_metadata"]["phase"] == "open"
+
+
 def test_derive_hero_state_above_call_wall_prefers_next_call_wall():
     payload = svc.derive_hero_state(6611.83, 6571, 6605, 6550, 6615, 6570)
 
@@ -242,3 +279,20 @@ def test_get_hero_levels_uses_shared_snapshot_regime_without_reclassification(mo
     assert payload["pullback_level"] == "CW 6775"
     assert payload["provider"] == "market_snapshot"
     assert payload["posture_summary"] == "Shared snapshot summary"
+
+
+def test_stream_session_payload_uses_interval_aware_polling_contract():
+    payload = svc.get_stream_session_payload()
+
+    assert payload["mode"] == "polling"
+    assert payload["bars_interval_ms"] == 10000
+    assert payload["quote_interval_ms"] == 3000
+    assert payload["levels_interval_ms"] == 45000
+    assert payload["closed_bars_interval_ms"] == 180000
+    assert payload["closed_quote_interval_ms"] == 60000
+    assert payload["closed_levels_interval_ms"] == 600000
+    assert payload["hidden_bars_interval_ms"] == 120000
+    assert payload["hidden_quote_interval_ms"] == 15000
+    assert payload["hidden_levels_interval_ms"] == 300000
+    assert payload["bar_boundary_grace_ms"] == 3000
+    assert payload["session_phase"] in {"pre", "open", "afterhours", "closed"}

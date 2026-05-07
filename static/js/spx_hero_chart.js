@@ -11,6 +11,8 @@
   const dayLevelsToggle = document.getElementById("marketPulseHeroToggleDayLevels");
   const intervalToggles = Array.from(document.querySelectorAll("[data-hero-chart-interval]"));
   const emptyState = document.getElementById("spxExecutionHeroChartEmpty");
+  const pollStatusNode = document.getElementById("marketPulseHeroPollStatus");
+  const sessionBreakLabel = document.getElementById("spxExecutionHeroSessionBreak");
   if (!host || !canvas) return;
 
   const LightweightCharts = window.LightweightCharts;
@@ -49,6 +51,12 @@
   const normalizeInterval = (value) => (
     INTERVAL_ALIASES[String(value || DEFAULT_INTERVAL).trim().toLowerCase()] || DEFAULT_INTERVAL
   );
+  const INTERVAL_MINUTES = {
+    "5min": 5,
+    "15min": 15,
+    "30min": 30,
+    "1h": 60,
+  };
   let interval = normalizeInterval(host.dataset.interval || DEFAULT_INTERVAL);
   const HERO_CHART_TIMEZONE = "America/New_York";
   const HERO_TIME_AXIS_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -57,6 +65,21 @@
     minute: "2-digit",
     hour12: false,
   });
+  const HERO_DATE_AXIS_FORMATTER = new Intl.DateTimeFormat("en-US", {
+    timeZone: HERO_CHART_TIMEZONE,
+    month: "short",
+    day: "numeric",
+  });
+  let heroAxisShowsDates = false;
+  const formatAxisTime = (time) => {
+    const date = new Date(Number(time) * 1000);
+    const clock = HERO_TIME_AXIS_FORMATTER.format(date);
+    if (!heroAxisShowsDates) return clock;
+    if (clock === "09:30" || clock === "10:00" || clock === "16:00") {
+      return HERO_DATE_AXIS_FORMATTER.format(date);
+    }
+    return clock;
+  };
   const HERO_CHART_THEME = {
     background: "#071421",
     panel: "#0B1F3A",
@@ -111,24 +134,24 @@
     cdh: "#63f7d4",
     cdl: "#ff8aa3",
   };
-  const DEFAULT_VISIBLE_BARS = 28;
-  const LEFT_SCROLL_BUFFER_BARS = 8;
-  const DEFAULT_RIGHT_OFFSET_BARS = 5;
+  const DEFAULT_VISIBLE_BARS = 20;
+  const LEFT_SCROLL_BUFFER_BARS = 3;
+  const DEFAULT_RIGHT_OFFSET_BARS = 4;
   const HERO_CHART_HEIGHT = 600;
   const LEGACY_HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
   const HERO_CHART_PREFS_KEY = `mc_hero_chart_display_prefs_${symbol}`;
   const STRAT_MARKER_LIMIT = 96;
   const LEVEL_RAIL_MIN_GAP = 38;
 
-  const priceScaleWidth = 62;
+  const priceScaleWidth = 96;
   const chart = LightweightCharts.createChart(canvas, {
     autoSize: false,
     height: HERO_CHART_HEIGHT,
     layout: {
       background: { type: LightweightCharts.ColorType.Solid, color: HERO_CHART_THEME.background },
       textColor: HERO_CHART_THEME.textSecondary,
-      fontFamily: '"Segoe UI", "Trebuchet MS", sans-serif',
-      fontSize: 12,
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
+      fontSize: 10,
     },
     grid: {
       vertLines: { color: HERO_CHART_THEME.gridMinor },
@@ -136,12 +159,18 @@
     },
     crosshair: {
       vertLine: { color: "rgba(99, 179, 255, 0.16)", width: 1, style: 2 },
-      horzLine: { color: "rgba(46, 211, 198, 0.12)", width: 1, style: 2 },
+      horzLine: {
+        color: "rgba(46, 211, 198, 0.12)",
+        width: 1,
+        style: 2,
+        labelVisible: false,
+      },
     },
     rightPriceScale: {
       borderColor: HERO_CHART_THEME.axis,
-      scaleMargins: { top: 0.14, bottom: 0.18 },
+      scaleMargins: { top: 0.18, bottom: 0.22 },
       minimumWidth: priceScaleWidth,
+      entireTextOnly: true,
     },
     timeScale: {
       borderColor: HERO_CHART_THEME.axis,
@@ -151,7 +180,7 @@
       barSpacing: 10,
       fixLeftEdge: false,
       lockVisibleTimeRangeOnResize: true,
-      tickMarkFormatter: (time) => HERO_TIME_AXIS_FORMATTER.format(new Date(Number(time) * 1000)),
+      tickMarkFormatter: formatAxisTime,
     },
     localization: {
       locale: "en-US",
@@ -213,8 +242,21 @@
   });
 
   let priceLines = [];
+  let spotPriceLines = [];
   let dayLevelLines = [];
-  let polling = { bars_interval_ms: 45000, levels_interval_ms: 20000, quote_interval_ms: 5000 };
+  let polling = {
+    session_phase: "open",
+    bars_interval_ms: 10000,
+    quote_interval_ms: 3000,
+    levels_interval_ms: 45000,
+    closed_bars_interval_ms: 180000,
+    closed_quote_interval_ms: 60000,
+    closed_levels_interval_ms: 600000,
+    hidden_bars_interval_ms: 120000,
+    hidden_quote_interval_ms: 15000,
+    hidden_levels_interval_ms: 300000,
+    bar_boundary_grace_ms: 3000,
+  };
   let barsTimer = null;
   let levelsTimer = null;
   let quoteTimer = null;
@@ -234,16 +276,23 @@
   let resizeObserver = null;
   let barsRequestInFlight = false;
   let levelsRequestInFlight = false;
+  let quoteRequestInFlight = false;
   let barsRequestSerial = 0;
   let pageVisible = document.visibilityState !== "hidden";
   let lastMeasuredWidth = 0;
   let lastMeasuredHeight = 0;
+  let lastDataShapeSignature = "";
   let levelRailRows = [];
   let dayLevelRailRows = [];
+  let pollStatus = {
+    bars: { label: "Bars", state: "pending", text: "pending" },
+    quote: { label: "Quote", state: "pending", text: "pending" },
+    levels: { label: "Levels", state: "pending", text: "pending" },
+  };
   let displayPrefs = { showMarkers: true, showLevels: true, showDayLevels: true };
   const LEVEL_RENDER_DEBOUNCE_MS = 120;
   const HIDDEN_BARS_INTERVAL_MS = 120000;
-  const HIDDEN_LEVELS_INTERVAL_MS = 60000;
+  const HIDDEN_LEVELS_INTERVAL_MS = 300000;
   const HIDDEN_QUOTE_INTERVAL_MS = 15000;
   const RESIZE_DEBOUNCE_MS = 140;
   const HERO_LEVEL_KEYS = [
@@ -254,7 +303,6 @@
     "next_call_wall",
     "next_put_wall",
   ];
-  const HERO_REQUIRED_LEVEL_KEYS = ["local_flip", "call_wall", "put_wall"];
   const OFF_CHART_LEVEL_PCT = 0.018;
 
   const asNum = (value) => {
@@ -273,6 +321,57 @@
   const setText = (id, value) => {
     const node = document.getElementById(id);
     if (node) node.textContent = String(value ?? "");
+  };
+
+  const parseDateValue = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatClock = (value) => {
+    const date = value instanceof Date ? value : parseDateValue(value);
+    return date ? HERO_TIME_AXIS_FORMATTER.format(date) : "pending";
+  };
+
+  const formatAge = (value) => {
+    const date = value instanceof Date ? value : parseDateValue(value);
+    if (!date) return "pending";
+    const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return "stale";
+  };
+
+  const renderPollStatus = () => {
+    if (!pollStatusNode) return;
+    const parts = ["bars", "quote", "levels"].map((key) => {
+      const entry = pollStatus[key] || {};
+      return `${entry.label || key} ${entry.text || "pending"}`;
+    });
+    const state = Object.values(pollStatus).some((entry) => entry.state === "error")
+      ? "error"
+      : Object.values(pollStatus).some((entry) => entry.state === "stale")
+        ? "stale"
+        : Object.values(pollStatus).some((entry) => entry.state === "pending")
+          ? "pending"
+          : "fresh";
+    pollStatusNode.textContent = parts.join(" · ");
+    pollStatusNode.classList.remove("is-pending", "is-fresh", "is-stale", "is-error");
+    pollStatusNode.classList.add(`is-${state}`);
+  };
+
+  const setPollStatus = (key, state, text) => {
+    pollStatus = {
+      ...pollStatus,
+      [key]: {
+        ...(pollStatus[key] || {}),
+        state,
+        text,
+      },
+    };
+    renderPollStatus();
   };
 
   const setToneVariant = (id, variants, active) => {
@@ -432,12 +531,50 @@
       : buildStratMarkers(bars, 1).slice(-STRAT_MARKER_LIMIT);
   };
 
+  const sessionBreakMarkersForPayload = (payload) => {
+    const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+    const previousCount = Math.max(0, Number(payload?.previous_session_bar_count) || 0);
+    const currentCount = Math.max(0, Number(payload?.current_session_bar_count) || 0);
+    if (!bars.length || previousCount <= 0 || currentCount <= 0 || previousCount >= bars.length) {
+      return [];
+    }
+    const firstCurrent = bars[previousCount];
+    const time = Number(firstCurrent?.time);
+    if (!Number.isFinite(time)) return [];
+    return [{ time }];
+  };
+
+  const renderSessionBreakLabel = () => {
+    if (!sessionBreakLabel) return;
+    const marker = sessionBreakMarkersForPayload(lastBarsPayload)[0];
+    if (!marker) {
+      sessionBreakLabel.hidden = true;
+      host.classList.remove("has-session-break");
+      return;
+    }
+    const x = chart.timeScale().timeToCoordinate(marker.time);
+    if (!Number.isFinite(x)) {
+      sessionBreakLabel.hidden = true;
+      host.classList.remove("has-session-break");
+      return;
+    }
+    const width = canvas.clientWidth || host.clientWidth || 0;
+    const left = Math.min(Math.max(Number(x), 18), Math.max(18, width - 54));
+    sessionBreakLabel.textContent = "Today";
+    sessionBreakLabel.style.left = `${left}px`;
+    sessionBreakLabel.hidden = false;
+    host.classList.add("has-session-break");
+  };
+
+  const markersForPayload = (payload) => stratMarkersForPayload(payload);
+
   const applyStratMarkers = ({ force = false } = {}) => {
-    const markers = stratMarkersForPayload(lastBarsPayload);
+    const markers = markersForPayload(lastBarsPayload);
     const nextSignature = markersSignature(markers);
     if (!force && nextSignature === lastMarkerSignature) return;
     candleSeries.setMarkers(markers);
     lastMarkerSignature = nextSignature;
+    renderSessionBreakLabel();
   };
 
   const updateHeaderSummary = (levels) => {
@@ -578,6 +715,20 @@
     ].join("|");
   };
 
+  const barsShapeSignature = (candles, payload) => {
+    if (!Array.isArray(candles) || !candles.length) return "empty";
+    const first = candles[0];
+    const last = candles[candles.length - 1];
+    return [
+      candles.length,
+      Number(first.time) || 0,
+      Number(last.time) || 0,
+      Math.max(0, Number(payload?.previous_session_bar_count) || 0),
+      Math.max(0, Number(payload?.current_session_bar_count) || 0),
+      Boolean(payload?.opening_session_mode) ? "open" : "session",
+    ].join("|");
+  };
+
   const liveBarSignature = (candle, sourceBar) => {
     if (!candle) return "empty";
     return [
@@ -605,15 +756,15 @@
 
   const sanitizeLevelsPayload = (payload) => {
     if (!payload || typeof payload !== "object") return null;
-    for (const key of HERO_REQUIRED_LEVEL_KEYS) {
-      if (!isValidHeroLevel(payload[key])) {
-        return null;
-      }
-    }
-    return {
+    const merged = {
       ...(lastGoodLevelsPayload || {}),
       ...payload,
     };
+    const hasActionableLevel = HERO_LEVEL_KEYS.some((key) => isValidHeroLevel(merged[key]));
+    if (!hasActionableLevel) {
+      return null;
+    }
+    return merged;
   };
 
   const currentChartPrice = () => {
@@ -696,6 +847,24 @@
     ]);
   };
 
+  const activeBarsForPayload = (payload) => {
+    const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+    if (!bars.length) return [];
+    const previousCount = Math.max(0, Number(payload?.previous_session_bar_count) || 0);
+    const currentCount = Math.max(0, Number(payload?.current_session_bar_count) || 0);
+    if (currentCount > 0 && previousCount < bars.length) return bars.slice(previousCount);
+    return bars;
+  };
+
+  const syncAxisSessionMode = (payload) => {
+    const previousDay = String(payload?.previous_session_day || "");
+    const currentDay = String(payload?.current_session_day || "");
+    heroAxisShowsDates = Boolean(previousDay && currentDay && previousDay !== currentDay);
+    try {
+      chart.timeScale().applyOptions({ tickMarkFormatter: formatAxisTime });
+    } catch (_) {}
+  };
+
   const applyViewport = ({ fitContent = false } = {}) => {
     if (!lastBarsPayload || !Array.isArray(lastBarsPayload.bars) || !lastBarsPayload.bars.length) return;
     const bars = lastBarsPayload.bars;
@@ -706,20 +875,20 @@
       const currentCount = Math.max(0, Number(lastBarsPayload.current_session_bar_count) || 0);
       const rightOffsetBars = Math.max(4, Math.min(8, Number(lastBarsPayload.right_offset_bars) || 5));
       const liveWindowBars = currentCount > 0
-        ? Math.max(18, Math.min(34, currentCount + 14))
-        : Math.max(18, Math.min(30, bars.length));
+        ? Math.max(14, Math.min(20, currentCount + 8))
+        : Math.max(14, Math.min(20, bars.length));
       const from = currentCount > 0
         ? Math.max(0, previousCount + currentCount - liveWindowBars)
         : Math.max(0, bars.length - liveWindowBars);
       chart.timeScale().applyOptions({
         rightOffset: rightOffsetBars,
-        barSpacing: 12,
+        barSpacing: 16,
       });
       chart.timeScale().setVisibleLogicalRange({
         from,
         to: (bars.length - 1) + rightOffsetBars,
       });
-      applyFrameBounds(bars, lastLevelsPayload);
+      applyFrameBounds(activeBarsForPayload(lastBarsPayload), lastLevelsPayload);
       renderLevelRail(lastLevelsPayload);
       return;
     }
@@ -727,7 +896,7 @@
     clearFrameBounds();
     chart.timeScale().applyOptions({
       rightOffset: DEFAULT_RIGHT_OFFSET_BARS,
-      barSpacing: 10,
+      barSpacing: 15,
     });
     if (fitContent || !initialized) {
       const requestedVisibleBars = Math.max(
@@ -758,6 +927,15 @@
     priceLines = [];
   };
 
+  const clearSpotPriceLines = () => {
+    spotPriceLines.forEach((line) => {
+      try {
+        candleSeries.removePriceLine(line);
+      } catch (_) {}
+    });
+    spotPriceLines = [];
+  };
+
   const clearDayLevelLines = () => {
     dayLevelLines.forEach((line) => {
       try {
@@ -778,6 +956,7 @@
     );
     if (!displayPrefs.showLevels) {
       clearPriceLines();
+      clearSpotPriceLines();
       levelRailRows = [];
     } else if (lastLevelsPayload) {
       updateOverlayLines(lastLevelsPayload);
@@ -798,6 +977,32 @@
     const numeric = asNum(value);
     if (numeric === null) return;
     priceLines.push(
+      candleSeries.createPriceLine({
+        price: numeric,
+        color,
+        lineWidth: width,
+        lineStyle: style,
+        axisLabelVisible: axis,
+        axisLabelColor,
+        axisLabelTextColor,
+        title,
+      })
+    );
+  };
+
+  const addSpotPriceLine = ({
+    title,
+    value,
+    color,
+    width = 1,
+    style = 0,
+    axis = false,
+    axisLabelColor,
+    axisLabelTextColor,
+  }) => {
+    const numeric = asNum(value);
+    if (numeric === null) return;
+    spotPriceLines.push(
       candleSeries.createPriceLine({
         price: numeric,
         color,
@@ -894,6 +1099,7 @@
   const updateOverlayLines = (levels) => {
     // Python is the source of truth for state; the frontend only renders levels and emphasis.
     clearPriceLines();
+    clearSpotPriceLines();
     if (!displayPrefs.showLevels) {
       levelRailRows = [];
       renderLevelRail(levels);
@@ -977,7 +1183,7 @@
       axisLabelTextColor: HERO_CHART_THEME.labelNcwText,
     });
     pushRailRow("call-next", "NCW", nextCallWall);
-    addLevelLine({
+    addSpotPriceLine({
       title: "",
       value: price,
       color: HERO_CHART_THEME.current,
@@ -985,7 +1191,7 @@
       style: 1,
       axis: false,
     });
-    addLevelLine({
+    addSpotPriceLine({
       title: "P",
       value: price,
       color: HERO_CHART_THEME.spx,
@@ -997,6 +1203,36 @@
     pushRailRow("spot", "P", price, "current");
     levelRailRows = nextRailRows;
     renderLevelRail(levels);
+  };
+
+  const updateSpotOverlayPrice = (price) => {
+    const numeric = asNum(price);
+    if (numeric === null) return;
+    clearSpotPriceLines();
+    levelRailRows = [
+      ...levelRailRows.filter((row) => row.kind !== "spot"),
+      { kind: "spot", title: "P", value: numeric, emphasis: "current" },
+    ];
+    if (displayPrefs.showLevels) {
+      addSpotPriceLine({
+        title: "",
+        value: numeric,
+        color: HERO_CHART_THEME.current,
+        width: 1,
+        style: 1,
+        axis: false,
+      });
+      addSpotPriceLine({
+        title: "P",
+        value: numeric,
+        color: HERO_CHART_THEME.spx,
+        width: 2,
+        style: 2,
+        axisLabelColor: HERO_CHART_THEME.labelBlueBg,
+        axisLabelTextColor: HERO_CHART_THEME.labelBlueText,
+      });
+    }
+    renderLevelRail(lastLevelsPayload);
   };
 
   const renderLevelRail = (levels) => {
@@ -1097,6 +1333,7 @@
       if (requestSerial !== barsRequestSerial || requestInterval !== interval) return;
       const bars = Array.isArray(payload.bars) ? payload.bars : [];
       if (!bars.length) {
+        setPollStatus("bars", "error", "empty");
         if (emptyState) {
           emptyState.hidden = false;
           emptyState.textContent = `Tradier returned no intraday bars for ${symbol}.`;
@@ -1119,6 +1356,7 @@
       const candles = normalizedBars.map(({ candle }) => candle);
       const sourceBars = normalizedBars.map(({ source }) => source);
       if (!candles.length) {
+        setPollStatus("bars", "error", "invalid");
         if (emptyState) {
           emptyState.hidden = false;
           emptyState.textContent = `Tradier returned invalid intraday bars for ${symbol}.`;
@@ -1127,6 +1365,7 @@
       }
 
       const nextBarsSignature = barsSignature(candles, payload);
+      const nextDataShapeSignature = barsShapeSignature(candles, payload);
       const previousSessionBarCount = Math.max(0, Number(payload.previous_session_bar_count) || 0);
       const currentSessionBarCount = Math.max(0, Number(payload.current_session_bar_count) || 0);
       const boundedPreviousCount = Math.min(previousSessionBarCount, candles.length);
@@ -1144,6 +1383,8 @@
         ...payload,
         bars: candles,
       };
+      syncAxisSessionMode(lastBarsPayload);
+      setPollStatus("bars", "fresh", formatClock(payload.latest_bar_time || payload.fetched_at));
 
       if (initialized && !fitContent && nextBarsSignature === lastBarsSignature) {
         if (nextLiveBarSignature !== lastLiveBarSignature && latestCandle) {
@@ -1168,6 +1409,26 @@
       }
 
       const volume = volumeBarsForSource(activeSourceBars);
+      const canPatchLatestBar = (
+        initialized
+        && !fitContent
+        && nextDataShapeSignature === lastDataShapeSignature
+        && latestCandle
+      );
+
+      if (canPatchLatestBar) {
+        candleSeries.update(latestCandle);
+        const latestVolume = volumeBarForSource(latestSourceBar);
+        if (latestVolume) volumeSeries.update(latestVolume);
+        applyStratMarkers();
+        updateDayLevelLines();
+        lastBarsSignature = nextBarsSignature;
+        lastDataShapeSignature = nextDataShapeSignature;
+        lastLiveBarSignature = nextLiveBarSignature;
+        setSpotTrendTone(detectShortTermTrend(activeCandles));
+        if (emptyState) emptyState.hidden = true;
+        return;
+      }
 
       priorSessionSeries.setData(currentCandles.length ? priorCandles : []);
       candleSeries.setData(activeCandles);
@@ -1175,9 +1436,10 @@
       volumeSeries.setData(volume);
       updateDayLevelLines();
       lastBarsSignature = nextBarsSignature;
+      lastDataShapeSignature = nextDataShapeSignature;
       lastLiveBarSignature = nextLiveBarSignature;
       setSpotTrendTone(detectShortTermTrend(activeCandles));
-      applyViewport({ fitContent });
+      if (fitContent || !initialized) applyViewport({ fitContent });
       if (emptyState) emptyState.hidden = true;
       if (!initialized) {
         initialized = true;
@@ -1195,9 +1457,11 @@
       const payload = await fetchJson(levelsEndpoint());
       const nextLevels = sanitizeLevelsPayload(payload);
       if (!nextLevels) {
+        setPollStatus("levels", "error", "invalid");
         console.warn(`${symbol} hero levels update skipped: invalid level payload`, payload);
         return;
       }
+      setPollStatus("levels", "fresh", formatClock(nextLevels.as_of || nextLevels.snapshot_timestamp));
       const nextSignature = levelsSignature(nextLevels);
       if (nextSignature === lastAppliedLevelsSignature) {
         lastLevelsPayload = nextLevels;
@@ -1205,53 +1469,41 @@
         return;
       }
       scheduleLevelsApply(nextLevels);
+    } catch (error) {
+      setPollStatus("levels", "error", "error");
+      console.warn(`${symbol} hero levels update failed`, error);
     } finally {
       levelsRequestInFlight = false;
     }
   };
 
   const updateQuotePatch = async () => {
-    if (!initialized || barsRequestInFlight) return;
+    if (!initialized || barsRequestInFlight || quoteRequestInFlight) return;
     const bars = Array.isArray(lastBarsPayload?.bars) ? lastBarsPayload.bars : [];
     if (!bars.length) return;
 
-    const payload = await fetchJson(quoteEndpoint());
-    const price = asNum(payload?.price);
-    if (price === null || price <= 0) return;
+    quoteRequestInFlight = true;
+    try {
+      const payload = await fetchJson(quoteEndpoint());
+      const price = asNum(payload?.price);
+      if (price === null || price <= 0) {
+        setPollStatus("quote", "error", "unavailable");
+        return;
+      }
+      setPollStatus("quote", "fresh", formatAge(payload?.as_of || new Date()));
 
-    const signature = [
-      Number(price).toFixed(4),
-      String(payload?.as_of || ""),
-      String(payload?.provider || ""),
-    ].join("|");
-    if (signature === lastQuotePatchSignature) return;
+      const signature = [
+        Number(price).toFixed(4),
+        String(payload?.as_of || ""),
+        String(payload?.provider || ""),
+      ].join("|");
+      if (signature === lastQuotePatchSignature) return;
 
-    const latestIndex = bars.length - 1;
-    const latest = bars[latestIndex];
-    const open = asNum(latest.open) ?? price;
-    const high = asNum(latest.high) ?? price;
-    const low = asNum(latest.low) ?? price;
-    const patched = {
-      ...latest,
-      open,
-      high: Math.max(high, price),
-      low: Math.min(low, price),
-      close: price,
-    };
-    bars[latestIndex] = patched;
-    lastBarsPayload = {
-      ...lastBarsPayload,
-      bars,
-    };
-
-    candleSeries.update(patched);
-    lastLiveBarSignature = liveBarSignature(patched, latest);
-    lastQuotePatchSignature = signature;
-    setText("marketPulseHeroSpot", fmt(price, 2));
-    setSpotTrendTone(detectShortTermTrend(bars));
-    if (lastLevelsPayload) {
-      updateOverlayLines(lastLevelsPayload);
-      applyFrameBounds(bars, lastLevelsPayload);
+      lastQuotePatchSignature = signature;
+      setText("marketPulseHeroSpot", fmt(price, 2));
+      updateSpotOverlayPrice(price);
+    } finally {
+      quoteRequestInFlight = false;
     }
   };
 
@@ -1264,32 +1516,91 @@
     quoteTimer = null;
   };
 
+  const pollingNumber = (key, fallback) => {
+    const value = Number(polling?.[key]);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+
+  const marketIsOpenForPolling = () => {
+    const phase = String(polling?.session_phase || "").trim().toLowerCase();
+    return phase === "open" || phase === "regular" || phase === "live";
+  };
+
+  const barsBaseIntervalMs = () => {
+    if (!pageVisible) {
+      return Math.max(60000, pollingNumber("hidden_bars_interval_ms", HIDDEN_BARS_INTERVAL_MS));
+    }
+    if (!marketIsOpenForPolling()) {
+      return Math.max(120000, pollingNumber("closed_bars_interval_ms", 180000));
+    }
+    return Math.max(8000, pollingNumber("bars_interval_ms", 10000));
+  };
+
+  const quoteBaseIntervalMs = () => {
+    if (!pageVisible) {
+      return Math.max(15000, pollingNumber("hidden_quote_interval_ms", HIDDEN_QUOTE_INTERVAL_MS));
+    }
+    if (!marketIsOpenForPolling()) {
+      return Math.max(30000, pollingNumber("closed_quote_interval_ms", 60000));
+    }
+    return Math.max(3000, pollingNumber("quote_interval_ms", 3000));
+  };
+
+  const levelsBaseIntervalMs = () => {
+    if (!pageVisible) {
+      return Math.max(120000, pollingNumber("hidden_levels_interval_ms", HIDDEN_LEVELS_INTERVAL_MS));
+    }
+    if (!marketIsOpenForPolling()) {
+      return Math.max(300000, pollingNumber("closed_levels_interval_ms", 600000));
+    }
+    return Math.max(30000, pollingNumber("levels_interval_ms", 45000));
+  };
+
+  const nextBarBoundaryDelayMs = () => {
+    if (!marketIsOpenForPolling()) return null;
+    const minutes = INTERVAL_MINUTES[interval] || INTERVAL_MINUTES[DEFAULT_INTERVAL];
+    const boundaryMs = Math.max(60000, minutes * 60 * 1000);
+    const graceMs = Math.max(1000, pollingNumber("bar_boundary_grace_ms", 3000));
+    const nowMs = Date.now();
+    const nextBoundaryMs = Math.ceil(nowMs / boundaryMs) * boundaryMs;
+    return Math.max(1000, (nextBoundaryMs + graceMs) - nowMs);
+  };
+
+  const nextBarsPollDelayMs = () => {
+    const baseMs = barsBaseIntervalMs();
+    const boundaryMs = nextBarBoundaryDelayMs();
+    if (boundaryMs === null) return baseMs;
+    return Math.min(baseMs, boundaryMs);
+  };
+
   const scheduleBarsPoll = (delay) => {
     window.clearTimeout(barsTimer);
     if (!pageVisible) return;
-    const intervalMs = Math.max(15000, Number(polling.bars_interval_ms) || 45000);
+    const fallbackDelay = nextBarsPollDelayMs();
     barsTimer = window.setTimeout(async () => {
       try {
         await updateBars();
       } catch (error) {
+        setPollStatus("bars", "error", "error");
         if (emptyState) {
           emptyState.hidden = false;
           emptyState.textContent = `${symbol} chart refresh failed: ${error.message}`;
         }
       } finally {
-        scheduleBarsPoll(intervalMs);
+        scheduleBarsPoll(nextBarsPollDelayMs());
       }
-    }, Math.max(0, Number(delay) || intervalMs));
+    }, Math.max(0, Number(delay) || fallbackDelay));
   };
 
   const scheduleLevelsPoll = (delay) => {
     window.clearTimeout(levelsTimer);
     if (!pageVisible) return;
-    const intervalMs = Math.max(10000, Number(polling.levels_interval_ms) || 20000);
+    const intervalMs = levelsBaseIntervalMs();
     levelsTimer = window.setTimeout(async () => {
       try {
         await updateLevels();
       } catch (_) {
+        setPollStatus("levels", "error", "error");
       } finally {
         scheduleLevelsPoll(intervalMs);
       }
@@ -1299,11 +1610,12 @@
   const scheduleQuotePoll = (delay) => {
     window.clearTimeout(quoteTimer);
     if (!pageVisible) return;
-    const intervalMs = Math.max(2000, Number(polling.quote_interval_ms) || 5000);
+    const intervalMs = quoteBaseIntervalMs();
     quoteTimer = window.setTimeout(async () => {
       try {
         await updateQuotePatch();
       } catch (_) {
+        setPollStatus("quote", "error", "error");
       } finally {
         scheduleQuotePoll(intervalMs);
       }
@@ -1312,9 +1624,9 @@
 
   const startPolling = () => {
     clearPollTimers();
-    scheduleBarsPoll(Math.min(Math.max(15000, Number(polling.bars_interval_ms) || 45000), HIDDEN_BARS_INTERVAL_MS));
-    scheduleLevelsPoll(Math.min(Math.max(10000, Number(polling.levels_interval_ms) || 20000), HIDDEN_LEVELS_INTERVAL_MS));
-    scheduleQuotePoll(Math.min(Math.max(2000, Number(polling.quote_interval_ms) || 5000), HIDDEN_QUOTE_INTERVAL_MS));
+    scheduleBarsPoll(nextBarsPollDelayMs());
+    scheduleLevelsPoll(levelsBaseIntervalMs());
+    scheduleQuotePoll(quoteBaseIntervalMs());
   };
 
   const boot = async () => {
@@ -1326,14 +1638,22 @@
     } catch (_) {}
 
     try {
-      await Promise.all([updateBars({ fitContent: true }), updateLevels()]);
+      await updateBars({ fitContent: true });
+      if (!initialized) {
+        window.dispatchEvent(new CustomEvent("market-pulse-chart-ready"));
+      }
       startPolling();
+      updateLevels().catch((error) => {
+        setPollStatus("levels", "error", "error");
+        console.warn(`${symbol} hero levels bootstrap failed`, error);
+      });
     } catch (error) {
       if (emptyState) {
         emptyState.hidden = false;
         emptyState.textContent = `${symbol} hero failed to initialize: ${error.message}`;
       }
       window.dispatchEvent(new CustomEvent("market-pulse-chart-ready"));
+      startPolling();
     }
   };
 
@@ -1347,6 +1667,7 @@
       chart.applyOptions({ width: nextWidth, height: nextHeight });
     } catch (_) {}
     renderLevelRail(lastLevelsPayload);
+    renderSessionBreakLabel();
   };
 
   const bindDisplayToggles = () => {
@@ -1389,16 +1710,21 @@
         barsRequestInFlight = false;
         lastBarsPayload = null;
         lastBarsSignature = "";
+        lastDataShapeSignature = "";
         lastLiveBarSignature = "";
         lastQuotePatchSignature = "";
         lastMarkerSignature = "";
         lastDayLevelSignature = "";
+        setPollStatus("bars", "pending", "loading");
+        setPollStatus("quote", "pending", "pending");
+        setPollStatus("levels", "pending", "pending");
         syncIntervalControls();
         clearPollTimers();
         priorSessionSeries.setData([]);
         candleSeries.setData([]);
         volumeSeries.setData([]);
         candleSeries.setMarkers([]);
+        renderSessionBreakLabel();
         renderLevelRail(lastLevelsPayload);
         if (emptyState) {
           emptyState.hidden = false;
@@ -1419,6 +1745,7 @@
   };
 
   loadDisplayPrefs();
+  renderPollStatus();
   syncToggleButtons();
   syncIntervalControls();
   bindDisplayToggles();
@@ -1438,6 +1765,7 @@
   try {
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       renderLevelRail(lastLevelsPayload);
+      renderSessionBreakLabel();
     });
   } catch (_) {}
   document.addEventListener("visibilitychange", () => {

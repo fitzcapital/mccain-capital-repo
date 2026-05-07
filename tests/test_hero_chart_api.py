@@ -222,6 +222,14 @@ def test_get_intraday_bars_opening_session_returns_prior_plus_current(monkeypatc
     assert payload["previous_session_bar_count"] == 2
     assert payload["current_session_bar_count"] == 2
     assert payload["opening_session_mode"] is True
+    assert payload["previous_session_day"] == "2026-04-07"
+    assert payload["current_session_day"] == "2026-04-08"
+    assert payload["session_metadata"]["previous_session_day"] == "2026-04-07"
+    assert payload["session_metadata"]["current_session_day"] == "2026-04-08"
+    assert payload["session_metadata"]["opening_session_mode"] is True
+    assert payload["fetched_at"] == now_et.isoformat()
+    assert payload["latest_bar_time"] == "2026-04-08T09:40:00-04:00"
+    assert payload["first_current_bar_time"] == "2026-04-08T09:35:00-04:00"
     assert payload["bars"][0]["close"] == 6760
     assert payload["bars"][-1]["close"] == 6774
     assert payload["visible_window_bars"] > 4
@@ -275,6 +283,11 @@ def test_get_intraday_bars_regular_session_prefers_today_only_after_opening_wind
     assert payload["opening_session_mode"] is False
     assert payload["previous_session_bar_count"] == 0
     assert payload["current_session_bar_count"] == 10
+    assert payload["previous_session_day"] == ""
+    assert payload["current_session_day"] == "2026-04-08"
+    assert payload["session_metadata"]["phase"] == "open"
+    assert payload["session_metadata"]["current_session_bar_count"] == 10
+    assert payload["latest_bar_time"] == "2026-04-08T10:15:00-04:00"
     assert payload["session_target_bar_count"] == 79
     assert len(payload["bars"]) == 10
     assert payload["bars"][0]["close"] == 6771

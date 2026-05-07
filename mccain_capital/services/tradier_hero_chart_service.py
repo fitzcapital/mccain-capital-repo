@@ -36,13 +36,17 @@ SUPPORTED_INTERVAL_MINUTES = {
     "60m": 60,
 }
 CANONICAL_INTERVALS = {
+    "5": "5min",
     "5m": "5min",
     "5min": "5min",
+    "15": "15min",
     "15m": "15min",
     "15min": "15min",
+    "30": "30min",
     "30m": "30min",
     "30min": "30min",
     "1h": "1h",
+    "60": "1h",
     "60m": "1h",
     "60min": "1h",
 }
@@ -60,6 +64,13 @@ def _as_float(value: Any) -> Optional[float]:
         return float(value) if value is not None else None
     except Exception:
         return None
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
 
 
 def _session_phase(now_et: datetime) -> str:
@@ -371,6 +382,38 @@ def _synthetic_quote_bar(
     ]
 
 
+def _iso_from_bar_time(value: Any) -> str:
+    numeric = _as_float(value)
+    if numeric is None:
+        return ""
+    try:
+        return datetime.fromtimestamp(int(numeric), tz=app_runtime.TZ).isoformat()
+    except Exception:
+        return ""
+
+
+def _with_poll_metadata(payload: Dict[str, Any], *, now_et: datetime) -> Dict[str, Any]:
+    bars = list(payload.get("bars") or [])
+    latest_bar = bars[-1] if bars else {}
+    previous_count = max(0, _as_int(payload.get("previous_session_bar_count")))
+    current_count = max(0, _as_int(payload.get("current_session_bar_count")))
+    first_current = bars[previous_count] if current_count > 0 and previous_count < len(bars) else {}
+    return {
+        **payload,
+        "fetched_at": now_et.isoformat(),
+        "latest_bar_time": _iso_from_bar_time(latest_bar.get("time")),
+        "first_current_bar_time": _iso_from_bar_time(first_current.get("time")),
+        "session_metadata": {
+            "phase": _session_phase(now_et),
+            "previous_session_day": str(payload.get("previous_session_day") or ""),
+            "current_session_day": str(payload.get("current_session_day") or ""),
+            "previous_session_bar_count": previous_count,
+            "current_session_bar_count": current_count,
+            "opening_session_mode": bool(payload.get("opening_session_mode")),
+        },
+    }
+
+
 def normalize_tradier_timesales(
     rows: List[Dict[str, Any]], *, interval: str = DEFAULT_INTERVAL, limit: int = DEFAULT_BARS_LIMIT
 ) -> List[Dict[str, Any]]:
@@ -473,7 +516,7 @@ def get_intraday_bars(
                 interval=interval,
             )
         )
-        return payload
+        return _with_poll_metadata(payload, now_et=now_et)
 
     if _session_phase(now_et) != "open":
         two_session_payload = _two_session_regular_bars(
@@ -483,7 +526,7 @@ def get_intraday_bars(
             interval=interval,
         )
         payload.update(two_session_payload)
-        return payload
+        return _with_poll_metadata(payload, now_et=now_et)
 
     if not normalized_current:
         quote_price = _as_float(get_live_quote(symbol_name).get("price"))
@@ -498,7 +541,7 @@ def get_intraday_bars(
                 interval=interval,
             )
         )
-        return payload
+        return _with_poll_metadata(payload, now_et=now_et)
 
     framing = _opening_session_carryover_bars(
         current_bars=normalized_current,
@@ -507,15 +550,15 @@ def get_intraday_bars(
         interval=interval,
     )
     payload.update(framing)
-    return payload
+    return _with_poll_metadata(payload, now_et=now_et)
 
 
 def get_live_quote(symbol: str = DEFAULT_SYMBOL, *, force_refresh: bool = False) -> Dict[str, Any]:
     try:
         quote = dict(
             (
-                market_data_service.get_watchlist_tradier(
-                    [symbol], force_refresh=force_refresh
+                market_data_service.get_watchlist(
+                    [symbol], allow_yf_fallback=False, force_refresh=force_refresh
                 ).get(symbol)
                 or {}
             )
@@ -728,7 +771,15 @@ def get_stream_session_payload() -> Dict[str, Any]:
         "mode": "polling",
         "enabled": False,
         "symbol": DEFAULT_SYMBOL,
-        "bars_interval_ms": 15000,
-        "levels_interval_ms": 10000,
+        "session_phase": _session_phase(app_runtime.now_et()),
+        "bars_interval_ms": 10000,
         "quote_interval_ms": 3000,
+        "levels_interval_ms": 45000,
+        "closed_bars_interval_ms": 180000,
+        "closed_quote_interval_ms": 60000,
+        "closed_levels_interval_ms": 600000,
+        "hidden_bars_interval_ms": 120000,
+        "hidden_quote_interval_ms": 15000,
+        "hidden_levels_interval_ms": 300000,
+        "bar_boundary_grace_ms": 3000,
     }

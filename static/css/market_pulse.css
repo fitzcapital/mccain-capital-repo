@@ -583,6 +583,84 @@ body.page-market-pulse .marketPulseExecutionHeroChartToggle span{
   letter-spacing:.04em;
 }
 
+body.page-market-pulse .marketPulseExecutionHeroPollStatus{
+  display:flex;
+  align-items:center;
+  min-height:18px;
+  margin:-3px 4px 5px;
+  padding:0 4px;
+  color:rgba(177, 194, 219, .76);
+  font-size:.58rem;
+  line-height:1.25;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroPollStatus::before{
+  content:"";
+  width:6px;
+  height:6px;
+  margin-right:7px;
+  border-radius:999px;
+  background:rgba(148, 163, 184, .85);
+  box-shadow:0 0 10px rgba(148, 163, 184, .2);
+}
+
+body.page-market-pulse .marketPulseExecutionHeroPollStatus.is-fresh::before{
+  background:#34d399;
+  box-shadow:0 0 12px rgba(52, 211, 153, .34);
+}
+
+body.page-market-pulse .marketPulseExecutionHeroPollStatus.is-stale::before,
+body.page-market-pulse .marketPulseExecutionHeroPollStatus.is-pending::before{
+  background:#fbbf24;
+  box-shadow:0 0 12px rgba(251, 191, 36, .24);
+}
+
+body.page-market-pulse .marketPulseExecutionHeroPollStatus.is-error{
+  color:rgba(255, 177, 190, .9);
+}
+
+body.page-market-pulse .marketPulseExecutionHeroPollStatus.is-error::before{
+  background:#fb7185;
+  box-shadow:0 0 12px rgba(251, 113, 133, .32);
+}
+
+body.page-market-pulse .marketPulseExecutionHeroSessionBreak{
+  position:absolute;
+  top:10px;
+  z-index:4;
+  transform:translateX(-50%);
+  max-width:120px;
+  padding:3px 7px;
+  border-radius:999px;
+  border:1px solid rgba(99, 179, 255, .38);
+  background:rgba(8, 18, 33, .86);
+  color:rgba(218, 235, 255, .94);
+  box-shadow:0 0 14px rgba(47, 107, 255, .20);
+  font-size:.58rem;
+  line-height:1.15;
+  font-weight:850;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  white-space:nowrap;
+  pointer-events:none;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroSessionBreak::before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:100%;
+  width:1px;
+  height:520px;
+  transform:translateX(-50%);
+  background:linear-gradient(180deg, rgba(99, 179, 255, .44), rgba(99, 179, 255, .02));
+}
+
 body.page-market-pulse .marketPulseExecutionHeroChartStage{
   min-height:580px;
   padding:6px 6px 8px;
@@ -3230,5 +3308,99 @@ body.page-market-pulse .marketFeedPanel .marketFeedCommand__metaItem{
     min-height:52px !important;
     border-radius:14px !important;
     font-size:10px !important;
+  }
+}
+
+/* Final override: keep execution level pills contained after all theme/mobile passes. */
+body.page-market-pulse,
+body[data-theme="cinematic-nebula"].page-market-pulse{
+  --mp-exec-level-rail-width:132px;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroChartStage,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartStage{
+  padding-right:calc(var(--mp-exec-level-rail-width) + 12px) !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroLevelRail,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRail{
+  width:var(--mp-exec-level-rail-width) !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroLevelRailItem,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem{
+  box-sizing:border-box !important;
+  width:calc(var(--mp-exec-level-rail-width) - 14px) !important;
+  max-width:calc(var(--mp-exec-level-rail-width) - 14px) !important;
+  min-height:38px !important;
+  grid-template-columns:minmax(20px, 34px) minmax(0, 1fr) !important;
+  gap:5px !important;
+  align-items:center !important;
+  padding:7px 7px !important;
+  overflow:hidden !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroLevelRailItem span,
+body.page-market-pulse .marketPulseExecutionHeroLevelRailItem strong,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem span,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem strong{
+  min-width:0 !important;
+  max-width:100% !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  line-height:1.25 !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroLevelRailItem span,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem span{
+  font-size:.62rem !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroLevelRailItem strong,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem strong{
+  font-size:clamp(.68rem, .74vw, .78rem) !important;
+  line-height:1.2 !important;
+  font-variant-numeric:tabular-nums lining-nums !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroChartStage > div.tv-lightweight-charts,
+body.page-market-pulse .marketPulseExecutionHeroChartStage canvas,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartStage > div.tv-lightweight-charts,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroChartStage canvas{
+  font-family:Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif !important;
+  line-height:1.28 !important;
+  font-variant-numeric:tabular-nums lining-nums !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-main,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-main{
+  grid-template-columns:minmax(28px, 38px) minmax(0, 1fr) !important;
+}
+
+body.page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-spot,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem.is-spot{
+  grid-template-columns:minmax(14px, 20px) minmax(0, 1fr) !important;
+}
+
+@media (max-width:760px){
+  body.page-market-pulse,
+  body[data-theme="cinematic-nebula"].page-market-pulse{
+    --mp-exec-level-rail-width:112px;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroLevelRailItem,
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem{
+    width:calc(var(--mp-exec-level-rail-width) - 10px) !important;
+    max-width:calc(var(--mp-exec-level-rail-width) - 10px) !important;
+    grid-template-columns:minmax(18px, 28px) minmax(0, 1fr) !important;
+    min-height:36px !important;
+    padding:6px 6px !important;
+  }
+
+  body.page-market-pulse .marketPulseExecutionHeroLevelRailItem strong,
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseExecutionHeroLevelRailItem strong{
+    font-size:.66rem !important;
+    line-height:1.2 !important;
   }
 }
