@@ -1,3 +1,4 @@
+{% from "partials/app_theme_macros.html" import app_icon %}
 <div class="tiny stack8 line15">Daily P/L calendar view for <strong>{{ calendar_state.scope_label }}</strong>.</div>
 <div class="hr"></div>
 {% if calendar_state.traded_days == 0 %}
@@ -5,13 +6,13 @@
 {% endif %}
 <div class="calendarLegend stack10" aria-label="Calendar legend and monthly summary">
   <div class="legendStats" aria-label="Month trading day summary">
-    <span class="legendStat legendStatWeekdays"><strong>{{ calendar_state.traded_days }}</strong> weekdays</span>
-    <span class="legendStat legendStatGreen"><strong>{{ calendar_state.green_days }}</strong> green</span>
-    <span class="legendStat legendStatRed"><strong>{{ calendar_state.red_days }}</strong> red</span>
-    <span class="legendStat legendStatFlat"><strong>{{ calendar_state.flat_days }}</strong> flat</span>
+    <span class="legendStat legendStatWeekdays"><span class="dashboardPillIcon">{{ app_icon('calendar') }}</span><strong>{{ calendar_state.traded_days }}</strong> weekdays</span>
+    <span class="legendStat legendStatGreen"><span class="dashboardPillIcon">{{ app_icon('strategy') }}</span><strong>{{ calendar_state.green_days }}</strong> green</span>
+    <span class="legendStat legendStatRed"><span class="dashboardPillIcon">{{ app_icon('alert') }}</span><strong>{{ calendar_state.red_days }}</strong> red</span>
+    <span class="legendStat legendStatFlat"><span class="dashboardPillIcon">{{ app_icon('review') }}</span><strong>{{ calendar_state.flat_days }}</strong> flat</span>
     <details class="calendarLegendHelp">
       <summary aria-label="Calendar legend help">
-        <span class="calendarLegendHelpIcon">i</span>
+        <span class="calendarLegendHelpIcon">{{ app_icon('review') }}</span>
         <span>Legend</span>
       </summary>
       <div class="calendarLegendPopover">

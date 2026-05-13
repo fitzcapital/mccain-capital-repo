@@ -8,7 +8,7 @@
   };
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-  const LOCAL_FLIP_NONE_LABEL = "No Local Flip between Put Wall and Call Wall";
+  const LOCAL_FLIP_NONE_LABEL = "No local flip in band";
   const abs = (value) => {
     const n = asNum(value);
     return n === null ? null : Math.abs(n);
@@ -816,6 +816,87 @@
     if (STATUS_IDS.has(id)) {
       uiFX?.pulseNode?.(node, "info");
     }
+  };
+
+  const renderHeaderLevels = (items) => {
+    const node = document.getElementById("marketPulseHeaderSubline");
+    if (!node) return;
+    const levelIcon = (name) => {
+      if (name === "activity") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-5 3.6 10 2.4-6H21"></path></svg>`;
+      if (name === "orbit") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2.2"></circle><path d="M4 12c0-3.8 3.6-7 8-7s8 3.2 8 7-3.6 7-8 7-8-3.2-8-7Z"></path></svg>`;
+      if (name === "gamma-symbol") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.2 7.4c.9-2.3 3.3-3.4 5.3-2.6 3.3 1.3 3.5 5.8 2.7 10.6-.6 3.5-.8 5.2-2.1 6.8"></path><path d="M12.4 13.8 18.7 5.2"></path></svg>`;
+      if (name === "compass") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"></path></svg>`;
+      if (name === "check") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.2 2.2 4.8-5"></path></svg>`;
+      if (name === "warning") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 18H2L12 3Z"></path><path d="M12 9v4"></path><circle cx="12" cy="16.5" r=".8" fill="currentColor" stroke="none"></circle></svg>`;
+      if (name === "up") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6"></path></svg>`;
+      if (name === "down") return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 10 6 6 6-6"></path></svg>`;
+      return "";
+    };
+    node.innerHTML = (Array.isArray(items) ? items : []).map((item) => {
+      const label = String(item.label || "");
+      const value = String(item.value ?? "—");
+      const icon = String(item.icon || "");
+      const muted = label === "LF" && value === LOCAL_FLIP_NONE_LABEL ? " is-muted" : "";
+      const iconMarkup = icon ? `<span class="marketPulseHeaderLevelIcon">${levelIcon(icon)}</span>` : "";
+      return `<div class="marketPulseHeaderLevelItem${muted}"><span>${iconMarkup}<span>${label}</span></span><strong>${value}</strong></div>`;
+    }).join("");
+  };
+
+  const renderSimpleBadges = (id, labels) => {
+    const root = document.getElementById(id);
+    if (!root) return;
+    const normalized = (Array.isArray(labels) ? labels : [])
+      .map((label) => String(label || "").trim())
+      .filter(Boolean);
+    root.innerHTML = normalized.map((label) => `<span class="marketPulseGammaBadge">${label}</span>`).join("");
+  };
+
+  const gammaStateMeta = (dealerRegime) => {
+    const normalized = String(dealerRegime || "").toLowerCase();
+    if (normalized.includes("positive")) {
+      return {
+        cardClass: "gamma-card--positive",
+        pillClass: "state-pill--positive",
+        pillLabel: "POSITIVE GAMMA",
+        badges: ["PINNING", "MEAN REVERSION"],
+      };
+    }
+    if (normalized.includes("negative")) {
+      return {
+        cardClass: "gamma-card--negative",
+        pillClass: "state-pill--negative",
+        pillLabel: "NEGATIVE GAMMA",
+        badges: ["EXPANSION RISK", "TREND CONTINUATION"],
+      };
+    }
+    if (normalized.includes("unconfirmed")) {
+      return {
+        cardClass: "gamma-card--unconfirmed",
+        pillClass: "state-pill--wait",
+        pillLabel: "WAIT FOR CONFIRMATION",
+        badges: ["WAIT FOR CONFIRMATION"],
+      };
+    }
+    return {
+      cardClass: "gamma-card--neutral",
+      pillClass: "state-pill--wait",
+      pillLabel: "NEUTRAL / DATA",
+      badges: ["WAIT FOR CONFIRMATION"],
+    };
+  };
+
+  const decisionStateMeta = (label) => {
+    const normalized = String(label || "").trim().toLowerCase();
+    if (normalized === "actionable") {
+      return { pillClass: "state-pill--execute", pillLabel: "EXECUTE" };
+    }
+    if (normalized === "planning only") {
+      return { pillClass: "state-pill--wait", pillLabel: "PLANNING ONLY" };
+    }
+    if (normalized === "no trade") {
+      return { pillClass: "state-pill--negative", pillLabel: "NO TRADE" };
+    }
+    return { pillClass: "state-pill--wait", pillLabel: "WAIT" };
   };
 
   const buildTickPingLabel = (asOfIso, provider) => {
@@ -1952,8 +2033,8 @@
         : `Bearish below Local Flip ${formatNumber(input.localFlip, 0)}`;
 
     setText("marketPulseHeroSpot", formatNumber(input.spot, 2));
-    setText("marketPulseHeroBias", biasLine);
-    const tradeabilityLabel = String(derived.tradeability.label || "Unavailable")
+    setText("marketPulseHeroBias", modelPlaybook.bias_summary_label || biasLine);
+    const tradeabilityLabel = String(modelPlaybook.tradeability_display_label || derived.tradeability.label || "Unavailable")
       .replace(/_/g, " ")
       .trim();
     setText("marketPulseHeroTradeability", tradeabilityLabel || "Unavailable");
@@ -2451,24 +2532,66 @@
     updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), quotePoints, sparkTone(playbookQuote.change_pct));
     applyGlowState([shell, spotPanel], playbookQuote.change_pct);
     setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
+    renderHeaderLevels([
+      { label: "Spot", icon: "activity", value: formatNumber(input.spot, 2) },
+      { label: "Main", icon: "orbit", value: formatNumber(input.gammaFlip, 0) },
+      { label: "LF", icon: "compass", value: input.localFlip === null ? (input.localFlipMissingInBand ? LOCAL_FLIP_NONE_LABEL : "—") : formatNumber(input.localFlip, 0) },
+      { label: "CW", icon: "up", value: formatNumber(input.callWall, 0) },
+      { label: "PW", icon: "down", value: formatNumber(input.putWall, 0) },
+    ]);
     setText("marketPulseHeaderGammaLabel", gammaLabel);
-    setText("marketPulseHeaderGammaSub", gammaSub);
-    setText("marketPulseHeaderBiasPrimary", biasContext);
-    setText("marketPulseHeaderBiasSecondary", biasShort);
+    const decisionLabel = modelPlaybook.decision_label || triggerState.label || "Not actionable yet";
+    const gammaMeta = gammaStateMeta(derived.dealerRegime);
+    const decisionMeta = decisionStateMeta(decisionLabel);
+    setText("marketPulseHeaderDecision", decisionLabel);
+    setText("marketPulseHeaderBiasPrimary", modelPlaybook.bias_summary_label || executionPlan.bias || biasContext);
+    setText("marketPulseHeaderBiasSecondary", modelPlaybook.bias_label || biasContext || "Wait for cleaner structure");
+    setText("marketPulseHeaderTradeability", modelPlaybook.tradeability_display_label || derived.tradeability.label || "Trigger required");
+    setText("marketPulseHeaderStatePill", gammaMeta.pillLabel);
+    setText("marketPulseHeaderDecisionStatePill", decisionMeta.pillLabel);
+    renderSimpleBadges("marketPulseHeaderBadgeRow", gammaMeta.badges);
 
     const gammaCard = document.getElementById("marketPulseHeaderGammaCard");
     if (gammaCard) {
-      gammaCard.classList.remove("is-positive", "is-negative", "is-neutral");
+      gammaCard.classList.remove(
+        "is-positive",
+        "is-negative",
+        "is-neutral",
+        "gamma-card--positive",
+        "gamma-card--negative",
+        "gamma-card--neutral",
+        "gamma-card--unconfirmed"
+      );
       gammaCard.classList.add(
         derived.dealerRegime === "Positive Gamma / Mean Reverting"
           ? "is-positive"
           : derived.dealerRegime === "Negative Gamma / Momentum Amplifying"
             ? "is-negative"
-            : "is-neutral"
+            : "is-neutral",
+        gammaMeta.cardClass
       );
+      const gammaOrb = gammaCard.querySelector(".marketPulseGammaStateOrb");
+      if (gammaOrb) gammaOrb.innerHTML = levelIcon("gamma-symbol");
+      const gammaDot = gammaCard.querySelector(".marketPulseGammaStateDot");
+      if (gammaDot) {
+        gammaDot.innerHTML = levelIcon(
+          derived.dealerRegime === "Positive Gamma / Mean Reverting"
+            ? "check"
+            : derived.dealerRegime === "Negative Gamma / Momentum Amplifying"
+              ? "warning"
+              : "compass"
+        );
+      }
     }
     const biasCard = document.getElementById("marketPulseHeaderBiasCard");
     if (biasCard) {
+      biasCard.dataset.gammaState = String(
+        derived.dealerRegime === "Positive Gamma / Mean Reverting"
+          ? "positive"
+          : derived.dealerRegime === "Negative Gamma / Momentum Amplifying"
+            ? "negative"
+            : "neutral"
+      );
       biasCard.classList.remove("is-positive", "is-negative", "is-neutral");
       biasCard.classList.add(
         biasState === "above_local"
@@ -2478,10 +2601,24 @@
             : "is-neutral"
       );
     }
-    const aboveNode = document.getElementById("marketPulseHeaderBiasAbove");
-    const belowNode = document.getElementById("marketPulseHeaderBiasBelow");
-    if (aboveNode) aboveNode.classList.toggle("is-active", biasState === "above_local");
-    if (belowNode) belowNode.classList.toggle("is-active", biasState === "below_local");
+    const biasRow = document.getElementById("marketPulseHeaderBiasRow");
+    if (biasRow) {
+      const biasHeadline = String(modelPlaybook.bias_summary_label || executionPlan.bias || "").toUpperCase();
+      biasRow.classList.toggle(
+        "action-row--bias-risk",
+        biasState === "below_local" || biasHeadline.includes("RISK")
+      );
+    }
+    const gammaPill = document.getElementById("marketPulseHeaderStatePill");
+    if (gammaPill) {
+      gammaPill.classList.remove("state-pill--positive", "state-pill--negative", "state-pill--wait", "state-pill--execute");
+      gammaPill.classList.add(gammaMeta.pillClass);
+    }
+    const decisionPill = document.getElementById("marketPulseHeaderDecisionStatePill");
+    if (decisionPill) {
+      decisionPill.classList.remove("state-pill--positive", "state-pill--negative", "state-pill--wait", "state-pill--execute");
+      decisionPill.classList.add(decisionMeta.pillClass);
+    }
 
     setText("spxPriorityExpectedMoveHighDist", asNum(derived.distanceToExpectedMoveHigh) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveHigh, 1)} pts`);
     setText("spxPriorityExpectedMoveLowDist", asNum(derived.distanceToExpectedMoveLow) === null ? "—" : `${formatNumber(derived.distanceToExpectedMoveLow, 1)} pts`);
@@ -2489,8 +2626,6 @@
 
     setText("marketPulseSetupHeadline", summarizeStateLine(input, derived, panelMode));
     setText("marketPulseSetupSubline", "");
-    setText("marketPulseSetupLocation", executionPlan.location);
-    setText("marketPulseSetupLocationLine", summarizeStateSubline(derived, panelMode));
     setText("marketPulseSetupBias", executionPlan.bias);
     setText("marketPulseSetupBiasLine", summarizeBiasSubline(executionPlan, derived));
     setText("marketPulseSetupTrigger", executionPlan.trigger);

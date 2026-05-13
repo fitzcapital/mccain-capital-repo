@@ -1,8 +1,9 @@
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
 <div class="card pageHero">
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">📌 Strategy Scorecards</div>
+        {{ app_pill('strategy', 'Strategy Scorecards') }}
         <div class="pageTitleRow">
           <h2 class="pageTitle">{{ hero_title }}</h2>
           <details class="inlineHelp">
@@ -29,7 +30,7 @@
 
 <details class="syncDetails workspaceStatusFold">
   <summary>
-    <span>Strategy Signals</span>
+    <span><span class="appPillIcon">{{ app_icon('review') }}</span><span>Strategy Signals</span></span>
     <span class="tiny muted">{% if headline %}Top seat {{ headline.title }} · {{ headline.status }}{% else %}No strategy tracked yet{% endif %}</span>
   </summary>
   <div class="statusBadgeStrip">
@@ -44,13 +45,13 @@
 
 <div class="dashboardSupportGrid">
   <div class="card supportCard workflowPromptCard"><div class="toolbar">
-    <div class="pill">Playbook Rule</div>
+    {{ app_pill('self', 'Playbook Rule') }}
     <div class="supportLead">One card per executable setup.</div>
     <div class="supportBody">Entry trigger, invalidation, size rule, target logic, and the real sample behind it.</div>
     <div class="supportMeta">If the card cannot tell you when to enter, exit, and stand down, it is not ready.</div>
   </div></div>
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Top Seat</div>
+    {{ app_pill('goals', 'Top Seat') }}
     {% if headline %}
       <div class="supportLead">{{ headline.title }}</div>
       <div class="supportBody">{{ headline.count }} trades · WR {{ '%.1f'|format(headline.win_rate) }}% · Net {{ money(headline.net) }}</div>

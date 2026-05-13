@@ -404,6 +404,9 @@ def test_market_pulse_page_uses_deferred_context_refresh_button(client):
     assert "if (!pageLoaded || !coreReady) return;" in body
     assert 'id="marketPulseFeedFold" open' in body
     assert "Source standby" in body
+    assert "Actionability" in body
+    assert "Gamma Data" in body
+    assert "Decision" in body
 
 
 def test_market_pulse_context_api_returns_playbook_payload(client):
@@ -448,6 +451,8 @@ def test_dashboard_renders_foundation_routine_and_reflection_layers(client):
     assert "Permission" in body
     assert "Next Step" in body
     assert "dashboardCommandDeck" in body
+    assert "dashboardLabelIcon" in body
+    assert "dashboardTapeHeaderSubline" in body
     assert "5-Day Memory" in body
     assert "Alignment Before Action" in body
     assert "Scripture Anchor" in body
@@ -1805,7 +1810,7 @@ def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
                 "QQQ": quote("QQQ", 657.55, -1.01, [660.0, 659.2, 658.4, 658.0, 657.55]),
                 "SPY": quote("SPY", 711.69, -0.49, [715.2, 714.1, 713.0, 712.2, 711.69]),
                 "VIX": quote("VIX", 17.83, -1.06, [18.6, 18.4, 18.2, 18.0, 17.83]),
-                "IWM": quote("IWM", 273.91, -1.17, [277.1, 276.4, 275.2, 274.4, 273.91]),
+                "SPX": quote("SPX", 6780.25, -0.36, [6801.0, 6794.5, 6788.0, 6783.4, 6780.25]),
             },
         },
     )
@@ -1815,7 +1820,7 @@ def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
     assert resp.status_code == 200
     payload = resp.get_json()
     assert payload["ok"] is True
-    assert sorted(payload["series_points"]) == ["IWM", "QQQ", "SPY", "VIX"]
+    assert sorted(payload["series_points"]) == ["QQQ", "SPX", "SPY", "VIX"]
     assert len(payload["series_points"]["SPY"]) == 5
 
 
@@ -1844,7 +1849,7 @@ def test_dashboard_tape_refresh_backfills_vix_intraday_curve(client, monkeypatch
                 "SPY": quote("SPY", 711.69, -0.49),
                 "QQQ": quote("QQQ", 657.55, -1.01),
                 "VIX": quote("VIX", 17.39, 0.06),
-                "IWM": quote("IWM", 273.91, -1.17),
+                "SPX": quote("SPX", 6780.25, -0.36),
             },
             "series_points": {},
             "series": {},
@@ -1895,13 +1900,13 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
         "QQQ": [664.28, 662.90, 661.30, 659.10, 657.55],
         "SPY": [715.23, 714.40, 713.35, 712.20, 711.69],
         "VIX": [18.67, 18.38, 18.12, 17.95, 17.83],
-        "IWM": [277.15, 276.40, 275.35, 274.50, 273.91],
+        "SPX": [6802.15, 6795.40, 6788.35, 6782.50, 6780.25],
     }
     prices = {
         "QQQ": quote("QQQ", 657.55, -1.01),
         "SPY": quote("SPY", 711.69, -0.49),
         "VIX": quote("VIX", 17.83, -1.06),
-        "IWM": quote("IWM", 273.91, -1.17),
+        "SPX": quote("SPX", 6780.25, -0.36),
     }
     monkeypatch.setattr(market_worker, "start_market_worker_once", lambda: None)
     monkeypatch.setattr(
@@ -1963,7 +1968,7 @@ def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, mo
                 "SPX": quote("SPX", 6780.25, 0.12),
                 "QQQ": quote("QQQ", 657.55, -0.10),
                 "VIX": quote("VIX", 17.39, 0.06, {"mini_series": [17.10, 17.22, 17.50, 17.39]}),
-                "IWM": quote("IWM", 286.23, 1.51),
+                "SPY": quote("SPY", 711.69, 0.16),
             },
             "series_points": {},
             "series": {},
@@ -2300,7 +2305,7 @@ def test_dashboard_renders_live_market_pulse_panel(client, monkeypatch):
     )
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Prepare the Session" in resp.data
+    assert b"Prime" in resp.data
     assert b"Milestone" in resp.data
     assert b"Live Market Pulse" not in resp.data
 
@@ -3205,6 +3210,16 @@ def test_trade_mutations_flash_feedback(client):
     )
     assert reviewed.status_code == 200
     assert b"Trade review saved." in reviewed.data
+    assert b"Review Completion" in reviewed.data
+    assert b"All core review checks logged." not in reviewed.data
+
+    review_page = client.get(f"/trades/review/{trade_id}?d={today_iso()}", follow_redirects=True)
+    assert review_page.status_code == 200
+    assert b"Review Completion" in review_page.data
+
+    trades_page = client.get(f"/trades?d={today_iso()}", follow_redirects=True)
+    assert trades_page.status_code == 200
+    assert b"tradeReviewMeta-missing" in trades_page.data
 
     edited = client.post(
         f"/trades/edit/{trade_id}?d={today_iso()}",

@@ -1,8 +1,9 @@
+{% from "partials/app_theme_macros.html" import app_pill %}
 <div class="card pageHero journalHero lifeJournalHero">
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">Life Journal</div>
+        {{ app_pill('life', 'Life Journal') }}
         <div class="pageTitleRow">
           <h2 class="pageTitle">{{ hero_title }}</h2>
           <details class="inlineHelp">
@@ -31,7 +32,7 @@
 <section class="card lifeJournalAlignmentBridge">
   <div class="toolbar">
     <div>
-      <div class="pill">Accountability Dashboard</div>
+      {{ app_pill('review', 'Accountability Dashboard') }}
       <h3>Track the habits behind the journal.</h3>
       <div class="summaryLead">Water, training, walking, sleep, devotion, mood, and daily alignment score.</div>
     </div>
@@ -43,7 +44,7 @@
   <section class="card controlPanel lifeJournalComposer"><div class="toolbar">
     <div class="lifeJournalPanelHead">
       <div>
-        <div class="pill">{% if editing_life_entry %}Edit Life Entry{% else %}New Life Entry{% endif %}</div>
+        {{ app_pill('note', 'Edit Life Entry' if editing_life_entry else 'New Life Entry') }}
         <h3 class="lifeJournalPanelTitle">Capture the moment</h3>
       </div>
       <div class="summaryLead">Quick capture, family note, health update, travel moment, or anything else worth keeping.</div>
@@ -100,7 +101,7 @@
     <section class="card controlPanel lifeJournalFilterPanel"><div class="toolbar">
       <div class="lifeJournalPanelHead">
         <div>
-          <div class="pill">Life Feed</div>
+          {{ app_pill('life', 'Life Feed') }}
           <h3 class="lifeJournalPanelTitle">Recent notes</h3>
         </div>
       </div>

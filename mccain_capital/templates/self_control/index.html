@@ -1,8 +1,9 @@
+{% from "partials/app_theme_macros.html" import app_pill %}
 {% set session_live = active_session and active_session.status in ['active', 'awaiting_journal_unlock'] %}
 <section class="selfControlConsole" data-self-control-console>
   <header class="card selfControlHero tone-{{ self_control_status.tone }}" id="selfControlHero">
     <div class="selfControlHeroMain">
-      <div class="pill">Self-Control Mode</div>
+      {{ app_pill('self', 'Self-Control Mode') }}
       <h1 class="selfControlTitle">
         {% if session_live %}
           Focus Lock Active
@@ -90,7 +91,7 @@
     <section class="card selfBuilderPanel" id="selfControlBuilder">
       <div class="selfSectionHead selfSectionHead-tight">
         <div>
-          <div class="pill">Session Builder</div>
+          {{ app_pill('pace', 'Session Builder') }}
           <h2 class="selfSectionTitle">Build a Focus Window</h2>
         </div>
         <span class="trendChip">One active session at a time</span>

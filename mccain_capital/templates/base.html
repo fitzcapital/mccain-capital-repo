@@ -1,3 +1,4 @@
+{% from "partials/app_theme_macros.html" import app_icon %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -38,7 +39,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=mobile-shell-20260501d">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=live-sync-lane-unlock-20260513a">
   {% if active in ['market-pulse', 'market_pulse'] %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=mobile-shell-20260501d">
   {% endif %}
@@ -454,15 +455,14 @@
 
       <div class="nav">
         <div class="navGroup">
-          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard">Dashboard</a>
-          <a class="btn navPulseBtn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse">Market Pulse</a>
-          <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens">Candle Opens</a>
-          <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades">Trades</a>
-          <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal">Journal</a>
-          <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment">Life Alignment</a>
-          <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget">Budget</a>
-          <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics">Analytics</a>
-          <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar">Calendar</a>
+          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="navLabelIcon">{{ app_icon('dashboard') }}</span><span>Dashboard</span></a>
+          <a class="btn navPulseBtn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="navLabelIcon">{{ app_icon('market-pulse') }}</span><span>Market Pulse</span></a>
+          <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="navLabelIcon">{{ app_icon('candle') }}</span><span>Candle Opens</span></a>
+          <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades"><span class="navLabelIcon">{{ app_icon('trades') }}</span><span>Trades</span></a>
+          <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal"><span class="navLabelIcon">{{ app_icon('journal') }}</span><span>Journal</span></a>
+          <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment"><span class="navLabelIcon">{{ app_icon('life') }}</span><span>Life Alignment</span></a>
+          <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget"><span class="navLabelIcon">{{ app_icon('budget') }}</span><span>Budget</span></a>
+          <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar"><span class="navLabelIcon">{{ app_icon('calendar') }}</span><span>Calendar</span></a>
         </div>
 
         <div class="menuMore">
@@ -487,23 +487,24 @@
               </a>
             {% endif %}
             <div class="menuTitle">Core</div>
-            <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="menuItemIcon">🧭</span><span>Dashboard</span></a>
-            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="menuItemIcon">📈</span><span>Market Pulse</span></a>
-            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="menuItemIcon">🕯️</span><span>Candle Opens</span></a>
-            <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat">The Strat</a>
-            <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook">Playbook</a>
-            <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies">Strategies</a>
+            <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="menuItemIcon">{{ app_icon('dashboard') }}</span><span>Dashboard</span></a>
+            <a class="btn {% if active=='the-plan' %}active{% endif %}" href="/the-plan"><span class="menuItemIcon">{{ app_icon('plan') }}</span><span>The Plan</span></a>
+            <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="menuItemIcon">{{ app_icon('market-pulse') }}</span><span>Market Pulse</span></a>
+            <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="menuItemIcon">{{ app_icon('candle') }}</span><span>Candle Opens</span></a>
+            <a class="btn {% if active=='strat' %}active{% endif %}" href="/strat"><span class="menuItemIcon">{{ app_icon('strategy') }}</span><span>The Strat</span></a>
+            <a class="btn {% if active=='playbook' %}active{% endif %}" href="/playbook"><span class="menuItemIcon">{{ app_icon('playbook') }}</span><span>Playbook</span></a>
+            <a class="btn {% if active=='strategies' %}active{% endif %}" href="/strategies"><span class="menuItemIcon">{{ app_icon('strategy') }}</span><span>Strategies</span></a>
             <div class="hr"></div>
             <div class="menuTitle">Review</div>
-            <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades"><span class="menuItemIcon">📒</span><span>Trades</span></a>
-            <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal"><span class="menuItemIcon">✍️</span><span>Journal</span></a>
-            <a class="btn {% if active=='life-journal' %}active{% endif %}" href="/journal/life">Life Journal</a>
-            <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment"><span class="menuItemIcon">💪</span><span>Life Alignment</span></a>
-            <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget"><span class="menuItemIcon">💰</span><span>Budget</span></a>
-            <a class="btn {% if active=='forward-pace' %}active{% endif %}" href="/forward-pace"><span class="menuItemIcon">📐</span><span>Forward Pace</span></a>
-            <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics"><span class="menuItemIcon">📊</span><span>Analytics</span></a>
-            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar"><span class="menuItemIcon">📅</span><span>Calendar</span></a>
-            <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator"><span class="menuItemIcon">🧮</span><span>Planner</span></a>
+            <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades"><span class="menuItemIcon">{{ app_icon('trades') }}</span><span>Trades</span></a>
+            <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal"><span class="menuItemIcon">{{ app_icon('journal') }}</span><span>Journal</span></a>
+            <a class="btn {% if active=='life-journal' %}active{% endif %}" href="/journal/life"><span class="menuItemIcon">{{ app_icon('life') }}</span><span>Life Journal</span></a>
+            <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment"><span class="menuItemIcon">{{ app_icon('life') }}</span><span>Life Alignment</span></a>
+            <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget"><span class="menuItemIcon">{{ app_icon('budget') }}</span><span>Budget</span></a>
+            <a class="btn {% if active=='forward-pace' %}active{% endif %}" href="/forward-pace"><span class="menuItemIcon">{{ app_icon('pace') }}</span><span>Forward Pace</span></a>
+            <a class="btn {% if active=='analytics' %}active{% endif %}" href="/analytics"><span class="menuItemIcon">{{ app_icon('analytics') }}</span><span>Analytics</span></a>
+            <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar"><span class="menuItemIcon">{{ app_icon('calendar') }}</span><span>Calendar</span></a>
+            <a class="btn {% if active=='calc' %}active{% endif %}" href="/calculator"><span class="menuItemIcon">{{ app_icon('planner') }}</span><span>Planner</span></a>
             {% if active == 'dashboard' %}
               <div class="hr"></div>
               <div class="menuTitle">Dashboard Mode</div>
@@ -516,10 +517,10 @@
             {% endif %}
             <div class="hr"></div>
             <div class="menuTitle">Ops</div>
-            <a class="btn" href="/trades/upload/statement">Live Upload</a>
-            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts">Ops Alerts</a>
-            <a class="btn {% if active=='profile' %}active{% endif %}" href="/profile"><span class="menuItemIcon">👤</span><span>Profile</span></a>
-            <a class="btn" href="/setup"><span class="menuItemIcon">🔐</span><span>Login Setup</span></a>
+            <a class="btn" href="/trades/upload/statement"><span class="menuItemIcon">{{ app_icon('sync') }}</span><span>Live Upload</span></a>
+            <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts"><span class="menuItemIcon">{{ app_icon('ops') }}</span><span>Ops Alerts</span></a>
+            <a class="btn {% if active=='profile' %}active{% endif %}" href="/profile"><span class="menuItemIcon">{{ app_icon('profile') }}</span><span>Profile</span></a>
+            <a class="btn" href="/setup"><span class="menuItemIcon">{{ app_icon('auth') }}</span><span>Login Setup</span></a>
             <button class="btn menuThemeSwitch" type="button" onclick="toggleTheme()" aria-label="Switch visual theme">
               <span class="menuThemeSwitchIcon" aria-hidden="true">✦</span>
               <span data-theme-toggle-label>Theme: Cinematic Nebula</span>
@@ -553,6 +554,10 @@
                 <span>Vanquish Trader</span>
               </a>
             {% endif %}
+            <a class="btn menuIconLink" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener">
+              <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+              <span>Vanquish Dashboard</span>
+            </a>
             {% if auth_enabled %}
               <div class="hr"></div>
               <div class="menuFooterMeta">McCain Capital · {{ current_date|default('2026-04-30') }}</div>
@@ -624,7 +629,7 @@
         <summary class="dashboardOperationalSummary">
           <div class="dashboardOperationalHead">
             <div>
-              <div class="pill">🧭 Ops Band</div>
+              <div class="pill appPill"><span class="appPillIcon">{{ app_icon('ops') }}</span><span>Ops Band</span></div>
               <div class="dashboardOperationalLead">Open this only when sync status or workflow support needs attention. It should stay quiet when the system is healthy.</div>
             </div>
           </div>
@@ -847,6 +852,10 @@
                   <span>Vanquish Trader</span>
                 </a>
               {% endif %}
+              <a class="btn menuIconLink" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener">
+                <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
+                <span>Vanquish Dashboard</span>
+              </a>
             <button class="btn themeToggle drawerThemeSwitch" type="button" onclick="toggleTheme()" aria-label="Switch visual theme">
               <span class="menuThemeSwitchIcon" aria-hidden="true">✦</span>
               <span data-theme-toggle-label>Theme: Cinematic Nebula</span>
@@ -911,46 +920,47 @@
       <section class="mobileMenuSection">
         <div class="mobileMenuSectionTitle">Quick Actions</div>
         <div class="mobileMenuGrid">
-          <a class="mobileMenuTile" href="/trades/new">Add Trade</a>
-          <a class="mobileMenuTile" href="{{ url_for('new_entry') }}">Add Journal</a>
-          <a class="mobileMenuTile" href="/trades/upload/statement">Upload</a>
-          <a class="mobileMenuTile" href="/trades/open-positions">Positions</a>
+          <a class="mobileMenuTile" href="/trades/new"><span class="mobileMenuIcon">{{ app_icon('trades') }}</span><span>Add Trade</span></a>
+          <a class="mobileMenuTile" href="{{ url_for('new_entry') }}"><span class="mobileMenuIcon">{{ app_icon('journal') }}</span><span>Add Journal</span></a>
+          <a class="mobileMenuTile" href="/trades/upload/statement"><span class="mobileMenuIcon">{{ app_icon('sync') }}</span><span>Upload</span></a>
+          <a class="mobileMenuTile" href="/trades/open-positions"><span class="mobileMenuIcon">{{ app_icon('trades') }}</span><span>Positions</span></a>
         </div>
       </section>
       <section class="mobileMenuSection">
         <div class="mobileMenuSectionTitle">Review</div>
         <div class="mobileMenuList">
-          <a class="mobileMenuRow {% if active=='analytics' %}is-active{% endif %}" href="/analytics">Analytics</a>
-          <a class="mobileMenuRow {% if active=='calendar' %}is-active{% endif %}" href="/calendar">Calendar</a>
-          <a class="mobileMenuRow {% if active=='life-alignment' %}is-active{% endif %}" href="/life-alignment">Life Alignment</a>
-          <a class="mobileMenuRow {% if active=='budget' %}is-active{% endif %}" href="/budget">Budget</a>
-          <a class="mobileMenuRow {% if active=='forward-pace' %}is-active{% endif %}" href="/forward-pace">Forward Pace</a>
-          <a class="mobileMenuRow {% if active=='calc' %}is-active{% endif %}" href="/calculator">Planner</a>
+          <a class="mobileMenuRow {% if active=='analytics' %}is-active{% endif %}" href="/analytics"><span class="mobileMenuIcon">{{ app_icon('analytics') }}</span><span>Analytics</span></a>
+          <a class="mobileMenuRow {% if active=='the-plan' %}is-active{% endif %}" href="/the-plan"><span class="mobileMenuIcon">{{ app_icon('plan') }}</span><span>The Plan</span></a>
+          <a class="mobileMenuRow {% if active=='calendar' %}is-active{% endif %}" href="/calendar"><span class="mobileMenuIcon">{{ app_icon('calendar') }}</span><span>Calendar</span></a>
+          <a class="mobileMenuRow {% if active=='life-alignment' %}is-active{% endif %}" href="/life-alignment"><span class="mobileMenuIcon">{{ app_icon('life') }}</span><span>Life Alignment</span></a>
+          <a class="mobileMenuRow {% if active=='budget' %}is-active{% endif %}" href="/budget"><span class="mobileMenuIcon">{{ app_icon('budget') }}</span><span>Budget</span></a>
+          <a class="mobileMenuRow {% if active=='forward-pace' %}is-active{% endif %}" href="/forward-pace"><span class="mobileMenuIcon">{{ app_icon('pace') }}</span><span>Forward Pace</span></a>
+          <a class="mobileMenuRow {% if active=='calc' %}is-active{% endif %}" href="/calculator"><span class="mobileMenuIcon">{{ app_icon('planner') }}</span><span>Planner</span></a>
         </div>
       </section>
       <section class="mobileMenuSection">
         <div class="mobileMenuSectionTitle">Playbook</div>
         <div class="mobileMenuList">
-          <a class="mobileMenuRow {% if request.path == '/ops/trading-window' %}is-active{% endif %}" href="/ops/trading-window">Trading Window</a>
-          <a class="mobileMenuRow {% if active=='candle-opens' %}is-active{% endif %}" href="/candle-opens">Candle Opens</a>
-          <a class="mobileMenuRow {% if active=='strat' %}is-active{% endif %}" href="/strat">The Strat</a>
-          <a class="mobileMenuRow {% if active=='playbook' %}is-active{% endif %}" href="/playbook">Playbook</a>
-          <a class="mobileMenuRow {% if active=='strategies' %}is-active{% endif %}" href="/strategies">Strategies</a>
+          <a class="mobileMenuRow {% if request.path == '/ops/trading-window' %}is-active{% endif %}" href="/ops/trading-window"><span class="mobileMenuIcon">{{ app_icon('strategy') }}</span><span>Trading Window</span></a>
+          <a class="mobileMenuRow {% if active=='candle-opens' %}is-active{% endif %}" href="/candle-opens"><span class="mobileMenuIcon">{{ app_icon('candle') }}</span><span>Candle Opens</span></a>
+          <a class="mobileMenuRow {% if active=='strat' %}is-active{% endif %}" href="/strat"><span class="mobileMenuIcon">{{ app_icon('strategy') }}</span><span>The Strat</span></a>
+          <a class="mobileMenuRow {% if active=='playbook' %}is-active{% endif %}" href="/playbook"><span class="mobileMenuIcon">{{ app_icon('playbook') }}</span><span>Playbook</span></a>
+          <a class="mobileMenuRow {% if active=='strategies' %}is-active{% endif %}" href="/strategies"><span class="mobileMenuIcon">{{ app_icon('strategy') }}</span><span>Strategies</span></a>
         </div>
       </section>
       <section class="mobileMenuSection">
         <div class="mobileMenuSectionTitle">System</div>
         <div class="mobileMenuList">
-          <a class="mobileMenuRow {% if active=='ops' %}is-active{% endif %}" href="/ops/alerts">Ops Alerts</a>
-          <a class="mobileMenuRow {% if active=='profile' %}is-active{% endif %}" href="/profile">Profile</a>
-          <a class="mobileMenuRow" href="/setup">Login Setup</a>
-          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleTheme()">Theme</button>
-          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleAppFont()">Clean Font</button>
+          <a class="mobileMenuRow {% if active=='ops' %}is-active{% endif %}" href="/ops/alerts"><span class="mobileMenuIcon">{{ app_icon('ops') }}</span><span>Ops Alerts</span></a>
+          <a class="mobileMenuRow {% if active=='profile' %}is-active{% endif %}" href="/profile"><span class="mobileMenuIcon">{{ app_icon('profile') }}</span><span>Profile</span></a>
+          <a class="mobileMenuRow" href="/setup"><span class="mobileMenuIcon">{{ app_icon('auth') }}</span><span>Login Setup</span></a>
+          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleTheme()"><span class="mobileMenuIcon">{{ app_icon('theme') }}</span><span>Theme</span></button>
+          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleAppFont()"><span class="mobileMenuIcon">{{ app_icon('type') }}</span><span>Clean Font</span></button>
           {% if auth_enabled %}
             {% if authenticated %}
-              <a class="mobileMenuRow is-danger" href="/logout">Sign Out</a>
+              <a class="mobileMenuRow is-danger" href="/logout"><span class="mobileMenuIcon">{{ app_icon('auth') }}</span><span>Sign Out</span></a>
             {% else %}
-              <a class="mobileMenuRow is-active" href="/login">Sign In</a>
+              <a class="mobileMenuRow is-active" href="/login"><span class="mobileMenuIcon">{{ app_icon('auth') }}</span><span>Sign In</span></a>
             {% endif %}
           {% endif %}
         </div>
@@ -970,6 +980,7 @@
   (function(){
     const PAGE_META = {
       "/dashboard": { title: "Dashboard", detail: "Preparing command center, tape, and planning state." },
+      "/the-plan": { title: "The Plan", detail: "Loading execution rules, risk limits, and discipline board." },
       "/market-pulse": { title: "Market Pulse", detail: "Preparing gamma playbook context." },
       "/candle-opens": { title: "Candle Opens", detail: "Loading session timing and open-window references." },
       "/trades": { title: "Trades", detail: "Loading executions, open positions, and trade history." },

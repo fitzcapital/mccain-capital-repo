@@ -1,3 +1,4 @@
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
 {% set payout_gap = biweekly_goal - ps.safe_request if biweekly_goal > ps.safe_request else 0 %}
 {% set buffer_gap = ps.profit_buffer_level - ps.balance if ps.balance < ps.profit_buffer_level else 0 %}
 {% set payout_mode_tone = 'healthy' if can_take_biweekly_now else 'caution' if ps.buffer_reached else 'danger' %}
@@ -5,7 +6,7 @@
 <div class="card pageHero payoutHero"><div class="toolbar">
   <div class="pageHeroHead">
     <div>
-      <div class="pill">💸 Payout Planner</div>
+      {{ app_pill('payout', 'Payout Planner') }}
       <div class="pageTitleRow">
         <h2 class="pageTitle">{{ hero_title }}</h2>
       </div>
@@ -63,7 +64,7 @@
 
 <details class="syncDetails workspaceStatusFold">
   <summary>
-    <span>Payout Signals</span>
+    <span><span class="appPillIcon">{{ app_icon('review') }}</span><span>Payout Signals</span></span>
     <span class="tiny muted">Safe {{ money(ps.safe_request) }} · Buffer {{ money(buffer_gap) }} · Goal gap {{ money(payout_gap) }}</span>
   </summary>
   <div class="statusBadgeStrip">
@@ -84,7 +85,7 @@
 
 <div class="dashboardSupportGrid payoutSupportGrid">
   <div class="card supportCard workflowPromptCard"><div class="toolbar">
-    <div class="pill">Next Move</div>
+    {{ app_pill('review', 'Next Move') }}
     <div class="supportLead">
       {% if can_take_biweekly_now %}
         The safe request clears your current payout goal.
@@ -107,7 +108,7 @@
   </div></div>
 
   <div class="card supportCard subtleCard"><div class="toolbar">
-    <div class="pill">Rule Snapshot (50K)</div>
+    {{ app_pill('self', 'Rule Snapshot (50K)') }}
     <div class="supportLead">Fixed loss limit {{ money(ps.fixed_loss_limit) }}</div>
     <div class="supportBody">Safe payout preserves a cushion above the fixed loss limit and keeps the account in a defendable state.</div>
     <div class="supportMeta">
@@ -120,7 +121,7 @@
   </div></div>
 
   <div class="card supportCard payoutStanceCard"><div class="toolbar">
-    <div class="pill">Capital Stance</div>
+    {{ app_pill('scope', 'Capital Stance') }}
     <div class="supportLead">{% if can_take_biweekly_now %}Protect the floor after the ask.{% elif ps.buffer_reached %}Accumulate without leaning.{% else %}Defense only.{% endif %}</div>
     <div class="supportBody">Payouts are earned from clean drift, not by stretching size to satisfy a schedule.</div>
     <div class="supportMeta">Max request {{ money(ps.max_request) }} · Safe request {{ money(ps.safe_request) }}</div>
@@ -129,7 +130,7 @@
 
 <div class="payoutWorkspace">
   <div class="card controlPanel payoutPlannerCard"><div class="toolbar">
-    <div class="pill">Planner Inputs</div>
+    {{ app_pill('pace', 'Planner Inputs') }}
     {% if account_scope and account_scope.enabled %}
       <div class="tiny stack6">Scope: {{ account_scope.start_date }}{% if account_scope.label %} · {{ account_scope.label }}{% endif %}</div>
     {% endif %}
@@ -174,7 +175,7 @@
 
   <div class="payoutSidebar">
     <div class="card supportCard payoutReadCard"><div class="toolbar">
-      <div class="pill">Payout Read</div>
+      {{ app_pill('review', 'Payout Read') }}
       <div class="supportLead">
         {% if can_take_biweekly_now %}Request is available now.{% elif ps.buffer_reached %}Target is within reach.{% else %}Protection comes first.{% endif %}
       </div>
@@ -191,7 +192,7 @@
     </div></div>
 
     <div class="card supportCard subtleCard payoutProjectionCard"><div class="toolbar">
-      <div class="pill">Projection Snapshot</div>
+      {{ app_pill('analytics', 'Projection Snapshot') }}
       <div class="payoutRunwayGrid">
         <div class="plannerPreviewMetric"><div class="k">MTD Net</div><div class="v">{{ money(mtd) }}</div></div>
         <div class="plannerPreviewMetric"><div class="k">Last 30 Days</div><div class="v">{{ money(last30) }}</div></div>
@@ -203,7 +204,7 @@
 </div>
 
 <div class="card payoutTotalsCard"><div class="toolbar">
-  <div class="pill">Capital Runway</div>
+  {{ app_pill('pace', 'Capital Runway') }}
   <div class="statRow">
     <div class="stat"><div class="k">Balance</div><div class="v">{{ money(ps.balance) }}</div></div>
     <div class="stat"><div class="k">MTD Net</div><div class="v">{{ money(mtd) }}</div></div>

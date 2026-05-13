@@ -1,28 +1,140 @@
+{% macro dashboard_icon(name) -%}
+  {% if name == 'state' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.5"></circle></svg>
+  {% elif name == 'mode' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="m14 6 6 6-6 6"></path></svg>
+  {% elif name == 'gate' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3Z"></path><path d="m9 12 2 2 4-4"></path></svg>
+  {% elif name == 'align' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 12 5 5L20 6"></path></svg>
+  {% elif name == 'prime' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7.5"></circle><path d="M12 5v3"></path><path d="M12 16v3"></path><path d="M5 12h3"></path><path d="M16 12h3"></path><path d="m10 14 5-5"></path><path d="M11 9h4v4"></path></svg>
+  {% elif name == 'focus' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7.5"></circle><circle cx="12" cy="12" r="2.25"></circle><path d="M12 5.5v1.8"></path><path d="M12 16.7v1.8"></path><path d="M5.5 12h1.8"></path><path d="M16.7 12h1.8"></path></svg>
+  {% elif name == 'next' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
+  {% elif name == 'priority' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"></circle><path d="M12 8v4l3 2"></path></svg>
+  {% elif name == 'brief' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h10"></path><path d="M8 12h10"></path><path d="M8 18h6"></path><path d="M4 6h.01"></path><path d="M4 12h.01"></path><path d="M4 18h.01"></path></svg>
+  {% elif name == 'pressure' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 16H3L12 3Z"></path><path d="M12 9v4"></path><circle cx="12" cy="16.5" r=".8" fill="currentColor" stroke="none"></circle></svg>
+  {% elif name == 'bias' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m14.8 9.2-2 5.6-5.6 2 2-5.6 5.6-2Z"></path></svg>
+  {% elif name == 'risk' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 8 4v5c0 4.5-2.8 7.4-8 9-5.2-1.6-8-4.5-8-9V7l8-4Z"></path></svg>
+  {% elif name == 'plan' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14l-4-2-4 2-4-2-4 2V5a2 2 0 0 1 2-2h2"></path></svg>
+  {% elif name == 'tape' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-4 4 8 2-4h6"></path></svg>
+  {% elif name == 'review' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h6"></path><path d="M15 12h6"></path><path d="M12 3v6"></path><path d="M12 15v6"></path><circle cx="12" cy="12" r="2.5"></circle></svg>
+  {% elif name == 'rules' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11 6 8l-3 3"></path><path d="M21 8h-7"></path><path d="m15 16 3 3 3-3"></path><path d="M3 16h7"></path></svg>
+  {% elif name == 'score' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"></path><path d="M7 16V9"></path><path d="M12 16V5"></path><path d="M17 16v-3"></path></svg>
+  {% elif name == 'target' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M2 12h2"></path><path d="M20 12h2"></path></svg>
+  {% elif name == 'calendar' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="5" width="18" height="16" rx="3"></rect><path d="M3 10h18"></path></svg>
+  {% elif name == 'wallet' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"></path><path d="M15 12h4"></path><path d="M18 10v4"></path><path d="M4 8h15"></path></svg>
+  {% elif name == 'chart' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"></path><path d="M7 15V9"></path><path d="M12 15V5"></path><path d="M17 15v-7"></path></svg>
+  {% elif name == 'sync' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.3-6.36"></path><path d="M21 12a9 9 0 0 1-15.3 6.36"></path><path d="M18 3v5h-5"></path><path d="M6 21v-5h5"></path></svg>
+  {% elif name == 'pace' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18c2.6-5.6 6.1-8.7 10.5-9.5"></path><path d="M14.5 8.5H20v5.5"></path><path d="m19.8 8.7-6.2 6.1"></path><circle cx="7.2" cy="16.9" r="1.5"></circle></svg>
+  {% elif name == 'signal-up' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6"></path></svg>
+  {% elif name == 'signal-down' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 10 6 6 6-6"></path></svg>
+  {% elif name == 'gamma-positive' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.4-5 4.2 10 2.1-5H21"></path><circle cx="12" cy="12" r="8"></circle></svg>
+  {% elif name == 'gamma-negative' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h18"></path><path d="m8 11 4 4 4-4"></path><path d="M12 4v11"></path><path d="M5 19h14"></path></svg>
+  {% elif name == 'local-flip' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h12"></path><path d="M6 17h12"></path><path d="m9 10 3 3 3-3"></path></svg>
+  {% elif name == 'next-call-wall' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 18V6"></path><path d="M9 18V8"></path><path d="M13 18v-5"></path><path d="m14 10 5-5"></path><path d="M15 5h4v4"></path></svg>
+  {% elif name == 'next-put-wall' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 18V6"></path><path d="M9 18v-4"></path><path d="M13 18V8"></path><path d="m14 14 5 5"></path><path d="M15 19h4v-4"></path></svg>
+  {% elif name == 'call-wall' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18V7"></path><path d="M10 18V5"></path><path d="M14 18V9"></path><path d="M18 18V4"></path></svg>
+  {% elif name == 'put-wall' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6v12"></path><path d="M10 10v8"></path><path d="M14 5v13"></path><path d="M18 8v10"></path></svg>
+  {% elif name == 'main-flip' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="m7 8 5-5 5 5"></path><path d="m17 16-5 5-5-5"></path></svg>
+  {% elif name == 'scripture' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 0-3 3"></path><path d="M6 4v16a3 3 0 0 1 3-3h9"></path></svg>
+  {% elif name == 'intention' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="m9 15 6-6"></path><path d="M11 9h4v4"></path></svg>
+  {% elif name == 'prayer' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a4 4 0 0 1 6-3.46A4 4 0 0 1 18 11c0 5.65-6 10-6 10Z"></path><path d="M9.5 11.5h5"></path></svg>
+  {% elif name == 'routine' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6v6l4 2"></path><circle cx="12" cy="12" r="8"></circle></svg>
+  {% elif name == 'phase-before' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6"></path></svg>
+  {% elif name == 'phase-during' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
+  {% elif name == 'phase-after' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 10 6 6 6-6"></path></svg>
+  {% else -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle></svg>
+  {% endif -%}
+{%- endmacro %}
+
+{% macro dashboard_gamma_icon(key, tone='') -%}
+  {% if key == 'regime' -%}
+    <span class="dashboardGammaIconStack" data-gamma-icon-stack>
+      <span class="dashboardGammaIconVariant dashboardGammaIconVariant-positive">{{ dashboard_icon('gamma-positive') }}</span>
+      <span class="dashboardGammaIconVariant dashboardGammaIconVariant-negative">{{ dashboard_icon('gamma-negative') }}</span>
+    </span>
+  {% elif key == 'local_flip' -%}
+    {{ dashboard_icon('local-flip') }}
+  {% elif key == 'next_call_wall' -%}
+    {{ dashboard_icon('next-call-wall') }}
+  {% elif key == 'next_put_wall' -%}
+    {{ dashboard_icon('next-put-wall') }}
+  {% elif key == 'call_wall' -%}
+    {{ dashboard_icon('call-wall') }}
+  {% elif key == 'put_wall' -%}
+    {{ dashboard_icon('put-wall') }}
+  {% elif key == 'main_flip' -%}
+    {{ dashboard_icon('main-flip') }}
+  {% else -%}
+    {{ dashboard_icon('state') }}
+  {% endif -%}
+{%- endmacro %}
+
 {% if today_count == 0 %}
-  {% set hero_title = "Prepare the Session" %}
+  {% set hero_title = "Prime" %}
   {% set hero_lead = "Set the day, confirm the brief, and start clean." %}
   {% set focus_body = "Confirm structure, lock the brief, and wait for a clean trigger." %}
   {% set focus_href = market_pulse_href %}
   {% set focus_cta = "Open Playbook" %}
 {% elif today_net < 0 %}
-  {% set hero_title = "Protect Capital and Review" %}
+  {% set hero_title = "Reset" %}
   {% set hero_lead = "Review first. Re-entry earns its place after the leak is named." %}
   {% set focus_body = "Run Session Replay and tag the leak while context is fresh." %}
   {% set focus_href = "/analytics/replay" %}
-  {% set focus_cta = "Review Today" %}
+  {% set focus_cta = "Review" %}
 {% elif today_net > 0 %}
-  {% set hero_title = "Defend the Win and Stay Selective" %}
+  {% set hero_title = "Protect" %}
   {% set hero_lead = "Keep the edge clean. The brief stays in charge of what comes next." %}
   {% set focus_body = "Lock in the day with a fast debrief before adding more risk." %}
   {% set focus_href = "/journal/new?d=" ~ today_key ~ "&entry_type=trade_debrief&link_all_day=1&auto_draft=1" %}
-  {% set focus_cta = "Auto Debrief Draft" %}
+  {% set focus_cta = "Debrief" %}
 {% else %}
-  {% set hero_title = "Trade the Brief, Not the Noise" %}
+  {% set hero_title = "Focus" %}
   {% set hero_lead = "Stay selective, keep size honest, and let structure confirm first." %}
   {% set focus_body = "Stick to the brief and only take the cleanest setup." %}
   {% set focus_href = "/trades/new" %}
   {% set focus_cta = "Open Trades" %}
 {% endif %}
+{% set hero_is_protect = hero_title == "Protect" %}
+{% set hero_is_prime = hero_title == "Prime" %}
+{% set hero_is_focus = hero_title == "Focus" %}
 {% set checklist_ns = namespace(done=0, total=0) %}
 {% for item in dashboard_checklist %}
   {% set checklist_ns.total = checklist_ns.total + 1 %}
@@ -76,7 +188,7 @@
     <span class="dashboardDisciplineToggleCue" id="dashboardDisciplineToggleCue">Expand</span>
   </button>
   <div class="dashboardDisciplineRailGroup">
-    <span class="dashboardDisciplineRailLabel">State</span>
+    <span class="dashboardDisciplineRailLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('state') }}</span><span>State</span></span>
     <div class="dashboardDisciplinePillSet" role="radiogroup" aria-label="Trading state" data-discipline-group="state">
       <button type="button" class="dashboardDisciplinePill is-active" data-discipline-state="locked-in" aria-pressed="true">Locked In</button>
       <button type="button" class="dashboardDisciplinePill" data-discipline-state="neutral" aria-pressed="false">Neutral</button>
@@ -85,7 +197,7 @@
     </div>
   </div>
   <div class="dashboardDisciplineRailGroup">
-    <span class="dashboardDisciplineRailLabel">Mode</span>
+    <span class="dashboardDisciplineRailLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('mode') }}</span><span>Mode</span></span>
     <div class="dashboardDisciplinePillSet" role="radiogroup" aria-label="Session mode" data-discipline-group="mode">
       <button type="button" class="dashboardDisciplinePill is-active" data-discipline-mode="a-plus-only" aria-pressed="true">A+ Only</button>
       <button type="button" class="dashboardDisciplinePill" data-discipline-mode="manage-winner" aria-pressed="false">Manage Winner</button>
@@ -112,22 +224,22 @@
 >
 <section class="dashboardCommandDeck" id="dashboardCommandDeck" aria-label="Session command deck">
   <article class="dashboardCommandCard dashboardCommandCard-session" id="dashboardCommandCardSession" data-command-tone="info">
-    <span class="dashboardCommandCardLabel">Operating State</span>
+    <span class="dashboardCommandCardLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('state') }}</span><span>State</span><span class="srOnly">Operating State</span></span>
     <strong class="dashboardCommandCardValue" id="dashboardCommandStateValue">Planning Only</strong>
     <span class="dashboardCommandCardMeta" id="dashboardCommandStateMeta">Alignment before risk. Let the brief lead.</span>
   </article>
   <article class="dashboardCommandCard" id="dashboardCommandCardPermission" data-command-tone="info">
-    <span class="dashboardCommandCardLabel">Permission</span>
+    <span class="dashboardCommandCardLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('gate') }}</span><span>Gate</span><span class="srOnly">Permission</span></span>
     <strong class="dashboardCommandCardValue" id="dashboardCommandPermissionValue">No Trade</strong>
     <span class="dashboardCommandCardMeta" id="dashboardCommandPermissionMeta">Finish the gate before adding risk.</span>
   </article>
   <article class="dashboardCommandCard" id="dashboardCommandCardAlignment" data-command-tone="info">
-    <span class="dashboardCommandCardLabel">Alignment</span>
+    <span class="dashboardCommandCardLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('align') }}</span><span>Align</span><span class="srOnly">Alignment</span></span>
     <strong class="dashboardCommandCardValue" id="dashboardCommandAlignmentValue">Foundation live</strong>
     <span class="dashboardCommandCardMeta" id="dashboardCommandAlignmentMeta">Routine 0/16. Intention not set yet.</span>
   </article>
   <article class="dashboardCommandCard" id="dashboardCommandCardNext" data-command-tone="info">
-    <span class="dashboardCommandCardLabel">Next Step</span>
+    <span class="dashboardCommandCardLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('next') }}</span><span>Next</span><span class="srOnly">Next Step</span></span>
     <strong class="dashboardCommandCardValue" id="dashboardCommandNextValue">{{ focus_cta }}</strong>
     <span class="dashboardCommandCardMeta" id="dashboardCommandNextMeta">{{ focus_body }}</span>
   </article>
@@ -177,7 +289,7 @@
 </section>
 <div class="dashboardSnapshotBar dashboardSnapshotBar-primary">
   {% for item in snapshot_primary %}
-    <div class="dashboardSnapshotCard{% if item.tone %} is-{{ item.tone }}{% endif %}">
+    <div class="dashboardSnapshotCard{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.label == 'Today P/L' %} dashboardSnapshotCard-net{% endif %}">
       <span class="dashboardSnapshotLabel">{{ item.label }}</span>
       <strong{% if item.tone == 'positive' %} class="metaGreen"{% elif item.tone == 'negative' %} class="metaRed"{% endif %}>{{ item.value }}</strong>
       <small>{{ item.detail }}</small>
@@ -188,10 +300,9 @@
 <div class="dashboardStage">
   <div class="dashboardStageColumn dashboardStageLead">
   <div class="dashboardPrimaryBand">
-  {% include "dashboard/_foundation_panel.html" %}
   <section class="dashboardStageSection dashboardStageCommand dashboardPrimarySection">
     <div class="dashboardStepLabel">Prepare</div>
-    <div class="dashboardHero card pageHero heroCard">
+    <div class="dashboardHero card pageHero heroCard{% if hero_is_protect %} dashboardHero-protect{% endif %}{% if hero_is_prime %} dashboardHero-prime{% endif %}{% if hero_is_focus %} dashboardHero-focus{% endif %}">
       <div class="toolbar">
         <div class="dashboardHeroHead">
           <div>
@@ -200,15 +311,20 @@
               <span class="dashboardPrimaryBandSubhead">Decision first. Brief and checklist support it.</span>
             </div>
             <div class="playbookTickerRow dashboardTickerRow">
-              <div class="dashboardTickerTitleBlock">
-                <h2 class="pageTitle">{{ hero_title }}</h2>
+              <div class="dashboardTickerTitleBlock{% if hero_is_protect %} dashboardTickerTitleBlock-protect{% endif %}{% if hero_is_prime %} dashboardTickerTitleBlock-prime{% endif %}{% if hero_is_focus %} dashboardTickerTitleBlock-focus{% endif %}">
+                <h2 class="pageTitle{% if hero_is_protect %} dashboardHeroTitle-protect{% endif %}{% if hero_is_prime %} dashboardHeroTitle-prime{% endif %}{% if hero_is_focus %} dashboardHeroTitle-focus{% endif %}">
+                  {% if hero_is_protect or hero_is_prime or hero_is_focus %}
+                    <span class="dashboardHeroTitleIcon{% if hero_is_prime %} dashboardHeroTitleIcon-prime{% endif %}{% if hero_is_focus %} dashboardHeroTitleIcon-focus{% endif %}" aria-hidden="true">{{ dashboard_icon('prime') if hero_is_prime else dashboard_icon('focus') if hero_is_focus else dashboard_icon('gate') }}</span>
+                  {% endif %}
+                  <span>{{ hero_title }}</span>
+                </h2>
                 <div class="dashboardTickerMeta tiny muted">{{ selected_ticker }} context</div>
               </div>
               <div class="playbookTickerSwitcher" role="tablist" aria-label="Dashboard ticker">
                 {% for switch_ticker in supported_tickers %}
                   <a
                     class="playbookTickerSwitch{% if switch_ticker == selected_ticker %} is-active{% endif %}"
-                    href="/dashboard?ticker={{ switch_ticker }}{% if dashboard_year %}&y={{ dashboard_year }}{% endif %}{% if dashboard_month %}&m={{ dashboard_month }}{% endif %}{% if scope_mode %}&scope={{ scope_mode }}{% endif %}"
+                    href="/dashboard?ticker={{ switch_ticker }}{% if dashboard_year %}&y={{ dashboard_year }}{% endif %}{% if dashboard_month %}&m={{ dashboard_month }}{% endif %}{% if scope_mode %}&scope={{ scope_mode }}{% endif %}&pace_tf={{ pace_timeframe.key }}"
                     role="tab"
                     aria-selected="{{ 'true' if switch_ticker == selected_ticker else 'false' }}"
                     data-dashboard-ticker-switch="{{ switch_ticker }}"
@@ -231,31 +347,42 @@
               </div>
             </div>
             <div class="dashboardLead stack8">{{ hero_lead }}</div>
-            <div class="dashboardReadinessBarCard">
+            <div
+              class="dashboardReadinessBarCard"
+              data-dashboard-readiness
+              data-readiness-total="{{ readiness.total }}"
+              data-readiness-done="{{ readiness.done }}"
+            >
               <div class="dashboardReadinessTopline">
                 <span class="dashboardReadinessLabel">Session readiness</span>
-                <strong>{{ '%.0f'|format(readiness.pct) }}%</strong>
+                <strong data-readiness-pct-label>{{ '%.0f'|format(readiness.pct) }}%</strong>
               </div>
-              <div class="dashboardReadinessMeter" style="--readiness-pct: {{ '%.1f'|format(readiness.pct) }}%">
+              <div
+                class="dashboardReadinessMeter"
+                data-readiness-meter
+                style="--readiness-pct: {{ '%.1f'|format(readiness.pct) }}%"
+              >
                 <span class="dashboardReadinessFill"></span>
               </div>
               <div class="dashboardReadinessMeta">
-                <span>{{ readiness.done }}/{{ readiness.total }} checks complete</span>
-                <span>{{ readiness.state_label }}</span>
-                <span>{{ readiness.detail_label or readiness.state_label }}</span>
+                <span data-readiness-count>{{ readiness.done }}/{{ readiness.total }} checks complete</span>
+                <span data-readiness-state>{{ readiness.state_label }}</span>
+                <span data-readiness-detail>{{ readiness.detail_label or readiness.state_label }}</span>
               </div>
-              {% if readiness.blockers %}
-                <div class="dashboardReadinessBlockers">
+              <div class="dashboardReadinessBlockers" data-readiness-blockers{% if not readiness.blockers %} hidden{% endif %}>
+                {% if readiness.blockers %}
                   {% for blocker in readiness.blockers %}
                     <span class="trendChip negative">{{ blocker }}</span>
                   {% endfor %}
-                </div>
-              {% endif %}
+                {% endif %}
+              </div>
             </div>
             <div class="dashboardHeroActionBar">
               <div class="dashboardHeroPriority">
-                <span class="dashboardHeroPriorityLabel">Priority</span>
-                <span class="dashboardHeroPriorityText">{{ focus_body }}</span>
+                <div class="dashboardHeroPriorityCopy">
+                  <span class="dashboardHeroPriorityLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('priority') }}</span><span>Priority</span></span>
+                  <span class="dashboardHeroPriorityText">{{ focus_body }}</span>
+                </div>
                 <div class="dashboardHeroPriorityMeta">
                   <span class="trendChip {% if decision_panel.status_tone == 'positive' %}positive{% elif decision_panel.status_tone == 'negative' %}negative{% endif %}">{{ decision_panel.status }}</span>
                 </div>
@@ -265,42 +392,89 @@
                   class="btn primary"
                   href="{{ focus_href }}"
                   {% if focus_href == market_pulse_href or focus_href == '/trades/new' %}data-discipline-trade-action="hero-focus"{% endif %}
-                >{{ focus_cta }}</a>
+                ><span class="dashboardButtonIcon">{{ dashboard_icon('next') }}</span><span>{{ focus_cta }}</span></a>
                 <button
                   type="button"
                   class="btn"
                   data-urgency-trigger="hero"
                   aria-haspopup="dialog"
                   aria-controls="dashboardResetModal"
-                >Pressure Check</button>
-                <a class="btn" href="#daily-brief-card">Brief</a>
+                ><span class="dashboardButtonIcon">{{ dashboard_icon('pressure') }}</span><span>Pressure</span></button>
+                <a class="btn" href="#daily-brief-card"><span class="dashboardButtonIcon">{{ dashboard_icon('brief') }}</span><span>Brief</span></a>
               </div>
             </div>
             <details class="dashboardCommandFold"{% if command_fold_open %} open{% endif %}>
               <summary aria-label="Permission to trade controls">
                 <span>Permission to trade</span>
-                <span class="tiny muted">{{ checklist_ns.done }}/{{ checklist_ns.total }} ready</span>
+                <span class="tiny muted" data-readiness-command-summary>{{ checklist_ns.done }}/{{ checklist_ns.total }} ready</span>
               </summary>
               <div class="dashboardCommandBody">
                 <div class="dashboardChecklist" aria-label="Permission to trade checklist">
                   {% for item in dashboard_checklist %}
-                    <a class="dashboardChecklistItem {% if item.done %}is-done{% else %}is-missing{% endif %}" href="{{ item.href }}" title="{{ item.detail }}">
-                      <span class="dashboardChecklistEyebrow">{{ item.status }}</span>
+                    <a
+                      class="dashboardChecklistItem {% if item.done %}is-done{% else %}is-missing{% endif %}"
+                      href="{{ item.href }}"
+                      title="{{ item.detail }}"
+                      data-readiness-item
+                      {% if item.label == 'Mindset anchored' %}data-readiness-key="mindset-anchored"{% endif %}
+                    >
+                      <span class="dashboardChecklistEyebrow" data-readiness-item-status>{{ item.status }}</span>
                       <span class="dashboardChecklistTitle">{{ item.label }}</span>
-                      <span class="dashboardChecklistDetail">{{ item.detail }}</span>
-                      <span class="dashboardChecklistAction">{{ item.action }}</span>
+                      <span class="dashboardChecklistDetail" data-readiness-item-detail>{{ item.detail }}</span>
+                      <span class="dashboardChecklistAction" data-readiness-item-action>{{ item.action }}</span>
                     </a>
                   {% endfor %}
                 </div>
-                <div class="rightActions dashboardCommandActions">
-                  {% if account_scope and account_scope.enabled %}
-                    <a class="btn" href="{{ scope_active_href }}">Active Account</a>
-                    <a class="btn" href="{{ scope_all_href }}">All History</a>
-                    <a class="btn ctaLink" href="/ops/backups">Scope</a>
-                  {% else %}
-                    <a class="btn ctaLink" href="/ops/backups">Scope</a>
-                  {% endif %}
-                  <a class="btn ctaLink" href="/trades/upload/statement">Import</a>
+                <div
+                  class="dashboardCommandRail"
+                  data-dashboard-live-sync
+                  data-run-endpoint="{{ dashboard_live_sync.run_endpoint }}"
+                  data-job-endpoint-template="/trades/sync/job/__JOB_ID__"
+                  data-active-job-id="{{ dashboard_live_sync.active_job_id }}"
+                  data-can-run="{{ '1' if dashboard_live_sync.can_run else '0' }}"
+                  data-has-last-request="{{ '1' if dashboard_live_sync.has_last_request else '0' }}"
+                  data-credentials-ready="{{ '1' if dashboard_live_sync.credentials_ready else '0' }}"
+                  data-disabled-reason="{{ dashboard_live_sync.disabled_reason }}"
+                >
+                  <div class="dashboardSyncStatusCard is-{{ dashboard_live_sync.tone }}" data-dashboard-sync-card>
+                    <span class="dashboardSyncStatusGlow" aria-hidden="true"></span>
+                    <span class="dashboardSyncStatusProgress" aria-hidden="true"><span></span></span>
+                    <div class="dashboardSyncStatusHead">
+                      <span class="dashboardSyncStatusEyebrow">Live upload sync</span>
+                      <span class="dashboardSyncStatusState" data-dashboard-sync-state>{{ dashboard_live_sync.state_label }}</span>
+                    </div>
+                    <div class="dashboardSyncStatusDetail" data-dashboard-sync-detail>{{ dashboard_live_sync.current_sync_label }}</div>
+                    <div class="dashboardSyncStatusMetaRow">
+                      <span
+                        class="dashboardSyncStatusMeta"
+                        data-dashboard-sync-meta
+                        data-dashboard-sync-updated-raw="{{ dashboard_live_sync.updated_at_raw }}"
+                      >{% if dashboard_live_sync.last_sync_at_et %}Last run: {{ dashboard_live_sync.last_sync_at_et }}{% else %}Last run: None yet{% endif %}</span>
+                      <span class="dashboardSyncStatusToday" data-dashboard-sync-today>
+                        {% if dashboard_live_sync.sync_status_today == 'running' %}Today: Running
+                        {% elif dashboard_live_sync.sync_status_today == 'completed' %}Today: Ran
+                        {% elif dashboard_live_sync.sync_status_today == 'failed' %}Today: Failed
+                        {% else %}Today: Pending{% endif %}
+                      </span>
+                    </div>
+                    <div class="dashboardSyncStatusNote" data-dashboard-sync-note>{{ dashboard_live_sync.detail }}</div>
+                  </div>
+                  <div class="rightActions dashboardCommandActions">
+                    <button
+                      type="button"
+                      class="btn primary dashboardSyncRunButton"
+                      data-dashboard-sync-run
+                      {% if not dashboard_live_sync.can_run %}disabled title="{{ dashboard_live_sync.disabled_reason }}"{% endif %}
+                    ><span class="dashboardButtonIcon">{{ dashboard_icon('import') }}</span><span class="dashboardSyncRunButtonLabel" data-dashboard-sync-run-label>Run Last Sync</span><span class="dashboardSyncRunButtonLoader" aria-hidden="true"><span></span><span></span><span></span></span></button>
+                    <a class="btn ctaLink" href="/trades/upload/statement?ws=live">Import</a>
+                    {% if account_scope and account_scope.enabled %}
+                      <a class="btn" href="{{ scope_active_href }}">Active Account</a>
+                      <a class="btn" href="{{ scope_all_href }}">All History</a>
+                      <a class="btn" href="/ops/backups">Scope</a>
+                    {% else %}
+                      <a class="btn" href="/ops/backups">Scope</a>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </details>
@@ -340,7 +514,7 @@
         </div>
         <div class="dashboardTradeGateRow" aria-label="Pre-trade gate" data-trade-gate>
           <div class="dashboardTradeGateHeader">
-            <span class="dashboardTradeGateLabel">Permission to trade</span>
+            <span class="dashboardTradeGateLabel"><span class="dashboardLabelIcon dashboardLabelIcon--gate">{{ dashboard_icon('gate') }}</span><span>Permission to trade</span></span>
             <div class="dashboardTradeGateStatus" id="dashboardTradeGateStatus" data-trade-gate-status="0" tabindex="-1">No Trade</div>
           </div>
           <div class="dashboardTradeGateControls">
@@ -357,19 +531,19 @@
         <div id="dashboardDecisionLead" class="dashboardDecisionLead">{{ decision_panel.posture_summary or decision_panel.plan }}</div>
         <div class="dashboardDecisionGrid">
           <div class="dashboardDecisionItem dashboardDecisionItem-bias">
-            <span class="dashboardDecisionLabel">Bias</span>
+            <span class="dashboardDecisionLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('bias') }}</span><span>Bias</span></span>
             <strong id="dashboardDecisionBiasValue">{{ decision_panel.bias or 'Syncing' }}</strong>
           </div>
           <div class="dashboardDecisionItem dashboardDecisionItem-risk">
-            <span class="dashboardDecisionLabel">Risk</span>
+            <span class="dashboardDecisionLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('risk') }}</span><span>Risk</span></span>
             <strong id="dashboardDecisionRiskValue">{{ decision_panel.risk_size or 'Syncing' }}</strong>
           </div>
           <div class="dashboardDecisionItem dashboardDecisionItem-wide dashboardDecisionItem-plan">
-            <span class="dashboardDecisionLabel">Plan</span>
+            <span class="dashboardDecisionLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('plan') }}</span><span>Plan</span></span>
             <strong id="dashboardDecisionPlanValue" title="{{ decision_panel.plan or 'Building context' }}">{{ (decision_panel.plan or 'Building context from gamma, structure, and session state.')|truncate(88, False, '…') }}</strong>
           </div>
           <div class="dashboardDecisionItem dashboardDecisionItem-wide dashboardDecisionItem-tradegate">
-            <span class="dashboardDecisionLabel">Trade Gate</span>
+            <span class="dashboardDecisionLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('gate') }}</span><span>Trade Gate</span></span>
             <div id="dashboardDecisionTradeGateValue" class="supportBody" title="{{ decision_panel.trade_gate or 'Waiting for live context' }}">{{ (decision_panel.trade_gate or 'Waiting for live context before the next session is framed.')|truncate(74, False, '…') }}</div>
           </div>
         </div>
@@ -388,29 +562,61 @@
           {% set structure_keys = ['main_flip', 'call_wall', 'put_wall'] %}
           <div class="dashboardGammaStripRow dashboardGammaStripRow-execution" aria-label="Execution levels">
             {% for item in decision_panel.gamma_strip.entries if item.key in execution_keys %}
+              {% set gamma_display_label = 'Regime' if item.key == 'regime' else 'LF' if item.key == 'local_flip' else 'NCW' if item.key == 'next_call_wall' else 'NPW' if item.key == 'next_put_wall' else item.label %}
               <div
                 class="dashboardGammaChip dashboardGammaChip-{{ item.emphasis }} dashboardGammaChip-execution{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.glow %} has-glow{% endif %}"
                 id="dashboardGammaChip-{{ item.key }}"
                 data-gamma-key="{{ item.key }}"
                 data-gamma-tone="{{ item.tone }}"
               >
-                <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ item.label }}</span>
+                <div class="dashboardGammaChipHead">
+                  {% if item.key == 'regime' %}
+                    <button
+                      type="button"
+                      class="dashboardGammaChipIcon dashboardGammaChipIcon-{{ item.key }} dashboardGammaChipIconButton"
+                      id="dashboardGammaIcon-{{ item.key }}"
+                      aria-label="{{ item.label }}{% if item.helper or item.detail %} · {{ item.helper or item.detail }}{% endif %}"
+                      aria-expanded="false"
+                      aria-controls="dashboardGammaPopover-{{ item.key }}"
+                    >{{ dashboard_gamma_icon(item.key, item.tone) }}</button>
+                  {% else %}
+                    <span
+                      class="dashboardGammaChipIcon dashboardGammaChipIcon-{{ item.key }}"
+                      id="dashboardGammaIcon-{{ item.key }}"
+                      aria-label="{{ item.label }}{% if item.helper or item.detail %} · {{ item.helper or item.detail }}{% endif %}"
+                    >{{ dashboard_gamma_icon(item.key, item.tone) }}</span>
+                  {% endif %}
+                  <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ gamma_display_label }}</span>
+                </div>
                 <strong class="dashboardGammaChipValue" id="dashboardGammaValue-{{ item.key }}">{{ item.value }}</strong>
-                {% if item.detail %}
-                  <span class="dashboardGammaChipDetail" id="dashboardGammaDetail-{{ item.key }}">{{ item.detail }}</span>
+                {% if item.key == 'regime' %}
+                  <div
+                    class="dashboardGammaChipPopover{% if not item.helper and not item.detail %} is-empty{% endif %}"
+                    id="dashboardGammaPopover-{{ item.key }}"
+                    data-gamma-popover="{{ item.key }}"
+                    role="dialog"
+                    aria-label="Regime helper"
+                    hidden
+                  >{{ item.helper or item.detail or '' }}</div>
+                {% else %}
+                  <span class="dashboardGammaChipDetail{% if not item.detail %} is-empty{% endif %}" id="dashboardGammaDetail-{{ item.key }}">{{ item.detail or '' }}</span>
                 {% endif %}
               </div>
             {% endfor %}
           </div>
           <div class="dashboardGammaStripRow dashboardGammaStripRow-structure" aria-label="Structural levels">
             {% for item in decision_panel.gamma_strip.entries if item.key in structure_keys %}
+              {% set gamma_display_label = 'Main' if item.key == 'main_flip' else 'CW' if item.key == 'call_wall' else 'PW' if item.key == 'put_wall' else item.label %}
               <div
                 class="dashboardGammaChip dashboardGammaChip-{{ item.emphasis }} dashboardGammaChip-structure{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.glow %} has-glow{% endif %}"
                 id="dashboardGammaChip-{{ item.key }}"
                 data-gamma-key="{{ item.key }}"
                 data-gamma-tone="{{ item.tone }}"
               >
-                <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ item.label }}</span>
+                <div class="dashboardGammaChipHead">
+                  <span class="dashboardGammaChipIcon dashboardGammaChipIcon-{{ item.key }}" id="dashboardGammaIcon-{{ item.key }}">{{ dashboard_gamma_icon(item.key, item.tone) }}</span>
+                  <span class="dashboardGammaChipLabel" id="dashboardGammaLabel-{{ item.key }}">{{ gamma_display_label }}</span>
+                </div>
                 <strong class="dashboardGammaChipValue" id="dashboardGammaValue-{{ item.key }}">{{ item.value }}</strong>
               </div>
             {% endfor %}
@@ -465,6 +671,8 @@
       </div>
     </div>
   </section>
+
+  {% include "dashboard/_foundation_panel.html" %}
   </div>
   </div>
 
@@ -473,11 +681,15 @@
     <div class="dashboardStepLabel">Monitor</div>
 	    <div class="card primaryCard dashboardTapeMonitor dashboardTapeWatchlist dashboardCoreTapeCard" data-refresh-endpoint="{{ url_for('dashboard_tape_refresh_api', ticker=selected_ticker) }}"><div class="toolbar">
       <div class="dashboardTapeHeader">
-        <div class="dashboardTapeHeaderBrand">
-          <div class="dashboardTapeSectionLabel">Market Tape</div>
+          <div class="dashboardTapeHeaderBrand">
+          <div class="dashboardTapeSectionLabel"><span class="dashboardLabelIcon dashboardLabelIcon--accent">{{ dashboard_icon('tape') }}</span><span>Market Tape</span></div>
+          <div class="dashboardTapeHeaderSubline">Risk monitor</div>
         </div>
         <div class="dashboardTapeHeaderStatus">
-          <span class="liveTapeBadge" data-tone="off" id="dashboardTapeStreamStatus">Connecting</span>
+          <span class="liveTapeBadge" data-tone="off" id="dashboardTapeStreamStatus" aria-label="Booting" title="Booting">
+            <span class="liveTapeBadgeGlyph" aria-hidden="true"></span>
+            <span class="srOnly" id="dashboardTapeStreamStatusText">Booting</span>
+          </span>
           <button
             class="dashboardTapeRefreshBtn"
             id="dashboardTapeRefreshBtn"
@@ -496,12 +708,12 @@
       <div class="liveTapeWatchTableShell dashboardTapeCardStackShell marketPulseTapeShell">
         <div class="liveTapeWatchTable dashboardTapeCardStack" aria-label="Live tape watchlist">
         {% for row in dashboard_tape_rows %}
-        {% set tape_tone = row.tape_tone or ('positive' if row.state_label in ['RISK-ON', 'STRONG'] else 'negative' if row.state_label in ['RISK-OFF', 'WEAK'] else 'neutral') %}
-        {% set spark_tone = 'pos' if tape_tone == 'positive' else 'neg' if tape_tone == 'negative' else 'flat' %}
-        {% set visual_row_tone = 'up' if tape_tone == 'positive' else 'down' if tape_tone == 'negative' else 'flat' %}
+        {% set tape_tone = row.tape_tone or ('positive' if row.state_label in ['RISK-ON', 'STRONG'] else 'negative' if row.state_label in ['RISK-OFF', 'WEAK'] else 'neutral' if row.state_label == 'MIXED' else 'positive' if row.row_tone == 'up' else 'negative' if row.row_tone == 'down' else 'neutral') %}
+        {% set spark_tone = 'pos' if row.row_tone == 'up' else 'neg' if row.row_tone == 'down' else 'flat' %}
+        {% set visual_row_tone = row.row_tone if row.row_tone in ['up', 'down'] else 'flat' %}
         <button type="button" class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardCoreTapeRow dashboardTapeAssetCard tone-{{ tape_tone }} is-{{ visual_row_tone }}" data-watch-symbol="{{ row.symbol }}" data-tape-tone="{{ tape_tone }}" aria-expanded="false">
           <div class="marketPulseWatchCardTop">
-            <div class="k liveTapeWatchSymbol">{{ row.symbol }}</div>
+            <div class="k liveTapeWatchSymbol"><span class="dashboardTapeRowTrend dashboardTapeRowTrend--{{ visual_row_tone }}">{{ dashboard_icon('signal-up') if visual_row_tone == 'up' else dashboard_icon('signal-down') if visual_row_tone == 'down' else dashboard_icon('tape') }}</span><span>{{ row.symbol }}</span></div>
             {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
             <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state" title="{{ row.state_title or 'No clean tape edge yet.' }}">{{ row.state_label }}</span>
           </div>
@@ -560,9 +772,9 @@
 	    <details class="dashboardHealthSurface dashboardHealthFold" data-dashboard-optional="support-health">
 	      <summary class="dashboardHealthFoldSummary">
 	        <div class="dashboardSupportHeader">
-	          <span class="dashboardStepLabel dashboardStepLabel-inline">Review</span>
+          <span class="dashboardStepLabel dashboardStepLabel-inline"><span class="dashboardLabelIcon">{{ dashboard_icon('review') }}</span><span>Review</span></span>
           <span class="dashboardFoldTitle">Support &amp; Health</span>
-          <span class="tiny muted">Review rail for pacing, milestone, and trust.</span>
+          <span class="tiny muted">Pacing, trust, review.</span>
         </div>
           <div class="dashboardHealthFoldChips">
             <span class="trendChip" id="dashboardHealthFoldAlignmentChip">{{ dashboard_behavior_trend.doer_streak }} day doer streak</span>
@@ -573,11 +785,11 @@
 	      <div class="dashboardHealthGrid session-health-grid">
           <div class="card primaryCard dashboardDisciplineCard dashboardNonNegotiablesCard"><div class="toolbar">
             <div class="dashboardDisciplineCardHead">
-              <div class="pill">Non-Negotiables</div>
+              <div class="pill"><span class="dashboardPillIcon">{{ dashboard_icon('rules') }}</span><span>Rules</span></div>
             </div>
             <div class="dashboardNonNegotiablesList" role="list">
               <div class="dashboardNonNegotiablesItem" role="listitem">
-                <span class="dashboardNonNegotiablesRule">No conviction = no trade</span>
+                <span class="dashboardNonNegotiablesRule">No conviction, no trade</span>
               </div>
               <div class="dashboardNonNegotiablesItem" role="listitem">
                 <span class="dashboardNonNegotiablesRule">No stop = invalid trade</span>
@@ -590,8 +802,8 @@
           <div class="card primaryCard dashboardAlignmentCard"><div class="toolbar">
             <div class="dashboardAlignmentHead">
               <div>
-                <div class="pill">Doer Score</div>
-                <div class="supportLead">This matters more than raw P&amp;L.</div>
+                <div class="pill"><span class="dashboardPillIcon">{{ dashboard_icon('score') }}</span><span>Doer Score</span></div>
+                <div class="supportLead">Process over P&amp;L.</div>
               </div>
               <span class="trendChip" id="dashboardAlignmentStatusChip">Aligned</span>
             </div>
@@ -630,7 +842,7 @@
 	        <div class="card primaryCard milestoneCard mobileKeep dashboardMilestoneCard dashboardHealthMilestone"><div class="toolbar">
 	          <div class="dashboardMilestoneTop">
 	            <div class="dashboardMilestoneHead">
-	              <div class="pill">Profit Milestone</div>
+	              <div class="pill"><span class="dashboardPillIcon">{{ dashboard_icon('target') }}</span><span>Milestone</span></div>
 	              <div class="supportLead">{{ milestone_heading }}</div>
 	            </div>
 	            <div class="dashboardMilestoneMission profit-milestone-body">
@@ -694,6 +906,7 @@
 	              <input type="hidden" name="m" value="{{ dashboard_month }}"/>
 	              <input type="hidden" name="scope" value="{{ scope_mode }}"/>
                 <input type="hidden" name="ticker" value="{{ selected_ticker }}"/>
+                <input type="hidden" name="pace_tf" value="{{ pace_timeframe.key }}"/>
 	              <div class="row stack10">
 	                <div>
 	                  <label>Milestone Name</label>
@@ -1058,6 +1271,7 @@
   </div>
 
 {% set balance_spark = namespace(values=[], min=None, max=None, points='', last_y=15) %}
+{% set performance_scope = namespace(total=0, trades=0, wins=0, losses=0) %}
 {% set performance_chart = namespace(
   days=[],
   actuals=[],
@@ -1082,12 +1296,21 @@
 ) %}
 {% for wk in heat.weeks %}
   {% for day in wk.days %}
-    {% if day.daynum is not none and day.wd is not none and day.wd < 5 and day.balance is not none %}
+    {% set day_iso = day.iso|string %}
+    {% set day_in_pace_scope = pace_timeframe.key == 'm' or (day_iso >= pace_timeframe.start_iso and day_iso <= pace_timeframe.end_iso) %}
+    {% if day_in_pace_scope and day.daynum is not none and day.wd is not none and day.wd < 5 and day.balance is not none %}
       {% set spark_value = day.balance|float %}
       {% set balance_spark.values = balance_spark.values + [spark_value] %}
       {% set performance_chart.days = performance_chart.days + [day.daynum|int] %}
       {% set performance_chart.actuals = performance_chart.actuals + [spark_value] %}
       {% set performance_chart.recent_days = performance_chart.recent_days + [day] %}
+      {% set performance_scope.total = performance_scope.total + (day.net|float) %}
+      {% set performance_scope.trades = performance_scope.trades + (day.trade_count|int) %}
+      {% if day.net > 0 %}
+        {% set performance_scope.wins = performance_scope.wins + 1 %}
+      {% elif day.net < 0 %}
+        {% set performance_scope.losses = performance_scope.losses + 1 %}
+      {% endif %}
       {% if balance_spark.min is none or spark_value < balance_spark.min %}
         {% set balance_spark.min = spark_value %}
       {% endif %}
@@ -1099,6 +1322,8 @@
 {% endfor %}
 {% set balance_spark_range = (balance_spark.max - balance_spark.min) if balance_spark.max is not none and balance_spark.min is not none else 0 %}
 {% set performance_month_label = month_name.split(' ')[0][:3] if month_name else '' %}
+{% set performance_scope_title = month_name if pace_timeframe.key == 'm' else pace_timeframe.label %}
+{% set performance_scope_metric_label = 'Month Total' if pace_timeframe.key == 'm' else pace_timeframe.label ~ ' Total' %}
 {% set balance_progress = namespace(pct=0) %}
 {% if balance_spark.values|length > 1 and balance_spark_range > 0 %}
   {% set balance_progress.pct = (((balance_spark.values[-1] - balance_spark.min) / balance_spark_range) * 100) %}
@@ -1226,29 +1451,29 @@
 
 <div class="dashboardStepLabel">Project</div>
 <div class="dashboardProjectHeader">
-  <span class="dashboardProjectEyebrow">Reference Deck</span>
+  <span class="dashboardProjectEyebrow"><span class="dashboardLabelIcon">{{ dashboard_icon('chart') }}</span><span>Reference Deck</span></span>
   <span class="dashboardProjectSubhead">Performance and pace stay available, but they should not compete with the operating zone.</span>
 </div>
 <div class="dashboardAnalyticsCluster dashboardProjectGrid">
   <div class="card primaryCard summaryPanel dashboardAnalyticsPrimary{% if not performance_chart.actuals %} is-empty{% endif %}"><div class="toolbar">
     <div class="calendarHead">
       <div>
-        <div class="pill">📈 Performance Deck</div>
+        <div class="pill"><span class="dashboardPillIcon">{{ dashboard_icon('chart') }}</span><span>Performance Deck</span></div>
         <div class="summaryLead stack8">Scoped balance, week pressure, and consistency.</div>
       </div>
       <div class="calendarNav">
-        <a class="btn" href="/dashboard?y={{ prev_y }}&m={{ prev_m }}">Prev</a>
-        <a class="btn" href="/dashboard">This Month</a>
-        <a class="btn" href="/dashboard?y={{ next_y }}&m={{ next_m }}">Next</a>
+        <a class="btn" href="{{ dashboard_nav.prev_href }}">Prev</a>
+        <a class="btn" href="{{ dashboard_nav.current_href }}">This Month</a>
+        <a class="btn" href="{{ dashboard_nav.next_href }}">Next</a>
       </div>
     </div>
 
     <div class="hr"></div>
     <div class="summaryHero">
       <div class="summaryHeroMain">
-        <div class="summaryMonth">{{ month_name }}</div>
+        <div class="summaryMonth">{{ performance_scope_title }}</div>
         <div class="summaryBalance">{{ money(overall_balance) }}</div>
-        <div class="summaryCaption">{{ trajectory_caption }}</div>
+        <div class="summaryCaption">{{ pace_timeframe.label }} scope · {{ pace_timeframe.summary }}</div>
         <div class="dashboardPerformanceBoard dashboardPerformanceBoard-{{ performance_chart.status }}">
           <div class="dashboardPerformanceBoardHead">
             <div class="dashboardPerformanceScore">
@@ -1263,7 +1488,7 @@
               {% endif %}
             </div>
           </div>
-          <div class="dashboardPerformanceTargetLabel">Target: {{ pace_card.live_headline }}/day</div>
+          <div class="dashboardPerformanceTargetLabel">Target: {{ pace_card.headline }}{{ pace_card.headline_suffix }}</div>
           <div class="dashboardPerformanceTiles">
             {% if performance_chart.recent_days %}
               {% for day in performance_chart.recent_days %}
@@ -1292,7 +1517,7 @@
             {% endif %}
           </div>
           {% if not performance_chart.actuals %}
-            <div class="dashboardPerformanceEmptyNote">No closed trades are in scope yet. This deck will strengthen once the month has real history.</div>
+            <div class="dashboardPerformanceEmptyNote">No closed trades are in this {{ pace_timeframe.label|lower }} scope yet.</div>
           {% endif %}
           <div class="dashboardPerformancePaceRow">
             <div class="dashboardPerformancePaceLabels">
@@ -1314,7 +1539,7 @@
         </div>
         <div class="dashboardBalanceProgressWrap">
           <div class="dashboardBalanceProgressLabel">
-            <span>Active account balance</span>
+            <span class="dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('wallet') }}</span><span>Active account balance</span></span>
             <strong>{{ '%.0f'|format(balance_progress.pct) }}%</strong>
           </div>
           <div class="dashboardProgress dashboardProgress-primary dashboardBalanceProgress" style="--progress-pct: {{ '%.1f'|format(balance_progress.pct) }}%">
@@ -1326,26 +1551,26 @@
       <div class="summaryHeroSide">
         <div class="summaryChip {% if this_week_total > 0 %}summaryChipGain{% elif this_week_total < 0 %}summaryChipLoss{% endif %}">
           <div class="summaryChipLabel">
-            <span>Week Total</span>
+            <span class="dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('state') }}</span><span>{{ performance_scope_metric_label }}</span></span>
           </div>
           <div class="summaryChipValue">
-            <strong>{{ money(this_week_total) }}</strong>
+            <strong>{{ money(performance_scope.total) }}</strong>
           </div>
         </div>
         <div class="summaryChip">
           <div class="summaryChipLabel">
-            <span>Tracked Trades</span>
+            <span class="dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('review') }}</span><span>Tracked Trades</span></span>
           </div>
           <div class="summaryChipValue">
-            <strong>{{ ytd_trades }}</strong>
-            <small>{{ ytd_wins }}W / {{ ytd_losses }}L · {{ '%.1f'|format(ytd_win_rate) }}%</small>
+            <strong>{{ performance_scope.trades }}</strong>
+            <small>{{ performance_scope.wins }}W / {{ performance_scope.losses }}L · {{ pace_timeframe.label }} scope</small>
           </div>
         </div>
       </div>
     </div>
     <div class="summaryGrid">
       <div class="summaryStat {{ ytd_cons.class }}{% if ytd_cons.ratio is not none and ytd_cons.ratio > cons_threshold %} dashboardConsistencyDanger{% elif ytd_cons.ratio is not none %} dashboardConsistencySafe{% endif %}">
-        <div class="k">Consistency (YTD)</div>
+        <div class="k dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('score') }}</span><span>Consistency (YTD)</span></div>
         <div class="v">
           {% if ytd_cons.ratio is none %}
             —
@@ -1411,14 +1636,25 @@
   <div class="card supportCard dashboardProjectionCard dashboardAnalyticsSecondary{% if not pace_card.nodes and not pace_card.target.configured %} is-empty{% endif %}"><div class="toolbar">
     <div class="dashboardProjectionHead">
       <div>
-        <div class="pill">Forward Pace</div>
+        <div class="pill"><span class="dashboardPillIcon dashboardPillIcon-pace">{{ dashboard_icon('pace') }}</span><span>Forward Pace</span></div>
         <div class="summaryLead stack8">Project 5D / 10D / 20D balance paths from live or manual pace.</div>
+      </div>
+      <div class="dashboardPaceScopeSwitch" role="group" aria-label="Forward pace timeframe">
+        {% for key, label in [('d', 'Day'), ('w', 'Week'), ('m', 'Month')] %}
+          <a
+            class="dashboardPaceScopeButton{% if pace_timeframe.key == key %} is-active{% endif %}"
+            href="{{ pace_timeframe_links[key] }}"
+            aria-label="{{ label }} pace"
+            aria-pressed="{{ 'true' if pace_timeframe.key == key else 'false' }}"
+          >{{ key|upper }}</a>
+        {% endfor %}
       </div>
     </div>
     <div class="dashboardProjectionHero">
+      <div class="dashboardProjectionEmblem" aria-hidden="true">{{ dashboard_icon('pace') }}</div>
       <div class="dashboardProjectionHeroMeta">
         <span class="dashboardProjectionModeBadge{% if pace_card.custom_enabled %} is-active{% endif %}">{{ pace_card.mode_label }}</span>
-        <span class="dashboardProjectionLivePace">Live {{ pace_card.live_headline }}/day</span>
+        <span class="dashboardProjectionLivePace">Live {{ pace_card.live_headline }}{{ pace_card.headline_suffix }}</span>
       </div>
       <div class="dashboardProjectionHeroValue">{{ pace_card.headline }}<small>{{ pace_card.headline_suffix }}</small></div>
       <div class="dashboardProjectionHeroCopy">{{ pace_card.mode_detail }} Base {{ pace_card.base_balance }}.</div>
@@ -1428,7 +1664,7 @@
         <span class="dashboardProjectionFoldTitle">Set pace / day</span>
         <span class="dashboardProjectionFoldMeta tiny">
           {% if pace_card.custom_enabled %}
-            Custom {{ pace_card.headline }}/day{% if pace_card.pass_buffer_enabled %} · Buffer {{ pace_card.pass_buffer_label }}{% endif %}
+            Custom {{ pace_card.daily_headline }}/day{% if pace_card.pass_buffer_enabled %} · Buffer {{ pace_card.pass_buffer_label }}{% endif %}
           {% else %}
             {{ pace_card.trading_day_label }}{% if pace_card.pass_buffer_enabled %} · Buffer {{ pace_card.pass_buffer_label }}{% endif %}
           {% endif %}
@@ -1439,6 +1675,7 @@
         <input type="hidden" name="m" value="{{ dashboard_month }}"/>
         <input type="hidden" name="ticker" value="{{ selected_ticker }}"/>
         <input type="hidden" name="scope" value="{{ scope_mode }}"/>
+        <input type="hidden" name="pace_tf" value="{{ pace_timeframe.key }}"/>
         <div class="dashboardProjectionFormGrid">
           <div class="dashboardProjectionField">
             <label for="dashboardPaceDaily">Set pace / day</label>
@@ -1446,7 +1683,7 @@
               id="dashboardPaceDaily"
               name="dashboard_pace_daily"
               inputmode="decimal"
-              placeholder="{{ pace_card.live_headline|replace('$', '') }}"
+              placeholder="{{ pace_card.live_daily_headline|replace('$', '') }}"
               value="{{ pace_card.custom_input }}"
             />
             <div class="dashboardProjectionHint tiny">{{ pace_card.trading_day_label }}</div>
@@ -1500,14 +1737,25 @@
             <span>Projected Profit</span>
             <strong>{{ pace_card.target.est_pnl }}</strong>
           </div>
+          <div>
+            <span>Projected Balance</span>
+            <strong>{{ pace_card.target.est_balance }}</strong>
+          </div>
         </div>
         <div class="dashboardProjectionTargetMeta">
-          <span>{{ pace_card.target.est_balance }} projected balance</span>
           <span>{{ pace_card.target.detail }}</span>
         </div>
       </div>
     {% endif %}
     {% if pace_card.nodes %}
+      <div class="dashboardProjectionRail" aria-hidden="true">
+        {% for node in pace_card.nodes %}
+          <div class="dashboardProjectionRailNode {% if node.tone == 'positive' %}is-positive{% elif node.tone == 'negative' %}is-negative{% endif %}">
+            <span class="dashboardProjectionRailDot"></span>
+            <span class="dashboardProjectionRailLabel">{{ node.label }}</span>
+          </div>
+        {% endfor %}
+      </div>
       <div class="dashboardProjectionTimeline">
         {% for node in pace_card.nodes %}
           <div class="dashboardProjectionNode {% if node.tone == 'positive' %}is-positive{% elif node.tone == 'negative' %}is-negative{% endif %}" title="{{ node.target_date_full }}">
@@ -1517,6 +1765,10 @@
             </div>
             <strong>{{ node.est_pnl }}</strong>
             <small>{{ node.est_balance }}</small>
+            <div class="dashboardProjectionNodeDual tiny">
+              <span>Profit</span>
+              <span>Balance</span>
+            </div>
             <div class="dashboardProjectionNodeMeta tiny">{{ node.sessions }} trading days</div>
           </div>
         {% endfor %}
@@ -1530,7 +1782,7 @@
 
 <details class="syncDetails dashboardFoldSection analyticsFold dashboardCalendarSection" id="advancedDashboardWidgets" data-dashboard-optional="calendar-fold" data-calendar-endpoint="{{ url_for('dashboard_calendar_fragment', y=dashboard_year, m=dashboard_month, scope=scope_mode) }}">
     <summary>
-      <span class="dashboardFoldTitle">Daily P/L Calendar</span>
+      <span class="dashboardFoldTitle dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('calendar') }}</span><span>Daily P/L Calendar</span></span>
       <span class="dashboardCalendarSummary">{{ calendar_state.scope_label }} · {{ calendar_state.green_days }} green · {{ calendar_state.red_days }} red · {{ calendar_state.flat_days }} flat</span>
     </summary>
     <div class="dashboardCalendarLazy" id="dashboardCalendarLazy" data-loaded="0">

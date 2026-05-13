@@ -1,8 +1,9 @@
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
 <div class="card pageHero">
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">⚡ Execution Console</div>
+        {{ app_pill('trades', 'Execution Console') }}
         <div class="pageTitleRow">
           <h2 class="pageTitle">{{ hero_title }}</h2>
           <details class="inlineHelp">
@@ -30,7 +31,7 @@
 
 <details class="syncDetails workspaceStatusFold tradesSignalFold">
   <summary>
-    <span>Execution Signals</span>
+    <span><span class="appPillIcon">{{ app_icon('review') }}</span><span>Execution Signals</span></span>
     <span class="tiny muted">Workflow, scope, and review confidence</span>
   </summary>
   <div class="statusBadgeStrip">
@@ -47,7 +48,7 @@
   <div class="toolbar">
     <div class="tradesFilterHead">
       <div>
-        <div class="pill">Review Scope</div>
+        {{ app_pill('scope', 'Review Scope') }}
         <div class="supportLead">Filter first, then read the equity, setup, and timing edges inside the active review window.</div>
         <div class="tradesScopeSelector" role="tablist" aria-label="Trades account scope">
           <a class="btn{% if account_scope_mode == 'all' %} primary{% endif %}" href="/trades{% if scope_links.all %}?{{ scope_links.all }}{% endif %}">All History</a>
@@ -615,7 +616,7 @@
 <div class="card stack12 tradesTableSection"><div class="toolbar">
       <div class="tradesTableHead">
         <div>
-      <div class="pill">Trades ({{ total_rows }})</div>
+      {{ app_pill('trades', 'Trades (' ~ total_rows ~ ')') }}
       <div class="tiny stack8 line15">
         Page {{ page }} / {{ page_count }} · showing {{ page_trades|length }} rows ({{ per }} per page).
       </div>
@@ -635,7 +636,7 @@
 
   <div class="bulkActionsWrap" id="bulkActionsWrap">
     <div class="bulkActionsToggleRow">
-      <button class="btn" type="button" id="bulkActionsToggleBtn" aria-expanded="false" aria-controls="bulkActionsPanel">Bulk Actions</button>
+      <button class="btn" type="button" id="bulkActionsToggleBtn" aria-expanded="false" aria-controls="bulkActionsPanel"><span class="appPillIcon">{{ app_icon('ops') }}</span><span>Bulk Actions</span></button>
       <span class="meta bulkCount" id="selectedCount">0 selected</span>
     </div>
 
@@ -645,7 +646,7 @@
         <input type="checkbox" id="selectAll" />
         Select all
       </label>
-      <button class="btn danger" id="bulkDeleteBtn" disabled>🗑️ Delete selected</button>
+      <button class="btn danger" id="bulkDeleteBtn" disabled><span class="appPillIcon">{{ app_icon('alert') }}</span><span>Delete selected</span></button>
 
       <span class="hr bulkSpacer"></span>
 
@@ -653,7 +654,7 @@
         Copy to:
         <input type="date" id="bulkCopyDate" class="bulkCopyDate" value="{{ d }}" />
       </label>
-      <button class="btn" id="bulkCopyBtn" disabled>📋 Copy selected</button>
+      <button class="btn" id="bulkCopyBtn" disabled><span class="appPillIcon">{{ app_icon('checklist') }}</span><span>Copy selected</span></button>
 
       <span class="hr bulkSpacer"></span>
 
@@ -668,7 +669,7 @@
           <option value="Other">Skip / Other</option>
         </select>
       </label>
-      <button class="btn" id="bulkSetupBtn" disabled>Tag setup</button>
+      <button class="btn" id="bulkSetupBtn" disabled><span class="appPillIcon">{{ app_icon('tag') }}</span><span>Tag setup</span></button>
     </div>
   </div>
 
@@ -757,6 +758,7 @@
               <span class="tradeReviewState tradeReviewState-{{ t.get('review_state', {}).get('tone', 'neutral') }}">
                 {% if review_label == 'Partially Reviewed' %}Partial{% elif review_label == 'Fully Reviewed' %}Reviewed{% elif review_label == 'Not Reviewed' %}Not Reviewed{% else %}{{ review_label }}{% endif %}
               </span>
+              <div class="tradeReviewMeta tradeReviewMeta-missing">{{ t.get('review_missing_summary') or t.get('review_state', {}).get('meta', '—') }}</div>
               <div class="tradeReviewMeta tradeReviewMeta-strong">Grade {{ t.get('final_grade_letter', t.get('trade_grade', '—')) }} · {{ t.get('final_grade_score', t.get('trade_score', '—')) }}/100</div>
               <div class="tradeReviewMeta">{{ t.get('classification', t.get('trade_classification')) or '—' }}</div>
             </div>
@@ -764,23 +766,23 @@
           <td class="tdActions">
             <div class="tradeActionRail">
               <div class="tradePrimaryActionRow">
-                <a class="btn btnCompact" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">Review</a>
-                <a class="btn btnCompact" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}">Replay</a>
+                <a class="btn btnCompact" href="/trades/review/{{ t['id'] }}?{{ filter_query }}"><span class="appPillIcon">{{ app_icon('review') }}</span><span>Review</span></a>
+                <a class="btn btnCompact" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}"><span class="appPillIcon">{{ app_icon('replay') }}</span><span>Replay</span></a>
               </div>
               <div class="rowActions" id="rowActions-{{ t['id'] }}">
                 <button type="button" class="rowMoreBtn" onclick="toggleRowMenu('{{ t['id'] }}', event)" aria-label="Trade actions">▾</button>
                 <div class="rowMoreMenu" id="rowMenu-{{ t['id'] }}">
-                  <a class="rowMenuItem" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}">✏️ Edit</a>
-                  <a class="rowMenuItem" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">🧠 Review</a>
-                  <a class="rowMenuItem" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}">🎞️ Replay</a>
+                  <a class="rowMenuItem" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}"><span class="appPillIcon">{{ app_icon('note') }}</span><span>Edit</span></a>
+                  <a class="rowMenuItem" href="/trades/review/{{ t['id'] }}?{{ filter_query }}"><span class="appPillIcon">{{ app_icon('review') }}</span><span>Review</span></a>
+                  <a class="rowMenuItem" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}"><span class="appPillIcon">{{ app_icon('replay') }}</span><span>Replay</span></a>
                   <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}">
-    <button class="rowMenuItem" type="submit">📄 Duplicate</button>
+    <button class="rowMenuItem" type="submit"><span class="appPillIcon">{{ app_icon('trades') }}</span><span>Duplicate</span></button>
   </form>
 
                   <form id="del-t-{{ t['id'] }}" method="post"
                         action="/trades/delete/{{ t['id'] }}?d={{ d }}&q={{ q }}"
                         onsubmit="return confirm('Delete this trade?');">
-                    <button class="rowMenuItem danger" type="submit">🗑️ Delete</button>
+                    <button class="rowMenuItem danger" type="submit"><span class="appPillIcon">{{ app_icon('alert') }}</span><span>Delete</span></button>
                   </form>
                 </div>
               </div>
@@ -987,14 +989,14 @@
           </div>
         </div>
         <div class="mobileActionGrid stack10">
-          <a class="btn" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}">✏️ Edit</a>
-          <a class="btn" href="/trades/review/{{ t['id'] }}?{{ filter_query }}">🧠 Review</a>
-          <a class="btn" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}">🎞️ Replay</a>
+          <a class="btn" href="/trades/edit/{{ t['id'] }}?{{ filter_query }}"><span class="appPillIcon">{{ app_icon('note') }}</span><span>Edit</span></a>
+          <a class="btn" href="/trades/review/{{ t['id'] }}?{{ filter_query }}"><span class="appPillIcon">{{ app_icon('review') }}</span><span>Review</span></a>
+          <a class="btn" href="/trades/{{ t['id'] }}/replay?{{ filter_query }}"><span class="appPillIcon">{{ app_icon('replay') }}</span><span>Replay</span></a>
           <form method="post" action="/trades/duplicate/{{ t['id'] }}?d={{ d }}&q={{ q }}" class="inlineForm">
-            <button class="btn" type="submit">📄 Duplicate</button>
+            <button class="btn" type="submit"><span class="appPillIcon">{{ app_icon('trades') }}</span><span>Duplicate</span></button>
           </form>
           <form method="post" action="/trades/delete/{{ t['id'] }}?d={{ d }}&q={{ q }}" onsubmit="return confirm('Delete this trade?');" class="inlineForm">
-            <button class="btn danger" type="submit">🗑️ Delete</button>
+            <button class="btn danger" type="submit"><span class="appPillIcon">{{ app_icon('alert') }}</span><span>Delete</span></button>
           </form>
         </div>
       </article>

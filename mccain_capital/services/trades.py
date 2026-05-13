@@ -143,7 +143,10 @@ _SYNC_CANCEL_LOCK = threading.Lock()
 _SYNC_JOB_QUEUE: "queue.Queue[Optional[Dict[str, Any]]]" = queue.Queue()
 _SYNC_DISPATCH_THREAD_STARTED = False
 _SYNC_DISPATCH_THREAD_LOCK = threading.Lock()
-SYNC_JOB_STALE_SECONDS = int(os.environ.get("SYNC_JOB_STALE_SECONDS", "1200") or 1200)
+SYNC_JOB_STALE_SECONDS = int(os.environ.get("SYNC_JOB_STALE_SECONDS", "300") or 300)
+SYNC_JOB_QUEUED_STALE_SECONDS = int(
+    os.environ.get("SYNC_JOB_QUEUED_STALE_SECONDS", "45") or 45
+)
 
 
 class SyncJobCancelled(RuntimeError):
@@ -264,6 +267,7 @@ SYNC_STAGE_HELP = {
     "generate_statement": "Generate Statement did not complete as expected.",
     "capture_statement_html": "Statement page loaded but HTML capture/parse failed.",
     "stale": "The sync worker stopped updating. Retry the run and inspect logs if it stalls again.",
+    "reset_required": "The sync lane was force-reset after a hang. Retry one clean run and inspect artifacts only if it stalls again.",
 }
 
 SYNC_STAGE_LABELS = {
@@ -283,6 +287,7 @@ SYNC_STAGE_LABELS = {
     "generate_statement": "Generating statement HTML.",
     "capture_statement_html": "Capturing statement HTML.",
     "stale": "Sync stalled before completion.",
+    "reset_required": "Lane reset after hang.",
     "parse_statement_html": "Parsing statement rows.",
     "reconcile_gate": "Running reconcile guardrails.",
     "import_trades": "Importing trades.",
@@ -309,6 +314,11 @@ def _get_bg_job(job_id: str) -> Dict[str, Any]:
 
 def _stale_sync_job_message(stage: str) -> str:
     stage_label = _sync_stage_label(stage or "start")
+    if str(stage or "").strip().lower() in {"", "start", "queued", "queue_dispatch"}:
+        return (
+            "Sync job stayed queued and was not picked up by the worker. "
+            "The lane was unlocked so you can start a fresh run."
+        )
     return (
         f"Sync job became stale before completion during {stage_label}. "
         "The worker likely stopped or the app restarted. Start a new sync run."
@@ -349,7 +359,12 @@ def _reconcile_stale_sync_job(job: Dict[str, Any]) -> Dict[str, Any]:
     if updated_epoch is None:
         return job
     elapsed = time.time() - updated_epoch
-    if elapsed < float(SYNC_JOB_STALE_SECONDS):
+    stale_after = (
+        float(SYNC_JOB_QUEUED_STALE_SECONDS)
+        if status == "queued"
+        else float(SYNC_JOB_STALE_SECONDS)
+    )
+    if elapsed < stale_after:
         return job
     created_epoch = _parse_iso_epoch(str(job.get("created_at") or "")) or updated_epoch
     duration_sec = round(max(0.0, time.time() - created_epoch), 2)
@@ -518,6 +533,58 @@ def _cancel_sync_job(job_id: str) -> Dict[str, Any]:
             happened="The sync run was cancelled manually.",
             changed="No further result from this run will update the workspace card.",
             next_action="Retry once the broker page is responsive again.",
+            actions=[
+                {
+                    "label": "Open Live Sync",
+                    "href": "/trades/upload/statement?ws=live",
+                    "kind": "primary",
+                }
+            ],
+        ),
+    )
+
+
+def _force_reset_sync_job(job_id: str) -> Dict[str, Any]:
+    job = _get_bg_job(job_id)
+    if not job:
+        return {}
+    status = str(job.get("status") or "").strip().lower()
+    if status in {"success", "failed", "debug_only", "cancelled"}:
+        return job
+    _sync_cancel_event(job_id).set()
+    summary = {
+        "message": "Sync lane force-reset. Late output from the prior run will be ignored.",
+        "warn_count": 0,
+        "error_count": max(1, int(((job.get("summary") or {}).get("error_count")) or 0)),
+        "inserted": int(((job.get("summary") or {}).get("inserted")) or 0),
+        "artifacts_rel": list(((job.get("summary") or {}).get("artifacts_rel") or []))[:20],
+        "statement_file": str(((job.get("summary") or {}).get("statement_file") or "")).strip(),
+    }
+    _save_last_sync_status(
+        {
+            "job_id": str(job.get("id") or ""),
+            "status": "cancelled",
+            "stage": "reset_required",
+            "message": summary["message"],
+            "stage_help": SYNC_STAGE_HELP.get("reset_required", ""),
+            "requested": job.get("requested") or {},
+            "artifacts_rel": summary["artifacts_rel"],
+            "statement_file": summary["statement_file"],
+            "updated_at": now_iso(),
+        }
+    )
+    return _update_bg_job(
+        job_id,
+        status="cancelled",
+        stage="reset_required",
+        message=summary["message"],
+        summary=summary,
+        result_summary=_build_action_result_summary(
+            tone="warning",
+            title="Live Sync Lane Reset",
+            happened="The active sync lock was cleared after the lane appeared hung.",
+            changed="No further result from that run will update the workspace card.",
+            next_action="Start one fresh sync run. If it hangs again, open the latest artifacts and inspect the login stage.",
             actions=[
                 {
                     "label": "Open Live Sync",
@@ -1074,15 +1141,20 @@ def _load_broker_sync_config() -> Dict[str, str]:
         "time_zone": os.environ.get("VANQUISH_TIME_ZONE", "America/New_York"),
         "date_locale": os.environ.get("VANQUISH_DATE_LOCALE", "en-US"),
         "report_locale": os.environ.get("VANQUISH_REPORT_LOCALE", "en"),
+        "username": "",
+        "password": "",
+        "password_enc": "",
     }
     try:
         with open(_broker_sync_config_path(), "r", encoding="utf-8") as f:
             parsed = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return defaults
+        parsed = {}
     for key in defaults:
         val = parsed.get(key, defaults[key])
         defaults[key] = str(val).strip() if val is not None else defaults[key]
+    defaults["keyring_available"] = _keyring_client() is not None
+    defaults["password_stored"] = bool(_get_auto_sync_password(defaults))
     return defaults
 
 
@@ -1111,7 +1183,10 @@ def _safe_write_json(path: str, payload: Any) -> None:
 
 
 def _save_broker_sync_config(data: Dict[str, str]) -> None:
-    _safe_write_json(_broker_sync_config_path(), data)
+    to_save = dict(data)
+    to_save.pop("keyring_available", None)
+    to_save.pop("password_stored", None)
+    _safe_write_json(_broker_sync_config_path(), to_save)
 
 
 def _humanize_et_timestamp(raw: str) -> str:
@@ -1153,7 +1228,12 @@ def _load_last_sync_status() -> Dict[str, Any]:
     status = str(parsed.get("status") or "").strip().lower()
     updated_epoch = _parse_iso_epoch(str(parsed.get("updated_at") or ""))
     if status in {"queued", "running"} and updated_epoch is not None:
-        if (time.time() - updated_epoch) >= float(SYNC_JOB_STALE_SECONDS):
+        stale_after = (
+            float(SYNC_JOB_QUEUED_STALE_SECONDS)
+            if status == "queued"
+            else float(SYNC_JOB_STALE_SECONDS)
+        )
+        if (time.time() - updated_epoch) >= stale_after:
             message = _stale_sync_job_message(str(parsed.get("stage") or "start"))
             parsed = {
                 **parsed,
@@ -3416,8 +3496,11 @@ def trades_sync_live():
         )
 
     cfg = _load_broker_sync_config()
-    username = (request.form.get("username") or "").strip()
+    remembered_username = str(cfg.get("username") or "").strip()
+    username = (request.form.get("username") or "").strip() or remembered_username
     password = (request.form.get("password") or "").strip()
+    remember_credentials = request.form.get("remember_credentials") == "1"
+    clear_saved_credentials = request.form.get("clear_saved_credentials") == "1"
     base_url = (request.form.get("base_url") or "").strip() or cfg.get("base_url", "")
     account = (request.form.get("account") or "").strip() or cfg.get("account", "")
     wl = (request.form.get("wl") or "").strip() or cfg.get("wl", "vanquishtrader")
@@ -3432,8 +3515,21 @@ def trades_sync_live():
     debug_capture = request.form.get("debug_capture") == "1"
     debug_only = request.form.get("debug_only") == "1"
     remember_connection = request.form.get("remember_connection") == "1"
+    stored_password = _get_auto_sync_password({"username": username}) if username else ""
 
-    if not username or not password:
+    if clear_saved_credentials and username:
+        _clear_auto_sync_password(username)
+        cfg["username"] = ""
+        cfg["password"] = ""
+        cfg["password_enc"] = ""
+        cfg["password_stored"] = False
+        _save_broker_sync_config(cfg)
+        flash("Saved live sync credentials cleared.", "success")
+        return redirect(url_for("trades_upload_pdf", ws="live"))
+
+    password_for_run = password or stored_password
+
+    if not username or not password_for_run:
         return render_page(
             simple_msg("Username and password are required for live login sync."),
             active="trades",
@@ -3466,8 +3562,10 @@ def trades_sync_live():
         username=username,
     )
     requested["remember_connection"] = remember_connection
+    requested["remember_credentials"] = remember_credentials
+    requested["stored_password_reused"] = bool(not password and stored_password)
 
-    if remember_connection:
+    if remember_connection or remember_credentials:
         cfg.update(
             {
                 "base_url": base_url,
@@ -3476,8 +3574,18 @@ def trades_sync_live():
                 "time_zone": time_zone,
                 "date_locale": date_locale,
                 "report_locale": report_locale,
+                "username": username if remember_credentials else remembered_username,
             }
         )
+        if remember_credentials and password:
+            saved = _set_auto_sync_password(username, password)
+            if not saved and AUTO_SYNC_PASSWORD_FALLBACK:
+                cfg["password_enc"] = _encrypt_fallback_password(password)
+                cfg["password"] = ""
+                cfg["password_stored"] = True
+            else:
+                cfg.pop("password_enc", None)
+                cfg["password_stored"] = saved
         _save_broker_sync_config(cfg)
     job = _start_sync_job(
         title="Live Sync",
@@ -3485,7 +3593,7 @@ def trades_sync_live():
         record_source="LIVE LOGIN HTML",
         mode=mode,
         username=username,
-        password=password,
+        password=password_for_run,
         base_url=base_url,
         account=account,
         wl=wl,

@@ -1,4 +1,5 @@
 {% from "partials/async_job_macros.html" import runway %}
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
 {% set ws = workspace or 'live' %}
 {% set last = sync_status or {} %}
 {% set workspace_title = 'Live Sync Lane' if ws == 'live' else 'Upload Lane' if ws == 'upload' else 'Reconcile Lane' %}
@@ -68,6 +69,7 @@
         <a class="btn {% if ws == 'live' %}primary{% endif %}" href="/trades/upload/statement?ws=live">Live Sync</a>
         <a class="btn {% if ws == 'upload' %}primary{% endif %}" href="/trades/upload/statement?ws=upload">Upload</a>
         <a class="btn {% if ws == 'reconcile' %}primary{% endif %}" href="/trades/upload/statement?ws=reconcile">Reconcile</a>
+        <a class="btn" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener"><span class="dashboardButtonIcon">{{ app_icon('broker-dashboard') }}</span><span>Vanquish Dashboard</span></a>
         <a class="btn" href="/ops/alerts">Ops Alerts</a>
       </div>
     </div>
@@ -154,13 +156,17 @@
 {% set feedback_inserted = summary.get('inserted') if summary.get('inserted') is not none else (last.get('inserted') if last.get('inserted') is not none else last.get('inserted_trades', 0)) %}
 {% set feedback_warn_count = summary.get('warn_count') if summary.get('warn_count') is not none else last.get('warn_count', 0) %}
 {% set feedback_error_count = summary.get('error_count') if summary.get('error_count') is not none else last.get('error_count', 0) %}
+{% set effective_requested = job.get('requested') if job.get('requested') is mapping else (last.get('requested') if last.get('requested') is mapping else {}) %}
+{% set credential_save_requested = effective_requested.get('credential_save_requested') %}
+{% set credential_save_status = (effective_requested.get('credential_save_status') or '')|lower %}
+{% set credential_save_detail = effective_requested.get('credential_save_detail') or '' %}
 <div class="workspaceShell syncWorkspaceLive">
   <div class="workspacePrimary">
     <div class="card stack12 syncLaunchHero">
       <div class="toolbar">
         <div class="syncLaunchHeader">
           <div class="pillRow">
-            <div class="pill">Run Live Sync</div>
+            {{ app_pill('trades', 'Run Live Sync', 'syncAppPill') }}
             <details class="inlineHelp">
               <summary aria-label="Live login sync help">?</summary>
               <div class="helpPopover">Logs into Vanquish, opens the statement flow, generates the statement, and imports the HTML output.</div>
@@ -173,81 +179,118 @@
           <button class="btn syncProfileBtn" type="button" data-sync-profile="balanced">Balanced Run</button>
           <button class="btn syncProfileBtn" type="button" data-sync-profile="recovery">Recovery Run</button>
           <button class="btn syncProfileBtn" type="button" data-sync-profile="fast">Fast Run</button>
+          <a class="btn syncProfileBtn" href="https://www.vanquishtrader.com/dashboard" target="_blank" rel="noopener"><span class="dashboardButtonIcon">{{ app_icon('broker-dashboard') }}</span><span>Vanquish Dashboard</span></a>
           <div class="tiny syncProfileNote" id="sync-profile-note">Balanced keeps debug capture on and performs a full import.</div>
         </div>
         <div class="hr"></div>
         <form method="post" action="/trades/sync/live" id="live-sync-form">
           <div class="row syncLaunchCompactRow">
             <div>
-              <label>Mode</label>
+              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('trades') }}</span><span>Mode</span></label>
               <select name="mode">
-                <option value="broker">🏦 Broker fills → trades</option>
-                <option value="balance">🏁 Statement → ending balance snapshot</option>
+                <option value="broker">Broker fills → trades</option>
+                <option value="balance">Statement → ending balance snapshot</option>
               </select>
             </div>
             <div>
-              <label>From</label>
+              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>From</span></label>
               <input class="appDateInput" type="date" name="from_date" value="{{ default_day }}" />
             </div>
             <div>
-              <label>To</label>
+              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>To</span></label>
               <input class="appDateInput" type="date" name="to_date" value="{{ default_day }}" />
             </div>
           </div>
           <div class="row syncCredentialRow">
             <div class="fieldGrow2">
-              <label>Username</label>
-              <input name="username" placeholder="Vanquish username/email" />
+              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>Username</span></label>
+              <input name="username" value="{{ broker_cfg.username or '' }}" placeholder="Vanquish username/email" />
             </div>
             <div class="fieldGrow2">
-              <label>Password</label>
-              <input type="password" name="password" placeholder="Vanquish password" />
+              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('risk') }}</span><span>Password</span></label>
+              <input type="password" name="password" placeholder="{% if broker_cfg.password_stored %}Leave blank to use saved password{% else %}Vanquish password{% endif %}" />
+            </div>
+          </div>
+          <div class="syncCredentialStatusRow">
+            <div class="syncCredentialStatusCard">
+              <div class="syncCredentialStatusHead">
+                <span class="syncFieldIcon">{{ app_icon('ops') }}</span>
+                <strong>Stored securely</strong>
+              </div>
+              <div class="syncCredentialStatusMeta">
+                <span class="trendChip {% if broker_cfg.username %}positive{% endif %}">{{ 'Username ready' if broker_cfg.username else 'No saved username' }}</span>
+                <span class="trendChip {% if broker_cfg.password_stored %}positive{% endif %}">{{ 'Password on file' if broker_cfg.password_stored else 'No saved password' }}</span>
+              </div>
+              <div class="tiny line15 syncCredentialHint">
+                {% if broker_cfg.password_stored %}
+                Leave password blank to reuse the stored credential. This unlocks dashboard quick run.
+                {% else %}
+                Save credentials once and dashboard quick run can reuse them.
+                {% endif %}
+              </div>
+              {% if credential_save_requested %}
+              <div class="syncCredentialOutcome syncCredentialOutcome-{{ credential_save_status or 'idle' }}">
+                <strong>
+                  {% if credential_save_status in ['saved', 'fallback_saved', 'reused'] %}
+                    Quick run ready
+                  {% elif credential_save_status == 'failed' %}
+                    Quick run not ready
+                  {% else %}
+                    Credential state
+                  {% endif %}
+                </strong>
+                <span>{{ credential_save_detail or 'Credential save state will update after the next run.' }}</span>
+              </div>
+              {% endif %}
             </div>
           </div>
           <details class="syncDetails stack10">
-            <summary>⚙️ Advanced Sync Options</summary>
+            <summary><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Advanced Sync Options</span></summary>
             <div class="stack10">
               <div class="row syncLaunchCompactRow">
                 <div class="fieldGrow2">
-                  <label>Base Origin</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Base Origin</span></label>
                   <input name="base_url" value="{{ broker_cfg.base_url }}" />
                 </div>
                 <div class="fieldGrow2">
-                  <label>Account</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('analytics') }}</span><span>Account</span></label>
                   <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
                 </div>
               </div>
               <div class="row syncLaunchCompactRow">
                 <div>
-                  <label>Whitelist</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('filters') }}</span><span>Whitelist</span></label>
                   <input name="wl" value="{{ broker_cfg.wl }}" />
                 </div>
                 <div>
-                  <label>Timezone</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>Timezone</span></label>
                   <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
                 </div>
                 <div>
-                  <label>Date Locale</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('note') }}</span><span>Date Locale</span></label>
                   <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
                 </div>
                 <div>
-                  <label>Report Locale</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('note') }}</span><span>Report Locale</span></label>
                   <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
                 </div>
               </div>
               <div class="row syncLaunchCompactRow">
                 <div class="stack12">
-                  <label>Browser Mode</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Browser Mode</span></label>
                   <label><input type="checkbox" name="headless" value="1" checked /> Headless</label>
                 </div>
                 <div class="stack12">
-                  <label>Diagnostics</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('alert') }}</span><span>Diagnostics</span></label>
                   <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
                   <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
                 </div>
                 <div class="stack12">
-                  <label>Config</label>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Config</span></label>
                   <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
+                  <label><input type="checkbox" name="remember_credentials" value="1" {% if broker_cfg.username or broker_cfg.password_stored %}checked{% endif %} /> Save username/password securely</label>
+                  <label><input type="checkbox" name="clear_saved_credentials" value="1" /> Clear saved credentials</label>
+                  <div class="tiny syncCredentialPrereq">Required for dashboard `Run Last Sync`.</div>
                 </div>
               </div>
             </div>
@@ -255,13 +298,24 @@
 
           <div class="hr"></div>
           <div class="syncLaunchActions">
-            <button class="btn primary" type="submit" id="live-sync-submit" {% if sync_active %}disabled{% endif %}>Run Live Sync</button>
+            <button class="btn primary" type="submit" id="live-sync-submit" {% if sync_active %}disabled{% endif %}>{{ 'Sync Running' if sync_active else 'Run Live Sync' }}</button>
             <a class="btn" href="/trades/upload/statement">Reset</a>
+          </div>
+          <div class="syncActiveInline{% if not sync_active %} syncActiveInlineHidden{% endif %}" id="sync-active-inline">
+            <div class="syncActivePulse" aria-hidden="true"></div>
+            <div class="syncActiveCopy">
+              <strong id="sync-active-title">{{ (job.get('status') or 'queued')|replace('_', ' ')|title }} · {{ (job.get('stage') or 'queue_dispatch')|replace('_', ' ')|title }}</strong>
+              <span id="sync-active-message">{{ job.get('message') or 'Queued and waiting for the worker.' }}</span>
+            </div>
+            <div class="syncActiveActions" id="sync-active-actions" {% if not sync_active %}hidden{% endif %}>
+              <button class="btn danger" type="submit" form="sync-job-cancel-form" id="sync-active-cancel-btn">Cancel</button>
+              <button class="btn" type="submit" form="sync-job-force-reset-form" id="sync-active-reset-btn">Force Reset</button>
+            </div>
           </div>
           <div class="tiny stack10 line15 syncLaunchLoading" id="live-sync-loading" style="display:none;" aria-live="polite">
             ⏳ Live sync in progress. Login, generate, import.
           </div>
-          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge='Live', label='Opening broker session...', label_id='live-sync-stage-label') }}
+          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge=('Live' if sync_active else 'Live'), label=(job.get('message') or 'Opening broker session...' if sync_active else 'Opening broker session...'), visible=sync_active, label_id='live-sync-stage-label') }}
         </form>
       </div>
     </div>
@@ -304,12 +358,15 @@
           <div class="syncHealthChip syncHealthChipMuted" id="sync-health-id">{% if job.get('id') %}Job {{ job.get('id')[:8] }}{% else %}No active job{% endif %}</div>
         </div>
         <div class="syncLockBanner{% if not sync_active %} syncLockBannerHidden{% endif %}" id="sync-lock-banner">
-          <strong>Sync lane locked.</strong> One broker sync is already active. Cancel it or wait for completion before starting another run.
+          <strong>Sync lane locked.</strong> One broker sync is already active. Cancel it, or use Force Reset Lane if the login is hung.
         </div>
         <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
         <div class="row" id="sync-job-actions" {% if (job.get('status') or '') not in ['queued', 'running'] %}hidden{% endif %}>
           <form method="post" id="sync-job-cancel-form" action="/trades/sync/job/{{ job.get('id', '') }}/cancel" onsubmit="return window.confirm('Cancel this sync job? Any late output from this run will be ignored.');">
             <button class="btn danger" type="submit" id="sync-job-cancel-btn">Cancel Sync</button>
+          </form>
+          <form method="post" id="sync-job-force-reset-form" action="/trades/sync/job/{{ job.get('id', '') }}/force-reset" onsubmit="return window.confirm('Force reset this sync lane? This closes the current run immediately and unlocks the workspace.');">
+            <button class="btn" type="submit" id="sync-job-force-reset-btn">Force Reset Lane</button>
           </form>
         </div>
         <details class="syncJobDetails" id="sync-job-details" {% if not compact_job_card %}open{% endif %}>
@@ -794,8 +851,16 @@
         return [
           'Wait for the active run.',
           'Do not start a second sync.',
-          'Watch job status only.',
-          'Open artifacts only if it stalls.'
+          'Watch Submit Login for stalls.',
+          'Force reset the lane if it hangs.'
+        ];
+      }
+      if (normalizedStage === 'reset_required') {
+        return [
+          'Lane was reset after a hang.',
+          'Start one fresh controlled run.',
+          'Keep debug capture on.',
+          'Open artifacts only if it stalls again.'
         ];
       }
       if (['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus)) {
@@ -840,6 +905,13 @@
 
     function syncGuideLines(stage) {
       const normalized = String(stage || '').toLowerCase();
+      if (normalized === 'reset_required') {
+        return [
+          'The prior lane was force-reset because the broker login stalled or stopped updating.',
+          'Run one clean retry before changing account or browser settings.',
+          'If Submit Login stalls again, inspect the latest artifacts immediately.'
+        ];
+      }
       if (['system_resource', 'queue_dispatch', 'browser_boot'].includes(normalized)) {
         return [
           'Lower system pressure and retry once before changing credentials or account settings.',
@@ -1085,6 +1157,8 @@
       const stageText = String(job.stage || 'start').replaceAll('_', ' ');
       const terminal = !['queued', 'running'].includes(String(job.status || ''));
       const summary = job.summary || {};
+      const stageTitle = stageText.replace(/\b\w/g, c => c.toUpperCase());
+      const statusTitle = statusText.replace(/\b\w/g, c => c.toUpperCase());
       const statusEl = document.getElementById('sync-job-status');
       const badgeEl = document.getElementById('sync-job-badge');
       const stageEl = document.getElementById('sync-job-stage');
@@ -1098,22 +1172,36 @@
       const actionsEl = document.getElementById('sync-job-actions');
       const cancelBtn = document.getElementById('sync-job-cancel-btn');
       const cancelForm = document.getElementById('sync-job-cancel-form');
+      const forceResetForm = document.getElementById('sync-job-force-reset-form');
       const healthStatusEl = document.getElementById('sync-health-status');
       const healthStageEl = document.getElementById('sync-health-stage');
       const updatedEl = document.getElementById('sync-health-updated');
       const healthIdEl = document.getElementById('sync-health-id');
       if (cancelForm && job.id) cancelForm.action = `/trades/sync/job/${encodeURIComponent(String(job.id))}/cancel`;
-      if (statusEl) statusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
-      if (badgeEl) badgeEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
-      if (stageEl) stageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
-      if (healthStatusEl) healthStatusEl.textContent = statusText.replace(/\b\w/g, c => c.toUpperCase());
-      if (healthStageEl) healthStageEl.textContent = stageText.replace(/\b\w/g, c => c.toUpperCase());
+      if (forceResetForm && job.id) forceResetForm.action = `/trades/sync/job/${encodeURIComponent(String(job.id))}/force-reset`;
+      if (statusEl) statusEl.textContent = statusTitle;
+      if (badgeEl) badgeEl.textContent = statusTitle;
+      if (stageEl) stageEl.textContent = stageTitle;
+      if (healthStatusEl) healthStatusEl.textContent = statusTitle;
+      if (healthStageEl) healthStageEl.textContent = stageTitle;
       if (updatedEl) updatedEl.textContent = job.updated_at_human ? `Updated ${job.updated_at_human}` : (job.updated_at ? `Updated ${job.updated_at}` : 'Waiting for next sync');
       if (healthIdEl) healthIdEl.textContent = job.id ? `Job ${String(job.id).slice(0, 8)}` : 'No active job';
       if (stageLabelEl) stageLabelEl.textContent = job.message || stageText;
       if (messageEl) messageEl.textContent = job.message || 'Working...';
       if (actionsEl) actionsEl.hidden = terminal;
       if (cancelBtn) cancelBtn.disabled = terminal;
+      const activeInline = document.getElementById('sync-active-inline');
+      const activeTitle = document.getElementById('sync-active-title');
+      const activeMessage = document.getElementById('sync-active-message');
+      const activeActions = document.getElementById('sync-active-actions');
+      const activeCancelBtn = document.getElementById('sync-active-cancel-btn');
+      const activeResetBtn = document.getElementById('sync-active-reset-btn');
+      if (activeInline) activeInline.classList.toggle('syncActiveInlineHidden', terminal);
+      if (activeTitle) activeTitle.textContent = `${statusTitle} · ${stageTitle}`;
+      if (activeMessage) activeMessage.textContent = job.message || (terminal ? 'Run finished.' : 'Worker is processing this run.');
+      if (activeActions) activeActions.hidden = terminal;
+      if (activeCancelBtn) activeCancelBtn.disabled = terminal;
+      if (activeResetBtn) activeResetBtn.disabled = terminal;
       applySyncLockState(!terminal);
       applySyncJobCardMode(String(job.status || ''));
       if (durationEl) durationEl.textContent = (job.duration_sec !== null && job.duration_sec !== undefined) ? `${Number(job.duration_sec).toFixed(1)}s` : '—';

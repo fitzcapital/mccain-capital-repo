@@ -75,6 +75,10 @@ def trades_sync_live():
     return trades_sync.trades_sync_live()
 
 
+def trades_sync_live_last_run():
+    return trades_sync.trades_sync_live_last_run()
+
+
 def trades_sync_auto_config():
     return trades_sync.trades_sync_auto_config()
 
@@ -89,6 +93,10 @@ def trades_sync_job_status(job_id: str):
 
 def trades_sync_job_cancel(job_id: str):
     return trades_sync.trades_sync_job_cancel(job_id)
+
+
+def trades_sync_job_force_reset(job_id: str):
+    return trades_sync.trades_sync_job_force_reset(job_id)
 
 
 def trades_sync_debug_file(name: str):

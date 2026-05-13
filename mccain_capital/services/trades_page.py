@@ -1339,17 +1339,17 @@ def trades_page():
         hero_title = "Protect Capital and Review"
         hero_blurb = "The session is in protection mode. Audit the tape, lock in lessons, and avoid new risk."
     elif trades_count == 0:
-        hero_title = "Start the Session Clean"
+        hero_title = "Prime"
         hero_blurb = "Open with a clean record: import, tag, and define the first valid setup before pace increases."
     elif day_net > 0 and win_rate >= 60:
-        hero_title = "Defend the Day and Stay Selective"
+        hero_title = "Protect"
         hero_blurb = "Results are working. Keep the quality bar high and avoid giving back edge through boredom."
     elif day_net < 0:
         hero_title = "Tighten Risk and Review Fast"
         hero_blurb = "Pressure is rising. Shrink the decision tree, fix the misses, and only keep A-grade intent on."
     else:
-        hero_title = "Review the Tape and Keep Entries Selective"
-        hero_blurb = "The read is mixed. Use the log to narrow the next clean setup instead of forcing throughput."
+        hero_title = "Focus"
+        hero_blurb = "The read is mixed. Stay on the brief, cut the noise, and wait for the cleanest setup."
 
     trades_status_badges = [
         StateBadgeViewModel(

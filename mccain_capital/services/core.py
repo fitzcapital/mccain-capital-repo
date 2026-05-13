@@ -63,6 +63,7 @@ from mccain_capital.services.viewmodels import (
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
 from mccain_capital.services import market_data_service
+from mccain_capital.services import trades_sync
 from mccain_capital.services.gamma_context_service import (
     _extract_candidate_ladder,
     _infer_level_step,
@@ -3227,10 +3228,11 @@ def _market_pulse_tape_state(symbol: str, pct_change: Any) -> Dict[str, str]:
             "tone": "negative",
             "title": "Symbol is lagging or under downside pressure.",
         }
+    fallback_tone = "positive" if pct is None or pct >= 0 else "negative"
     return {
         "label": "MIXED",
         "display": "Mixed",
-        "tone": "neutral",
+        "tone": fallback_tone,
         "title": "No clean tape edge yet.",
     }
 
@@ -5163,11 +5165,11 @@ def _market_pulse_display_context_viewmodel(
 
     return {
         "bias_state": "neutral",
-        "bias_context": "MACRO CONTEXT VALID",
-        "bias_label": "LIVE TRIGGER PENDING",
+        "bias_context": "SETUP PENDING",
+        "bias_label": "NOT ACTIONABLE YET",
         "bias": planning_bias.get("planning_bias_label")
-        or "Macro context valid / live trigger pending",
-        "current_read": "Macro Context Valid",
+        or "Structure valid / trigger pending",
+        "current_read": "Setup Pending",
         "pullback_level": local_label,
         "next_destination": call_label if call_label != "Awaiting level" else put_label,
         "plan_note": f"{session_prefix}: structure is usable, but the next live trigger has not printed yet.",
@@ -5836,6 +5838,13 @@ def _build_playbook_view_model(
             return text
         return text[: limit - 1].rstrip() + "…"
 
+    def _sentence_case(value: str) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        lowered = text.lower()
+        return lowered[0].upper() + lowered[1:]
+
     spot = _num(structure.get("spot"))
     main_flip = _num(structure.get("main_flip"))
     local_flip = _num(structure.get("local_flip"))
@@ -6018,6 +6027,40 @@ def _build_playbook_view_model(
             else "BREAKDOWN RISK" if planning_bias == "below_put_wall_breakdown_risk" else "WAIT"
         )
 
+    if trade_state == "ready":
+        decision_label = "Actionable"
+        decision_detail = "Trigger confirmed"
+    elif trade_state == "planning_only":
+        decision_label = "Planning only"
+        decision_detail = "Use the structure for prep, not execution"
+    elif trade_state in {"no_trade", "unavailable"}:
+        decision_label = "No trade"
+        decision_detail = "Stand down until structure improves"
+    else:
+        decision_label = "Not actionable yet"
+        decision_detail = "Wait for confirmation at a key level"
+
+    if bias_state in {"bullish_above_local_flip", "conditional_bullish"}:
+        bias_summary_label = (
+            "Buy dips only on confirmation"
+            if suppress_aggressive_copy
+            else "Buy dips above support"
+        )
+    elif bias_state in {"bearish_below_local_flip", "conditional_bearish"}:
+        bias_summary_label = (
+            "Sell rips only on confirmation"
+            if suppress_aggressive_copy
+            else "Sell rips into resistance"
+        )
+    elif bias_state == "neutral_at_local_flip":
+        bias_summary_label = "Wait at local flip"
+    elif bias_short_label == "EXTENSION RISK":
+        bias_summary_label = "Extension risk above resistance"
+    elif bias_short_label == "BREAKDOWN RISK":
+        bias_summary_label = "Breakdown risk below support"
+    else:
+        bias_summary_label = "Wait for cleaner structure"
+
     setup_bias_label = str(structure.get("best_look") or "").strip()
     if not setup_bias_label:
         if structure_zone == "above_call_wall":
@@ -6120,6 +6163,13 @@ def _build_playbook_view_model(
         else:
             context_lead_label = "Execution context is waiting on a clean trigger."
 
+    if gamma_regime == "unavailable":
+        context_lead_label = "Gamma snapshot unavailable. Wait for validated levels."
+    elif gamma_regime == "unconfirmed" and levels_source == "last_valid_snapshot":
+        context_lead_label = "Using last valid structure. Live confirmation is still required."
+    elif gamma_regime == "unconfirmed" and gamma_data_status == "partial":
+        context_lead_label = "Levels are partially validated. Wait for cleaner confirmation."
+
     context_footer_label = " · ".join(
         part
         for part in (
@@ -6141,6 +6191,31 @@ def _build_playbook_view_model(
     session_summary_label = str(
         structure.get("session") or f"{session_mode_label} · {regime_confidence_label}"
     ).strip()
+    hero_reason_label = _clip_text(context_lead_label, limit=92)
+    if gamma_regime == "unavailable":
+        hero_summary = "Gamma snapshot unavailable, wait for validated levels before acting."
+    elif trade_state == "planning_only":
+        hero_summary = f"{gamma_regime_label}, {bias_summary_label.lower()}, planning only until live confirmation."
+    elif trade_state in {"no_trade", "unavailable"}:
+        hero_summary = f"{gamma_regime_label}, no trade until structure improves."
+    elif trade_state == "ready":
+        hero_summary = f"{gamma_regime_label}, {bias_summary_label.lower()}, trigger confirmed."
+    else:
+        hero_summary = f"{gamma_regime_label}, {bias_summary_label.lower()}, not actionable yet."
+    hero_summary = _sentence_case(_clip_text(hero_summary, limit=108))
+
+    tradeability_display_label = {
+        "PLANNING_ONLY": "Planning only",
+        "NO_TRADE": "No trade",
+        "WAIT": "Trigger required",
+        "CAUTION": "Reduced confidence",
+        "READY": "Actionable",
+    }.get(str(execution_regime_label or "").strip().upper(), "")
+    if not tradeability_display_label:
+        normalized_tradeability = str(execution_regime_label or "").replace("_", " ").strip()
+        tradeability_display_label = (
+            normalized_tradeability.title() if normalized_tradeability else "Trigger required"
+        )
 
     ui_flags = {
         "is_planning_only": is_planning_only,
@@ -6160,6 +6235,8 @@ def _build_playbook_view_model(
         "session_mode_label": session_mode_label,
         "trade_state": trade_state,
         "trade_state_label": trade_state_label,
+        "decision_label": decision_label,
+        "decision_detail": decision_detail,
         "risk_label": risk_label,
         "gamma_regime": gamma_regime,
         "gamma_regime_label": gamma_regime_label,
@@ -6204,12 +6281,14 @@ def _build_playbook_view_model(
         "structure_status_label": structure_status_label,
         "tradeability": execution_regime,
         "tradeability_label": execution_regime_label,
+        "tradeability_display_label": tradeability_display_label,
         "context_score": context_score,
         "context_grade": context_grade,
         "context_tone": context_tone,
         "bias_state": bias_state,
         "bias_label": bias_label,
         "bias_short_label": bias_short_label,
+        "bias_summary_label": bias_summary_label,
         "setup_bias_label": setup_bias_label,
         "action_context_label": action_context_label,
         "plan_label": plan_label,
@@ -6220,6 +6299,8 @@ def _build_playbook_view_model(
         "invalidation_label": invalidation_label,
         "context_lead_label": context_lead_label,
         "context_footer_label": context_footer_label,
+        "hero_summary": hero_summary,
+        "hero_reason_label": hero_reason_label,
         "hero_title_label": hero_title_label,
         "state_strip_label": current_read_label.upper(),
         "mode_strip_label": snapshot_mode_label,
@@ -6628,6 +6709,14 @@ def get_or_build_market_pulse_snapshot(
     market_structure_snapshot["bias_context"] = playbook_view.get("location_label")
     market_structure_snapshot["bias_label"] = playbook_view.get("bias_short_label")
     market_structure_snapshot["bias"] = playbook_view.get("bias_label")
+    market_structure_snapshot["decision_label"] = playbook_view.get("decision_label")
+    market_structure_snapshot["decision_detail"] = playbook_view.get("decision_detail")
+    market_structure_snapshot["tradeability_display_label"] = playbook_view.get(
+        "tradeability_display_label"
+    )
+    market_structure_snapshot["bias_summary_label"] = playbook_view.get("bias_summary_label")
+    market_structure_snapshot["hero_summary"] = playbook_view.get("hero_summary")
+    market_structure_snapshot["hero_reason_label"] = playbook_view.get("hero_reason_label")
     market_structure_snapshot["current_read"] = playbook_view.get("structure_read", {}).get(
         "current_read_label"
     )
@@ -7142,7 +7231,7 @@ def get_playbook_ticker_context(value: Any) -> Dict[str, Any]:
 
 
 def _dashboard_tape_symbols(selected_ticker: str) -> List[str]:
-    return ["SPY", "QQQ", "VIX", "IWM"]
+    return ["SPY", "QQQ", "VIX", "SPX"]
 
 
 def _market_pulse_quote_for_ticker(
@@ -7864,6 +7953,69 @@ def _load_dashboard_pace_settings() -> Dict[str, Any]:
         "pass_buffer_enabled": pass_buffer > 0.0,
         "start_date": start_date,
         "target_date": target_date,
+    }
+
+
+def _dashboard_pace_timeframe(value: Any) -> str:
+    selected = str(value or "").strip().lower()
+    return selected if selected in {"d", "w", "m"} else "m"
+
+
+def _dashboard_pace_timeframe_label(value: str) -> str:
+    return {"d": "Day", "w": "Week", "m": "Month"}.get(value, "Month")
+
+
+def _count_market_sessions_between(start_day: date, end_day: date) -> int:
+    if end_day < start_day:
+        start_day, end_day = end_day, start_day
+    cursor = start_day
+    sessions = 0
+    while cursor <= end_day:
+        if _is_market_session(cursor):
+            sessions += 1
+        cursor += timedelta(days=1)
+    return sessions
+
+
+def _dashboard_pace_scope_context(year: int, month: int, selected: str, anchor: date) -> Dict[str, Any]:
+    first_day = date(year, month, 1)
+    last_day = date(year, month, monthrange(year, month)[1])
+    active_day = anchor if year == anchor.year and month == anchor.month else first_day
+    if active_day < first_day:
+        active_day = first_day
+    if active_day > last_day:
+        active_day = last_day
+    active_day = active_day if _is_market_session(active_day) else _advance_market_sessions(active_day, 0)
+    if active_day > last_day:
+        active_day = first_day
+
+    if selected == "d":
+        start_day = active_day
+        end_day = active_day
+        factor = 1
+    elif selected == "w":
+        week_start = active_day - timedelta(days=active_day.weekday())
+        week_end = week_start + timedelta(days=4)
+        start_day = max(first_day, week_start)
+        end_day = min(last_day, week_end)
+        factor = max(1, _count_market_sessions_between(start_day, end_day))
+    else:
+        start_day = first_day
+        end_day = last_day
+        factor = max(1, _count_market_sessions_between(start_day, end_day))
+
+    return {
+        "key": selected,
+        "label": _dashboard_pace_timeframe_label(selected),
+        "suffix": f"/{_dashboard_pace_timeframe_label(selected).lower()}",
+        "start_iso": start_day.isoformat(),
+        "end_iso": end_day.isoformat(),
+        "factor": factor,
+        "summary": (
+            active_day.strftime("%b %d")
+            if selected == "d"
+            else f"{start_day.strftime('%b %d')} - {end_day.strftime('%b %d')}"
+        ),
     }
 
 
@@ -8792,16 +8944,17 @@ def _dashboard_gamma_strip_viewmodel(
     def _dashboard_gamma_regime_short_label(value: str) -> str:
         normalized = str(value or "").strip().lower()
         if normalized in {"positive", "positive gamma"}:
-            return "POSITIVE"
+            return "Positive Ⲅ"
         if normalized in {"negative", "negative gamma"}:
-            return "NEGATIVE"
+            return "Negative Ⲅ"
         if normalized in {"neutral", "neutral gamma"}:
-            return "NEUTRAL"
+            return "Neutral Ⲅ"
         if normalized in {"unconfirmed"}:
-            return "UNCONFIRMED"
+            return "Unconfirmed Ⲅ"
         if normalized in {"unavailable", "regime unavailable"}:
-            return "UNAVAILABLE"
-        return str(value or "UNAVAILABLE").strip().upper() or "UNAVAILABLE"
+            return "Unavailable Ⲅ"
+        raw = str(value or "").strip()
+        return f"{raw} Ⲅ" if raw else "Unavailable Ⲅ"
 
     def _num(value: Any) -> Optional[float]:
         try:
@@ -8876,7 +9029,11 @@ def _dashboard_gamma_strip_viewmodel(
             )
         )
         regime_reason = str(structure.get("gamma_regime_reason_label") or "").strip()
+        regime_subtitle = str(structure.get("gamma_regime_subtitle") or "").strip()
         regime_state = str(structure.get("gamma_regime") or "").strip().lower()
+        regime_helper = regime_reason if regime_state in {"unconfirmed", "unavailable"} else (
+            regime_subtitle or regime_reason
+        )
         regime_tone = (
             "positive"
             if regime_state == "positive"
@@ -8928,7 +9085,8 @@ def _dashboard_gamma_strip_viewmodel(
                 "key": "regime",
                 "label": "Gamma Regime",
                 "value": regime_value,
-                "detail": regime_reason if regime_state in {"unconfirmed", "unavailable"} else "",
+                "detail": "",
+                "helper": regime_helper,
                 "emphasis": "strong",
                 "tone": regime_tone,
                 "glow": regime_tone in {"positive", "negative"},
@@ -9003,7 +9161,7 @@ def _dashboard_gamma_strip_viewmodel(
             and snapshot_status in {"healthy", "degraded", "stale"}
             and not bool(gamma_snapshot.get("local_flip_found"))
         ):
-            return "No Local Flip between Put Wall and Call Wall"
+            return "No local flip in band"
         return "--"
 
     def _fmt_level_with_distance(value: Any, *, key: str = "") -> str:
@@ -9183,6 +9341,7 @@ def _dashboard_pace_viewmodel(
     pace_settings: Dict[str, Any],
     *,
     anchor_day: date,
+    pace_scope: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     live_avg = float(proj.get("avg") or 0.0)
     custom_daily = float(pace_settings.get("custom_daily") or 0.0)
@@ -9190,6 +9349,13 @@ def _dashboard_pace_viewmodel(
     pass_buffer = max(0.0, float(pace_settings.get("pass_buffer") or 0.0))
     pass_buffer_enabled = bool(pace_settings.get("pass_buffer_enabled")) and pass_buffer > 0.0
     applied_avg = custom_daily if custom_enabled else live_avg
+    scope = dict(pace_scope or {})
+    scope_key = str(scope.get("key") or "m")
+    scope_label = str(scope.get("label") or _dashboard_pace_timeframe_label(scope_key))
+    scope_suffix = str(scope.get("suffix") or f"/{scope_label.lower()}")
+    scope_factor = max(1, int(scope.get("factor") or 1))
+    display_avg = applied_avg * scope_factor
+    display_live_avg = live_avg * scope_factor
     base_balance = float(proj.get("base_balance") or 0.0)
     start_date_input = str(pace_settings.get("start_date") or "").strip()
     target_date_input = str(pace_settings.get("target_date") or "").strip()
@@ -9301,11 +9467,21 @@ def _dashboard_pace_viewmodel(
         note = "Live pace is based on recent trading sessions only."
     if pass_buffer_enabled:
         note += f" Pass buffer {app_runtime.money(pass_buffer)} is subtracted from projected profit."
+    note += f" Display set to {scope_label.lower()}; projections stay normalized to trading days."
     return {
-        "headline": app_runtime.money(applied_avg),
-        "headline_suffix": "/day",
+        "headline": app_runtime.money(display_avg),
+        "headline_suffix": scope_suffix,
+        "daily_headline": app_runtime.money(applied_avg),
         "base_balance": app_runtime.money(base_balance),
-        "live_headline": app_runtime.money(live_avg),
+        "live_headline": app_runtime.money(display_live_avg),
+        "live_daily_headline": app_runtime.money(live_avg),
+        "scope": {
+            "key": scope_key,
+            "label": scope_label,
+            "suffix": scope_suffix,
+            "summary": str(scope.get("summary") or ""),
+            "factor": scope_factor,
+        },
         "custom_enabled": custom_enabled,
         "custom_daily": custom_daily,
         "custom_input": f"{custom_daily:.2f}" if custom_enabled else "",
@@ -9313,7 +9489,7 @@ def _dashboard_pace_viewmodel(
         "pass_buffer_enabled": pass_buffer_enabled,
         "pass_buffer_input": f"{pass_buffer:.2f}" if pass_buffer_enabled else "",
         "pass_buffer_label": app_runtime.money(pass_buffer),
-        "mode_label": "Custom pace" if custom_enabled else "Live pace",
+        "mode_label": f"{scope_label} Pace" if custom_enabled else f"Live {scope_label} Pace",
         "mode_detail": (
             f"Using your manual pace of {app_runtime.money(custom_daily)}/day."
             if custom_enabled
@@ -9529,6 +9705,7 @@ def dashboard_milestone_update():
     m = str(request.form.get("m") or "").strip()
     scope = str(request.form.get("scope") or "").strip().lower()
     ticker = get_supported_playbook_ticker(request.form.get("ticker"))
+    pace_tf = _dashboard_pace_timeframe(request.form.get("pace_tf"))
     params: Dict[str, str] = {}
     if y:
         params["y"] = y
@@ -9537,6 +9714,7 @@ def dashboard_milestone_update():
     if scope in {"active", "all"}:
         params["scope"] = scope
     params["ticker"] = ticker
+    params["pace_tf"] = pace_tf
     return redirect(url_for("dashboard", **params))
 
 
@@ -9561,6 +9739,7 @@ def dashboard_brief_update():
     m = str(request.form.get("m") or "").strip()
     scope = str(request.form.get("scope") or "").strip().lower()
     ticker = get_supported_playbook_ticker(request.form.get("ticker"))
+    pace_tf = _dashboard_pace_timeframe(request.form.get("pace_tf"))
     params: Dict[str, str] = {}
     if y:
         params["y"] = y
@@ -9569,6 +9748,7 @@ def dashboard_brief_update():
     if scope in {"active", "all"}:
         params["scope"] = scope
     params["ticker"] = ticker
+    params["pace_tf"] = pace_tf
     return redirect(url_for("dashboard", **params))
 
 
@@ -9611,6 +9791,7 @@ def dashboard_pace_update():
     m = str(request.form.get("m") or "").strip()
     scope = str(request.form.get("scope") or "").strip().lower()
     ticker = get_supported_playbook_ticker(request.form.get("ticker"))
+    pace_tf = _dashboard_pace_timeframe(request.form.get("pace_tf"))
     params: Dict[str, str] = {}
     if y:
         params["y"] = y
@@ -9619,6 +9800,7 @@ def dashboard_pace_update():
     if scope in {"active", "all"}:
         params["scope"] = scope
     params["ticker"] = ticker
+    params["pace_tf"] = pace_tf
     return redirect(url_for("dashboard", **params))
 
 
@@ -9701,6 +9883,8 @@ def dashboard():
     anchor = app_runtime.now_et().date()
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
+    pace_timeframe_key = _dashboard_pace_timeframe(request.args.get("pace_tf"))
+    pace_scope = _dashboard_pace_scope_context(year, month, pace_timeframe_key, anchor)
     calendar_scope_label = "Active Account" if scope_active else "All History"
     calendar_payload = _dashboard_calendar_payload(
         year=year,
@@ -9733,6 +9917,7 @@ def dashboard():
         else "Live account balance with calendar context."
     )
     sync_status = get_system_status()
+    dashboard_live_sync = trades_sync.dashboard_live_sync_state()
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
     balance_badges = balance_state_badges(balance_integrity)
     sync_badges = sync_state_badges(
@@ -10445,7 +10630,7 @@ def dashboard():
         _dashboard_tape_row_viewmodel("SPY", dashboard_tape_quotes.get("SPY") or {}, "market proxy"),
         _dashboard_tape_row_viewmodel("QQQ", dashboard_tape_quotes.get("QQQ") or {}, "tech proxy"),
         _dashboard_tape_row_viewmodel("VIX", dashboard_tape_quotes.get("VIX") or {}, "volatility"),
-        _dashboard_tape_row_viewmodel("IWM", dashboard_tape_quotes.get("IWM") or {}, "breadth proxy"),
+        _dashboard_tape_row_viewmodel("SPX", dashboard_tape_quotes.get("SPX") or {}, "cash proxy"),
     ]
     journal_today_rows = [dict(r) for r in journal_repo.fetch_entries(d=today_key)]
     journal_capture_count_today = 0
@@ -10572,6 +10757,7 @@ def dashboard():
         milestone,
         pace_settings,
         anchor_day=app_runtime.now_et().date(),
+        pace_scope=pace_scope,
     )
     calendar_state = calendar_payload["calendar_state"]
 
@@ -10602,6 +10788,7 @@ def dashboard():
         balance_integrity=balance_integrity,
         balance_badges=balance_badges,
         sync_status=sync_status,
+        dashboard_live_sync=dashboard_live_sync,
         sync_badges=sync_badges,
         data_trust=data_trust,
         admin_recompute_allowed=admin_recompute_allowed,
@@ -10649,11 +10836,53 @@ def dashboard():
         proj=proj,
         account_scope=scope,
         scope_mode=("active" if scope_active else "all"),
-        scope_active_href=f"/dashboard?y={year}&m={month}&scope=active&ticker={selected_ticker}",
-        scope_all_href=f"/dashboard?y={year}&m={month}&scope=all&ticker={selected_ticker}",
+        scope_active_href=(
+            f"/dashboard?y={year}&m={month}&scope=active&ticker={selected_ticker}"
+            f"&pace_tf={pace_timeframe_key}"
+        ),
+        scope_all_href=(
+            f"/dashboard?y={year}&m={month}&scope=all&ticker={selected_ticker}"
+            f"&pace_tf={pace_timeframe_key}"
+        ),
         market_pulse_href=url_for("market_pulse_page", ticker=selected_ticker, refresh=1),
         dashboard_year=year,
         dashboard_month=month,
+        pace_timeframe=pace_scope,
+        pace_timeframe_links={
+            key: url_for(
+                "dashboard",
+                y=year,
+                m=month,
+                scope=("active" if scope_active else "all"),
+                ticker=selected_ticker,
+                pace_tf=key,
+            )
+            for key in ("d", "w", "m")
+        },
+        dashboard_nav={
+            "prev_href": url_for(
+                "dashboard",
+                y=prev_y,
+                m=prev_m,
+                scope=("active" if scope_active else "all"),
+                ticker=selected_ticker,
+                pace_tf=pace_timeframe_key,
+            ),
+            "current_href": url_for(
+                "dashboard",
+                scope=("active" if scope_active else "all"),
+                ticker=selected_ticker,
+                pace_tf=pace_timeframe_key,
+            ),
+            "next_href": url_for(
+                "dashboard",
+                y=next_y,
+                m=next_m,
+                scope=("active" if scope_active else "all"),
+                ticker=selected_ticker,
+                pace_tf=pace_timeframe_key,
+            ),
+        },
         milestone=milestone,
         vanquish_lock=vanquish_lock,
         dashboard_planning_ready=dashboard_planning_ready,

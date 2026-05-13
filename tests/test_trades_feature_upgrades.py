@@ -211,6 +211,9 @@ def test_upload_statement_workspaces_render(client):
     assert b"Operator Deck" in resp_live.data
     assert b"Balanced Run" in resp_live.data
     assert b"Failure Guide" in resp_live.data
+    assert b"Stored securely" in resp_live.data
+    assert b"Save username/password securely" in resp_live.data
+    assert b"Vanquish Dashboard" in resp_live.data
 
     resp_upload = client.get("/trades/upload/statement?ws=upload", follow_redirects=True)
     assert resp_upload.status_code == 200
@@ -236,6 +239,176 @@ def test_upload_statement_live_workspace_injects_csrf_into_all_sync_forms(client
         form_end = html.index("</form>", form_start)
         form_html = html[form_start:form_end]
         assert 'name="csrf_token"' in form_html
+
+
+def test_live_sync_can_save_and_reuse_credentials(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    cfg_store = {
+        "base_url": "https://trade.vanquishtrader.com",
+        "wl": "vanquishtrader",
+        "account": "default:TEST123",
+        "time_zone": "America/New_York",
+        "date_locale": "en-US",
+        "report_locale": "en",
+        "username": "",
+    }
+    saved_password = {"value": ""}
+
+    monkeypatch.setattr(trades_svc, "AUTO_SYNC_PASSWORD_FALLBACK", True)
+    monkeypatch.setattr(trades_svc, "_set_auto_sync_password", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(trades_svc, "_keyring_client", lambda: None)
+    monkeypatch.setattr(trades_svc, "trade_lockout_state", lambda *_args, **_kwargs: {"locked": False})
+    monkeypatch.setenv("SECRET_KEY", "unit-test-live-sync-secret")
+    monkeypatch.setattr(trades_svc, "_load_broker_sync_config", lambda: dict(cfg_store))
+
+    def _save_cfg(new_cfg):
+        cfg_store.clear()
+        cfg_store.update(dict(new_cfg))
+        if cfg_store.get("password_enc"):
+            saved_password["value"] = trades_svc._decrypt_fallback_password(cfg_store["password_enc"])
+
+    monkeypatch.setattr(trades_svc, "_save_broker_sync_config", _save_cfg)
+    monkeypatch.setattr(
+        trades_svc,
+        "_get_auto_sync_password",
+        lambda cfg: saved_password["value"] if str(cfg.get("username") or "") == cfg_store.get("username") else "",
+    )
+
+    captured = {}
+
+    def _fake_start_sync_job(**kwargs):
+        captured.update(kwargs)
+        return {"id": "job-live-1"}
+
+    monkeypatch.setattr(trades_svc, "_start_sync_job", _fake_start_sync_job)
+
+    resp = client.post(
+        "/trades/sync/live",
+        data={
+            "mode": "broker",
+            "username": "saved-user",
+            "password": "saved-pass",
+            "base_url": "https://trade.vanquishtrader.com",
+            "account": "default:TEST123",
+            "remember_credentials": "1",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert captured["username"] == "saved-user"
+    assert captured["password"] == "saved-pass"
+    assert cfg_store["username"] == "saved-user"
+    assert cfg_store["password"] == ""
+    assert cfg_store.get("password_enc")
+
+    captured.clear()
+    resp = client.post(
+        "/trades/sync/live",
+        data={
+            "mode": "broker",
+            "username": "",
+            "password": "",
+            "base_url": "https://trade.vanquishtrader.com",
+            "account": "default:TEST123",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert captured["username"] == "saved-user"
+    assert captured["password"] == "saved-pass"
+
+
+def test_live_sync_can_clear_saved_credentials(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    cfg_store = {
+        "base_url": "https://trade.vanquishtrader.com",
+        "wl": "vanquishtrader",
+        "account": "default:TEST123",
+        "time_zone": "America/New_York",
+        "date_locale": "en-US",
+        "report_locale": "en",
+        "username": "saved-user",
+        "password": "",
+        "password_enc": "",
+    }
+    saved_password = {"value": "saved-pass"}
+
+    monkeypatch.setattr(trades_svc, "AUTO_SYNC_PASSWORD_FALLBACK", True)
+    monkeypatch.setattr(trades_svc, "_set_auto_sync_password", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(trades_svc, "_keyring_client", lambda: None)
+    monkeypatch.setattr(trades_svc, "trade_lockout_state", lambda *_args, **_kwargs: {"locked": False})
+    monkeypatch.setenv("SECRET_KEY", "unit-test-live-sync-secret")
+    cfg_store["password_enc"] = trades_svc._encrypt_fallback_password("saved-pass")
+    monkeypatch.setattr(trades_svc, "_load_broker_sync_config", lambda: dict(cfg_store))
+
+    def _save_cfg(new_cfg):
+        cfg_store.clear()
+        cfg_store.update(dict(new_cfg))
+
+    monkeypatch.setattr(trades_svc, "_save_broker_sync_config", _save_cfg)
+    monkeypatch.setattr(
+        trades_svc,
+        "_get_auto_sync_password",
+        lambda cfg: saved_password["value"] if str(cfg.get("username") or "") == "saved-user" else "",
+    )
+    monkeypatch.setattr(
+        trades_svc,
+        "_clear_auto_sync_password",
+        lambda username: saved_password.update(value="") or True,
+    )
+
+    resp = client.post(
+        "/trades/sync/live",
+        data={
+            "username": "saved-user",
+            "clear_saved_credentials": "1",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert cfg_store["username"] == ""
+    assert cfg_store["password"] == ""
+    assert cfg_store["password_enc"] == ""
+
+
+def test_live_sync_force_reset_clears_running_lane(client, monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    job = {
+        "id": "job-live-force",
+        "kind": "sync",
+        "status": "running",
+        "stage": "submit_login",
+        "message": "Submitting broker login.",
+        "updated_at": now_iso(),
+        "created_at": now_iso(),
+        "summary": {},
+    }
+
+    monkeypatch.setattr(trades_svc, "_get_bg_job", lambda job_id: dict(job) if job_id == job["id"] else {})
+
+    def _force_reset(job_id):
+        assert job_id == job["id"]
+        out = dict(job)
+        out.update({"status": "cancelled", "stage": "reset_required"})
+        return out
+
+    monkeypatch.setattr(trades_svc, "_force_reset_sync_job", _force_reset)
+
+    resp = client.post(f"/trades/sync/job/{job['id']}/force-reset", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith(f"/trades/upload/statement?ws=live&job={job['id']}")
+
+
+def test_trades_page_source_uses_focus_fallback():
+    src = open(
+        "mccain_capital/services/trades_page.py",
+        "r",
+        encoding="utf-8",
+    ).read()
+    assert 'hero_title = "Focus"' in src
 
 
 def test_trades_balance_bases_section_renders(client):

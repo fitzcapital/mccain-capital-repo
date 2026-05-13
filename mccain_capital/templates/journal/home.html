@@ -1,8 +1,9 @@
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
 <div class="card pageHero journalHero">
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">📝 Debrief Log</div>
+        {{ app_pill('journal', 'Debrief Log') }}
         <div class="pageTitleRow">
           <h2 class="pageTitle">{{ hero_title }}</h2>
           <details class="inlineHelp">
@@ -17,9 +18,9 @@
             <span class="workspaceHeroPriorityText">{{ review_focus_body }}</span>
           </div>
           <div class="actionRow workspaceHeroPrimaryActions">
-            <a class="btn primary" href="{{ url_for('new_entry') }}">New Entry</a>
-            <a class="btn ctaLink" href="{{ url_for('new_entry') }}?quick_capture=1">Quick Capture</a>
-            <a class="btn ctaLink" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+            <a class="btn primary" href="{{ url_for('new_entry') }}"><span class="appPillIcon">{{ app_icon('note') }}</span><span>New Entry</span></a>
+            <a class="btn ctaLink" href="{{ url_for('new_entry') }}?quick_capture=1"><span class="appPillIcon">{{ app_icon('review') }}</span><span>Quick Capture</span></a>
+            <a class="btn ctaLink" href="{{ url_for('journal_weekly_review') }}"><span class="appPillIcon">{{ app_icon('analytics') }}</span><span>Weekly Review</span></a>
           </div>
         </div>
       </div>
@@ -30,7 +31,7 @@
 <div class="dashboardSupportGrid journalSupportGrid journalInsightGrid">
   {% for insight in journal_insights %}
     <div class="card supportCard journalInsightCard"><div class="toolbar">
-      <div class="pill">Insight</div>
+      {{ app_pill('insight', 'Insight') }}
       <div class="supportLead">{{ insight.title }}</div>
       <div class="supportBody">{{ insight.body }}</div>
     </div></div>
@@ -39,7 +40,7 @@
 
 <details class="syncDetails workspaceStatusFold journalSignalFold">
   <summary>
-    <span>Journal Signals</span>
+    <span><span class="appPillIcon">{{ app_icon('review') }}</span><span>Journal Signals</span></span>
     <span class="tiny muted">{{ entries|length }} entr{{ 'y' if entries|length==1 else 'ies' }} · {{ review_focus_lead }}</span>
   </summary>
   <div class="statusBadgeStrip">
@@ -53,7 +54,7 @@
 </details>
 
 <div class="card controlPanel journalFilterPanel"><div class="toolbar">
-  <div class="pill">🧭 Review Filters</div>
+  {{ app_pill('filters', 'Review Filters') }}
   <div class="summaryLead stack8">Filter the debrief feed by outcome, grade, and mistake pattern, then expand only the entries worth studying.</div>
   <form method="get" action="/journal" class="row journalFilterForm">
     <div class="fieldGrow2">
@@ -95,9 +96,9 @@
       </select>
     </div>
     <div class="actionRow journalFilterActions">
-      <button class="btn" type="submit">Apply</button>
-      <a class="btn" href="/journal">Reset</a>
-      <a class="btn" href="{{ url_for('journal_weekly_review') }}">Weekly Review</a>
+      <button class="btn" type="submit"><span class="appPillIcon">{{ app_icon('filters') }}</span><span>Apply</span></button>
+      <a class="btn" href="/journal"><span class="appPillIcon">{{ app_icon('ops') }}</span><span>Reset</span></a>
+      <a class="btn" href="{{ url_for('journal_weekly_review') }}"><span class="appPillIcon">{{ app_icon('analytics') }}</span><span>Weekly Review</span></a>
     </div>
   </form>
   <div class="journalFilterQuickRail">

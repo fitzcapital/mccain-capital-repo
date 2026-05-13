@@ -302,8 +302,44 @@ def test_canonical_playbook_view_softens_copy_for_unconfirmed_planning_bias():
     assert playbook["bias_label"] == "Conditional bullish above Local Flip 6815"
     assert playbook["plan_label"] == "Buy dips above Local Flip only if next session confirms"
     assert playbook["trade_gate_label"] == "Next live session dip-hold above Local Flip"
+    assert playbook["decision_label"] == "Planning only"
+    assert playbook["bias_summary_label"] == "Buy dips only on confirmation"
+    assert "planning only until live confirmation" in playbook["hero_summary"].lower()
     assert playbook["ui_flags"]["is_planning_only"] is True
     assert playbook["ui_flags"]["is_unconfirmed_gamma"] is True
+
+
+def test_canonical_playbook_view_uses_explicit_unavailable_copy():
+    playbook = core._build_playbook_view_model(
+        market_structure_snapshot={
+            "spot": 694.77,
+            "session_mode": "regular",
+            "session_mode_label": "Regular",
+            "trade_state": "UNAVAILABLE",
+            "trade_state_label": "UNAVAILABLE",
+            "levels_source": "unavailable",
+            "gamma_data_status": "invalid",
+            "gamma_regime": "unavailable",
+            "gamma_regime_label": "Regime Unavailable",
+            "gamma_regime_reason_label": "Gamma snapshot unavailable",
+            "gamma_regime_subtitle": "Gamma snapshot unavailable",
+            "regime_confidence": "none",
+            "regime_confidence_label": "No confidence",
+            "planning_bias": "unavailable",
+            "planning_bias_label": "Unavailable",
+            "current_read": "Setup Pending",
+            "plan_note": "",
+            "tradeability": "NO_TRADE",
+        },
+        execution_model={
+            "location": {"zone": "Unknown", "status": "Awaiting structure"},
+            "playbook": {"why": "Gamma snapshot unavailable."},
+        },
+    )
+    assert playbook["decision_label"] == "No trade"
+    assert playbook["bias_summary_label"] == "Wait for cleaner structure"
+    assert playbook["hero_reason_label"] == "Gamma snapshot unavailable. Wait for validated levels."
+    assert playbook["hero_summary"] == "Gamma snapshot unavailable, wait for validated levels before acting."
 
 
 def test_execution_chart_reuses_last_valid_session_bars_after_close():

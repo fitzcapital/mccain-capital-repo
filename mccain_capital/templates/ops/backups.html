@@ -1,10 +1,11 @@
+{% from "partials/app_theme_macros.html" import app_pill %}
 {% from "partials/async_job_macros.html" import runway %}
 {% set rt = persistence or {} %}
 {% set backup_count = backups|length %}
 <div class="card pageHero opsBackupsHero"><div class="toolbar">
   <div class="pageHeroHead">
     <div>
-      <div class="pill">Auto Backup Center</div>
+      {{ app_pill('backup', 'Auto Backup Center') }}
       <div class="pageTitleRow">
         <h2 class="pageTitle">Backups & Restore Safety</h2>
         <details class="inlineHelp">
@@ -40,7 +41,7 @@
 <div class="opsShell opsBackupsShell">
   <div class="opsPrimary opsBackupsPrimary">
     <div class="card opsCommandDeck opsBackupsCommandDeck"><div class="toolbar">
-      <div class="pill">🧭 Recovery Command Deck</div>
+      {{ app_pill('ops', 'Recovery Command Deck') }}
       <div class="workspaceSectionLead">Run the lightest action that restores trust: integrity check first, archive second, restore only when the current state is no longer reliable.</div>
       <div class="actionRow stack10 opsBackupsCommandActions">
         <form method="post" action="/ops/integrity/run" class="inlineForm" id="integrity-check-form">
@@ -59,7 +60,7 @@
 
     <div class="card opsBackupsInventoryCard"><div class="toolbar">
       <div class="pillRow">
-        <div class="pill">Saved Backups</div>
+        {{ app_pill('backup', 'Saved Backups') }}
         <details class="inlineHelp">
           <summary aria-label="Saved backups help">?</summary>
           <div class="helpPopover">Use saved snapshots for restore, dry-run validation, or offline download.</div>
@@ -143,7 +144,7 @@
     <details class="card opsBackupsFold" {% if dry_run_report %}open{% endif %}>
       <summary>
         <div>
-          <div class="pill">Schedule Settings</div>
+          {{ app_pill('calendar', 'Schedule Settings') }}
           <div class="supportMeta">Cadence, retention, and account scope.</div>
         </div>
         <span class="trendChip">{% if cfg.get('enabled') %}Enabled{% else %}Paused{% endif %}</span>

@@ -1,3 +1,4 @@
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
 {% set current_setup = rv.get('strategy_label','') or rv.get('setup_tag','') %}
 {% set current_session = rv.get('session_tag') or repo.classify_time_block(t.entry_time) or '' %}
 {% set review_setup_options = [
@@ -19,13 +20,13 @@
   <div class="toolbar">
     <div class="tradesReviewHeaderStrip">
       <div class="tradesReviewHeaderMain">
-        <div class="pill">Trade Review</div>
+        {{ app_pill('review', 'Trade Review') }}
         <h2 class="pageTitle">Review Trade #{{ t.id }}</h2>
         <div class="supportLead">Fast execution review with chip-based tagging, boxed risk controls, and final grade control at the bottom.</div>
       </div>
       <div class="actionRow tradesReviewHeaderActions">
-        <a class="btn" href="/trades/{{ t.id }}/replay{% if back_query %}?{{ back_query }}{% endif %}">Replay</a>
-        <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}">Back to Trades</a>
+        <a class="btn" href="/trades/{{ t.id }}/replay{% if back_query %}?{{ back_query }}{% endif %}"><span class="appPillIcon">{{ app_icon('replay') }}</span><span>Replay</span></a>
+        <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}"><span class="appPillIcon">{{ app_icon('trades') }}</span><span>Back to Trades</span></a>
       </div>
     </div>
 
@@ -41,6 +42,39 @@
       <div class="tradesReviewHeaderMetric"><span class="k">Final Grade</span><strong>{{ review.final_grade_letter }} · {{ review.final_grade_score }}</strong></div>
       <div class="tradesReviewHeaderMetric"><span class="k">Class</span><strong>{{ review.classification }}</strong></div>
     </div>
+
+    <article
+      class="tradesReviewCompletionCard tradesReviewCompletionCard-{{ review.review_state.tone }}"
+      id="tradesReviewCompletionCard"
+      data-review-completion-pct="{{ review.review_completion_pct }}"
+      data-review-state-label="{{ review.review_state.label }}"
+    >
+      <div class="tradesReviewCompletionHead">
+        <div>
+          {{ app_pill('checklist', 'Review Completion') }}
+          <div class="tradesReviewCompletionSummary">
+            <strong id="tradesReviewCompletionState">{{ review.review_state.label }}</strong>
+            <span id="tradesReviewCompletionPct">{{ review.review_completion_pct }}%</span>
+          </div>
+          <div class="tradesReviewCompletionLead" id="tradesReviewCompletionLead">{{ review.review_missing_summary }}</div>
+        </div>
+        <div class="tradesReviewCompletionRail">
+          <span class="tradeReviewState tradeReviewState-{{ review.review_state.tone }}" id="tradesReviewCompletionChip">{{ review.review_state.label }}</span>
+          <div class="tradesReviewCompletionMeter">
+            <span class="tradesReviewCompletionMeterFill" id="tradesReviewCompletionMeterFill" style="width: {{ review.review_completion_pct }}%"></span>
+          </div>
+        </div>
+      </div>
+      <div class="tradesReviewCompletionChecklist" id="tradesReviewCompletionChecklist">
+        {% for item in review.review_completion_items %}
+          <div class="tradesReviewCompletionItem{% if item.done %} is-done{% else %} is-missing{% endif %}" data-review-check="{{ item.key }}">
+            <span class="tradesReviewCompletionIcon">{% if item.done %}{{ app_icon('grade') }}{% else %}{{ app_icon('alert') }}{% endif %}</span>
+            <span class="tradesReviewCompletionLabel">{{ item.label }}</span>
+            <span class="tradesReviewCompletionHint">{{ item.hint }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </article>
   </div>
 </section>
 
@@ -56,7 +90,7 @@
         <article class="card supportCard tradesReviewSection tradesReviewCard">
           <div class="toolbar">
             <div class="tradesReviewCardHead">
-              <div class="pill">Setup Tags</div>
+              {{ app_pill('tag', 'Setup Tags') }}
               <span class="tiny muted">Primary pattern, session, and checklist context.</span>
             </div>
 
@@ -102,7 +136,7 @@
         <article class="card supportCard tradesReviewSection tradesReviewCard">
           <div class="toolbar">
             <div class="tradesReviewCardHead">
-              <div class="pill">Mistake Tags</div>
+              {{ app_pill('alert', 'Mistake Tags') }}
               <span class="tiny muted">Execution + risk feed into mistake tags. Discipline feeds rule-break tags.</span>
             </div>
 
@@ -141,7 +175,7 @@
       <article class="card supportCard tradesReviewSection tradesReviewCard tradesReviewRiskCard">
         <div class="toolbar">
           <div class="tradesReviewCardHead">
-            <div class="pill">Risk Review</div>
+            {{ app_pill('risk', 'Risk Review') }}
             <span class="tiny muted">Planned, actual, and verdict in one boxed control module.</span>
           </div>
 
@@ -213,7 +247,7 @@
       <article class="card supportCard tradesReviewSection tradesReviewCard">
         <div class="toolbar">
           <div class="tradesReviewCardHead">
-            <div class="pill">Execution Review</div>
+            {{ app_pill('execution', 'Execution Review') }}
             <span class="tiny muted">Compact review matrix with click-first scoring and only a few reflection inputs.</span>
           </div>
 
@@ -321,7 +355,7 @@
       <article class="card supportCard tradesReviewSection tradesReviewCard">
         <div class="toolbar">
           <div class="tradesReviewCardHead">
-            <div class="pill">Lesson / Notes</div>
+            {{ app_pill('note', 'Lesson / Notes') }}
             <span class="tiny muted">Only the reflection fields worth typing into.</span>
           </div>
 
@@ -346,7 +380,7 @@
     <article class="card primaryCard tradesReviewSection tradesReviewGradeSection tradesReviewCard">
       <div class="toolbar">
         <div class="tradesReviewCardHead">
-          <div class="pill">Grade Control</div>
+          {{ app_pill('grade', 'Grade Control') }}
           <span class="tiny muted">Final decision bar for override, classification, and save actions.</span>
         </div>
 
@@ -391,10 +425,10 @@
         </div>
 
         <div class="actionRow tradesReviewGradeActions">
-          <button class="btn" type="submit" name="recalc_auto" value="1">Recalculate Auto Grade</button>
-          <button class="btn" type="button" id="useAutoGradeBtn">Use Auto Grade</button>
-          <button class="btn primary" type="submit">Save Review</button>
-          <button class="btn" type="submit" name="back_to_trades" value="1">Save + Back</button>
+          <button class="btn" type="submit" name="recalc_auto" value="1"><span class="appPillIcon">{{ app_icon('analytics') }}</span><span>Recalculate Auto Grade</span></button>
+          <button class="btn" type="button" id="useAutoGradeBtn"><span class="appPillIcon">{{ app_icon('grade') }}</span><span>Use Auto Grade</span></button>
+          <button class="btn primary" type="submit"><span class="appPillIcon">{{ app_icon('review') }}</span><span>Save Review</span></button>
+          <button class="btn" type="submit" name="back_to_trades" value="1"><span class="appPillIcon">{{ app_icon('trades') }}</span><span>Save + Back</span></button>
         </div>
       </div>
     </article>
@@ -402,7 +436,7 @@
     <article class="card supportCard tradesReviewSection tradesReviewCard tradesReviewBreakdownCard">
       <div class="toolbar">
         <div class="tradesReviewCardHead">
-          <div class="pill">Grade Breakdown</div>
+          {{ app_pill('analytics', 'Grade Breakdown') }}
           <span class="tiny muted">Compact footer read on the scoring components.</span>
         </div>
         <div class="tradesGradeBreakdownGrid tradesGradeBreakdownGrid-compact">
@@ -428,7 +462,11 @@
   window.mcTradeReviewAuto = {
     score: {{ review.auto_grade_score|int }},
     grade: "{{ review.auto_grade_letter }}",
-    classification: "{{ review.classification }}"
+    classification: "{{ review.classification }}",
+    completionItems: {{ review.review_completion_items|tojson }},
+    completionPct: {{ review.review_completion_pct|int }},
+    completionState: "{{ review.review_state.label }}",
+    missingSummary: {{ review.review_missing_summary|tojson }}
   };
 </script>
 <script src="/static/js/trades_review_page.js"></script>

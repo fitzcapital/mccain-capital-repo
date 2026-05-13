@@ -1,7 +1,8 @@
+{% from "partials/app_theme_macros.html" import app_pill %}
 <div class="budget-command-page" id="budgetCommandApp" data-today="{{ today }}">
   <section class="card budgetHero">
     <div>
-      <div class="pill">Budget Command</div>
+      {{ app_pill('budget', 'Budget Command') }}
       <h2 class="pageTitle">Budget Command Center</h2>
       <p class="summaryLead">Tell your money where to go before it disappears.</p>
       <div class="budgetHeroMeta">
@@ -52,7 +53,7 @@
   <details class="card budgetSetupPanel budgetSetupFold" aria-label="Monthly budget setup">
     <summary class="budgetSetupSummary">
       <div>
-        <div class="pill">Monthly Budget Setup</div>
+        {{ app_pill('budget', 'Monthly Budget Setup') }}
         <h3>Open only when you need to map or import the full month</h3>
       </div>
       <span>Manual Entry / Bulk Import / Current Budget</span>
@@ -60,7 +61,7 @@
 
     <div class="toolbar budgetSetupToolbar">
       <div>
-        <div class="pill">Budget Setup</div>
+        {{ app_pill('budget', 'Budget Setup') }}
         <h3>Map the month before the money moves</h3>
       </div>
       <button class="btn secondary" type="button" id="budgetSeedButton">Load Fitz Current Budget</button>
@@ -115,7 +116,7 @@
   <section class="card budgetQuickPanel">
     <div class="toolbar">
       <div>
-        <div class="pill">Quick Entry</div>
+        {{ app_pill('note', 'Quick Entry') }}
         <h3>Log one clean transaction</h3>
       </div>
       <button class="btn" type="button" id="budgetProfileToggle">Profile</button>
@@ -207,7 +208,7 @@
   <section class="budgetTwoColumn budgetBillsChargesZone">
     <div class="card budgetListPanel">
       <div class="toolbar">
-        <div><div class="pill">Bills Tracker</div><h3>Next 14 Days: <span id="budgetUpcomingTotal">$0</span> due</h3></div>
+        <div>{{ app_pill('calendar', 'Bills Tracker') }}<h3>Next 14 Days: <span id="budgetUpcomingTotal">$0</span> due</h3></div>
         <div class="budgetFilters" id="budgetBillFilters">
           <button class="btn primary" data-filter="all" type="button">All</button>
           <button class="btn" data-filter="unpaid" type="button">Unpaid</button>

@@ -1,8 +1,9 @@
+{% from "partials/app_theme_macros.html" import app_pill %}
 <div class="card pageHero">
   <div class="toolbar">
     <div class="pageHeroHead">
       <div>
-        <div class="pill">🎯 Goals Workspace</div>
+        {{ app_pill('goals', 'Goals Workspace') }}
         <h2 class="pageTitle">Income & Discipline Tracker</h2>
         <div class="pageSub">Track daily input actions, project income scenarios, and keep your execution aligned with monthly targets.</div>
       </div>
@@ -16,7 +17,7 @@
 
 <div class="twoCol">
   <div class="card"><div class="toolbar">
-    <div class="pill">🎯 Daily Goals Tracker</div>
+    {{ app_pill('goals', 'Daily Goals Tracker') }}
     <div class="tiny stack10 line16">
       Track *inputs* daily: debt actions + Upwork pipeline. Then let the math bully you into consistency 😈
     </div>
@@ -86,7 +87,7 @@
   </div></div>
 
   <div class="card"><div class="toolbar">
-    <div class="pill">📅 This Month: {{ m_first }} → {{ m_last }}</div>
+    {{ app_pill('calendar', 'This Month: ' ~ m_first ~ ' → ' ~ m_last) }}
 
     <div class="calcGrid stack10">
       <div class="calcCard"><div class="k">💳 Debt Paid</div><div class="v">{{ money(sum_debt) }}</div></div>
@@ -106,7 +107,7 @@
 
 <div class="twoCol stack12">
   <div class="card"><div class="toolbar">
-    <div class="pill">📈 Income Projection (Goal: $15k–$20k)</div>
+    {{ app_pill('pace', 'Income Projection (Goal: $15k–$20k)') }}
     <div class="tiny stack10 line16">
       Your baseline income is set to <b>{{ money(base_income) }}</b> monthly.
       You need <b>{{ money(15000 - base_income) }}</b> to reach $15k and <b>{{ money(20000 - base_income) }}</b> to reach $20k.
@@ -173,7 +174,7 @@
   </div></div>
 
   <div class="card"><div class="toolbar">
-    <div class="pill">🗓️ Month Log</div>
+    {{ app_pill('calendar', 'Month Log') }}
     <div class="tiny stack10 line16">
       Click a date to edit it.
     </div>

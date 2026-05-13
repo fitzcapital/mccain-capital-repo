@@ -323,6 +323,19 @@
     if (node) node.textContent = String(value ?? "");
   };
 
+  const LOCAL_FLIP_NONE_LABEL = "No local flip in band";
+
+  const renderHeaderLevels = (items) => {
+    const node = document.getElementById("marketPulseHeaderSubline");
+    if (!node) return;
+    node.innerHTML = (Array.isArray(items) ? items : []).map((item) => {
+      const label = String(item.label || "");
+      const value = String(item.value ?? "—");
+      const muted = label === "Local Flip" && value === LOCAL_FLIP_NONE_LABEL ? " is-muted" : "";
+      return `<div class="marketPulseHeaderLevelItem${muted}"><span>${label}</span><strong>${value}</strong></div>`;
+    }).join("");
+  };
+
   const parseDateValue = (value) => {
     const raw = String(value || "").trim();
     if (!raw) return null;
@@ -379,6 +392,63 @@
     if (!node) return;
     variants.forEach((variant) => node.classList.remove(variant));
     if (active) node.classList.add(active);
+  };
+
+  const renderSimpleBadges = (id, labels) => {
+    const root = document.getElementById(id);
+    if (!root) return;
+    const normalized = (Array.isArray(labels) ? labels : [])
+      .map((label) => String(label || "").trim())
+      .filter(Boolean);
+    root.innerHTML = normalized.map((label) => `<span class="marketPulseGammaBadge">${label}</span>`).join("");
+  };
+
+  const gammaStateMeta = (state) => {
+    const normalized = String(state || "").toLowerCase();
+    if (normalized === "positive") {
+      return {
+        cardClass: "gamma-card--positive",
+        pillClass: "state-pill--positive",
+        pillLabel: "POSITIVE GAMMA",
+        badges: ["PINNING", "MEAN REVERSION"],
+      };
+    }
+    if (normalized === "negative") {
+      return {
+        cardClass: "gamma-card--negative",
+        pillClass: "state-pill--negative",
+        pillLabel: "NEGATIVE GAMMA",
+        badges: ["EXPANSION RISK", "TREND CONTINUATION"],
+      };
+    }
+    if (normalized === "unconfirmed") {
+      return {
+        cardClass: "gamma-card--unconfirmed",
+        pillClass: "state-pill--wait",
+        pillLabel: "WAIT FOR CONFIRMATION",
+        badges: ["WAIT FOR CONFIRMATION"],
+      };
+    }
+    return {
+      cardClass: "gamma-card--neutral",
+      pillClass: "state-pill--wait",
+      pillLabel: "NEUTRAL / DATA",
+      badges: ["WAIT FOR CONFIRMATION"],
+    };
+  };
+
+  const decisionStateMeta = (label) => {
+    const normalized = String(label || "").trim().toLowerCase();
+    if (normalized === "actionable") {
+      return { pillClass: "state-pill--execute", pillLabel: "EXECUTE" };
+    }
+    if (normalized === "planning only") {
+      return { pillClass: "state-pill--wait", pillLabel: "PLANNING ONLY" };
+    }
+    if (normalized === "no trade") {
+      return { pillClass: "state-pill--negative", pillLabel: "NO TRADE" };
+    }
+    return { pillClass: "state-pill--wait", pillLabel: "WAIT" };
   };
 
   const fmtCompactLevel = (value, digits = 0, fallback = "—") => {
@@ -580,22 +650,32 @@
   const updateHeaderSummary = (levels) => {
     const gammaState = String(levels.gamma_regime || "").toLowerCase();
     const biasState = String(levels.bias_state || "").toLowerCase();
-    const spot = fmt(levels.spot, 2);
+    const gammaMeta = gammaStateMeta(gammaState);
+    const decisionMeta = decisionStateMeta(levels.decision_label || "Not actionable yet");
     const snapshotLabel = String(levels.last_valid_snapshot_time_label || levels.snapshot_timestamp_label || "—");
     const spotSourceLabel = String(levels?.spot_meta?.source_label || "Last Valid Session");
     const localFlip = levels.local_flip === null || levels.local_flip === undefined
-      ? "—"
+      ? (levels.local_flip_found === false ? LOCAL_FLIP_NONE_LABEL : "—")
       : fmtCompactLevel(levels.local_flip, 0);
-    setText(
-      "marketPulseHeaderSubline",
-      `Main Flip ${fmtCompactLevel(levels.main_flip, 0)} | Local Flip ${localFlip} | CW ${fmtCompactLevel(levels.call_wall, 0)} | PW ${fmtCompactLevel(levels.put_wall, 0)}`
-    );
+    renderHeaderLevels([
+      { label: "Spot", value: fmt(levels.spot, 2) },
+      { label: "Main Flip", value: fmtCompactLevel(levels.main_flip, 0) },
+      { label: "Local Flip", value: localFlip },
+      { label: "CW", value: fmtCompactLevel(levels.call_wall, 0) },
+      { label: "PW", value: fmtCompactLevel(levels.put_wall, 0) },
+    ]);
     setText("marketPulseTitle", `${symbol} PLAYBOOK`);
-    setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel} • ${symbol} ${spot}`);
+    setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel}`);
     setText("marketPulseHeaderGammaLabel", levels.gamma_regime_label || "REGIME UNAVAILABLE");
+    setText("marketPulseHeaderGammaSummary", levels.hero_summary || `${levels.gamma_regime_label || "Regime unavailable"}, ${(levels.bias_summary_label || levels.bias_label || "wait for cleaner structure").toLowerCase()}.`);
     setText("marketPulseHeaderGammaSub", levels.gamma_regime_subtitle || "Gamma snapshot unavailable");
-    setText("marketPulseHeaderBiasPrimary", levels.bias_context || levels.planning_bias_label || "Awaiting valid structure");
-    setText("marketPulseHeaderBiasSecondary", levels.bias_label || "WAIT");
+    setText("marketPulseHeaderDecision", levels.decision_label || "Not actionable yet");
+    setText("marketPulseHeaderBiasPrimary", levels.bias_summary_label || levels.bias_label || "Wait for cleaner structure");
+    setText("marketPulseHeaderBiasSecondary", levels.bias_label || levels.planning_bias_label || "Awaiting valid structure");
+    setText("marketPulseHeaderTradeability", levels.tradeability_display_label || String(levels.execution_regime_label || levels.tradeability || "Trigger required").replaceAll("_", " "));
+    setText("marketPulseHeaderStatePill", gammaMeta.pillLabel);
+    setText("marketPulseHeaderDecisionStatePill", decisionMeta.pillLabel);
+    renderSimpleBadges("marketPulseHeaderBadgeRow", gammaMeta.badges);
 
     setToneVariant(
       "marketPulseHeaderGammaCard",
@@ -603,15 +683,25 @@
       gammaState === "positive" ? "is-positive" : gammaState === "negative" ? "is-negative" : "is-neutral",
     );
     setToneVariant(
+      "marketPulseHeaderGammaCard",
+      ["gamma-card--positive", "gamma-card--negative", "gamma-card--neutral", "gamma-card--unconfirmed"],
+      gammaMeta.cardClass,
+    );
+    setToneVariant(
       "marketPulseHeaderBiasCard",
       ["is-positive", "is-negative", "is-neutral"],
       biasState === "above_local" ? "is-positive" : biasState === "below_local" ? "is-negative" : "is-neutral",
     );
-
-    const aboveNode = document.getElementById("marketPulseHeaderBiasAbove");
-    const belowNode = document.getElementById("marketPulseHeaderBiasBelow");
-    if (aboveNode) aboveNode.classList.toggle("is-active", biasState === "above_local");
-    if (belowNode) belowNode.classList.toggle("is-active", biasState === "below_local");
+    setToneVariant(
+      "marketPulseHeaderStatePill",
+      ["state-pill--positive", "state-pill--negative", "state-pill--wait", "state-pill--execute"],
+      gammaMeta.pillClass,
+    );
+    setToneVariant(
+      "marketPulseHeaderDecisionStatePill",
+      ["state-pill--positive", "state-pill--negative", "state-pill--wait", "state-pill--execute"],
+      decisionMeta.pillClass,
+    );
   };
 
   const setSpotTrendTone = (trend) => {
@@ -1290,7 +1380,7 @@
 
   const renderSummary = (levels) => {
     // /api/hero/levels already derives read, pullback, destination, and trade state.
-    const state = String(levels.trade_state_label || levels.state || "WATCH").replaceAll("_", " ");
+    const state = String(levels.decision_label || levels.trade_state_label || levels.state || "WATCH").replaceAll("_", " ");
     const currentRead = String(levels.current_read || "Await structure");
     const headline = `${state} - ${currentRead}`.toUpperCase();
 
@@ -1298,9 +1388,9 @@
     setText("marketPulseHeroSpot", fmt(levels.spot, 2));
     setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || `${symbol} Spot`);
     setText("marketPulseHeroGamma", levels.gamma_regime_label || "Regime Unavailable");
-    setText("marketPulseHeroBias", levels.current_read || levels.bias_context || levels.bias_label || "Awaiting structure");
+    setText("marketPulseHeroBias", levels.bias_summary_label || levels.current_read || levels.bias_context || levels.bias_label || "Awaiting structure");
     const tradeability = String(
-      levels.execution_regime_label || levels.tradeability || "Reduced confidence"
+      levels.tradeability_display_label || levels.execution_regime_label || levels.tradeability || "Reduced confidence"
     ).replaceAll("_", " ");
     setText("marketPulseHeroTradeability", tradeability);
     setText("marketPulseHeroSession", levels.session || "Closed · No confidence");

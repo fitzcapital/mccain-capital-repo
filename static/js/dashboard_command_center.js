@@ -89,6 +89,29 @@ const dashboardUIFX = (() => {
   return { pulse, setText };
 })();
 
+const tapeSessionClock = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const marketSessionState = (now = new Date()) => {
+  const parts = tapeSessionClock.formatToParts(now);
+  const weekday = String((parts.find((part) => part.type === "weekday") || {}).value || "").toLowerCase();
+  const hour = Number((parts.find((part) => part.type === "hour") || {}).value || "0");
+  const minute = Number((parts.find((part) => part.type === "minute") || {}).value || "0");
+  const isWeekend = weekday === "sat" || weekday === "sun";
+  const minutes = hour * 60 + minute;
+  const isRegularSession = !isWeekend && minutes >= 570 && minutes < 960;
+  const isAfterClose = isWeekend || minutes >= 960;
+  return {
+    isRegularSession,
+    isAfterClose,
+  };
+};
+
 (function () {
   const shell = document.getElementById("dashboardModeShell");
   if (!shell) return;
@@ -205,6 +228,7 @@ const dashboardUIFX = (() => {
     ])
   );
   const statusNode = document.getElementById("dashboardTapeStreamStatus");
+  const statusTextNode = document.getElementById("dashboardTapeStreamStatusText");
   const updatedNode = document.getElementById("dashboardTapeUpdatedAt");
   const tapeCard = document.querySelector(".dashboardCoreTapeCard");
   const tapeRefreshBtn = document.getElementById("dashboardTapeRefreshBtn");
@@ -387,11 +411,11 @@ const dashboardUIFX = (() => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
     if (!Number.isFinite(ts)) {
       return {
-        full: "unavailable",
-        compact: "unavailable",
-        band: "Unavailable",
-        status: "Unavailable",
-        tone: "missing",
+        full: "waiting for feed",
+        compact: "standby",
+        band: "Standby",
+        status: "Standby",
+        tone: "delayed",
       };
     }
     const ageS = Math.max(0, (Date.now() - ts) / 1000);
@@ -409,7 +433,7 @@ const dashboardUIFX = (() => {
 
   const deriveState = (quote) => {
     const price = asNum((quote || {}).price);
-    if (price === null) return "Unavailable";
+    if (price === null) return "Standby";
     const provider = String((quote || {}).provider || "").toLowerCase();
     const reason = String((quote || {}).reason || "").toLowerCase();
     if (provider === "tradier" && reason.startsWith("tradier_")) return "Live";
@@ -487,7 +511,7 @@ const dashboardUIFX = (() => {
     }
     return {
       label: "MIXED",
-      tone: "neutral",
+      tone: pct === null || pct >= 0 ? "positive" : "negative",
       title: "No clean tape edge yet.",
     };
   };
@@ -508,6 +532,43 @@ const dashboardUIFX = (() => {
       setExpandedSymbol(symbol === openSymbol ? "" : symbol);
     });
   });
+
+  const sanitizeTapePlaceholder = (row) => {
+    if (!row) return;
+    const lastNode = row.querySelector('[data-role="last"]');
+    const chgpNode = row.querySelector('[data-role="chgp"]');
+    const marketStateNode = row.querySelector('[data-role="market-state"]');
+    const liveNode = row.querySelector('[data-role="row-live"]');
+    const detailNode = detailPanels.get(String(row.dataset.watchSymbol || "").toUpperCase());
+    const detailChgNode = detailNode?.querySelector('[data-role="detail-chg"]');
+    const detailLiveNode = detailNode?.querySelector('[data-role="detail-live"]');
+
+    const lower = (node) => String(node?.textContent || "").trim().toLowerCase();
+    if (lastNode && (lower(lastNode) === "loading..." || lower(lastNode) === "unavailable")) {
+      lastNode.textContent = "Standby";
+    }
+    if (chgpNode && (lower(chgpNode) === "loading..." || lower(chgpNode) === "unavailable")) {
+      chgpNode.textContent = "—";
+    }
+    if (marketStateNode && lower(marketStateNode) === "unavailable") {
+      marketStateNode.textContent = "Standby";
+      marketStateNode.classList.remove("is-missing");
+      marketStateNode.classList.add("is-delayed");
+    }
+    if (liveNode && (lower(liveNode) === "unavailable" || lower(liveNode) === "loading...")) {
+      liveNode.textContent = "waiting for feed";
+      liveNode.classList.remove("is-missing");
+      liveNode.classList.add("is-delayed");
+    }
+    if (detailChgNode && (lower(detailChgNode) === "loading..." || lower(detailChgNode) === "unavailable")) {
+      detailChgNode.textContent = "—";
+    }
+    if (detailLiveNode && (lower(detailLiveNode) === "loading..." || lower(detailLiveNode) === "unavailable")) {
+      detailLiveNode.textContent = "standby";
+    }
+  };
+
+  rows.forEach((row) => sanitizeTapePlaceholder(row));
 
   const updateRow = (row, quote, points) => {
     const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
@@ -551,14 +612,14 @@ const dashboardUIFX = (() => {
       if (price !== null) {
         dashboardUIFX.setText(lastNode, formatValue(price, 2), { live: true, direction: tapeTone === "positive" ? "up" : tapeTone === "negative" ? "down" : "neutral" });
       } else if (!hasMeaningfulText(lastNode)) {
-        lastNode.textContent = "loading...";
+        lastNode.textContent = "Standby";
       }
     }
     if (chgpNode) {
       if (pct !== null) {
         dashboardUIFX.setText(chgpNode, `${formatSigned(pct, 2)}%`, { live: true, direction: tapeTone === "positive" ? "up" : tapeTone === "negative" ? "down" : "neutral" });
       } else if (!hasMeaningfulText(chgpNode)) {
-        chgpNode.textContent = "loading...";
+        chgpNode.textContent = "—";
       }
       chgpNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
       chgpNode.classList.add(`tone-${tapeTone}`);
@@ -615,7 +676,7 @@ const dashboardUIFX = (() => {
       if (absChange !== null) {
         dashboardUIFX.setText(detailChgNode, formatSigned(absChange, 2), { live: true, direction: absChange > 0 ? "up" : absChange < 0 ? "down" : "neutral" });
       } else if (!hasMeaningfulText(detailChgNode)) {
-        detailChgNode.textContent = "loading...";
+        detailChgNode.textContent = "—";
       }
     }
     if (detailOpenNode && openValue !== null) dashboardUIFX.setText(detailOpenNode, formatValue(openValue, 2));
@@ -625,8 +686,8 @@ const dashboardUIFX = (() => {
 
   const setStreamStatus = (label, detail) => {
     const normalized = String(label || "").toLowerCase();
-    const statusChanged = dashboardUIFX.setText(statusNode, label, { pulse: true, tone: normalized.includes("retry") ? "warning" : "info" });
-    statusNode.dataset.tone = (
+    const sessionState = marketSessionState();
+    const tone = (
       normalized.includes("retry")
       || normalized.includes("delayed")
       || normalized.includes("cached")
@@ -638,6 +699,30 @@ const dashboardUIFX = (() => {
       : normalized.includes("unavailable") || normalized.includes("error")
       ? "missing"
       : "live";
+    const displayLabel = sessionState.isAfterClose
+      ? "After hours"
+      : tone === "live" && sessionState.isRegularSession
+      ? "Pulse"
+      : tone === "delayed"
+        ? "Lag"
+        : tone === "missing"
+          ? "Dark"
+          : "Booting";
+    const badgeTone = sessionState.isAfterClose
+      ? "closed"
+      : tone === "live" && sessionState.isRegularSession
+        ? "live"
+        : tone;
+    const previousLabel = String(statusNode?.getAttribute("aria-label") || "");
+    const statusChanged = previousLabel !== displayLabel;
+    if (statusTextNode) {
+      dashboardUIFX.setText(statusTextNode, displayLabel, { pulse: true, tone: normalized.includes("retry") ? "warning" : "info" });
+    }
+    if (statusNode) {
+      statusNode.dataset.tone = badgeTone;
+      statusNode.setAttribute("aria-label", displayLabel);
+      statusNode.setAttribute("title", displayLabel);
+    }
     dashboardUIFX.setText(updatedNode, detail, { pulse: statusChanged, tone: "info" });
   };
 
@@ -674,8 +759,11 @@ const dashboardUIFX = (() => {
   };
 
   const gammaCardByKey = (key) => document.getElementById(`dashboardGammaChip-${key}`);
+  const gammaIconByKey = (key) => document.getElementById(`dashboardGammaIcon-${key}`);
   const gammaValueByKey = (key) => document.getElementById(`dashboardGammaValue-${key}`);
   const gammaDetailByKey = (key) => document.getElementById(`dashboardGammaDetail-${key}`);
+  const gammaPopoverByKey = (key) => document.getElementById(`dashboardGammaPopover-${key}`);
+  let openGammaPopoverKey = null;
 
   const formatLevel = (value) => {
     const numeric = asNum(value);
@@ -707,10 +795,17 @@ const dashboardUIFX = (() => {
   const structureValueForKey = (key, structure) => {
     if (!structure || typeof structure !== "object") return "--";
     if (key === "regime") {
-      return String(structure.gamma_regime_label || structure.gamma_regime || "UNAVAILABLE").toUpperCase();
+      const regimeLabel = String(structure.gamma_regime_label || structure.gamma_regime || "Unavailable").trim();
+      const normalized = regimeLabel.toLowerCase();
+      if (normalized === "positive gamma" || normalized === "positive") return "Positive Ⲅ";
+      if (normalized === "negative gamma" || normalized === "negative") return "Negative Ⲅ";
+      if (normalized === "neutral gamma" || normalized === "neutral") return "Neutral Ⲅ";
+      if (normalized === "unconfirmed") return "Unconfirmed Ⲅ";
+      if (normalized === "regime unavailable" || normalized === "unavailable") return "Unavailable Ⲅ";
+      return `${regimeLabel} Ⲅ`;
     }
     if (key === "local_flip" && structure.local_flip === null && structure.local_flip_found === false) {
-      return "No Local Flip between Put Wall and Call Wall";
+      return "--";
     }
     const fieldMap = {
       local_flip: "local_flip",
@@ -723,6 +818,51 @@ const dashboardUIFX = (() => {
     return formatLevel(structure[fieldMap[key]]);
   };
 
+  const structureDetailForKey = (key, structure) => {
+    if (!structure || typeof structure !== "object") return "";
+    if (key === "regime") {
+      return "";
+    }
+    if (key === "local_flip" && structure.local_flip === null && structure.local_flip_found === false) {
+      return "No flip in wall band";
+    }
+    return "";
+  };
+
+  const structureHelperForKey = (key, structure) => {
+    if (!structure || typeof structure !== "object") return "";
+    if (key === "regime") {
+      if (structure.gamma_regime === "unconfirmed" || structure.gamma_regime === "unavailable") {
+        return String(structure.gamma_regime_reason_label || "");
+      }
+      return String(structure.gamma_regime_subtitle || structure.gamma_regime_reason_label || "");
+    }
+    return "";
+  };
+
+  const closeGammaPopover = () => {
+    if (!openGammaPopoverKey) return;
+    const button = gammaIconByKey(openGammaPopoverKey);
+    const popover = gammaPopoverByKey(openGammaPopoverKey);
+    if (button) button.setAttribute("aria-expanded", "false");
+    if (popover) popover.hidden = true;
+    openGammaPopoverKey = null;
+  };
+
+  const toggleGammaPopover = (key) => {
+    const button = gammaIconByKey(key);
+    const popover = gammaPopoverByKey(key);
+    if (!button || !popover || popover.classList.contains("is-empty")) return;
+    if (openGammaPopoverKey === key) {
+      closeGammaPopover();
+      return;
+    }
+    closeGammaPopover();
+    button.setAttribute("aria-expanded", "true");
+    popover.hidden = false;
+    openGammaPopoverKey = key;
+  };
+
   const applyGammaTone = (node, tone, glow) => {
     if (!node) return;
     node.classList.remove("is-positive", "is-negative", "is-info", "has-glow");
@@ -730,6 +870,7 @@ const dashboardUIFX = (() => {
     if (tone === "negative") node.classList.add("is-negative");
     if (tone === "info") node.classList.add("is-info");
     if (glow) node.classList.add("has-glow");
+    node.dataset.gammaTone = tone || "";
   };
 
   const truncateText = (value, max) => {
@@ -820,23 +961,48 @@ const dashboardUIFX = (() => {
       "put_wall",
     ].forEach((key) => {
       const card = gammaCardByKey(key);
+      const iconNode = gammaIconByKey(key);
       const valueNode = gammaValueByKey(key);
       const detailNode = gammaDetailByKey(key);
       const tone = structureToneForKey(key, structure);
+      const glow = structureGlowForKey(key, structure);
       const valueChanged = valueNode
         ? dashboardUIFX.setText(valueNode, structureValueForKey(key, structure), {
             pulse: true,
             tone: tone || "info",
           })
         : false;
-      if (detailNode && key === "regime") {
-        dashboardUIFX.setText(detailNode, String(
-          structure.gamma_regime === "unconfirmed" || structure.gamma_regime === "unavailable"
-            ? (structure.gamma_regime_reason_label || "")
-            : ""
-        ));
+      if (detailNode) {
+        const detailText = structureDetailForKey(key, structure);
+        dashboardUIFX.setText(detailNode, detailText);
+        detailNode.classList.toggle("is-empty", !detailText);
       }
-      applyGammaTone(card, tone, structureGlowForKey(key, structure));
+      if (iconNode) {
+        const helperText = structureHelperForKey(key, structure);
+        const keyLabel = String(key).replace(/_/g, " ");
+        const popoverNode = gammaPopoverByKey(key);
+        if (key === "regime" && helperText) {
+          iconNode.setAttribute("aria-label", `${keyLabel} · ${helperText}`);
+          if (popoverNode) {
+            dashboardUIFX.setText(popoverNode, helperText);
+            popoverNode.classList.remove("is-empty");
+          }
+        } else {
+          iconNode.setAttribute("aria-label", keyLabel);
+          if (key === "regime" && popoverNode) {
+            dashboardUIFX.setText(popoverNode, "");
+            popoverNode.classList.add("is-empty");
+            if (openGammaPopoverKey === key) {
+              closeGammaPopover();
+            } else {
+              popoverNode.hidden = true;
+              iconNode.setAttribute("aria-expanded", "false");
+            }
+          }
+        }
+      }
+      applyGammaTone(card, tone, glow);
+      applyGammaTone(iconNode, tone, glow);
       if (valueChanged) {
         dashboardUIFX.pulse(card, tone || "info");
       }
@@ -862,6 +1028,31 @@ const dashboardUIFX = (() => {
     }, 1400);
     lastPayloadAppliedAt = Date.now();
   };
+
+  const regimeIconButton = gammaIconByKey("regime");
+  if (regimeIconButton) {
+    regimeIconButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleGammaPopover("regime");
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    if (!openGammaPopoverKey) return;
+    const button = gammaIconByKey(openGammaPopoverKey);
+    const popover = gammaPopoverByKey(openGammaPopoverKey);
+    if ((button && button.contains(event.target)) || (popover && popover.contains(event.target))) {
+      return;
+    }
+    closeGammaPopover();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeGammaPopover();
+    }
+  });
 
   const flushPendingPayload = () => {
     pendingPayloadTimer = null;
@@ -1003,6 +1194,119 @@ const dashboardUIFX = (() => {
 
   if (decisionCard && decisionRefreshBtn) {
     const endpoint = String(decisionCard.dataset.refreshEndpoint || "").trim();
+    const readinessCard = document.querySelector("[data-dashboard-readiness]");
+    const readinessPctLabel = readinessCard?.querySelector("[data-readiness-pct-label]") || null;
+    const readinessMeter = readinessCard?.querySelector("[data-readiness-meter]") || null;
+    const readinessCount = readinessCard?.querySelector("[data-readiness-count]") || null;
+    const readinessState = readinessCard?.querySelector("[data-readiness-state]") || null;
+    const readinessDetail = readinessCard?.querySelector("[data-readiness-detail]") || null;
+    const readinessBlockers = readinessCard?.querySelector("[data-readiness-blockers]") || null;
+    const readinessCommandSummary = document.querySelector("[data-readiness-command-summary]");
+    const readinessItems = Array.from(document.querySelectorAll("[data-readiness-item]"));
+    const mindsetItem = document.querySelector('[data-readiness-key="mindset-anchored"]');
+    const mindsetStatus = mindsetItem?.querySelector("[data-readiness-item-status]") || null;
+    const mindsetDetail = mindsetItem?.querySelector("[data-readiness-item-detail]") || null;
+    const mindsetAction = mindsetItem?.querySelector("[data-readiness-item-action]") || null;
+    const mindsetDefaultDetail = String(mindsetDetail?.textContent || "").trim();
+    const mindsetDefaultStatus = String(mindsetStatus?.textContent || "").trim() || "Loading";
+    const mindsetDefaultAction = String(mindsetAction?.textContent || "").trim() || "Load";
+    const mindsetSuccessDetail = "Planning, gamma, and brief context are loaded for this session view.";
+    const hasObjectContent = (value) => !!value && typeof value === "object" && Object.keys(value).length > 0;
+    const hasText = (value) => String(value || "").trim().length > 0;
+    const getReadinessState = (done, total) => {
+      if (total <= 0) {
+        return { pct: 0, state: "Needs attention", detail: "Clear the missing blockers before adding risk." };
+      }
+      const pct = Math.round((100 * done) / total);
+      if (done >= total) {
+        return { pct, state: "Ready to trade", detail: "All core checks are locked." };
+      }
+      if (done >= Math.max(1, total - 1)) {
+        return { pct, state: "Almost ready", detail: "Clear the missing blockers before adding risk." };
+      }
+      return { pct, state: "Needs attention", detail: "Clear the missing blockers before adding risk." };
+    };
+    const syncReadinessFromChecklist = () => {
+      if (!readinessCard || !readinessItems.length) return;
+      const blockers = [];
+      let done = 0;
+      readinessItems.forEach((item) => {
+        const label = String(item.querySelector(".dashboardChecklistTitle")?.textContent || "").trim();
+        const isDone = item.classList.contains("is-done");
+        if (isDone) {
+          done += 1;
+        } else if (label) {
+          blockers.push(label);
+        }
+      });
+      const total = readinessItems.length;
+      const { pct, state, detail } = getReadinessState(done, total);
+      readinessCard.dataset.readinessDone = String(done);
+      readinessCard.dataset.readinessTotal = String(total);
+      if (readinessPctLabel) readinessPctLabel.textContent = `${pct}%`;
+      if (readinessMeter) readinessMeter.style.setProperty("--readiness-pct", `${pct.toFixed(1)}%`);
+      if (readinessCount) readinessCount.textContent = `${done}/${total} checks complete`;
+      if (readinessState) readinessState.textContent = state;
+      if (readinessDetail) readinessDetail.textContent = detail;
+      if (readinessCommandSummary) readinessCommandSummary.textContent = `${done}/${total} ready`;
+      if (readinessBlockers) {
+        readinessBlockers.innerHTML = blockers.slice(0, 3).map((label) => (
+          `<span class="trendChip negative">${label}</span>`
+        )).join("");
+        readinessBlockers.hidden = blockers.length === 0;
+      }
+    };
+    const setMindsetAnchoredState = (done) => {
+      if (!mindsetItem) return;
+      mindsetItem.classList.toggle("is-done", done);
+      mindsetItem.classList.toggle("is-missing", !done);
+      mindsetItem.title = done ? mindsetSuccessDetail : mindsetDefaultDetail;
+      if (mindsetStatus) mindsetStatus.textContent = done ? "Loaded" : mindsetDefaultStatus;
+      if (mindsetDetail) mindsetDetail.textContent = done ? mindsetSuccessDetail : mindsetDefaultDetail;
+      if (mindsetAction) mindsetAction.textContent = done ? "Ready" : mindsetDefaultAction;
+      syncReadinessFromChecklist();
+    };
+    const planningHydrationComplete = (payload) => {
+      const panel = payload?.decision_panel || {};
+      const hasDecision = [
+        panel.status,
+        panel.lead,
+        panel.bias,
+        panel.risk_size,
+        panel.plan_primary,
+        panel.trade_gate,
+      ].some(hasText);
+      const hasGamma = hasObjectContent(payload?.market_structure_snapshot) || hasObjectContent(payload?.dashboard_gamma);
+      const hasBrief = hasText(payload?.brief_html);
+      return hasDecision && hasGamma && hasBrief;
+    };
+    const planningDomHydrated = () => {
+      const leadText = String(decisionLead?.textContent || "").trim();
+      const biasText = String(decisionBiasValue?.textContent || "").trim();
+      const planText = String(decisionPlanValue?.textContent || "").trim();
+      const gammaState = String(gammaStrip?.dataset.gammaState || "").trim().toLowerCase();
+      const briefText = String(briefCardShell?.textContent || "").trim();
+      const decisionReady = (
+        hasText(leadText)
+        && leadText.toLowerCase() !== "loading planning context."
+        && hasText(biasText)
+        && biasText.toLowerCase() !== "loading"
+        && hasText(planText)
+        && !planText.toLowerCase().startsWith("loading")
+      );
+      const gammaReady = !!gammaState && gammaState !== "loading" && gammaState !== "unavailable";
+      const briefReady = (
+        hasText(briefText)
+        && !briefText.toLowerCase().includes("building the next-session brief")
+        && !briefText.toLowerCase().includes("preparing the brief shell")
+      );
+      return decisionReady && gammaReady && briefReady;
+    };
+    const syncMindsetAnchoredFromPlanning = (payload = null) => {
+      const hydrated = planningHydrationComplete(payload) || planningDomHydrated();
+      setMindsetAnchoredState(hydrated);
+    };
+    syncReadinessFromChecklist();
     const setRefreshState = (loading) => {
       decisionRefreshBtn.disabled = !!loading;
       decisionRefreshBtn.classList.toggle("is-loading", !!loading);
@@ -1046,6 +1350,9 @@ const dashboardUIFX = (() => {
         updateDecisionPanel(payload.decision_panel || {});
         updateGammaStrip(payload.market_structure_snapshot || null, payload.dashboard_gamma || null);
         applyBriefHtml(payload.brief_html || "");
+        window.setTimeout(() => {
+          syncMindsetAnchoredFromPlanning(payload);
+        }, 0);
       } catch (_error) {
         // Keep the current planning state visible if the manual refresh fails.
       } finally {
@@ -1055,6 +1362,9 @@ const dashboardUIFX = (() => {
         if (decisionLead && String(decisionLead.textContent || "").trim().length > 0) {
           setPlanningHydrationState(false);
         }
+        window.setTimeout(() => {
+          syncMindsetAnchoredFromPlanning();
+        }, 80);
         setRefreshState(false);
       }
     };
@@ -2170,4 +2480,468 @@ const dashboardUIFX = (() => {
 
   const defaultButton = buttons.find((button) => button.classList.contains("is-active")) || buttons[0];
   activate(defaultButton);
+})();
+
+(function () {
+  const syncPanel = document.querySelector("[data-dashboard-live-sync]");
+  if (!syncPanel) return;
+
+  const runBtn = syncPanel.querySelector("[data-dashboard-sync-run]");
+  const runLabel = syncPanel.querySelector("[data-dashboard-sync-run-label]");
+  const stateNode = syncPanel.querySelector("[data-dashboard-sync-state]");
+  const detailNode = syncPanel.querySelector("[data-dashboard-sync-detail]");
+  const metaNode = syncPanel.querySelector("[data-dashboard-sync-meta]");
+  const todayNode = syncPanel.querySelector("[data-dashboard-sync-today]");
+  const noteNode = syncPanel.querySelector("[data-dashboard-sync-note]");
+  const runEndpoint = String(syncPanel.dataset.runEndpoint || "").trim();
+  const jobEndpointTemplate = String(syncPanel.dataset.jobEndpointTemplate || "").trim();
+  const finalStates = new Set(["success", "failed", "debug_only", "cancelled"]);
+  let activeJobId = String(syncPanel.dataset.activeJobId || "").trim();
+  let pollTimer = 0;
+
+  const hasLastRequest = () => syncPanel.dataset.hasLastRequest === "1";
+  const credentialsReady = () => syncPanel.dataset.credentialsReady === "1";
+  const disabledReason = () => String(syncPanel.dataset.disabledReason || "").trim();
+  const stageLabel = (value) => {
+    const label = String(value || "").trim().replace(/_/g, " ");
+    return label ? label.replace(/\b\w/g, (char) => char.toUpperCase()) : "Standby";
+  };
+  const stopPolling = () => {
+    if (pollTimer) {
+      window.clearTimeout(pollTimer);
+      pollTimer = 0;
+    }
+  };
+  const parseUpdatedAt = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+  const etDateLabel = (value = new Date()) => {
+    const parsed = value instanceof Date ? value : parseUpdatedAt(value);
+    if (!parsed) return "";
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(parsed);
+  };
+  const formatAbsoluteTimestamp = (raw) => {
+    const parsed = parseUpdatedAt(raw);
+    if (!parsed) return "";
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).formatToParts(parsed);
+    const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${byType.month} ${byType.day}, ${byType.year} · ${byType.hour}:${byType.minute} ${byType.dayPeriod} ET`;
+  };
+  const ranToday = (raw) => {
+    const day = etDateLabel(raw);
+    return !!day && day === etDateLabel(new Date());
+  };
+  const todayBadge = (statusToday) => {
+    switch (String(statusToday || "").trim().toLowerCase()) {
+      case "running":
+        return "Today: Running";
+      case "completed":
+        return "Today: Ran";
+      case "failed":
+        return "Today: Failed";
+      default:
+        return "Today: Pending";
+    }
+  };
+  const setTone = (tone) => {
+    const tones = ["is-ready", "is-running", "is-success", "is-warning", "is-idle"];
+    tones.forEach((name) => syncPanel.querySelector("[data-dashboard-sync-card]")?.classList.remove(name));
+    const normalized = String(tone || "").trim().toLowerCase();
+    const className = (
+      normalized === "running" ? "is-running"
+        : normalized === "success" ? "is-success"
+          : normalized === "warning" ? "is-warning"
+            : normalized === "ready" ? "is-ready"
+              : "is-idle"
+    );
+    syncPanel.querySelector("[data-dashboard-sync-card]")?.classList.add(className);
+  };
+  const setRunDisabled = (disabled, reason = "") => {
+    if (!runBtn) return;
+    runBtn.disabled = !!disabled;
+    if (reason) {
+      runBtn.title = reason;
+    } else {
+      runBtn.removeAttribute("title");
+    }
+  };
+  const setRunLoading = (loading, label = "") => {
+    if (!runBtn) return;
+    runBtn.classList.toggle("is-loading", !!loading);
+    runBtn.setAttribute("aria-busy", loading ? "true" : "false");
+    if (runLabel && label) {
+      runLabel.textContent = label;
+    } else if (runLabel && !loading) {
+      runLabel.textContent = "Run Last Sync";
+    }
+  };
+  const refreshAvailability = () => {
+    if (!hasLastRequest()) {
+      syncPanel.dataset.canRun = "0";
+      setRunLoading(false);
+      setRunDisabled(true, disabledReason() || "No previous live-sync request is available yet.");
+      return false;
+    }
+    if (!credentialsReady()) {
+      syncPanel.dataset.canRun = "0";
+      setRunLoading(false);
+      setRunDisabled(true, disabledReason() || "Saved live-sync credentials are missing.");
+      return false;
+    }
+    syncPanel.dataset.canRun = "1";
+    syncPanel.dataset.disabledReason = "";
+    setRunLoading(false);
+    setRunDisabled(false);
+    return true;
+  };
+  const updateStatusCard = ({
+    tone,
+    state,
+    detail,
+    meta,
+    updatedAtRaw,
+    todayStatus,
+    note,
+    running = false,
+  }) => {
+    setTone(tone);
+    if (stateNode && state) stateNode.textContent = state;
+    if (detailNode && detail) detailNode.textContent = detail;
+    if (metaNode && meta) metaNode.textContent = meta;
+    if (metaNode && typeof updatedAtRaw !== "undefined") {
+      metaNode.dataset.dashboardSyncUpdatedRaw = String(updatedAtRaw || "").trim();
+    }
+    if (todayNode) todayNode.textContent = todayBadge(todayStatus);
+    if (noteNode && note) noteNode.textContent = note;
+    setRunLoading(running, running ? "Sync Running" : "");
+  };
+  const applyIdleState = () => {
+    activeJobId = "";
+    stopPolling();
+    syncPanel.dataset.activeJobId = "";
+    const updatedAtRaw = String(metaNode?.dataset.dashboardSyncUpdatedRaw || "").trim();
+    const lastRunMeta = formatAbsoluteTimestamp(updatedAtRaw);
+    const syncedToday = ranToday(updatedAtRaw);
+    refreshAvailability();
+    updateStatusCard({
+      tone: syncedToday ? "success" : "idle",
+      state: syncedToday ? "COMPLETED TODAY" : "NOT RUN TODAY",
+      detail: syncedToday ? "Import complete" : "No sync today",
+      meta: lastRunMeta ? `Last run: ${lastRunMeta}` : "Last run: None yet",
+      updatedAtRaw,
+      todayStatus: syncedToday ? "completed" : "pending",
+      note: syncedToday
+        ? "Upload sync completed for today."
+        : "No sync has run today yet.",
+    });
+  };
+  const applyJobState = (job) => {
+    const status = String(job?.status || "").trim().toLowerCase();
+    const stage = String(job?.stage || "").trim();
+    const message = String(job?.message || "").trim();
+    const updatedAtRaw = String(job?.updated_at || "").trim();
+    const isRunning = status === "queued" || status === "running";
+    const meta = formatAbsoluteTimestamp(updatedAtRaw);
+    const todayRan = ranToday(updatedAtRaw);
+    if (isRunning) {
+      syncPanel.dataset.canRun = "0";
+      syncPanel.dataset.disabledReason = "A live sync is already running.";
+      setRunDisabled(true, "A live sync is already running.");
+      updateStatusCard({
+        tone: "running",
+        state: "SYNC RUNNING",
+        detail: stageLabel(stage) || message || "Opening statement dialog",
+        meta: meta ? `Last run: ${meta}` : "Last run: None yet",
+        updatedAtRaw,
+        todayStatus: "running",
+        note: "Running now. Controls unlock when complete.",
+        running: true,
+      });
+      return;
+    }
+    activeJobId = "";
+    syncPanel.dataset.activeJobId = "";
+    refreshAvailability();
+    if (status === "success" || status === "debug_only") {
+      updateStatusCard({
+        tone: "success",
+        state: todayRan ? "COMPLETED TODAY" : "NOT RUN TODAY",
+        detail: stageLabel(stage) || "Import complete",
+        meta: meta ? `Last run: ${meta}` : "Last run: None yet",
+        updatedAtRaw,
+        todayStatus: todayRan ? "completed" : "pending",
+        note: todayRan ? "Upload sync completed for today." : "No sync has run today yet.",
+      });
+    } else if (status === "failed" || status === "cancelled") {
+      updateStatusCard({
+        tone: "warning",
+        state: todayRan ? "FAILED TODAY" : "NOT RUN TODAY",
+        detail: stageLabel(stage) || "Sync failed",
+        meta: meta ? `Last run: ${meta}` : "Last run: None yet",
+        updatedAtRaw,
+        todayStatus: todayRan ? "failed" : "pending",
+        note: todayRan ? "Last sync failed. Review logs and retry." : "No sync has run today yet.",
+      });
+    }
+  };
+  const pollJob = async () => {
+    if (!activeJobId || !jobEndpointTemplate) return;
+    try {
+      const response = await fetch(
+        jobEndpointTemplate.replace("__JOB_ID__", encodeURIComponent(activeJobId)),
+        {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok || !payload?.ok || !payload.job) {
+        throw new Error("dashboard_sync_poll_failed");
+      }
+      applyJobState(payload.job);
+      const status = String(payload.job.status || "").trim().toLowerCase();
+      if (!finalStates.has(status)) {
+        pollTimer = window.setTimeout(() => {
+          void pollJob();
+        }, 2000);
+      }
+    } catch (_error) {
+      pollTimer = window.setTimeout(() => {
+        void pollJob();
+      }, 3000);
+    }
+  };
+
+  if (runBtn && runEndpoint) {
+    runBtn.addEventListener("click", async () => {
+      if (runBtn.disabled) return;
+      setRunDisabled(true, "Starting live sync...");
+      setRunLoading(true, "Starting Sync");
+      updateStatusCard({
+        tone: "running",
+        state: "SYNC RUNNING",
+        detail: "Opening statement dialog",
+        meta: "Last run: None yet",
+        updatedAtRaw: "",
+        todayStatus: "running",
+        note: "Running now. Controls unlock when complete.",
+        running: true,
+      });
+      try {
+        const response = await fetch(runEndpoint, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        });
+        const payload = await response.json().catch(() => null);
+        if (!payload) {
+          throw new Error("dashboard_sync_start_failed");
+        }
+        if (!response.ok && payload.job) {
+          activeJobId = String(payload.job?.id || "").trim();
+          syncPanel.dataset.activeJobId = activeJobId;
+          applyJobState(payload.job);
+          stopPolling();
+          if (activeJobId) {
+            pollTimer = window.setTimeout(() => {
+              void pollJob();
+            }, 1200);
+          }
+          return;
+        }
+        if (!payload.ok) {
+          const message = String(payload.message || "Live sync could not start.").trim();
+          syncPanel.dataset.disabledReason = message;
+          updateStatusCard({
+            tone: "warning",
+            state: "FAILED TODAY",
+            detail: message || "Sync failed",
+            meta: "Last run: None yet",
+            updatedAtRaw: "",
+            todayStatus: "failed",
+            note: "Last sync failed. Review logs and retry.",
+            running: false,
+          });
+          refreshAvailability();
+          return;
+        }
+        activeJobId = String(payload.job?.id || "").trim();
+        syncPanel.dataset.activeJobId = activeJobId;
+        if (payload.job) {
+          applyJobState(payload.job);
+        }
+        stopPolling();
+        if (activeJobId) {
+          pollTimer = window.setTimeout(() => {
+            void pollJob();
+          }, 1200);
+        }
+      } catch (_error) {
+        updateStatusCard({
+          tone: "warning",
+          state: "FAILED TODAY",
+          detail: "Sync failed",
+          meta: "Last run: None yet",
+          updatedAtRaw: "",
+          todayStatus: "failed",
+          note: "Last sync failed. Review logs and retry.",
+        });
+        refreshAvailability();
+      }
+    });
+  }
+
+  if (activeJobId) {
+    applyJobState({
+      status: "running",
+      stage: detailNode?.textContent || "running",
+      message: detailNode?.textContent || "Opening statement dialog",
+      updated_at: String(metaNode?.dataset.dashboardSyncUpdatedRaw || "").trim(),
+    });
+    pollTimer = window.setTimeout(() => {
+      void pollJob();
+    }, 1200);
+  } else {
+    applyIdleState();
+  }
+})();
+
+(function () {
+  const mindsetItem = document.querySelector('[data-readiness-key="mindset-anchored"]');
+  const readinessCard = document.querySelector("[data-dashboard-readiness]");
+  const readinessCommandSummary = document.querySelector("[data-readiness-command-summary]");
+  const readinessPctLabel = readinessCard?.querySelector("[data-readiness-pct-label]") || null;
+  const readinessMeter = readinessCard?.querySelector("[data-readiness-meter]") || null;
+  const readinessCount = readinessCard?.querySelector("[data-readiness-count]") || null;
+  const readinessState = readinessCard?.querySelector("[data-readiness-state]") || null;
+  const readinessDetail = readinessCard?.querySelector("[data-readiness-detail]") || null;
+  const readinessBlockers = readinessCard?.querySelector("[data-readiness-blockers]") || null;
+  const readinessItems = Array.from(document.querySelectorAll("[data-readiness-item]"));
+  const mindsetStatus = mindsetItem?.querySelector("[data-readiness-item-status]") || null;
+  const mindsetDetail = mindsetItem?.querySelector("[data-readiness-item-detail]") || null;
+  const mindsetAction = mindsetItem?.querySelector("[data-readiness-item-action]") || null;
+  const decisionLead = document.getElementById("dashboardDecisionLead");
+  const decisionBiasValue = document.getElementById("dashboardDecisionBiasValue");
+  const decisionPlanValue = document.getElementById("dashboardDecisionPlanValue");
+  const gammaStrip = document.getElementById("dashboardGammaStrip");
+  const briefCardShell = document.getElementById("dashboardBriefCardShell");
+  if (!mindsetItem || !readinessCard || !readinessItems.length) return;
+
+  const defaultDetail = String(mindsetDetail?.textContent || "").trim();
+  const defaultStatus = String(mindsetStatus?.textContent || "").trim() || "Loading";
+  const defaultAction = String(mindsetAction?.textContent || "").trim() || "Load";
+  const successDetail = "Planning, gamma, and brief context are loaded for this session view.";
+
+  const hasText = (value) => String(value || "").trim().length > 0;
+
+  const readinessSummary = (done, total) => {
+    const pct = total > 0 ? Math.round((100 * done) / total) : 0;
+    if (done >= total && total > 0) {
+      return { pct, state: "Ready to trade", detail: "All core checks are locked." };
+    }
+    if (done >= Math.max(1, total - 1)) {
+      return { pct, state: "Almost ready", detail: "Clear the missing blockers before adding risk." };
+    }
+    return { pct, state: "Needs attention", detail: "Clear the missing blockers before adding risk." };
+  };
+
+  const syncReadiness = () => {
+    const blockers = [];
+    let done = 0;
+    readinessItems.forEach((item) => {
+      const label = String(item.querySelector(".dashboardChecklistTitle")?.textContent || "").trim();
+      if (item.classList.contains("is-done")) {
+        done += 1;
+      } else if (label) {
+        blockers.push(label);
+      }
+    });
+    const total = readinessItems.length;
+    const summary = readinessSummary(done, total);
+    if (readinessPctLabel) readinessPctLabel.textContent = `${summary.pct}%`;
+    if (readinessMeter) readinessMeter.style.setProperty("--readiness-pct", `${summary.pct.toFixed(1)}%`);
+    if (readinessCount) readinessCount.textContent = `${done}/${total} checks complete`;
+    if (readinessState) readinessState.textContent = summary.state;
+    if (readinessDetail) readinessDetail.textContent = summary.detail;
+    if (readinessCommandSummary) readinessCommandSummary.textContent = `${done}/${total} ready`;
+    if (readinessBlockers) {
+      readinessBlockers.innerHTML = blockers.slice(0, 3).map((label) => (
+        `<span class="trendChip negative">${label}</span>`
+      )).join("");
+      readinessBlockers.hidden = blockers.length === 0;
+    }
+  };
+
+  const planningHydrated = () => {
+    const leadText = String(decisionLead?.textContent || "").trim().toLowerCase();
+    const biasText = String(decisionBiasValue?.textContent || "").trim().toLowerCase();
+    const planText = String(decisionPlanValue?.textContent || "").trim().toLowerCase();
+    const gammaState = String(gammaStrip?.dataset.gammaState || "").trim().toLowerCase();
+    const briefText = String(briefCardShell?.textContent || "").trim().toLowerCase();
+    const decisionReady = (
+      hasText(leadText)
+      && leadText !== "loading planning context."
+      && hasText(biasText)
+      && biasText !== "loading"
+      && hasText(planText)
+      && !planText.startsWith("loading")
+    );
+    const gammaReady = !!gammaState && gammaState !== "loading" && gammaState !== "unavailable";
+    const briefReady = (
+      hasText(briefText)
+      && !briefText.includes("building the next-session brief")
+      && !briefText.includes("preparing the brief shell")
+    );
+    return decisionReady && gammaReady && briefReady;
+  };
+
+  const syncMindsetAnchored = () => {
+    const done = planningHydrated();
+    mindsetItem.classList.toggle("is-done", done);
+    mindsetItem.classList.toggle("is-missing", !done);
+    mindsetItem.title = done ? successDetail : defaultDetail;
+    if (mindsetStatus) mindsetStatus.textContent = done ? "Loaded" : defaultStatus;
+    if (mindsetDetail) mindsetDetail.textContent = done ? successDetail : defaultDetail;
+    if (mindsetAction) mindsetAction.textContent = done ? "Ready" : defaultAction;
+    syncReadiness();
+  };
+
+  const observedNodes = [decisionLead, decisionBiasValue, decisionPlanValue, gammaStrip, briefCardShell]
+    .filter(Boolean);
+  const observer = new MutationObserver(() => {
+    window.setTimeout(syncMindsetAnchored, 0);
+  });
+  observedNodes.forEach((node) => {
+    observer.observe(node, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: node === gammaStrip,
+      attributeFilter: node === gammaStrip ? ["data-gamma-state"] : undefined,
+    });
+  });
+
+  syncMindsetAnchored();
+  window.setTimeout(syncMindsetAnchored, 120);
+  window.setTimeout(syncMindsetAnchored, 600);
 })();
