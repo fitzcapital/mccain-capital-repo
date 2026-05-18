@@ -344,6 +344,11 @@ def trades_sync_live():
     to_date = legacy._normalize_iso_date(request.form.get("to_date") or "", legacy.today_iso())
     if from_date > to_date:
         from_date, to_date = to_date, from_date
+    selected_account = legacy._require_import_account(request.form.get("selected_account_id"))
+    if not selected_account:
+        if _wants_async_json():
+            return _json_error("Please select an account before uploading trades.", status_code=409)
+        return redirect(url_for("trades_upload_pdf", ws="live"))
 
     requested = legacy._sync_requested_payload(
         source="manual_live",
@@ -397,6 +402,7 @@ def trades_sync_live():
     requested["credential_save_status"] = credential_result["status"]
     requested["credential_save_detail"] = credential_result["detail"]
     job = legacy._start_sync_job(
+        selected_account_id=int(selected_account["id"]),
         title="Live Sync",
         source_label="LIVE LOGIN HTML",
         record_source="LIVE LOGIN HTML",
@@ -498,6 +504,13 @@ def trades_sync_live_last_run():
     )
     if from_date > to_date:
         from_date, to_date = to_date, from_date
+    selected_account = legacy._selected_account()
+    if not selected_account:
+        message = "Please select an account before uploading trades."
+        if _wants_async_json():
+            return _json_error(message, status_code=409)
+        flash(message, "warn")
+        return redirect(url_for("dashboard"))
 
     requested = legacy._sync_requested_payload(
         source="dashboard_live_last_run",
@@ -523,6 +536,7 @@ def trades_sync_live_last_run():
     requested["credential_save_detail"] = str(requested_last.get("credential_save_detail") or "").strip()
 
     job = legacy._start_sync_job(
+        selected_account_id=int(selected_account["id"]),
         title="Live Sync",
         source_label="LIVE LOGIN HTML",
         record_source="DASHBOARD LIVE LAST RUN",
@@ -648,6 +662,13 @@ def trades_sync_auto_run_now():
         return redirect(url_for("trades_upload_pdf", ws="live", job=active_job["id"]))
 
     cfg = legacy._load_auto_sync_config()
+    selected_account = legacy._selected_account()
+    if not selected_account:
+        message = "Please select an account before uploading trades."
+        if _wants_async_json():
+            return _json_error(message)
+        flash(message, "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live"))
     auto_password = legacy._get_auto_sync_password(cfg)
     if not cfg.get("username") or not auto_password:
         message = "Auto sync credentials are missing. Save username and password in the Live Sync workspace first."
@@ -676,6 +697,7 @@ def trades_sync_auto_run_now():
         username=str(cfg.get("username") or ""),
     )
     job = legacy._start_sync_job(
+        selected_account_id=int(selected_account["id"]),
         title="Auto Sync Run",
         source_label="AUTO SYNC HTML",
         record_source="AUTO SYNC MANUAL RUN",
@@ -830,8 +852,21 @@ def _auto_sync_worker(app) -> None:
                 continue
             try:
                 with app.app_context():
+                    selected_account = legacy._selected_account()
+                    if not selected_account:
+                        legacy._save_last_sync_status(
+                            {
+                                "status": "failed",
+                                "stage": "account_scope",
+                                "message": "Please select an account before uploading trades.",
+                                "updated_at": legacy.now_iso(),
+                            }
+                        )
+                        time.sleep(60)
+                        continue
                     started = time.time()
                     run = legacy._run_live_sync_once(
+                        selected_account_id=int(selected_account["id"]),
                         mode=str(cfg.get("mode") or "broker"),
                         username=str(cfg.get("username") or ""),
                         password=auto_password,

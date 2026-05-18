@@ -65,7 +65,7 @@
                 data-wins="{{ day.wins }}"
                 data-losses="{{ day.losses }}"
                 data-win-rate="{{ '%.0f'|format(day.win_rate) }}"
-                data-balance="{% if day.balance is not none %}{{ money(day.balance) }}{% else %}—{% endif %}"
+                data-balance="{% if day.display_balance is not none %}{{ money(day.display_balance) }}{% else %}—{% endif %}"
                 data-status="{% if day.is_weekend %}Market closed{% elif day.trade_count <= 0 %}No trades logged{% elif day.net > 0 %}Profitable session{% elif day.net < 0 %}Losing session{% else %}Flat session{% endif %}"
                 data-open-url="/trades?d={{ day.iso }}"
                 aria-label="Preview {{ day.iso }}"

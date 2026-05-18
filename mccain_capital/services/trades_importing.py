@@ -712,6 +712,9 @@ def _auto_review_payload(trade: Dict[str, Any]) -> Dict[str, Any]:
 
 def insert_trades_from_broker_paste_with_report(
     text: str,
+    *,
+    account_id: int,
+    upload_id: int,
     ending_balance: Optional[float] = None,
     commit: bool = True,
     import_batch_id: str = "",
@@ -722,6 +725,8 @@ def insert_trades_from_broker_paste_with_report(
             0,
             ["Nothing to import."],
             {
+                "account_id": int(account_id),
+                "upload_id": int(upload_id),
                 "fills_parsed": 0,
                 "pairs_completed": 0,
                 "inserted_trades": 0,
@@ -803,6 +808,8 @@ def insert_trades_from_broker_paste_with_report(
 
     if not fills:
         report = {
+            "account_id": int(account_id),
+            "upload_id": int(upload_id),
             "fills_parsed": 0,
             "pairs_completed": 0,
             "inserted_trades": 0,
@@ -953,7 +960,9 @@ def insert_trades_from_broker_paste_with_report(
             SELECT trade_date, entry_time, exit_time, ticker, opt_type, strike,
                    entry_price, exit_price, contracts, comm, gross_pl, net_pl, raw_line
             FROM trades
-            """
+            WHERE account_id = ?
+            """,
+            (int(account_id),),
         ).fetchall()
         existing = {db_trade_identity(r) for r in existing_rows}
         to_insert: List[Dict[str, Any]] = []
@@ -978,11 +987,11 @@ def insert_trades_from_broker_paste_with_report(
                 """
                 SELECT balance
                 FROM trades
-                WHERE trade_date < ? AND balance IS NOT NULL
+                WHERE trade_date < ? AND balance IS NOT NULL AND account_id = ?
                 ORDER BY trade_date DESC, id DESC
                 LIMIT 1
                 """,
-                (first_day,),
+                (first_day, int(account_id)),
             ).fetchone()
             balance = float(row["balance"]) if row and row["balance"] is not None else 50000.0
 
@@ -1005,8 +1014,8 @@ def insert_trades_from_broker_paste_with_report(
                         entry_price, exit_price, contracts, total_spent,
                         stop_pct, target_pct, stop_price, take_profit,
                         risk, comm, gross_pl, net_pl, result_pct, balance,
-                        raw_line, created_at, import_batch_id, trade_source
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        raw_line, created_at, import_batch_id, trade_source, account_id, upload_id
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         tr["trade_date"],
@@ -1033,6 +1042,8 @@ def insert_trades_from_broker_paste_with_report(
                         created,
                         import_batch_id or "",
                         "Statement Import",
+                        int(account_id),
+                        int(upload_id),
                     ),
                 )
                 trade_id = int(cur.lastrowid)
@@ -1082,11 +1093,11 @@ def insert_trades_from_broker_paste_with_report(
                 """
                 SELECT balance
                 FROM trades
-                WHERE trade_date <= ? AND balance IS NOT NULL
+                WHERE trade_date <= ? AND balance IS NOT NULL AND account_id = ?
                 ORDER BY trade_date DESC, id DESC
                 LIMIT 1
                 """,
-                (import_end_date,),
+                (import_end_date, int(account_id)),
             ).fetchone()
             if row and row["balance"] is not None:
                 ledger_ending_balance = float(row["balance"])
@@ -1096,6 +1107,8 @@ def insert_trades_from_broker_paste_with_report(
         balance_delta = ledger_ending_balance - float(ending_balance)
 
     report = {
+        "account_id": int(account_id),
+        "upload_id": int(upload_id),
         "fills_parsed": len(fills),
         "pairs_completed": len(completed),
         "inserted_trades": inserted,
@@ -1104,6 +1117,8 @@ def insert_trades_from_broker_paste_with_report(
         "errors_count": len(errors),
         "warnings_count": len(warnings),
         "statement_ending_balance": ending_balance,
+        "statement_start_date": min((str(tr["trade_date"]) for tr in completed), default=""),
+        "statement_end_date": max((str(tr["trade_date"]) for tr in completed), default=""),
         "ledger_ending_balance": ledger_ending_balance,
         "balance_delta": balance_delta,
         "import_batch_id": import_batch_id or "",
@@ -1113,10 +1128,15 @@ def insert_trades_from_broker_paste_with_report(
 
 
 def insert_trades_from_broker_paste(
-    text: str, ending_balance: Optional[float] = None
+    text: str, *, account_id: int, upload_id: int, ending_balance: Optional[float] = None
 ) -> Tuple[int, List[str]]:
     inserted, messages, _ = insert_trades_from_broker_paste_with_report(
-        text, ending_balance=ending_balance, commit=True, import_batch_id=""
+        text,
+        account_id=account_id,
+        upload_id=upload_id,
+        ending_balance=ending_balance,
+        commit=True,
+        import_batch_id="",
     )
     return inserted, messages
 
@@ -1249,7 +1269,14 @@ def insert_trades_from_paste(text: str) -> Tuple[int, List[str]]:
     return inserted, errors
 
 
-def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "") -> None:
+def insert_balance_snapshot(
+    trade_date: str,
+    balance: float,
+    *,
+    account_id: int,
+    upload_id: int,
+    raw_line: str = "",
+) -> None:
     created = now_iso()
     with db() as conn:
         conn.execute(
@@ -1259,8 +1286,8 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
                 entry_price, exit_price, contracts, total_spent,
                 stop_pct, target_pct, stop_price, take_profit,
                 risk, comm, gross_pl, net_pl, result_pct, balance,
-                raw_line, created_at, trade_source
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                raw_line, created_at, trade_source, account_id, upload_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 trade_date,
@@ -1286,5 +1313,7 @@ def insert_balance_snapshot(trade_date: str, balance: float, raw_line: str = "")
                 raw_line or "BALANCE SNAPSHOT",
                 created,
                 "Balance Snapshot",
+                int(account_id),
+                int(upload_id),
             ),
         )

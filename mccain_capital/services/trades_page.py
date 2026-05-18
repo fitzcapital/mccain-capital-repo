@@ -206,6 +206,7 @@ def _resolve_scope_selection(
     history_starting_balance: float,
 ) -> dict:
     account_enabled = bool(account_scope.get("enabled"))
+    account_id = str(account_scope.get("account_id") or "").strip()
     account_start = str(account_scope.get("start_date") or "").strip()
     account_label = (
         str(account_scope.get("account_name") or "").strip()
@@ -213,11 +214,11 @@ def _resolve_scope_selection(
         or "Current Account"
     )
     account_type = str(account_scope.get("account_type") or "").strip()
-    default_mode = "current" if account_enabled and account_start else "all"
+    default_mode = "current" if account_enabled and (account_id or account_start) else "all"
     mode = str(requested_mode or "").strip().lower() or default_mode
     if mode not in {"all", "current", "custom"}:
         mode = default_mode
-    if mode == "current" and not (account_enabled and account_start):
+    if mode == "current" and not (account_enabled and (account_id or account_start)):
         mode = "all"
 
     effective_start = ""
@@ -260,7 +261,7 @@ def _resolve_scope_selection(
         "detail": scope_detail,
         "starting_balance": float(scope_starting_balance),
         "account_name": account_label,
-        "account_id": str(account_scope.get("account_id") or "").strip(),
+        "account_id": account_id,
         "account_type": account_type,
         "account_start_date": account_start,
     }
@@ -1010,14 +1011,36 @@ def trades_page():
     per = max(25, min(200, per))
     scope_state = {
         "account_scope": account_scope,
+        "account_id": (
+            int(resolved_scope["account_id"])
+            if str(resolved_scope.get("account_id") or "").strip().isdigit()
+            else None
+        ),
         "scope_enabled": account_scope_mode in {"current", "custom"}
-        and bool(scope_effective_start),
+        and bool(
+            (
+                str(resolved_scope.get("account_id") or "").strip()
+                if account_scope_mode == "current"
+                else scope_effective_start
+            )
+        ),
         "scope_start": scope_effective_start,
         "scope_starting_balance": float(resolved_scope["starting_balance"]),
-        "scope_active": account_scope_mode in {"current", "custom"} and bool(scope_effective_start),
+        "scope_active": account_scope_mode in {"current", "custom"} and bool(
+            (
+                str(resolved_scope.get("account_id") or "").strip()
+                if account_scope_mode == "current"
+                else scope_effective_start
+            )
+        ),
     }
 
-    raw_trades = legacy.fetch_trades(d="", q="", filters={})
+    raw_trades = legacy.fetch_trades(
+        d="",
+        q="",
+        filters={},
+        account_id=scope_state["account_id"] if account_scope_mode == "current" else None,
+    )
     trades = [dict(r) for r in raw_trades]
     derived_balances = trades_balance_svc.derived_balance_map(
         as_of=scope_as_of_day,
@@ -1025,6 +1048,7 @@ def trades_page():
         starting_balance=(
             scope_state["scope_starting_balance"] if scope_state["scope_active"] else None
         ),
+        account_id=scope_state["account_id"] if account_scope_mode == "current" else None,
     )
     for t in trades:
         trade_id = t.get("id")

@@ -81,6 +81,88 @@
   <div class="workspacePrimary">
     <div class="card">
       <div class="toolbar">
+        <div class="pill">Account Ledger</div>
+        <div class="workspaceSectionLead">Select the account ledger first. Every upload in this workspace is written only to that selected account.</div>
+        <div class="row">
+          <div class="fieldGrow2">
+            <label>Selected Account</label>
+            <select name="selected_account_id" form="statement-upload-form">
+              <option value="">Select account…</option>
+              {% for account in accounts or [] %}
+                <option value="{{ account.id }}" {% if selected_account and account.id == selected_account.id %}selected{% endif %}>
+                  {{ account.account_name }} · {{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="rightActions">
+            <a class="btn" href="/dashboard?account_id=all&scope=all">All History</a>
+            <a class="btn" href="/dashboard{% if selected_account %}?account_id={{ selected_account.id }}&scope=active{% endif %}">Open Dashboard</a>
+          </div>
+        </div>
+        <div class="hr"></div>
+        <form method="post" action="/trades/upload/statement?ws=upload" class="stack12">
+          <input type="hidden" name="intent" value="save_account" />
+          <input type="hidden" name="selected_account_id" value="{{ selected_account.id if selected_account else '' }}" />
+          <div class="row">
+            <div>
+              <label>Account Name</label>
+              <input name="account_name" value="{{ selected_account.account_name if selected_account else '' }}" placeholder="Protect 75k" />
+            </div>
+            <div>
+              <label>Vanquish Account Number</label>
+              <input name="broker_account_id" value="{{ selected_account.display_broker_account_id if selected_account else '' }}" placeholder="OEV0052447" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Account Size</label>
+              <input name="account_size" inputmode="decimal" value="{{ selected_account.account_size if selected_account and selected_account.account_size is not none else '' }}" placeholder="75000" />
+            </div>
+            <div>
+              <label>Starting Balance</label>
+              <input name="starting_balance" inputmode="decimal" value="{{ selected_account.starting_balance if selected_account else '' }}" placeholder="75000" />
+            </div>
+            <div>
+              <label>Max Drawdown</label>
+              <input name="max_drawdown" inputmode="decimal" value="{{ selected_account.max_drawdown if selected_account and selected_account.max_drawdown is not none else '' }}" placeholder="5000" />
+            </div>
+          </div>
+          <div class="rightActions">
+            <button class="btn primary" type="submit">{{ 'Update Account' if selected_account else 'Add Account' }}</button>
+            <a class="btn" href="/trades/upload/statement?ws=upload&account_id=all">New Account</a>
+            {% if selected_account %}<a class="btn ctaLink" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}">Live Upload</a>{% endif %}
+          </div>
+        </form>
+        {% if selected_account %}
+        <form method="post" action="/trades/upload/statement?ws=upload" class="rightActions top12">
+          <input type="hidden" name="intent" value="archive_account" />
+          <input type="hidden" name="selected_account_id" value="{{ selected_account.id }}" />
+          <button class="btn" type="submit">Archive Account</button>
+        </form>
+        {% endif %}
+        {% if archived_accounts %}
+        <details class="syncDetails stack10 top12">
+          <summary>Archived Accounts</summary>
+          <div class="stack10">
+            {% for account in archived_accounts %}
+            <form method="post" action="/trades/upload/statement?ws=upload" class="row syncLaunchCompactRow">
+              <input type="hidden" name="intent" value="restore_account" />
+              <input type="hidden" name="selected_account_id" value="{{ account.id }}" />
+              <div class="fieldGrow2">
+                <strong>{{ account.account_name }}</strong>
+                <div class="tiny muted">{{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}</div>
+              </div>
+              <button class="btn" type="submit">Restore</button>
+            </form>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="toolbar">
         <div class="pill">Upload Statement</div>
         <div class="workspaceSectionLead">Drop in a statement when you want the shortest path from file to imported trades.</div>
         <div class="hr"></div>
@@ -183,7 +265,45 @@
           <div class="tiny syncProfileNote" id="sync-profile-note">Balanced keeps debug capture on and performs a full import.</div>
         </div>
         <div class="hr"></div>
+        <form method="post" action="/trades/upload/statement?ws=live" id="live-account-form">
+        </form>
+        <form method="post" action="/trades/upload/statement?ws=live" id="live-archive-account-form">
+          <input type="hidden" name="intent" value="archive_account" />
+          <input type="hidden" name="selected_account_id" value="{{ selected_account.id if selected_account else '' }}" />
+        </form>
+        {% for account in archived_accounts %}
+        <form method="post" action="/trades/upload/statement?ws=live" id="live-restore-account-form-{{ account.id }}">
+          <input type="hidden" name="intent" value="restore_account" />
+          <input type="hidden" name="selected_account_id" value="{{ account.id }}" />
+        </form>
+        {% endfor %}
         <form method="post" action="/trades/sync/live" id="live-sync-form">
+          <div class="row">
+            <div class="fieldGrow2">
+              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Account Ledger</span></label>
+              <select name="selected_account_id" id="live-selected-account-id">
+                <option value="">Select account…</option>
+                {% for account in accounts or [] %}
+                  <option value="{{ account.id }}" {% if selected_account and account.id == selected_account.id %}selected{% endif %}>
+                    {{ account.account_name }} · {{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="rightActions">
+              <a class="btn" href="/dashboard?account_id=all&scope=all">All History</a>
+            </div>
+          </div>
+          <div class="syncAccountInlineSummary">
+            <div class="syncAccountInlineSummaryHead">
+              <span class="syncFieldIcon">{{ app_icon('analytics') }}</span>
+              <strong>{{ selected_account.account_name if selected_account else 'Create or select an account' }}</strong>
+              {% if selected_account and selected_account.display_broker_account_id %}<span class="trendChip">{{ selected_account.display_broker_account_id }}</span>{% endif %}
+              {% if selected_account and selected_account.account_size %}<span class="trendChip positive">{{ money(selected_account.account_size) }}</span>{% endif %}
+              {% if not selected_account %}<span class="trendChip warning">Required before import</span>{% endif %}
+            </div>
+            <div class="tiny line15 syncCredentialHint">Selected ledger only · full-file scan · account-only dedupe</div>
+          </div>
           <div class="row syncLaunchCompactRow">
             <div>
               <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('trades') }}</span><span>Mode</span></label>
@@ -201,32 +321,22 @@
               <input class="appDateInput" type="date" name="to_date" value="{{ default_day }}" />
             </div>
           </div>
-          <div class="row syncCredentialRow">
-            <div class="fieldGrow2">
-              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>Username</span></label>
-              <input name="username" value="{{ broker_cfg.username or '' }}" placeholder="Vanquish username/email" />
-            </div>
-            <div class="fieldGrow2">
-              <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('risk') }}</span><span>Password</span></label>
-              <input type="password" name="password" placeholder="{% if broker_cfg.password_stored %}Leave blank to use saved password{% else %}Vanquish password{% endif %}" />
-            </div>
-          </div>
           <div class="syncCredentialStatusRow">
             <div class="syncCredentialStatusCard">
               <div class="syncCredentialStatusHead">
                 <span class="syncFieldIcon">{{ app_icon('ops') }}</span>
                 <strong>Stored securely</strong>
+                <span class="tiny syncCredentialHint">
+                  {% if broker_cfg.password_stored %}
+                  Reuses saved login for quick run.
+                  {% else %}
+                  Save once to unlock quick run.
+                  {% endif %}
+                </span>
               </div>
               <div class="syncCredentialStatusMeta">
                 <span class="trendChip {% if broker_cfg.username %}positive{% endif %}">{{ 'Username ready' if broker_cfg.username else 'No saved username' }}</span>
                 <span class="trendChip {% if broker_cfg.password_stored %}positive{% endif %}">{{ 'Password on file' if broker_cfg.password_stored else 'No saved password' }}</span>
-              </div>
-              <div class="tiny line15 syncCredentialHint">
-                {% if broker_cfg.password_stored %}
-                Leave password blank to reuse the stored credential. This unlocks dashboard quick run.
-                {% else %}
-                Save credentials once and dashboard quick run can reuse them.
-                {% endif %}
               </div>
               {% if credential_save_requested %}
               <div class="syncCredentialOutcome syncCredentialOutcome-{{ credential_save_status or 'idle' }}">
@@ -244,37 +354,84 @@
               {% endif %}
             </div>
           </div>
+          <details class="syncDetails stack10"{% if live_credentials_form_open %} open{% endif %}>
+            <summary><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>Edit Credentials</span></summary>
+            <div class="stack10">
+              <div class="row syncCredentialRow">
+                <div class="fieldGrow2">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>Username Override</span></label>
+                  <input name="username" value="" autocomplete="off" placeholder="{% if broker_cfg.username %}Leave blank to reuse saved username{% else %}Vanquish username/email{% endif %}" />
+                </div>
+                <div class="fieldGrow2">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('risk') }}</span><span>Password Override</span></label>
+                  <input type="password" name="password" placeholder="{% if broker_cfg.password_stored %}Leave blank to use saved password{% else %}Vanquish password{% endif %}" />
+                </div>
+              </div>
+              <div class="row syncLaunchCompactRow">
+                <div class="stack12">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Credential Storage</span></label>
+                  <label><input type="checkbox" name="remember_credentials" value="1" {% if broker_cfg.username or broker_cfg.password_stored %}checked{% endif %} /> Save username/password securely</label>
+                  <label><input type="checkbox" name="clear_saved_credentials" value="1" /> Clear saved credentials</label>
+                  <div class="tiny syncCredentialPrereq">Required for dashboard `Run Last Sync`.</div>
+                </div>
+              </div>
+            </div>
+          </details>
+          <details class="syncDetails stack10"{% if live_account_form_open %} open{% endif %}>
+            <summary><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>{{ 'New Account' if account_form_mode == 'new' else 'Update Account' }}</span></summary>
+            <div class="stack10">
+              <input type="hidden" name="selected_account_id" value="{{ account_form_account.id if account_form_account else '' }}" form="live-account-form" />
+              <div class="row syncLaunchCompactRow">
+                <div class="fieldGrow2">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('brief') }}</span><span>Account Name</span></label>
+                  <input name="account_name" value="{{ account_form_account.account_name if account_form_account else '' }}" placeholder="Protect 75k" form="live-account-form" />
+                </div>
+                <div class="fieldGrow2">
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('analytics') }}</span><span>Vanquish Account Number</span></label>
+                  <input name="broker_account_id" value="{{ account_form_account.display_broker_account_id if account_form_account else '' }}" placeholder="OEV0052447" form="live-account-form" />
+                </div>
+                <div>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Account Size</span></label>
+                  <input name="account_size" inputmode="decimal" value="{{ account_form_account.account_size if account_form_account and account_form_account.account_size is not none else '' }}" placeholder="75000" form="live-account-form" />
+                </div>
+              </div>
+              <div class="row syncLaunchCompactRow">
+                <div>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>Starting Balance</span></label>
+                  <input name="starting_balance" inputmode="decimal" value="{{ account_form_account.starting_balance if account_form_account else '' }}" placeholder="75000" form="live-account-form" />
+                </div>
+                <div>
+                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('risk') }}</span><span>Max Drawdown</span></label>
+                  <input name="max_drawdown" inputmode="decimal" value="{{ account_form_account.max_drawdown if account_form_account and account_form_account.max_drawdown is not none else '' }}" placeholder="5000" form="live-account-form" />
+                </div>
+              </div>
+              {% if account_form_mode == 'new' %}
+              <div class="tiny line15 syncCredentialHint">
+                New account mode is blank on purpose. Saving here creates a separate ledger and does not modify the selected account above.
+              </div>
+              {% endif %}
+              <div class="rightActions">
+                <button class="btn primary" type="submit" name="intent" value="save_account" form="live-account-form">{{ 'Add Account' if account_form_mode == 'new' else 'Update Account' }}</button>
+                {% if account_form_mode == 'new' %}
+                <a class="btn" href="/trades/upload/statement?ws=live{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}">Cancel</a>
+                {% else %}
+                <a class="btn" href="/trades/upload/statement?ws=live&account_editor=new{% if selected_account %}&account_id={{ selected_account.id }}{% else %}&account_id=all{% endif %}">New Account</a>
+                {% endif %}
+                {% if selected_account and account_form_mode != 'new' %}
+                <button class="btn" type="submit" form="live-archive-account-form">Archive Account</button>
+                {% endif %}
+              </div>
+            </div>
+          </details>
           <details class="syncDetails stack10">
             <summary><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Advanced Sync Options</span></summary>
             <div class="stack10">
-              <div class="row syncLaunchCompactRow">
-                <div class="fieldGrow2">
-                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Base Origin</span></label>
-                  <input name="base_url" value="{{ broker_cfg.base_url }}" />
-                </div>
-                <div class="fieldGrow2">
-                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('analytics') }}</span><span>Account</span></label>
-                  <input name="account" value="{{ broker_cfg.account }}" placeholder="default:OEXXXXXXXX" />
-                </div>
-              </div>
-              <div class="row syncLaunchCompactRow">
-                <div>
-                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('filters') }}</span><span>Whitelist</span></label>
-                  <input name="wl" value="{{ broker_cfg.wl }}" />
-                </div>
-                <div>
-                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('calendar') }}</span><span>Timezone</span></label>
-                  <input name="time_zone" value="{{ broker_cfg.time_zone }}" />
-                </div>
-                <div>
-                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('note') }}</span><span>Date Locale</span></label>
-                  <input name="date_locale" value="{{ broker_cfg.date_locale }}" />
-                </div>
-                <div>
-                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('note') }}</span><span>Report Locale</span></label>
-                  <input name="report_locale" value="{{ broker_cfg.report_locale }}" />
-                </div>
-              </div>
+              <input type="hidden" name="base_url" value="{{ broker_cfg.base_url }}" />
+              <input type="hidden" name="account" value="{{ broker_cfg.account_display or (selected_account.display_broker_account_id if selected_account else '') }}" />
+              <input type="hidden" name="wl" value="{{ broker_cfg.wl }}" />
+              <input type="hidden" name="time_zone" value="{{ broker_cfg.time_zone }}" />
+              <input type="hidden" name="date_locale" value="{{ broker_cfg.date_locale }}" />
+              <input type="hidden" name="report_locale" value="{{ broker_cfg.report_locale }}" />
               <div class="row syncLaunchCompactRow">
                 <div class="stack12">
                   <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('scope') }}</span><span>Browser Mode</span></label>
@@ -285,13 +442,6 @@
                   <label><input type="checkbox" name="debug_capture" value="1" checked /> Capture debug artifacts</label>
                   <label><input type="checkbox" name="debug_only" value="1" /> Debug only (no import)</label>
                 </div>
-                <div class="stack12">
-                  <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Config</span></label>
-                  <label><input type="checkbox" name="remember_connection" value="1" /> Remember account/base settings locally</label>
-                  <label><input type="checkbox" name="remember_credentials" value="1" {% if broker_cfg.username or broker_cfg.password_stored %}checked{% endif %} /> Save username/password securely</label>
-                  <label><input type="checkbox" name="clear_saved_credentials" value="1" /> Clear saved credentials</label>
-                  <div class="tiny syncCredentialPrereq">Required for dashboard `Run Last Sync`.</div>
-                </div>
               </div>
             </div>
           </details>
@@ -301,22 +451,27 @@
             <button class="btn primary" type="submit" id="live-sync-submit" {% if sync_active %}disabled{% endif %}>{{ 'Sync Running' if sync_active else 'Run Live Sync' }}</button>
             <a class="btn" href="/trades/upload/statement">Reset</a>
           </div>
-          <div class="syncActiveInline{% if not sync_active %} syncActiveInlineHidden{% endif %}" id="sync-active-inline">
-            <div class="syncActivePulse" aria-hidden="true"></div>
-            <div class="syncActiveCopy">
-              <strong id="sync-active-title">{{ (job.get('status') or 'queued')|replace('_', ' ')|title }} · {{ (job.get('stage') or 'queue_dispatch')|replace('_', ' ')|title }}</strong>
-              <span id="sync-active-message">{{ job.get('message') or 'Queued and waiting for the worker.' }}</span>
-            </div>
-            <div class="syncActiveActions" id="sync-active-actions" {% if not sync_active %}hidden{% endif %}>
-              <button class="btn danger" type="submit" form="sync-job-cancel-form" id="sync-active-cancel-btn">Cancel</button>
-              <button class="btn" type="submit" form="sync-job-force-reset-form" id="sync-active-reset-btn">Force Reset</button>
-            </div>
-          </div>
           <div class="tiny stack10 line15 syncLaunchLoading" id="live-sync-loading" style="display:none;" aria-live="polite">
-            ⏳ Live sync in progress. Login, generate, import.
+            ⏳ Starting live sync. Opening browser, logging in, generating statement, importing trades.
           </div>
-          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge=('Live' if sync_active else 'Live'), label=(job.get('message') or 'Opening broker session...' if sync_active else 'Opening broker session...'), visible=sync_active, label_id='live-sync-stage-label') }}
+          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge=('Running' if sync_active else 'Ready'), label=(job.get('message') or 'Waiting to start live sync...' if sync_active else 'Waiting to start live sync...'), visible=True, label_id='live-sync-stage-label') }}
         </form>
+        {% if archived_accounts %}
+        <details class="syncDetails stack10 top12">
+          <summary><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Archived Accounts</span></summary>
+          <div class="stack10">
+            {% for account in archived_accounts %}
+            <div class="row syncLaunchCompactRow">
+              <div class="fieldGrow2">
+                <strong>{{ account.account_name }}</strong>
+                <div class="tiny muted">{{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}</div>
+              </div>
+              <button class="btn" type="submit" form="live-restore-account-form-{{ account.id }}">Restore</button>
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
       </div>
     </div>
 
@@ -685,7 +840,7 @@
                   </div>
                   <div class="fieldGrow2">
                     <label>Account</label>
-                    <input name="auto_account" value="{{ auto.get('account', broker_cfg.account) }}" placeholder="default:OEXXXXXXXX" />
+                    <input name="auto_account" value="{{ auto.get('account_display', broker_cfg.account_display) }}" placeholder="OEV0052447" />
                   </div>
                 </div>
                 <div class="row syncLaunchCompactRow">
@@ -1202,6 +1357,13 @@
       if (activeActions) activeActions.hidden = terminal;
       if (activeCancelBtn) activeCancelBtn.disabled = terminal;
       if (activeResetBtn) activeResetBtn.disabled = terminal;
+      setLiveSyncStatus(
+        terminal
+          ? (String(job.status || '').toLowerCase() === 'success' ? 'success' : 'failed')
+          : 'running',
+        terminal ? statusTitle : 'Live Sync Running',
+        job.message || (terminal ? 'Run finished.' : 'Worker is processing this run.')
+      );
       applySyncLockState(!terminal);
       applySyncJobCardMode(String(job.status || ''));
       if (durationEl) durationEl.textContent = (job.duration_sec !== null && job.duration_sec !== undefined) ? `${Number(job.duration_sec).toFixed(1)}s` : '—';
@@ -1289,6 +1451,21 @@
       toggle.textContent = compact ? 'Open Full Run Details' : 'Collapse Run Details';
     }
 
+    function setLiveSyncStatus(state, title, message) {
+      const statusCard = document.getElementById('live-sync-status');
+      const statusTitle = document.getElementById('live-sync-status-title');
+      const statusText = document.getElementById('live-sync-status-text');
+      if (statusCard) {
+        statusCard.classList.remove('is-idle', 'is-running', 'is-failed', 'is-success');
+        statusCard.classList.add(`is-${state || 'idle'}`);
+      }
+      if (statusTitle) statusTitle.textContent = title || 'Ready to Run';
+      if (statusText) {
+        statusText.textContent =
+          message || 'Run Live Sync to start broker login, statement generation, and import.';
+      }
+    }
+
     function setSyncSubmitState(button, loading, busy, busyText, idleText) {
       if (button) {
         button.disabled = !!busy;
@@ -1296,6 +1473,26 @@
       }
       if (loading) {
         loading.style.display = busy ? 'block' : 'none';
+      }
+      setLiveSyncStatus(
+        busy ? 'running' : 'idle',
+        busy ? 'Starting Live Sync' : 'Ready to Run',
+        busy
+          ? 'Broker login is starting now. The stage tracker below will update as soon as the job is picked up.'
+          : 'Run Live Sync to start broker login, statement generation, and import.'
+      );
+      const runway = document.getElementById('live-sync-runway');
+      const jobs = window.McAsyncJobs;
+      if (runway && jobs && typeof jobs.setRunwayState === 'function') {
+        jobs.setRunwayState(runway, {
+          badge: busy ? 'Running' : 'Ready',
+          label: busy
+            ? 'Opening broker session...'
+            : 'Waiting to start live sync...',
+          stepIndex: 0,
+          complete: false,
+          failed: false
+        });
       }
     }
 

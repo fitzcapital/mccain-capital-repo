@@ -99,7 +99,8 @@
 {% set session_reason = guardrail.message if guardrail.active else (hero_reason or macro_regime.subtitle or 'Market Pulse context ready.') %}
 {% set gamma_state_class = 'gamma-card--positive' if macro_regime.state == 'positive' else 'gamma-card--negative' if macro_regime.state == 'negative' else 'gamma-card--unconfirmed' if macro_regime.state == 'unconfirmed' else 'gamma-card--neutral' %}
 {% set gamma_pill_class = 'state-pill--positive' if macro_regime.state == 'positive' else 'state-pill--negative' if macro_regime.state == 'negative' else 'state-pill--wait' %}
-{% set gamma_pill_label = 'POSITIVE GAMMA' if macro_regime.state == 'positive' else 'NEGATIVE GAMMA' if macro_regime.state == 'negative' else 'WAIT FOR CONFIRMATION' if macro_regime.state == 'unconfirmed' else 'NEUTRAL / DATA' %}
+{% set gamma_display_title = 'Positive Ⲅ' if macro_regime.state == 'positive' else 'Negative Ⲅ' if macro_regime.state == 'negative' else macro_regime.title or 'REGIME UNKNOWN' %}
+{% set gamma_pill_label = 'POSITIVE Ⲅ' if macro_regime.state == 'positive' else 'NEGATIVE Ⲅ' if macro_regime.state == 'negative' else 'WAIT FOR CONFIRMATION' if macro_regime.state == 'unconfirmed' else 'NEUTRAL / DATA' %}
 {% set gamma_badges = ['PINNING', 'MEAN REVERSION'] if macro_regime.state == 'positive' else ['EXPANSION RISK', 'TREND CONTINUATION'] if macro_regime.state == 'negative' else ['WAIT FOR CONFIRMATION'] %}
 {% set gamma_state_icon = 'check' if macro_regime.state == 'positive' else 'warning' if macro_regime.state == 'negative' else 'compass' %}
 {% set level_strip = [
@@ -140,13 +141,12 @@
         </div>
       </div>
       <div class="marketPulseGammaStateCard {{ gamma_state_class }} {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard" data-gamma-state="{{ macro_regime.state }}">
-        <div class="marketPulseGammaStateOrb" aria-hidden="true">{{ mp_icon('gamma-symbol') }}</div>
+        <div class="marketPulseGammaStateOrb" aria-hidden="true">Ⲅ</div>
         <div class="marketPulseGammaStateTop">
-          <span class="marketPulseGammaStateDot" aria-hidden="true">{{ mp_icon(gamma_state_icon) }}</span>
+          <span class="marketPulseGammaStateDot" aria-hidden="true">Ⲅ</span>
           <div class="marketPulseGammaStateCopy">
             <div class="marketPulseGammaStateEyebrow">Regime</div>
-            <div class="state-pill {{ gamma_pill_class }}" id="marketPulseHeaderStatePill">{{ gamma_pill_label }}</div>
-            <div class="marketPulseGammaStateLabel" id="marketPulseHeaderGammaLabel">{{ macro_regime.title or 'REGIME UNKNOWN' }}</div>
+            <div class="marketPulseGammaStateLabel" id="marketPulseHeaderGammaLabel">{{ gamma_display_title }}</div>
             <div class="marketPulseGammaBadgeRow" id="marketPulseHeaderBadgeRow">
               {% for badge in gamma_badges %}
                 <span class="marketPulseGammaBadge">{{ badge }}</span>

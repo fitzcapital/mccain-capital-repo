@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import json
 from zoneinfo import ZoneInfo
 
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import db, get_setting_value, now_iso, set_setting_value, today_iso
 from mccain_capital.services import core as core_service
 from mccain_capital.services import ui as ui_service
@@ -69,6 +70,30 @@ def test_statement_workspace_preserves_active_lane_cta(client):
     assert 'class="actionRow workspaceHeroActions" data-preserve-primary="true"' in body
     assert 'class="btn primary" href="/trades/upload/statement?ws=reconcile"' in body
     assert 'class="btn " href="/trades/upload/statement?ws=upload"' in body
+
+
+def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:ACC999",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=5000.0,
+    )
+    trades_repo.set_active_account(int(account_id))
+
+    resp = client.get("/dashboard?scope=active", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "dashboardSnapshotCard-accountDropdown" in body
+    assert "dashboardSnapshotDropdownChevron" in body
+    assert f"/trades/upload/statement?ws=live&account_id={account_id}" in body
+    assert f"/trades/upload/statement?ws=live&account_id={account_id}&account_editor=edit" in body
+    assert "/trades/upload/statement?ws=live&account_id=all&account_editor=new" in body
+    assert "Archive Account" in body
+    assert "ACC999" in body
+    assert "default:ACC999" not in body
 
 
 def test_trades_page_uses_action_specific_hero_and_trust_badges(client):
@@ -1744,15 +1769,14 @@ def test_market_pulse_closed_session_quotes_do_not_trigger_unsafe_guardrail():
     assert alert["message"].startswith("Closed-session quotes loaded")
 
 
-def test_market_pulse_sparkline_renders_guides_and_points():
+def test_market_pulse_sparkline_renders_guides_and_candles():
     svg = core_service._market_pulse_sparkline_svg([10.0, 11.0, 10.5, 12.0, 11.75], "up")
 
     assert "marketMiniSparkGuide" in svg
     assert "marketMiniSparkBaseline" in svg
-    assert "marketMiniSparkPoint up" in svg
-    assert "marketMiniSparkPoint up start" in svg
-    assert "marketMiniSparkPoint up end" in svg
-    assert svg.count("<circle") >= 3
+    assert "marketMiniSparkWick" in svg
+    assert "marketMiniSparkBody" in svg
+    assert svg.count("<rect") >= 2
     assert "10.0,11.0" not in svg
 
 
@@ -1782,7 +1806,7 @@ def test_market_pulse_enrich_quotes_uses_replay_when_quote_series_is_sparse(monk
 
     assert len(quote["mini_series"]) >= 8
     assert len(quote["series"]) >= 8
-    assert "marketMiniSparkPoint" in quote["sparkline_svg"]
+    assert "marketMiniSparkBody" in quote["sparkline_svg"]
 
 
 def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
@@ -1935,7 +1959,8 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert body.count("marketMiniSparkPoint") >= 12
+    assert body.count("marketMiniSparkBody") >= 8
+    assert body.count("marketMiniSparkWick") >= 8
     assert body.count("marketMiniSparkGuide") >= 8
     assert body.count("marketMiniSparkBaseline") >= 4
     assert "Broad tape is defensive" in body
@@ -3460,12 +3485,60 @@ def test_dashboard_active_scope_aligns_balance_card_and_calendar(client):
 
     resp = client.get("/dashboard?y=2026&m=2&scope=active", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Active Account Balance" in resp.data
-    assert b"Start $52,000.00" in resp.data
-    assert b"Scoped account balance with calendar context." in resp.data
+    assert b"Active Account Profit" in resp.data
+    assert b"Funded $52,000.00" in resp.data
     assert b"Daily P/L calendar view for <strong>Active Account</strong>" in resp.data
-    assert b'data-balance="$52,250.00"' in resp.data
+    assert b'data-balance="$250.00"' in resp.data
     assert b'data-balance="$54,321.00"' not in resp.data
+
+
+def test_dashboard_all_history_uses_profit_only_display(client):
+    set_setting_value("starting_balance", "50000")
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:acct-1",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_active_account(int(account_id))
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "10:05 AM",
+                "10:20 AM",
+                "SPX",
+                "PUT",
+                6895.0,
+                1.5,
+                1.0,
+                1,
+                150.0,
+                1.0,
+                250.0,
+                250.0,
+                166.7,
+                50250.0,
+                "all history trade",
+                now_iso(),
+                int(account_id),
+            ),
+        )
+
+    resp = client.get("/dashboard?y=2026&m=2&scope=all", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"All History Profit" in resp.data
+    assert b'data-balance="$250.00"' in resp.data
+    assert b'data-balance="$50,250.00"' not in resp.data
 
 
 def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):

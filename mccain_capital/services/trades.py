@@ -1825,15 +1825,66 @@ def _normalize_iso_date(raw: str, fallback: str) -> str:
         return fallback
 
 
-def _handle_statement_html_import(path: str, mode: str, source_label: str):
+def _coerce_account_id(raw: Any) -> int | None:
+    text = str(raw or "").strip()
+    if not text or text.lower() in {"all", "none"}:
+        return None
+    try:
+        return int(text)
+    except Exception:
+        return None
+
+
+def _selected_account(raw: Any = None) -> Dict[str, Any] | None:
+    account_id = _coerce_account_id(raw)
+    if account_id:
+        return repo.get_account(account_id)
+    snapshot = repo.account_scope_snapshot()
+    account_id = _coerce_account_id(snapshot.get("account_id"))
+    if account_id:
+        return repo.get_account(account_id)
+    return None
+
+
+def _require_import_account(raw: Any = None) -> Dict[str, Any] | None:
+    account = _selected_account(raw)
+    if account:
+        return account
+    flash("Please select an account before uploading trades.", "warn")
+    return None
+
+
+def _handle_statement_html_import(
+    path: str,
+    mode: str,
+    source_label: str,
+    *,
+    account: Dict[str, Any],
+    filename: str,
+):
     paste_text, balance_val, warns = importing.parse_statement_html_to_broker_paste(path)
 
     if mode == "broker":
         if not paste_text:
             if balance_val is not None:
                 batch_id = _new_import_batch_id("bal")
-                importing.insert_balance_snapshot(today_iso(), balance_val, raw_line=source_label)
-                ledger_balance = latest_balance_overall()
+                upload_id = repo.create_upload(
+                    account_id=int(account["id"]),
+                    filename=filename,
+                    source=source_label,
+                    import_batch_id=batch_id,
+                )
+                importing.insert_balance_snapshot(
+                    today_iso(),
+                    balance_val,
+                    account_id=int(account["id"]),
+                    upload_id=upload_id,
+                    raw_line=source_label,
+                )
+                ledger_balance = latest_balance_overall(
+                    account_id=int(account["id"]),
+                    starting_balance=float(account.get("starting_balance") or 0.0),
+                )
                 _record_import_batch(
                     batch_id=batch_id,
                     source=source_label,
@@ -1893,8 +1944,16 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
             )
 
         batch_id = _new_import_batch_id("stmt")
+        upload_id = repo.create_upload(
+            account_id=int(account["id"]),
+            filename=filename,
+            source=source_label,
+            import_batch_id=batch_id,
+        )
         _, _, pre_report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
+            account_id=int(account["id"]),
+            upload_id=upload_id,
             ending_balance=balance_val,
             commit=False,
             import_batch_id=batch_id,
@@ -1945,6 +2004,8 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
 
         inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
+            account_id=int(account["id"]),
+            upload_id=upload_id,
             ending_balance=balance_val,
             commit=True,
             import_batch_id=batch_id,
@@ -2007,9 +2068,22 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
             active="trades",
         )
 
-    importing.insert_balance_snapshot(today_iso(), balance_val, raw_line=source_label)
+    batch_id = _new_import_batch_id("bal")
+    upload_id = repo.create_upload(
+        account_id=int(account["id"]),
+        filename=filename,
+        source=source_label,
+        import_batch_id=batch_id,
+    )
+    importing.insert_balance_snapshot(
+        today_iso(),
+        balance_val,
+        account_id=int(account["id"]),
+        upload_id=upload_id,
+        raw_line=source_label,
+    )
     _record_import_batch(
-        batch_id=_new_import_batch_id("bal"),
+        batch_id=batch_id,
         source=source_label,
         mode="balance",
         report={
@@ -2019,8 +2093,17 @@ def _handle_statement_html_import(path: str, mode: str, source_label: str):
             "errors_count": 0,
             "warnings_count": len(warns or []),
             "statement_ending_balance": balance_val,
-            "ledger_ending_balance": latest_balance_overall(),
-            "balance_delta": (latest_balance_overall() - float(balance_val)),
+            "ledger_ending_balance": latest_balance_overall(
+                account_id=int(account["id"]),
+                starting_balance=float(account.get("starting_balance") or 0.0),
+            ),
+            "balance_delta": (
+                latest_balance_overall(
+                    account_id=int(account["id"]),
+                    starting_balance=float(account.get("starting_balance") or 0.0),
+                )
+                - float(balance_val)
+            ),
         },
         status="success",
         message="Imported statement ending balance snapshot.",
@@ -2232,12 +2315,23 @@ def trades_paste():
             )
         text = request.form.get("text", "")
         fmt = detect_paste_format(text)
+        selected_account = _require_import_account(request.form.get("selected_account_id"))
+        if not selected_account:
+            return redirect(url_for("trades_paste"))
 
         reconciliation_html = ""
         if fmt == "broker":
             batch_id = _new_import_batch_id("paste")
+            upload_id = repo.create_upload(
+                account_id=int(selected_account["id"]),
+                filename=f"paste_{batch_id}.txt",
+                source="PASTE TRADES",
+                import_batch_id=batch_id,
+            )
             inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
                 text,
+                account_id=int(selected_account["id"]),
+                upload_id=upload_id,
                 commit=True,
                 import_batch_id=batch_id,
             )
@@ -2292,6 +2386,7 @@ def trades_paste():
           </div>
           <div class="hr"></div>
           <form method="post">
+            <input type="hidden" name="selected_account_id" value="{{ selected_account_id }}" />
             <div class="stack12">
               <label>📎 Paste here</label>
               <textarea name="text" placeholder="Paste your trade rows here…"></textarea>
@@ -2305,6 +2400,7 @@ def trades_paste():
         </div></div>
         """,
         example=example,
+        selected_account_id=str(_selected_account().get("id") if _selected_account() else ""),
     )
     return render_page(content, active="trades")
 
@@ -2573,9 +2669,20 @@ def trades_paste_broker():
                 active="trades",
             )
         text = request.form.get("text", "")
+        selected_account = _require_import_account(request.form.get("selected_account_id"))
+        if not selected_account:
+            return redirect(url_for("trades_paste_broker"))
         batch_id = _new_import_batch_id("brokerpaste")
+        upload_id = repo.create_upload(
+            account_id=int(selected_account["id"]),
+            filename=f"broker_paste_{batch_id}.txt",
+            source="BROKER PASTE",
+            import_batch_id=batch_id,
+        )
         inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
             text,
+            account_id=int(selected_account["id"]),
+            upload_id=upload_id,
             commit=True,
             import_batch_id=batch_id,
         )
@@ -2623,6 +2730,7 @@ def trades_paste_broker():
           </div>
           <div class="hr"></div>
           <form method="post">
+            <input type="hidden" name="selected_account_id" value="{{ selected_account_id }}" />
             <div class="stack12">
               <label>📎 Paste here</label>
               <textarea name="text" placeholder="SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 2 | 18.90 | 0.70"></textarea>
@@ -2635,6 +2743,8 @@ def trades_paste_broker():
           </form>
         </div></div>
         """
+        ,
+        selected_account_id=str(_selected_account().get("id") if _selected_account() else "")
     )
     return render_page(content, active="trades")
 
@@ -2643,7 +2753,75 @@ def trades_upload_pdf():
     workspace = (request.args.get("ws") or "live").strip().lower()
     if workspace not in {"upload", "live", "reconcile"}:
         workspace = "live"
+    account_editor_mode = (request.args.get("account_editor") or "").strip().lower()
+    credentials_panel_mode = (request.args.get("credentials") or "").strip().lower()
+    query_account_id = _coerce_account_id(request.args.get("account_id"))
+    if query_account_id:
+        if repo.get_account(query_account_id):
+            repo.set_active_account(query_account_id)
+    elif str(request.args.get("account_id") or "").strip().lower() == "all":
+        repo.set_active_account(None)
     if request.method == "POST":
+        form_intent = (request.form.get("intent") or "import").strip().lower()
+        if form_intent == "save_account":
+            account_name = (request.form.get("account_name") or "").strip()
+            broker_account_id = (request.form.get("broker_account_id") or "").strip()
+            account_size = parse_float(request.form.get("account_size") or "")
+            starting_balance = parse_float(request.form.get("starting_balance") or "")
+            max_drawdown = parse_float(request.form.get("max_drawdown") or "")
+            target_account_id = _coerce_account_id(request.form.get("selected_account_id"))
+            if not account_name or starting_balance is None:
+                flash("Account name and starting balance are required.", "warn")
+                return redirect(url_for("trades_upload_pdf", ws=workspace))
+            if target_account_id:
+                repo.update_account(
+                    target_account_id,
+                    prop_firm=repo.DEFAULT_PROP_FIRM,
+                    account_name=account_name,
+                    broker_account_id=broker_account_id,
+                    account_size=account_size,
+                    starting_balance=float(starting_balance),
+                    max_drawdown=max_drawdown,
+                )
+                repo.set_active_account(target_account_id)
+                flash("Account updated.", "success")
+            else:
+                created = repo.create_account(
+                    prop_firm=repo.DEFAULT_PROP_FIRM,
+                    account_name=account_name,
+                    broker_account_id=broker_account_id,
+                    account_size=account_size,
+                    starting_balance=float(starting_balance),
+                    max_drawdown=max_drawdown,
+                )
+                repo.set_active_account(int(created))
+                flash("Account created.", "success")
+            return redirect(url_for("trades_upload_pdf", ws=workspace, account_id=""))
+        if form_intent == "archive_account":
+            target_account_id = _coerce_account_id(request.form.get("selected_account_id"))
+            target_account = repo.get_account(target_account_id) if target_account_id else None
+            if not target_account:
+                flash("Select an active account to archive.", "warn")
+                return redirect(url_for("trades_upload_pdf", ws=workspace))
+            repo.archive_account(int(target_account["id"]))
+            remaining_accounts = repo.list_accounts()
+            fallback_account = next(
+                (row for row in remaining_accounts if int(row.get("id") or 0) != int(target_account["id"])),
+                None,
+            )
+            repo.set_active_account(int(fallback_account["id"])) if fallback_account else repo.set_active_account(None)
+            flash(f"Archived {target_account['account_name']}.", "success")
+            return redirect(url_for("trades_upload_pdf", ws=workspace))
+        if form_intent == "restore_account":
+            target_account_id = _coerce_account_id(request.form.get("selected_account_id"))
+            if not target_account_id:
+                flash("Select an archived account to restore.", "warn")
+                return redirect(url_for("trades_upload_pdf", ws=workspace))
+            repo.restore_account(target_account_id)
+            repo.set_active_account(target_account_id)
+            flash("Archived account restored.", "success")
+            return redirect(url_for("trades_upload_pdf", ws=workspace))
+
         guardrail = trade_lockout_state(today_iso())
         if guardrail["locked"]:
             return render_page(
@@ -2655,6 +2833,9 @@ def trades_upload_pdf():
             )
         f = request.files.get("pdf")
         mode = (request.form.get("mode") or "broker").strip()  # broker | balance
+        selected_account = _require_import_account(request.form.get("selected_account_id"))
+        if not selected_account:
+            return redirect(url_for("trades_upload_pdf", ws=workspace))
 
         if not f or not f.filename:
             return render_page(simple_msg("Please upload a file."), active="trades")
@@ -2671,7 +2852,11 @@ def trades_upload_pdf():
         # ✅ HTML path (no OCR)
         if ext in (".html", ".htm"):
             return _handle_statement_html_import(
-                path, mode=mode, source_label="STATEMENT HTML UPLOAD"
+                path,
+                mode=mode,
+                source_label="STATEMENT HTML UPLOAD",
+                account=selected_account,
+                filename=filename,
             )
 
         # --- PDF path (keep your OCR behavior for now) ---
@@ -2723,10 +2908,19 @@ def trades_upload_pdf():
                     active="trades",
                 )
 
+            batch_id = _new_import_batch_id("pdfocr")
+            upload_id = repo.create_upload(
+                account_id=int(selected_account["id"]),
+                filename=filename,
+                source="STATEMENT PDF OCR",
+                import_batch_id=batch_id,
+            )
             inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
                 paste_text,
+                account_id=int(selected_account["id"]),
+                upload_id=upload_id,
                 commit=True,
-                import_batch_id=_new_import_batch_id("pdfocr"),
+                import_batch_id=batch_id,
             )
             _record_import_batch(
                 batch_id=str(report.get("import_batch_id") or ""),
@@ -2782,12 +2976,34 @@ def trades_upload_pdf():
                 active="trades",
             )
 
-        importing.insert_balance_snapshot(today_iso(), bal, raw_line="STATEMENT PDF UPLOAD")
+        batch_id = _new_import_batch_id("pdfbal")
+        upload_id = repo.create_upload(
+            account_id=int(selected_account["id"]),
+            filename=filename,
+            source="STATEMENT PDF UPLOAD",
+            import_batch_id=batch_id,
+        )
+        importing.insert_balance_snapshot(
+            today_iso(),
+            bal,
+            account_id=int(selected_account["id"]),
+            upload_id=upload_id,
+            raw_line="STATEMENT PDF UPLOAD",
+        )
         return redirect(url_for("trades_page"))
 
     # GET
+    selected_account = _selected_account(request.args.get("account_id"))
+    account_form_mode = (
+        "new" if workspace == "live" and account_editor_mode == "new" else "edit" if selected_account else "new"
+    )
+    account_form_account = None if account_form_mode == "new" else selected_account
+    accounts = repo.list_accounts()
+    archived_accounts = [row for row in repo.list_accounts(include_archived=True) if int(row.get("archived") or 0) == 1]
     broker_cfg = _load_broker_sync_config()
+    broker_cfg["account_display"] = repo.display_broker_account_id(broker_cfg.get("account", ""))
     auto_sync_cfg = _load_auto_sync_config()
+    auto_sync_cfg["account_display"] = repo.display_broker_account_id(auto_sync_cfg.get("account", ""))
     default_day = today_iso()
     sync_status = _load_last_sync_status()
     sync_history = _load_sync_history()
@@ -2817,6 +3033,16 @@ def trades_upload_pdf():
         reconcile_summary=reconcile_summary,
         import_history=list(reversed(import_history[-40:])),
         sync_stage_help=SYNC_STAGE_HELP,
+        accounts=accounts,
+        archived_accounts=archived_accounts,
+        selected_account=selected_account,
+        account_form_mode=account_form_mode,
+        account_form_account=account_form_account,
+        live_account_form_open=(
+            workspace == "live"
+            and account_editor_mode in {"edit", "new"}
+        ),
+        live_credentials_form_open=(workspace == "live" and credentials_panel_mode == "edit"),
         money=money,
     )
     return render_page(content, active="trades")
@@ -2824,6 +3050,7 @@ def trades_upload_pdf():
 
 def _run_live_sync_once(
     *,
+    selected_account_id: int,
     mode: str,
     username: str,
     password: str,
@@ -2842,6 +3069,15 @@ def _run_live_sync_once(
     progress_cb: Optional[Callable[[str, str], None]] = None,
     cancel_cb: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Any]:
+    selected_account = repo.get_account(int(selected_account_id))
+    if not selected_account:
+        return {
+            "ok": False,
+            "stage": "account_scope",
+            "message": "Please select an account before uploading trades.",
+            "artifacts_rel": [],
+            "warns": [],
+        }
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = (
         os.path.join(_broker_debug_dir(), f"live_{from_date}_{to_date}_{stamp}")
@@ -2939,10 +3175,23 @@ def _run_live_sync_once(
         if not paste_text:
             if balance_for_snapshot is not None:
                 balance_batch_id = _new_import_batch_id("livebal")
-                importing.insert_balance_snapshot(
-                    today_iso(), balance_for_snapshot, raw_line=source_label
+                upload_id = repo.create_upload(
+                    account_id=int(selected_account["id"]),
+                    filename=filename,
+                    source=source_label,
+                    import_batch_id=balance_batch_id,
                 )
-                ledger_balance = latest_balance_overall()
+                importing.insert_balance_snapshot(
+                    today_iso(),
+                    balance_for_snapshot,
+                    account_id=int(selected_account["id"]),
+                    upload_id=upload_id,
+                    raw_line=source_label,
+                )
+                ledger_balance = latest_balance_overall(
+                    account_id=int(selected_account["id"]),
+                    starting_balance=float(selected_account.get("starting_balance") or 0.0),
+                )
                 _record_import_batch(
                     batch_id=balance_batch_id,
                     source=source_label,
@@ -2984,8 +3233,16 @@ def _run_live_sync_once(
                 }
             )
             return result
+        upload_id = repo.create_upload(
+            account_id=int(selected_account["id"]),
+            filename=filename,
+            source=source_label,
+            import_batch_id=batch_id,
+        )
         _, _, pre_report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
+            account_id=int(selected_account["id"]),
+            upload_id=upload_id,
             ending_balance=balance_val,
             commit=False,
             import_batch_id=batch_id,
@@ -3025,6 +3282,8 @@ def _run_live_sync_once(
         ensure_active()
         inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
             paste_text,
+            account_id=int(selected_account["id"]),
+            upload_id=upload_id,
             ending_balance=balance_val,
             commit=True,
             import_batch_id=batch_id,
@@ -3067,7 +3326,19 @@ def _run_live_sync_once(
             }
         )
         return result
-    importing.insert_balance_snapshot(today_iso(), balance_val, raw_line=source_label)
+    upload_id = repo.create_upload(
+        account_id=int(selected_account["id"]),
+        filename=filename,
+        source=source_label,
+        import_batch_id=batch_id,
+    )
+    importing.insert_balance_snapshot(
+        today_iso(),
+        balance_val,
+        account_id=int(selected_account["id"]),
+        upload_id=upload_id,
+        raw_line=source_label,
+    )
     result.update(
         {
             "ok": True,
@@ -3122,6 +3393,7 @@ def _execute_sync_job(
     app,
     job: Dict[str, Any],
     cancel_event: threading.Event,
+    selected_account_id: int,
     title: str,
     source_label: str,
     record_source: str,
@@ -3163,6 +3435,7 @@ def _execute_sync_job(
         with app.app_context():
             progress("queue_dispatch", "Sync worker picked up the job.")
             run = _run_live_sync_once(
+                selected_account_id=selected_account_id,
                 mode=mode,
                 username=username,
                 password=password,
@@ -3382,6 +3655,7 @@ def ensure_sync_dispatcher_started(app) -> None:
 
 def _start_sync_job(
     *,
+    selected_account_id: int,
     title: str,
     source_label: str,
     record_source: str,
@@ -3410,6 +3684,7 @@ def _start_sync_job(
             {
                 "job": job,
                 "cancel_event": cancel_event,
+                "selected_account_id": int(selected_account_id),
                 "title": title,
                 "source_label": source_label,
                 "record_source": record_source,
@@ -3483,17 +3758,18 @@ def _start_sync_job(
 def trades_sync_live():
     if request.method != "POST":
         return redirect(url_for("trades_upload_pdf"))
+    wants_async = (request.args.get("async") or "").strip() == "1"
 
     mode = (request.form.get("mode") or "broker").strip()
     guardrail = trade_lockout_state(today_iso())
     if guardrail["locked"] and mode == "broker":
-        return render_page(
-            simple_msg(
-                f"Daily max-loss guardrail is active for {guardrail['day']}. "
-                f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
-            ),
-            active="trades",
+        message = (
+            f"Daily max-loss guardrail is active for {guardrail['day']}. "
+            f"Day net {money(guardrail['day_net'])} reached limit {money(guardrail['daily_max_loss'])}."
         )
+        if wants_async:
+            return jsonify({"ok": False, "message": message}), 409
+        return render_page(simple_msg(message), active="trades")
 
     cfg = _load_broker_sync_config()
     remembered_username = str(cfg.get("username") or "").strip()
@@ -3502,7 +3778,9 @@ def trades_sync_live():
     remember_credentials = request.form.get("remember_credentials") == "1"
     clear_saved_credentials = request.form.get("clear_saved_credentials") == "1"
     base_url = (request.form.get("base_url") or "").strip() or cfg.get("base_url", "")
-    account = (request.form.get("account") or "").strip() or cfg.get("account", "")
+    account = repo.normalize_broker_account_id(
+        (request.form.get("account") or "").strip() or cfg.get("account", "")
+    )
     wl = (request.form.get("wl") or "").strip() or cfg.get("wl", "vanquishtrader")
     time_zone = (request.form.get("time_zone") or "").strip() or cfg.get(
         "time_zone", "America/New_York"
@@ -3530,20 +3808,29 @@ def trades_sync_live():
     password_for_run = password or stored_password
 
     if not username or not password_for_run:
-        return render_page(
-            simple_msg("Username and password are required for live login sync."),
-            active="trades",
-        )
+        message = "Username and password are required for live login sync."
+        if wants_async:
+            return jsonify({"ok": False, "message": message}), 400
+        return render_page(simple_msg(message), active="trades")
     if not base_url or not account:
-        return render_page(
-            simple_msg("Base origin and account are required for live login sync."),
-            active="trades",
-        )
+        message = "Base origin and account are required for live login sync."
+        if wants_async:
+            return jsonify({"ok": False, "message": message}), 400
+        return render_page(simple_msg(message), active="trades")
 
     from_date = _normalize_iso_date(request.form.get("from_date") or "", today_iso())
     to_date = _normalize_iso_date(request.form.get("to_date") or "", today_iso())
     if from_date > to_date:
         from_date, to_date = to_date, from_date
+    selected_account = _require_import_account(request.form.get("selected_account_id"))
+    if not selected_account:
+        if wants_async:
+            return jsonify(
+                {"ok": False, "message": "Please select an account before uploading trades."}
+            ), 400
+        return redirect(url_for("trades_upload_pdf", ws="live"))
+    if not account:
+        account = str(selected_account.get("broker_account_id") or "").strip()
 
     requested = _sync_requested_payload(
         source="manual_live",
@@ -3588,6 +3875,7 @@ def trades_sync_live():
                 cfg["password_stored"] = saved
         _save_broker_sync_config(cfg)
     job = _start_sync_job(
+        selected_account_id=int(selected_account["id"]),
         title="Live Sync",
         source_label="LIVE LOGIN HTML",
         record_source="LIVE LOGIN HTML",
@@ -3607,6 +3895,8 @@ def trades_sync_live():
         debug_only=debug_only,
         requested=requested,
     )
+    if wants_async:
+        return jsonify({"ok": True, "job": _job_response_payload(job)})
     flash("Live sync started. Progress and result will update below.", "success")
     return redirect(url_for("trades_upload_pdf", ws="live", job=job["id"]))
 
@@ -3627,7 +3917,7 @@ def trades_sync_auto_config():
     cfg["base_url"] = (request.form.get("auto_base_url") or "").strip() or cfg.get(
         "base_url", "https://trade.vanquishtrader.com"
     )
-    cfg["account"] = (request.form.get("auto_account") or "").strip()
+    cfg["account"] = repo.normalize_broker_account_id(request.form.get("auto_account") or "")
     cfg["wl"] = (request.form.get("auto_wl") or "").strip() or cfg.get("wl", "vanquishtrader")
     cfg["time_zone"] = (request.form.get("auto_time_zone") or "").strip() or cfg.get(
         "time_zone", "America/New_York"
@@ -3696,6 +3986,10 @@ def trades_sync_auto_config():
 
 def trades_sync_auto_run_now():
     cfg = _load_auto_sync_config()
+    selected_account = _selected_account()
+    if not selected_account:
+        flash("Please select an account before uploading trades.", "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live"))
     auto_password = _get_auto_sync_password(cfg)
     if not cfg.get("username") or not auto_password:
         flash(
@@ -3721,6 +4015,7 @@ def trades_sync_auto_run_now():
         username=str(cfg.get("username") or ""),
     )
     job = _start_sync_job(
+        selected_account_id=int(selected_account["id"]),
         title="Auto Sync Run",
         source_label="AUTO SYNC HTML",
         record_source="AUTO SYNC MANUAL RUN",
@@ -3821,8 +4116,21 @@ def _auto_sync_worker(app) -> None:
                 continue
             try:
                 with app.app_context():
+                    selected_account = _selected_account()
+                    if not selected_account:
+                        _save_last_sync_status(
+                            {
+                                "status": "failed",
+                                "stage": "account_scope",
+                                "message": "Please select an account before uploading trades.",
+                                "updated_at": now_iso(),
+                            }
+                        )
+                        time.sleep(60)
+                        continue
                     started = time.time()
                     run = _run_live_sync_once(
+                        selected_account_id=int(selected_account["id"]),
                         mode=str(cfg.get("mode") or "broker"),
                         username=str(cfg.get("username") or ""),
                         password=auto_password,

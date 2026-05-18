@@ -3118,46 +3118,66 @@ def _market_pulse_stats(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
     values = [float(v) for v in series if isinstance(v, (int, float))]
-    if len(values) < 2:
+    if len(values) < 4:
         return '<div class="marketMiniSparkEmpty">No trend</div>'
-    width = 120.0
-    height = 28.0
-    min_v = min(values)
-    max_v = max(values)
+
+    target_bars = min(10, max(8, int(math.ceil(len(values) / 2))))
+    chunk_size = max(1, int(math.ceil(len(values) / target_bars)))
+    candles: List[Dict[str, float]] = []
+    for start in range(0, len(values), chunk_size):
+        chunk = values[start : start + chunk_size]
+        if not chunk:
+            continue
+        candles.append(
+            {
+                "open": float(chunk[0]),
+                "high": float(max(chunk)),
+                "low": float(min(chunk)),
+                "close": float(chunk[-1]),
+            }
+        )
+    if len(candles) < 2:
+        return '<div class="marketMiniSparkEmpty">No trend</div>'
+
+    width = 138.0
+    height = 60.0
+    min_v = min(float(c["low"]) for c in candles)
+    max_v = max(float(c["high"]) for c in candles)
     if abs(max_v - min_v) < 1e-9:
         max_v = min_v + 1.0
-    step = width / max(len(values) - 1, 1)
-    points = []
-    for idx, value in enumerate(values):
-        x = idx * step
-        y = ((max_v - value) / (max_v - min_v)) * (height - 2) + 1
-        points.append(f"{x:.2f},{y:.2f}")
-    area_points = "0.00,28.00 " + " ".join(points) + " 120.00,28.00"
-    cls = "up" if tone == "up" else "down" if tone == "down" else "flat"
-    baseline_y = ((max_v - values[0]) / (max_v - min_v)) * (height - 2) + 1
-    marker_stride = max(1, len(points) // 8)
-    marker_points = [
-        (idx, point)
-        for idx, point in enumerate(points)
-        if idx == 0 or idx == len(points) - 1 or idx % marker_stride == 0
-    ]
-    markers = "".join(
-        f'<circle class="marketMiniSparkPoint {cls}'
-        f'{" start" if idx == 0 else " end" if idx == len(points) - 1 else ""}" '
-        f'cx="{point.split(",")[0]}" '
-        f'cy="{point.split(",")[1]}" r="1.55" />'
-        for idx, point in marker_points
-    )
+    candle_gap = 1.35
+    candle_width = min(11.6, (width / max(len(candles), 1)) - candle_gap)
+
+    def _y(value: float) -> float:
+        return ((max_v - value) / (max_v - min_v)) * (height - 12) + 6
+
+    baseline_y = _y(candles[0]["open"])
+    candle_markup: List[str] = []
+    for idx, candle in enumerate(candles):
+        center_x = ((idx + 0.5) * width) / max(len(candles), 1)
+        open_y = _y(candle["open"])
+        close_y = _y(candle["close"])
+        high_y = _y(candle["high"])
+        low_y = _y(candle["low"])
+        top_y = min(open_y, close_y)
+        body_height = max(3.2, abs(close_y - open_y))
+        cls = "up" if candle["close"] > candle["open"] else "down" if candle["close"] < candle["open"] else "flat"
+        candle_markup.append(
+            f'<line class="marketMiniSparkWick {cls}" x1="{center_x:.2f}" y1="{high_y:.2f}" '
+            f'x2="{center_x:.2f}" y2="{low_y:.2f}" />'
+        )
+        candle_markup.append(
+            f'<rect class="marketMiniSparkBody {cls}" x="{(center_x - candle_width / 2):.2f}" '
+            f'y="{top_y:.2f}" width="{candle_width:.2f}" height="{body_height:.2f}" rx=".08" ry=".08" />'
+        )
     return (
-        '<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">'
-        '<line class="marketMiniSparkGuide" x1="0" y1="7" x2="120" y2="7" />'
+        '<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">'
+        + '<line class="marketMiniSparkGuide" x1="0" y1="14" x2="138" y2="14" />'
         f'<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" '
-        f'y1="{baseline_y:.2f}" x2="120" y2="{baseline_y:.2f}" />'
-        '<line class="marketMiniSparkGuide" x1="0" y1="21" x2="120" y2="21" />'
-        f'<polygon class="marketMiniSparkArea {cls}" points="{area_points}" />'
-        f'<polyline class="marketMiniSparkLine {cls}" points="{" ".join(points)}" />'
-        f"{markers}"
-        "</svg>"
+        f'y1="{baseline_y:.2f}" x2="138" y2="{baseline_y:.2f}" />'
+        + '<line class="marketMiniSparkGuide" x1="0" y1="46" x2="138" y2="46" />'
+        + "".join(candle_markup)
+        + "</svg>"
     )
 
 
@@ -9342,6 +9362,7 @@ def _dashboard_pace_viewmodel(
     *,
     anchor_day: date,
     pace_scope: Optional[Dict[str, Any]] = None,
+    profit_base: float = 0.0,
 ) -> Dict[str, Any]:
     live_avg = float(proj.get("avg") or 0.0)
     custom_daily = float(pace_settings.get("custom_daily") or 0.0)
@@ -9357,6 +9378,7 @@ def _dashboard_pace_viewmodel(
     display_avg = applied_avg * scope_factor
     display_live_avg = live_avg * scope_factor
     base_balance = float(proj.get("base_balance") or 0.0)
+    base_profit = float(profit_base or 0.0)
     start_date_input = str(pace_settings.get("start_date") or "").strip()
     target_date_input = str(pace_settings.get("target_date") or "").strip()
     projection_anchor = anchor_day
@@ -9472,7 +9494,9 @@ def _dashboard_pace_viewmodel(
         "headline": app_runtime.money(display_avg),
         "headline_suffix": scope_suffix,
         "daily_headline": app_runtime.money(applied_avg),
+        "daily_profit_headline": app_runtime.money(applied_avg),
         "base_balance": app_runtime.money(base_balance),
+        "base_profit": app_runtime.money(base_profit),
         "live_headline": app_runtime.money(display_live_avg),
         "live_daily_headline": app_runtime.money(live_avg),
         "scope": {
@@ -9539,6 +9563,7 @@ def _dashboard_calendar_payload(
     year: int,
     month: int,
     scope_active: bool,
+    scope_account_id: int | None,
     scope_start: str,
     scope_starting_balance: float,
     scope_label: str,
@@ -9549,8 +9574,29 @@ def _dashboard_calendar_payload(
         year,
         month,
         start_date=scope_start if scope_active else "",
-        starting_balance=scope_starting_balance if scope_active else None,
+        starting_balance=scope_starting_balance if scope_active else 0.0,
+        account_id=scope_account_id if scope_active else None,
     )
+    for week in list(heat.get("weeks") or []):
+        for day in list((week or {}).get("days") or []):
+            day_iso = str(day.get("iso") or "").strip()
+            if not day_iso:
+                day["display_balance"] = None
+                continue
+            try:
+                derived_balance = float(
+                    trades_repo.latest_balance_overall(
+                        as_of=day_iso,
+                        start_date=scope_start if scope_active else "",
+                        starting_balance=scope_starting_balance if scope_active else 0.0,
+                        account_id=scope_account_id if scope_active else None,
+                    )
+                )
+                day["display_balance"] = (
+                    derived_balance - float(scope_starting_balance) if scope_active else derived_balance
+                )
+            except Exception:
+                day["display_balance"] = None
     month_name = date(year, month, 1).strftime("%B %Y")
     calendar_state = _dashboard_calendar_state_viewmodel(heat, scope_label)
     return {
@@ -9874,12 +9920,29 @@ def dashboard():
     ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
     selected_ticker = str(ticker_context["ticker"])
     alternate_ticker = str(ticker_context["alternate_ticker"])
+    requested_account_raw = str(request.args.get("account_id") or "").strip().lower()
+    if requested_account_raw == "all":
+        trades_repo.set_active_account(None)
+    else:
+        try:
+            requested_account_id = int(requested_account_raw) if requested_account_raw else None
+        except ValueError:
+            requested_account_id = None
+        if requested_account_id and trades_repo.get_account(requested_account_id):
+            trades_repo.set_active_account(requested_account_id)
     scope = trades_repo.account_scope_snapshot()
+    accounts = trades_repo.list_accounts()
     scope_enabled = bool(scope.get("enabled"))
     scope_mode_raw = (request.args.get("scope") or "").strip().lower()
     scope_active = scope_enabled and scope_mode_raw != "all"
+    scope_account_id = None
+    try:
+        scope_account_id = int(scope.get("account_id") or 0) or None
+    except Exception:
+        scope_account_id = None
+    selected_account = trades_repo.get_account(scope_account_id) if scope_account_id else None
     scope_start = str(scope.get("start_date") or "")
-    scope_starting_balance = float(scope.get("starting_balance") or 50000.0)
+    scope_starting_balance = float(scope.get("starting_balance") or 0.0)
     anchor = app_runtime.now_et().date()
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
@@ -9890,6 +9953,7 @@ def dashboard():
         year=year,
         month=month,
         scope_active=scope_active,
+        scope_account_id=scope_account_id,
         scope_start=scope_start,
         scope_starting_balance=scope_starting_balance,
         scope_label=calendar_scope_label,
@@ -9907,14 +9971,30 @@ def dashboard():
     month_name = calendar_payload["month_name"]
     balance_integrity = trades_repo.balance_integrity_snapshot(
         start_date=scope_start if scope_active else None,
-        starting_balance=scope_starting_balance if scope_active else None,
+        starting_balance=scope_starting_balance if scope_active else 0.0,
+        account_id=scope_account_id if scope_active else None,
     )
-    overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
-    trajectory_title = "Active Account Balance" if scope_active else "Capital Trajectory"
+    if scope_active and scope_account_id:
+        scoped_balance = selected_account.get("current_balance") if selected_account else None
+        if isinstance(scoped_balance, (int, float)):
+            overall_balance = float(scoped_balance)
+        else:
+            overall_balance = float(
+                trades_repo.latest_balance_overall(
+                    account_id=scope_account_id,
+                    start_date=scope_start if scope_active else None,
+                    starting_balance=scope_starting_balance,
+                )
+            )
+        overall_profit = overall_balance - scope_starting_balance
+    else:
+        overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
+        overall_profit = overall_balance
+    trajectory_title = "Active Account Profit" if scope_active else "All History Profit"
     trajectory_caption = (
-        "Scoped account balance with calendar context."
+        "Scoped account profit first. Funded size stays in the background."
         if scope_active
-        else "Live account balance with calendar context."
+        else "Combined profit across all account ledgers."
     )
     sync_status = get_system_status()
     dashboard_live_sync = trades_sync.dashboard_live_sync_state()
@@ -9933,74 +10013,36 @@ def dashboard():
         if (year == anchor.year and month == anchor.month)
         else date(year, month, 1).isoformat()
     )
-    this_week_total = trades_repo.week_total_net(week_anchor)
-    mtd_net = trades_repo.month_total_net(year, month)
-    ytd_net = trades_repo.ytd_total_net(year)
-    mtd_trades = trades_repo.month_trade_count(year, month)
-    ytd_trades = trades_repo.ytd_trade_count(year)
-    if scope_active and scope_start:
-        with app_runtime.db() as conn:
-            this_week_range_start, this_week_range_end = trades_repo.week_range_for(week_anchor)
-            this_week_row = conn.execute(
-                """
-                SELECT COALESCE(SUM(net_pl), 0) AS net
-                FROM trades
-                WHERE trade_date >= ? AND trade_date < ?
-                  AND trade_date >= ?
-                """,
-                (this_week_range_start, this_week_range_end, scope_start),
-            ).fetchone()
-            mtd_first = date(year, month, 1).isoformat()
-            mtd_next = date(year + (month == 12), 1 if month == 12 else month + 1, 1).isoformat()
-            mtd_row = conn.execute(
-                """
-                SELECT COALESCE(SUM(net_pl), 0) AS net, COUNT(*) AS count
-                FROM trades
-                WHERE trade_date >= ? AND trade_date < ?
-                  AND trade_date >= ?
-                """,
-                (mtd_first, mtd_next, scope_start),
-            ).fetchone()
-            ytd_first = date(year, 1, 1).isoformat()
-            ytd_next = date(year + 1, 1, 1).isoformat()
-            ytd_row = conn.execute(
-                """
-                SELECT COALESCE(SUM(net_pl), 0) AS net, COUNT(*) AS count
-                FROM trades
-                WHERE trade_date >= ? AND trade_date < ?
-                  AND trade_date >= ?
-                """,
-                (ytd_first, ytd_next, scope_start),
-            ).fetchone()
-        this_week_total = float((this_week_row["net"] if this_week_row else 0.0) or 0.0)
-        mtd_net = float((mtd_row["net"] if mtd_row else 0.0) or 0.0)
-        ytd_net = float((ytd_row["net"] if ytd_row else 0.0) or 0.0)
-        mtd_trades = int((mtd_row["count"] if mtd_row else 0) or 0)
-        ytd_trades = int((ytd_row["count"] if ytd_row else 0) or 0)
+    scoped_account_id = scope_account_id if scope_active else None
+    this_week_total = trades_repo.week_total_net(week_anchor, account_id=scoped_account_id)
+    mtd_net = trades_repo.month_total_net(year, month, account_id=scoped_account_id)
+    ytd_net = trades_repo.ytd_total_net(year, account_id=scoped_account_id)
+    mtd_trades = trades_repo.month_trade_count(year, month, account_id=scoped_account_id)
+    ytd_trades = trades_repo.ytd_trade_count(year, account_id=scoped_account_id)
     proj = trades_repo.projections_from_daily(
-        trades_repo.last_n_trading_day_totals(20, since_date=scope_start if scope_active else ""),
+        trades_repo.last_n_trading_day_totals(
+            20,
+            since_date=scope_start if scope_active else "",
+            account_id=scoped_account_id,
+        ),
         overall_balance,
     )
 
     ytd_trades_list = [
         dict(r)
         for r in trades_repo.fetch_trades_range(
-            date(year, 1, 1).isoformat(), date(year + 1, 1, 1).isoformat()
+            date(year, 1, 1).isoformat(),
+            date(year + 1, 1, 1).isoformat(),
+            account_id=scoped_account_id,
         )
     ]
-    if scope_active and scope_start:
-        ytd_trades_list = [
-            r for r in ytd_trades_list if str(r.get("trade_date") or "") >= scope_start
-        ]
     ytd_stats = trades_repo.trade_day_stats(ytd_trades_list)
     ytd_cons = trades_repo.calc_consistency(ytd_trades_list)
     ytd_wins = int(ytd_stats.get("wins", 0) or 0)
     ytd_losses = int(ytd_stats.get("losses", 0) or 0)
     ytd_win_rate = float(ytd_stats.get("win_rate", 0.0))
     today_key = app_runtime.today_iso()
-    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="")]
-    if scope_active and scope_start and today_key < scope_start:
-        today_rows = []
+    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="", account_id=scoped_account_id)]
     today_stats = trades_repo.trade_day_stats(today_rows)
     today_net = float(today_stats.get("total", 0.0))
     today_win_rate = float(today_stats.get("win_rate", 0.0))
@@ -10070,7 +10112,11 @@ def dashboard():
         mtd_net=mtd_net,
         ytd_net=ytd_net,
         overall_balance=overall_balance,
-        starting_balance=float(balance_integrity.get("starting_balance") or 50000.0),
+        starting_balance=float(
+            balance_integrity.get("starting_balance")
+            if balance_integrity.get("starting_balance") is not None
+            else 0.0
+        ),
         avg_daily_profit=selected_pace,
     )
     from mccain_capital.services.ui import get_vanquish_profit_lock_state
@@ -10744,6 +10790,16 @@ def dashboard():
         balance_integrity=balance_integrity,
         sync_badges=sync_badges,
     )
+    if scope_active and selected_account:
+        for entry in snapshot_bar.get("entries") or []:
+            if str(entry.get("label") or "") == "Account":
+                entry["value"] = str(selected_account.get("account_name") or scope_label or "Active Account")
+                account_detail_parts = [app_runtime.money(selected_account.get("starting_balance") or 0.0)]
+                display_account_id = str(selected_account.get("display_broker_account_id") or "").strip()
+                if display_account_id:
+                    account_detail_parts.append(display_account_id)
+                entry["detail"] = " · ".join(part for part in account_detail_parts if part)
+                break
     readiness = _dashboard_readiness_viewmodel(
         dashboard_checklist,
         brief_ready=False,
@@ -10758,6 +10814,7 @@ def dashboard():
         pace_settings,
         anchor_day=app_runtime.now_et().date(),
         pace_scope=pace_scope,
+        profit_base=overall_profit,
     )
     calendar_state = calendar_payload["calendar_state"]
 
@@ -10782,6 +10839,7 @@ def dashboard():
         next_m=next_m,
         month_name=month_name,
         overall_balance=overall_balance,
+        overall_profit=overall_profit,
         trajectory_title=trajectory_title,
         trajectory_caption=trajectory_caption,
         calendar_scope_label=calendar_scope_label,
@@ -10824,6 +10882,8 @@ def dashboard():
         dashboard_tape_updated=dashboard_tape_updated_raw,
         dashboard_tape_updated_label=dashboard_tape_updated_label,
         dashboard_market_structure_snapshot=dashboard_market_structure_snapshot,
+        accounts=accounts,
+        selected_account=selected_account,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
         dashboard_reflection=dashboard_reflection,
@@ -10896,12 +10956,26 @@ def dashboard():
 def dashboard_calendar_fragment():
     from mccain_capital.repositories import trades as trades_repo
 
+    requested_account_raw = str(request.args.get("account_id") or "").strip().lower()
+    if requested_account_raw == "all":
+        trades_repo.set_active_account(None)
+    else:
+        try:
+            requested_account_id = int(requested_account_raw) if requested_account_raw else None
+        except ValueError:
+            requested_account_id = None
+        if requested_account_id and trades_repo.get_account(requested_account_id):
+            trades_repo.set_active_account(requested_account_id)
     scope = trades_repo.account_scope_snapshot()
     scope_enabled = bool(scope.get("enabled"))
     scope_mode_raw = (request.args.get("scope") or "").strip().lower()
     scope_active = scope_enabled and scope_mode_raw != "all"
+    try:
+        scope_account_id = int(scope.get("account_id") or 0) or None
+    except Exception:
+        scope_account_id = None
     scope_start = str(scope.get("start_date") or "")
-    scope_starting_balance = float(scope.get("starting_balance") or 50000.0)
+    scope_starting_balance = float(scope.get("starting_balance") or 0.0)
     anchor = app_runtime.now_et().date()
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
@@ -10910,6 +10984,7 @@ def dashboard_calendar_fragment():
         year=year,
         month=month,
         scope_active=scope_active,
+        scope_account_id=scope_account_id,
         scope_start=scope_start,
         scope_starting_balance=scope_starting_balance,
         scope_label=calendar_scope_label,
@@ -10937,6 +11012,13 @@ def dashboard_planning_refresh_api():
     selected_ticker = str(ticker_context["ticker"])
     force_refresh = (request.args.get("force") or "").strip() == "1"
     scope_mode = (request.args.get("scope") or "all").strip().lower()
+    scope = trades_repo.account_scope_snapshot()
+    scope_active = bool(scope.get("enabled")) and scope_mode != "all"
+    try:
+        scope_account_id = int(scope.get("account_id") or 0) or None
+    except Exception:
+        scope_account_id = None
+    scoped_account_id = scope_account_id if scope_active else None
 
     try:
         market_worker.start_market_worker_once()
@@ -10949,7 +11031,7 @@ def dashboard_planning_refresh_api():
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
 
-    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="")]
+    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="", account_id=scoped_account_id)]
     today_stats = trades_repo.trade_day_stats(today_rows)
     today_net = float(today_stats.get("total", 0.0))
     today_wins = int(today_stats.get("wins", 0) or 0)
@@ -10959,7 +11041,9 @@ def dashboard_planning_refresh_api():
     ytd_trades_list = [
         dict(r)
         for r in trades_repo.fetch_trades_range(
-            date(year, 1, 1).isoformat(), date(year + 1, 1, 1).isoformat()
+            date(year, 1, 1).isoformat(),
+            date(year + 1, 1, 1).isoformat(),
+            account_id=scoped_account_id,
         )
     ]
     ytd_cons = trades_repo.calc_consistency(ytd_trades_list)

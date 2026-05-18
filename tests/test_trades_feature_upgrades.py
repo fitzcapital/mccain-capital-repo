@@ -5,6 +5,7 @@ import json
 import os
 import time
 
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import db, now_iso
 
 
@@ -239,6 +240,81 @@ def test_upload_statement_live_workspace_injects_csrf_into_all_sync_forms(client
         form_end = html.index("</form>", form_start)
         form_html = html[form_start:form_end]
         assert 'name="csrf_token"' in form_html
+
+
+def test_live_sync_workspace_surfaces_account_and_credentials_actions(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:ACC123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+    trades_repo.set_active_account(int(account_id))
+
+    resp = client.get(
+        "/trades/upload/statement?ws=live&account_id=all&account_editor=new&credentials=edit",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Edit Credentials" in body
+    assert "Selected ledger only" in body
+    assert "account-only dedupe" in body
+    assert "Vanquish Account Number" in body
+    assert "ACC123" in body
+    assert "default:ACC123" not in body
+    assert "Ready to Run" in body
+    assert "Username Override" in body
+    assert "Advanced Sync Options" in body
+    assert 'name="selected_account_id" value="" form="live-account-form"' in body
+    assert "New account mode is blank on purpose." in body
+    assert "Cancel" in body
+
+
+def test_archive_account_hides_it_and_falls_back_to_remaining_active_account(client):
+    first_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect 50k",
+        broker_account_id="default:OEV0052447",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+    second_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect 75k",
+        broker_account_id="default:OEV0052555",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=7500.0,
+    )
+    trades_repo.set_active_account(int(first_account_id))
+
+    resp = client.post(
+        "/trades/upload/statement?ws=live",
+        data={
+            "intent": "archive_account",
+            "selected_account_id": str(first_account_id),
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Archived Protect 50k." in body
+    assert "OEV0052555" in body
+    assert "default:OEV0052555" not in body
+
+    archived = next(
+        row
+        for row in trades_repo.list_accounts(include_archived=True)
+        if int(row["id"]) == int(first_account_id)
+    )
+    assert int(archived["archived"]) == 1
+    assert trades_repo.get_account(int(first_account_id)) is None
+    snapshot = trades_repo.account_scope_snapshot()
+    assert str(snapshot.get("account_id") or "") == str(second_account_id)
 
 
 def test_live_sync_can_save_and_reuse_credentials(client, monkeypatch, tmp_path):

@@ -89,18 +89,18 @@
     gridMajor: "rgba(199, 208, 217, 0.18)",
     gridMinor: "rgba(199, 208, 217, 0.09)",
     axis: "rgba(199, 208, 217, 0.30)",
-    bull: "#19C997",
-    bullBorder: "#22C55E",
-    bullWick: "#4ADE80",
-    bear: "#D64D66",
-    bearBorder: "#EF4444",
-    bearWick: "#FB7185",
-    bullMuted: "rgba(25, 201, 151, 0.86)",
-    bullBorderMuted: "rgba(34, 197, 94, 0.92)",
-    bullWickMuted: "rgba(74, 222, 128, 0.88)",
-    bearMuted: "rgba(214, 77, 102, 0.84)",
-    bearBorderMuted: "rgba(239, 68, 68, 0.90)",
-    bearWickMuted: "rgba(251, 113, 133, 0.88)",
+    bull: "#F4F8FF",
+    bullBorder: "#E6EEF9",
+    bullWick: "#F4F8FF",
+    bear: "#4988FF",
+    bearBorder: "#3C79F2",
+    bearWick: "#4988FF",
+    bullMuted: "rgba(244, 248, 255, 0.72)",
+    bullBorderMuted: "rgba(230, 238, 249, 0.78)",
+    bullWickMuted: "rgba(244, 248, 255, 0.72)",
+    bearMuted: "rgba(73, 136, 255, 0.68)",
+    bearBorderMuted: "rgba(60, 121, 242, 0.76)",
+    bearWickMuted: "rgba(73, 136, 255, 0.70)",
     spx: "#63B3FF",
     current: "#C23B57",
     cw: "#C85A72",
@@ -125,10 +125,10 @@
     labelMintText: "#08111D",
     labelGreenBg: "#19c77e",
     labelGreenText: "#EAF2FF",
-    stratUp: "#1dffad",
-    stratDown: "#ff3b7f",
-    stratInside: "#71ddff",
-    stratOutside: "#ffd45f",
+    stratUp: "#F4F8FF",
+    stratDown: "#4988FF",
+    stratInside: "#AFC5E8",
+    stratOutside: "#E6EEF9",
     pdh: "#f7d56f",
     pdl: "#b78cff",
     cdh: "#63f7d4",
@@ -403,13 +403,19 @@
     root.innerHTML = normalized.map((label) => `<span class="marketPulseGammaBadge">${label}</span>`).join("");
   };
 
+  const regimeDisplayLabel = (state, fallback = "REGIME UNAVAILABLE") => {
+    if (state === "positive") return "Positive Ⲅ";
+    if (state === "negative") return "Negative Ⲅ";
+    return fallback;
+  };
+
   const gammaStateMeta = (state) => {
     const normalized = String(state || "").toLowerCase();
     if (normalized === "positive") {
       return {
         cardClass: "gamma-card--positive",
         pillClass: "state-pill--positive",
-        pillLabel: "POSITIVE GAMMA",
+        pillLabel: "POSITIVE Ⲅ",
         badges: ["PINNING", "MEAN REVERSION"],
       };
     }
@@ -417,7 +423,7 @@
       return {
         cardClass: "gamma-card--negative",
         pillClass: "state-pill--negative",
-        pillLabel: "NEGATIVE GAMMA",
+        pillLabel: "NEGATIVE Ⲅ",
         badges: ["EXPANSION RISK", "TREND CONTINUATION"],
       };
     }
@@ -666,14 +672,14 @@
     ]);
     setText("marketPulseTitle", `${symbol} PLAYBOOK`);
     setText("marketPulseHeaderSnapshot", `${spotSourceLabel} ${snapshotLabel}`);
-    setText("marketPulseHeaderGammaLabel", levels.gamma_regime_label || "REGIME UNAVAILABLE");
-    setText("marketPulseHeaderGammaSummary", levels.hero_summary || `${levels.gamma_regime_label || "Regime unavailable"}, ${(levels.bias_summary_label || levels.bias_label || "wait for cleaner structure").toLowerCase()}.`);
+    const gammaDisplayLabel = regimeDisplayLabel(gammaState, levels.gamma_regime_label || "REGIME UNAVAILABLE");
+    setText("marketPulseHeaderGammaLabel", gammaDisplayLabel);
+    setText("marketPulseHeaderGammaSummary", levels.hero_summary || `${gammaDisplayLabel || "Regime unavailable"}, ${(levels.bias_summary_label || levels.bias_label || "wait for cleaner structure").toLowerCase()}.`);
     setText("marketPulseHeaderGammaSub", levels.gamma_regime_subtitle || "Gamma snapshot unavailable");
     setText("marketPulseHeaderDecision", levels.decision_label || "Not actionable yet");
     setText("marketPulseHeaderBiasPrimary", levels.bias_summary_label || levels.bias_label || "Wait for cleaner structure");
     setText("marketPulseHeaderBiasSecondary", levels.bias_label || levels.planning_bias_label || "Awaiting valid structure");
     setText("marketPulseHeaderTradeability", levels.tradeability_display_label || String(levels.execution_regime_label || levels.tradeability || "Trigger required").replaceAll("_", " "));
-    setText("marketPulseHeaderStatePill", gammaMeta.pillLabel);
     setText("marketPulseHeaderDecisionStatePill", decisionMeta.pillLabel);
     renderSimpleBadges("marketPulseHeaderBadgeRow", gammaMeta.badges);
 
@@ -691,11 +697,6 @@
       "marketPulseHeaderBiasCard",
       ["is-positive", "is-negative", "is-neutral"],
       biasState === "above_local" ? "is-positive" : biasState === "below_local" ? "is-negative" : "is-neutral",
-    );
-    setToneVariant(
-      "marketPulseHeaderStatePill",
-      ["state-pill--positive", "state-pill--negative", "state-pill--wait", "state-pill--execute"],
-      gammaMeta.pillClass,
     );
     setToneVariant(
       "marketPulseHeaderDecisionStatePill",
@@ -732,7 +733,7 @@
     return {
       time,
       value: Number.isFinite(amount) ? amount : 0,
-      color: close >= open ? "rgba(15, 163, 127, 0.18)" : "rgba(194, 59, 87, 0.16)",
+      color: close >= open ? "rgba(244, 248, 255, 0.18)" : "rgba(73, 136, 255, 0.18)",
     };
   };
 
@@ -1387,7 +1388,7 @@
     updateHeaderSummary(levels);
     setText("marketPulseHeroSpot", fmt(levels.spot, 2));
     setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || `${symbol} Spot`);
-    setText("marketPulseHeroGamma", levels.gamma_regime_label || "Regime Unavailable");
+    setText("marketPulseHeroGamma", regimeDisplayLabel(String(levels.gamma_regime || "").toLowerCase(), levels.gamma_regime_label || "Regime Unavailable"));
     setText("marketPulseHeroBias", levels.bias_summary_label || levels.current_read || levels.bias_context || levels.bias_label || "Awaiting structure");
     const tradeability = String(
       levels.tradeability_display_label || levels.execution_regime_label || levels.tradeability || "Reduced confidence"

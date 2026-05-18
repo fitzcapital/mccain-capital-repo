@@ -284,42 +284,52 @@ const marketSessionState = (now = new Date()) => {
 
   const buildSparklineSvg = (points, tone) => {
     const values = seriesValues(points);
-    if (values.length < 2) {
+    if (values.length < 4) {
       return '<div class="marketMiniSparkEmpty">No trend</div>';
     }
-    const width = 120;
-    const height = 28;
-    let minV = Math.min(...values);
-    let maxV = Math.max(...values);
+    const targetBars = Math.min(10, Math.max(8, Math.ceil(values.length / 2)));
+    const chunkSize = Math.max(1, Math.ceil(values.length / targetBars));
+    const candles = [];
+    for (let index = 0; index < values.length; index += chunkSize) {
+      const chunk = values.slice(index, index + chunkSize);
+      if (!chunk.length) continue;
+      candles.push({
+        open: chunk[0],
+        high: Math.max(...chunk),
+        low: Math.min(...chunk),
+        close: chunk[chunk.length - 1],
+      });
+    }
+    if (candles.length < 2) return '<div class="marketMiniSparkEmpty">No trend</div>';
+    const width = 138;
+    const height = 60;
+    let minV = Math.min(...candles.map((row) => row.low));
+    let maxV = Math.max(...candles.map((row) => row.high));
     if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
-    const step = width / Math.max(values.length - 1, 1);
-    const pts = values.map((value, index) => {
-      const x = index * step;
-      const y = ((maxV - value) / (maxV - minV)) * (height - 2) + 1;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    });
-    const cls = tone === "up" ? "up" : tone === "down" ? "down" : "flat";
-    const baselineY = (((maxV - values[0]) / (maxV - minV)) * (height - 2) + 1).toFixed(2);
-    const areaPoints = `0.00,28.00 ${pts.join(" ")} 120.00,28.00`;
-    const markerStride = Math.max(1, Math.floor(pts.length / 8));
-    const selected = pts.filter(
-      (_point, index) => index === 0 || index === pts.length - 1 || index % markerStride === 0
-    );
-    const markers = selected
-      .map((point, index) => {
-        const [x, y] = point.split(",");
-        const endpoint = index === 0 ? " start" : index === selected.length - 1 ? " end" : "";
-        return `<circle class="marketMiniSparkPoint ${cls}${endpoint}" cx="${x}" cy="${y}" r="1.55" />`;
-      })
-      .join("");
+    const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
+    const baselineY = yFor(candles[0].open).toFixed(2);
+    const candleGap = 1.35;
+    const candleWidth = Math.min(11.6, (width / Math.max(candles.length, 1)) - candleGap);
+    const bars = candles.map((candle, index) => {
+      const centerX = ((index + 0.5) * width) / Math.max(candles.length, 1);
+      const openY = yFor(candle.open);
+      const closeY = yFor(candle.close);
+      const highY = yFor(candle.high);
+      const lowY = yFor(candle.low);
+      const topY = Math.min(openY, closeY);
+      const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
+      const cls = candle.close > candle.open ? "up" : candle.close < candle.open ? "down" : "flat";
+      return (
+        `<line class="marketMiniSparkWick ${cls}" x1="${centerX.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${lowY.toFixed(2)}" />`
+        + `<rect class="marketMiniSparkBody ${cls}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${topY.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" rx=".08" ry=".08" />`
+      );
+    }).join("");
     return (
-      `<svg viewBox="0 0 120 28" class="marketMiniSpark" aria-hidden="true">`
-      + `<line class="marketMiniSparkGuide" x1="0" y1="7" x2="120" y2="7" />`
-      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="120" y2="${baselineY}" />`
-      + `<line class="marketMiniSparkGuide" x1="0" y1="21" x2="120" y2="21" />`
-      + `<polygon class="marketMiniSparkArea ${cls}" points="${areaPoints}" />`
-      + `<polyline class="marketMiniSparkLine ${cls}" points="${pts.join(" ")}" />`
-      + markers
+      `<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="14" x2="138" y2="14" />`
+      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="138" y2="${baselineY}" />`
+      + `<line class="marketMiniSparkGuide" x1="0" y1="46" x2="138" y2="46" />`
+      + bars
       + `</svg>`
     );
   };

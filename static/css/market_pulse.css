@@ -1279,15 +1279,15 @@ body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .mar
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard .marketMiniSparkWrap{
-  filter:drop-shadow(0 0 10px rgba(74, 214, 255, .18));
+  filter:none;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive .marketMiniSparkWrap{
-  filter:drop-shadow(0 0 12px rgba(0, 255, 159, .22));
+  filter:none;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative .marketMiniSparkWrap{
-  filter:drop-shadow(0 0 12px rgba(255, 45, 122, .22));
+  filter:none;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchState{
@@ -3991,6 +3991,10 @@ body.page-market-pulse .marketPulseGammaStateDot{
   width:34px;
   height:34px;
   border-radius:10px;
+  font-size:1.48rem;
+  line-height:1;
+  font-weight:700;
+  font-family:"Trebuchet MS","Avenir Next","Segoe UI",sans-serif;
   color:var(--mc-cyan);
   background:rgba(79, 220, 255, .08);
   border:1px solid rgba(79, 220, 255, .16);
@@ -4014,6 +4018,13 @@ body.page-market-pulse .marketPulseGammaStateOrb{
   right:14px;
   width:72px;
   height:72px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:4.7rem;
+  line-height:1;
+  font-weight:700;
+  font-family:"Trebuchet MS","Avenir Next","Segoe UI",sans-serif;
   color:rgba(255,255,255,.08);
   pointer-events:none;
   opacity:.96;
@@ -4616,4 +4627,258 @@ body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .mar
     justify-self:start;
     margin-top:2px;
   }
+}
+
+/* Final page-specific tape override: preserve white/blue chrome and content-fit pills. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan{
+  border-color:rgba(134, 176, 242, .30) !important;
+  background:
+    radial-gradient(88% 112% at 50% 18%, rgba(70, 128, 214, .07), transparent 48%),
+    linear-gradient(180deg, rgba(6, 12, 24, .992), rgba(2, 7, 16, .998)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.036),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 36px rgba(86, 149, 241, .13),
+    0 0 0 1px rgba(87, 142, 222, .07) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan .marketPulseWatchState{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  inline-size:auto !important;
+  width:auto !important;
+  min-width:max-content !important;
+  max-width:none !important;
+  white-space:nowrap !important;
+  min-height:34px !important;
+  padding:6px 15px 5px !important;
+  font-size:.82rem !important;
+  line-height:1 !important;
+  letter-spacing:.01em !important;
+  overflow:visible !important;
+  text-overflow:clip !important;
+  border-color:rgba(124, 171, 244, .34) !important;
+  background:rgba(62, 97, 156, .20) !important;
+  color:rgba(240, 247, 255, .96) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 0 18px rgba(94, 157, 245, .10) !important;
+}
+
+/* Final page-specific tape tone restore after shared overrides. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive{
+  border-color:rgba(48, 196, 126, .46) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.02),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 34px rgba(43, 198, 124, .18),
+    0 0 0 1px rgba(43, 198, 124, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative{
+  border-color:rgba(255, 84, 118, .44) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.02),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 34px rgba(255, 84, 118, .17),
+    0 0 0 1px rgba(255, 84, 118, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan{
+  border-color:rgba(126, 164, 224, .28) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.02),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 32px rgba(96, 166, 242, .12),
+    0 0 0 1px rgba(96, 166, 242, .07) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive .marketPulseWatchState{
+  color:#e5fff0 !important;
+  border-color:rgba(50, 198, 125, .40) !important;
+  background:rgba(24, 88, 58, .40) !important;
+  box-shadow:0 0 18px rgba(41, 198, 124, .15) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative .marketPulseWatchState{
+  color:#ffe8ef !important;
+  border-color:rgba(255, 86, 120, .38) !important;
+  background:rgba(86, 24, 38, .36) !important;
+  box-shadow:0 0 18px rgba(255, 84, 118, .13) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan .marketPulseWatchState{
+  color:#edf6ff !important;
+  border-color:rgba(126, 156, 207, .28) !important;
+  background:rgba(76, 102, 142, .18) !important;
+  box-shadow:0 0 16px rgba(120, 150, 206, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap{
+  width:66% !important;
+  max-width:178px !important;
+  min-width:144px !important;
+  margin:8px auto 2px !important;
+}
+
+/* Final page-specific tape winner: preserve tone glow, rich bars, and pill clearance. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive{
+  border-color:rgba(48, 196, 126, .46) !important;
+  box-shadow:
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 34px rgba(43, 198, 124, .18),
+    0 0 0 1px rgba(43, 198, 124, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative{
+  border-color:rgba(210, 72, 102, .32) !important;
+  background:linear-gradient(180deg, rgba(6, 9, 18, .998), rgba(3, 5, 12, .999)) !important;
+  box-shadow:
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 20px rgba(182, 58, 90, .10),
+    0 0 0 1px rgba(168, 54, 84, .05) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan{
+  border-color:rgba(126, 164, 224, .28) !important;
+  box-shadow:
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 32px rgba(96, 166, 242, .12),
+    0 0 0 1px rgba(96, 166, 242, .07) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchState{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  inline-size:auto !important;
+  width:auto !important;
+  min-width:max-content !important;
+  max-width:none !important;
+  white-space:nowrap !important;
+  min-height:35px !important;
+  padding:7px 17px 6px !important;
+  line-height:1 !important;
+  overflow:visible !important;
+  text-overflow:clip !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive .marketPulseWatchState{
+  color:#e5fff0 !important;
+  border-color:rgba(50, 198, 125, .40) !important;
+  background:rgba(24, 88, 58, .40) !important;
+  box-shadow:0 0 18px rgba(41, 198, 124, .15) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative .marketPulseWatchState{
+  color:#ffe8ef !important;
+  border-color:rgba(255, 86, 120, .38) !important;
+  background:rgba(86, 24, 38, .36) !important;
+  box-shadow:0 0 18px rgba(255, 84, 118, .13) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan .marketPulseWatchState{
+  color:#edf6ff !important;
+  border-color:rgba(126, 156, 207, .28) !important;
+  background:rgba(76, 102, 142, .18) !important;
+  box-shadow:0 0 16px rgba(120, 150, 206, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap{
+  width:60% !important;
+  max-width:160px !important;
+  min-width:128px !important;
+  margin:13px auto 2px !important;
+  padding:2px 6px !important;
+  border-radius:21px !important;
+  background:transparent !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap::before,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap::after{
+  content:none !important;
+  display:none !important;
+  background:none !important;
+  box-shadow:none !important;
+  opacity:0 !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap svg,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSpark{
+  background:none !important;
+  background-color:transparent !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchValueRow,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard [data-role="change-line"]{
+  background:none !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard [data-role="change-line"]{
+  text-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard{
+  background:linear-gradient(180deg, rgba(5, 10, 20, .997), rgba(2, 6, 14, .999)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.up,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.up{
+  fill:rgba(24, 214, 146, 1) !important;
+  stroke:rgba(24, 214, 146, 1) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.down,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.down{
+  fill:rgba(232, 82, 120, 1) !important;
+  stroke:rgba(232, 82, 120, 1) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.flat,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.flat{
+  fill:rgba(188, 204, 232, 1) !important;
+  stroke:rgba(188, 204, 232, 1) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkGuide{
+  stroke:rgba(116, 142, 182, .075) !important;
+  stroke-width:.85 !important;
+  stroke-dasharray:4 9 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBaseline{
+  stroke:rgba(132, 160, 208, .11) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick{
+  stroke-width:2.2 !important;
+  stroke-linecap:round !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody{
+  stroke-width:.55 !important;
 }

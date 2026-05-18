@@ -112,7 +112,7 @@
   {% set hero_lead = "Set the day, confirm the brief, and start clean." %}
   {% set focus_body = "Confirm structure, lock the brief, and wait for a clean trigger." %}
   {% set focus_href = market_pulse_href %}
-  {% set focus_cta = "Open Playbook" %}
+{% set focus_cta = "Playbook" %}
 {% elif today_net < 0 %}
   {% set hero_title = "Reset" %}
   {% set hero_lead = "Review first. Re-entry earns its place after the leak is named." %}
@@ -289,11 +289,53 @@
 </section>
 <div class="dashboardSnapshotBar dashboardSnapshotBar-primary">
   {% for item in snapshot_primary %}
+    {% if item.label == 'Account' %}
+      <details class="dashboardSnapshotCard dashboardSnapshotCard-accountDropdown{% if item.tone %} is-{{ item.tone }}{% endif %}">
+        <summary class="dashboardSnapshotAccountSummary">
+          <span class="dashboardSnapshotLabel">{{ item.label }}</span>
+          <strong class="dashboardSnapshotLinkWrap{% if item.tone == 'positive' %} metaGreen{% elif item.tone == 'negative' %} metaRed{% endif %}">
+            <span class="dashboardSnapshotLink">{{ item.value }}</span>
+          </strong>
+          <small>{{ item.detail }}</small>
+          <span class="dashboardSnapshotDropdownChevron" aria-hidden="true">{{ dashboard_icon('signal-down') }}</span>
+        </summary>
+        <div class="dashboardSnapshotDropdownMenu">
+          <div class="dashboardSnapshotDropdownList">
+            <a class="dashboardSnapshotDropdownItem{% if scope_mode == 'all' %} is-active{% endif %}" href="{{ scope_all_href }}">
+              <span class="dashboardSnapshotDropdownTitle">All History</span>
+              <span class="dashboardSnapshotDropdownMeta">Combined profit · read only</span>
+            </a>
+            {% for account in accounts or [] %}
+              <a
+                class="dashboardSnapshotDropdownItem{% if selected_account and account.id == selected_account.id and scope_mode == 'active' %} is-active{% endif %}"
+                href="/dashboard?y={{ dashboard_year }}&m={{ dashboard_month }}&scope=active&ticker={{ selected_ticker }}&pace_tf={{ pace_timeframe.key }}&account_id={{ account.id }}"
+              >
+                <span class="dashboardSnapshotDropdownTitle">{{ account.account_name }}</span>
+                <span class="dashboardSnapshotDropdownMeta">{{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}</span>
+              </a>
+            {% endfor %}
+          </div>
+          <div class="dashboardSnapshotDropdownActions">
+            <a class="btn" href="/trades/upload/statement?ws=live&account_id=all&account_editor=new">Add Account</a>
+            {% if selected_account %}
+              <a class="btn" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}&account_editor=edit">Update Account</a>
+              <a class="btn" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}">Live Upload</a>
+              <form method="post" action="/trades/upload/statement?ws=live">
+                <input type="hidden" name="intent" value="archive_account" />
+                <input type="hidden" name="selected_account_id" value="{{ selected_account.id }}" />
+                <button class="btn" type="submit">Archive Account</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </details>
+    {% else %}
     <div class="dashboardSnapshotCard{% if item.tone %} is-{{ item.tone }}{% endif %}{% if item.label == 'Today P/L' %} dashboardSnapshotCard-net{% endif %}">
       <span class="dashboardSnapshotLabel">{{ item.label }}</span>
       <strong{% if item.tone == 'positive' %} class="metaGreen"{% elif item.tone == 'negative' %} class="metaRed"{% endif %}>{{ item.value }}</strong>
       <small>{{ item.detail }}</small>
     </div>
+    {% endif %}
   {% endfor %}
 </div>
 
@@ -779,7 +821,7 @@
           <div class="dashboardHealthFoldChips">
             <span class="trendChip" id="dashboardHealthFoldAlignmentChip">{{ dashboard_behavior_trend.doer_streak }} day doer streak</span>
             <span class="trendChip{% if dashboard_reflection.answer != 'yes' %} neutral{% endif %}">{{ dashboard_reflection.status_label }}</span>
-            <span class="trendChip neutral">{{ money(overall_balance) }}</span>
+            <span class="trendChip neutral">{{ money(overall_profit) }}</span>
           </div>
 	      </summary>
 	      <div class="dashboardHealthGrid session-health-grid">
@@ -941,7 +983,7 @@
 	        </div></div>
 
         {% set scope_short = 'ACT' if account_scope and account_scope.enabled and scope_mode == 'active' else 'ALL' %}
-        {% set scope_context = (account_scope.start_date ~ (' · ' ~ account_scope.label if account_scope.label else '')) if account_scope and account_scope.enabled and scope_mode == 'active' else 'Full ledger' %}
+        {% set scope_context = (selected_account.account_name ~ (' · ' ~ (selected_account.display_broker_account_id or '')) ~ (' · ' ~ money(selected_account.starting_balance or 0) if selected_account else '')) if account_scope and account_scope.enabled and scope_mode == 'active' and selected_account else 'Full ledger' %}
         {% set today_net_short = money_compact(today_net)|replace('.00','') %}
         {% set today_net_tone = 'positive' if today_net > 0 else 'negative' if today_net < 0 else 'neutral' %}
         {% set session_record_short = today_wins ~ '/' ~ today_losses %}
@@ -1017,8 +1059,8 @@
             data-status-section="Account Scope"
             data-status-title="{% if scope_short == 'ACT' %}Active Account{% else %}Account Scope{% endif %}"
             data-status-primary="{% if scope_short == 'ACT' %}Active{% else %}All{% endif %}"
-            data-status-line1="{{ account_scope.start_date if account_scope and account_scope.enabled and scope_mode == 'active' else 'Legacy + current' }}"
-            data-status-line2="{{ account_scope.label if account_scope and account_scope.label and scope_mode == 'active' else scope_meta }}"
+            data-status-line1="{{ (selected_account.display_broker_account_id or account_scope.start_date) if account_scope and account_scope.enabled and scope_mode == 'active' else 'Combined profit' }}"
+            data-status-line2="{{ (selected_account.account_name ~ ' · ' ~ money(selected_account.starting_balance or 0)) if selected_account and scope_mode == 'active' else scope_meta }}"
             data-status-line3="Current session scope loaded"
           >
             <div class="dashboardStatusOrbCircle">
@@ -1148,9 +1190,13 @@
 	              </div>
 	              <span class="trendChip">MTD {{ money(mtd_net) }}</span>
 	            </div>
-	            <div class="showcaseValue">{{ money(overall_balance) }}</div>
+	            <div class="showcaseValue">{{ money(overall_profit) }}</div>
 	            <div class="tiny" style="margin-top:6px; color:rgba(237,244,255,.72);" title="{{ balance_integrity.source_detail }}">
-	              {{ balance_integrity.source_label }} · Start {{ money(balance_integrity.starting_balance) }}
+	              {% if selected_account or (calendar_scope_label == 'Active Account') %}
+	                Funded {{ money(balance_integrity.starting_balance) }} · Balance {{ money(overall_balance) }}
+	              {% else %}
+	                {{ balance_integrity.source_label }} · Combined profit view
+	              {% endif %}
 	            </div>
 	            <div class="showcaseMeta">
 	              Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked
@@ -1299,7 +1345,7 @@
     {% set day_iso = day.iso|string %}
     {% set day_in_pace_scope = pace_timeframe.key == 'm' or (day_iso >= pace_timeframe.start_iso and day_iso <= pace_timeframe.end_iso) %}
     {% if day_in_pace_scope and day.daynum is not none and day.wd is not none and day.wd < 5 and day.balance is not none %}
-      {% set spark_value = day.balance|float %}
+      {% set spark_value = (day.display_balance if day.display_balance is not none else day.balance)|float %}
       {% set balance_spark.values = balance_spark.values + [spark_value] %}
       {% set performance_chart.days = performance_chart.days + [day.daynum|int] %}
       {% set performance_chart.actuals = performance_chart.actuals + [spark_value] %}
@@ -1472,7 +1518,7 @@
     <div class="summaryHero">
       <div class="summaryHeroMain">
         <div class="summaryMonth">{{ performance_scope_title }}</div>
-        <div class="summaryBalance">{{ money(overall_balance) }}</div>
+        <div class="summaryBalance">{{ money(overall_profit) }}</div>
         <div class="summaryCaption">{{ pace_timeframe.label }} scope · {{ pace_timeframe.summary }}</div>
         <div class="dashboardPerformanceBoard dashboardPerformanceBoard-{{ performance_chart.status }}">
           <div class="dashboardPerformanceBoardHead">
@@ -1488,7 +1534,7 @@
               {% endif %}
             </div>
           </div>
-          <div class="dashboardPerformanceTargetLabel">Target: {{ pace_card.headline }}{{ pace_card.headline_suffix }}</div>
+          <div class="dashboardPerformanceTargetLabel">Profit Pace: {{ pace_card.headline }}{{ pace_card.headline_suffix }}</div>
           <div class="dashboardPerformanceTiles">
             {% if performance_chart.recent_days %}
               {% for day in performance_chart.recent_days %}
@@ -1539,7 +1585,7 @@
         </div>
         <div class="dashboardBalanceProgressWrap">
           <div class="dashboardBalanceProgressLabel">
-            <span class="dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('wallet') }}</span><span>Active account balance</span></span>
+            <span class="dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('wallet') }}</span><span>{% if selected_account %}Funded account context{% else %}Profit context{% endif %}</span></span>
             <strong>{{ '%.0f'|format(balance_progress.pct) }}%</strong>
           </div>
           <div class="dashboardProgress dashboardProgress-primary dashboardBalanceProgress" style="--progress-pct: {{ '%.1f'|format(balance_progress.pct) }}%">
@@ -1657,7 +1703,7 @@
         <span class="dashboardProjectionLivePace">Live {{ pace_card.live_headline }}{{ pace_card.headline_suffix }}</span>
       </div>
       <div class="dashboardProjectionHeroValue">{{ pace_card.headline }}<small>{{ pace_card.headline_suffix }}</small></div>
-      <div class="dashboardProjectionHeroCopy">{{ pace_card.mode_detail }} Base {{ pace_card.base_balance }}.</div>
+      <div class="dashboardProjectionHeroCopy">{{ pace_card.mode_detail }} Profit base {{ pace_card.base_profit }}.</div>
     </div>
               <details class="dashboardProjectionFold" data-dashboard-optional="pace-fold">
       <summary>
