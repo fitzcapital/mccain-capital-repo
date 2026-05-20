@@ -31,7 +31,8 @@ function initCalendarPreview(root = document) {
       status.textContent = d.status || "Session preview";
       net.textContent = d.net || "—";
       trades.textContent = d.tradeCount || "0";
-      record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L • ${d.winRate || "0"}%`;
+      const winRate = d.winRate || "0";
+      record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L (${winRate}%)`;
       balance.textContent = d.balance || "—";
       open.href = d.openUrl || "/trades";
       preview.hidden = false;
@@ -309,9 +310,12 @@ const marketSessionState = (now = new Date()) => {
     const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
     const baselineY = yFor(candles[0].open).toFixed(2);
     const candleGap = 1.35;
-    const candleWidth = Math.min(11.6, (width / Math.max(candles.length, 1)) - candleGap);
+    const slotWidth = 12.2;
+    const plotWidth = Math.min(width - 10, candles.length * slotWidth);
+    const plotStart = (width - plotWidth) / 2;
+    const candleWidth = Math.min(11.6, Math.max(8.6, slotWidth - candleGap));
     const bars = candles.map((candle, index) => {
-      const centerX = ((index + 0.5) * width) / Math.max(candles.length, 1);
+      const centerX = plotStart + (((index + 0.5) * plotWidth) / Math.max(candles.length, 1));
       const openY = yFor(candle.open);
       const closeY = yFor(candle.close);
       const highY = yFor(candle.high);

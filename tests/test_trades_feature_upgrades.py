@@ -661,6 +661,7 @@ def test_live_sync_skips_balance_reconcile_when_date_fallback_warning(monkeypatc
         password="p",
         base_url="https://trade.vanquishtrader.com",
         account="default:OEV0035974",
+        selected_account_id=None,
         wl="vanquishtrader",
         time_zone="America/New_York",
         date_locale="en-US",
@@ -682,6 +683,14 @@ def test_live_sync_skips_balance_reconcile_when_date_fallback_warning(monkeypatc
 
 def test_live_sync_reports_browser_boot_stage(monkeypatch):
     from mccain_capital.services import trades as trades_svc
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:OEV0035974",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
 
     monkeypatch.setattr(
         trades_svc.vanquish_live_sync,
@@ -699,6 +708,7 @@ def test_live_sync_reports_browser_boot_stage(monkeypatch):
         password="p",
         base_url="https://trade.vanquishtrader.com",
         account="default:OEV0035974",
+        selected_account_id=int(account_id),
         wl="vanquishtrader",
         time_zone="America/New_York",
         date_locale="en-US",
@@ -715,6 +725,37 @@ def test_live_sync_reports_browser_boot_stage(monkeypatch):
     assert out.get("stage") == "browser_boot"
     assert "Chromium session could not be created" in str(out.get("message") or "")
     assert "[stage:" not in str(out.get("message") or "")
+
+
+def test_live_sync_startup_stage_renders_dispatching_without_duplicate_live_surfaces(
+    client, monkeypatch, tmp_path
+):
+    from mccain_capital.services import trades as trades_svc
+
+    bg_dir = tmp_path / ".bg_jobs"
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(bg_dir))
+
+    job = trades_svc._create_bg_job(
+        "sync",
+        "Live Sync",
+        {"source": "manual_live", "from_date": "2026-03-18", "to_date": "2026-03-18"},
+    )
+    trades_svc._update_bg_job(
+        job["id"],
+        status="running",
+        stage="queue_dispatch",
+        message="Sync worker picked up the job.",
+    )
+
+    resp = client.get(f"/trades/upload/statement?ws=live&job={job['id']}", follow_redirects=True)
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Dispatching" in html
+    assert 'id="sync-control-deck" hidden' in html
+    assert 'id="sync-job-details"' in html
+    assert 'Open Run Diagnostics' in html
+    assert 'id="sync-job-runway"' not in html
 
 
 def test_rollback_import_batch_deletes_only_target_batch(client, monkeypatch, tmp_path):

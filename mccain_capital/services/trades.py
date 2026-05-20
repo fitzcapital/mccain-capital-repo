@@ -253,11 +253,11 @@ _AUDIT_ACTION_META = {
 }
 
 SYNC_STAGE_HELP = {
-    "queue_dispatch": "The sync worker queue could not accept or start the job. Retry once; if it repeats, inspect app resource limits.",
-    "system_resource": "The container hit a temporary resource limit while starting sync work. Retry after load settles or reduce worker pressure.",
+    "queue_dispatch": "The worker accepted the request but has not started the broker session yet. If it sits here, treat it as a dispatch stall and retry once.",
+    "system_resource": "System resources were not available while launching sync startup. Retry after load settles or reduce worker pressure.",
     "storage_io": "Sync could not write required files under uploads/debug storage. Check mounted volume permissions and free space.",
-    "browser_boot": "Chromium could not start or keep its first page open. Retry once, then inspect container resources and Playwright logs.",
-    "open_login": "Broker login page did not load cleanly. Check Base Origin and network.",
+    "browser_boot": "The browser session did not start cleanly. Retry once, then inspect container resources and Playwright logs.",
+    "open_login": "Broker login did not open cleanly. Check Base Origin and network.",
     "locate_username": "Could not find the username input. Broker UI likely changed.",
     "locate_password": "Could not find the password input. Broker login form likely changed.",
     "submit_login": "Login did not complete. Validate credentials or check for MFA/CAPTCHA.",
@@ -271,12 +271,12 @@ SYNC_STAGE_HELP = {
 }
 
 SYNC_STAGE_LABELS = {
-    "start": "Queued and preparing sync run.",
-    "queue_dispatch": "Starting sync worker.",
-    "system_resource": "Waiting for system resources.",
+    "start": "Dispatching sync request.",
+    "queue_dispatch": "Dispatching sync worker.",
+    "system_resource": "Waiting for startup resources.",
     "storage_io": "Writing sync artifacts.",
-    "browser_boot": "Starting Chromium session.",
-    "open_login": "Opening broker login page.",
+    "browser_boot": "Booting browser session.",
+    "open_login": "Opening broker login.",
     "locate_username": "Finding username field.",
     "fill_username": "Entering username.",
     "locate_password": "Finding password field.",
@@ -300,6 +300,19 @@ def _sync_stage_label(stage: str) -> str:
     return SYNC_STAGE_LABELS.get(key, key.replace("_", " ").strip().title() or "Working...")
 
 
+def _is_sync_startup_stage(stage: str) -> bool:
+    normalized = str(stage or "").strip().lower()
+    return normalized in {
+        "",
+        "start",
+        "queued",
+        "queue_dispatch",
+        "system_resource",
+        "browser_boot",
+        "open_login",
+    }
+
+
 def _create_bg_job(kind: str, title: str, requested: Dict[str, Any]) -> Dict[str, Any]:
     return _bg_job_store().create(kind, title, requested)
 
@@ -313,16 +326,30 @@ def _get_bg_job(job_id: str) -> Dict[str, Any]:
 
 
 def _stale_sync_job_message(stage: str) -> str:
+    normalized = str(stage or "").strip().lower()
     stage_label = _sync_stage_label(stage or "start")
-    if str(stage or "").strip().lower() in {"", "start", "queued", "queue_dispatch"}:
+    if normalized in {"", "start", "queued", "queue_dispatch"}:
         return (
-            "Sync job stayed queued and was not picked up by the worker. "
+            "Sync startup stalled before broker login during worker dispatch. "
             "The lane was unlocked so you can start a fresh run."
+        )
+    if normalized in {"system_resource", "browser_boot", "open_login"}:
+        return (
+            f"Sync startup stalled during {stage_label}. "
+            "The lane was unlocked so you can retry after load settles."
         )
     return (
         f"Sync job became stale before completion during {stage_label}. "
         "The worker likely stopped or the app restarted. Start a new sync run."
     )
+
+
+def _sync_job_stale_after(status: str, stage: str) -> float:
+    normalized_status = str(status or "").strip().lower()
+    normalized_stage = str(stage or "").strip().lower()
+    if normalized_status == "queued" or _is_sync_startup_stage(normalized_stage):
+        return float(SYNC_JOB_QUEUED_STALE_SECONDS)
+    return float(SYNC_JOB_STALE_SECONDS)
 
 
 def _mark_last_sync_status_stale(job: Dict[str, Any], *, message: str, duration_sec: float) -> None:
@@ -359,11 +386,7 @@ def _reconcile_stale_sync_job(job: Dict[str, Any]) -> Dict[str, Any]:
     if updated_epoch is None:
         return job
     elapsed = time.time() - updated_epoch
-    stale_after = (
-        float(SYNC_JOB_QUEUED_STALE_SECONDS)
-        if status == "queued"
-        else float(SYNC_JOB_STALE_SECONDS)
-    )
+    stale_after = _sync_job_stale_after(status, str(job.get("stage") or ""))
     if elapsed < stale_after:
         return job
     created_epoch = _parse_iso_epoch(str(job.get("created_at") or "")) or updated_epoch
@@ -1228,11 +1251,7 @@ def _load_last_sync_status() -> Dict[str, Any]:
     status = str(parsed.get("status") or "").strip().lower()
     updated_epoch = _parse_iso_epoch(str(parsed.get("updated_at") or ""))
     if status in {"queued", "running"} and updated_epoch is not None:
-        stale_after = (
-            float(SYNC_JOB_QUEUED_STALE_SECONDS)
-            if status == "queued"
-            else float(SYNC_JOB_STALE_SECONDS)
-        )
+        stale_after = _sync_job_stale_after(status, str(parsed.get("stage") or ""))
         if (time.time() - updated_epoch) >= stale_after:
             message = _stale_sync_job_message(str(parsed.get("stage") or "start"))
             parsed = {
@@ -3033,6 +3052,7 @@ def trades_upload_pdf():
         reconcile_summary=reconcile_summary,
         import_history=list(reversed(import_history[-40:])),
         sync_stage_help=SYNC_STAGE_HELP,
+        sync_stage_labels=SYNC_STAGE_LABELS,
         accounts=accounts,
         archived_accounts=archived_accounts,
         selected_account=selected_account,

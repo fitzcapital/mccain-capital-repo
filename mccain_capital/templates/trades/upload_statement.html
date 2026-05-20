@@ -7,6 +7,13 @@
 {% set initial_sync_state = (last.get('status') or 'idle')|lower %}
 {% set initial_system_state = 'Healthy' if initial_sync_state in ['success', 'succeeded', 'ok', 'healthy', 'idle', 'debug_only'] else 'Warning' if initial_sync_state in ['queued', 'running', 'stale'] else 'Failed' %}
 {% set initial_system_tone = 'positive' if initial_system_state == 'Healthy' else 'warning' if initial_system_state == 'Warning' else 'negative' %}
+{% set active_job = sync_job or {} %}
+{% set active_job_status = (active_job.get('status') or '')|lower %}
+{% set active_job_stage = (active_job.get('stage') or 'start')|lower %}
+{% set startup_stages = ['start', 'queued', 'queue_dispatch', 'system_resource', 'browser_boot', 'open_login'] %}
+{% set startup_active = active_job_status in ['queued', 'running'] and active_job_stage in startup_stages %}
+{% set active_stage_label = (sync_stage_labels or {}).get(active_job_stage, active_job_stage|replace('_', ' ')|title) %}
+{% set initial_runway_badge = 'Dispatching' if active_job_stage in ['start', 'queued', 'queue_dispatch', 'system_resource'] else 'Booting Browser' if active_job_stage == 'browser_boot' else 'Opening Login' if active_job_stage == 'open_login' else 'Running' if (sync_active or active_job_status in ['queued', 'running']) else 'Ready' %}
 {% if ws == 'live' %}
 <div class="syncStatusSummary syncStatusSummary-{{ initial_system_tone }}" id="sync-status-summary">
   <div class="syncStatusSummaryItem">
@@ -454,7 +461,7 @@
           <div class="tiny stack10 line15 syncLaunchLoading" id="live-sync-loading" style="display:none;" aria-live="polite">
             ⏳ Starting live sync. Opening browser, logging in, generating statement, importing trades.
           </div>
-          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge=('Running' if sync_active else 'Ready'), label=(job.get('message') or 'Waiting to start live sync...' if sync_active else 'Waiting to start live sync...'), visible=True, label_id='live-sync-stage-label') }}
+          {{ runway('live-sync-runway', ['Open', 'Login', 'Generate', 'Import'], badge=initial_runway_badge, label=((active_job.get('message') or active_stage_label) if (sync_active or active_job_status in ['queued', 'running']) else 'Waiting to start live sync...'), visible=True, label_id='live-sync-stage-label') }}
         </form>
         {% if archived_accounts %}
         <details class="syncDetails stack10 top12">
@@ -475,7 +482,7 @@
       </div>
     </div>
 
-    <div class="card stack12 syncControlDeck">
+    <div class="card stack12 syncControlDeck{% if startup_active %} syncStartupSuppressed{% endif %}" id="sync-control-deck" {% if startup_active %}hidden{% endif %}>
       <div class="toolbar">
         <div class="pillRow">
           <div class="pill">Operator Deck</div>
@@ -500,13 +507,13 @@
       </div>
     </div>
 
-    <div class="card stack12 syncJobCard{% if compact_job_card %} is-compact{% endif %}" id="sync-job-card" data-job-id="{{ job.get('id', '') }}" {% if not job %}hidden{% endif %}>
+    <div class="card stack12 syncJobCard{% if compact_job_card %} is-compact{% endif %}{% if startup_active %} is-startup-minimal{% endif %}" id="sync-job-card" data-job-id="{{ job.get('id', '') }}" {% if not job %}hidden{% endif %}>
       <div class="toolbar">
         <div class="pill">Sync Job Status</div>
         <div class="workspaceSectionLead">Current run progress and artifacts.</div>
         <div class="syncHealthStrip" id="sync-health-strip">
-          <div class="syncHealthChip syncHealthChipStatus" id="sync-health-status">{{ (job.get('status') or 'idle')|replace('_', ' ')|title }}</div>
-          <div class="syncHealthChip" id="sync-health-stage">{{ (job.get('stage') or 'standby')|replace('_', ' ')|title }}</div>
+          <div class="syncHealthChip syncHealthChipStatus" id="sync-health-status">{{ initial_runway_badge }}</div>
+          <div class="syncHealthChip" id="sync-health-stage">{{ active_stage_label }}</div>
           <div class="syncHealthChip" id="sync-health-updated">
             {% if job.get('updated_at_human') %}Updated {{ job.get('updated_at_human') }}{% elif job.get('updated_at') %}Updated {{ job.get('updated_at') }}{% else %}Waiting for next sync{% endif %}
           </div>
@@ -515,7 +522,7 @@
         <div class="syncLockBanner{% if not sync_active %} syncLockBannerHidden{% endif %}" id="sync-lock-banner">
           <strong>Sync lane locked.</strong> One broker sync is already active. Cancel it, or use Force Reset Lane if the login is hung.
         </div>
-        <div class="tiny stack8 line15" id="sync-job-message">{{ job.get('message') or 'Queued and waiting to start.' }}</div>
+        <div class="tiny stack8 line15" id="sync-job-message">{{ active_job.get('message') or active_stage_label or 'Queued and waiting to start.' }}</div>
         <div class="row" id="sync-job-actions" {% if (job.get('status') or '') not in ['queued', 'running'] %}hidden{% endif %}>
           <form method="post" id="sync-job-cancel-form" action="/trades/sync/job/{{ job.get('id', '') }}/cancel" onsubmit="return window.confirm('Cancel this sync job? Any late output from this run will be ignored.');">
             <button class="btn danger" type="submit" id="sync-job-cancel-btn">Cancel Sync</button>
@@ -524,11 +531,10 @@
             <button class="btn" type="submit" id="sync-job-force-reset-btn">Force Reset Lane</button>
           </form>
         </div>
-        <details class="syncJobDetails" id="sync-job-details" {% if not compact_job_card %}open{% endif %}>
+        <details class="syncJobDetails" id="sync-job-details" {% if not compact_job_card and not startup_active %}open{% endif %}>
           <summary class="syncJobSummaryToggle" id="sync-job-toggle">
-            {% if compact_job_card %}Open Full Run Details{% else %}Collapse Run Details{% endif %}
+            {% if startup_active %}Open Run Diagnostics{% elif compact_job_card %}Open Full Run Details{% else %}Collapse Run Details{% endif %}
           </summary>
-          {{ runway('sync-job-runway', ['Open', 'Login', 'Generate', 'Import'], badge=(job.get('status') or 'queued')|replace('_', ' ')|title, label=(job.get('stage') or 'start')|replace('_', ' ')|title, visible=True, badge_id='sync-job-badge', label_id='sync-job-stage-label') }}
           <div class="statRow">
             <div class="stat">
               <div class="k">Status</div>
@@ -970,6 +976,7 @@
   (function() {
     const jobs = window.McAsyncJobs;
     const syncStageHelp = {{ (sync_stage_help or {}) | tojson }};
+    const syncStageLabels = {{ (sync_stage_labels or {}) | tojson }};
     const syncRunwayTimers = Object.create(null);
 
     function titleizeSyncText(value, fallback) {
@@ -999,9 +1006,51 @@
       return job.updated_at_human || job.updated_at || 'No recent run';
     }
 
+    function isSyncStartupStage(stage) {
+      const normalized = String(stage || '').toLowerCase();
+      return ['start', 'queued', 'queue_dispatch', 'system_resource', 'browser_boot', 'open_login'].includes(normalized);
+    }
+
+    function syncStageDisplay(stage, fallback) {
+      const normalized = String(stage || '').toLowerCase();
+      return syncStageLabels[normalized] || titleizeSyncText(normalized, fallback);
+    }
+
+    function syncRunState(status, stage) {
+      const normalizedStatus = String(status || '').toLowerCase();
+      const normalizedStage = String(stage || '').toLowerCase();
+      const terminal = !['queued', 'running'].includes(normalizedStatus);
+      if (terminal) {
+        return {
+          key: ['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus) ? 'failed' : 'success',
+          badge: ['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus) ? 'Failed' : 'Success',
+          title: ['failed', 'stale', 'error', 'blocked'].includes(normalizedStatus) ? 'Sync Failed' : 'Sync Complete',
+          startup: false,
+        };
+      }
+      if (normalizedStage === 'browser_boot') {
+        return { key: 'starting', badge: 'Booting Browser', title: 'Booting Browser', startup: true };
+      }
+      if (normalizedStage === 'open_login') {
+        return { key: 'starting', badge: 'Opening Login', title: 'Opening Login', startup: true };
+      }
+      if (isSyncStartupStage(normalizedStage)) {
+        return { key: 'starting', badge: 'Dispatching', title: 'Dispatching Sync', startup: true };
+      }
+      return { key: 'running', badge: 'Live', title: 'Live Sync Running', startup: false };
+    }
+
     function syncChecklistLines(stage, status, active) {
       const normalizedStage = String(stage || '').toLowerCase();
       const normalizedStatus = String(status || '').toLowerCase();
+      if (active && isSyncStartupStage(normalizedStage)) {
+        return [
+          'Wait for startup to reach broker login.',
+          'Do not start a second sync.',
+          'If dispatch or browser boot stalls, retry once.',
+          'Force reset only if startup stops updating.'
+        ];
+      }
       if (active) {
         return [
           'Wait for the active run.',
@@ -1229,12 +1278,13 @@
       if (!runway) return;
       const status = String(job.status || '').toLowerCase();
       const stage = String(job.stage || 'start');
+      const runState = syncRunState(status, stage);
       const terminal = !['queued', 'running'].includes(status);
-      const failed = ['failed', 'stale', 'error', 'blocked'].includes(status);
-      const stageLabel = titleizeSyncText(stage, 'Start');
+      const failed = runState.key === 'failed';
+      const stageLabel = syncStageDisplay(stage, 'Start');
       clearSyncRunwayTimer(runwayId);
       jobs.setRunwayState(runway, {
-        badge: failed ? 'Failed' : (terminal ? 'Success' : 'Live'),
+        badge: runState.badge,
         label: job.message || stageLabel,
         stepIndex: terminal ? 3 : syncStepIndex(stage),
         complete: terminal,
@@ -1308,12 +1358,15 @@
       if (!card || !job) return;
       card.hidden = false;
       if (job.id) card.setAttribute('data-job-id', String(job.id));
-      const statusText = String(job.status || 'queued').replaceAll('_', ' ');
-      const stageText = String(job.stage || 'start').replaceAll('_', ' ');
-      const terminal = !['queued', 'running'].includes(String(job.status || ''));
+      const rawStatus = String(job.status || 'queued');
+      const rawStage = String(job.stage || 'start');
+      const statusText = rawStatus.replaceAll('_', ' ');
+      const stageText = rawStage.replaceAll('_', ' ');
+      const terminal = !['queued', 'running'].includes(rawStatus);
+      const runState = syncRunState(rawStatus, rawStage);
       const summary = job.summary || {};
-      const stageTitle = stageText.replace(/\b\w/g, c => c.toUpperCase());
-      const statusTitle = statusText.replace(/\b\w/g, c => c.toUpperCase());
+      const stageTitle = syncStageDisplay(rawStage, 'Start');
+      const statusTitle = runState.badge;
       const statusEl = document.getElementById('sync-job-status');
       const badgeEl = document.getElementById('sync-job-badge');
       const stageEl = document.getElementById('sync-job-stage');
@@ -1335,14 +1388,13 @@
       if (cancelForm && job.id) cancelForm.action = `/trades/sync/job/${encodeURIComponent(String(job.id))}/cancel`;
       if (forceResetForm && job.id) forceResetForm.action = `/trades/sync/job/${encodeURIComponent(String(job.id))}/force-reset`;
       if (statusEl) statusEl.textContent = statusTitle;
-      if (badgeEl) badgeEl.textContent = statusTitle;
       if (stageEl) stageEl.textContent = stageTitle;
       if (healthStatusEl) healthStatusEl.textContent = statusTitle;
       if (healthStageEl) healthStageEl.textContent = stageTitle;
       if (updatedEl) updatedEl.textContent = job.updated_at_human ? `Updated ${job.updated_at_human}` : (job.updated_at ? `Updated ${job.updated_at}` : 'Waiting for next sync');
       if (healthIdEl) healthIdEl.textContent = job.id ? `Job ${String(job.id).slice(0, 8)}` : 'No active job';
-      if (stageLabelEl) stageLabelEl.textContent = job.message || stageText;
-      if (messageEl) messageEl.textContent = job.message || 'Working...';
+      if (stageLabelEl) stageLabelEl.textContent = job.message || stageTitle;
+      if (messageEl) messageEl.textContent = job.message || stageTitle || 'Working...';
       if (actionsEl) actionsEl.hidden = terminal;
       if (cancelBtn) cancelBtn.disabled = terminal;
       const activeInline = document.getElementById('sync-active-inline');
@@ -1352,20 +1404,18 @@
       const activeCancelBtn = document.getElementById('sync-active-cancel-btn');
       const activeResetBtn = document.getElementById('sync-active-reset-btn');
       if (activeInline) activeInline.classList.toggle('syncActiveInlineHidden', terminal);
-      if (activeTitle) activeTitle.textContent = `${statusTitle} · ${stageTitle}`;
-      if (activeMessage) activeMessage.textContent = job.message || (terminal ? 'Run finished.' : 'Worker is processing this run.');
+      if (activeTitle) activeTitle.textContent = terminal ? `${statusTitle} · ${stageTitle}` : runState.title;
+      if (activeMessage) activeMessage.textContent = job.message || (terminal ? 'Run finished.' : stageTitle);
       if (activeActions) activeActions.hidden = terminal;
       if (activeCancelBtn) activeCancelBtn.disabled = terminal;
       if (activeResetBtn) activeResetBtn.disabled = terminal;
       setLiveSyncStatus(
-        terminal
-          ? (String(job.status || '').toLowerCase() === 'success' ? 'success' : 'failed')
-          : 'running',
-        terminal ? statusTitle : 'Live Sync Running',
-        job.message || (terminal ? 'Run finished.' : 'Worker is processing this run.')
+        terminal ? runState.key : runState.key,
+        terminal ? runState.title : runState.title,
+        job.message || (terminal ? 'Run finished.' : stageTitle)
       );
       applySyncLockState(!terminal);
-      applySyncJobCardMode(String(job.status || ''));
+      applySyncJobCardMode(rawStatus, rawStage);
       if (durationEl) durationEl.textContent = (job.duration_sec !== null && job.duration_sec !== undefined) ? `${Number(job.duration_sec).toFixed(1)}s` : '—';
       if (insertedEl) insertedEl.textContent = String(summary.inserted || 0);
       if (summaryEl) {
@@ -1385,7 +1435,7 @@
       updateSyncSummary(job);
       const steps = Array.from(card.querySelectorAll('.syncStep'));
       const trackBar = card.querySelector('.syncTrackBar');
-      const idx = syncStepIndex(String(job.stage || 'start'));
+      const idx = syncStepIndex(rawStage);
       steps.forEach((step, stepIdx) => {
         const done = stepIdx < idx || ['success', 'debug_only'].includes(String(job.status || ''));
         const active = !done && stepIdx === idx && !['success', 'failed', 'debug_only'].includes(String(job.status || ''));
@@ -1439,16 +1489,20 @@
       }
     }
 
-    function applySyncJobCardMode(status) {
+    function applySyncJobCardMode(status, stage) {
       const card = document.getElementById('sync-job-card');
       const details = document.getElementById('sync-job-details');
       const toggle = document.getElementById('sync-job-toggle');
+      const controlDeck = document.getElementById('sync-control-deck');
       if (!card || !details || !toggle) return;
       const normalized = String(status || '').toLowerCase();
-      const compact = normalized === 'success' || normalized === 'debug_only';
+      const startup = ['queued', 'running'].includes(normalized) && isSyncStartupStage(stage);
+      const compact = startup || normalized === 'success' || normalized === 'debug_only';
       card.classList.toggle('is-compact', compact);
-      details.open = !compact;
-      toggle.textContent = compact ? 'Open Full Run Details' : 'Collapse Run Details';
+      card.classList.toggle('is-startup-minimal', startup);
+      details.open = !compact && !startup;
+      toggle.textContent = startup ? 'Open Run Diagnostics' : (compact ? 'Open Full Run Details' : 'Collapse Run Details');
+      if (controlDeck) controlDeck.hidden = startup;
     }
 
     function setLiveSyncStatus(state, title, message) {
@@ -1456,7 +1510,7 @@
       const statusTitle = document.getElementById('live-sync-status-title');
       const statusText = document.getElementById('live-sync-status-text');
       if (statusCard) {
-        statusCard.classList.remove('is-idle', 'is-running', 'is-failed', 'is-success');
+        statusCard.classList.remove('is-idle', 'is-starting', 'is-running', 'is-failed', 'is-success');
         statusCard.classList.add(`is-${state || 'idle'}`);
       }
       if (statusTitle) statusTitle.textContent = title || 'Ready to Run';
@@ -1475,19 +1529,19 @@
         loading.style.display = busy ? 'block' : 'none';
       }
       setLiveSyncStatus(
-        busy ? 'running' : 'idle',
-        busy ? 'Starting Live Sync' : 'Ready to Run',
+        busy ? 'starting' : 'idle',
+        busy ? 'Dispatching Sync' : 'Ready to Run',
         busy
-          ? 'Broker login is starting now. The stage tracker below will update as soon as the job is picked up.'
+          ? 'Worker dispatch has started. The runway will advance once browser startup begins.'
           : 'Run Live Sync to start broker login, statement generation, and import.'
       );
       const runway = document.getElementById('live-sync-runway');
       const jobs = window.McAsyncJobs;
       if (runway && jobs && typeof jobs.setRunwayState === 'function') {
         jobs.setRunwayState(runway, {
-          badge: busy ? 'Running' : 'Ready',
+          badge: busy ? 'Dispatching' : 'Ready',
           label: busy
-            ? 'Opening broker session...'
+            ? 'Dispatching sync worker.'
             : 'Waiting to start live sync...',
           stepIndex: 0,
           complete: false,

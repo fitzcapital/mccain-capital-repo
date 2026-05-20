@@ -3146,7 +3146,10 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
     if abs(max_v - min_v) < 1e-9:
         max_v = min_v + 1.0
     candle_gap = 1.35
-    candle_width = min(11.6, (width / max(len(candles), 1)) - candle_gap)
+    slot_width = 12.2
+    plot_width = min(width - 10.0, len(candles) * slot_width)
+    plot_start = (width - plot_width) / 2.0
+    candle_width = min(11.6, max(8.6, slot_width - candle_gap))
 
     def _y(value: float) -> float:
         return ((max_v - value) / (max_v - min_v)) * (height - 12) + 6
@@ -3154,7 +3157,7 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
     baseline_y = _y(candles[0]["open"])
     candle_markup: List[str] = []
     for idx, candle in enumerate(candles):
-        center_x = ((idx + 0.5) * width) / max(len(candles), 1)
+        center_x = plot_start + (((idx + 0.5) * plot_width) / max(len(candles), 1))
         open_y = _y(candle["open"])
         close_y = _y(candle["close"])
         high_y = _y(candle["high"])
@@ -8639,6 +8642,7 @@ def _dashboard_snapshot_viewmodel(
     today_count: int,
     today_wins: int,
     today_losses: int,
+    today_win_rate: float,
     scope_label: str,
     data_trust: Dict[str, Any],
     balance_integrity: Dict[str, Any],
@@ -8684,7 +8688,11 @@ def _dashboard_snapshot_viewmodel(
         },
         {
             "label": "Record",
-            "value": f"{today_wins}W / {today_losses}L",
+            "value": (
+                f"{today_wins}W / {today_losses}L ({today_win_rate:.0f}%)"
+                if today_count
+                else f"{today_wins}W / {today_losses}L"
+            ),
             "detail": "Closed trades only",
             "tone": "neutral",
         },
@@ -10785,6 +10793,7 @@ def dashboard():
         today_count=today_count,
         today_wins=today_wins,
         today_losses=today_losses,
+        today_win_rate=today_win_rate,
         scope_label=scope_label,
         data_trust=data_trust,
         balance_integrity=balance_integrity,

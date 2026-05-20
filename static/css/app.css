@@ -30964,7 +30964,9 @@ html[data-font-mode="hand"] body .dashboardProjectionForm .dashboardProjectionHi
   font-weight:600;
   letter-spacing:.04em;
   color:rgba(186, 207, 232, .84);
-  padding:2px 0 2px;
+  padding:2px 0 4px;
+  line-height:1.35;
+  text-transform:none;
 }
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeInfoToggle{
@@ -41387,6 +41389,13 @@ textarea:focus-visible{
     0 0 22px rgba(74, 184, 255, .08);
 }
 
+.syncLaunchStatus.is-starting{
+  border-color:rgba(117, 215, 255, .24);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 14px rgba(74, 184, 255, .06);
+}
+
 .syncLaunchStatus.is-success{
   border-color:rgba(72, 214, 162, .24);
 }
@@ -41409,6 +41418,14 @@ textarea:focus-visible{
     0 0 10px rgba(var(--green), .84),
     0 0 26px rgba(var(--green), .24);
   animation:syncDotPulse 1.2s ease-out infinite;
+}
+
+.syncLaunchStatus.is-starting .syncLaunchStatusDot{
+  background:rgb(var(--accent-rgb));
+  box-shadow:
+    0 0 10px rgba(var(--accent-rgb), .48),
+    0 0 18px rgba(var(--accent-rgb), .16);
+  animation:syncDotPulse 1.5s ease-out infinite;
 }
 
 .syncLaunchStatus.is-success .syncLaunchStatusDot{
@@ -41706,6 +41723,18 @@ textarea:focus-visible{
 
 .syncJobCard.is-compact .workspaceSectionLead{
   margin-bottom:2px;
+}
+
+.syncJobCard.is-startup-minimal .syncJobDetails{
+  margin-top:2px;
+}
+
+.syncJobCard.is-startup-minimal .syncJobSummaryToggle{
+  color:rgba(232, 242, 255, .68);
+}
+
+.syncStartupSuppressed{
+  display:none;
 }
 
 .syncJobDetails{
@@ -60468,15 +60497,15 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend{
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--up{
-  color:var(--dash-icon-green);
+  color:rgba(84, 246, 235, .99);
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--down{
-  color:var(--dash-icon-red);
+  color:rgba(84, 132, 255, .99);
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--flat{
-  color:var(--dash-icon-gold);
+  color:rgba(188, 204, 232, .96);
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardDisciplineRail{
@@ -65329,31 +65358,34 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-positive{
-  border-color:rgba(48, 196, 126, .46) !important;
+  border-color:rgba(88, 240, 229, .52) !important;
   box-shadow:
     0 20px 38px rgba(0, 0, 0, .42),
-    0 0 34px rgba(43, 198, 124, .18),
-    0 0 0 1px rgba(43, 198, 124, .08) !important;
+    0 0 18px rgba(62, 221, 214, .18),
+    0 0 44px rgba(62, 221, 214, .22),
+    0 0 0 1px rgba(86, 238, 228, .12) !important;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative{
-  border-color:rgba(210, 72, 102, .32) !important;
-  background:linear-gradient(180deg, rgba(6, 9, 18, .998), rgba(3, 5, 12, .999)) !important;
+  border-color:rgba(88, 132, 255, .50) !important;
+  background:linear-gradient(180deg, rgba(5, 10, 20, .997), rgba(2, 6, 14, .999)) !important;
   box-shadow:
     0 20px 38px rgba(0, 0, 0, .42),
-    0 0 20px rgba(182, 58, 90, .10),
-    0 0 0 1px rgba(168, 54, 84, .05) !important;
+    0 0 18px rgba(74, 124, 255, .18),
+    0 0 44px rgba(74, 124, 255, .22),
+    0 0 0 1px rgba(90, 138, 255, .12) !important;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral,
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-neutral{
-  border-color:rgba(126, 164, 224, .28) !important;
+  border-color:rgba(128, 176, 244, .38) !important;
   box-shadow:
     0 20px 38px rgba(0, 0, 0, .42),
-    0 0 32px rgba(96, 166, 242, .12),
-    0 0 0 1px rgba(96, 166, 242, .07) !important;
+    0 0 14px rgba(103, 162, 246, .12),
+    0 0 32px rgba(103, 162, 246, .16),
+    0 0 0 1px rgba(111, 170, 246, .10) !important;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchState,
@@ -65375,27 +65407,36 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive .marketPulseWatchState,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-positive .marketPulseWatchState{
-  color:#e5fff0 !important;
-  border-color:rgba(50, 198, 125, .40) !important;
-  background:rgba(24, 88, 58, .40) !important;
-  box-shadow:0 0 18px rgba(41, 198, 124, .15) !important;
+  color:#f3f8ff !important;
+  border-color:rgba(86, 238, 228, .42) !important;
+  background:rgba(20, 74, 90, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 12px rgba(62, 221, 214, .16),
+    0 0 26px rgba(62, 221, 214, .20) !important;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative .marketPulseWatchState,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative .marketPulseWatchState{
-  color:#ffe8ef !important;
-  border-color:rgba(255, 86, 120, .38) !important;
-  background:rgba(86, 24, 38, .36) !important;
-  box-shadow:0 0 18px rgba(255, 84, 118, .13) !important;
+  color:#f3f8ff !important;
+  border-color:rgba(90, 138, 255, .42) !important;
+  background:rgba(24, 44, 96, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 12px rgba(74, 124, 255, .16),
+    0 0 26px rgba(74, 124, 255, .20) !important;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral .marketPulseWatchState,
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan .marketPulseWatchState,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-neutral .marketPulseWatchState{
-  color:#edf6ff !important;
-  border-color:rgba(126, 156, 207, .28) !important;
-  background:rgba(76, 102, 142, .18) !important;
-  box-shadow:0 0 16px rgba(120, 150, 206, .10) !important;
+  color:#f3f8ff !important;
+  border-color:rgba(128, 176, 244, .36) !important;
+  background:rgba(46, 78, 132, .24) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 10px rgba(103, 162, 246, .12),
+    0 0 22px rgba(103, 162, 246, .16) !important;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap,
@@ -65456,20 +65497,39 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
   text-shadow:none !important;
 }
 
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-positive [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-positive .dashboardTapeAssetChange{
+  color:rgba(76, 244, 234, .98) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative .dashboardTapeAssetChange{
+  color:rgba(78, 136, 255, .98) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .dashboardTapeAssetChange{
+  color:rgba(188, 204, 232, .96) !important;
+}
+
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.up,
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.up,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.up,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.up{
-  fill:rgba(24, 214, 146, 1) !important;
-  stroke:rgba(24, 214, 146, 1) !important;
+  fill:rgba(245, 249, 255, .98) !important;
+  stroke:rgba(245, 249, 255, .98) !important;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.down,
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.down,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.down,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.down{
-  fill:rgba(232, 82, 120, 1) !important;
-  stroke:rgba(232, 82, 120, 1) !important;
+  fill:rgba(78, 136, 255, .98) !important;
+  stroke:rgba(78, 136, 255, .98) !important;
 }
 
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.flat,
@@ -65501,4 +65561,243 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody{
   stroke-width:.55 !important;
+}
+
+/* Final cyan/blue tape winner: strong glow, cyan up, blue down, cool-blue neutral. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard{
+  border-color:rgba(118, 156, 224, .34) !important;
+  background:linear-gradient(180deg, rgba(5, 10, 20, .997), rgba(2, 6, 14, .999)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.03),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 26px rgba(84, 144, 240, .16),
+    0 0 62px rgba(84, 144, 240, .12),
+    0 0 0 1px rgba(96, 152, 230, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-positive{
+  border-color:rgba(78, 244, 232, .64) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 28px rgba(58, 236, 224, .26),
+    0 0 68px rgba(58, 236, 224, .22),
+    0 0 0 1px rgba(88, 240, 228, .12) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative{
+  border-color:rgba(84, 132, 255, .62) !important;
+  background:linear-gradient(180deg, rgba(5, 10, 20, .997), rgba(2, 6, 14, .999)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 28px rgba(70, 122, 255, .26),
+    0 0 68px rgba(70, 122, 255, .22),
+    0 0 0 1px rgba(92, 138, 255, .12) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-neutral{
+  border-color:rgba(138, 180, 242, .42) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 22px rgba(106, 164, 248, .18),
+    0 0 54px rgba(106, 164, 248, .14),
+    0 0 0 1px rgba(118, 174, 246, .10) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketPulseWatchState{
+  color:#f3f8ff !important;
+  border-color:rgba(132, 176, 242, .40) !important;
+  background:rgba(38, 62, 108, .30) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 14px rgba(90, 152, 240, .16),
+    0 0 30px rgba(90, 152, 240, .14) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-positive .marketPulseWatchState{
+  border-color:rgba(88, 240, 228, .52) !important;
+  background:rgba(18, 88, 100, .38) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 16px rgba(58, 236, 224, .20),
+    0 0 36px rgba(58, 236, 224, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative .marketPulseWatchState{
+  border-color:rgba(92, 138, 255, .50) !important;
+  background:rgba(22, 40, 96, .40) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 16px rgba(70, 122, 255, .20),
+    0 0 36px rgba(70, 122, 255, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-neutral .marketPulseWatchState{
+  border-color:rgba(138, 180, 242, .42) !important;
+  background:rgba(48, 76, 126, .28) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 14px rgba(106, 164, 248, .16),
+    0 0 28px rgba(106, 164, 248, .14) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-positive [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-positive .dashboardTapeAssetChange{
+  color:rgba(84, 246, 235, .99) !important;
+  text-shadow:0 0 10px rgba(58, 236, 224, .28) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative .dashboardTapeAssetChange{
+  color:rgba(84, 132, 255, .99) !important;
+  text-shadow:0 0 10px rgba(70, 122, 255, .28) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-neutral [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-cyan [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-neutral .dashboardTapeAssetChange{
+  color:rgba(190, 206, 234, .97) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.up,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.up{
+  fill:rgba(245, 249, 255, .99) !important;
+  stroke:rgba(245, 249, 255, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.down,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.down{
+  fill:rgba(84, 132, 255, .99) !important;
+  stroke:rgba(84, 132, 255, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.flat,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.flat{
+  fill:rgba(190, 206, 234, .98) !important;
+  stroke:rgba(190, 206, 234, .98) !important;
+}
+
+/* Absolute final tape direction split winner: white-up bars, blue-down bars, cyan up emphasis. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--up,
+body.page-market-pulse .marketPulseTapeTrendIcon--up{
+  color:rgba(84, 246, 235, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--down,
+body.page-market-pulse .marketPulseTapeTrendIcon--down{
+  color:rgba(84, 132, 255, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--flat,
+body.page-market-pulse .marketPulseTapeTrendIcon--mixed{
+  color:rgba(190, 206, 234, .96) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.up,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.up{
+  fill:rgba(245, 249, 255, .99) !important;
+  stroke:rgba(245, 249, 255, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.down,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.down{
+  fill:rgba(84, 132, 255, .99) !important;
+  stroke:rgba(84, 132, 255, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.flat,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.flat{
+  fill:rgba(190, 206, 234, .98) !important;
+  stroke:rgba(190, 206, 234, .98) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-positive [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-positive .dashboardTapeAssetChange{
+  color:rgba(84, 246, 235, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative [data-role="change-line"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative .dashboardTapeAssetChange{
+  color:rgba(84, 132, 255, .99) !important;
+}
+
+/* Absolute final winner: bars are white/blue, arrows follow cyan/blue, positive text stays cyan. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.up,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.up,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.up{
+  fill:rgba(245, 249, 255, .99) !important;
+  stroke:rgba(245, 249, 255, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.down,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.down,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.down{
+  fill:rgba(84, 132, 255, .99) !important;
+  stroke:rgba(84, 132, 255, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkWick.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketMiniSparkBody.flat,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkWick.flat,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketMiniSparkBody.flat{
+  fill:rgba(190, 206, 234, .98) !important;
+  stroke:rgba(190, 206, 234, .98) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--up,
+body.page-market-pulse .marketPulseTapeTrendIcon--up{
+  color:rgba(84, 246, 235, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--down,
+body.page-market-pulse .marketPulseTapeTrendIcon--down{
+  color:rgba(84, 132, 255, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRowTrend--flat,
+body.page-market-pulse .marketPulseTapeTrendIcon--mixed{
+  color:rgba(190, 206, 234, .96) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-positive [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-positive .dashboardTapeAssetChange,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-positive [data-role="change-line"]{
+  color:rgba(84, 246, 235, .99) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative [data-role="chgp"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative .dashboardTapeAssetChange,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative [data-role="change-line"]{
+  color:rgba(84, 132, 255, .99) !important;
 }

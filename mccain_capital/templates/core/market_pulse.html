@@ -693,6 +693,9 @@
       <span class="marketPulseWatchStripItem">Drag <strong id="marketPulseBiggestMove">{{ watch_ns.laggard }}{% if watch_ns.laggard_move is not none %} {{ '%+.2f'|format(watch_ns.laggard_move) }}%{% endif %}</strong></span>
       <span class="marketPulseWatchStripItem"><strong id="marketPulseMissing">{{ stats.missing }}</strong> missing</span>
     </div>
+    <div class="marketPulseTapeLegend">
+      Compressed recent intraday bars · white up · blue down · cyan = positive tape · blue = negative tape
+    </div>
     <div class="marketPulseTapeRail marketPulseWatchGrid" data-no-mobile-compact="1">
       {% for q in core_quotes %}
         {% set q_pct = q.change_pct if q.change_pct is number else none %}

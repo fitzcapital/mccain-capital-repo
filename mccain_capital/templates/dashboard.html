@@ -747,6 +747,9 @@
           <span class="tiny muted" id="dashboardTapeUpdatedAt">{{ dashboard_tape_updated_label or '—' }}</span>
         </div>
       </div>
+      <div class="dashboardTapeWatchLegend">
+        Compressed recent intraday bars · white up · blue down · cyan = positive tape · blue = negative tape
+      </div>
       <div class="liveTapeWatchTableShell dashboardTapeCardStackShell marketPulseTapeShell">
         <div class="liveTapeWatchTable dashboardTapeCardStack" aria-label="Live tape watchlist">
         {% for row in dashboard_tape_rows %}
@@ -986,7 +989,8 @@
         {% set scope_context = (selected_account.account_name ~ (' · ' ~ (selected_account.display_broker_account_id or '')) ~ (' · ' ~ money(selected_account.starting_balance or 0) if selected_account else '')) if account_scope and account_scope.enabled and scope_mode == 'active' and selected_account else 'Full ledger' %}
         {% set today_net_short = money_compact(today_net)|replace('.00','') %}
         {% set today_net_tone = 'positive' if today_net > 0 else 'negative' if today_net < 0 else 'neutral' %}
-        {% set session_record_short = today_wins ~ '/' ~ today_losses %}
+        {% set session_record_short = today_wins ~ 'W / ' ~ today_losses ~ 'L' %}
+        {% set session_record_pct = '(' ~ ('%.0f'|format(today_win_rate)) ~ '%)' if today_count else '' %}
         {% set payout_tone = 'positive' if 'projects' in payout_focus else 'warning' %}
         {% set payout_ring_pct = 74 if 'projects' in payout_focus else 28 %}
         {% set risk_tone = 'positive' if 'Attack' in risk_posture_title else 'negative' if 'Protect' in risk_posture_title else 'warning' %}
@@ -994,7 +998,7 @@
         {% set pattern_tone = 'warning' if 'Most common breach' in pattern_watch else 'info' %}
         {% set pattern_short = 'TAG' if 'Most common breach' in pattern_watch else 'CLR' %}
         {% set today_net_meta = 'Green' if today_net > 0 else 'Red' if today_net < 0 else 'Flat' %}
-        {% set record_meta = 'No trades' if today_count == 0 else today_wins ~ 'W / ' ~ today_losses ~ 'L' %}
+        {% set record_meta = 'No trades' if today_count == 0 else ('%.0f'|format(today_win_rate)) ~ '% win rate' %}
         {% set scope_meta = 'Active acct' if scope_short == 'ACT' else 'All history' %}
         {% set pace_meta = 'On track' if 'projects' in payout_focus else 'Need sample' %}
         {% set risk_meta = 'Clean only' if 'Wait' in risk_posture_title else 'Reduce' if 'Protect' in risk_posture_title else 'Attack' %}
@@ -1035,13 +1039,13 @@
             data-status-key="record"
             data-status-section="Session Record"
             data-status-title="Record"
-            data-status-primary="{{ today_wins }}W / {{ today_losses }}L"
+            data-status-primary="{{ today_wins }}W / {{ today_losses }}L{% if today_count %} ({{ '%.0f'|format(today_win_rate) }}%){% endif %}"
             data-status-line1="{{ today_count }} trades logged"
             data-status-line2="{{ '%.1f'|format(today_win_rate) }}% win rate"
             data-status-line3="{% if today_count %}Closed execution sample in scope{% else %}No closed execution sample yet{% endif %}"
           >
             <div class="dashboardStatusOrbCircle">
-              <strong>{{ session_record_short }}</strong>
+              <strong>{{ session_record_short }}{% if session_record_pct %} {{ session_record_pct }}{% endif %}</strong>
             </div>
             <div class="dashboardStatusOrbLabel">Record</div>
             <div class="dashboardStatusOrbMeta">{{ record_meta }}</div>
