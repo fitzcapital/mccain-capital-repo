@@ -5115,6 +5115,18 @@ body.page-market-pulse .gamma-ladder-card[data-regime="negative_gamma"]{
     inset 0 1px 0 rgba(159, 189, 255, .04);
 }
 
+body.page-market-pulse .gamma-ladder-card[data-regime="positive_gamma"] .gamma-ladder-stage{
+  box-shadow:inset 0 0 42px rgba(97, 243, 213, .04);
+}
+
+body.page-market-pulse .gamma-ladder-card[data-regime="negative_gamma"] .gamma-ladder-stage{
+  box-shadow:inset 0 0 52px rgba(178, 107, 255, .05);
+}
+
+body.page-market-pulse .gamma-ladder-card[data-regime="mixed_gamma"] .gamma-ladder-stage{
+  box-shadow:inset 0 0 38px rgba(77, 163, 255, .04);
+}
+
 body.page-market-pulse .gamma-ladder-topline{
   display:flex;
   align-items:flex-start;
@@ -5460,6 +5472,14 @@ body.page-market-pulse .gamma-ladder-row.gamma-strong-negative{
   --gamma-state-trail:rgba(255, 77, 141, .12);
 }
 
+body.page-market-pulse .gamma-ladder-row.is-compression-zone{
+  box-shadow:inset 0 0 34px rgba(97, 243, 213, .08);
+}
+
+body.page-market-pulse .gamma-ladder-row.is-expansion-zone{
+  box-shadow:inset 0 0 34px rgba(178, 107, 255, .08);
+}
+
 body.page-market-pulse .gamma-ladder-row::before{
   content:"";
   position:absolute;
@@ -5565,6 +5585,41 @@ body.page-market-pulse .gamma-ladder-row:hover .gamma-ladder-row__viz::before{
   transform:translateY(-50%) scaleX(1);
 }
 
+body.page-market-pulse .gamma-ladder-row__viz::after{
+  content:"";
+  position:absolute;
+  top:50%;
+  left:6%;
+  right:6%;
+  height:22px;
+  border-radius:999px;
+  opacity:0;
+  transform:translateY(-50%) scaleX(.94);
+  pointer-events:none;
+}
+
+body.page-market-pulse .gamma-ladder-row.is-compression-zone .gamma-ladder-row__viz::after{
+  opacity:.76;
+  background:
+    linear-gradient(90deg, transparent, rgba(97, 243, 213, .05), rgba(97, 243, 213, .12), transparent);
+  animation:gammaCompressionDrift 9.4s ease-in-out infinite;
+}
+
+body.page-market-pulse .gamma-ladder-row.is-expansion-zone .gamma-ladder-row__viz::after{
+  opacity:.82;
+  background:
+    linear-gradient(90deg, transparent, rgba(178, 107, 255, .05), rgba(255, 77, 141, .10), transparent);
+  animation:gammaExpansionDrift 6.4s ease-in-out infinite;
+}
+
+body.page-market-pulse .gamma-ladder-row.is-zone-mid .gamma-ladder-row__viz::after{
+  opacity:.92;
+}
+
+body.page-market-pulse .gamma-ladder-row.is-zone-focal .gamma-ladder-row__viz::after{
+  opacity:1;
+}
+
 body.page-market-pulse .gamma-ladder-row__viz svg{
   display:block;
   width:100%;
@@ -5662,6 +5717,13 @@ body.page-market-pulse .gamma-ladder-row__spotMarker::after{
   animation:gammaSpotRipple calc(var(--gamma-spot-pulse-duration) * 1.1) ease-out infinite;
 }
 
+body.page-market-pulse .gamma-ladder-row.is-spot .gamma-ladder-row__viz::after{
+  opacity:1;
+  background:
+    linear-gradient(90deg, transparent, rgba(77, 163, 255, .08), rgba(77, 163, 255, .20), rgba(77, 163, 255, .08), transparent);
+  animation:gammaSpotBeam 5.6s ease-in-out infinite;
+}
+
 body.page-market-pulse .gamma-ladder-row__netWrap{
   display:grid;
   justify-items:end;
@@ -5711,6 +5773,18 @@ body.page-market-pulse .gamma-ladder-tag--spot{
 
 body.page-market-pulse .gamma-ladder-tag--flip{
   background:rgba(34, 44, 67, .86);
+}
+
+body.page-market-pulse .gamma-ladder-tag--compression{
+  color:rgba(214, 255, 243, .96);
+  background:rgba(20, 62, 58, .82);
+  border-color:rgba(97, 243, 213, .18);
+}
+
+body.page-market-pulse .gamma-ladder-tag--expansion{
+  color:rgba(245, 224, 255, .96);
+  background:rgba(54, 28, 72, .84);
+  border-color:rgba(178, 107, 255, .20);
 }
 
 body.page-market-pulse .gamma-ladder-row.is-light .gamma-ladder-row__netBar{
@@ -5790,6 +5864,11 @@ body.page-market-pulse .gamma-ladder-row.gamma-strong-negative .gamma-ladder-row
 body.page-market-pulse .gamma-ladder-row.gamma-strong-negative .gamma-ladder-row__viz::before,
 body.page-market-pulse .gamma-ladder-row.gamma-negative .gamma-ladder-row__viz::before{
   opacity:.28;
+}
+
+body.page-market-pulse .gamma-ladder-row.gamma-strong-positive .gamma-ladder-row__viz::before,
+body.page-market-pulse .gamma-ladder-row.gamma-positive .gamma-ladder-row__viz::before{
+  opacity:.24;
 }
 
 body.page-market-pulse .gamma-ladder-row.gamma-strong-positive .gamma-ladder-row__net{
@@ -6061,6 +6140,11 @@ body.page-market-pulse .gamma-ladder-tooltip span:last-child{
   100%{ transform:scale(1.85); opacity:0; }
 }
 
+@keyframes gammaSpotBeam{
+  0%, 100%{ opacity:.68; transform:translateY(-50%) scaleX(.96); }
+  50%{ opacity:1; transform:translateY(-50%) scaleX(1); }
+}
+
 @keyframes gammaSpinePulse{
   0%, 100%{ opacity:.58; filter:drop-shadow(0 0 8px var(--gamma-spine-glow)); }
   50%{ opacity:.96; filter:drop-shadow(0 0 16px var(--gamma-spine-glow)); }
@@ -6069,6 +6153,16 @@ body.page-market-pulse .gamma-ladder-tooltip span:last-child{
 @keyframes gammaBarBreathe{
   0%, 100%{ transform:scaleX(1); opacity:.96; }
   50%{ transform:scaleX(var(--gamma-bar-breathe-scale)); opacity:1; }
+}
+
+@keyframes gammaCompressionDrift{
+  0%, 100%{ transform:translateY(-50%) scaleX(.95); opacity:.62; }
+  50%{ transform:translateY(-50%) scaleX(1.03); opacity:.98; }
+}
+
+@keyframes gammaExpansionDrift{
+  0%, 100%{ transform:translateY(-50%) scaleX(.93) translateX(-1%); opacity:.54; }
+  50%{ transform:translateY(-50%) scaleX(1.04) translateX(1%); opacity:1; }
 }
 
 @keyframes gammaLadderRefreshSweep{

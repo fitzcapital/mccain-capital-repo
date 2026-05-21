@@ -77,6 +77,8 @@
     "strong-negative":
       "Strong negative gamma. Volatility expansion and momentum amplification are more likely here.",
   };
+  const gammaPolarity = (state) =>
+    state.includes("positive") ? "positive" : state.includes("negative") ? "negative" : "neutral";
 
   const applyTheme = (symbol, regime) => {
     root.dataset.symbol = symbol;
@@ -179,6 +181,60 @@
       const netAbs = Math.abs(Number(row.net_gex) || 0);
       return Math.max(max, callAbs, putAbs, netAbs);
     }, 0) || 1;
+    const rowStateMeta = rows.map((row) => {
+      const netGex = Number(row.net_gex) || 0;
+      const strengthRatio = clamp(Math.abs(netGex) / maxSide, 0, 1);
+      const isNeutral = row.is_flip || Math.abs(netGex) <= maxSide * 0.045;
+      const gammaState = isNeutral
+        ? "neutral"
+        : netGex > 0
+          ? strengthRatio >= 0.72
+            ? "strong-positive"
+            : "positive"
+          : strengthRatio >= 0.72
+            ? "strong-negative"
+            : "negative";
+      return {
+        gammaState,
+        polarity: gammaPolarity(gammaState),
+        strengthRatio,
+      };
+    });
+    const zoneMetaByIndex = new Map();
+    let cursor = 0;
+    while (cursor < rowStateMeta.length) {
+      const current = rowStateMeta[cursor];
+      if (current.polarity === "neutral" || current.strengthRatio < 0.42) {
+        cursor += 1;
+        continue;
+      }
+      const start = cursor;
+      let end = cursor;
+      while (
+        end + 1 < rowStateMeta.length &&
+        rowStateMeta[end + 1].polarity === current.polarity &&
+        rowStateMeta[end + 1].strengthRatio >= 0.42
+      ) {
+        end += 1;
+      }
+      const length = end - start + 1;
+      if (length >= 2) {
+        let focalIndex = start;
+        for (let idx = start + 1; idx <= end; idx += 1) {
+          if (rowStateMeta[idx].strengthRatio > rowStateMeta[focalIndex].strengthRatio) {
+            focalIndex = idx;
+          }
+        }
+        for (let idx = start; idx <= end; idx += 1) {
+          zoneMetaByIndex.set(idx, {
+            type: current.polarity === "positive" ? "compression" : "expansion",
+            position: idx === start ? "start" : idx === end ? "end" : "mid",
+            isFocal: idx === focalIndex,
+          });
+        }
+      }
+      cursor = end + 1;
+    }
 
     rowsHost.innerHTML = rows
       .map((row, index) => {
@@ -187,17 +243,8 @@
         const callGex = Number(row.call_gex) || 0;
         const putGex = Math.abs(Number(row.put_gex) || 0);
         const netGex = Number(row.net_gex) || 0;
-        const strengthRatio = clamp(Math.abs(netGex) / maxSide, 0, 1);
-        const isNeutral = row.is_flip || Math.abs(netGex) <= maxSide * 0.045;
-        const gammaState = isNeutral
-          ? "neutral"
-          : netGex > 0
-            ? strengthRatio >= 0.72
-              ? "strong-positive"
-              : "positive"
-            : strengthRatio >= 0.72
-              ? "strong-negative"
-              : "negative";
+        const { strengthRatio, gammaState } = rowStateMeta[index];
+        const zoneMeta = zoneMetaByIndex.get(index);
         const colorSet =
           gammaState === "strong-positive"
             ? colorSets.strongPositive
@@ -226,6 +273,9 @@
         const strongestClass = row.is_strongest ? " is-strongest" : "";
         const spotClass = row.is_spot_nearest ? " is-spot" : "";
         const sideClass = row.is_above_spot ? " is-above-spot" : row.is_below_spot ? " is-below-spot" : " is-at-spot";
+        const zoneClass = zoneMeta
+          ? ` is-${zoneMeta.type}-zone is-zone-${zoneMeta.position}${zoneMeta.isFocal ? " is-zone-focal" : ""}`
+          : "";
         const stateClass = ` gamma-${gammaState}`;
         const strikeDigits = strike >= 1000 ? 0 : 2;
         const symbol = String(payload.symbol || currentSymbol).toLowerCase();
@@ -243,10 +293,25 @@
         const overlayFill = row.is_strongest
           ? ' fill="rgba(255, 209, 102, 0.22)"'
           : "";
+        const behavior =
+          row.is_strongest
+            ? "Dominant dealer node. Price can gravitate toward this level while positioning remains concentrated."
+            : row.is_spot_nearest
+              ? "Current market location. Use this row to judge whether price is entering compression or expansion territory."
+              : zoneMeta?.type === "compression"
+                ? "Positive gamma cluster. Volatility suppression is elevated and price may behave stickier inside this corridor."
+                : zoneMeta?.type === "expansion"
+                  ? "Negative gamma cluster. Expansion risk is elevated and movement can accelerate through this corridor."
+                  : gammaBehavior[gammaState] || gammaBehavior.neutral;
         const tags = [
-          row.is_flip ? '<span class="gamma-ladder-tag gamma-ladder-tag--flip">Flip</span>' : "",
-          row.is_spot_nearest ? '<span class="gamma-ladder-tag gamma-ladder-tag--spot">Spot</span>' : "",
-          row.is_strongest ? '<span class="gamma-ladder-tag gamma-ladder-tag--strongest">Strongest</span>' : "",
+          row.is_flip ? '<span class="gamma-ladder-tag gamma-ladder-tag--flip">Transition Area</span>' : "",
+          row.is_spot_nearest ? '<span class="gamma-ladder-tag gamma-ladder-tag--spot">Current Market</span>' : "",
+          row.is_strongest ? '<span class="gamma-ladder-tag gamma-ladder-tag--strongest">Dealer Magnet</span>' : "",
+          !row.is_strongest && !row.is_spot_nearest && !row.is_flip && zoneMeta?.isFocal
+            ? `<span class="gamma-ladder-tag gamma-ladder-tag--${zoneMeta.type}">${
+                zoneMeta.type === "compression" ? "Compression Zone" : "Expansion Risk"
+              }</span>`
+            : "",
         ]
           .filter(Boolean)
           .join("");
@@ -257,12 +322,12 @@
             call: formatCompact(callGex),
             put: formatCompact(-putGex),
             net: formatCompact(netGex),
-            behavior: gammaBehavior[gammaState] || gammaBehavior.neutral,
+            behavior,
           })
         );
         return `
           <button
-            class="gamma-ladder-row${flipClass}${strongestClass}${spotClass}${sideClass}${intensityClass}${stateClass}"
+            class="gamma-ladder-row${flipClass}${strongestClass}${spotClass}${sideClass}${intensityClass}${stateClass}${zoneClass}"
             type="button"
             data-gamma-row
             data-tooltip="${tooltipPayload}"
