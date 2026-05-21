@@ -82,6 +82,12 @@ def register(app):
         methods=["GET"],
     )
     app.add_url_rule(
+        "/api/gamma-ladder",
+        endpoint="gamma_ladder_api",
+        view_func=h.gamma_ladder_api,
+        methods=["GET"],
+    )
+    app.add_url_rule(
         "/api/market-pulse/tape",
         endpoint="market_pulse_tape_api",
         view_func=h.market_pulse_tape_api,

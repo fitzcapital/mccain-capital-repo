@@ -344,11 +344,7 @@ def trades_sync_live():
     to_date = legacy._normalize_iso_date(request.form.get("to_date") or "", legacy.today_iso())
     if from_date > to_date:
         from_date, to_date = to_date, from_date
-    selected_account = legacy._require_import_account(request.form.get("selected_account_id"))
-    if not selected_account:
-        if _wants_async_json():
-            return _json_error("Please select an account before uploading trades.", status_code=409)
-        return redirect(url_for("trades_upload_pdf", ws="live"))
+    selected_account = legacy._sync_account(request.form.get("selected_account_id"), account)
 
     requested = legacy._sync_requested_payload(
         source="manual_live",
@@ -402,7 +398,7 @@ def trades_sync_live():
     requested["credential_save_status"] = credential_result["status"]
     requested["credential_save_detail"] = credential_result["detail"]
     job = legacy._start_sync_job(
-        selected_account_id=int(selected_account["id"]),
+        selected_account_id=(int(selected_account["id"]) if selected_account else None),
         title="Live Sync",
         source_label="LIVE LOGIN HTML",
         record_source="LIVE LOGIN HTML",

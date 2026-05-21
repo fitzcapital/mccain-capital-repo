@@ -102,6 +102,10 @@ def market_pulse_context_api():
     return svc.market_pulse_context_api()
 
 
+def gamma_ladder_api():
+    return svc.gamma_ladder_api()
+
+
 def market_pulse_tape_api():
     return svc.market_pulse_tape_api()
 

@@ -60695,6 +60695,34 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeHeaderSubline{
   color:rgba(190,211,235,.58);
 }
 
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeHeaderSubline{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeHelper{
+  flex:0 0 auto;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeHelper summary{
+  width:22px;
+  height:22px;
+  font-size:11px;
+  border-color:rgba(98, 144, 255, .24);
+  background:linear-gradient(180deg, rgba(98, 144, 255, .14), rgba(98, 144, 255, .06));
+  color:rgba(229, 240, 255, .9);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeHelper .helpPopover{
+  right:auto;
+  left:0;
+  width:min(340px, 82vw);
+  text-transform:none;
+  letter-spacing:.01em;
+  line-height:1.45;
+}
+
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeCardStack{
   gap:10px;
 }

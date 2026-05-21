@@ -463,7 +463,7 @@
                       <span class="dashboardChecklistEyebrow" data-readiness-item-status>{{ item.status }}</span>
                       <span class="dashboardChecklistTitle">{{ item.label }}</span>
                       <span class="dashboardChecklistDetail" data-readiness-item-detail>{{ item.detail }}</span>
-                      <span class="dashboardChecklistAction" data-readiness-item-action>{{ item.action }}</span>
+                      <span class="dashboardChecklistAction" data-readiness-item-action>{{ item.action_label or item.action }}</span>
                     </a>
                   {% endfor %}
                 </div>
@@ -725,7 +725,15 @@
       <div class="dashboardTapeHeader">
           <div class="dashboardTapeHeaderBrand">
           <div class="dashboardTapeSectionLabel"><span class="dashboardLabelIcon dashboardLabelIcon--accent">{{ dashboard_icon('tape') }}</span><span>Market Tape</span></div>
-          <div class="dashboardTapeHeaderSubline">Risk monitor</div>
+          <div class="dashboardTapeHeaderSubline">
+            <span>Risk monitor</span>
+            <details class="inlineHelp dashboardTapeHelper">
+              <summary aria-label="Market tape legend">i</summary>
+              <div class="helpPopover">
+                Compressed recent intraday bars. White candles close up, blue candles close down, cyan labels indicate positive tape, and blue labels indicate negative tape.
+              </div>
+            </details>
+          </div>
         </div>
         <div class="dashboardTapeHeaderStatus">
           <span class="liveTapeBadge" data-tone="off" id="dashboardTapeStreamStatus" aria-label="Booting" title="Booting">
@@ -746,9 +754,6 @@
           </button>
           <span class="tiny muted" id="dashboardTapeUpdatedAt">{{ dashboard_tape_updated_label or '—' }}</span>
         </div>
-      </div>
-      <div class="dashboardTapeWatchLegend">
-        Compressed recent intraday bars · white up · blue down · cyan = positive tape · blue = negative tape
       </div>
       <div class="liveTapeWatchTableShell dashboardTapeCardStackShell marketPulseTapeShell">
         <div class="liveTapeWatchTable dashboardTapeCardStack" aria-label="Live tape watchlist">
@@ -1196,11 +1201,11 @@
 	            </div>
 	            <div class="showcaseValue">{{ money(overall_profit) }}</div>
 	            <div class="tiny" style="margin-top:6px; color:rgba(237,244,255,.72);" title="{{ balance_integrity.source_detail }}">
-	              {% if selected_account or (calendar_scope_label == 'Active Account') %}
-	                Funded {{ money(balance_integrity.starting_balance) }} · Balance {{ money(overall_balance) }}
-	              {% else %}
-	                {{ balance_integrity.source_label }} · Combined profit view
-	              {% endif %}
+		              {% if selected_account or (calendar_scope_label == 'Active Account') %}
+		                Funded {{ money(balance_integrity.starting_balance) }} · Balance {{ money(overall_balance) }}
+		              {% else %}
+		                Start {{ money(balance_integrity.starting_balance) }} · Balance {{ money(overall_balance) }}
+		              {% endif %}
 	            </div>
 	            <div class="showcaseMeta">
 	              Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked

@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from mccain_capital import runtime as app_runtime
+from mccain_capital.runtime import now_iso
 from mccain_capital.services import gamma_map_service as svc
 from mccain_capital.services.gamma_snapshot_models import SnapshotStatus
 from mccain_capital.services.gamma_snapshot_models import ValidationError
@@ -140,6 +141,136 @@ def test_classify_gamma_regime_neutral_band():
         )
         == "neutral"
     )
+
+
+def test_normalize_gamma_symbol_defaults_to_spx():
+    assert svc.normalize_gamma_symbol("spy") == "SPY"
+    assert svc.normalize_gamma_symbol("QQQ") == "QQQ"
+    assert svc.normalize_gamma_symbol("bad") == "SPX"
+
+
+def test_gamma_ladder_cache_key_includes_symbol_expiration_and_window():
+    assert (
+        svc.gamma_ladder_cache_key("SPX", "2026-05-21")
+        == "gamma_ladder_SPX_2026-05-21_standard"
+    )
+    assert (
+        svc.gamma_ladder_cache_key("spy", "2026-05-22", "wide")
+        == "gamma_ladder_SPY_2026-05-22_wide"
+    )
+
+
+def test_normalize_gamma_ladder_window_defaults_to_standard():
+    assert svc.normalize_gamma_ladder_window("tight") == "tight"
+    assert svc.normalize_gamma_ladder_window("bad") == "standard"
+
+
+def test_get_spot_quote_uses_requested_symbol(monkeypatch):
+    seen = {}
+
+    def fake_price_snapshot(symbol):
+        seen["symbol"] = symbol
+        return {"value": 532.14, "source_timestamp": now_iso()}
+
+    monkeypatch.setattr(
+        svc.market_data_service,
+        "get_price_snapshot",
+        fake_price_snapshot,
+    )
+
+    out = svc.get_spot_quote("QQQ")
+
+    assert seen["symbol"] == "QQQ"
+    assert out["symbol"] == "QQQ"
+
+
+def test_classify_gamma_ladder_regime_maps_to_public_states():
+    assert svc.classify_gamma_ladder_regime(125_000_000.0)[0] == "positive_gamma"
+    assert svc.classify_gamma_ladder_regime(-125_000_000.0)[0] == "negative_gamma"
+    assert svc.classify_gamma_ladder_regime(0.0)[0] == "mixed_gamma"
+
+
+def test_build_gamma_ladder_caches_per_symbol_and_expiration(monkeypatch):
+    ladder_input = pd.DataFrame(
+        [
+            {"strike": 530.0, "call_gex": 20.0, "put_gex": -10.0, "net_gex": 10.0},
+            {"strike": 535.0, "call_gex": 35.0, "put_gex": -4.0, "net_gex": 31.0},
+        ]
+    )
+    monkeypatch.setattr(svc, "get_nearest_expiration", lambda symbol: "2026-05-21")
+    monkeypatch.setattr(svc, "get_spot_quote", lambda symbol: {"symbol": symbol, "spot": 532.14, "updated_at": now_iso()})
+    monkeypatch.setattr(svc, "get_options_chain", lambda symbol, expiration: pd.DataFrame([{"expiration": expiration, "strike": 530.0}]))
+    monkeypatch.setattr(
+        svc,
+        "calculate_gamma_exposure",
+        lambda symbol, chain_data, spot, window_preset="standard": {
+            "symbol": symbol,
+            "total_net_gamma": 31.0 if symbol == "QQQ" else 10.0,
+            "flip_strike": 531.0,
+            "strongest_level": 535.0,
+            "regime": "positive_gamma",
+            "regime_label": "Positive Gamma Regime",
+            "rows_total": 24,
+            "rows_visible": 2,
+            "window_min_strike": 530.0,
+            "window_max_strike": 535.0,
+            "window_mode": "spot_band",
+            "window_preset": window_preset,
+            "rows": ladder_input.to_dict("records"),
+        },
+    )
+    monkeypatch.setattr(svc, "GAMMA_LADDER_CACHE_TTL_SECONDS", 60)
+    svc._GAMMA_LADDER_CACHE.clear()
+
+    qqq = svc.build_gamma_ladder("QQQ", window="wide")
+    spy = svc.build_gamma_ladder("SPY", window="standard")
+
+    assert qqq["symbol"] == "QQQ"
+    assert spy["symbol"] == "SPY"
+    assert qqq["rows_total"] == 24
+    assert qqq["rows_visible"] == 2
+    assert qqq["window_preset"] == "wide"
+    assert spy["window_preset"] == "standard"
+    assert "gamma_ladder_QQQ_2026-05-21_wide" in svc._GAMMA_LADDER_CACHE
+    assert "gamma_ladder_SPY_2026-05-21_standard" in svc._GAMMA_LADDER_CACHE
+
+
+def test_focused_gamma_ladder_rows_trims_oversized_ladders_and_preserves_key_rows():
+    grouped = _aggregated_df(
+        [
+            {"strike": strike, "net_gex": ((strike - 5000.0) / 5.0), "call_gex": abs((strike - 5000.0) / 5.0), "put_gex": -abs((strike - 5000.0) / 7.0)}
+            for strike in range(4700, 5310, 5)
+        ]
+    )
+
+    out = svc._focused_gamma_ladder_rows(
+        grouped,
+        spot=5002.0,
+        flip_strike=4995.0,
+        strongest_level=5305.0,
+        window_preset="tight",
+    )
+
+    strikes = {float(row["strike"]) for row in out["rows"]}
+    assert out["rows_total"] > out["rows_visible"]
+    assert out["rows_visible"] <= 11
+    assert 5000.0 in strikes
+    assert 4995.0 in strikes
+    assert 5305.0 in strikes
+    assert out["window_preset"] == "tight"
+    assert out["rows"] == sorted(out["rows"], key=lambda row: float(row["strike"]), reverse=True)
+
+
+def test_calculate_gamma_exposure_reports_window_metadata():
+    chain = _raw_basket_df()
+
+    out = svc.calculate_gamma_exposure("SPX", chain, 5120.0, window_preset="wide")
+
+    assert out["rows_total"] >= out["rows_visible"] >= 1
+    assert out["window_mode"] == "spot_band"
+    assert out["window_min_strike"] is not None
+    assert out["window_max_strike"] is not None
+    assert out["window_preset"] == "wide"
 
 
 def test_duplicate_strike_across_two_expiries_groups_into_one_strike():

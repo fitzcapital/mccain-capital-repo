@@ -9,11 +9,28 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+import threading
 import time
 import urllib.parse
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+try:
+    import fcntl
+except Exception:  # pragma: no cover - non-POSIX fallback
+    fcntl = None
+
 SELECTOR_PROFILE_VERSION = "2026-02-25.v2"
+_BROWSER_BOOT_LOCK = threading.Lock()
+_BROWSER_BOOT_LOCK_PATH = os.path.join(tempfile.gettempdir(), "mccain_browser_boot.lock")
+_RESOURCE_ERROR_MARKERS = (
+    "resource temporarily unavailable",
+    "can't start new thread",
+    "cannot start new thread",
+    "pthread_create",
+    "[errno 11]",
+)
 SELECTOR_PROFILES: Dict[str, List[str]] = {
     "login_user": [
         "input[name='username']",
@@ -154,6 +171,56 @@ def _safe_close(obj: Any) -> None:
         pass
 
 
+def _is_resource_error(message: str) -> bool:
+    text = str(message or "").strip().lower()
+    return any(marker in text for marker in _RESOURCE_ERROR_MARKERS)
+
+
+@contextmanager
+def _browser_boot_gate(timeout_s: float = 20.0):
+    deadline = time.time() + timeout_s
+    file_handle = None
+    acquired_thread = False
+    try:
+        while time.time() < deadline:
+            acquired_thread = _BROWSER_BOOT_LOCK.acquire(timeout=min(0.5, max(0.05, deadline - time.time())))
+            if not acquired_thread:
+                continue
+            if fcntl is None:
+                yield
+                return
+            os.makedirs(os.path.dirname(_BROWSER_BOOT_LOCK_PATH), exist_ok=True)
+            file_handle = open(_BROWSER_BOOT_LOCK_PATH, "a+", encoding="utf-8")
+            try:
+                fcntl.flock(file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                yield
+                return
+            except BlockingIOError:
+                file_handle.close()
+                file_handle = None
+                _BROWSER_BOOT_LOCK.release()
+                acquired_thread = False
+                time.sleep(0.15)
+                continue
+        raise _stage_error(
+            "system_resource",
+            "Chromium startup resources are busy. Another browser boot is still active.",
+        )
+    finally:
+        if file_handle is not None:
+            try:
+                if fcntl is not None:
+                    fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+            try:
+                file_handle.close()
+            except Exception:
+                pass
+        if acquired_thread:
+            _BROWSER_BOOT_LOCK.release()
+
+
 def _bootstrap_browser_session(
     *,
     playwright,
@@ -163,53 +230,86 @@ def _bootstrap_browser_session(
     warnings: List[str],
     mark: Callable[[str, str], None],
 ):
-    launch_args = [
-        "--start-maximized",
-        "--window-size=1920,1080",
-        "--disable-dev-shm-usage",
-        "--no-first-run",
+    launch_profiles = [
+        {
+            "label": "standard",
+            "args": [
+                "--start-maximized",
+                "--window-size=1920,1080",
+                "--disable-dev-shm-usage",
+                "--no-first-run",
+            ],
+            "context_kwargs": {
+                "viewport": {"width": 1920, "height": 1080},
+                "screen": {"width": 1920, "height": 1080},
+            },
+        },
+        {
+            "label": "lean",
+            "args": [
+                "--window-size=1440,900",
+                "--disable-dev-shm-usage",
+                "--no-first-run",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--disable-features=VizDisplayCompositor",
+            ],
+            "context_kwargs": {
+                "viewport": {"width": 1440, "height": 900},
+                "screen": {"width": 1440, "height": 900},
+            },
+        },
     ]
     last_error = ""
-    for attempt in range(1, 3):
-        browser = None
-        context = None
-        page = None
-        tracing_enabled = False
-        try:
-            mark(
-                "browser_boot",
-                (
+    with _browser_boot_gate():
+        for attempt, profile in enumerate(launch_profiles, start=1):
+            browser = None
+            context = None
+            page = None
+            tracing_enabled = False
+            try:
+                attempt_label = (
                     "Starting Chromium session."
                     if attempt == 1
-                    else "Retrying Chromium session bootstrap."
-                ),
-            )
-            browser = playwright.chromium.launch(headless=headless, args=launch_args)
-            context = browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                screen={"width": 1920, "height": 1080},
-            )
-            if debug_dir:
-                try:
-                    os.makedirs(debug_dir, exist_ok=True)
-                    context.tracing.start(screenshots=True, snapshots=True, sources=True)
-                    tracing_enabled = True
-                except OSError:
-                    warnings.append("Debug capture disabled: cannot write to debug directory.")
-                    debug_dir = None
-            page = context.new_page()
-            page.set_default_timeout(timeout_ms)
-            return browser, context, page, tracing_enabled, debug_dir
-        except Exception as e:
-            last_error = str(e).strip() or e.__class__.__name__
-            warnings.append(f"Browser bootstrap attempt {attempt} failed: {last_error}.")
-            _safe_close(context)
-            _safe_close(browser)
-            if attempt < 2:
-                time.sleep(0.5)
-                continue
+                    else f"Retrying Chromium session with {profile['label']} profile."
+                )
+                mark("browser_boot", attempt_label)
+                browser = playwright.chromium.launch(
+                    headless=headless,
+                    args=profile["args"],
+                    chromium_sandbox=False,
+                )
+                context = browser.new_context(**profile["context_kwargs"])
+                if debug_dir:
+                    try:
+                        os.makedirs(debug_dir, exist_ok=True)
+                        context.tracing.start(screenshots=True, snapshots=True, sources=True)
+                        tracing_enabled = True
+                    except OSError:
+                        warnings.append("Debug capture disabled: cannot write to debug directory.")
+                        debug_dir = None
+                page = context.new_page()
+                page.set_default_timeout(timeout_ms)
+                return browser, context, page, tracing_enabled, debug_dir
+            except Exception as e:
+                last_error = str(e).strip() or e.__class__.__name__
+                warnings.append(
+                    f"Browser bootstrap attempt {attempt} ({profile['label']}) failed: {last_error}."
+                )
+                _safe_close(context)
+                _safe_close(browser)
+                if attempt < len(launch_profiles):
+                    if _is_resource_error(last_error):
+                        mark(
+                            "system_resource",
+                            "Chromium launch hit resource pressure. Retrying with lean profile.",
+                        )
+                        time.sleep(1.0)
+                    else:
+                        time.sleep(0.5)
+                    continue
     raise _stage_error(
-        "browser_boot",
+        "system_resource" if _is_resource_error(last_error) else "browser_boot",
         f"Chromium session could not be created. {last_error}",
     )
 

@@ -964,16 +964,4 @@ def render_page(content_html: str, *, active: str, title: str = APP_TITLE, **pag
 
 
 def simple_msg(msg: str) -> str:
-    return render_template_string(
-        """
-        <div class=\"card\"><div class=\"toolbar\">
-          <div class=\"pill\">⚠️</div>
-          <div style=\"margin-top:10px\">{{ msg }}</div>
-          <div class=\"hr\"></div>
-          <div class=\"rightActions\">
-            <a class=\"btn primary\" href=\"/trades\">Back</a>
-          </div>
-        </div></div>
-        """,
-        msg=msg,
-    )
+    return render_template("shared/simple_message.html", msg=msg)

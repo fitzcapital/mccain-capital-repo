@@ -1,0 +1,18 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">📋 Paste Trades</div>
+  <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted == 1 else 's' }} ✅</div>
+  {% if errors %}
+    <div class="hr"></div>
+    <div class="tiny metaRed">
+      {% for e in errors %}• {{ e }}<br/>{% endfor %}
+    </div>
+  {% endif %}
+  {{ reconciliation_html|safe }}
+  <div class="hr"></div>
+  <div class="rightActions">
+    <a class="btn primary" href="/trades">Trades 📅</a>
+    <a class="btn" href="/dashboard">Calendar 📊</a>
+    <a class="btn" href="/calculator">Calculator 🧮</a>
+    <a class="btn" href="/trades/paste">Paste More 🔁</a>
+  </div>
+</div></div>

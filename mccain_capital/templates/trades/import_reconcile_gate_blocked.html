@@ -1,0 +1,12 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">⛔ Reconciliation Gate Blocked Import</div>
+  <div class="stack10">This import was not committed.</div>
+  <div class="tiny metaRed line16">
+    {% for r in reasons %}• {{ r }}<br>{% endfor %}
+  </div>
+  <div class="hr"></div>
+  {{ reconciliation_html|safe }}
+  <div class="hr"></div>
+  <a class="btn" href="/trades/upload/statement?ws=reconcile">Open Reconcile Workspace</a>
+  <a class="btn" href="/trades/upload/statement">Back</a>
+</div></div>

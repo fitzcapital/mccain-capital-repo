@@ -4,7 +4,7 @@ import hmac
 import os
 from datetime import timedelta
 
-from flask import abort, redirect, request, session, url_for, render_template_string
+from flask import abort, redirect, render_template, request, session, url_for
 
 from mccain_capital import auth
 from mccain_capital.config import select_config
@@ -58,22 +58,8 @@ def create_app():
         @app.get("/safe-mode")
         def safe_mode_page():
             msg = str(app.config.get("SAFE_MODE_ERROR") or "Unknown startup fault")
-            content = render_template_string(
-                """
-                <div class="card pageHero"><div class="toolbar">
-                  <div class="pill">🛟 Safe Mode</div>
-                  <h2 class="pageTitle">Read-Only Recovery Mode</h2>
-                  <div class="pageSub">The app booted with storage/runtime issues. Write operations are blocked until fixed.</div>
-                </div></div>
-                <div class="card"><div class="toolbar">
-                  <div class="pill">Diagnostics</div>
-                  <div class="tiny stack8 line16"><b>Error:</b> {{ msg }}</div>
-                  <div class="tiny stack8 line16"><b>DB Path:</b> {{ db_path }}</div>
-                  <div class="tiny stack8 line16"><b>Upload Dir:</b> {{ upload_dir }}</div>
-                  <div class="tiny stack8 line16"><b>Books Dir:</b> {{ books_dir }}</div>
-                  <div class="tiny stack8 line16">Next best action: fix mount/path permissions, then restart app.</div>
-                </div></div>
-                """,
+            content = render_template(
+                "core/safe_mode.html",
                 msg=msg,
                 db_path=runtime.DB_PATH,
                 upload_dir=runtime.UPLOAD_DIR,

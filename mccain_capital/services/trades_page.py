@@ -1363,7 +1363,7 @@ def trades_page():
         hero_title = "Protect Capital and Review"
         hero_blurb = "The session is in protection mode. Audit the tape, lock in lessons, and avoid new risk."
     elif trades_count == 0:
-        hero_title = "Prime"
+        hero_title = "Start the Session Clean"
         hero_blurb = "Open with a clean record: import, tag, and define the first valid setup before pace increases."
     elif day_net > 0 and win_rate >= 60:
         hero_title = "Protect"

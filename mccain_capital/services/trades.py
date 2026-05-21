@@ -7,6 +7,7 @@ import sqlite3
 import json
 import base64
 import hashlib
+import inspect
 import urllib
 import shutil
 import tempfile
@@ -14,7 +15,7 @@ import threading
 import time
 import queue
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 from uuid import uuid4
 
@@ -432,8 +433,9 @@ def _reconcile_stale_sync_job(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _latest_active_sync_job() -> Dict[str, Any]:
+    job_dir = str(BG_JOB_DIR or _upload_file(".bg_jobs"))
     try:
-        names = sorted(os.listdir(BG_JOB_DIR))
+        names = sorted(os.listdir(job_dir))
     except OSError:
         return {}
     candidates: List[Dict[str, Any]] = []
@@ -463,8 +465,9 @@ def _latest_active_sync_job() -> Dict[str, Any]:
 def _reconcile_sync_runtime_state() -> Dict[str, Any]:
     reconciled = 0
     active = {}
+    job_dir = str(BG_JOB_DIR or _upload_file(".bg_jobs"))
     try:
-        names = sorted(os.listdir(BG_JOB_DIR))
+        names = sorted(os.listdir(job_dir))
     except OSError:
         names = []
     for name in names:
@@ -932,109 +935,8 @@ def _render_manual_trade_entry_form(
     trade_date = str(values.get("trade_date") or today_iso()).strip() or today_iso()
     strategy_options = [dict(r) for r in strategies_repo.fetch_strategies()]
     gate = _trade_gate_viewmodel(trade_date, values)
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">➕ Manual Trade Entry</div>
-          <div class="tiny stack8">First trade of the day now requires a short gate so execution starts from an actual plan.</div>
-          {% if gate_error %}
-            <div class="integrityAlert integrityAlert-warn">{{ gate_error }}</div>
-          {% endif %}
-          <div class="hr"></div>
-          <form method="post">
-            <div class="card supportCard subtleCard">
-              <div class="toolbar">
-                <div class="pillRow">
-                  <div class="pill">Trade Gate</div>
-                  {% if gate.passed %}
-                    <span class="trendChip positive">Passed</span>
-                  {% elif gate.required %}
-                    <span class="trendChip negative">Required</span>
-                  {% else %}
-                    <span class="trendChip">Optional</span>
-                  {% endif %}
-                </div>
-                <div class="supportLead">{{ gate.summary }}</div>
-                <div class="row stack10">
-                  <div>
-                    <label>Setup Type</label>
-                    <input name="gate_setup_type" list="strategy-options" value="{{ gate.values.setup_type }}" placeholder="ORB, continuation, fade, reclaim"/>
-                  </div>
-                  <div class="fieldGrow2">
-                    <label>Invalidation</label>
-                    <input name="gate_invalidation" value="{{ gate.values.invalidation }}" placeholder="What level or condition proves this trade wrong?"/>
-                  </div>
-                  <div>
-                    <label>Max Risk</label>
-                    <input name="gate_max_risk" value="{{ gate.values.max_risk }}" placeholder="$150 or 10 pts"/>
-                  </div>
-                </div>
-                <div class="stack10">
-                  <label>Focus Note</label>
-                  <textarea name="gate_focus" placeholder="Why is this trade allowed today?">{{ gate.values.focus }}</textarea>
-                </div>
-                <div class="row stack10">
-                  <div class="stack10"><label><input type="checkbox" name="gate_market_ready" value="1" {% if gate.checks.market_ready %}checked{% endif %}/> Structure is aligned with my setup</label></div>
-                  <div class="stack10"><label><input type="checkbox" name="gate_macro_clear" value="1" {% if gate.checks.macro_clear %}checked{% endif %}/> I am clear of the macro risk window</label></div>
-                  <div class="stack10"><label><input type="checkbox" name="gate_risk_confirmed" value="1" {% if gate.checks.risk_confirmed %}checked{% endif %}/> Size, stop, and max loss are defined</label></div>
-                </div>
-              </div>
-            </div>
-            <div class="hr"></div>
-            <div class="row">
-              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ values.get('trade_date', today) }}"/></div>
-              <div><label>⏱️ Entry Time</label><input name="entry_time" placeholder="9:45 AM" value="{{ values.get('entry_time', '') }}"/></div>
-              <div><label>⏱️ Exit Time</label><input name="exit_time" placeholder="10:05 AM" value="{{ values.get('exit_time', '') }}"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🏷️ Ticker</label><input name="ticker" placeholder="SPX" value="{{ values.get('ticker', '') }}"/></div>
-              <div>
-                <label>📌 Type</label>
-                <select name="opt_type">
-                  <option value="CALL" {% if values.get('opt_type', 'CALL') == 'CALL' %}selected{% endif %}>CALL</option>
-                  <option value="PUT" {% if values.get('opt_type') == 'PUT' %}selected{% endif %}>PUT</option>
-                </select>
-              </div>
-              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" placeholder="6940" value="{{ values.get('strike', '') }}"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ values.get('contracts', '1') }}"/></div>
-              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" placeholder="6.20" value="{{ values.get('entry_price', '') }}"/></div>
-              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" placeholder="7.30" value="{{ values.get('exit_price', '') }}"/></div>
-            </div>
-            <div class="row stack10">
-              <div><label>🏷️ Strategy</label><input name="strategy_label" list="strategy-options" placeholder="Fitz 2-2 REV" value="{{ values.get('strategy_label', values.get('setup_tag', '')) }}"/></div>
-              <div><label>🕒 Session Tag</label><input name="session_tag" placeholder="AM / Midday / PM" value="{{ values.get('session_tag', '') }}"/></div>
-              <div><label>✅ Checklist Score</label><input name="checklist_score" inputmode="numeric" placeholder="0-100" value="{{ values.get('checklist_score', '') }}"/></div>
-            </div>
-            <datalist id="strategy-options">
-              {% for strategy in strategy_options %}
-                <option value="{{ strategy['title'] }}"></option>
-              {% endfor %}
-            </datalist>
-            <div class="row stack10">
-              <div class="fieldGrow2">
-                <label>🧱 Critical Checklist Gate</label>
-                <div class="tiny stack8 line16">
-                  {% for item in critical_items %}
-                    <label style="display:inline-flex; gap:8px; margin-right:14px; align-items:center;">
-                      <input type="checkbox" name="critical_item" value="{{ item }}" {% if item in selected_critical_items %}checked{% endif %}> {{ item }}
-                    </label>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-            <div class="row stack10">
-              <div><label>💵 Commission/Fees (total)</label><input name="comm" inputmode="decimal" value="{{ values.get('comm', '0.70') }}"/></div>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save Trade</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/manual_trade_entry.html",
         today=today_iso(),
         values=values,
         gate=gate,
@@ -1873,6 +1775,53 @@ def _require_import_account(raw: Any = None) -> Dict[str, Any] | None:
     return None
 
 
+def _sync_account(raw: Any = None, broker_account_id: str = "") -> Dict[str, Any] | None:
+    account = _selected_account(raw)
+    if account:
+        return account
+    normalized = repo.normalize_broker_account_id(broker_account_id)
+    if not normalized:
+        return None
+    for row in repo.list_accounts():
+        if repo.normalize_broker_account_id(row.get("broker_account_id")) == normalized:
+            return row
+    return None
+
+
+def _import_broker_paste_with_report(
+    text: str,
+    *,
+    account_id: int,
+    upload_id: int,
+    ending_balance: Optional[float] = None,
+    commit: bool = True,
+    import_batch_id: str = "",
+) -> Tuple[int, List[str], Dict[str, Any]]:
+    func = importing.insert_trades_from_broker_paste_with_report
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        sig = None
+    kwargs: Dict[str, Any] = {
+        "ending_balance": ending_balance,
+        "commit": commit,
+        "import_batch_id": import_batch_id,
+    }
+    if sig is None:
+        kwargs["account_id"] = account_id
+        kwargs["upload_id"] = upload_id
+    else:
+        params = sig.parameters
+        if "account_id" in params:
+            kwargs["account_id"] = account_id
+        if "upload_id" in params:
+            kwargs["upload_id"] = upload_id
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            kwargs["account_id"] = account_id
+            kwargs["upload_id"] = upload_id
+    return func(text, **kwargs)
+
+
 def _handle_statement_html_import(
     path: str,
     mode: str,
@@ -1922,22 +1871,8 @@ def _handle_statement_html_import(
                     message="No trade rows found; imported statement ending balance snapshot.",
                 )
                 return render_page(
-                    render_template_string(
-                        """
-                        <div class="card"><div class="toolbar">
-                          <div class="pill">🧾 Balance Snapshot Imported ✅</div>
-                          <div class="stack10">No trade rows were present in this statement window. Imported ending balance <b>{{ money(balance_val) }}</b>.</div>
-                          {% if warns %}
-                            <div class="hr"></div>
-                            <div class="tiny metaBlue line16">
-                              {% for m in warns %}• {{ m }}<br>{% endfor %}
-                            </div>
-                          {% endif %}
-                          <div class="hr"></div>
-                          <a class="btn primary" href="/trades">Trades</a>
-                          <a class="btn" href="/trades/upload/statement">Upload Another</a>
-                        </div></div>
-                        """,
+                    render_template(
+                        "trades/import_balance_snapshot_result.html",
                         warns=warns or [],
                         balance_val=balance_val,
                         money=money,
@@ -1945,18 +1880,8 @@ def _handle_statement_html_import(
                     active="trades",
                 )
             return render_page(
-                render_template_string(
-                    """
-                    <div class="card"><div class="toolbar">
-                      <div class="pill">⛔ HTML parsed, but no trade rows found</div>
-                      <div class="hr"></div>
-                      <div class="tiny metaBlue line16">
-                        {% for m in warns %}• {{ m }}<br>{% endfor %}
-                      </div>
-                      <div class="hr"></div>
-                      <a class="btn" href="/trades/upload/statement">Back</a>
-                    </div></div>
-                    """,
+                render_template(
+                    "trades/import_no_trade_rows.html",
                     warns=warns or [],
                 ),
                 active="trades",
@@ -2000,21 +1925,8 @@ def _handle_statement_html_import(
                     },
                 )
                 return render_page(
-                    render_template_string(
-                        """
-                        <div class="card"><div class="toolbar">
-                          <div class="pill">⛔ Reconciliation Gate Blocked Import</div>
-                          <div class="stack10">This import was not committed.</div>
-                          <div class="tiny metaRed line16">
-                            {% for r in reasons %}• {{ r }}<br>{% endfor %}
-                          </div>
-                          <div class="hr"></div>
-                          {{ reconciliation_html|safe }}
-                          <div class="hr"></div>
-                          <a class="btn" href="/trades/upload/statement?ws=reconcile">Open Reconcile Workspace</a>
-                          <a class="btn" href="/trades/upload/statement">Back</a>
-                        </div></div>
-                        """,
+                    render_template(
+                        "trades/import_reconcile_gate_blocked.html",
                         reasons=gate["reasons"],
                         reconciliation_html=_reconciliation_block(pre_report),
                     ),
@@ -2041,25 +1953,8 @@ def _handle_statement_html_import(
         msgs = (warns or []) + (errors or [])
 
         return render_page(
-            render_template_string(
-                """
-                <div class="card"><div class="toolbar">
-                  <div class="pill">🧾 HTML → Trades ✅</div>
-                  <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }}.</div>
-                  {% if msgs %}
-                    <div class="hr"></div>
-                    <div class="tiny metaBlue line16">
-                      {% for m in msgs %}• {{ m }}<br>{% endfor %}
-                    </div>
-                  {% endif %}
-                  {{ reconciliation_html|safe }}
-                  <div class="hr"></div>
-                  <a class="btn primary" href="/trades">Trades 📅</a>
-                  <a class="btn" href="/analytics?tab=performance">Analyze Session 📈</a>
-                  <a class="btn" href="/journal/new?d={{ review_day }}&entry_type=trade_debrief&link_all_day=1">Journal This Session 📝</a>
-                  <a class="btn" href="/trades/upload/statement">Upload Another</a>
-                </div></div>
-                """,
+            render_template(
+                "trades/import_html_result.html",
                 inserted=inserted,
                 msgs=msgs,
                 reconciliation_html=reconciliation_html,
@@ -2070,18 +1965,8 @@ def _handle_statement_html_import(
 
     if balance_val is None:
         return render_page(
-            render_template_string(
-                """
-                <div class="card"><div class="toolbar">
-                  <div class="pill">⛔ Balance not found in HTML</div>
-                  <div class="hr"></div>
-                  <div class="tiny metaBlue line16">
-                    {% for m in warns %}• {{ m }}<br>{% endfor %}
-                  </div>
-                  <div class="hr"></div>
-                  <a class="btn" href="/trades/upload/statement">Back</a>
-                </div></div>
-                """,
+            render_template(
+                "trades/import_balance_missing.html",
                 warns=warns or [],
             ),
             active="trades",
@@ -2133,40 +2018,8 @@ def _handle_statement_html_import(
 def _reconciliation_block(report: Optional[dict]) -> str:
     if not report:
         return ""
-    return render_template_string(
-        """
-        <div class="hr"></div>
-        <div class="pill">🧾 Import Reconciliation</div>
-        <div class="hr"></div>
-        <table>
-          <tbody>
-            <tr><td>Fills Parsed</td><td>{{ report.fills_parsed }}</td></tr>
-            <tr><td>Round-Trips Paired</td><td>{{ report.pairs_completed }}</td></tr>
-            <tr><td>Inserted Trades</td><td>{{ report.inserted_trades }}</td></tr>
-            <tr><td>Duplicates Skipped</td><td>{{ report.duplicates_skipped }}</td></tr>
-            <tr><td>Open Contracts Remaining</td><td>{{ report.open_contracts }}</td></tr>
-            <tr><td>Errors / Warnings</td><td>{{ report.errors_count }} / {{ report.warnings_count }}</td></tr>
-            <tr>
-              <td>Statement Ending Balance</td>
-              <td>
-                {% if report.statement_ending_balance is not none %}{{ money(report.statement_ending_balance) }}{% else %}Not provided{% endif %}
-              </td>
-            </tr>
-            <tr>
-              <td>Ledger Ending Balance</td>
-              <td>
-                {% if report.ledger_ending_balance is not none %}{{ money(report.ledger_ending_balance) }}{% else %}Not available{% endif %}
-              </td>
-            </tr>
-            <tr>
-              <td>Balance Delta (Ledger - Statement)</td>
-              <td>
-                {% if report.balance_delta is not none %}{{ money(report.balance_delta) }}{% else %}Not computed{% endif %}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      """,
+    return render_template(
+        "trades/_import_reconciliation.html",
         report=report,
         money=money,
     )
@@ -2366,27 +2219,8 @@ def trades_paste():
         else:
             inserted, errors = importing.insert_trades_from_paste(text)
 
-        content = render_template_string(
-            """
-            <div class="card"><div class="toolbar">
-              <div class="pill">📋 Paste Trades</div>
-              <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }} ✅</div>
-              {% if errors %}
-                <div class="hr"></div>
-                <div class="tiny metaRed">
-                  {% for e in errors %}• {{ e }}<br/>{% endfor %}
-                </div>
-              {% endif %}
-              {{ reconciliation_html|safe }}
-              <div class="hr"></div>
-              <div class="rightActions">
-                <a class="btn primary" href="/trades">Trades 📅</a>
-                <a class="btn" href="/dashboard">Calendar 📊</a>
-                <a class="btn" href="/calculator">Calculator 🧮</a>
-                <a class="btn" href="/trades/paste">Paste More 🔁</a>
-              </div>
-            </div></div>
-            """,
+        content = render_template(
+            "trades/paste_result.html",
             inserted=inserted,
             errors=errors,
             reconciliation_html=reconciliation_html,
@@ -2394,30 +2228,8 @@ def trades_paste():
         return render_page(content, active="trades")
 
     example = "1/29\t9:35 AM\t9:37 AM\tSPX\tPUT\t6940\t$6.20\t$7.30\t3\t$1,860.00\t20\t30\t$4.96\t$8.06\t$374.10\t$2.10\t$330.00\t$327.90\t17.74%\t$50,924.40"
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">📋 Paste Trades (tabs please ✅)</div>
-          <div class="tiny stack10 line15">
-            Pro tip: copy straight from your sheet/log, keep the tabs.
-            <div class="hr"></div>
-            Example:<br/><code class="preWrapMuted">{{ example }}</code>
-          </div>
-          <div class="hr"></div>
-          <form method="post">
-            <input type="hidden" name="selected_account_id" value="{{ selected_account_id }}" />
-            <div class="stack12">
-              <label>📎 Paste here</label>
-              <textarea name="text" placeholder="Paste your trade rows here…"></textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">🚀 Import</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/paste_form.html",
         example=example,
         selected_account_id=str(_selected_account().get("id") if _selected_account() else ""),
     )
@@ -2463,74 +2275,8 @@ def trades_playbook():
         return redirect(url_for("trades_playbook"))
 
     setup_rows = analytics_repo.group_table(analytics_repo.fetch_analytics_rows(), "setup_tag")
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">📘 Playbook Engine</div>
-          <div class="tiny stack10 line16">Enforce pre-trade rules from your edge stats (size caps, blocked windows, quality floor).</div>
-          <div class="tiny stack8 line16">Why this matters: rules prevent emotional drift and preserve consistency under pressure.</div>
-          <div class="tiny stack8 line16">Next best action: keep this enabled, set a realistic checklist floor, then expand advanced controls only if needed.</div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div><label><input type="checkbox" name="enabled" value="1" {% if cfg.enabled %}checked{% endif %}/> Enable playbook enforcement</label></div>
-            </div>
-            <div class="row">
-              <div>
-                <label>Minimum Checklist Score</label>
-                <input type="number" min="0" max="100" name="min_checklist_score" value="{{ cfg.min_checklist_score }}" />
-              </div>
-              <div>
-                <label>Max Size (% of balance by total spend)</label>
-                <input type="number" min="1" max="100" step="0.1" name="max_size_pct" value="{{ cfg.max_size_pct }}" />
-              </div>
-            </div>
-            <details class="syncDetails stack10">
-              <summary>Advanced Rule Controls</summary>
-              <div class="hr"></div>
-              <div class="row">
-                <div><label><input type="checkbox" name="require_positive_setup_expectancy" value="1" {% if cfg.require_positive_setup_expectancy %}checked{% endif %}/> Require positive setup expectancy</label></div>
-                <div><label><input type="checkbox" name="require_critical_checklist" value="1" {% if cfg.require_critical_checklist %}checked{% endif %}/> Require critical checklist items</label></div>
-              </div>
-              <div class="row">
-                <div class="fieldGrow2">
-                  <label>Blocked Time Blocks (comma-separated)</label>
-                  <input name="blocked_time_blocks" value="{{ cfg.blocked_time_blocks|join(', ') }}" placeholder="09:30-10:00, 15:00-16:00" />
-                </div>
-              </div>
-              <div class="row">
-                <div class="fieldGrow2">
-                  <label>Critical Checklist Items (comma-separated)</label>
-                  <input name="critical_items" value="{{ cfg.critical_items|join(', ') }}" placeholder="Bias Confirmed, Risk Defined, Stop Planned" />
-                </div>
-              </div>
-            </details>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">Save Playbook Rules</button>
-              <a class="btn" href="/trades">Trades</a>
-            </div>
-          </form>
-        </div></div>
-        <div class="card"><div class="toolbar">
-          <div class="pill">📈 Setup Expectancy Snapshot</div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Expectancy</th></tr></thead>
-            <tbody>
-            {% for r in setup_rows[:20] %}
-              <tr>
-                <td>{{ r.k or 'Unlabeled' }}</td>
-                <td>{{ r.count }}</td>
-                <td>{{ '%.1f'|format(r.win_rate) }}%</td>
-                <td>{{ money(r.expectancy) }}</td>
-              </tr>
-            {% else %}
-              <tr><td colspan="4">No setup data yet.</td></tr>
-            {% endfor %}
-            </tbody>
-          </table></div>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/playbook.html",
         cfg=cfg,
         setup_rows=setup_rows,
         money=money,
@@ -2714,25 +2460,8 @@ def trades_paste_broker():
             message=f"Inserted {inserted} trade(s) via broker paste.",
         )
         reconciliation_html = _reconciliation_block(report)
-        content = render_template_string(
-            """
-            <div class="card"><div class="toolbar">
-              <div class="pill">🏦 Broker Paste Import</div>
-              <div class="stack10">Inserted <b>{{ inserted }}</b> round-trip trade{{ '' if inserted==1 else 's' }} ✅</div>
-              {% if errors %}
-                <div class="hr"></div><div class="tiny metaRed">{% for e in errors %}• {{ e }}<br/>{% endfor %}</div>
-              {% endif %}
-              {{ reconciliation_html|safe }}
-              <div class="hr"></div>
-              <div class="rightActions">
-                <a class="btn primary" href="/trades">Trades 📅</a>
-                <a class="btn" href="/analytics?tab=performance">Analyze Session 📈</a>
-                <a class="btn" href="/journal/new?d={{ review_day }}&entry_type=trade_debrief&link_all_day=1">Journal This Session 📝</a>
-                <a class="btn" href="/dashboard">Calendar 📊</a>
-                <a class="btn" href="/trades/paste/broker">Paste More 🔁</a>
-              </div>
-            </div></div>
-            """,
+        content = render_template(
+            "trades/broker_paste_result.html",
             inserted=inserted,
             errors=errors,
             reconciliation_html=reconciliation_html,
@@ -2740,29 +2469,8 @@ def trades_paste_broker():
         )
         return render_page(content, active="trades")
 
-    content = render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🏦 Paste Broker Fills (BUY/SELL legs)</div>
-          <div class="tiny stack10 line15">
-            Paste the raw fills. This importer pairs BUY+SELL into one completed trade (FIFO). ✅
-          </div>
-          <div class="hr"></div>
-          <form method="post">
-            <input type="hidden" name="selected_account_id" value="{{ selected_account_id }}" />
-            <div class="stack12">
-              <label>📎 Paste here</label>
-              <textarea name="text" placeholder="SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 2 | 18.90 | 0.70"></textarea>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">🚀 Convert + Import</button>
-              <a class="btn" href="/trades">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """
-        ,
+    content = render_template(
+        "trades/broker_paste_form.html",
         selected_account_id=str(_selected_account().get("id") if _selected_account() else "")
     )
     return render_page(content, active="trades")
@@ -2904,23 +2612,8 @@ def trades_upload_pdf():
                     ocr_warns = (ocr_warns or []) + [f"OCR debug error: {e}"]
 
                 return render_page(
-                    render_template_string(
-                        """
-                        <div class="card"><div class="toolbar">
-                          <div class="pill">⛔ OCR rows not parseable</div>
-                          <div class="hr"></div>
-                          <div class="tiny metaBlue line16">
-                            {% for m in warns %}• {{ m }}<br>{% endfor %}
-                          </div>
-                          <div class="hr"></div>
-                          <div class="tiny">Stitched rows (first 30):</div>
-                          <pre class="preWrapMuted">{{ dump }}</pre>
-                          <div class="hr"></div>
-                          <a class="btn" href="/trades/upload/statement">Back</a>
-                        <a class="btn" href="/trades/upload/statement">Upload Another</a>
-
-                        </div></div>
-                        """,
+                    render_template(
+                        "trades/import_ocr_rows_unparseable.html",
                         warns=ocr_warns,
                         dump="\n".join(stitched[:30]),
                     ),
@@ -2952,23 +2645,8 @@ def trades_upload_pdf():
             reconciliation_html = _reconciliation_block(report)
             msgs = (ocr_warns or []) + (errors or [])
             return render_page(
-                render_template_string(
-                    """
-                    <div class="card"><div class="toolbar">
-                      <div class="pill">📄 PDF → OCR → Trades ✅</div>
-                      <div class="stack10">Inserted <b>{{ inserted }}</b> trade{{ '' if inserted==1 else 's' }}.</div>
-                      {% if msgs %}
-                        <div class="hr"></div>
-                        <div class="tiny metaBlue line16">
-                          {% for m in msgs %}• {{ m }}<br>{% endfor %}
-                        </div>
-                      {% endif %}
-                      {{ reconciliation_html|safe }}
-                      <div class="hr"></div>
-                      <a class="btn primary" href="/trades">Trades 📅</a>
-                     <a class="btn" href="/trades/upload/statement">Upload Another</a>
-                    </div></div>
-                    """,
+                render_template(
+                    "trades/import_pdf_ocr_result.html",
                     inserted=inserted,
                     msgs=msgs,
                     reconciliation_html=reconciliation_html,
@@ -2981,15 +2659,8 @@ def trades_upload_pdf():
         bal = importing.extract_statement_balance(text)
         if bal is None:
             return render_page(
-                render_template_string(
-                    """<div class="card"><div class="toolbar">
-                       <div class="pill">⛔ Could not find ending balance</div>
-                       <div class="hr"></div>
-                       <div class="tiny">Dump (first 1200 chars):</div>
-                       <pre class="preWrapMuted">{{ dump }}</pre>
-                       <div class="hr"></div>
-                       <a class="btn" href="/trades/upload/statement">Back</a>
-                       </div></div>""",
+                render_template(
+                    "trades/import_pdf_balance_missing.html",
                     dump=(text or "")[:1200],
                 ),
                 active="trades",
@@ -3070,7 +2741,7 @@ def trades_upload_pdf():
 
 def _run_live_sync_once(
     *,
-    selected_account_id: int,
+    selected_account_id: int | None,
     mode: str,
     username: str,
     password: str,
@@ -3089,15 +2760,12 @@ def _run_live_sync_once(
     progress_cb: Optional[Callable[[str, str], None]] = None,
     cancel_cb: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Any]:
-    selected_account = repo.get_account(int(selected_account_id))
-    if not selected_account:
-        return {
-            "ok": False,
-            "stage": "account_scope",
-            "message": "Please select an account before uploading trades.",
-            "artifacts_rel": [],
-            "warns": [],
-        }
+    selected_account = (
+        repo.get_account(int(selected_account_id))
+        if selected_account_id not in (None, "", 0)
+        else None
+    )
+    account_id = int(selected_account["id"]) if selected_account else 0
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     debug_dir = (
         os.path.join(_broker_debug_dir(), f"live_{from_date}_{to_date}_{stamp}")
@@ -3195,22 +2863,31 @@ def _run_live_sync_once(
         if not paste_text:
             if balance_for_snapshot is not None:
                 balance_batch_id = _new_import_batch_id("livebal")
-                upload_id = repo.create_upload(
-                    account_id=int(selected_account["id"]),
-                    filename=filename,
-                    source=source_label,
-                    import_batch_id=balance_batch_id,
+                upload_id = (
+                    repo.create_upload(
+                        account_id=account_id,
+                        filename=filename,
+                        source=source_label,
+                        import_batch_id=balance_batch_id,
+                    )
+                    if account_id > 0
+                    else 0
                 )
-                importing.insert_balance_snapshot(
-                    today_iso(),
-                    balance_for_snapshot,
-                    account_id=int(selected_account["id"]),
-                    upload_id=upload_id,
-                    raw_line=source_label,
-                )
-                ledger_balance = latest_balance_overall(
-                    account_id=int(selected_account["id"]),
-                    starting_balance=float(selected_account.get("starting_balance") or 0.0),
+                if account_id > 0:
+                    importing.insert_balance_snapshot(
+                        today_iso(),
+                        balance_for_snapshot,
+                        account_id=account_id,
+                        upload_id=upload_id,
+                        raw_line=source_label,
+                    )
+                ledger_balance = (
+                    latest_balance_overall(
+                        account_id=account_id,
+                        starting_balance=float(selected_account.get("starting_balance") or 0.0),
+                    )
+                    if selected_account
+                    else None
                 )
                 _record_import_batch(
                     batch_id=balance_batch_id,
@@ -3253,15 +2930,19 @@ def _run_live_sync_once(
                 }
             )
             return result
-        upload_id = repo.create_upload(
-            account_id=int(selected_account["id"]),
-            filename=filename,
-            source=source_label,
-            import_batch_id=batch_id,
+        upload_id = (
+            repo.create_upload(
+                account_id=account_id,
+                filename=filename,
+                source=source_label,
+                import_batch_id=batch_id,
+            )
+            if account_id > 0
+            else 0
         )
-        _, _, pre_report = importing.insert_trades_from_broker_paste_with_report(
+        _, _, pre_report = _import_broker_paste_with_report(
             paste_text,
-            account_id=int(selected_account["id"]),
+            account_id=account_id,
             upload_id=upload_id,
             ending_balance=balance_val,
             commit=False,
@@ -3300,9 +2981,9 @@ def _run_live_sync_once(
         if progress_cb:
             progress_cb("import_trades", "Importing trades.")
         ensure_active()
-        inserted, errors, report = importing.insert_trades_from_broker_paste_with_report(
+        inserted, errors, report = _import_broker_paste_with_report(
             paste_text,
-            account_id=int(selected_account["id"]),
+            account_id=account_id,
             upload_id=upload_id,
             ending_balance=balance_val,
             commit=True,
@@ -3673,9 +3354,20 @@ def ensure_sync_dispatcher_started(app) -> None:
         _SYNC_DISPATCH_THREAD_STARTED = True
 
 
+def _start_sync_job_thread(app, worker_payload: Dict[str, Any]) -> threading.Thread:
+    t = threading.Thread(
+        target=_execute_sync_job,
+        kwargs={"app": app, **worker_payload},
+        daemon=True,
+        name=f"sync-job-{str(((worker_payload.get('job') or {}).get('id')) or 'worker')[:12]}",
+    )
+    t.start()
+    return t
+
+
 def _start_sync_job(
     *,
-    selected_account_id: int,
+    selected_account_id: int | None,
     title: str,
     source_label: str,
     record_source: str,
@@ -3698,33 +3390,34 @@ def _start_sync_job(
     app = current_app._get_current_object()
     job = _create_bg_job("sync", title, requested)
     cancel_event = _sync_cancel_event(job["id"])
+    worker_payload = {
+        "job": job,
+        "cancel_event": cancel_event,
+        "selected_account_id": (
+            int(selected_account_id) if selected_account_id not in (None, "", 0) else None
+        ),
+        "title": title,
+        "source_label": source_label,
+        "record_source": record_source,
+        "mode": mode,
+        "username": username,
+        "password": password,
+        "base_url": base_url,
+        "account": account,
+        "wl": wl,
+        "time_zone": time_zone,
+        "date_locale": date_locale,
+        "report_locale": report_locale,
+        "from_date": from_date,
+        "to_date": to_date,
+        "headless": headless,
+        "debug_capture": debug_capture,
+        "debug_only": debug_only,
+        "requested": requested,
+    }
     try:
         ensure_sync_dispatcher_started(app)
-        _SYNC_JOB_QUEUE.put_nowait(
-            {
-                "job": job,
-                "cancel_event": cancel_event,
-                "selected_account_id": int(selected_account_id),
-                "title": title,
-                "source_label": source_label,
-                "record_source": record_source,
-                "mode": mode,
-                "username": username,
-                "password": password,
-                "base_url": base_url,
-                "account": account,
-                "wl": wl,
-                "time_zone": time_zone,
-                "date_locale": date_locale,
-                "report_locale": report_locale,
-                "from_date": from_date,
-                "to_date": to_date,
-                "headless": headless,
-                "debug_capture": debug_capture,
-                "debug_only": debug_only,
-                "requested": requested,
-            }
-        )
+        _start_sync_job_thread(app, worker_payload)
     except Exception as e:
         raw_message = str(e)
         fail_message = _strip_stage_prefix(raw_message)
@@ -5139,52 +4832,8 @@ def trades_open_positions():
     total_contracts = sum(int(r["contracts"]) for r in grouped_rows)
     total_spent = sum(float(r["total_spent"]) for r in grouped_rows)
 
-    content = render_template_string(
-        """
-        <div class="metricStrip">
-          <div class="metric"><div class="label">Open Buckets</div><div class="value">{{ grouped_rows|length }}</div></div>
-          <div class="metric"><div class="label">Open Contracts</div><div class="value">{{ total_contracts }}</div></div>
-          <div class="metric"><div class="label">Capital In Open Lots</div><div class="value">{{ money(total_spent) }}</div></div>
-          <div class="metric"><div class="label">Candidate Rows</div><div class="value">{{ rows|length }}</div></div>
-        </div>
-
-        <div class="card"><div class="toolbar">
-          <div class="pill">📂 Open Positions (Unmatched / Incomplete)</div>
-          <div class="tiny stack10 line15">Derived from trades missing close info (no exit time, no exit price, or no net P/L).</div>
-          <div class="hr"></div>
-          <form method="get" class="row">
-            <div><label>As of Date</label><input type="date" name="as_of" value="{{ as_of }}"></div>
-            <div class="fieldGrow2"><label>Filter</label><input name="q" value="{{ q }}" placeholder="SPX, CALL, raw note..."></div>
-            <div class="actionRow">
-              <button class="btn" type="submit">Apply</button>
-              <a class="btn" href="/trades/open-positions">Reset</a>
-              <a class="btn" href="/trades">Trades</a>
-            </div>
-          </form>
-        </div></div>
-
-        <div class="card stack12"><div class="toolbar">
-          <div class="pill">🧾 Position Summary</div>
-          <div class="hr"></div>
-          <div class="tableWrap"><table class="tableDense">
-            <thead><tr><th>Symbol</th><th>Open Trades</th><th>Contracts</th><th>Capital</th><th>Latest</th></tr></thead>
-            <tbody>
-            {% for r in grouped_rows %}
-              <tr>
-                <td>{{ r.symbol }}</td>
-                <td>{{ r.trades }}</td>
-                <td>{{ r.contracts }}</td>
-                <td>{{ money(r.total_spent) }}</td>
-                <td>{{ r.latest_date }}</td>
-              </tr>
-            {% endfor %}
-            {% if grouped_rows|length == 0 %}
-              <tr><td colspan="5">No open-position candidates found.</td></tr>
-            {% endif %}
-            </tbody>
-          </table></div>
-        </div></div>
-        """,
+    content = render_template(
+        "trades/open_positions.html",
         grouped_rows=grouped_rows,
         total_contracts=total_contracts,
         total_spent=total_spent,

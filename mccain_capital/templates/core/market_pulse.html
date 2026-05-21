@@ -112,7 +112,7 @@
 ] %}
 
 <div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact">
-  <div class="toolbar">
+  <div class="toolbar gamma-ladder-toolbar">
     <div class="marketPulsePlaybookHero">
       <div class="marketPulsePlaybookTitleZone">
         <div class="marketPulseHeroKicker">Market Pulse</div>
@@ -558,6 +558,139 @@
     <div class="marketPulseTriggerFooter" id="marketPulseTriggerFooter">
       <strong id="marketPulseTriggerStatus">{{ trigger_validation.get('status_line') or 'NO TRIGGER — NO TRADE' }}</strong>
       <span id="marketPulseTriggerFooterLine">{{ trigger_validation.get('footer_line') or 'Awaiting market posture.' }}</span>
+    </div>
+  </div>
+</section>
+
+<section
+  class="card stack12 marketPulseSection gamma-ladder-card"
+  id="marketPulseGammaLadderCard"
+  data-gamma-ladder
+  data-api-url="{{ gamma_ladder_api_url }}"
+  data-default-symbol="SPX"
+  data-default-window="standard"
+  data-supported-symbols='{{ gamma_ladder_supported_symbols|tojson }}'
+  data-supported-windows='{{ gamma_ladder_window_presets|tojson }}'
+  data-symbol="SPX"
+  data-regime="mixed_gamma"
+  aria-label="Dynamic gamma ladder"
+>
+  <div class="toolbar gamma-ladder-toolbar">
+    <div class="gamma-ladder-topline">
+      <div class="gamma-ladder-kicker">
+        <div class="pill">Gamma Ladder</div>
+        <span class="tiny muted gamma-ladder-header__sub">Live dealer positioning by symbol.</span>
+      </div>
+      <div class="gamma-ladder-controls">
+        <div class="gamma-symbol-switcher" role="tablist" aria-label="Gamma ladder symbol switcher">
+          {% for gamma_symbol in gamma_ladder_supported_symbols %}
+            <button
+              class="gamma-symbol-pill{% if gamma_symbol == 'SPX' %} active{% endif %}"
+              type="button"
+              role="tab"
+              aria-selected="{{ 'true' if gamma_symbol == 'SPX' else 'false' }}"
+              data-gamma-symbol-pill="{{ gamma_symbol }}"
+            >{{ gamma_symbol }}</button>
+          {% endfor %}
+        </div>
+        <div class="gamma-window-switcher" role="tablist" aria-label="Gamma ladder strike window">
+          {% for gamma_window in gamma_ladder_window_presets %}
+            <button
+              class="gamma-window-pill{% if gamma_window == 'standard' %} active{% endif %}"
+              type="button"
+              role="tab"
+              aria-selected="{{ 'true' if gamma_window == 'standard' else 'false' }}"
+              data-gamma-window-pill="{{ gamma_window }}"
+            >{{ gamma_window|title }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="gamma-ladder-meta" data-gamma-header>
+      <div class="gamma-ladder-meta__headline">
+        <strong data-gamma-symbol>SPX</strong>
+        <span data-gamma-spot>Loading spot…</span>
+      </div>
+      <div class="gamma-ladder-meta__stats">
+        <span class="gamma-ladder-regime gamma-ladder-regime--mixed_gamma" data-gamma-regime>Loading regime</span>
+        <span class="gamma-ladder-meta__stat" data-gamma-expiration>Awaiting expiration</span>
+        <span class="gamma-ladder-meta__stat" data-gamma-updated>Updated —</span>
+      </div>
+    </div>
+    <div class="gamma-ladder-summary tiny muted" data-gamma-summary>Loading focused window…</div>
+    <div class="gamma-ladder-stage">
+      <div class="gamma-ladder-shimmer" data-gamma-loading aria-hidden="true">
+        {% for _ in range(5) %}
+          <div class="gamma-ladder-shimmer__row">
+            <span class="gamma-ladder-shimmer__label"></span>
+            <span class="gamma-ladder-shimmer__bar"></span>
+            <span class="gamma-ladder-shimmer__value"></span>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="gamma-ladder-empty" data-gamma-error hidden></div>
+      <div class="gamma-ladder-board" data-gamma-board hidden>
+        <div class="gamma-ladder-boardShell">
+          <div class="gamma-ladder-board__legend">
+            <span>Strike</span>
+            <span>Net Gamma Lane</span>
+            <span>Net GEX</span>
+          </div>
+          <div class="gamma-ladder-rows" data-gamma-rows></div>
+        </div>
+      </div>
+      <div class="gamma-ladder-tooltip" data-gamma-tooltip hidden></div>
+    </div>
+    <div class="gamma-ladder-legend" aria-label="Gamma ladder legend">
+      <button class="gamma-ladder-legend__item is-strong-positive" type="button" data-gamma-legend data-tooltip='{"title":"Strong Positive Gamma","body":"Volatility suppression. Dealer positioning often pins price and dampens expansion."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Strong Positive Gamma</strong>
+          <span>Volatility suppression</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-positive" type="button" data-gamma-legend data-tooltip='{"title":"Positive Gamma","body":"Stabilizing zone. Price often mean reverts and directional follow-through is softer."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Positive Gamma</strong>
+          <span>Stabilizing flow</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-neutral" type="button" data-gamma-legend data-tooltip='{"title":"Neutral / Flip","body":"Equilibrium zone. Balance can break either way and behavior often changes here first."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Neutral / Flip</strong>
+          <span>Transition zone</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-negative" type="button" data-gamma-legend data-tooltip='{"title":"Negative Gamma","body":"Expansion risk. Price can accelerate faster and reversions are less dependable."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Negative Gamma</strong>
+          <span>Expansion risk</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-strong-negative" type="button" data-gamma-legend data-tooltip='{"title":"Strong Negative Gamma","body":"Momentum amplification. Volatility can expand quickly and dealer hedging may intensify moves."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Strong Negative Gamma</strong>
+          <span>Momentum amplification</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-spot" type="button" data-gamma-legend data-tooltip='{"title":"Spot Price","body":"Current market location. Use it to anchor nearby dealer structure and local reaction zones."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Spot Price</strong>
+          <span>Current market</span>
+        </span>
+      </button>
+      <button class="gamma-ladder-legend__item is-strongest" type="button" data-gamma-legend data-tooltip='{"title":"Strongest Level","body":"Dominant dealer node. This level often acts like the heaviest positioning magnet in the current ladder."}'>
+        <span class="gamma-ladder-legend__dot" aria-hidden="true"></span>
+        <span class="gamma-ladder-legend__copy">
+          <strong>Strongest Level</strong>
+          <span>Dominant dealer node</span>
+        </span>
+      </button>
     </div>
   </div>
 </section>
@@ -1107,6 +1240,7 @@
 <script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
 <script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-incremental-20260425a"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}?v={{ market_now_iso|urlencode }}"></script>
+<script src="{{ url_for('static', filename='js/gamma_ladder.js') }}?v={{ static_v }}&rev=gamma-ladder-20260521a"></script>
 <script>
   window.marketFeedItems = {{ whales_items | tojson | safe }};
 (() => {

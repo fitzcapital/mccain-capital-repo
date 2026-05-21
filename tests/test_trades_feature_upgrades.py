@@ -727,6 +727,52 @@ def test_live_sync_reports_browser_boot_stage(monkeypatch):
     assert "[stage:" not in str(out.get("message") or "")
 
 
+def test_live_sync_reclassifies_resource_pressure_browser_boot(monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:OEV0035974",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+
+    monkeypatch.setattr(
+        trades_svc.vanquish_live_sync,
+        "fetch_statement_html_via_login",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(
+                "[stage:system_resource] Chromium session could not be created. pthread_create: Resource temporarily unavailable"
+            )
+        ),
+    )
+
+    out = trades_svc._run_live_sync_once(
+        mode="broker",
+        username="u",
+        password="p",
+        base_url="https://trade.vanquishtrader.com",
+        account="default:OEV0035974",
+        selected_account_id=int(account_id),
+        wl="vanquishtrader",
+        time_zone="America/New_York",
+        date_locale="en-US",
+        report_locale="en",
+        from_date="2026-03-18",
+        to_date="2026-03-18",
+        headless=True,
+        debug_capture=False,
+        debug_only=False,
+        source_label="LIVE LOGIN HTML",
+    )
+
+    assert out.get("ok") is False
+    assert out.get("stage") == "system_resource"
+    assert "Resource temporarily unavailable" in str(out.get("message") or "")
+
+
 def test_live_sync_startup_stage_renders_dispatching_without_duplicate_live_surfaces(
     client, monkeypatch, tmp_path
 ):
@@ -1468,6 +1514,62 @@ def test_trades_playbook_page_renders(client):
     resp = client.get("/trades/playbook", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Playbook Engine" in resp.data
+    assert b"Advanced Rule Controls" in resp.data
+    assert b"Setup Expectancy Snapshot" in resp.data
+
+
+def test_trades_paste_page_renders(client):
+    resp = client.get("/trades/paste", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Paste Trades" in resp.data
+    assert b"tabs please" in resp.data
+    assert b"Paste your trade rows here" in resp.data
+
+
+def test_trades_broker_paste_page_renders(client):
+    resp = client.get("/trades/paste/broker", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Paste Broker Fills" in resp.data
+    assert b"Convert + Import" in resp.data
+
+
+def test_statement_html_import_renders_balance_snapshot_result(app, monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:ACC100",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    account = trades_repo.get_account(int(account_id))
+
+    monkeypatch.setattr(
+        trades_svc.importing,
+        "parse_statement_html_to_broker_paste",
+        lambda path: ("", 50125.50, ["Ending balance only"]),
+    )
+    monkeypatch.setattr(
+        trades_svc.importing,
+        "insert_balance_snapshot",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(trades_svc, "latest_balance_overall", lambda **kwargs: 50125.50)
+    monkeypatch.setattr(trades_svc, "_record_import_batch", lambda **kwargs: None)
+
+    with app.test_request_context("/trades/upload/statement", method="POST"):
+        body = trades_svc._handle_statement_html_import(
+            "/tmp/fake.html",
+            "broker",
+            "Statement HTML",
+            account=account,
+            filename="fake.html",
+        )
+
+    assert "Balance Snapshot Imported" in body
+    assert "Ending balance only" in body
 
 
 def test_playbook_blocks_manual_trade_when_score_below_min(client, monkeypatch, tmp_path):
@@ -1671,6 +1773,62 @@ def test_live_sync_async_start_returns_job_json(client, monkeypatch):
     assert payload["ok"] is True
     assert payload["job"]["id"] == "job-123"
     assert payload["job"]["status"] == "queued"
+
+
+def test_start_sync_job_launches_dedicated_worker_thread(client, monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    launched = {}
+    monkeypatch.setattr(
+        trades_svc,
+        "_create_bg_job",
+        lambda kind, title, requested: {
+            "id": "job-123",
+            "kind": kind,
+            "title": title,
+            "status": "queued",
+            "stage": "start",
+            "message": "Queued and waiting to start.",
+            "requested": requested,
+        },
+    )
+    monkeypatch.setattr(trades_svc, "_sync_cancel_event", lambda _job_id: object())
+    monkeypatch.setattr(trades_svc, "ensure_sync_dispatcher_started", lambda _app: None)
+    monkeypatch.setattr(
+        trades_svc,
+        "_start_sync_job_thread",
+        lambda app, worker_payload: launched.update({"app": app, "worker_payload": worker_payload}),
+    )
+
+    app = client.application
+    with app.app_context():
+        job = trades_svc._start_sync_job(
+            selected_account_id=7,
+            title="Live Sync",
+            source_label="LIVE LOGIN HTML",
+            record_source="LIVE SYNC",
+            mode="broker",
+            username="demo-user",
+            password="demo-pass",
+            base_url="https://trade.vanquishtrader.com",
+            account="default:OEXXXXXXXX",
+            wl="vanquishtrader",
+            time_zone="America/New_York",
+            date_locale="en-US",
+            report_locale="en",
+            from_date="2026-03-18",
+            to_date="2026-03-18",
+            headless=True,
+            debug_capture=False,
+            debug_only=False,
+            requested={"source": "manual_live"},
+        )
+
+    assert job["id"] == "job-123"
+    assert launched["app"] is app
+    assert launched["worker_payload"]["job"]["id"] == "job-123"
+    assert launched["worker_payload"]["selected_account_id"] == 7
+    assert launched["worker_payload"]["requested"] == {"source": "manual_live"}
 
 
 def test_load_last_sync_status_reclassifies_thread_error(tmp_path, monkeypatch):
@@ -1982,6 +2140,14 @@ def test_manual_trade_first_trade_gate_blocks_missing_gate_fields(client):
     assert resp.status_code == 200
     assert b"Trade gate blocked first trade" in resp.data
     assert b"Trade Gate" in resp.data
+
+
+def test_manual_trade_entry_page_renders_gate_and_checklist(client):
+    resp = client.get("/trades/new")
+    assert resp.status_code == 200
+    assert b"Manual Trade Entry" in resp.data
+    assert b"Trade Gate" in resp.data
+    assert b"Critical Checklist Gate" in resp.data
 
 
 def test_manual_trade_first_trade_gate_saves_pass_and_allows_followup_without_gate_fields(client):

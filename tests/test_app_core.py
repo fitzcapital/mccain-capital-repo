@@ -2,8 +2,10 @@
 
 from datetime import datetime, timedelta
 import json
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from mccain_capital import app_core as core
 from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import db, get_setting_value, now_iso, set_setting_value, today_iso
 from mccain_capital.services import core as core_service
@@ -213,6 +215,28 @@ def test_strategies_page_uses_playbook_workflow_surface(client):
     assert "Playbook Rule" in body
 
 
+def test_books_page_renders_empty_library_and_featured_shelf(client):
+    empty_resp = client.get("/books", follow_redirects=True)
+    assert empty_resp.status_code == 200
+    empty_body = empty_resp.get_data(as_text=True)
+    assert "Private Trading Library" in empty_body
+    assert "No PDFs found yet." in empty_body
+    assert "No PDFs found in" in empty_body
+
+    books_root = Path(core.BOOKS_DIR)
+    books_root.mkdir(parents=True, exist_ok=True)
+    featured_path = books_root / "Trading in the Zone -  Mark Douglas.pdf"
+    featured_path.write_bytes(b"%PDF-1.4\n% featured test pdf\n")
+
+    featured_resp = client.get("/books", follow_redirects=True)
+    assert featured_resp.status_code == 200
+    featured_body = featured_resp.get_data(as_text=True)
+    assert "Trading in the Zone" in featured_body
+    assert "Mindset Pull" in featured_body
+    assert "Think in terms of probabilities." in featured_body
+    assert '/books/open/Trading in the Zone -  Mark Douglas.pdf">Open Trading in the Zone<' in featured_body
+
+
 def test_playbook_page_renders_trading_doctrine_surface(client):
     resp = client.get("/playbook", follow_redirects=True)
     assert resp.status_code == 200
@@ -239,6 +263,15 @@ def test_strat_page_tracks_modules_in_learning_progress_and_includes_deeper_trai
 
 
 def test_strategy_mutations_flash_feedback(client):
+    invalid = client.post(
+        "/strategies/new",
+        data={"title": "", "body": ""},
+        follow_redirects=True,
+    )
+    assert invalid.status_code == 200
+    assert b"Title and body required." in invalid.data
+    assert b"Keep it executable." in invalid.data
+
     created = client.post(
         "/strategies/new",
         data={"title": "ORB", "body": "Open range break with defined risk."},
@@ -1531,6 +1564,106 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"marketPulseLoadingOverlay" in resp.data
     assert b"Loading Market Pulse" in resp.data
     assert b"autoRefreshToggle" not in resp.data
+
+
+def test_gamma_ladder_api_defaults_to_spx(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+
+    monkeypatch.setattr(
+        gamma_map_service,
+        "build_gamma_ladder",
+        lambda symbol, window="standard": {
+            "ok": True,
+            "symbol": symbol,
+            "spot": 7415.22,
+            "expiration": "2026-05-21",
+            "expiration_label": "0DTE",
+            "regime": "positive_gamma",
+            "regime_label": "Positive Gamma Regime",
+            "updated_at": now_iso(),
+            "updated_label": "2:41 PM ET",
+            "total_net_gamma": 123456789.0,
+            "flip_strike": 7400.0,
+            "strongest_level": 7425.0,
+            "rows_total": 96,
+            "rows_visible": 17,
+            "window_min_strike": 7350.0,
+            "window_max_strike": 7475.0,
+            "window_mode": "spot_band",
+            "window_preset": window,
+            "rows": [{"strike": 7425.0, "call_gex": 12.0, "put_gex": -8.0, "net_gex": 4.0}],
+        },
+    )
+
+    resp = client.get("/api/gamma-ladder", follow_redirects=True)
+
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert payload["symbol"] == "SPX"
+    assert payload["rows_total"] == 96
+    assert payload["rows_visible"] == 17
+    assert payload["window_preset"] == "standard"
+    assert payload["rows"]
+
+
+def test_gamma_ladder_api_accepts_supported_symbols_and_normalizes_invalid(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+
+    monkeypatch.setattr(
+        gamma_map_service,
+        "build_gamma_ladder",
+        lambda symbol, window="standard": {
+            "ok": True,
+            "symbol": symbol,
+            "spot": 532.14,
+            "expiration": "2026-05-21",
+            "expiration_label": "0DTE",
+            "regime": "mixed_gamma",
+            "regime_label": "Mixed Gamma Regime",
+            "updated_at": now_iso(),
+            "updated_label": "2:41 PM ET",
+            "total_net_gamma": 1.0,
+            "flip_strike": 530.0,
+            "strongest_level": 535.0,
+            "rows_total": 48,
+            "rows_visible": 13,
+            "window_min_strike": 520.0,
+            "window_max_strike": 542.0,
+            "window_mode": "spot_band",
+            "window_preset": window,
+            "rows": [{"strike": 535.0, "call_gex": 5.0, "put_gex": -2.0, "net_gex": 3.0}],
+        },
+    )
+
+    spy_resp = client.get("/api/gamma-ladder?symbol=SPY&window=tight", follow_redirects=True)
+    bad_resp = client.get("/api/gamma-ladder?symbol=bad&window=nope", follow_redirects=True)
+
+    assert spy_resp.status_code == 200
+    assert spy_resp.get_json()["symbol"] == "SPY"
+    assert spy_resp.get_json()["window_preset"] == "tight"
+    assert bad_resp.status_code == 200
+    assert bad_resp.get_json()["symbol"] == "SPX"
+    assert bad_resp.get_json()["window_preset"] == "standard"
+
+
+def test_market_pulse_renders_gamma_ladder_switcher(client):
+    resp = client.get("/market-pulse", follow_redirects=True)
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert 'id="marketPulseGammaLadderCard"' in body
+    assert 'class="gamma-symbol-switcher"' in body
+    assert 'data-gamma-symbol-pill="SPX"' in body
+    assert 'data-gamma-symbol-pill="SPY"' in body
+    assert 'data-gamma-symbol-pill="QQQ"' in body
+    assert 'data-gamma-window-pill="tight"' in body
+    assert 'data-gamma-window-pill="standard"' in body
+    assert 'data-gamma-window-pill="wide"' in body
+    assert 'data-gamma-summary' in body
+    assert 'data-gamma-loading' in body
+    assert 'data-gamma-board' in body
+    assert 'class="gamma-ladder-boardShell"' in body
 
 
 def test_market_pulse_news_surface_keeps_tape_drivers_and_removes_watchlist_block(
@@ -3303,6 +3436,48 @@ def test_manual_trade_save_flashes_and_redirects(client):
     )
     assert resp.status_code == 200
     assert b"Trade saved." in resp.data
+
+
+def test_trade_edit_page_renders_form(client):
+    created = client.post(
+        "/trades/new",
+        data={
+            "trade_date": today_iso(),
+            "entry_time": "9:35 AM",
+            "exit_time": "9:40 AM",
+            "ticker": "SPX",
+            "opt_type": "CALL",
+            "strike": "5000",
+            "contracts": "1",
+            "entry_price": "1.00",
+            "exit_price": "1.20",
+            "comm": "1.00",
+            "gate_setup_type": "Opening drive",
+            "gate_invalidation": "Lose opening range low",
+            "gate_max_risk": "100",
+            "gate_focus": "Take one clean A setup",
+            "gate_market_ready": "1",
+            "gate_macro_clear": "1",
+            "gate_risk_confirmed": "1",
+        },
+        follow_redirects=True,
+    )
+    assert created.status_code == 200
+
+    with db() as conn:
+        trade_id = conn.execute("SELECT MAX(id) FROM trades").fetchone()[0]
+
+    resp = client.get(f"/trades/edit/{trade_id}?d={today_iso()}", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Edit Trade" in resp.data
+    assert b"Fees (total)" in resp.data
+
+
+def test_risk_controls_page_renders_form(client):
+    resp = client.get("/trades/risk-controls", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Risk Controls" in resp.data
+    assert b"Daily Max Loss" in resp.data
 
 
 def test_dashboard_shows_balance_basis_and_drift_signal(client):

@@ -220,52 +220,9 @@ def trades_edit(trade_id: int):
         return legacy.redirect(legacy.url_for("trades_page", d=trade_date))
 
     t = dict(row)
-    content = legacy.render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">✏️ Edit Trade #{{ t.id }}</div>
-          <div class="hr"></div>
-
-          <form method="post" action="/trades/edit/{{ t.id }}?{{ back_query }}">
-            <div class="row">
-              <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ t.trade_date }}"/></div>
-              <div><label>⏱️ Entry Time</label><input name="entry_time" value="{{ t.entry_time or '' }}"/></div>
-              <div><label>⏱️ Exit Time</label><input name="exit_time" value="{{ t.exit_time or '' }}"/></div>
-            </div>
-
-            <div class="row stack10">
-              <div><label>🏷️ Ticker</label><input name="ticker" value="{{ t.ticker or '' }}"/></div>
-              <div>
-                <label>📌 Type</label>
-                <select name="opt_type">
-                  <option value="CALL" {% if (t.opt_type or '')=='CALL' %}selected{% endif %}>CALL</option>
-                  <option value="PUT"  {% if (t.opt_type or '')=='PUT' %}selected{% endif %}>PUT</option>
-                </select>
-              </div>
-              <div><label>❌ Strike</label><input name="strike" inputmode="decimal" value="{{ '' if t.strike is none else t.strike }}"/></div>
-            </div>
-
-            <div class="row stack10">
-              <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ t.contracts or 1 }}"/></div>
-              <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" value="{{ '' if t.entry_price is none else t.entry_price }}"/></div>
-              <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" value="{{ '' if t.exit_price is none else t.exit_price }}"/></div>
-            </div>
-
-            <div class="row stack10">
-              <div><label>💵 Fees (total)</label><input name="comm" inputmode="decimal" value="{{ t.comm or 0.70 }}"/></div>
-            </div>
-
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">💾 Save</button>
-              <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}">← Back</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    content = legacy.render_template(
+        "trades/edit_trade.html",
         t=t,
-        d=d,
-        q=q,
         back_query=back_query,
     )
     return legacy.render_page(content, active="trades")
@@ -428,34 +385,8 @@ def trades_risk_controls():
 
     rc = legacy.repo.get_risk_controls()
     state = legacy.trade_lockout_state(legacy.today_iso())
-    content = legacy.render_template_string(
-        """
-        <div class="card"><div class="toolbar">
-          <div class="pill">🛡️ Risk Controls</div>
-          <div class="tiny stack8">
-            Today's net: {{ money(state.day_net) }} · Max loss: {{ money(state.daily_max_loss) }} ·
-            Status: {% if state.locked %}<b class="statusLock">LOCKED</b>{% else %}<b class="statusActive">ACTIVE</b>{% endif %}
-          </div>
-          <div class="hr"></div>
-          <form method="post">
-            <div class="row">
-              <div><label>Daily Max Loss ($)</label><input name="daily_max_loss" inputmode="decimal" value="{{ rc.daily_max_loss }}"></div>
-              <div>
-                <label>Enforce Lockout</label>
-                <select name="enforce_lockout">
-                  <option value="0" {% if not rc.enforce_lockout %}selected{% endif %}>Off</option>
-                  <option value="1" {% if rc.enforce_lockout %}selected{% endif %}>On</option>
-                </select>
-              </div>
-            </div>
-            <div class="hr"></div>
-            <div class="rightActions">
-              <button class="btn primary" type="submit">Save Risk Controls</button>
-              <a class="btn" href="/trades">Trades</a>
-            </div>
-          </form>
-        </div></div>
-        """,
+    content = legacy.render_template(
+        "trades/risk_controls.html",
         rc=rc,
         state=state,
         money=legacy.money,

@@ -1,0 +1,65 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">📘 Playbook Engine</div>
+  <div class="tiny stack10 line16">Enforce pre-trade rules from your edge stats (size caps, blocked windows, quality floor).</div>
+  <div class="tiny stack8 line16">Why this matters: rules prevent emotional drift and preserve consistency under pressure.</div>
+  <div class="tiny stack8 line16">Next best action: keep this enabled, set a realistic checklist floor, then expand advanced controls only if needed.</div>
+  <div class="hr"></div>
+  <form method="post">
+    <div class="row">
+      <div><label><input type="checkbox" name="enabled" value="1" {% if cfg.enabled %}checked{% endif %}/> Enable playbook enforcement</label></div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Minimum Checklist Score</label>
+        <input type="number" min="0" max="100" name="min_checklist_score" value="{{ cfg.min_checklist_score }}" />
+      </div>
+      <div>
+        <label>Max Size (% of balance by total spend)</label>
+        <input type="number" min="1" max="100" step="0.1" name="max_size_pct" value="{{ cfg.max_size_pct }}" />
+      </div>
+    </div>
+    <details class="syncDetails stack10">
+      <summary>Advanced Rule Controls</summary>
+      <div class="hr"></div>
+      <div class="row">
+        <div><label><input type="checkbox" name="require_positive_setup_expectancy" value="1" {% if cfg.require_positive_setup_expectancy %}checked{% endif %}/> Require positive setup expectancy</label></div>
+        <div><label><input type="checkbox" name="require_critical_checklist" value="1" {% if cfg.require_critical_checklist %}checked{% endif %}/> Require critical checklist items</label></div>
+      </div>
+      <div class="row">
+        <div class="fieldGrow2">
+          <label>Blocked Time Blocks (comma-separated)</label>
+          <input name="blocked_time_blocks" value="{{ cfg.blocked_time_blocks|join(', ') }}" placeholder="09:30-10:00, 15:00-16:00" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="fieldGrow2">
+          <label>Critical Checklist Items (comma-separated)</label>
+          <input name="critical_items" value="{{ cfg.critical_items|join(', ') }}" placeholder="Bias Confirmed, Risk Defined, Stop Planned" />
+        </div>
+      </div>
+    </details>
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">Save Playbook Rules</button>
+      <a class="btn" href="/trades">Trades</a>
+    </div>
+  </form>
+</div></div>
+<div class="card"><div class="toolbar">
+  <div class="pill">📈 Setup Expectancy Snapshot</div>
+  <div class="tableWrap"><table class="tableDense">
+    <thead><tr><th>Setup</th><th>Trades</th><th>Win Rate</th><th>Expectancy</th></tr></thead>
+    <tbody>
+    {% for r in setup_rows[:20] %}
+      <tr>
+        <td>{{ r.k or 'Unlabeled' }}</td>
+        <td>{{ r.count }}</td>
+        <td>{{ '%.1f'|format(r.win_rate) }}%</td>
+        <td>{{ money(r.expectancy) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4">No setup data yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div></div>

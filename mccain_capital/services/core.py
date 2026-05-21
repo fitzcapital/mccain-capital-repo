@@ -3173,6 +3173,12 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
             f'<rect class="marketMiniSparkBody {cls}" x="{(center_x - candle_width / 2):.2f}" '
             f'y="{top_y:.2f}" width="{candle_width:.2f}" height="{body_height:.2f}" rx=".08" ry=".08" />'
         )
+    last_close_y = _y(candles[-1]["close"])
+    last_close_class = (
+        "up"
+        if candles[-1]["close"] > candles[-1]["open"]
+        else "down" if candles[-1]["close"] < candles[-1]["open"] else "flat"
+    )
     return (
         '<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">'
         + '<line class="marketMiniSparkGuide" x1="0" y1="14" x2="138" y2="14" />'
@@ -3180,6 +3186,7 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
         f'y1="{baseline_y:.2f}" x2="138" y2="{baseline_y:.2f}" />'
         + '<line class="marketMiniSparkGuide" x1="0" y1="46" x2="138" y2="46" />'
         + "".join(candle_markup)
+        + f'<circle class="marketMiniSparkPoint {last_close_class}" cx="{center_x:.2f}" cy="{last_close_y:.2f}" r="2.3" />'
         + "</svg>"
     )
 
@@ -9614,6 +9621,53 @@ def _dashboard_calendar_payload(
     }
 
 
+def _dashboard_balance_summary(
+    *,
+    scope_active: bool,
+    scope_account_id: int | None,
+    scope_start: str,
+    scope_starting_balance: float,
+    selected_account: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    from mccain_capital.repositories import trades as trades_repo
+
+    scope_has_bound_account = bool(scope_active and scope_account_id)
+    balance_integrity = trades_repo.balance_integrity_snapshot(
+        start_date=scope_start if scope_active else None,
+        starting_balance=scope_starting_balance if scope_active else None,
+        account_id=scope_account_id if scope_active else None,
+    )
+    if scope_has_bound_account:
+        scoped_balance = selected_account.get("current_balance") if selected_account else None
+        if isinstance(scoped_balance, (int, float)):
+            overall_balance = float(scoped_balance)
+        else:
+            overall_balance = float(
+                trades_repo.latest_balance_overall(
+                    account_id=scope_account_id,
+                    start_date=scope_start,
+                    starting_balance=scope_starting_balance,
+                )
+            )
+        overall_profit = overall_balance - scope_starting_balance
+    else:
+        overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
+        overall_profit = overall_balance
+    if scope_active:
+        trajectory_title = "Active Account Profit"
+        trajectory_caption = "Scoped account profit first. Funded size stays in the background."
+    else:
+        trajectory_title = "All History Profit"
+        trajectory_caption = "Combined profit across all account ledgers."
+    return {
+        "balance_integrity": balance_integrity,
+        "overall_balance": overall_balance,
+        "overall_profit": overall_profit,
+        "trajectory_title": trajectory_title,
+        "trajectory_caption": trajectory_caption,
+    }
+
+
 def _milestone_profit_value(
     source: str, *, today_net: float, this_week_total: float, mtd_net: float, ytd_net: float
 ) -> float:
@@ -9918,6 +9972,400 @@ def dashboard_behavior_update():
     )
 
 
+def _dashboard_tape_viewmodel(
+    *,
+    selected_ticker: str,
+    alternate_ticker: str,
+    tape_snapshot: Dict[str, Any],
+    testing_mode: bool,
+    market_data_service: Any,
+) -> Dict[str, Any]:
+    tape_prices = dict(tape_snapshot.get("prices") or {})
+    dashboard_instrument = dict(tape_prices.get(selected_ticker) or {})
+    dashboard_peer = dict(tape_prices.get(alternate_ticker) or {})
+    dashboard_vix = dict(tape_prices.get("VIX") or {})
+    if testing_mode:
+        watch_symbols = [selected_ticker, alternate_ticker, "VIX"]
+        if (
+            dashboard_instrument.get("price") is None
+            or dashboard_peer.get("price") is None
+            or dashboard_vix.get("price") is None
+        ):
+            try:
+                tradier_quotes = market_data_service.get_watchlist_tradier(watch_symbols)
+            except Exception:
+                tradier_quotes = {}
+            if dashboard_instrument.get("price") is None:
+                dashboard_instrument = dict(
+                    tradier_quotes.get(selected_ticker) or dashboard_instrument
+                )
+            if dashboard_peer.get("price") is None:
+                dashboard_peer = dict(tradier_quotes.get(alternate_ticker) or dashboard_peer)
+            if dashboard_vix.get("price") is None:
+                dashboard_vix = dict(tradier_quotes.get("VIX") or dashboard_vix)
+        if (
+            dashboard_instrument.get("price") is None
+            or dashboard_peer.get("price") is None
+            or dashboard_vix.get("price") is None
+        ):
+            try:
+                fallback = market_data_service.get_watchlist(
+                    watch_symbols,
+                    allow_yf_fallback=False,
+                )
+            except Exception:
+                fallback = {}
+            if dashboard_instrument.get("price") is None:
+                dashboard_instrument = dict(fallback.get(selected_ticker) or dashboard_instrument)
+            if dashboard_peer.get("price") is None:
+                dashboard_peer = dict(fallback.get(alternate_ticker) or dashboard_peer)
+            if dashboard_vix.get("price") is None:
+                dashboard_vix = dict(fallback.get("VIX") or dashboard_vix)
+    now_epoch = int(app_runtime.now_et().timestamp())
+    intraday_rows_cache: Dict[str, List[Dict[str, Any]]] = {}
+    pulse_snapshot_box: Dict[str, Any] = {"value": None}
+
+    def _dashboard_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
+        key = str(symbol or "").strip().upper()
+        if not key:
+            return []
+        cached = intraday_rows_cache.get(key)
+        if cached is not None:
+            return cached
+        if testing_mode or key in {"VIX", "^VIX"}:
+            try:
+                rows = market_data_service.get_intraday(key)
+            except Exception:
+                rows = []
+            cleaned = [dict(row) for row in rows if isinstance(row, dict)]
+        else:
+            cleaned = []
+        intraday_rows_cache[key] = cleaned
+        return cleaned
+
+    def _float_or_none(value: Any) -> Optional[float]:
+        if isinstance(value, (int, float)):
+            return float(value)
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+    def _dashboard_quote_series_values(quote: Dict[str, Any]) -> List[float]:
+        values: List[float] = []
+        for key in ("mini_series", "series", "prior_session_series"):
+            src = quote.get(key)
+            if not isinstance(src, list):
+                continue
+            for item in src[-120:]:
+                value = item.get("v") if isinstance(item, dict) else item
+                numeric = _float_or_none(value)
+                if numeric is not None:
+                    values.append(numeric)
+            if len(values) >= 2:
+                return values[-40:]
+        return values[-40:]
+
+    def _dashboard_mini_series(symbol: str) -> List[float]:
+        key = str(symbol or "").strip().upper()
+        if not key:
+            return []
+        if key in {"VIX", "^VIX"}:
+            rows = _dashboard_intraday_rows(key)
+            vix_intraday = [
+                float(r.get("close"))
+                for r in rows[-120:]
+                if isinstance(r, dict) and isinstance(r.get("close"), (int, float))
+            ]
+            deduped_vix: List[float] = []
+            for value in vix_intraday:
+                if not deduped_vix or abs(deduped_vix[-1] - value) > 0.001:
+                    deduped_vix.append(value)
+            if len(deduped_vix) >= 4:
+                return deduped_vix[-40:]
+        if pulse_snapshot_box["value"] is None:
+            try:
+                pulse_snapshot_box["value"] = _market_pulse_snapshot(
+                    force_refresh=False,
+                    persist_replay=False,
+                )
+            except Exception:
+                pulse_snapshot_box["value"] = {}
+        for quote in list((pulse_snapshot_box["value"] or {}).get("quotes") or []):
+            if not isinstance(quote, dict):
+                continue
+            quote_symbol = str(quote.get("label") or quote.get("symbol") or "").strip().upper()
+            if quote_symbol != key:
+                continue
+            pulse_src = quote.get("mini_series")
+            if not isinstance(pulse_src, list):
+                pulse_src = quote.get("series") if isinstance(quote.get("series"), list) else []
+            pulse_points: List[float] = []
+            for item in pulse_src[-120:]:
+                value = item.get("v") if isinstance(item, dict) else item
+                if isinstance(value, (int, float)):
+                    pulse_points.append(float(value))
+            if len(pulse_points) >= 4:
+                return pulse_points[-40:]
+        points_src = (tape_snapshot.get("series_points") or {}).get(key) or []
+        points: List[float] = []
+        if isinstance(points_src, list):
+            for row in points_src:
+                if isinstance(row, dict) and isinstance(row.get("v"), (int, float)):
+                    points.append(float(row.get("v")))
+        if points:
+            deduped: List[float] = []
+            for value in points[-120:]:
+                if not deduped or abs(deduped[-1] - value) > 0.01:
+                    deduped.append(value)
+            if len(deduped) >= 4:
+                return deduped[-40:]
+        raw_src = (tape_snapshot.get("series") or {}).get(key) or []
+        if isinstance(raw_src, list):
+            raw = [float(v) for v in raw_src if isinstance(v, (int, float))]
+            deduped_raw: List[float] = []
+            for value in raw[-120:]:
+                if not deduped_raw or abs(deduped_raw[-1] - value) > 0.01:
+                    deduped_raw.append(value)
+            if len(deduped_raw) >= 4:
+                return deduped_raw[-40:]
+        intraday = [
+            float(r.get("close"))
+            for r in _dashboard_intraday_rows(key)[-120:]
+            if isinstance(r, dict) and isinstance(r.get("close"), (int, float))
+        ]
+        deduped_intraday: List[float] = []
+        for value in intraday:
+            if not deduped_intraday or abs(deduped_intraday[-1] - value) > 0.01:
+                deduped_intraday.append(value)
+        if deduped_intraday:
+            return deduped_intraday[-40:]
+        replay_points, _replay_day = _market_pulse_cached_replay_series(key)
+        replay_values = [
+            float(point.get("v"))
+            for point in replay_points[-120:]
+            if isinstance(point, dict) and isinstance(point.get("v"), (int, float))
+        ]
+        return replay_values[-40:] if len(replay_values) >= 8 else []
+
+    def _dashboard_freshness_contract(state: str, as_of_raw: str) -> Dict[str, Any]:
+        age_s = 0
+        has_timestamp = bool(as_of_raw)
+        if has_timestamp:
+            try:
+                as_of_dt = datetime.fromisoformat(as_of_raw.replace("Z", "+00:00"))
+                age_s = max(0, now_epoch - int(as_of_dt.timestamp()))
+                age_label = _market_data_age_label(age_s)
+            except Exception:
+                has_timestamp = False
+                age_label = "unavailable"
+        else:
+            age_label = "unavailable" if state == "Unavailable" else "0s old"
+        band = "Critical" if age_s >= 900 else state
+        compact = f"{age_s // 3600}h" if age_s >= 3600 else f"{age_s // 60}m" if age_s >= 60 else f"{age_s}s"
+        return {
+            "age_seconds": age_s,
+            "age_label": age_label,
+            "compact": "unavailable" if not has_timestamp else compact,
+            "band": band,
+            "status_label": "" if band == "Live" else band,
+            "tone": "missing" if state == "Unavailable" else "critical" if age_s >= 900 else "delayed" if state in {"Delayed", "Cached"} else "live",
+        }
+
+    def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
+        enriched = dict(quote or {})
+        intraday_series = _dashboard_mini_series(symbol)
+        if len(intraday_series) < 2:
+            intraday_series = _dashboard_quote_series_values(enriched)
+        full_intraday_rows = _dashboard_intraday_rows(symbol)
+        if full_intraday_rows:
+            first_open = next((float(r.get("open")) for r in full_intraday_rows if isinstance(r.get("open"), (int, float))), None)
+            highs = [float(r.get("high")) for r in full_intraday_rows if isinstance(r.get("high"), (int, float))]
+            lows = [float(r.get("low")) for r in full_intraday_rows if isinstance(r.get("low"), (int, float))]
+            closes = [float(r.get("close")) for r in full_intraday_rows if isinstance(r.get("close"), (int, float))]
+            if first_open is not None:
+                enriched["day_open"] = first_open
+            values = lows if highs and lows else closes
+            if values:
+                day_low = min(values)
+                day_high = max(highs) if highs and lows else max(values)
+                enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
+                enriched["day_range_compact"] = f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+            vwap_num = 0.0
+            vwap_den = 0.0
+            for r in full_intraday_rows:
+                close_v = r.get("close") if isinstance(r, dict) else None
+                vol_v = r.get("volume") if isinstance(r, dict) else None
+                if isinstance(close_v, (int, float)) and isinstance(vol_v, (int, float)) and float(vol_v) > 0:
+                    vwap_num += float(close_v) * float(vol_v)
+                    vwap_den += float(vol_v)
+            if vwap_den > 0:
+                enriched["vwap"] = vwap_num / vwap_den
+        elif intraday_series:
+            day_low = min(intraday_series)
+            day_high = max(intraday_series)
+            enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
+            enriched["day_range_compact"] = f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+        else:
+            enriched["day_range"] = "—"
+            enriched["day_range_compact"] = "—"
+            if enriched.get("day_open") is None:
+                enriched["day_open"] = None
+        replay_points, replay_day = _market_pulse_cached_replay_series(symbol)
+        if len(replay_points) >= 2:
+            replay_values = [float(point.get("v")) for point in replay_points[-120:] if isinstance(point, dict) and isinstance(point.get("v"), (int, float))]
+            if not list(enriched.get("prior_session_series") or []):
+                enriched["prior_session_series"] = replay_points
+            if replay_day and not str(enriched.get("prior_session_day") or "").strip():
+                enriched["prior_session_day"] = replay_day
+            if enriched.get("day_range_compact") == "—" and len(replay_values) >= 2:
+                day_low = min(replay_values)
+                day_high = max(replay_values)
+                enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
+                enriched["day_range_compact"] = f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+                if not intraday_series:
+                    intraday_series = replay_values[-40:]
+            if not isinstance(enriched.get("vwap"), (int, float)):
+                replay_vwap = _market_pulse_series_vwap(replay_points)
+                if replay_vwap is not None:
+                    enriched["vwap"] = replay_vwap
+        reason = str(enriched.get("reason") or "").lower()
+        provider = str(enriched.get("provider") or "").lower()
+        state = "Unavailable" if enriched.get("price") is None else "Cached" if "cached" in reason else "Live" if provider == "tradier" and reason.startswith("tradier_") else "Delayed" if "fallback" in reason or "close" in reason or provider not in ("", "tradier") else "Live"
+        enriched["market_state"] = state
+        enriched["data_status_label"] = state
+        price = _float_or_none(enriched.get("price"))
+        pct = _float_or_none(enriched.get("pct_change"))
+        prev_close = _float_or_none(enriched.get("prior_close")) or _float_or_none(enriched.get("prev_close")) or _float_or_none(enriched.get("previous_close"))
+        if prev_close is None and price is not None and pct is not None and abs(100.0 + pct) > 1e-9:
+            prev_close = price / (1.0 + (pct / 100.0))
+        if pct is None and price is not None and prev_close is not None and prev_close > 0:
+            pct = ((price - prev_close) / prev_close) * 100.0
+            enriched["pct_change"] = pct
+        enriched["prior_close"] = prev_close
+        chart_series = list(intraday_series)
+        if len(chart_series) < 2 and price is not None and prev_close is not None:
+            chart_series = [float(prev_close), float(price)]
+        if len(chart_series) < 2 and price is not None:
+            chart_series = [float(price), float(price)]
+        tone = "flat"
+        if len(chart_series) >= 2:
+            delta = float(chart_series[-1]) - float(chart_series[0])
+            tone = "up" if delta > 0 else "down" if delta < 0 else "flat"
+        enriched["sparkline_svg"] = _market_pulse_sparkline_svg(chart_series[-40:], tone)
+        change_points = price - prev_close if price is not None and prev_close is not None else None
+        day_open = _float_or_none(enriched.get("day_open"))
+        gap_points = day_open - prev_close if day_open is not None and prev_close is not None and prev_close > 0 else None
+        gap_pct = (gap_points / prev_close) * 100.0 if gap_points is not None and prev_close else None
+        enriched["change_points"] = change_points
+        enriched["overnight_gap_points"] = gap_points
+        enriched["overnight_gap_pct"] = gap_pct
+        enriched["overnight_gap_label"] = f"{gap_points:+.2f} pts · {gap_pct:+.2f}%" if gap_points is not None and gap_pct is not None else "—"
+        enriched["overnight_gap_compact"] = f"{gap_points:+.2f} ({gap_pct:+.2f}%)" if gap_points is not None and gap_pct is not None else "—"
+        if not str(enriched.get("day_range_compact") or "").strip():
+            day_range_full = str(enriched.get("day_range") or "—")
+            enriched["day_range_compact"] = day_range_full.replace(" to ", "-") if day_range_full != "—" else "—"
+        source_badge = _quote_source_badge(enriched)
+        freshness = _dashboard_freshness_contract(state, str(enriched.get("as_of") or "").strip())
+        enriched["source_label"] = source_badge["label"]
+        enriched["source_short"] = source_badge["label"]
+        enriched["source_badge_label"] = source_badge["label"]
+        enriched["source_badge_tone"] = source_badge["tone"]
+        enriched["market_state_display"] = state
+        enriched["freshness_age_seconds"] = freshness["age_seconds"]
+        enriched["freshness_band_display"] = freshness["band"]
+        enriched["freshness_status_display"] = freshness["status_label"]
+        enriched["freshness_status_tone"] = freshness["tone"]
+        enriched["freshness_label"] = freshness["age_label"]
+        enriched["freshness_label_compact"] = freshness["compact"]
+        return enriched
+
+    def _dashboard_tape_row(symbol: str, quote: Dict[str, Any], descriptor: str) -> Dict[str, Any]:
+        enriched = dict(quote or {})
+        change_points = enriched.get("change_points") if enriched.get("change_points") is not None else enriched.get("change")
+        row_tone = "up" if isinstance(change_points, (int, float)) and float(change_points) > 0 else "down" if isinstance(change_points, (int, float)) and float(change_points) < 0 else "flat"
+        pct_change = enriched.get("pct_change") if enriched.get("pct_change") is not None else enriched.get("change_pct")
+        if pct_change is None and enriched.get("price") is not None:
+            prev_close = enriched.get("prior_close") if enriched.get("prior_close") is not None else enriched.get("prev_close") or enriched.get("previous_close")
+            if isinstance(prev_close, (int, float)) and float(prev_close) > 0:
+                pct_change = ((float(enriched["price"]) - float(prev_close)) / float(prev_close)) * 100.0
+        tape_state = _market_pulse_tape_state(symbol, pct_change)
+        return {
+            "symbol": symbol,
+            "descriptor": descriptor,
+            "row_tone": row_tone,
+            "state_label": tape_state["label"],
+            "state_title": tape_state["title"],
+            "tape_tone": tape_state["tone"],
+            "sparkline_svg": str(enriched.get("sparkline_svg") or ""),
+            "price_display": f"{float(enriched['price']):.2f}" if enriched.get("price") is not None else "loading...",
+            "pct_change_display": f"{float(pct_change):+.2f}%" if pct_change is not None else "loading...",
+            "change_display": f"{float(change_points):+.2f}" if isinstance(change_points, (int, float)) else "loading...",
+            "change_arrow": "▲" if row_tone == "up" else "▼" if row_tone == "down" else "",
+            "open_display": f"{float(enriched['day_open']):.2f}" if enriched.get("day_open") is not None else "—",
+            "prev_display": f"{float(enriched['prior_close']):.2f}" if enriched.get("prior_close") is not None else "—",
+            "live_display": str(enriched.get("freshness_label_compact") or "—"),
+            "market_state_display": str(enriched.get("freshness_status_display") or ""),
+            "freshness_display": str(enriched.get("freshness_label") or "—"),
+            "freshness_tone": str(enriched.get("freshness_status_tone") or "live"),
+            "gap_display": str(enriched.get("overnight_gap_compact") or "—"),
+            "range_display": str(enriched.get("day_range_compact") or "—"),
+            "source_display": str(enriched.get("source_badge_label") or "—"),
+        }
+
+    dashboard_instrument = _enrich_dashboard_quote(selected_ticker, dashboard_instrument)
+    dashboard_peer = _enrich_dashboard_quote(alternate_ticker, dashboard_peer)
+    dashboard_vix = _enrich_dashboard_quote("VIX", dashboard_vix)
+    dashboard_tape_symbols = _dashboard_tape_symbols(selected_ticker)
+    dashboard_tape_quotes: Dict[str, Dict[str, Any]] = {
+        selected_ticker: dict(dashboard_instrument),
+        alternate_ticker: dict(dashboard_peer),
+        "VIX": dict(dashboard_vix),
+    }
+    extra_tape_quotes: Dict[str, Dict[str, Any]] = {}
+    if testing_mode:
+        try:
+            extra_tape_quotes = market_data_service.get_watchlist_tradier([symbol for symbol in dashboard_tape_symbols if symbol not in dashboard_tape_quotes])
+        except Exception:
+            extra_tape_quotes = {}
+    for symbol in dashboard_tape_symbols:
+        if symbol in dashboard_tape_quotes:
+            continue
+        worker_quote = dict(tape_prices.get(symbol) or {})
+        if testing_mode:
+            fallback_quote = dict(extra_tape_quotes.get(symbol) or {})
+            source_quote = dict(fallback_quote)
+            for key, value in worker_quote.items():
+                if value is None and key in source_quote:
+                    continue
+                source_quote[key] = value
+        else:
+            source_quote = worker_quote
+        dashboard_tape_quotes[symbol] = _enrich_dashboard_quote(symbol, source_quote)
+    dashboard_spx_diagnostic = _enrich_dashboard_quote("SPX", dict(tape_prices.get("SPX") or {}))
+    dashboard_tape_rows = [
+        _dashboard_tape_row("SPY", dashboard_tape_quotes.get("SPY") or {}, "market proxy"),
+        _dashboard_tape_row("QQQ", dashboard_tape_quotes.get("QQQ") or {}, "tech proxy"),
+        _dashboard_tape_row("VIX", dashboard_tape_quotes.get("VIX") or {}, "volatility"),
+        _dashboard_tape_row("SPX", dashboard_tape_quotes.get("SPX") or {}, "cash proxy"),
+    ]
+    dashboard_tape_updated_raw = str(tape_snapshot.get("updated_at") or "")
+    dashboard_tape_updated_label = _format_iso_et_label(dashboard_tape_updated_raw)
+    if dashboard_tape_updated_label:
+        parts = dashboard_tape_updated_label.split(" ", 3)
+        if len(parts) >= 4:
+            dashboard_tape_updated_label = parts[3]
+    return {
+        "dashboard_instrument": dashboard_instrument,
+        "dashboard_vix": dashboard_vix,
+        "dashboard_tape_quotes": dashboard_tape_quotes,
+        "dashboard_spx_diagnostic": dashboard_spx_diagnostic,
+        "dashboard_tape_rows": dashboard_tape_rows,
+        "dashboard_tape_updated": dashboard_tape_updated_raw,
+        "dashboard_tape_updated_label": dashboard_tape_updated_label,
+    }
+
+
 def dashboard():
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
@@ -9977,33 +10425,18 @@ def dashboard():
         next_y += 1
 
     month_name = calendar_payload["month_name"]
-    balance_integrity = trades_repo.balance_integrity_snapshot(
-        start_date=scope_start if scope_active else None,
-        starting_balance=scope_starting_balance if scope_active else 0.0,
-        account_id=scope_account_id if scope_active else None,
+    balance_summary = _dashboard_balance_summary(
+        scope_active=scope_active,
+        scope_account_id=scope_account_id,
+        scope_start=scope_start,
+        scope_starting_balance=scope_starting_balance,
+        selected_account=selected_account,
     )
-    if scope_active and scope_account_id:
-        scoped_balance = selected_account.get("current_balance") if selected_account else None
-        if isinstance(scoped_balance, (int, float)):
-            overall_balance = float(scoped_balance)
-        else:
-            overall_balance = float(
-                trades_repo.latest_balance_overall(
-                    account_id=scope_account_id,
-                    start_date=scope_start if scope_active else None,
-                    starting_balance=scope_starting_balance,
-                )
-            )
-        overall_profit = overall_balance - scope_starting_balance
-    else:
-        overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
-        overall_profit = overall_balance
-    trajectory_title = "Active Account Profit" if scope_active else "All History Profit"
-    trajectory_caption = (
-        "Scoped account profit first. Funded size stays in the background."
-        if scope_active
-        else "Combined profit across all account ledgers."
-    )
+    balance_integrity = balance_summary["balance_integrity"]
+    overall_balance = float(balance_summary["overall_balance"])
+    overall_profit = float(balance_summary["overall_profit"])
+    trajectory_title = str(balance_summary["trajectory_title"])
+    trajectory_caption = str(balance_summary["trajectory_caption"])
     sync_status = get_system_status()
     dashboard_live_sync = trades_sync.dashboard_live_sync_state()
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
@@ -10739,6 +11172,7 @@ def dashboard():
                 else f"/journal/new?d={today_key}&entry_type=trade_debrief&link_all_day=1&auto_draft=1"
             ),
             "action": "Open" if journal_count_today else "Log",
+            "action_label": "Open" if journal_count_today else "Auto Debrief Draft",
         },
     ]
     dashboard_planning_ready = False
@@ -10834,6 +11268,20 @@ def dashboard():
         parts = dashboard_tape_updated_label.split(" ", 3)
         if len(parts) >= 4:
             dashboard_tape_updated_label = parts[3]
+    tape_viewmodel = _dashboard_tape_viewmodel(
+        selected_ticker=selected_ticker,
+        alternate_ticker=alternate_ticker,
+        tape_snapshot=tape_snapshot,
+        testing_mode=bool(current_app.config.get("TESTING")),
+        market_data_service=market_data_service,
+    )
+    dashboard_instrument = tape_viewmodel["dashboard_instrument"]
+    dashboard_vix = tape_viewmodel["dashboard_vix"]
+    dashboard_tape_quotes = tape_viewmodel["dashboard_tape_quotes"]
+    dashboard_spx_diagnostic = tape_viewmodel["dashboard_spx_diagnostic"]
+    dashboard_tape_rows = tape_viewmodel["dashboard_tape_rows"]
+    dashboard_tape_updated_raw = tape_viewmodel["dashboard_tape_updated"]
+    dashboard_tape_updated_label = tape_viewmodel["dashboard_tape_updated_label"]
 
     content = render_template(
         "dashboard.html",
@@ -11705,6 +12153,9 @@ def market_pulse_page():
         market_feed_snapshot=dict(news_snapshot.get("market_feed_snapshot") or {}),
         market_pulse_context_api_url=url_for("market_pulse_context_api", ticker=selected_ticker),
         market_pulse_tape_api_url=url_for("market_pulse_tape_api", ticker=selected_ticker),
+        gamma_ladder_api_url=url_for("gamma_ladder_api"),
+        gamma_ladder_supported_symbols=["SPX", "SPY", "QQQ"],
+        gamma_ladder_window_presets=["tight", "standard", "wide"],
         money=app_runtime.money,
         money_compact=_money_compact,
     )
@@ -11805,6 +12256,27 @@ def market_pulse_context_api():
             },
         }
     )
+
+
+def gamma_ladder_api():
+    from mccain_capital.services import gamma_map_service
+
+    if auth_enabled() and not is_authenticated():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    symbol = gamma_map_service.normalize_gamma_symbol(request.args.get("symbol") or "")
+    window = gamma_map_service.normalize_gamma_ladder_window(request.args.get("window") or "")
+    try:
+        payload = gamma_map_service.build_gamma_ladder(symbol, window=window)
+    except Exception as exc:
+        return jsonify(
+            {
+                "ok": False,
+                "symbol": symbol,
+                "window_preset": window,
+                "message": str(exc) or "Gamma ladder unavailable.",
+            }
+        ), 503
+    return jsonify(payload)
 
 
 def market_pulse_tape_api():

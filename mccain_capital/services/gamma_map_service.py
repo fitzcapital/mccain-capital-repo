@@ -1,4 +1,4 @@
-"""SPX gamma map engine (Tradier only)."""
+"""Gamma map and gamma ladder services (Tradier-backed)."""
 
 from __future__ import annotations
 
@@ -95,6 +95,24 @@ _TRADIER_CHAIN_STATUS: Dict[str, Any] = {
     "status_code": 0,
     "path": "",
 }
+SUPPORTED_SYMBOLS: Tuple[str, ...] = ("SPX", "SPY", "QQQ")
+SUPPORTED_GAMMA_LADDER_WINDOWS: Tuple[str, ...] = ("tight", "standard", "wide")
+GAMMA_LADDER_CACHE_TTL_SECONDS = int(
+    os.environ.get("GAMMA_LADDER_CACHE_TTL_SECONDS", str(ACTIVE_POLL_SECONDS))
+    or ACTIVE_POLL_SECONDS
+)
+GAMMA_LADDER_WINDOW_SPOT_PCT = float(
+    os.environ.get("GAMMA_LADDER_WINDOW_SPOT_PCT", "0.03") or 0.03
+)
+GAMMA_LADDER_MAX_ROWS = int(os.environ.get("GAMMA_LADDER_MAX_ROWS", "19") or 19)
+GAMMA_LADDER_MIN_ROWS = int(os.environ.get("GAMMA_LADDER_MIN_ROWS", "11") or 11)
+GAMMA_LADDER_WINDOW_PRESETS: Dict[str, Dict[str, float | int]] = {
+    "tight": {"spot_pct_band": 0.015, "max_rows": 11, "min_rows": 9},
+    "standard": {"spot_pct_band": 0.03, "max_rows": 19, "min_rows": 11},
+    "wide": {"spot_pct_band": 0.05, "max_rows": 31, "min_rows": 15},
+}
+_GAMMA_LADDER_CACHE: Dict[str, Dict[str, Any]] = {}
+_GAMMA_LADDER_CACHE_LOCK = threading.Lock()
 
 _COMPACT_TICKER = re.compile(r"^(?:O:)?(SPXW|SPX)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
 
@@ -129,6 +147,73 @@ def _now_iso() -> str:
 
 def _json_clone(value: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(json.dumps(value))
+
+
+def normalize_gamma_symbol(symbol: str) -> str:
+    normalized = str(symbol or "").strip().upper()
+    return normalized if normalized in SUPPORTED_SYMBOLS else "SPX"
+
+
+def normalize_gamma_ladder_window(window: str) -> str:
+    normalized = str(window or "").strip().lower()
+    return normalized if normalized in SUPPORTED_GAMMA_LADDER_WINDOWS else "standard"
+
+
+def gamma_ladder_window_config(window: str) -> Dict[str, float | int]:
+    preset = normalize_gamma_ladder_window(window)
+    return dict(GAMMA_LADDER_WINDOW_PRESETS.get(preset) or GAMMA_LADDER_WINDOW_PRESETS["standard"])
+
+
+def gamma_ladder_cache_key(symbol: str, expiration: str, window: str = "standard") -> str:
+    return (
+        f"gamma_ladder_{normalize_gamma_symbol(symbol)}_{str(expiration or '').strip()}_"
+        f"{normalize_gamma_ladder_window(window)}"
+    )
+
+
+def _gamma_ladder_cache_get(key: str) -> Optional[Dict[str, Any]]:
+    if not key:
+        return None
+    with _GAMMA_LADDER_CACHE_LOCK:
+        cached = dict(_GAMMA_LADDER_CACHE.get(key) or {})
+    if not cached:
+        return None
+    cached_at = _parse_runtime_iso(cached.get("cached_at"))
+    if cached_at is None:
+        return None
+    if (datetime.now(timezone.utc) - cached_at).total_seconds() > GAMMA_LADDER_CACHE_TTL_SECONDS:
+        with _GAMMA_LADDER_CACHE_LOCK:
+            _GAMMA_LADDER_CACHE.pop(key, None)
+        return None
+    payload = cached.get("payload")
+    return dict(payload) if isinstance(payload, dict) else None
+
+
+def _gamma_ladder_cache_set(key: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    clean = dict(payload or {})
+    with _GAMMA_LADDER_CACHE_LOCK:
+        _GAMMA_LADDER_CACHE[key] = {"cached_at": _now_iso(), "payload": clean}
+    return dict(clean)
+
+
+def _format_ladder_updated_label(value: str) -> str:
+    dt = _parse_iso_timestamp(value)
+    if dt is None:
+        return "—"
+    hour = dt.strftime("%I").lstrip("0") or "0"
+    return f"{hour}{dt.strftime(':%M %p ET')}"
+
+
+def _expiration_label(expiration: str, *, now_et: Optional[datetime] = None) -> str:
+    current = now_et.astimezone(app_runtime.TZ) if now_et else app_runtime.now_et()
+    try:
+        target = date.fromisoformat(str(expiration or "").strip())
+    except Exception:
+        return str(expiration or "").strip() or "—"
+    delta_days = (target - current.date()).days
+    if delta_days <= 0:
+        return "0DTE"
+    return f"{delta_days}DTE"
 
 
 def _parse_runtime_iso(value: Any) -> Optional[datetime]:
@@ -1000,19 +1085,48 @@ def _next_trading_day_iso(anchor_iso: str) -> str:
     return app_runtime.next_trading_day_iso(anchor_iso)
 
 
-def fetch_spx_chain_for_expiries(expiries: List[str]) -> pd.DataFrame:
-    tradier_first = _fetch_spx_chain_from_tradier({str(x) for x in expiries if str(x)})
+def get_nearest_expiration(symbol: str) -> str:
+    normalized = normalize_gamma_symbol(symbol)
+    today = app_runtime.today_iso()
+    payload = _tradier_json(
+        "/v1/markets/options/expirations",
+        {"symbol": normalized, "includeAllRoots": "true", "strikes": "false"},
+    )
+    expirations = ((payload or {}).get("expirations") or {}).get("date")
+    if isinstance(expirations, str):
+        values = [expirations]
+    elif isinstance(expirations, list):
+        values = [str(item).strip() for item in expirations if str(item).strip()]
+    else:
+        values = []
+    if not values:
+        return today
+    sorted_values = sorted(values)
+    future = [value for value in sorted_values if value >= today]
+    return future[0] if future else sorted_values[0]
+
+
+def fetch_chain_for_expiries(symbol: str, expiries: List[str]) -> pd.DataFrame:
+    tradier_first = _fetch_chain_from_tradier(
+        normalize_gamma_symbol(symbol),
+        {str(x) for x in expiries if str(x)},
+    )
     if not tradier_first.empty:
         tradier_first.attrs["contracts_seen"] = int(tradier_first.attrs.get("contracts_seen") or 0)
         return tradier_first
     return pd.DataFrame()
 
 
-def _fetch_spx_chain_from_tradier(expiry_set: set[str]) -> pd.DataFrame:
+def fetch_spx_chain_for_expiries(expiries: List[str]) -> pd.DataFrame:
+    return fetch_chain_for_expiries("SPX", expiries)
+
+
+def _fetch_chain_from_tradier(symbol: str, expiry_set: set[str]) -> pd.DataFrame:
     if not _tradier_api_key():
         return pd.DataFrame()
     rows: Dict[Tuple[str, float], Dict[str, Any]] = {}
     seen = 0
+    normalized_symbol = normalize_gamma_symbol(symbol)
     expiries = sorted(str(expiry) for expiry in expiry_set if str(expiry))
     if not expiries:
         return pd.DataFrame()
@@ -1024,7 +1138,7 @@ def _fetch_spx_chain_from_tradier(expiry_set: set[str]) -> pd.DataFrame:
     def _fetch_expiry(expiry: str) -> Tuple[str, Dict[str, Any] | None]:
         return expiry, _tradier_json(
             "/v1/markets/options/chains",
-            {"symbol": "SPX", "expiration": expiry, "greeks": "true"},
+            {"symbol": normalized_symbol, "expiration": expiry, "greeks": "true"},
         )
 
     payloads: List[Tuple[str, Dict[str, Any] | None]] = []
@@ -1093,6 +1207,10 @@ def _fetch_spx_chain_from_tradier(expiry_set: set[str]) -> pd.DataFrame:
     if not df.empty:
         df.attrs["contracts_seen"] = seen
     return df
+
+
+def _fetch_spx_chain_from_tradier(expiry_set: set[str]) -> pd.DataFrame:
+    return _fetch_chain_from_tradier("SPX", expiry_set)
 
 
 def _parse_cboe_option_symbol(symbol: str) -> Dict[str, Any]:
@@ -1219,6 +1337,24 @@ def load_gamma_source(expiries: Optional[List[str]] = None) -> Dict[str, Any]:
         "source_file_path": source_file_path,
         "tradier_status": tradier_status,
         "source_error_reason": tradier_error,
+    }
+
+
+def get_options_chain(symbol: str, expiration: str) -> pd.DataFrame:
+    normalized = normalize_gamma_symbol(symbol)
+    target_expiration = str(expiration or "").strip() or get_nearest_expiration(normalized)
+    return fetch_chain_for_expiries(normalized, [target_expiration])
+
+
+def get_spot_quote(symbol: str) -> Dict[str, Any]:
+    normalized = normalize_gamma_symbol(symbol)
+    snapshot = market_data_service.get_price_snapshot(normalized)
+    value = _safe_float(snapshot.get("value"))
+    updated_at = str(snapshot.get("source_timestamp") or _now_iso())
+    return {
+        "symbol": normalized,
+        "spot": float(value) if value is not None else None,
+        "updated_at": updated_at,
     }
 
 
@@ -1540,6 +1676,193 @@ def classify_gamma_regime(
     return "neutral"
 
 
+def classify_gamma_ladder_regime(net_gex_total: float) -> Tuple[str, str]:
+    regime = classify_gamma_regime(float(net_gex_total or 0.0))
+    if regime in {"strong_positive", "positive"}:
+        return "positive_gamma", "Positive Gamma Regime"
+    if regime in {"strong_negative", "negative"}:
+        return "negative_gamma", "Negative Gamma Regime"
+    return "mixed_gamma", "Mixed Gamma Regime"
+
+
+def _focused_gamma_ladder_rows(
+    grouped: pd.DataFrame,
+    *,
+    spot: float,
+    flip_strike: Optional[float],
+    strongest_level: Optional[float],
+    window_preset: str = "standard",
+) -> Dict[str, Any]:
+    if grouped.empty:
+        return {
+            "rows": [],
+            "rows_total": 0,
+            "rows_visible": 0,
+            "window_min_strike": None,
+            "window_max_strike": None,
+            "window_mode": "empty",
+        }
+
+    ordered = grouped.sort_values("strike", ascending=False, kind="mergesort").copy()
+    records = [
+        {
+            "strike": float(row.get("strike") or 0.0),
+            "call_gex": float(row.get("call_gex") or 0.0),
+            "put_gex": float(row.get("put_gex") or 0.0),
+            "net_gex": float(row.get("net_gex") or 0.0),
+            "call_oi": float(row.get("call_oi") or 0.0),
+            "put_oi": float(row.get("put_oi") or 0.0),
+        }
+        for row in ordered.to_dict("records")
+    ]
+    total_rows = len(records)
+    nearest_spot = min(records, key=lambda row: abs(float(row["strike"]) - float(spot)))
+    nearest_flip = (
+        min(records, key=lambda row: abs(float(row["strike"]) - float(flip_strike)))
+        if isinstance(flip_strike, (int, float))
+        else None
+    )
+    strongest_row = (
+        min(records, key=lambda row: abs(float(row["strike"]) - float(strongest_level)))
+        if isinstance(strongest_level, (int, float))
+        else None
+    )
+    above_spot = [row for row in records if float(row["strike"]) > float(spot)]
+    below_spot = [row for row in records if float(row["strike"]) < float(spot)]
+    nearest_call_above = (
+        max(above_spot, key=lambda row: abs(float(row["net_gex"])))
+        if above_spot
+        else None
+    )
+    nearest_put_below = (
+        max(below_spot, key=lambda row: abs(float(row["net_gex"])))
+        if below_spot
+        else None
+    )
+    window_config = gamma_ladder_window_config(window_preset)
+    max_rows = int(window_config.get("max_rows") or GAMMA_LADDER_MAX_ROWS)
+    min_rows = int(window_config.get("min_rows") or GAMMA_LADDER_MIN_ROWS)
+    focus_band = abs(float(spot)) * max(
+        0.0, float(window_config.get("spot_pct_band") or GAMMA_LADDER_WINDOW_SPOT_PCT)
+    )
+    band_min = float(spot) - focus_band
+    band_max = float(spot) + focus_band
+    selected = [row for row in records if band_min <= float(row["strike"]) <= band_max]
+    selected_map = {float(row["strike"]): dict(row) for row in selected}
+    preserved = [
+        nearest_spot,
+        nearest_flip,
+        strongest_row,
+        nearest_call_above,
+        nearest_put_below,
+    ]
+    for row in preserved:
+        if row is None:
+            continue
+        selected_map[float(row["strike"])] = dict(row)
+
+    if len(selected_map) < min_rows:
+        by_distance = sorted(records, key=lambda row: (abs(float(row["strike"]) - float(spot)), -float(row["strike"])))
+        for row in by_distance:
+            selected_map.setdefault(float(row["strike"]), dict(row))
+            if len(selected_map) >= min_rows:
+                break
+
+    selected_rows = sorted(selected_map.values(), key=lambda row: float(row["strike"]), reverse=True)
+    if len(selected_rows) > max_rows:
+        keep = {
+            float(row["strike"])
+            for row in preserved
+            if row is not None
+        }
+        prioritized = sorted(
+            selected_rows,
+            key=lambda row: (
+                0 if float(row["strike"]) in keep else 1,
+                abs(float(row["strike"]) - float(spot)),
+                -float(row["strike"]),
+            ),
+        )
+        trimmed = prioritized[:max_rows]
+        trimmed.sort(key=lambda row: float(row["strike"]), reverse=True)
+        selected_rows = trimmed
+
+    spot_strike = float(nearest_spot["strike"])
+    flip_anchor = float(nearest_flip["strike"]) if nearest_flip is not None else None
+    strongest_anchor = float(strongest_row["strike"]) if strongest_row is not None else None
+    for row in selected_rows:
+        strike = float(row["strike"])
+        row["is_spot_nearest"] = strike == spot_strike
+        row["is_flip"] = flip_anchor is not None and strike == flip_anchor
+        row["is_strongest"] = strongest_anchor is not None and strike == strongest_anchor
+        row["is_above_spot"] = strike > float(spot)
+        row["is_below_spot"] = strike < float(spot)
+
+    return {
+        "rows": selected_rows,
+        "rows_total": total_rows,
+        "rows_visible": len(selected_rows),
+        "window_min_strike": (
+            min(float(row["strike"]) for row in selected_rows) if selected_rows else None
+        ),
+        "window_max_strike": (
+            max(float(row["strike"]) for row in selected_rows) if selected_rows else None
+        ),
+        "window_mode": "spot_band",
+        "window_preset": normalize_gamma_ladder_window(window_preset),
+    }
+
+
+def calculate_gamma_exposure(
+    symbol: str,
+    chain_data: pd.DataFrame,
+    spot: float,
+    *,
+    window_preset: str = "standard",
+) -> Dict[str, Any]:
+    normalized = normalize_gamma_symbol(symbol)
+    exposures = compute_exposures(chain_data, float(spot))
+    grouped = aggregate_gex_by_strike(exposures)
+    net_total = compute_net_gex_total(grouped)
+    flip_strike = compute_gamma_flip(grouped, float(spot))
+    ladder_regime, ladder_regime_label = classify_gamma_ladder_regime(net_total)
+    strongest_row = (
+        grouped.assign(_abs_net=lambda frame: frame["net_gex"].astype(float).abs())
+        .sort_values(["_abs_net", "strike"], ascending=[False, True], kind="mergesort")
+        .iloc[0]
+        if not grouped.empty
+        else None
+    )
+    strongest_level = (
+        float(strongest_row["strike"])
+        if strongest_row is not None and strongest_row.get("strike") is not None
+        else None
+    )
+    focused_rows = _focused_gamma_ladder_rows(
+        grouped,
+        spot=float(spot),
+        flip_strike=float(flip_strike) if flip_strike is not None else None,
+        strongest_level=strongest_level,
+        window_preset=window_preset,
+    )
+    return {
+        "symbol": normalized,
+        "spot": float(spot),
+        "total_net_gamma": float(net_total),
+        "flip_strike": float(flip_strike) if flip_strike is not None else None,
+        "strongest_level": strongest_level,
+        "regime": ladder_regime,
+        "regime_label": ladder_regime_label,
+        "rows": list(focused_rows.get("rows") or []),
+        "rows_total": int(focused_rows.get("rows_total") or 0),
+        "rows_visible": int(focused_rows.get("rows_visible") or 0),
+        "window_min_strike": focused_rows.get("window_min_strike"),
+        "window_max_strike": focused_rows.get("window_max_strike"),
+        "window_mode": str(focused_rows.get("window_mode") or "spot_band"),
+        "window_preset": str(focused_rows.get("window_preset") or "standard"),
+    }
+
+
 def _wall_candidates_by_value(
     grouped_df: pd.DataFrame,
     *,
@@ -1764,6 +2087,55 @@ def compute_local_gamma_flip(
         "window_used": window_used,
         "candidate_count": len(deduped),
     }
+
+
+def build_gamma_ladder(symbol: str, window: str = "standard") -> Dict[str, Any]:
+    normalized = normalize_gamma_symbol(symbol)
+    window_preset = normalize_gamma_ladder_window(window)
+    expiration = get_nearest_expiration(normalized)
+    cache_key = gamma_ladder_cache_key(normalized, expiration, window_preset)
+    cached = _gamma_ladder_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    quote = get_spot_quote(normalized)
+    spot = _safe_float(quote.get("spot"))
+    if spot is None or spot <= 0:
+        raise RuntimeError(f"{normalized} spot quote unavailable.")
+
+    chain = get_options_chain(normalized, expiration)
+    if chain.empty:
+        raise RuntimeError(f"{normalized} options chain unavailable for {expiration}.")
+
+    exposure = calculate_gamma_exposure(
+        normalized,
+        chain,
+        float(spot),
+        window_preset=window_preset,
+    )
+    updated_at = str(quote.get("updated_at") or _now_iso())
+    payload = {
+        "ok": True,
+        "symbol": normalized,
+        "spot": float(spot),
+        "expiration": expiration,
+        "expiration_label": _expiration_label(expiration),
+        "regime": str(exposure.get("regime") or "mixed_gamma"),
+        "regime_label": str(exposure.get("regime_label") or "Mixed Gamma Regime"),
+        "updated_at": updated_at,
+        "updated_label": _format_ladder_updated_label(updated_at),
+        "total_net_gamma": float(exposure.get("total_net_gamma") or 0.0),
+        "flip_strike": exposure.get("flip_strike"),
+        "strongest_level": exposure.get("strongest_level"),
+        "rows_total": int(exposure.get("rows_total") or 0),
+        "rows_visible": int(exposure.get("rows_visible") or 0),
+        "window_min_strike": exposure.get("window_min_strike"),
+        "window_max_strike": exposure.get("window_max_strike"),
+        "window_mode": str(exposure.get("window_mode") or "spot_band"),
+        "window_preset": str(exposure.get("window_preset") or window_preset),
+        "rows": list(exposure.get("rows") or []),
+    }
+    return _gamma_ladder_cache_set(cache_key, payload)
 
 
 def compute_secondary_gamma_levels(

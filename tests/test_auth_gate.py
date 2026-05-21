@@ -116,6 +116,36 @@ def test_healthz_reports_safe_mode_as_unhealthy(tmp_path: Path, monkeypatch):
     assert payload["safe_mode"] is True
 
 
+def test_safe_mode_page_renders_diagnostics(tmp_path: Path, monkeypatch):
+    db_path = tmp_path / "safe.db"
+    uploads_dir = tmp_path / "uploads"
+    books_dir = tmp_path / "books"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    books_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(core, "DB_PATH", str(db_path))
+    monkeypatch.setattr(core, "UPLOAD_DIR", str(uploads_dir))
+    monkeypatch.setattr(core, "BOOKS_DIR", str(books_dir))
+
+    def boom():
+        raise RuntimeError("db init failed")
+
+    monkeypatch.setattr(core, "init_db", boom)
+
+    app = create_app()
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    resp = client.get("/safe-mode")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Read-Only Recovery Mode" in body
+    assert "db init failed" in body
+    assert str(db_path) in body
+    assert str(uploads_dir) in body
+    assert str(books_dir) in body
+
+
 def test_login_page_renders_and_accepts_csrf_token(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "auth.db"
     uploads_dir = tmp_path / "uploads"

@@ -1,0 +1,40 @@
+<div class="card"><div class="toolbar">
+  <div class="pill">✏️ Edit Trade #{{ t.id }}</div>
+  <div class="hr"></div>
+
+  <form method="post" action="/trades/edit/{{ t.id }}?{{ back_query }}">
+    <div class="row">
+      <div><label>📆 Date</label><input type="date" name="trade_date" value="{{ t.trade_date }}"/></div>
+      <div><label>⏱️ Entry Time</label><input name="entry_time" value="{{ t.entry_time or '' }}"/></div>
+      <div><label>⏱️ Exit Time</label><input name="exit_time" value="{{ t.exit_time or '' }}"/></div>
+    </div>
+
+    <div class="row stack10">
+      <div><label>🏷️ Ticker</label><input name="ticker" value="{{ t.ticker or '' }}"/></div>
+      <div>
+        <label>📌 Type</label>
+        <select name="opt_type">
+          <option value="CALL" {% if (t.opt_type or '') == 'CALL' %}selected{% endif %}>CALL</option>
+          <option value="PUT" {% if (t.opt_type or '') == 'PUT' %}selected{% endif %}>PUT</option>
+        </select>
+      </div>
+      <div><label>❌ Strike</label><input name="strike" inputmode="decimal" value="{{ '' if t.strike is none else t.strike }}"/></div>
+    </div>
+
+    <div class="row stack10">
+      <div><label>🧾 Contracts</label><input name="contracts" inputmode="numeric" value="{{ t.contracts or 1 }}"/></div>
+      <div><label>💰 Entry</label><input name="entry_price" inputmode="decimal" value="{{ '' if t.entry_price is none else t.entry_price }}"/></div>
+      <div><label>💰 Exit</label><input name="exit_price" inputmode="decimal" value="{{ '' if t.exit_price is none else t.exit_price }}"/></div>
+    </div>
+
+    <div class="row stack10">
+      <div><label>💵 Fees (total)</label><input name="comm" inputmode="decimal" value="{{ t.comm or 0.70 }}"/></div>
+    </div>
+
+    <div class="hr"></div>
+    <div class="rightActions">
+      <button class="btn primary" type="submit">💾 Save</button>
+      <a class="btn" href="/trades{% if back_query %}?{{ back_query }}{% endif %}">← Back</a>
+    </div>
+  </form>
+</div></div>
