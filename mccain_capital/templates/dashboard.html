@@ -726,9 +726,8 @@
           <div class="dashboardTapeHeaderBrand">
           <div class="dashboardTapeSectionLabel"><span class="dashboardLabelIcon dashboardLabelIcon--accent">{{ dashboard_icon('tape') }}</span><span>Market Tape</span></div>
           <div class="dashboardTapeHeaderSubline">
-            <span>Risk monitor</span>
             <details class="inlineHelp dashboardTapeHelper">
-              <summary aria-label="Market tape legend">i</summary>
+              <summary aria-label="Market tape legend">?</summary>
               <div class="helpPopover">
                 Compressed recent intraday bars. White candles close up, blue candles close down, cyan labels indicate positive tape, and blue labels indicate negative tape.
               </div>
@@ -995,7 +994,6 @@
         {% set today_net_short = money_compact(today_net)|replace('.00','') %}
         {% set today_net_tone = 'positive' if today_net > 0 else 'negative' if today_net < 0 else 'neutral' %}
         {% set session_record_short = today_wins ~ 'W / ' ~ today_losses ~ 'L' %}
-        {% set session_record_pct = '(' ~ ('%.0f'|format(today_win_rate)) ~ '%)' if today_count else '' %}
         {% set payout_tone = 'positive' if 'projects' in payout_focus else 'warning' %}
         {% set payout_ring_pct = 74 if 'projects' in payout_focus else 28 %}
         {% set risk_tone = 'positive' if 'Attack' in risk_posture_title else 'negative' if 'Protect' in risk_posture_title else 'warning' %}
@@ -1050,7 +1048,7 @@
             data-status-line3="{% if today_count %}Closed execution sample in scope{% else %}No closed execution sample yet{% endif %}"
           >
             <div class="dashboardStatusOrbCircle">
-              <strong>{{ session_record_short }}{% if session_record_pct %} {{ session_record_pct }}{% endif %}</strong>
+              <strong>{{ session_record_short }}</strong>
             </div>
             <div class="dashboardStatusOrbLabel">Record</div>
             <div class="dashboardStatusOrbMeta">{{ record_meta }}</div>

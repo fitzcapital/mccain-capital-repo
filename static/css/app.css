@@ -1482,6 +1482,22 @@ body{
       background-color:#030407;
     }
 
+    .shellStarfield{
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      z-index:0;
+      overflow:hidden;
+      opacity:1;
+      transition:opacity var(--motion-mid) var(--motion-ease);
+    }
+
+    .shellStarfieldCanvas{
+      display:block;
+      width:100%;
+      height:100%;
+    }
+
     html{
       --font-clean:sans-serif;
       --font-shell:sans-serif;
@@ -1590,6 +1606,10 @@ body{
       opacity:.62;
       animation:none;
       z-index:0;
+    }
+
+    body:not([data-starfield="on"]) .shellStarfield{
+      opacity:0;
     }
 
     .wrap{max-width:1280px;margin:0 auto;padding:22px 18px 96px;position:relative;z-index:1}
@@ -21902,12 +21922,17 @@ body[data-theme="cinematic-nebula"] .moreMenu .btn.active{
     0 0 10px rgba(255, 210, 98, .12);
 }
 
-.menuThemeSwitch [data-theme-toggle-label],
-.drawerThemeSwitch [data-theme-toggle-label]{
+.menuThemeSwitch [data-star-toggle-label],
+.drawerThemeSwitch [data-star-toggle-label]{
   min-width:0;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+}
+
+.menuThemeSwitch[aria-pressed="false"],
+.drawerThemeSwitch[aria-pressed="false"]{
+  opacity:.8;
 }
 
 body[data-theme="cinematic-nebula"] .moreMenu .menuThemeSwitch{
@@ -21927,6 +21952,14 @@ body[data-theme="cinematic-nebula"] .moreMenu .menuThemeSwitch:hover{
     inset 0 1px 0 rgba(255,255,255,.08),
     0 0 18px rgba(0, 160, 255, .22),
     0 0 14px rgba(255, 190, 78, .16) !important;
+}
+
+body[data-starfield="on"] .menuThemeSwitch .menuThemeSwitchIcon,
+body[data-starfield="on"] .drawerThemeSwitch .menuThemeSwitchIcon{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 0 18px rgba(70, 185, 255, .18),
+    0 0 14px rgba(255, 210, 98, .16);
 }
 
 body[data-theme="cinematic-nebula"] .clockPill::after,
@@ -65994,4 +66027,108 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative .dashboardTapeAssetChange,
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative [data-role="change-line"]{
   color:rgba(84, 132, 255, .99) !important;
+}
+
+/* Final shell cleanup: keep Cinematic Nebula on the fixed canvas and a soft body glow only.
+   Legacy pseudo-background layers create slabs, horizon lines, and clipped glows. */
+body[data-theme="cinematic-nebula"]::after,
+body[data-theme="cinematic-nebula"] .wrap::before,
+body[data-theme="cinematic-nebula"] .wrap::after,
+body[data-theme="cinematic-nebula"] .page-dashboard::before,
+body[data-theme="cinematic-nebula"] .page-dashboard::after,
+body[data-theme="cinematic-nebula"] .dashboardModeShell::before,
+body[data-theme="cinematic-nebula"] .dashboardModeShell::after,
+body[data-theme="cinematic-nebula"] .dashboardPrimaryBand::before,
+body[data-theme="cinematic-nebula"] .dashboardPrimaryBand::after,
+body[data-theme="cinematic-nebula"] .dashboardStage::before,
+body[data-theme="cinematic-nebula"] .dashboardStage::after,
+body[data-theme="cinematic-nebula"] .dashboardStageLead::before,
+body[data-theme="cinematic-nebula"] .dashboardStageLead::after,
+body[data-theme="cinematic-nebula"] .dashboardStageSide::before,
+body[data-theme="cinematic-nebula"] .dashboardStageSide::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  background-image:none !important;
+  animation:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardHero-protect::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardHero-prime::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardHero-focus::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardHero::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardHero::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandDeckWrap::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandDeckWrap::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandDeck::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandDeck::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardBehaviorTrendCard::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardBehaviorTrendCard::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardBehaviorTrendFold::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardBehaviorTrendFold::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  background-image:none !important;
+  animation:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardModeShell,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardPrimaryBand,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandDeckWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandDeck,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardBehaviorTrendCard,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardBehaviorTrendFold{
+  background:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"]::before{
+  opacity:.4 !important;
+  animation:none !important;
+}
+
+/* Dashboard shell reset: `page-dashboard` lives on <body>, so descendant `.page-dashboard`
+   selectors do not match. Kill the wrapper glow layers with selectors that actually apply. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardModeShell,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardPrimaryBand,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStage,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageLead,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageSide,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageSection,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageColumn{
+  overflow:visible !important;
+  border-color:transparent !important;
+  background:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  outline:0 !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardModeShell::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardModeShell::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardPrimaryBand::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardPrimaryBand::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStage::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStage::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageLead::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageLead::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageSide::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageSide::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  background-image:none !important;
+  animation:none !important;
+  box-shadow:none !important;
+  filter:none !important;
 }

@@ -46,6 +46,9 @@
 </head>
 
 <body class="{% if active %}page-{{ active|replace('_', '-')|replace(' ', '-') }}{% endif %}">
+  <div class="shellStarfield" id="shellStarfield" aria-hidden="true">
+    <canvas class="shellStarfieldCanvas" id="shellStarfieldCanvas"></canvas>
+  </div>
   <svg width="0" height="0" class="svgSpriteHidden" aria-hidden="true" focusable="false">
     <defs>
       <symbol id="mc-crest" viewBox="0 0 24 24">
@@ -521,9 +524,9 @@
             <a class="btn {% if active=='ops' %}active{% endif %}" href="/ops/alerts"><span class="menuItemIcon">{{ app_icon('ops') }}</span><span>Ops Alerts</span></a>
             <a class="btn {% if active=='profile' %}active{% endif %}" href="/profile"><span class="menuItemIcon">{{ app_icon('profile') }}</span><span>Profile</span></a>
             <a class="btn" href="/setup"><span class="menuItemIcon">{{ app_icon('auth') }}</span><span>Login Setup</span></a>
-            <button class="btn menuThemeSwitch" type="button" onclick="toggleTheme()" aria-label="Switch visual theme">
+            <button class="btn menuThemeSwitch" type="button" onclick="toggleStarAnimation()" aria-label="Toggle star animation" aria-pressed="true">
               <span class="menuThemeSwitchIcon" aria-hidden="true">✦</span>
-              <span data-theme-toggle-label>Theme: Cinematic Nebula</span>
+              <span data-star-toggle-label>Star Animation: On</span>
             </button>
             <div class="hr"></div>
             <div class="menuTitle">Links</div>
@@ -856,9 +859,9 @@
                 <img src="{{ url_for('static', filename='img/vanquish-trader.svg') }}" alt="" aria-hidden="true">
                 <span>Vanquish Dashboard</span>
               </a>
-            <button class="btn themeToggle drawerThemeSwitch" type="button" onclick="toggleTheme()" aria-label="Switch visual theme">
+            <button class="btn themeToggle drawerThemeSwitch" type="button" onclick="toggleStarAnimation()" aria-label="Toggle star animation" aria-pressed="true">
               <span class="menuThemeSwitchIcon" aria-hidden="true">✦</span>
-              <span data-theme-toggle-label>Theme: Cinematic Nebula</span>
+              <span data-star-toggle-label>Star Animation: On</span>
             </button>
             <button class="btn fontToggle" type="button" data-font-toggle-label onclick="toggleAppFont()">Font: Clean</button>
             <button class="btn" type="button" onclick="toggleShortcutHelp()">Shortcuts</button>
@@ -954,7 +957,7 @@
           <a class="mobileMenuRow {% if active=='ops' %}is-active{% endif %}" href="/ops/alerts"><span class="mobileMenuIcon">{{ app_icon('ops') }}</span><span>Ops Alerts</span></a>
           <a class="mobileMenuRow {% if active=='profile' %}is-active{% endif %}" href="/profile"><span class="mobileMenuIcon">{{ app_icon('profile') }}</span><span>Profile</span></a>
           <a class="mobileMenuRow" href="/setup"><span class="mobileMenuIcon">{{ app_icon('auth') }}</span><span>Login Setup</span></a>
-          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleTheme()"><span class="mobileMenuIcon">{{ app_icon('theme') }}</span><span>Theme</span></button>
+          <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleStarAnimation()" aria-pressed="true"><span class="mobileMenuIcon">{{ app_icon('theme') }}</span><span data-star-toggle-label>Star Animation: On</span></button>
           <button class="mobileMenuRow mobileMenuButton" type="button" onclick="toggleAppFont()"><span class="mobileMenuIcon">{{ app_icon('type') }}</span><span>Clean Font</span></button>
           {% if auth_enabled %}
             {% if authenticated %}
@@ -1613,7 +1616,7 @@
     newEntryUrl: "{{ url_for('new_entry') }}",
   };
 </script>
-<script defer src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}&rev=cinematic-nebula-20260423a"></script>
+<script defer src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}&rev=starfield-shell-20260522a"></script>
 {% if active == 'self-control' %}
 <script defer src="{{ url_for('static', filename='js/self_control_console.js') }}?v={{ static_v }}"></script>
 {% endif %}
