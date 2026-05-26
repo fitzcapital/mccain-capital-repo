@@ -29336,6 +29336,62 @@ html[data-font-mode="hand"] body .dashboardProjectionForm .dashboardProjectionHi
   height:14px;
 }
 
+.page-dashboard .dashboardWakeLockBtn{
+  width:30px;
+  height:30px;
+}
+
+.page-dashboard .dashboardHealthFoldToggleBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:30px;
+  height:30px;
+  padding:0 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.025);
+  color:rgba(214, 227, 243, .72);
+  cursor:pointer;
+  transition:border-color .18s ease, background-color .18s ease, color .18s ease, opacity .18s ease;
+}
+
+.page-dashboard .dashboardHealthFoldToggleBtn:hover{
+  transform:none;
+  border-color:rgba(158, 195, 255, .22);
+  background:rgba(255,255,255,.04);
+  color:rgba(245, 251, 255, .92);
+}
+
+.page-dashboard .dashboardHealthFoldToggleBtn:focus-visible{
+  outline:1px solid rgba(158, 195, 255, .42);
+  outline-offset:2px;
+}
+
+.page-dashboard .dashboardHealthFoldToggleBtn .dashboardWakeLockBtnIcon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.page-dashboard .dashboardHealthFoldToggleBtn .dashboardWakeLockBtnIcon svg{
+  width:13px;
+  height:13px;
+}
+
+.page-dashboard .dashboardHealthFoldToggleBtn.is-active{
+  border-color:rgba(93, 242, 166, .22);
+  background:rgba(93, 242, 166, .08);
+  color:rgba(245, 251, 255, .94);
+}
+
+.page-dashboard .dashboardDriftRefreshBtn{
+  width:36px;
+  min-width:36px;
+  font-size:14px;
+  line-height:1;
+}
+
 .page-dashboard .dashboardTapeHeaderStatus{
   display:flex;
   align-items:center;
@@ -29379,6 +29435,18 @@ html[data-font-mode="hand"] body .dashboardProjectionForm .dashboardProjectionHi
 
 .page-dashboard .dashboardTapeRefreshBtn.is-loading svg{
   animation:dashboardPlanningSpin .9s linear infinite;
+}
+
+.page-dashboard .dashboardDriftRefreshBtn.is-loading{
+  opacity:1;
+  color:#f5fbff;
+  border-color:rgba(47,107,255,.34);
+}
+
+.page-dashboard .dashboardDriftRefreshBtn.is-loading span{
+  display:inline-block;
+  animation:dashboardPlanningSpin .9s linear infinite;
+  transform-origin:50% 50%;
 }
 
 @keyframes dashboardPlanningSpin{
@@ -47778,6 +47846,24 @@ textarea:focus-visible{
   letter-spacing:.03em;
 }
 
+.marketPulseExecutionHeroFrameControl{
+  display:grid;
+  gap:8px;
+  min-width:0;
+}
+
+.marketPulseExecutionHeroIntervalGroup{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  align-items:center;
+}
+
+.marketPulseExecutionHeroIntervalToggle{
+  min-width:44px;
+  padding-inline:10px;
+}
+
 .marketPulseExecutionHeroMetrics{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -52652,6 +52738,7 @@ body[data-theme="cinematic-nebula"] :where(
   .dashboardModeToggleButton.is-active,
   .dashboardIntentionPreset.is-active,
   .dashboardReflectionChoice.is-active,
+  .marketPulseExecutionHeroChartToggle.is-active,
   .marketPulseTickerSwitch.is-active,
   .marketPulseTickerOption[aria-selected="true"],
   .dashboardTickerOption[aria-selected="true"]

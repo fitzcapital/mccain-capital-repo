@@ -1137,7 +1137,13 @@ def clear_trades() -> None:
 
 def recompute_balances(starting_balance: float = 50000.0, *, account_id: int | None = None) -> None:
     with db() as conn:
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
+        except Exception:
+            cols = []
         where, params = _trade_scope_clause(account_id=account_id)
+        if "ticker" in cols:
+            where.append("COALESCE(ticker, '') <> 'ACCT'")
         query = """
             SELECT id, net_pl
             FROM trades
@@ -1222,6 +1228,8 @@ def latest_balance_overall(
             )
             where.extend(scope_where)
             params.extend(scope_params)
+            if "ticker" in cols:
+                where.append("COALESCE(ticker, '') <> 'ACCT'")
             if date_col and as_of:
                 where.append(f"{_q(date_col)} <= ?")
                 params.append(str(as_of))
@@ -1272,10 +1280,19 @@ def balance_integrity_snapshot(
         ),
         "derived_balance": derived,
         "stored_balance": None,
+        "stored_status_label": "No snapshot",
+        "stored_status_tone": "neutral",
         "delta": None,
         "has_drift": False,
         "tolerance": float(tolerance),
     }
+    if account_id:
+        out["source_detail"] = (
+            "Active account views use derived ledger math. "
+            "Stored row balance drift is only comparable on all-history ledger rows."
+        )
+        out["stored_status_label"] = "Derived only"
+        return out
     with db() as conn:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
 
@@ -1328,6 +1345,9 @@ def balance_integrity_snapshot(
         if row and row["bal"] is not None and start_date and date_col:
             pre_where: list[str] = [f"{_q(bal_col)} IS NOT NULL", f"{_q(date_col)} < ?"]
             pre_params: list[Any] = [str(start_date)]
+            if account_id:
+                pre_where.append("account_id = ?")
+                pre_params.append(int(account_id))
             if acct_filter:
                 pre_where.append(acct_filter)
             if as_of:
@@ -1361,8 +1381,10 @@ def balance_integrity_snapshot(
         return out
     delta = derived - stored
     out["stored_balance"] = stored
+    out["stored_status_label"] = "Drift check"
     out["delta"] = delta
     out["has_drift"] = abs(delta) > float(tolerance)
+    out["stored_status_tone"] = "critical" if out["has_drift"] else "healthy"
     if not out["has_drift"]:
         out["source_detail"] = "Stored trade balances match the derived ledger."
     return out

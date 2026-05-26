@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import threading
 import time
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -44,6 +45,9 @@ _HEADER_HINTS = {
 }
 _SETTINGS_CACHE_LOCK = threading.Lock()
 _SETTINGS_CACHE: Dict[str, Dict[str, Any]] = {}
+_REQUEST_METRICS: ContextVar[Optional[Dict[str, float]]] = ContextVar(
+    "mccain_capital_request_metrics", default=None
+)
 
 
 def upload_root() -> str:
@@ -112,6 +116,65 @@ def load_or_create_secret_key() -> str:
             return handle.read().strip()
 
 
+def reset_request_metrics() -> None:
+    _REQUEST_METRICS.set({"sql_query_count": 0.0, "sql_total_ms": 0.0})
+
+
+def get_request_metrics_snapshot() -> Dict[str, float]:
+    current = _REQUEST_METRICS.get()
+    if not isinstance(current, dict):
+        return {"sql_query_count": 0.0, "sql_total_ms": 0.0}
+    return {
+        "sql_query_count": float(current.get("sql_query_count") or 0.0),
+        "sql_total_ms": float(current.get("sql_total_ms") or 0.0),
+    }
+
+
+def _record_sql_timing(elapsed_ms: float) -> None:
+    metrics = _REQUEST_METRICS.get()
+    if not isinstance(metrics, dict):
+        return
+    metrics["sql_query_count"] = float(metrics.get("sql_query_count") or 0.0) + 1.0
+    metrics["sql_total_ms"] = float(metrics.get("sql_total_ms") or 0.0) + max(0.0, elapsed_ms)
+
+
+def _timed_sql_call(fn, *args, **kwargs):
+    started = time.perf_counter()
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        _record_sql_timing((time.perf_counter() - started) * 1000.0)
+
+
+class InstrumentedCursor(sqlite3.Cursor):
+    def execute(self, sql: str, parameters: Any = None):
+        if parameters is None:
+            return _timed_sql_call(super().execute, sql)
+        return _timed_sql_call(super().execute, sql, parameters)
+
+    def executemany(self, sql: str, seq_of_parameters):
+        return _timed_sql_call(super().executemany, sql, seq_of_parameters)
+
+    def executescript(self, sql_script: str):
+        return _timed_sql_call(super().executescript, sql_script)
+
+
+class InstrumentedConnection(sqlite3.Connection):
+    def cursor(self, factory: Optional[type[sqlite3.Cursor]] = None) -> sqlite3.Cursor:
+        return super().cursor(factory or InstrumentedCursor)
+
+    def execute(self, sql: str, parameters: Any = None):
+        if parameters is None:
+            return _timed_sql_call(super().execute, sql)
+        return _timed_sql_call(super().execute, sql, parameters)
+
+    def executemany(self, sql: str, seq_of_parameters):
+        return _timed_sql_call(super().executemany, sql, seq_of_parameters)
+
+    def executescript(self, sql_script: str):
+        return _timed_sql_call(super().executescript, sql_script)
+
+
 def _apply_sqlite_pragmas(conn: sqlite3.Connection) -> None:
     conn.execute(f"PRAGMA busy_timeout = {int(SQLITE_BUSY_TIMEOUT_MS)}")
     conn.execute("PRAGMA foreign_keys = ON")
@@ -172,7 +235,11 @@ def persistence_snapshot() -> Dict[str, Any]:
 
 def db() -> sqlite3.Connection:
     ensure_storage_dirs()
-    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000.0)
+    conn = sqlite3.connect(
+        DB_PATH,
+        timeout=SQLITE_BUSY_TIMEOUT_MS / 1000.0,
+        factory=InstrumentedConnection,
+    )
     conn.row_factory = sqlite3.Row
     try:
         _apply_sqlite_pragmas(conn)

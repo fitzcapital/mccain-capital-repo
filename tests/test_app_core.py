@@ -29,6 +29,16 @@ def test_security_headers_applied(client):
     assert "Content-Security-Policy" in resp.headers
 
 
+def test_request_profiling_headers_applied(client):
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert float(resp.headers["X-Request-Duration-Ms"]) >= 0.0
+    assert float(resp.headers["X-SQLite-Duration-Ms"]) >= 0.0
+    assert int(resp.headers["X-SQLite-Query-Count"]) >= 0
+    assert "app;dur=" in resp.headers["Server-Timing"]
+    assert "sqlite;dur=" in resp.headers["Server-Timing"]
+
+
 def test_core_pages_are_reachable(client):
     for path in [
         "/",
@@ -508,6 +518,17 @@ def test_dashboard_renders_foundation_routine_and_reflection_layers(client):
     assert "Operating State" in body
     assert "Permission" in body
     assert "Next Step" in body
+
+
+def test_dashboard_renders_support_health_fold_toggle_button(client):
+    resp = client.get("/dashboard", follow_redirects=True)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert body.count('id="dashboardWakeLockBtn"') == 1
+    assert 'id="dashboardHealthSurface"' in body
+    assert 'aria-controls="dashboardHealthSurface"' in body
+    assert "Keep Support &amp; Health open" in body
+    assert "Keep this dashboard awake" not in body
     assert "dashboardCommandDeck" in body
     assert "dashboardLabelIcon" in body
     assert "dashboardTapeHeaderSubline" in body
@@ -3790,6 +3811,143 @@ def test_dashboard_recompute_balances_endpoint_updates_stored_rows(client):
     assert len(rows) == 2
     assert float(rows[0]["balance"]) == 50399.0
     assert float(rows[1]["balance"]) == 53399.0
+
+
+def test_dashboard_recompute_balances_endpoint_updates_active_account_rows(client):
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("pass123"))
+    set_setting_value("starting_balance", "50000")
+
+    account_a = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:ACC111",
+        account_size=50000.0,
+        starting_balance=50000.0,
+    )
+    account_b = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Growth",
+        broker_account_id="default:ACC222",
+        account_size=30000.0,
+        starting_balance=30000.0,
+    )
+    trades_repo.set_active_account(int(account_a))
+
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "9:35 AM",
+                "10:00 AM",
+                "SPX",
+                "CALL",
+                6925.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                399.0,
+                399.0,
+                399.0,
+                50000.0,
+                "account a trade 1",
+                now_iso(),
+                int(account_a),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-25",
+                "9:40 AM",
+                "10:05 AM",
+                "SPX",
+                "CALL",
+                6920.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                3000.0,
+                3000.0,
+                3000.0,
+                50000.0,
+                "account a trade 2",
+                now_iso(),
+                int(account_a),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "11:15 AM",
+                "11:30 AM",
+                "QQQ",
+                "PUT",
+                500.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                249.0,
+                249.0,
+                249.0,
+                30000.0,
+                "account b trade 1",
+                now_iso(),
+                int(account_b),
+            ),
+        )
+
+    with client.session_transaction() as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.post(
+        "/dashboard/recompute-balances",
+        data={"scope": "active"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    with db() as conn:
+        rows_a = conn.execute(
+            "SELECT balance FROM trades WHERE account_id = ? ORDER BY trade_date ASC, id ASC",
+            (int(account_a),),
+        ).fetchall()
+        rows_b = conn.execute(
+            "SELECT balance FROM trades WHERE account_id = ? ORDER BY trade_date ASC, id ASC",
+            (int(account_b),),
+        ).fetchall()
+    assert len(rows_a) == 2
+    assert float(rows_a[0]["balance"]) == 50399.0
+    assert float(rows_a[1]["balance"]) == 53648.0
+    assert len(rows_b) == 1
+    assert float(rows_b[0]["balance"]) == 50648.0
 
 
 def test_dashboard_recompute_balances_requires_auth(client):

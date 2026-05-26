@@ -313,6 +313,15 @@
             <span class="tiny muted">{{ selected_ticker }} Chart <span class="marketPulseExecutionHeroTimeframe">· 5m</span></span>
             <div class="marketPulseExecutionHeroIntervalGroup" role="group" aria-label="Chart timeframe">
               <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1min"
+                aria-pressed="false"
+                title="Show 1 minute candles"
+              >
+                <span aria-hidden="true">1m</span>
+              </button>
+              <button
                 class="marketPulseExecutionHeroIntervalToggle is-active"
                 type="button"
                 data-hero-chart-interval="5min"
@@ -348,6 +357,51 @@
               >
                 <span aria-hidden="true">1H</span>
               </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="4h"
+                aria-pressed="false"
+                title="Show 4 hour candles"
+              >
+                <span aria-hidden="true">4H</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="12h"
+                aria-pressed="false"
+                title="Show 12 hour candles"
+              >
+                <span aria-hidden="true">12H</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1d"
+                aria-pressed="false"
+                title="Show 1 day candles"
+              >
+                <span aria-hidden="true">1D</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1w"
+                aria-pressed="false"
+                title="Show 1 week candles"
+              >
+                <span aria-hidden="true">1W</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroIntervalToggle"
+                type="button"
+                data-hero-chart-interval="1mo"
+                aria-pressed="false"
+                title="Show 1 month candles"
+              >
+                <span aria-hidden="true">1M</span>
+              </button>
             </div>
           </div>
           <span class="tiny muted marketPulseClampLine" id="marketPulseHeroRailSummary">{{ playbook.get('action_context_label') or location.read or 'Awaiting valid structure' }}</span>
@@ -356,6 +410,33 @@
           <div class="marketPulseExecutionHeroChartBanner">
             <div class="marketPulseExecutionHeroChartBannerMain" id="marketPulseHeroChartBanner">{{ playbook.get('hero_title_label') or (trade_state_label ~ ' - ' ~ (structure_snapshot.get('current_read') or location.zone or 'Awaiting structure')) }}</div>
             <div class="marketPulseExecutionHeroChartControls" aria-label="Chart display toggles">
+              <button
+                class="marketPulseExecutionHeroChartToggle"
+                id="marketPulseHeroToggleDraw"
+                type="button"
+                aria-pressed="false"
+                title="Place horizontal rays"
+              >
+                <span aria-hidden="true">✎</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroChartToggle"
+                id="marketPulseHeroUndoDraw"
+                type="button"
+                aria-pressed="false"
+                title="Remove last horizontal ray"
+              >
+                <span aria-hidden="true">↶</span>
+              </button>
+              <button
+                class="marketPulseExecutionHeroChartToggle"
+                id="marketPulseHeroClearDraw"
+                type="button"
+                aria-pressed="false"
+                title="Clear horizontal rays"
+              >
+                <span aria-hidden="true">✕</span>
+              </button>
               <button
                 class="marketPulseExecutionHeroChartToggle is-active"
                 id="marketPulseHeroToggleMarkers"

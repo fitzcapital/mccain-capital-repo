@@ -2,9 +2,10 @@
 
 import hmac
 import os
+import time
 from datetime import timedelta
 
-from flask import abort, redirect, render_template, request, session, url_for
+from flask import abort, g, redirect, render_template, request, session, url_for
 
 from mccain_capital import auth
 from mccain_capital.config import select_config
@@ -39,6 +40,16 @@ def create_app():
 
     app.config.from_object(select_config())
     app.config.setdefault("CSRF_ENABLED", True)
+    app.config.setdefault("REQUEST_PROFILING_ENABLED", True)
+    app.config.setdefault(
+        "REQUEST_SLOW_MS",
+        max(1, int(os.environ.get("REQUEST_SLOW_MS", "400") or 400)),
+    )
+    app.config.setdefault(
+        "REQUEST_PROFILING_LOG_ALL",
+        str(os.environ.get("REQUEST_PROFILING_LOG_ALL", "")).strip().lower()
+        in {"1", "true", "yes", "on"},
+    )
     env = os.environ.get("APP_ENV", "dev").lower().strip()
     secret_key = runtime.load_or_create_secret_key()
     if env in {"prod", "production"} and not secret_key:
@@ -75,6 +86,9 @@ def create_app():
 
         @app.before_request
         def _auth_gate():
+            if app.config.get("REQUEST_PROFILING_ENABLED", True):
+                g._request_started_at = time.perf_counter()
+                runtime.reset_request_metrics()
             if app.config.get("SAFE_MODE"):
                 allow_safe = {"safe_mode_page", "healthz", "favicon", "static"}
                 if request.endpoint not in allow_safe:
@@ -107,6 +121,30 @@ def create_app():
 
         @app.after_request
         def _security_headers(resp):
+            if app.config.get("REQUEST_PROFILING_ENABLED", True):
+                started_at = getattr(g, "_request_started_at", None)
+                if isinstance(started_at, (int, float)):
+                    total_ms = max(0.0, (time.perf_counter() - started_at) * 1000.0)
+                    metrics = runtime.get_request_metrics_snapshot()
+                    sql_ms = float(metrics.get("sql_total_ms") or 0.0)
+                    sql_queries = int(metrics.get("sql_query_count") or 0.0)
+                    resp.headers["X-Request-Duration-Ms"] = f"{total_ms:.2f}"
+                    resp.headers["X-SQLite-Duration-Ms"] = f"{sql_ms:.2f}"
+                    resp.headers["X-SQLite-Query-Count"] = str(sql_queries)
+                    resp.headers["Server-Timing"] = (
+                        f"app;dur={total_ms:.2f}, sqlite;dur={sql_ms:.2f};desc=\"{sql_queries} queries\""
+                    )
+                    slow_ms = float(app.config.get("REQUEST_SLOW_MS", 400) or 400)
+                    if app.config.get("REQUEST_PROFILING_LOG_ALL") or total_ms >= slow_ms:
+                        app.logger.info(
+                            "request_profile method=%s path=%s status=%s total_ms=%.2f sql_ms=%.2f sql_queries=%s",
+                            request.method,
+                            request.path,
+                            resp.status_code,
+                            total_ms,
+                            sql_ms,
+                            sql_queries,
+                        )
             resp.headers.setdefault("X-Content-Type-Options", "nosniff")
             resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
             resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

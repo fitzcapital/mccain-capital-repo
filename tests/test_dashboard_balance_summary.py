@@ -1,5 +1,6 @@
 """Focused tests for dashboard balance summary semantics."""
 
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import db, now_iso, set_setting_value
 from mccain_capital.services import core as core_service
 
@@ -62,3 +63,271 @@ def test_dashboard_balance_summary_uses_scoped_account_balance_when_active(app):
     assert summary["overall_balance"] == 54571.0
     assert summary["overall_profit"] == 2571.0
     assert summary["trajectory_title"] == "Active Account Profit"
+
+
+def test_balance_integrity_snapshot_skips_stored_drift_for_active_account_scope(app):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:ACC111",
+        account_size=50000.0,
+        starting_balance=50000.0,
+    )
+
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-26",
+                "9:45 AM",
+                "10:00 AM",
+                "SPX",
+                "CALL",
+                6930.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                600.0,
+                600.0,
+                600.0,
+                50434.40,
+                "seed drift",
+                now_iso(),
+                int(account_id),
+            ),
+        )
+
+    snapshot = trades_repo.balance_integrity_snapshot(
+        account_id=int(account_id),
+        starting_balance=50000.0,
+    )
+
+    assert snapshot["canonical_balance"] == 50600.0
+    assert snapshot["stored_balance"] is None
+    assert snapshot["stored_status_label"] == "Derived only"
+    assert snapshot["has_drift"] is False
+
+
+def test_balance_integrity_snapshot_account_scope_uses_derived_only_even_with_other_accounts(app):
+    set_setting_value("starting_balance", "50000")
+    account_a = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:ACC111",
+        account_size=55000.0,
+        starting_balance=55000.0,
+    )
+    account_b = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Growth",
+        broker_account_id="default:ACC222",
+        account_size=30000.0,
+        starting_balance=30000.0,
+    )
+
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-20",
+                "9:35 AM",
+                "10:00 AM",
+                "SPX",
+                "CALL",
+                6925.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                500.0,
+                500.0,
+                500.0,
+                55500.0,
+                "account a baseline",
+                now_iso(),
+                int(account_a),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "9:35 AM",
+                "10:00 AM",
+                "SPX",
+                "CALL",
+                6925.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                399.0,
+                399.0,
+                399.0,
+                55899.0,
+                "account a trade 1",
+                now_iso(),
+                int(account_a),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-25",
+                "9:40 AM",
+                "10:05 AM",
+                "QQQ",
+                "PUT",
+                500.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                249.0,
+                249.0,
+                249.0,
+                30249.0,
+                "other account pre-scope row",
+                now_iso(),
+                int(account_b),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-26",
+                "9:40 AM",
+                "10:05 AM",
+                "SPX",
+                "CALL",
+                6920.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                3000.0,
+                3000.0,
+                3000.0,
+                58899.0,
+                "account a trade 2",
+                now_iso(),
+                int(account_a),
+            ),
+        )
+
+    snapshot = trades_repo.balance_integrity_snapshot(
+        account_id=int(account_a),
+        start_date="2026-02-24",
+        starting_balance=55000.0,
+    )
+
+    assert snapshot["canonical_balance"] == 58399.0
+    assert snapshot["stored_balance"] is None
+    assert snapshot["stored_status_label"] == "Derived only"
+    assert snapshot["delta"] is None
+
+
+def test_latest_balance_and_recompute_ignore_acct_snapshot_rows(app):
+    set_setting_value("starting_balance", "50000")
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "9:35 AM",
+                "10:00 AM",
+                "SPX",
+                "CALL",
+                6925.0,
+                1.0,
+                2.0,
+                1,
+                100.0,
+                1.0,
+                399.0,
+                399.0,
+                399.0,
+                50000.0,
+                "trade row",
+                now_iso(),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO trades (
+                trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                entry_price, exit_price, contracts, total_spent, comm,
+                gross_pl, net_pl, result_pct, balance, raw_line, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "2026-02-24",
+                "11:00 AM",
+                "11:01 AM",
+                "ACCT",
+                "",
+                0.0,
+                0.0,
+                0.0,
+                0,
+                0.0,
+                0.0,
+                10000.0,
+                10000.0,
+                0.0,
+                60399.0,
+                "account snapshot row",
+                now_iso(),
+            ),
+        )
+
+    assert trades_repo.latest_balance_overall() == 50399.0
+
+    trades_repo.recompute_balances(starting_balance=50000.0)
+
+    snapshot = trades_repo.balance_integrity_snapshot(starting_balance=50000.0)
+    assert snapshot["canonical_balance"] == 50399.0
+    assert snapshot["stored_balance"] == 50399.0
+    assert snapshot["delta"] == 0.0

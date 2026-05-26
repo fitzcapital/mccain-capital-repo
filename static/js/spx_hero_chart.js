@@ -6,6 +6,9 @@
   const host = document.getElementById("spxExecutionHeroChart");
   const canvas = document.getElementById("spxExecutionHeroChartCanvas");
   const levelRail = document.getElementById("spxExecutionHeroLevelRail");
+  const drawToggle = document.getElementById("marketPulseHeroToggleDraw");
+  const undoDrawButton = document.getElementById("marketPulseHeroUndoDraw");
+  const clearDrawButton = document.getElementById("marketPulseHeroClearDraw");
   const markersToggle = document.getElementById("marketPulseHeroToggleMarkers");
   const levelsToggle = document.getElementById("marketPulseHeroToggleLevels");
   const dayLevelsToggle = document.getElementById("marketPulseHeroToggleDayLevels");
@@ -28,12 +31,21 @@
   const symbol = String(host.dataset.symbol || "QQQ").toUpperCase();
   const DEFAULT_INTERVAL = "5min";
   const INTERVAL_LABELS = {
+    "1min": "1m",
     "5min": "5m",
     "15min": "15m",
     "30min": "30m",
     "1h": "1h",
+    "4h": "4H",
+    "12h": "12H",
+    "1d": "1D",
+    "1w": "1W",
+    "1mo": "1M",
   };
   const INTERVAL_ALIASES = {
+    "1": "1min",
+    "1m": "1min",
+    "1min": "1min",
     "5": "5min",
     "5m": "5min",
     "5min": "5min",
@@ -47,15 +59,49 @@
     "60": "1h",
     "60m": "1h",
     "60min": "1h",
+    "4h": "4h",
+    "240": "4h",
+    "240m": "4h",
+    "240min": "4h",
+    "12h": "12h",
+    "720": "12h",
+    "720m": "12h",
+    "720min": "12h",
+    "1d": "1d",
+    "1day": "1d",
+    "1w": "1w",
+    "1wk": "1w",
+    "1week": "1w",
+    "1mo": "1mo",
+    "1mon": "1mo",
+    "1month": "1mo",
   };
   const normalizeInterval = (value) => (
     INTERVAL_ALIASES[String(value || DEFAULT_INTERVAL).trim().toLowerCase()] || DEFAULT_INTERVAL
   );
   const INTERVAL_MINUTES = {
+    "1min": 1,
     "5min": 5,
     "15min": 15,
     "30min": 30,
     "1h": 60,
+    "4h": 240,
+    "12h": 720,
+    "1d": 1440,
+    "1w": 10080,
+    "1mo": 43200,
+  };
+  const INTERVAL_VISIBLE_BARS = {
+    "1min": 90,
+    "5min": 60,
+    "15min": 48,
+    "30min": 40,
+    "1h": 32,
+    "4h": 28,
+    "12h": 24,
+    "1d": 30,
+    "1w": 26,
+    "1mo": 24,
   };
   let interval = normalizeInterval(host.dataset.interval || DEFAULT_INTERVAL);
   const HERO_CHART_TIMEZONE = "America/New_York";
@@ -140,6 +186,7 @@
   const HERO_CHART_HEIGHT = 600;
   const LEGACY_HERO_CHART_PREFS_KEY = "mc_hero_chart_display_prefs";
   const HERO_CHART_PREFS_KEY = `mc_hero_chart_display_prefs_${symbol}`;
+  const HERO_CHART_DRAWINGS_KEY = `mc_hero_chart_drawings_${symbol}`;
   const STRAT_MARKER_LIMIT = 96;
   const LEVEL_RAIL_MIN_GAP = 38;
 
@@ -290,6 +337,7 @@
     levels: { label: "Levels", state: "pending", text: "pending" },
   };
   let displayPrefs = { showMarkers: true, showLevels: true, showDayLevels: true };
+  let drawingState = { enabled: false, lines: [], series: [] };
   const LEVEL_RENDER_DEBOUNCE_MS = 120;
   const HIDDEN_BARS_INTERVAL_MS = 120000;
   const HIDDEN_LEVELS_INTERVAL_MS = 300000;
@@ -308,6 +356,19 @@
   const asNum = (value) => {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const asChartTime = (value) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (value && typeof value === "object") {
+      const year = Number(value.year);
+      const month = Number(value.month);
+      const day = Number(value.day);
+      if ([year, month, day].every(Number.isFinite)) {
+        return Math.floor(Date.UTC(year, month - 1, day) / 1000);
+      }
+    }
+    return null;
   };
 
   const fmt = (value, digits = 0) => {
@@ -484,6 +545,125 @@
     try {
       window.localStorage.setItem(HERO_CHART_PREFS_KEY, JSON.stringify(displayPrefs));
     } catch (_) {}
+  };
+
+  const drawingRayEndTime = (startTime) => {
+    const intervalMinutes = INTERVAL_MINUTES[interval] || INTERVAL_MINUTES[DEFAULT_INTERVAL] || 5;
+    const extensionSeconds = intervalMinutes * 60 * 240;
+    const bars = Array.isArray(lastBarsPayload?.bars) ? lastBarsPayload.bars : [];
+    const lastBarTime = bars.length ? asChartTime(bars[bars.length - 1]?.time) : null;
+    const anchorTime = Math.max(
+      Number.isFinite(lastBarTime) ? lastBarTime : 0,
+      Number.isFinite(startTime) ? startTime : 0,
+    );
+    return anchorTime + extensionSeconds;
+  };
+
+  const loadDrawings = () => {
+    try {
+      const raw = window.localStorage.getItem(HERO_CHART_DRAWINGS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      drawingState.lines = parsed
+        .map((line) => ({
+          time: asChartTime(line?.time ?? line?.startTime),
+          value: asNum(line?.value ?? line?.startValue),
+        }))
+        .filter((line) => (
+          Number.isFinite(line.time)
+          && line.value !== null
+        ));
+    } catch (_) {
+      drawingState.lines = [];
+    }
+  };
+
+  const saveDrawings = () => {
+    try {
+      window.localStorage.setItem(HERO_CHART_DRAWINGS_KEY, JSON.stringify(drawingState.lines));
+    } catch (_) {}
+  };
+
+  const clearDrawingSeries = () => {
+    drawingState.series.forEach((series) => {
+      try {
+        chart.removeSeries(series);
+      } catch (_) {}
+    });
+    drawingState.series = [];
+  };
+
+  const drawingLineData = (line) => {
+    if (!line) return null;
+    const startTime = asChartTime(line.time);
+    const value = asNum(line.value);
+    const endTime = drawingRayEndTime(startTime);
+    if (
+      !Number.isFinite(startTime)
+      || !Number.isFinite(endTime)
+      || value === null
+      || endTime <= startTime
+    ) {
+      return null;
+    }
+    return [
+      { time: startTime, value },
+      { time: endTime, value },
+    ];
+  };
+
+  const renderDrawings = () => {
+    clearDrawingSeries();
+    drawingState.lines.forEach((line) => {
+      const data = drawingLineData(line);
+      if (!data) return;
+      const series = chart.addLineSeries({
+        color: "rgba(99, 179, 255, 0.95)",
+        lineWidth: 2,
+        lineStyle: 0,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      series.setData(data);
+      drawingState.series.push(series);
+    });
+  };
+
+  const syncDrawingButtons = () => {
+    if (drawToggle) {
+      drawToggle.setAttribute("aria-pressed", drawingState.enabled ? "true" : "false");
+      drawToggle.classList.toggle("is-active", drawingState.enabled);
+      drawToggle.title = "Place horizontal rays";
+    }
+    if (undoDrawButton) {
+      const hasLines = drawingState.lines.length > 0;
+      undoDrawButton.disabled = !hasLines;
+      undoDrawButton.setAttribute("aria-disabled", hasLines ? "false" : "true");
+    }
+    if (clearDrawButton) {
+      const hasLines = drawingState.lines.length > 0;
+      clearDrawButton.disabled = !hasLines;
+      clearDrawButton.setAttribute("aria-disabled", hasLines ? "false" : "true");
+    }
+    canvas.style.cursor = drawingState.enabled ? "crosshair" : "";
+  };
+
+  const removeLastDrawing = () => {
+    if (!drawingState.lines.length) return;
+    drawingState.lines = drawingState.lines.slice(0, -1);
+    saveDrawings();
+    renderDrawings();
+    syncDrawingButtons();
+  };
+
+  const clearAllDrawings = () => {
+    if (!drawingState.lines.length) return;
+    drawingState.lines = [];
+    saveDrawings();
+    renderDrawings();
+    syncDrawingButtons();
   };
 
   const syncToggleButtons = () => {
@@ -947,10 +1127,16 @@
     return bars;
   };
 
+  const intervalShowsDates = () => ["4h", "12h", "1d", "1w", "1mo"].includes(interval);
+
+  const preferredVisibleBars = () => (
+    INTERVAL_VISIBLE_BARS[interval] || INTERVAL_VISIBLE_BARS[DEFAULT_INTERVAL] || DEFAULT_VISIBLE_BARS
+  );
+
   const syncAxisSessionMode = (payload) => {
     const previousDay = String(payload?.previous_session_day || "");
     const currentDay = String(payload?.current_session_day || "");
-    heroAxisShowsDates = Boolean(previousDay && currentDay && previousDay !== currentDay);
+    heroAxisShowsDates = intervalShowsDates() || Boolean(previousDay && currentDay && previousDay !== currentDay);
     try {
       chart.timeScale().applyOptions({ tickMarkFormatter: formatAxisTime });
     } catch (_) {}
@@ -990,13 +1176,14 @@
       barSpacing: 15,
     });
     if (fitContent || !initialized) {
+      const intervalVisibleBars = preferredVisibleBars();
       const requestedVisibleBars = Math.max(
         Number(lastBarsPayload.visible_window_bars) || 0,
-        Math.min(bars.length, DEFAULT_VISIBLE_BARS),
+        Math.min(bars.length, intervalVisibleBars),
       );
       const visibleBars = Math.max(
-        Math.min(bars.length, requestedVisibleBars, DEFAULT_VISIBLE_BARS) + LEFT_SCROLL_BUFFER_BARS,
-        Math.min(bars.length, DEFAULT_VISIBLE_BARS),
+        Math.min(bars.length, requestedVisibleBars, intervalVisibleBars) + LEFT_SCROLL_BUFFER_BARS,
+        Math.min(bars.length, intervalVisibleBars),
       );
       const targetTo = sessionTargetBarCount > 0
         ? Math.max((bars.length - 1) + DEFAULT_RIGHT_OFFSET_BARS, sessionTargetBarCount - 1)
@@ -1486,6 +1673,7 @@
         }
         applyStratMarkers();
         updateDayLevelLines();
+        renderDrawings();
         setSpotTrendTone(detectShortTermTrend(activeCandles));
         if (emptyState) emptyState.hidden = true;
         return;
@@ -1495,6 +1683,7 @@
         if (fitContent) applyViewport({ fitContent: true });
         applyStratMarkers();
         updateDayLevelLines();
+        renderDrawings();
         if (emptyState) emptyState.hidden = true;
         return;
       }
@@ -1513,6 +1702,7 @@
         if (latestVolume) volumeSeries.update(latestVolume);
         applyStratMarkers();
         updateDayLevelLines();
+        renderDrawings();
         lastBarsSignature = nextBarsSignature;
         lastDataShapeSignature = nextDataShapeSignature;
         lastLiveBarSignature = nextLiveBarSignature;
@@ -1526,6 +1716,7 @@
       applyStratMarkers({ force: true });
       volumeSeries.setData(volume);
       updateDayLevelLines();
+      renderDrawings();
       lastBarsSignature = nextBarsSignature;
       lastDataShapeSignature = nextDataShapeSignature;
       lastLiveBarSignature = nextLiveBarSignature;
@@ -1762,6 +1953,22 @@
   };
 
   const bindDisplayToggles = () => {
+    if (drawToggle) {
+      drawToggle.addEventListener("click", () => {
+        drawingState.enabled = !drawingState.enabled;
+        syncDrawingButtons();
+      });
+    }
+    if (undoDrawButton) {
+      undoDrawButton.addEventListener("click", () => {
+        removeLastDrawing();
+      });
+    }
+    if (clearDrawButton) {
+      clearDrawButton.addEventListener("click", () => {
+        clearAllDrawings();
+      });
+    }
     if (markersToggle) {
       markersToggle.addEventListener("click", () => {
         displayPrefs.showMarkers = !displayPrefs.showMarkers;
@@ -1836,12 +2043,15 @@
   };
 
   loadDisplayPrefs();
+  loadDrawings();
   renderPollStatus();
   syncToggleButtons();
+  syncDrawingButtons();
   syncIntervalControls();
   bindDisplayToggles();
   bindIntervalToggles();
   applyLevelVisibility();
+  renderDrawings();
   window.addEventListener("resize", () => {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(resize, RESIZE_DEBOUNCE_MS);
@@ -1857,6 +2067,24 @@
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       renderLevelRail(lastLevelsPayload);
       renderSessionBreakLabel();
+    });
+  } catch (_) {}
+  try {
+    chart.subscribeClick((param) => {
+      if (!drawingState.enabled || !param?.point) return;
+      const time = asChartTime(param.time);
+      const value = asNum(candleSeries.coordinateToPrice(param.point.y));
+      if (!Number.isFinite(time) || value === null) return;
+      drawingState.lines = [
+        ...drawingState.lines,
+        {
+          time,
+          value,
+        },
+      ];
+      saveDrawings();
+      renderDrawings();
+      syncDrawingButtons();
     });
   } catch (_) {}
   document.addEventListener("visibilitychange", () => {

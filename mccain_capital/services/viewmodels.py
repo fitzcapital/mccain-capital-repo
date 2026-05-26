@@ -90,6 +90,8 @@ def balance_state_badges(balance_integrity: Mapping[str, Any]) -> List[StateBadg
     stored_value = "No snapshot"
     stored_tone = "neutral"
     stored_title = "No stored per-trade balance snapshot is available yet."
+    stored_label = str(balance_integrity.get("stored_status_label") or "No snapshot")
+    stored_tone = str(balance_integrity.get("stored_status_tone") or stored_tone)
     if stored is not None:
         stored_value = "Drift " + money(delta) if has_drift else "In sync"
         stored_tone = "critical" if has_drift else "healthy"
@@ -117,7 +119,7 @@ def balance_state_badges(balance_integrity: Mapping[str, Any]) -> List[StateBadg
         ),
         StateBadgeViewModel(
             label="Stored",
-            value=stored_value,
+            value=stored_value if stored is not None else stored_label,
             tone=stored_tone,
             title=stored_title,
         ),

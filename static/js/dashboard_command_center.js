@@ -169,6 +169,68 @@ const marketSessionState = (now = new Date()) => {
 })();
 
 (function () {
+  const button = document.getElementById("dashboardWakeLockBtn");
+  const details = document.getElementById("dashboardHealthSurface");
+  if (!button || !details) return;
+
+  const storageKey = "mc_dashboard_fold_support_health";
+
+  const storageGet = () => {
+    try {
+      const value = window.localStorage?.getItem(storageKey);
+      return value === "1" ? true : value === "0" ? false : null;
+    } catch (_err) {
+      return null;
+    }
+  };
+
+  const storageSet = (isOpen) => {
+    try {
+      if (window.localStorage) {
+        window.localStorage.setItem(storageKey, isOpen ? "1" : "0");
+      }
+    } catch (_err) {
+      // Ignore storage failures.
+    }
+  };
+
+  const renderState = (isOpen) => {
+    const nextTitle = isOpen ? "Collapse Support & Health" : "Keep Support & Health open";
+    button.classList.toggle("is-active", !!isOpen);
+    button.setAttribute("aria-pressed", isOpen ? "true" : "false");
+    button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    button.setAttribute("aria-label", nextTitle);
+    button.title = nextTitle;
+  };
+
+  const setOpenState = (isOpen, persist = true) => {
+    details.open = !!isOpen;
+    renderState(details.open);
+    if (persist) {
+      storageSet(details.open);
+    }
+  };
+
+  const storedOpen = storageGet();
+  if (storedOpen !== null) {
+    setOpenState(storedOpen, false);
+  } else {
+    renderState(details.open);
+  }
+
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setOpenState(!details.open);
+  });
+
+  details.addEventListener("toggle", () => {
+    renderState(details.open);
+    storageSet(details.open);
+  });
+})();
+
+(function () {
   const details = document.getElementById("advancedDashboardWidgets");
   const lazyShell = document.getElementById("dashboardCalendarLazy");
   if (!details || !lazyShell) return;
@@ -1389,6 +1451,52 @@ const marketSessionState = (now = new Date()) => {
       void refreshPlanning({ force: false, showLoading: false });
     }, 60);
   }
+})();
+
+(function () {
+  const form = document.getElementById("dashboardDriftRefreshForm");
+  const button = document.getElementById("dashboardDriftRefreshBtn");
+  if (!form || !button) return;
+
+  const setLoading = (loading) => {
+    button.disabled = !!loading;
+    button.classList.toggle("is-loading", !!loading);
+    button.setAttribute("aria-busy", loading ? "true" : "false");
+  };
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (button.disabled) return;
+    setLoading(true);
+    if (typeof window.showDashboardLoading === "function") {
+      window.showDashboardLoading("Rebuilding ledger", "Refreshing canonical ledger balances.");
+    }
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: new FormData(form),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload || payload.ok === false) {
+        throw new Error("dashboard_drift_refresh_failed");
+      }
+      window.location.assign(payload.redirect_url || window.location.href);
+      return;
+    } catch (_error) {
+      window.location.reload();
+      return;
+    } finally {
+      if (typeof window.completeDashboardLoading === "function") {
+        window.completeDashboardLoading();
+      }
+      setLoading(false);
+    }
+  });
 })();
 
 (function () {

@@ -127,91 +127,26 @@ def is_authenticated() -> bool:
 # DB helpers
 # ============================================================
 def db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return _rt.db()
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     try:
-        row = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
-            (table_name,),
-        ).fetchone()
-        return row is not None
+        return _rt._table_exists(conn, table_name)
     except Exception:
         return False
 
 
 def get_setting_value(key: str, default=None):
-    """Read a setting from the DB if a settings table exists; otherwise return default.
-
-    Supports common schemas:
-      - settings(key TEXT PRIMARY KEY, value TEXT)
-      - settings(name TEXT PRIMARY KEY, value TEXT)
-    """
-    conn = db()
-    if not _table_exists(conn, "settings"):
-        return default
-
-    # discover columns
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(settings)").fetchall()]
-    except Exception:
-        return default
-
-    key_col = None
-    for c in ("key", "name", "setting"):
-        if c in cols:
-            key_col = c
-            break
-
-    val_col = None
-    for c in ("value", "val", "setting_value"):
-        if c in cols:
-            val_col = c
-            break
-
-    if not key_col or not val_col:
-        return default
-
-    try:
-        row = conn.execute(
-            f'SELECT "{val_col}" FROM settings WHERE "{key_col}" = ? LIMIT 1',
-            (key,),
-        ).fetchone()
-        if not row:
-            return default
-        return row[0]
-    except Exception:
-        return default
+    return _rt.get_setting_value(key, default)
 
 
 def get_setting_float(key: str, default: float = 0.0) -> float:
-    val = get_setting_value(key, None)
-    if val is None:
-        return float(default)
-    try:
-        return float(val)
-    except Exception:
-        return float(default)
+    return _rt.get_setting_float(key, default)
 
 
 def set_setting_value(key: str, value: str) -> None:
-    """Insert or update a setting in DB."""
-    with db() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            );
-            """
-        )
-        conn.execute(
-            "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (key, value),
-        )
+    _rt.set_setting_value(key, value)
 
 
 def now_et() -> datetime:

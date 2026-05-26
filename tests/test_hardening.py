@@ -5,6 +5,7 @@ import tempfile
 
 from mccain_capital import app_core as core
 from mccain_capital import create_app
+from mccain_capital import runtime
 from mccain_capital.runtime import db
 
 
@@ -108,6 +109,22 @@ def test_sqlite_connection_uses_wal_mode():
     with db() as conn:
         row = conn.execute("PRAGMA journal_mode").fetchone()
     assert str(row[0] or "").lower() == "wal"
+
+
+def test_legacy_app_core_db_uses_runtime_busy_timeout():
+    with core.db() as conn:
+        row = conn.execute("PRAGMA busy_timeout").fetchone()
+    assert int(row[0] or 0) == runtime.SQLITE_BUSY_TIMEOUT_MS
+
+
+def test_runtime_tracks_sql_query_metrics():
+    runtime.reset_request_metrics()
+    with db() as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS metric_probe (id INTEGER PRIMARY KEY)")
+        conn.execute("SELECT COUNT(*) FROM metric_probe").fetchone()
+    metrics = runtime.get_request_metrics_snapshot()
+    assert int(metrics["sql_query_count"]) >= 2
+    assert float(metrics["sql_total_ms"]) >= 0.0
 
 
 def test_ops_backups_page_shows_persistence_runtime(client):
