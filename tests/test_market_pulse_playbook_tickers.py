@@ -7,6 +7,9 @@ def test_get_supported_playbook_ticker_defaults_to_qqq():
     assert core.get_supported_playbook_ticker("spx") == "SPX"
     assert core.get_supported_playbook_ticker("qqq") == "QQQ"
     assert core.get_supported_playbook_ticker("SPY") == "SPY"
+    assert core.get_supported_playbook_ticker("nvda") == "NVDA"
+    assert core.get_supported_playbook_ticker("BRK.B") == "BRK.B"
+    assert core.get_supported_playbook_ticker("bad!") == "QQQ"
 
 
 def test_market_pulse_renders_spx_ticker_switch(client):
@@ -16,8 +19,21 @@ def test_market_pulse_renders_spx_ticker_switch(client):
     body = resp.get_data(as_text=True)
     assert 'href="/market-pulse?ticker=SPX"' in body
     assert 'data-playbook-ticker-switch="SPX"' in body
+    assert "data-playbook-ticker-search" in body
+    assert "data-playbook-ticker-input" in body
     assert 'class="marketPulseTickerSwitch is-active"' in body
     assert "SPX PLAYBOOK" in body
+
+
+def test_market_pulse_accepts_custom_ticker_search(client):
+    resp = client.get("/market-pulse?ticker=NVDA", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "NVDA PLAYBOOK" in body
+    assert 'value="NVDA"' in body
+    assert 'data-playbook-ticker-switch="QQQ"' in body
+    assert 'class="marketPulseTickerSwitch is-active"' not in body
 
 
 def test_scaled_gamma_snapshot_scales_levels_and_localizes_warning():

@@ -128,6 +128,21 @@
                 data-playbook-ticker-switch="{{ switch_ticker }}"
               >{{ switch_ticker }}</a>
             {% endfor %}
+            <form class="marketPulseTickerSearch" action="/market-pulse" method="get" data-playbook-ticker-search>
+              <input
+                type="search"
+                name="ticker"
+                value="{% if selected_ticker not in supported_tickers %}{{ selected_ticker }}{% endif %}"
+                placeholder="Search ticker"
+                maxlength="12"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Search playbook ticker"
+                data-playbook-ticker-input
+              >
+              {% if feed_mode == 'raw' %}<input type="hidden" name="feed" value="raw">{% endif %}
+              <button type="submit" aria-label="Load ticker playbook" title="Load ticker playbook">GO</button>
+            </form>
           </div>
         </div>
         <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</div>
@@ -1052,7 +1067,13 @@
                       {% set item_rel = item.age_label or item.published_label %}
                       {% set item_abs = item.published_et_label %}
                       {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
-                      <span class="marketFeedRow__time" title="{{ item_time }}">{{ item_time }}</span>
+                      <span
+                        class="marketFeedRow__time"
+                        title="{{ item_time }}"
+                        data-feed-published-at="{{ item.published_at or '' }}"
+                        data-feed-absolute-label="{{ item_abs or '' }}"
+                        data-feed-fallback-label="{{ item_rel or item.published_label or '' }}"
+                      >{{ item_time }}</span>
                     </div>
                     <div class="marketFeedRow__head">
                       <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
@@ -1090,7 +1111,13 @@
                       {% set item_rel = item.age_label or item.published_label %}
                       {% set item_abs = item.published_et_label %}
                       {% set item_time = (item_rel ~ ' · ' ~ item_abs) if item_rel and item_abs else (item_rel or item_abs or 'Now') %}
-                      <span class="marketFeedRow__time" title="{{ item_time }}">{{ item_time }}</span>
+                      <span
+                        class="marketFeedRow__time"
+                        title="{{ item_time }}"
+                        data-feed-published-at="{{ item.published_at or '' }}"
+                        data-feed-absolute-label="{{ item_abs or '' }}"
+                        data-feed-fallback-label="{{ item_rel or item.published_label or '' }}"
+                      >{{ item_time }}</span>
                     </div>
                     <div class="marketFeedRow__head">
                       <a class="marketFeedRow__headline" href="{{ item.url }}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="{{ item.published_at or '' }}">{{ item.headline or item.text }}</a>
@@ -1349,6 +1376,8 @@
   const tapeRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-tape-refresh]"));
   const tapeShell = document.querySelector(".marketPulseTapeShell");
   const tickerSwitches = Array.from(document.querySelectorAll("[data-playbook-ticker-switch]"));
+  const tickerSearchForm = document.querySelector("[data-playbook-ticker-search]");
+  const tickerSearchInput = document.querySelector("[data-playbook-ticker-input]");
   const loadingOverlay = document.getElementById("marketPulseLoadingOverlay");
   const loadingTitle = document.getElementById("marketPulseLoadingTitle");
   const loadingSub = document.getElementById("marketPulseLoadingSub");
@@ -1507,6 +1536,25 @@
       showReloadOverlay(`${nextTicker} Playbook`, `Loading ${nextTicker} gamma, structure, and execution context…`);
     });
   });
+  const sanitizeTicker = (value) => String(value || "").toUpperCase().replace(/[^A-Z0-9.-]/g, "").slice(0, 12);
+  if (tickerSearchInput) {
+    tickerSearchInput.addEventListener("input", () => {
+      const nextValue = sanitizeTicker(tickerSearchInput.value);
+      if (tickerSearchInput.value !== nextValue) tickerSearchInput.value = nextValue;
+    });
+  }
+  if (tickerSearchForm && tickerSearchInput) {
+    tickerSearchForm.addEventListener("submit", (event) => {
+      const nextTicker = sanitizeTicker(tickerSearchInput.value);
+      if (!nextTicker || nextTicker === currentTicker) {
+        event.preventDefault();
+        return;
+      }
+      tickerSearchInput.value = nextTicker;
+      storageSet(TICKER_KEY, nextTicker);
+      showReloadOverlay(`${nextTicker} Playbook`, `Loading ${nextTicker} gamma, structure, and execution context…`);
+    });
+  }
 
   const syncMobileFolds = () => {
     const isMobile = mobileFoldQuery.matches;
@@ -1686,34 +1734,80 @@
   };
 
   const feedTag = (item, mode) => escapeHtml(mode === "raw" ? "POST" : (item.impact_label || item.category_label || "LIVE"));
+  const formatRelativeFeedAge = (publishedAt, now = new Date()) => {
+    const dt = new Date(publishedAt || "");
+    if (Number.isNaN(dt.getTime())) return "";
+    const deltaMs = Math.max(0, now.getTime() - dt.getTime());
+    const minutes = Math.floor(deltaMs / 60000);
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
+  const formatFeedAbsoluteTime = (publishedAt) => {
+    const dt = new Date(publishedAt || "");
+    if (Number.isNaN(dt.getTime())) return "";
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(dt);
+  };
+  const composeFeedTime = ({ relative = "", absolute = "", fallback = "" } = {}) => {
+    const rel = String(relative || "").trim();
+    const abs = String(absolute || "").trim();
+    const backstop = String(fallback || "").trim();
+    if (rel && abs) return `${rel} · ${abs}`;
+    return rel || abs || backstop || "Now";
+  };
   const feedTimeParts = (item) => {
-    const relative = item.age_label || item.published_label || "";
+    let relative = formatRelativeFeedAge(item.published_at);
     let absolute = item.published_et_label || "";
     if (!absolute && item.published_at) {
-      const dt = new Date(item.published_at);
-      if (!Number.isNaN(dt.getTime())) {
-        absolute = new Intl.DateTimeFormat("en-US", {
-          timeZone: "America/New_York",
-          month: "short",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        }).format(dt);
-      }
+      absolute = formatFeedAbsoluteTime(item.published_at);
     }
+    if (!relative) relative = item.age_label || item.published_label || "";
     return { relative, absolute };
   };
   const feedTime = (item) => {
     const { relative, absolute } = feedTimeParts(item);
-    const text = relative && absolute ? `${relative} · ${absolute}` : (relative || absolute || "Now");
-    return escapeHtml(text);
+    return escapeHtml(composeFeedTime({ relative, absolute }));
   };
   const feedTimeTitle = (item) => {
     const { relative, absolute } = feedTimeParts(item);
-    const text = relative && absolute ? `${relative} · ${absolute}` : (relative || absolute || "Now");
-    return escapeHtml(text);
+    return escapeHtml(composeFeedTime({ relative, absolute }));
   };
+  const feedTimeAttrs = (item) => {
+    const { relative, absolute } = feedTimeParts(item);
+    const fallback = item.age_label || item.published_label || relative || "";
+    return [
+      `data-feed-published-at="${escapeHtml(item.published_at || "")}"`,
+      `data-feed-absolute-label="${escapeHtml(absolute || "")}"`,
+      `data-feed-fallback-label="${escapeHtml(fallback || "")}"`,
+    ].join(" ");
+  };
+  const refreshFeedTimeLabels = () => {
+    const now = new Date();
+    document.querySelectorAll(".marketFeedRow__time[data-feed-published-at]").forEach((node) => {
+      const publishedAt = node.dataset.feedPublishedAt || "";
+      const fallback = node.dataset.feedFallbackLabel || "";
+      const relative = formatRelativeFeedAge(publishedAt, now) || fallback;
+      let absolute = node.dataset.feedAbsoluteLabel || "";
+      if (!absolute && publishedAt) {
+        absolute = formatFeedAbsoluteTime(publishedAt);
+        if (absolute) node.dataset.feedAbsoluteLabel = absolute;
+      }
+      const text = composeFeedTime({ relative, absolute, fallback });
+      node.textContent = text;
+      node.title = text;
+    });
+  };
+  window.setInterval(refreshFeedTimeLabels, 60000);
+  window.setTimeout(refreshFeedTimeLabels, 0);
   const feedHeadline = (item) => escapeHtml(item.headline || item.text || "Market update");
   const feedSummary = (item) => {
     const headline = String(item?.headline || item?.text || "Market update").trim().toLowerCase();
@@ -1897,7 +1991,7 @@
       <article class="marketFeedRow marketFeedRow-high">
         <div class="marketFeedRow__meta">
           <span class="live-x-feed-item__tag">HIGH</span>
-          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
+          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}" ${feedTimeAttrs(item)}>${feedTime(item)}</span>
         </div>
         <div class="marketFeedRow__head">
           <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
@@ -1926,7 +2020,7 @@
     const listHtml = sorted.map((item) => `
       <article class="marketFeedRow">
         <div class="marketFeedRow__meta">
-          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}">${feedTime(item)}</span>
+          <span class="marketFeedRow__time" title="${feedTimeTitle(item)}" ${feedTimeAttrs(item)}>${feedTime(item)}</span>
         </div>
         <div class="marketFeedRow__head">
           <a class="marketFeedRow__headline" href="${feedUrl(item)}" target="_blank" rel="noopener noreferrer" data-feed-read="1" data-feed-ts="${escapeHtml(item.published_at || "")}">${feedHeadline(item)}</a>
@@ -1974,9 +2068,10 @@
               </button>
             </div>
           ` : ""}
-        </div>
-      </section>`;
-  };
+	        </div>
+	      </section>`;
+    refreshFeedTimeLabels();
+	  };
 
   const setFeedRefreshState = (isLoading) => {
     const buttons = [

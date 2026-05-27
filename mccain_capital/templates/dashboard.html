@@ -308,13 +308,28 @@
               <span class="dashboardSnapshotDropdownMeta">Combined profit · read only</span>
             </a>
             {% for account in accounts or [] %}
-              <a
-                class="dashboardSnapshotDropdownItem{% if selected_account and account.id == selected_account.id and scope_mode == 'active' %} is-active{% endif %}"
-                href="/dashboard?y={{ dashboard_year }}&m={{ dashboard_month }}&scope=active&ticker={{ selected_ticker }}&pace_tf={{ pace_timeframe.key }}&account_id={{ account.id }}"
+              <div
+                class="dashboardSnapshotDropdownItem dashboardSnapshotDropdownAccountItem{% if selected_account and account.id == selected_account.id and scope_mode == 'active' %} is-active{% endif %}"
+                data-dashboard-account-row
               >
-                <span class="dashboardSnapshotDropdownTitle">{{ account.account_name }}</span>
-                <span class="dashboardSnapshotDropdownMeta">{{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}</span>
-              </a>
+                <label class="dashboardSnapshotAccountCheck">
+                  <input
+                    type="checkbox"
+                    name="account_ids"
+                    value="{{ account.id }}"
+                    form="dashboard-bulk-archive-accounts"
+                    data-dashboard-account-check
+                    aria-label="Select {{ account.account_name }} for archive"
+                  >
+                </label>
+                <a
+                  class="dashboardSnapshotDropdownAccountLink"
+                  href="/dashboard?y={{ dashboard_year }}&m={{ dashboard_month }}&scope=active&ticker={{ selected_ticker }}&pace_tf={{ pace_timeframe.key }}&account_id={{ account.id }}"
+                >
+                  <span class="dashboardSnapshotDropdownTitle">{{ account.account_name }}</span>
+                  <span class="dashboardSnapshotDropdownMeta">{{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}</span>
+                </a>
+              </div>
             {% endfor %}
           </div>
           <div class="dashboardSnapshotDropdownActions">
@@ -322,10 +337,20 @@
             {% if selected_account %}
               <a class="btn" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}&account_editor=edit">Update Account</a>
               <a class="btn" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}">Live Upload</a>
-              <form method="post" action="/trades/upload/statement?ws=live">
-                <input type="hidden" name="intent" value="archive_account" />
-                <input type="hidden" name="selected_account_id" value="{{ selected_account.id }}" />
-                <button class="btn" type="submit">Archive Account</button>
+            {% endif %}
+            {% if accounts %}
+              <form
+                method="post"
+                action="/trades/upload/statement?ws=live"
+                id="dashboard-bulk-archive-accounts"
+                class="dashboardSnapshotBulkArchiveForm"
+                data-dashboard-account-bulk-form
+              >
+                <input type="hidden" name="intent" value="bulk_archive_accounts" />
+                <button class="btn" type="button" data-dashboard-account-select-all>Select all</button>
+                <button class="btn" type="button" data-dashboard-account-clear>Clear</button>
+                <span class="dashboardSnapshotBulkCount" data-dashboard-account-selected-count>0 selected</span>
+                <button class="btn" type="submit">Archive selected</button>
               </form>
             {% endif %}
           </div>

@@ -100,6 +100,13 @@ def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(clien
     body = resp.get_data(as_text=True)
     assert "dashboardSnapshotCard-accountDropdown" in body
     assert "dashboardSnapshotDropdownChevron" in body
+    assert 'name="account_ids"' in body
+    assert 'data-dashboard-account-check' in body
+    assert 'data-dashboard-account-select-all' in body
+    assert 'data-dashboard-account-clear' in body
+    assert 'data-dashboard-account-selected-count' in body
+    assert 'value="bulk_archive_accounts"' in body
+    assert "Archive selected" in body
     assert f"/trades/upload/statement?ws=live&account_id={account_id}" in body
     assert (
         f'<a class="btn ctaLink" href="/trades/upload/statement?ws=live&account_id={account_id}">'
@@ -108,7 +115,7 @@ def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(clien
     )
     assert f"/trades/upload/statement?ws=live&account_id={account_id}&account_editor=edit" in body
     assert "/trades/upload/statement?ws=live&account_id=all&account_editor=new" in body
-    assert "Archive Account" in body
+    assert "Archive selected" in body
     assert "ACC999" in body
     assert "default:ACC999" not in body
 
@@ -2344,6 +2351,8 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
                     "summary": "Macro desks are focused on yields and policy language.",
                     "source_label": "Reuters",
                     "url": "https://example.com/1",
+                    "published_at": "2026-04-05T09:40:00-04:00",
+                    "published_et_label": "Apr 05, 09:40 AM",
                     "published_label": "5m ago",
                     "impact": "high",
                     "impact_label": "HIGH",
@@ -2356,6 +2365,8 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
                     "summary": "Rates pressure remains the lead market driver.",
                     "source_label": "MarketWatch",
                     "url": "https://example.com/2",
+                    "published_at": "2026-04-05T09:36:00-04:00",
+                    "published_et_label": "Apr 05, 09:36 AM",
                     "published_label": "9m ago",
                     "impact": "high",
                     "impact_label": "HIGH",
@@ -2404,6 +2415,11 @@ def test_market_pulse_renders_three_high_impact_feed_items(client, monkeypatch):
     assert "Treasury yields climb as SPX futures fade" in body
     assert "Refresh Feed" in body
     assert "All posts" in body
+    assert 'data-feed-published-at="2026-04-05T09:40:00-04:00"' in body
+    assert 'data-feed-absolute-label="Apr 05, 09:40 AM"' in body
+    assert "5m ago · Apr 05, 09:40 AM" in body
+    assert "formatRelativeFeedAge" in body
+    assert "refreshFeedTimeLabels" in body
     assert "Open on X" in body
     assert "https://twitter.com/unusual_whales" in body
 

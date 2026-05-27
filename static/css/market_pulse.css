@@ -96,6 +96,57 @@ body.page-market-pulse .marketPulseTickerSwitch.is-active::after{
   pointer-events:none;
 }
 
+body.page-market-pulse .marketPulseTickerSearch{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  min-height:36px;
+  padding:0 4px 0 10px;
+  border-left:1px solid rgba(124, 167, 224, .16);
+}
+
+body.page-market-pulse .marketPulseTickerSearch input{
+  width:118px;
+  min-width:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#f7fbff;
+  font-size:.78rem;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+body.page-market-pulse .marketPulseTickerSearch input::placeholder{
+  color:rgba(199, 214, 232, .58);
+  text-transform:none;
+  letter-spacing:0;
+}
+
+body.page-market-pulse .marketPulseTickerSearch button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:34px;
+  min-height:30px;
+  padding:0 10px;
+  border:1px solid rgba(124, 167, 224, .20);
+  border-radius:999px;
+  background:rgba(19, 43, 82, .62);
+  color:rgba(228, 239, 255, .88);
+  font-size:.70rem;
+  font-weight:900;
+  letter-spacing:.08em;
+  cursor:pointer;
+}
+
+body.page-market-pulse .marketPulseTickerSearch button:hover{
+  color:#fff;
+  border-color:rgba(100, 218, 246, .38);
+  background:rgba(37, 86, 156, .72);
+}
+
 body[data-theme="new-galaxy"].page-market-pulse .marketPulseCommandHeader-compact > .toolbar{
   position:relative;
   z-index:1;
@@ -2861,12 +2912,25 @@ body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .mar
   body.page-market-pulse .marketPulseTickerSwitcher{
     width:100% !important;
     display:grid !important;
-    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns:repeat(3, minmax(0, 1fr)) !important;
   }
 
   body.page-market-pulse .marketPulseTickerSwitch{
     min-width:0 !important;
     justify-content:center !important;
+  }
+
+  body.page-market-pulse .marketPulseTickerSearch{
+    grid-column:1 / -1 !important;
+    width:100% !important;
+    border-left:0 !important;
+    border-top:1px solid rgba(124, 167, 224, .16) !important;
+    padding:6px 2px 0 !important;
+  }
+
+  body.page-market-pulse .marketPulseTickerSearch input{
+    flex:1 1 auto !important;
+    width:auto !important;
   }
 
   body.page-market-pulse .marketPulsePlaybookHero,

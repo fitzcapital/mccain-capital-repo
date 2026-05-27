@@ -386,6 +386,77 @@ def test_archive_account_hides_it_and_falls_back_to_remaining_active_account(cli
     assert str(snapshot.get("account_id") or "") == str(second_account_id)
 
 
+def test_bulk_archive_accounts_hides_selected_and_falls_back_to_remaining_account(client):
+    first_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Duplicate One",
+        broker_account_id="default:OEV111111",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+    second_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Duplicate Two",
+        broker_account_id="default:OEV222222",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+    keep_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Keep Account",
+        broker_account_id="default:OEV333333",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=7500.0,
+    )
+    trades_repo.set_active_account(int(first_account_id))
+
+    resp = client.post(
+        "/trades/upload/statement?ws=live",
+        data={
+            "intent": "bulk_archive_accounts",
+            "account_ids": [str(first_account_id), str(second_account_id), "bad"],
+        },
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Archived 2 accounts." in body
+    active_ids = {int(row["id"]) for row in trades_repo.list_accounts()}
+    assert int(first_account_id) not in active_ids
+    assert int(second_account_id) not in active_ids
+    assert int(keep_account_id) in active_ids
+    snapshot = trades_repo.account_scope_snapshot()
+    assert str(snapshot.get("account_id") or "") == str(keep_account_id)
+
+
+def test_bulk_archive_accounts_empty_selection_warns_without_archiving(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Keep Active",
+        broker_account_id="default:OEV444444",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+    trades_repo.set_active_account(int(account_id))
+
+    resp = client.post(
+        "/trades/upload/statement?ws=live",
+        data={"intent": "bulk_archive_accounts"},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert "Select at least one account to archive." in resp.get_data(as_text=True)
+    assert trades_repo.get_account(int(account_id)) is not None
+    snapshot = trades_repo.account_scope_snapshot()
+    assert str(snapshot.get("account_id") or "") == str(account_id)
+
+
 def test_live_sync_can_save_and_reuse_credentials(client, monkeypatch, tmp_path):
     from mccain_capital.services import trades as trades_svc
 

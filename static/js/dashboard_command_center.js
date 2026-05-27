@@ -3067,3 +3067,48 @@ const marketSessionState = (now = new Date()) => {
   window.setTimeout(syncMindsetAnchored, 120);
   window.setTimeout(syncMindsetAnchored, 600);
 })();
+
+(() => {
+  const form = document.querySelector("[data-dashboard-account-bulk-form]");
+  if (!form) return;
+  const checks = Array.from(document.querySelectorAll("[data-dashboard-account-check]"));
+  const selectAll = document.querySelector("[data-dashboard-account-select-all]");
+  const clear = document.querySelector("[data-dashboard-account-clear]");
+  const countLabel = document.querySelector("[data-dashboard-account-selected-count]");
+
+  const updateCount = () => {
+    const selected = checks.filter((check) => check.checked).length;
+    if (countLabel) countLabel.textContent = `${selected} selected`;
+    form.classList.toggle("has-selection", selected > 0);
+  };
+
+  checks.forEach((check) => {
+    check.addEventListener("change", updateCount);
+    check.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  selectAll?.addEventListener("click", () => {
+    checks.forEach((check) => {
+      check.checked = true;
+    });
+    updateCount();
+  });
+
+  clear?.addEventListener("click", () => {
+    checks.forEach((check) => {
+      check.checked = false;
+    });
+    updateCount();
+  });
+
+  form.addEventListener("submit", (event) => {
+    if (!checks.some((check) => check.checked)) {
+      event.preventDefault();
+      updateCount();
+    }
+  });
+
+  updateCount();
+})();

@@ -104,6 +104,7 @@ MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
 SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("QQQ", "SPY", "SPX")
 DEFAULT_PLAYBOOK_TICKER = "QQQ"
 PLAYBOOK_TICKER_STORAGE_KEY = "mc_playbook_ticker"
+PLAYBOOK_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,11}$")
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
 GAMMA_SPOT_TIMESTAMP_DRIFT_SECONDS = 120
@@ -6435,6 +6436,11 @@ def get_or_build_market_pulse_snapshot(
     spx_quote = next(
         (q for q in quotes if str(q.get("label") or q.get("symbol") or "").upper() == "SPX"), {}
     )
+    selected_quote_loaded = _market_pulse_quote_for_ticker(quotes, selected_ticker)
+    if selected_ticker != "SPX" and not selected_quote_loaded:
+        fetched_quote = _market_pulse_fetch_playbook_quote(selected_ticker)
+        if fetched_quote:
+            quotes.append(fetched_quote)
     macro_events = list(preloaded_macro_events or [])
     session_mode = _market_pulse_snapshot_session_mode(now_et)
     cached_playbook = _market_pulse_cached_playbook_snapshot(now_et, ticker=selected_ticker)
@@ -7243,7 +7249,7 @@ def _market_news_compose_feed(
 
 def get_supported_playbook_ticker(value: Any) -> str:
     ticker = str(value or "").strip().upper()
-    return ticker if ticker in SUPPORTED_PLAYBOOK_TICKERS else DEFAULT_PLAYBOOK_TICKER
+    return ticker if PLAYBOOK_TICKER_PATTERN.fullmatch(ticker) else DEFAULT_PLAYBOOK_TICKER
 
 
 def get_playbook_ticker_context(value: Any) -> Dict[str, Any]:
@@ -7278,6 +7284,28 @@ def _market_pulse_quote_for_ticker(
         if symbol == resolved_ticker:
             return dict(row)
     return dict(fallback or {})
+
+
+def _market_pulse_fetch_playbook_quote(ticker: str) -> Dict[str, Any]:
+    symbol = get_supported_playbook_ticker(ticker)
+    raw_symbol = str(ticker or "").strip().upper()
+    if symbol == DEFAULT_PLAYBOOK_TICKER and raw_symbol != DEFAULT_PLAYBOOK_TICKER:
+        return {}
+    try:
+        quotes = market_data_service.get_watchlist_tradier([symbol])
+        quote = dict((quotes or {}).get(symbol) or {})
+    except Exception:
+        quote = {}
+    if not quote:
+        try:
+            quotes = market_data_service.get_watchlist([symbol], allow_yf_fallback=True)
+            quote = dict((quotes or {}).get(symbol) or {})
+        except Exception:
+            quote = {}
+    if quote:
+        quote["symbol"] = symbol
+        quote["label"] = symbol
+    return quote
 
 
 def _market_pulse_round_price(value: Any) -> Optional[float]:

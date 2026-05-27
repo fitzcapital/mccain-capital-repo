@@ -2539,6 +2539,39 @@ def trades_upload_pdf():
             repo.set_active_account(int(fallback_account["id"])) if fallback_account else repo.set_active_account(None)
             flash(f"Archived {target_account['account_name']}.", "success")
             return redirect(url_for("trades_upload_pdf", ws=workspace))
+        if form_intent == "bulk_archive_accounts":
+            seen_ids: set[int] = set()
+            target_ids: List[int] = []
+            for raw_id in request.form.getlist("account_ids"):
+                account_id = _coerce_account_id(raw_id)
+                if account_id and account_id not in seen_ids:
+                    seen_ids.add(account_id)
+                    target_ids.append(account_id)
+            active_scope = repo.account_scope_snapshot()
+            active_account_id = _coerce_account_id(active_scope.get("account_id"))
+            archived_count = 0
+            archived_ids: set[int] = set()
+            for account_id in target_ids:
+                target_account = repo.get_account(account_id)
+                if not target_account:
+                    continue
+                repo.archive_account(int(target_account["id"]))
+                archived_count += 1
+                archived_ids.add(int(target_account["id"]))
+            if not archived_count:
+                flash("Select at least one account to archive.", "warn")
+                return redirect(url_for("trades_upload_pdf", ws=workspace))
+            if active_account_id in archived_ids:
+                remaining_accounts = repo.list_accounts()
+                fallback_account = next(iter(remaining_accounts), None)
+                repo.set_active_account(
+                    int(fallback_account["id"]) if fallback_account else None
+                )
+            flash(
+                f"Archived {archived_count} account{'s' if archived_count != 1 else ''}.",
+                "success",
+            )
+            return redirect(url_for("trades_upload_pdf", ws=workspace))
         if form_intent == "restore_account":
             target_account_id = _coerce_account_id(request.form.get("selected_account_id"))
             if not target_account_id:
