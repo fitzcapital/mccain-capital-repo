@@ -12001,7 +12001,7 @@ def gamma_ladder_api():
 
     if auth_enabled() and not is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
-    symbol = gamma_map_service.normalize_gamma_symbol(request.args.get("symbol") or "")
+    symbol = gamma_map_service.normalize_gamma_ladder_symbol(request.args.get("symbol") or "")
     window = gamma_map_service.normalize_gamma_ladder_window(request.args.get("window") or "")
     try:
         payload = gamma_map_service.build_gamma_ladder(symbol, window=window)

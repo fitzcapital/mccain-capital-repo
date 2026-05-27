@@ -674,6 +674,20 @@
             >{{ gamma_symbol }}</button>
           {% endfor %}
         </div>
+        <form class="gamma-symbol-search" data-gamma-symbol-search aria-label="Search Gamma ladder symbol">
+          <input
+            class="gamma-symbol-search__input"
+            type="search"
+            name="symbol"
+            value="SPX"
+            placeholder="NVDA"
+            maxlength="12"
+            autocomplete="off"
+            spellcheck="false"
+            data-gamma-symbol-input
+          />
+          <button class="gamma-symbol-search__button" type="submit">Search</button>
+        </form>
         <div class="gamma-window-switcher" role="tablist" aria-label="Gamma ladder strike window">
           {% for gamma_window in gamma_ladder_window_presets %}
             <button

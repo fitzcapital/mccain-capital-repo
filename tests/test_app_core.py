@@ -101,6 +101,11 @@ def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(clien
     assert "dashboardSnapshotCard-accountDropdown" in body
     assert "dashboardSnapshotDropdownChevron" in body
     assert f"/trades/upload/statement?ws=live&account_id={account_id}" in body
+    assert (
+        f'<a class="btn ctaLink" href="/trades/upload/statement?ws=live&account_id={account_id}">'
+        "Import</a>"
+        in body
+    )
     assert f"/trades/upload/statement?ws=live&account_id={account_id}&account_editor=edit" in body
     assert "/trades/upload/statement?ws=live&account_id=all&account_editor=new" in body
     assert "Archive Account" in body
@@ -1628,13 +1633,16 @@ def test_gamma_ladder_api_defaults_to_spx(client, monkeypatch):
     assert payload["rows"]
 
 
-def test_gamma_ladder_api_accepts_supported_symbols_and_normalizes_invalid(client, monkeypatch):
+def test_gamma_ladder_api_accepts_searched_symbols_and_normalizes_invalid(client, monkeypatch):
     from mccain_capital.services import gamma_map_service
+
+    seen = []
 
     monkeypatch.setattr(
         gamma_map_service,
         "build_gamma_ladder",
-        lambda symbol, window="standard": {
+        lambda symbol, window="standard": seen.append((symbol, window))
+        or {
             "ok": True,
             "symbol": symbol,
             "spot": 532.14,
@@ -1658,14 +1666,37 @@ def test_gamma_ladder_api_accepts_supported_symbols_and_normalizes_invalid(clien
     )
 
     spy_resp = client.get("/api/gamma-ladder?symbol=SPY&window=tight", follow_redirects=True)
-    bad_resp = client.get("/api/gamma-ladder?symbol=bad&window=nope", follow_redirects=True)
+    nvda_resp = client.get("/api/gamma-ladder?symbol=NVDA&window=wide", follow_redirects=True)
+    bad_resp = client.get("/api/gamma-ladder?symbol=bad!&window=nope", follow_redirects=True)
 
     assert spy_resp.status_code == 200
     assert spy_resp.get_json()["symbol"] == "SPY"
     assert spy_resp.get_json()["window_preset"] == "tight"
+    assert nvda_resp.status_code == 200
+    assert nvda_resp.get_json()["symbol"] == "NVDA"
+    assert nvda_resp.get_json()["window_preset"] == "wide"
     assert bad_resp.status_code == 200
     assert bad_resp.get_json()["symbol"] == "SPX"
     assert bad_resp.get_json()["window_preset"] == "standard"
+    assert ("NVDA", "wide") in seen
+
+
+def test_gamma_ladder_api_error_returns_requested_symbol(client, monkeypatch):
+    from mccain_capital.services import gamma_map_service
+
+    def _raise(symbol, window="standard"):
+        raise RuntimeError(f"{symbol} options chain unavailable.")
+
+    monkeypatch.setattr(gamma_map_service, "build_gamma_ladder", _raise)
+
+    resp = client.get("/api/gamma-ladder?symbol=NVDA&window=tight", follow_redirects=True)
+
+    assert resp.status_code == 503
+    payload = resp.get_json()
+    assert payload["ok"] is False
+    assert payload["symbol"] == "NVDA"
+    assert payload["window_preset"] == "tight"
+    assert "NVDA options chain unavailable" in payload["message"]
 
 
 def test_market_pulse_renders_gamma_ladder_switcher(client):
@@ -1678,6 +1709,8 @@ def test_market_pulse_renders_gamma_ladder_switcher(client):
     assert 'data-gamma-symbol-pill="SPX"' in body
     assert 'data-gamma-symbol-pill="SPY"' in body
     assert 'data-gamma-symbol-pill="QQQ"' in body
+    assert 'data-gamma-symbol-search' in body
+    assert 'data-gamma-symbol-input' in body
     assert 'data-gamma-window-pill="tight"' in body
     assert 'data-gamma-window-pill="standard"' in body
     assert 'data-gamma-window-pill="wide"' in body

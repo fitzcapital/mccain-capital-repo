@@ -6,6 +6,8 @@
   const defaultWindowPreset = String(root.dataset.defaultWindow || "standard").toLowerCase();
   const apiUrl = String(root.dataset.apiUrl || "/api/gamma-ladder");
   const pills = Array.from(root.querySelectorAll("[data-gamma-symbol-pill]"));
+  const searchForm = root.querySelector("[data-gamma-symbol-search]");
+  const searchInput = root.querySelector("[data-gamma-symbol-input]");
   const windowPills = Array.from(root.querySelectorAll("[data-gamma-window-pill]"));
   const board = root.querySelector("[data-gamma-board]");
   const rowsHost = root.querySelector("[data-gamma-rows]");
@@ -79,11 +81,18 @@
   };
   const gammaPolarity = (state) =>
     state.includes("positive") ? "positive" : state.includes("negative") ? "negative" : "neutral";
+  const sanitizeSymbol = (value) =>
+    String(value || "")
+      .toUpperCase()
+      .replace(/[^A-Z.-]/g, "")
+      .slice(0, 12);
 
   const applyTheme = (symbol, regime) => {
     root.dataset.symbol = symbol;
     root.dataset.regime = regime;
-    root.classList.remove(symbolThemeClass("spx"), symbolThemeClass("spy"), symbolThemeClass("qqq"));
+    Array.from(root.classList)
+      .filter((className) => className.indexOf("gamma-theme-") === 0)
+      .forEach((className) => root.classList.remove(className));
     root.classList.add(symbolThemeClass(symbol));
   };
 
@@ -116,7 +125,8 @@
   };
 
   const setActiveSymbol = (symbol) => {
-    currentSymbol = String(symbol || defaultSymbol).toUpperCase();
+    currentSymbol = sanitizeSymbol(symbol) || defaultSymbol;
+    if (searchInput) searchInput.value = currentSymbol;
     pills.forEach((pill) => {
       const pillSymbol = String(pill.dataset.gammaSymbolPill || "").toUpperCase();
       const isActive = pillSymbol === currentSymbol;
@@ -160,6 +170,7 @@
       summaryNode.textContent = lastSummaryText;
     }
     setActiveWindowPreset(payload.window_preset || currentWindowPreset);
+    setActiveSymbol(symbol);
     applyTheme(symbol, regime);
   };
 
@@ -428,7 +439,7 @@
   };
 
   const fetchGammaLadder = async (symbol, { force = false } = {}) => {
-    const normalized = String(symbol || defaultSymbol).toUpperCase();
+    const normalized = sanitizeSymbol(symbol) || defaultSymbol;
     if (inFlightSymbol === normalized && !force) return;
     if (controller) controller.abort();
     controller = new AbortController();
@@ -469,7 +480,7 @@
 
   pills.forEach((pill) => {
     pill.addEventListener("click", () => {
-      const nextSymbol = String(pill.dataset.gammaSymbolPill || "").toUpperCase();
+      const nextSymbol = sanitizeSymbol(pill.dataset.gammaSymbolPill);
       if (!nextSymbol || nextSymbol === currentSymbol) return;
       window.clearTimeout(switchTimer);
       switchTimer = window.setTimeout(() => {
@@ -478,6 +489,27 @@
       }, 120);
     });
   });
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      const nextValue = sanitizeSymbol(searchInput.value);
+      if (searchInput.value !== nextValue) searchInput.value = nextValue;
+    });
+  }
+
+  if (searchForm) {
+    searchForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const nextSymbol = sanitizeSymbol(searchInput ? searchInput.value : "") || defaultSymbol;
+      if (searchInput) searchInput.value = nextSymbol;
+      if (nextSymbol === currentSymbol && hasLoadedData) return;
+      window.clearTimeout(switchTimer);
+      switchTimer = window.setTimeout(() => {
+        setActiveSymbol(nextSymbol);
+        fetchGammaLadder(nextSymbol);
+      }, 120);
+    });
+  }
 
   windowPills.forEach((pill) => {
     pill.addEventListener("click", () => {

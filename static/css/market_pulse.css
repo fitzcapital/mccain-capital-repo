@@ -5164,6 +5164,62 @@ body.page-market-pulse .gamma-symbol-switcher{
   box-shadow:inset 0 1px 0 rgba(195, 217, 255, .03);
 }
 
+body.page-market-pulse .gamma-symbol-search{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  width:fit-content;
+  padding:4px;
+  border-radius:999px;
+  border:1px solid rgba(96, 128, 196, .18);
+  background:rgba(7, 16, 32, .78);
+  box-shadow:inset 0 1px 0 rgba(195, 217, 255, .03);
+}
+
+body.page-market-pulse .gamma-symbol-search__input{
+  appearance:none;
+  width:104px;
+  min-width:0;
+  border:0;
+  border-radius:999px;
+  padding:8px 10px;
+  background:rgba(4, 12, 25, .72);
+  color:rgba(239, 246, 255, .96);
+  font:inherit;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  outline:none;
+}
+
+body.page-market-pulse .gamma-symbol-search__input::placeholder{
+  color:rgba(166, 186, 220, .48);
+}
+
+body.page-market-pulse .gamma-symbol-search__input:focus{
+  box-shadow:0 0 0 1px rgba(118, 183, 255, .24), 0 0 16px rgba(46, 102, 190, .12);
+}
+
+body.page-market-pulse .gamma-symbol-search__button{
+  appearance:none;
+  border:0;
+  border-radius:999px;
+  padding:8px 12px;
+  background:linear-gradient(180deg, rgba(18, 30, 55, .92), rgba(10, 20, 39, .98));
+  color:rgba(239, 246, 255, .92);
+  font:inherit;
+  font-size:.68rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  cursor:pointer;
+  transition:background-color 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+body.page-market-pulse .gamma-symbol-search__button:hover{
+  transform:translateY(-1px);
+  color:rgba(244, 249, 255, .98);
+  box-shadow:0 0 0 1px rgba(118, 183, 255, .18), 0 0 14px rgba(46, 102, 190, .10);
+}
+
 body.page-market-pulse .gamma-window-switcher{
   display:inline-flex;
   align-items:center;
@@ -6192,6 +6248,15 @@ body.page-market-pulse .gamma-ladder-tooltip span:last-child{
   body.page-market-pulse .gamma-symbol-switcher{
     width:100%;
     justify-content:space-between;
+  }
+
+  body.page-market-pulse .gamma-symbol-search{
+    width:100%;
+  }
+
+  body.page-market-pulse .gamma-symbol-search__input{
+    flex:1 1 auto;
+    width:auto;
   }
 
   body.page-market-pulse .gamma-window-switcher{

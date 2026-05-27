@@ -21,7 +21,7 @@ try:
 except Exception:  # pragma: no cover - non-POSIX fallback
     fcntl = None
 
-SELECTOR_PROFILE_VERSION = "2026-02-25.v2"
+SELECTOR_PROFILE_VERSION = "2026-05-27.v3"
 _BROWSER_BOOT_LOCK = threading.Lock()
 _BROWSER_BOOT_LOCK_PATH = os.path.join(tempfile.gettempdir(), "mccain_browser_boot.lock")
 _RESOURCE_ERROR_MARKERS = (
@@ -33,6 +33,10 @@ _RESOURCE_ERROR_MARKERS = (
 )
 SELECTOR_PROFILES: Dict[str, List[str]] = {
     "login_user": [
+        "[data-testid='login_user_name']",
+        "[data-test-id='login_user_name']",
+        "[data-test='login_user_name']",
+        "#login_user_name",
         "input[name='username']",
         "input[name='userName']",
         "input[name='login']",
@@ -46,6 +50,10 @@ SELECTOR_PROFILES: Dict[str, List[str]] = {
         "input[type='text']",
     ],
     "login_password": [
+        "[data-testid='login_password']",
+        "[data-test-id='login_password']",
+        "[data-test='login_password']",
+        "#login_password",
         "input[name='password']",
         "input[type='password']",
         "input[id*='pass']",
@@ -53,6 +61,10 @@ SELECTOR_PROFILES: Dict[str, List[str]] = {
         "input[placeholder*='Password' i]",
     ],
     "login_submit": [
+        "[data-testid='login_submit_button']",
+        "[data-test-id='login_submit_button']",
+        "[data-test='login_submit_button']",
+        "#login_submit_button",
         "button[type='submit']",
         "input[type='submit']",
         "button:has-text('Login')",
@@ -103,6 +115,127 @@ def _first_visible(page, selectors: List[str]):
             except Exception:
                 continue
     return None
+
+
+def _wait_for_first_visible(
+    page,
+    selectors: List[str],
+    *,
+    timeout_ms: int = 6000,
+    poll_ms: int = 250,
+):
+    deadline = time.time() + (max(0, timeout_ms) / 1000.0)
+    while time.time() <= deadline:
+        found = _first_visible(page, selectors)
+        if found:
+            return found
+        try:
+            page.wait_for_timeout(max(50, poll_ms))
+        except Exception:
+            time.sleep(max(0.05, poll_ms / 1000.0))
+    return None
+
+
+def _wait_for_login_username(page, *, timeout_ms: int = 20000):
+    user_input = _wait_for_first_visible(
+        page,
+        SELECTOR_PROFILES["login_user"],
+        timeout_ms=timeout_ms,
+        poll_ms=250,
+    )
+    if user_input:
+        return user_input
+    try:
+        page.wait_for_selector("#loginFormContainer", timeout=5000)
+        page.wait_for_timeout(1500)
+    except Exception:
+        pass
+    return _first_visible(page, SELECTOR_PROFILES["login_user"])
+
+
+def _selector_counts(page, selectors: List[str]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for selector in selectors:
+        count = 0
+        for ctx in _contexts(page):
+            try:
+                count += int(ctx.locator(selector).count())
+            except Exception:
+                continue
+        out[selector] = count
+    return out
+
+
+def _control_summaries(page) -> Dict[str, List[Dict[str, str]]]:
+    script = """
+    () => {
+      const pick = (el) => ({
+        tag: (el.tagName || '').toLowerCase(),
+        type: el.getAttribute('type') || '',
+        id: el.id || '',
+        name: el.getAttribute('name') || '',
+        class: el.getAttribute('class') || '',
+        placeholder: el.getAttribute('placeholder') || '',
+        autocomplete: el.getAttribute('autocomplete') || '',
+        testid:
+          el.getAttribute('data-testid') ||
+          el.getAttribute('data-test-id') ||
+          el.getAttribute('data-test') ||
+          '',
+        ariaLabel: el.getAttribute('aria-label') || '',
+        visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+      });
+      return {
+        inputs: Array.from(document.querySelectorAll('input')).slice(0, 24).map(pick),
+        buttons: Array.from(
+          document.querySelectorAll('button,input[type="submit"]')
+        ).slice(0, 24).map(pick),
+      };
+    }
+    """
+    try:
+        out = page.evaluate(script)
+        if isinstance(out, dict):
+            return {
+                "inputs": list(out.get("inputs") or []),
+                "buttons": list(out.get("buttons") or []),
+            }
+    except Exception:
+        pass
+    return {"inputs": [], "buttons": []}
+
+
+def _login_probe_payload(page) -> Dict[str, Any]:
+    frame_urls: List[str] = []
+    for ctx in _contexts(page):
+        try:
+            frame_urls.append(str(getattr(ctx, "url", "") or ""))
+        except Exception:
+            frame_urls.append("")
+    controls = _control_summaries(page)
+    return {
+        "url": str(getattr(page, "url", "") or ""),
+        "frame_urls": frame_urls,
+        "login_form_container_count": _selector_counts(page, ["#loginFormContainer"]).get(
+            "#loginFormContainer", 0
+        ),
+        "selector_counts": {
+            "login_user": _selector_counts(page, SELECTOR_PROFILES["login_user"]),
+            "login_password": _selector_counts(page, SELECTOR_PROFILES["login_password"]),
+            "login_submit": _selector_counts(page, SELECTOR_PROFILES["login_submit"]),
+        },
+        "inputs": controls["inputs"],
+        "buttons": controls["buttons"],
+        "selector_profile_version": SELECTOR_PROFILE_VERSION,
+    }
+
+
+def _write_login_probe(page, debug_dir: Optional[str]) -> Optional[str]:
+    return _debug_write(
+        debug_dir,
+        "login_probe.json",
+        json.dumps(_login_probe_payload(page), indent=2),
+    )
 
 
 def _debug_write(debug_dir: Optional[str], name: str, content: str) -> Optional[str]:
@@ -435,9 +568,25 @@ def fetch_statement_html_via_login(
             artifacts.append(shot)
 
         mark("locate_username", "Finding username field.")
-        user_input = _first_visible(page, SELECTOR_PROFILES["login_user"])
+        user_input = _wait_for_login_username(page, timeout_ms=20000)
+        if not user_input:
+            warnings.append("Login form did not hydrate in time; reloading login page once.")
+            try:
+                page.goto(login_url, wait_until="domcontentloaded")
+                try:
+                    page.wait_for_load_state("networkidle", timeout=12000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(1500)
+            except Exception:
+                pass
+            retry_shot = _debug_shot(page, debug_dir, "01_open_login_retry.png")
+            if retry_shot:
+                artifacts.append(retry_shot)
+            user_input = _wait_for_login_username(page, timeout_ms=12000)
         if not user_input:
             _debug_write(debug_dir, "01_login_dom.html", page.content())
+            _write_login_probe(page, debug_dir)
             _safe_close(context)
             _safe_close(browser)
             raise _stage_error("locate_username", "Could not locate username/email field.")

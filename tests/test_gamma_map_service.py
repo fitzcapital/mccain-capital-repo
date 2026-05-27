@@ -146,7 +146,15 @@ def test_classify_gamma_regime_neutral_band():
 def test_normalize_gamma_symbol_defaults_to_spx():
     assert svc.normalize_gamma_symbol("spy") == "SPY"
     assert svc.normalize_gamma_symbol("QQQ") == "QQQ"
+    assert svc.normalize_gamma_symbol("NVDA") == "SPX"
     assert svc.normalize_gamma_symbol("bad") == "SPX"
+
+
+def test_normalize_gamma_ladder_symbol_accepts_search_symbols():
+    assert svc.normalize_gamma_ladder_symbol("NVDA") == "NVDA"
+    assert svc.normalize_gamma_ladder_symbol("BRK.B") == "BRK.B"
+    assert svc.normalize_gamma_ladder_symbol("bad!") == "SPX"
+    assert svc.normalize_gamma_ladder_symbol("") == "SPX"
 
 
 def test_gamma_ladder_cache_key_includes_symbol_expiration_and_window():
@@ -157,6 +165,10 @@ def test_gamma_ladder_cache_key_includes_symbol_expiration_and_window():
     assert (
         svc.gamma_ladder_cache_key("spy", "2026-05-22", "wide")
         == "gamma_ladder_SPY_2026-05-22_wide"
+    )
+    assert (
+        svc.gamma_ladder_cache_key("NVDA", "2026-05-22", "tight")
+        == "gamma_ladder_NVDA_2026-05-22_tight"
     )
 
 
@@ -197,9 +209,17 @@ def test_build_gamma_ladder_caches_per_symbol_and_expiration(monkeypatch):
             {"strike": 535.0, "call_gex": 35.0, "put_gex": -4.0, "net_gex": 31.0},
         ]
     )
-    monkeypatch.setattr(svc, "get_nearest_expiration", lambda symbol: "2026-05-21")
-    monkeypatch.setattr(svc, "get_spot_quote", lambda symbol: {"symbol": symbol, "spot": 532.14, "updated_at": now_iso()})
-    monkeypatch.setattr(svc, "get_options_chain", lambda symbol, expiration: pd.DataFrame([{"expiration": expiration, "strike": 530.0}]))
+    monkeypatch.setattr(svc, "_get_nearest_expiration_for_symbol", lambda symbol: "2026-05-21")
+    monkeypatch.setattr(
+        svc,
+        "_get_spot_quote_for_symbol",
+        lambda symbol: {"symbol": symbol, "spot": 532.14, "updated_at": now_iso()},
+    )
+    monkeypatch.setattr(
+        svc,
+        "_get_options_chain_for_ladder",
+        lambda symbol, expiration: pd.DataFrame([{"expiration": expiration, "strike": 530.0}]),
+    )
     monkeypatch.setattr(
         svc,
         "calculate_gamma_exposure",

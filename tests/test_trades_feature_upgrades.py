@@ -9,6 +9,75 @@ from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import db, now_iso
 
 
+class _FakeLocator:
+    def __init__(self, page, selector):
+        self.page = page
+        self.selector = selector
+        self.first = self
+
+    def count(self):
+        return int(self.page.selector_counts.get(self.selector, 0))
+
+    def is_visible(self):
+        return self.selector in self.page.visible_selectors
+
+
+class _FakeFrame:
+    def __init__(self, page, url="https://frame.example"):
+        self.page = page
+        self.url = url
+
+    def locator(self, selector):
+        return _FakeLocator(self.page, selector)
+
+
+class _FakeLoginPage:
+    def __init__(
+        self,
+        *,
+        visible_selectors=None,
+        selector_counts=None,
+        appear_after_waits=0,
+        appear_selector="",
+    ):
+        self.url = "https://trade.vanquishtrader.com"
+        self.visible_selectors = set(visible_selectors or [])
+        self.selector_counts = dict(selector_counts or {})
+        for selector in self.visible_selectors:
+            self.selector_counts.setdefault(selector, 1)
+        self.frames = [_FakeFrame(self)]
+        self.wait_count = 0
+        self.appear_after_waits = int(appear_after_waits or 0)
+        self.appear_selector = appear_selector
+
+    def locator(self, selector):
+        return _FakeLocator(self, selector)
+
+    def wait_for_timeout(self, _timeout):
+        self.wait_count += 1
+        if self.appear_selector and self.wait_count >= self.appear_after_waits:
+            self.visible_selectors.add(self.appear_selector)
+            self.selector_counts[self.appear_selector] = 1
+
+    def wait_for_selector(self, selector, timeout=0):
+        if self.selector_counts.get(selector, 0):
+            return _FakeLocator(self, selector)
+        raise TimeoutError(selector)
+
+    def evaluate(self, _script):
+        return {
+            "inputs": [
+                {
+                    "tag": "input",
+                    "id": "login_user_name",
+                    "testid": "login_user_name",
+                    "visible": True,
+                }
+            ],
+            "buttons": [{"tag": "button", "testid": "login_submit_button", "visible": True}],
+        }
+
+
 def _insert_trade(
     *,
     trade_date: str,
@@ -679,6 +748,66 @@ def test_live_sync_skips_balance_reconcile_when_date_fallback_warning(monkeypatc
     assert any(
         "skipped ending-balance reconcile" in str(w).lower() for w in (out.get("warns") or [])
     )
+
+
+def test_vanquish_login_selector_prefers_stable_username_test_id():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    stable = "[data-testid='login_user_name']"
+    generic = "input[name='username']"
+    page = _FakeLoginPage(visible_selectors={stable, generic})
+
+    locator = live_sync._first_visible(page, live_sync.SELECTOR_PROFILES["login_user"])
+
+    assert locator.selector == stable
+
+
+def test_vanquish_login_selector_keeps_generic_username_fallback():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    generic = "input[name='username']"
+    page = _FakeLoginPage(visible_selectors={generic})
+
+    locator = live_sync._wait_for_login_username(page, timeout_ms=10)
+
+    assert locator.selector == generic
+
+
+def test_vanquish_login_wait_handles_hydrated_username_field():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    stable = "[data-testid='login_user_name']"
+    page = _FakeLoginPage(
+        selector_counts={"#loginFormContainer": 1},
+        appear_after_waits=2,
+        appear_selector=stable,
+    )
+
+    locator = live_sync._wait_for_login_username(page, timeout_ms=1000)
+
+    assert locator.selector == stable
+    assert page.wait_count >= 2
+
+
+def test_vanquish_login_probe_includes_selector_counts_and_controls():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    page = _FakeLoginPage(
+        selector_counts={
+            "#loginFormContainer": 1,
+            "[data-testid='login_user_name']": 0,
+            "[data-testid='login_password']": 0,
+            "[data-testid='login_submit_button']": 0,
+        }
+    )
+
+    payload = live_sync._login_probe_payload(page)
+
+    assert payload["url"] == "https://trade.vanquishtrader.com"
+    assert payload["login_form_container_count"] == 2
+    assert payload["selector_counts"]["login_user"]["[data-testid='login_user_name']"] == 0
+    assert payload["inputs"][0]["testid"] == "login_user_name"
+    assert payload["buttons"][0]["testid"] == "login_submit_button"
 
 
 def test_live_sync_reports_browser_boot_stage(monkeypatch):
@@ -1831,6 +1960,62 @@ def test_start_sync_job_launches_dedicated_worker_thread(client, monkeypatch):
     assert launched["worker_payload"]["requested"] == {"source": "manual_live"}
 
 
+def test_start_sync_job_runs_inline_when_worker_thread_start_is_resource_constrained(
+    client, monkeypatch, tmp_path
+):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(tmp_path / ".bg_jobs"))
+    monkeypatch.setattr(
+        trades_svc,
+        "_start_sync_job_thread",
+        lambda _app, _payload: (_ for _ in ()).throw(RuntimeError("can't start new thread")),
+    )
+
+    executed = {}
+
+    def _fake_execute_sync_job(*, app, job, **_kwargs):
+        executed["app"] = app
+        executed["job_id"] = job["id"]
+        trades_svc._update_bg_job(
+            job["id"],
+            status="success",
+            stage="import_complete",
+            message="Inline live import finished.",
+        )
+
+    monkeypatch.setattr(trades_svc, "_execute_sync_job", _fake_execute_sync_job)
+
+    app = client.application
+    with app.app_context():
+        job = trades_svc._start_sync_job(
+            selected_account_id=7,
+            title="Live Sync",
+            source_label="LIVE LOGIN HTML",
+            record_source="LIVE LOGIN HTML",
+            mode="broker",
+            username="demo-user",
+            password="demo-pass",
+            base_url="https://trade.vanquishtrader.com",
+            account="default:OEXXXXXXXX",
+            wl="vanquishtrader",
+            time_zone="America/New_York",
+            date_locale="en-US",
+            report_locale="en",
+            from_date="2026-03-18",
+            to_date="2026-03-18",
+            headless=True,
+            debug_capture=False,
+            debug_only=False,
+            requested={"source": "manual_live"},
+        )
+
+    assert executed["app"] is app
+    assert executed["job_id"] == job["id"]
+    assert job["status"] == "success"
+    assert job["stage"] == "import_complete"
+
+
 def test_load_last_sync_status_reclassifies_thread_error(tmp_path, monkeypatch):
     from mccain_capital.services import trades as trades_svc
 
@@ -1854,7 +2039,7 @@ def test_load_last_sync_status_reclassifies_thread_error(tmp_path, monkeypatch):
     assert status["stage_help"] == trades_svc.SYNC_STAGE_HELP["system_resource"]
 
 
-def test_live_sync_async_start_returns_failure_when_dispatcher_boot_fails(
+def test_live_sync_async_start_ignores_dispatcher_boot_failures(
     client, monkeypatch, tmp_path
 ):
     from mccain_capital.services import trades as trades_svc
@@ -1883,6 +2068,11 @@ def test_live_sync_async_start_returns_failure_when_dispatcher_boot_fails(
         "ensure_sync_dispatcher_started",
         lambda _app: (_ for _ in ()).throw(RuntimeError("can't start new thread")),
     )
+    monkeypatch.setattr(
+        trades_svc,
+        "_start_sync_job_thread",
+        lambda app, worker_payload: worker_payload["job"],
+    )
 
     resp = client.post(
         "/trades/sync/live?async=1",
@@ -1899,12 +2089,10 @@ def test_live_sync_async_start_returns_failure_when_dispatcher_boot_fails(
         follow_redirects=False,
     )
 
-    assert resp.status_code == 503
+    assert resp.status_code == 200
     payload = resp.get_json()
-    assert payload["ok"] is False
-    assert payload["message"] == "can't start new thread"
-    assert payload["job"]["status"] == "failed"
-    assert payload["job"]["stage"] == "system_resource"
+    assert payload["ok"] is True
+    assert payload["job"]["status"] == "queued"
 
 
 def test_stale_sync_job_is_reconciled_when_polled(client, monkeypatch, tmp_path):

@@ -3416,10 +3416,18 @@ def _start_sync_job(
         "requested": requested,
     }
     try:
-        ensure_sync_dispatcher_started(app)
         _start_sync_job_thread(app, worker_payload)
     except Exception as e:
         raw_message = str(e)
+        if _classify_sync_stage(raw_message, "queue_dispatch") == "system_resource":
+            _update_bg_job(
+                job["id"],
+                status="running",
+                stage="queue_dispatch",
+                message="Sync worker resources were constrained; running import inline.",
+            )
+            _execute_sync_job(app=app, **worker_payload)
+            return _get_bg_job(job["id"])
         fail_message = _strip_stage_prefix(raw_message)
         stage = _classify_sync_stage(raw_message, "queue_dispatch")
         _save_last_sync_status(

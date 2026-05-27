@@ -114,6 +114,7 @@ GAMMA_LADDER_WINDOW_PRESETS: Dict[str, Dict[str, float | int]] = {
 _GAMMA_LADDER_CACHE: Dict[str, Dict[str, Any]] = {}
 _GAMMA_LADDER_CACHE_LOCK = threading.Lock()
 
+_GAMMA_SYMBOL = re.compile(r"^[A-Z][A-Z.-]{0,11}$")
 _COMPACT_TICKER = re.compile(r"^(?:O:)?(SPXW|SPX)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
 
 
@@ -154,6 +155,11 @@ def normalize_gamma_symbol(symbol: str) -> str:
     return normalized if normalized in SUPPORTED_SYMBOLS else "SPX"
 
 
+def normalize_gamma_ladder_symbol(symbol: str) -> str:
+    normalized = str(symbol or "").strip().upper()
+    return normalized if _GAMMA_SYMBOL.fullmatch(normalized) else "SPX"
+
+
 def normalize_gamma_ladder_window(window: str) -> str:
     normalized = str(window or "").strip().lower()
     return normalized if normalized in SUPPORTED_GAMMA_LADDER_WINDOWS else "standard"
@@ -166,7 +172,7 @@ def gamma_ladder_window_config(window: str) -> Dict[str, float | int]:
 
 def gamma_ladder_cache_key(symbol: str, expiration: str, window: str = "standard") -> str:
     return (
-        f"gamma_ladder_{normalize_gamma_symbol(symbol)}_{str(expiration or '').strip()}_"
+        f"gamma_ladder_{normalize_gamma_ladder_symbol(symbol)}_{str(expiration or '').strip()}_"
         f"{normalize_gamma_ladder_window(window)}"
     )
 
@@ -1087,6 +1093,11 @@ def _next_trading_day_iso(anchor_iso: str) -> str:
 
 def get_nearest_expiration(symbol: str) -> str:
     normalized = normalize_gamma_symbol(symbol)
+    return _get_nearest_expiration_for_symbol(normalized)
+
+
+def _get_nearest_expiration_for_symbol(symbol: str) -> str:
+    normalized = normalize_gamma_ladder_symbol(symbol)
     today = app_runtime.today_iso()
     payload = _tradier_json(
         "/v1/markets/options/expirations",
@@ -1108,7 +1119,7 @@ def get_nearest_expiration(symbol: str) -> str:
 
 def fetch_chain_for_expiries(symbol: str, expiries: List[str]) -> pd.DataFrame:
     tradier_first = _fetch_chain_from_tradier(
-        normalize_gamma_symbol(symbol),
+        normalize_gamma_ladder_symbol(symbol),
         {str(x) for x in expiries if str(x)},
     )
     if not tradier_first.empty:
@@ -1126,7 +1137,7 @@ def _fetch_chain_from_tradier(symbol: str, expiry_set: set[str]) -> pd.DataFrame
         return pd.DataFrame()
     rows: Dict[Tuple[str, float], Dict[str, Any]] = {}
     seen = 0
-    normalized_symbol = normalize_gamma_symbol(symbol)
+    normalized_symbol = normalize_gamma_ladder_symbol(symbol)
     expiries = sorted(str(expiry) for expiry in expiry_set if str(expiry))
     if not expiries:
         return pd.DataFrame()
@@ -1346,8 +1357,21 @@ def get_options_chain(symbol: str, expiration: str) -> pd.DataFrame:
     return fetch_chain_for_expiries(normalized, [target_expiration])
 
 
+def _get_options_chain_for_ladder(symbol: str, expiration: str) -> pd.DataFrame:
+    normalized = normalize_gamma_ladder_symbol(symbol)
+    target_expiration = str(expiration or "").strip() or _get_nearest_expiration_for_symbol(
+        normalized
+    )
+    return fetch_chain_for_expiries(normalized, [target_expiration])
+
+
 def get_spot_quote(symbol: str) -> Dict[str, Any]:
     normalized = normalize_gamma_symbol(symbol)
+    return _get_spot_quote_for_symbol(normalized)
+
+
+def _get_spot_quote_for_symbol(symbol: str) -> Dict[str, Any]:
+    normalized = normalize_gamma_ladder_symbol(symbol)
     snapshot = market_data_service.get_price_snapshot(normalized)
     value = _safe_float(snapshot.get("value"))
     updated_at = str(snapshot.get("source_timestamp") or _now_iso())
@@ -1820,7 +1844,7 @@ def calculate_gamma_exposure(
     *,
     window_preset: str = "standard",
 ) -> Dict[str, Any]:
-    normalized = normalize_gamma_symbol(symbol)
+    normalized = normalize_gamma_ladder_symbol(symbol)
     exposures = compute_exposures(chain_data, float(spot))
     grouped = aggregate_gex_by_strike(exposures)
     net_total = compute_net_gex_total(grouped)
@@ -2090,20 +2114,20 @@ def compute_local_gamma_flip(
 
 
 def build_gamma_ladder(symbol: str, window: str = "standard") -> Dict[str, Any]:
-    normalized = normalize_gamma_symbol(symbol)
+    normalized = normalize_gamma_ladder_symbol(symbol)
     window_preset = normalize_gamma_ladder_window(window)
-    expiration = get_nearest_expiration(normalized)
+    expiration = _get_nearest_expiration_for_symbol(normalized)
     cache_key = gamma_ladder_cache_key(normalized, expiration, window_preset)
     cached = _gamma_ladder_cache_get(cache_key)
     if cached is not None:
         return cached
 
-    quote = get_spot_quote(normalized)
+    quote = _get_spot_quote_for_symbol(normalized)
     spot = _safe_float(quote.get("spot"))
     if spot is None or spot <= 0:
         raise RuntimeError(f"{normalized} spot quote unavailable.")
 
-    chain = get_options_chain(normalized, expiration)
+    chain = _get_options_chain_for_ladder(normalized, expiration)
     if chain.empty:
         raise RuntimeError(f"{normalized} options chain unavailable for {expiration}.")
 

@@ -510,7 +510,7 @@
                       data-dashboard-sync-run
                       {% if not dashboard_live_sync.can_run %}disabled title="{{ dashboard_live_sync.disabled_reason }}"{% endif %}
                     ><span class="dashboardButtonIcon">{{ dashboard_icon('import') }}</span><span class="dashboardSyncRunButtonLabel" data-dashboard-sync-run-label>Run Last Sync</span><span class="dashboardSyncRunButtonLoader" aria-hidden="true"><span></span><span></span><span></span></span></button>
-                    <a class="btn ctaLink" href="/trades/upload/statement?ws=live">Import</a>
+                    <a class="btn ctaLink" href="/trades/upload/statement?ws=live{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}">Import</a>
                     {% if account_scope and account_scope.enabled %}
                       <a class="btn" href="{{ scope_active_href }}">Active Account</a>
                       <a class="btn" href="{{ scope_all_href }}">All History</a>
