@@ -24689,8 +24689,9 @@ html[data-font-mode="hand"] body .page-dashboard .dashboardAlignmentScoreDialInn
   font-size:17px;
   line-height:1.02;
   font-weight:800;
-  letter-spacing:-.03em;
+  letter-spacing:0;
   color:#f6fbff;
+  overflow-wrap:anywhere;
 }
 
 .page-dashboard .dashboardCommandCardMeta{
@@ -35159,9 +35160,9 @@ html[data-font-mode="hand"] body .dashboardProjectionForm .dashboardProjectionHi
   display:block;
   margin-top:2px;
   font-family:"Sora","Space Grotesk","Segoe UI",system-ui,sans-serif;
-  font-size:clamp(15px, 1.55vw, 22px);
-  line-height:1.08;
-  letter-spacing:-.045em;
+  font-size:1.12rem;
+  line-height:1.12;
+  letter-spacing:0;
   color:#f4fbff;
   overflow-wrap:anywhere;
 }
@@ -60300,8 +60301,11 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardBehaviorLabel{
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandCardValue{
   margin-top:5px;
   color:rgba(239, 247, 255, .96) !important;
-  font-size:clamp(1.34rem, 1.45vw, 1.72rem) !important;
-  line-height:1.08 !important;
+  font-size:1.22rem !important;
+  line-height:1.12 !important;
+  letter-spacing:0 !important;
+  overflow-wrap:anywhere !important;
+  text-wrap:balance !important;
   text-shadow:none !important;
 }
 
@@ -60661,8 +60665,11 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandCardLabel{
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandCardValue{
-  font-size:1.28rem;
-  line-height:1.02;
+  font-size:1.22rem;
+  line-height:1.12;
+  letter-spacing:0;
+  overflow-wrap:anywhere;
+  text-wrap:balance;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardCommandCardMeta{
@@ -62589,8 +62596,11 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardProjectionFootnote{
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardProjectionTarget strong{
-  font-size:clamp(2rem, 2.9vw, 3rem);
-  line-height:.98;
+  font-size:1.32rem;
+  line-height:1.08;
+  letter-spacing:0;
+  overflow-wrap:anywhere;
+  text-wrap:balance;
   text-shadow:0 0 14px rgba(255,255,255,.06);
 }
 
@@ -62951,6 +62961,10 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardProjectionTargetHea
   grid-template-columns:minmax(0, .86fr) minmax(0, 1fr) minmax(0, 1.02fr) !important;
 }
 
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardProjectionTargetHead > div{
+  min-width:0 !important;
+}
+
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardProjectionTarget{
   gap:5px !important;
 }
@@ -62962,10 +62976,12 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardProjectionTarget .k
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardProjectionTarget strong{
-  font-size:clamp(1.28rem, 1.6vw, 1.82rem) !important;
-  line-height:.98 !important;
-  letter-spacing:-.02em !important;
-  white-space:nowrap !important;
+  font-size:1.24rem !important;
+  line-height:1.1 !important;
+  letter-spacing:0 !important;
+  white-space:normal !important;
+  overflow-wrap:anywhere !important;
+  text-wrap:balance !important;
   text-shadow:0 0 10px rgba(255,255,255,.04) !important;
 }
 

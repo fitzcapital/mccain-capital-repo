@@ -280,18 +280,20 @@
         const netX = 50 + netRatio * 44;
         const netBarWidth = Math.max(2, Math.min(44, (Math.abs(netGex) / maxSide) * 44));
         const netBarX = netGex >= 0 ? 50 : 50 - netBarWidth;
-        const flipClass = row.is_flip ? " is-flip" : "";
-        const strongestClass = row.is_strongest ? " is-strongest" : "";
-        const spotClass = row.is_spot_nearest ? " is-spot" : "";
-        const sideClass = row.is_above_spot ? " is-above-spot" : row.is_below_spot ? " is-below-spot" : " is-at-spot";
-        const zoneClass = zoneMeta
-          ? ` is-${zoneMeta.type}-zone is-zone-${zoneMeta.position}${zoneMeta.isFocal ? " is-zone-focal" : ""}`
-          : "";
-        const stateClass = ` gamma-${gammaState}`;
         const strikeDigits = strike >= 1000 ? 0 : 2;
         const symbol = String(payload.symbol || currentSymbol).toLowerCase();
         const distanceDigits = symbol === "spx" ? 2 : 2;
         const distanceFromSpot = strike - spot;
+        const isAtSpot = Math.abs(distanceFromSpot) < 0.01;
+        const isAboveSpot = distanceFromSpot > 0;
+        const flipClass = row.is_flip ? " is-flip" : "";
+        const strongestClass = row.is_strongest ? " is-strongest" : "";
+        const spotClass = row.is_spot_nearest ? " is-spot" : "";
+        const sideClass = isAtSpot ? " is-at-spot" : isAboveSpot ? " is-above-spot" : " is-below-spot";
+        const zoneClass = zoneMeta
+          ? ` is-${zoneMeta.type}-zone is-zone-${zoneMeta.position}${zoneMeta.isFocal ? " is-zone-focal" : ""}`
+          : "";
+        const stateClass = ` gamma-${gammaState}`;
         const distanceLabel = `${distanceFromSpot >= 0 ? "+" : ""}${formatNumber(distanceFromSpot, distanceDigits)}`;
         const [baseRed, baseGreen, baseBlue] = colorSet.base;
         const [accentRed, accentGreen, accentBlue] = colorSet.accent;
@@ -346,7 +348,7 @@
           >
             <span class="gamma-ladder-row__strikeWrap">
               <span class="gamma-ladder-row__strike">${formatNumber(strike, strikeDigits)}</span>
-              <span class="gamma-ladder-row__tone">${row.is_above_spot ? "Above spot" : row.is_below_spot ? "Below spot" : "At spot"}</span>
+              <span class="gamma-ladder-row__tone">${isAtSpot ? "At spot" : isAboveSpot ? "Above spot" : "Below spot"}</span>
             </span>
             <span class="gamma-ladder-row__viz">
               <svg viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
@@ -376,15 +378,15 @@
             </span>
             <span class="gamma-ladder-row__netWrap">
               <span class="gamma-ladder-row__net">${formatCompact(netGex)}</span>
-              <span class="gamma-ladder-row__micro">${tags}</span>
             </span>
+            <span class="gamma-ladder-row__micro">${tags}</span>
           </button>
         `;
       })
       .join("");
     root.style.setProperty(
       "--gamma-ladder-visible-rows",
-      String(Math.max(1, Math.min(rows.length, 10)))
+      String(Math.max(1, Math.min(rows.length, 12)))
     );
     hasLoadedData = true;
     setVisualState("");
