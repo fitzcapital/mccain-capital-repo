@@ -114,7 +114,7 @@
 <div class="card pageHero marketPulseSection marketPulseCommandHeader marketPulseCommandHeader-compact">
   <div class="toolbar gamma-ladder-toolbar">
     <div class="marketPulsePlaybookHero">
-      <div class="marketPulsePlaybookTitleZone">
+      <div class="marketPulsePlaybookTitleZone marketPulseCockpitCommand">
         <div class="marketPulseHeroKicker">Market Pulse</div>
         <div class="marketPulseTickerRow">
           <h2 class="pageTitle" id="marketPulseTitle">{{ selected_ticker }} PLAYBOOK</h2>
@@ -155,47 +155,47 @@
           {% endfor %}
         </div>
       </div>
-      <div class="marketPulseGammaStateCard {{ gamma_state_class }} {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard" data-gamma-state="{{ macro_regime.state }}">
-        <div class="marketPulseGammaStateOrb" aria-hidden="true">Ⲅ</div>
-        <div class="marketPulseGammaStateTop">
-          <span class="marketPulseGammaStateDot" aria-hidden="true">Ⲅ</span>
-          <div class="marketPulseGammaStateCopy">
-            <div class="marketPulseGammaStateEyebrow">Regime</div>
-            <div class="marketPulseGammaStateLabel" id="marketPulseHeaderGammaLabel">{{ gamma_display_title }}</div>
-            <div class="marketPulseGammaBadgeRow" id="marketPulseHeaderBadgeRow">
-              {% for badge in gamma_badges %}
-                <span class="marketPulseGammaBadge">{{ badge }}</span>
-              {% endfor %}
+      <div class="marketPulseCockpitDecisionBand">
+        <div class="marketPulseGammaStateCard marketPulseCockpitRegime {{ gamma_state_class }} {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard" data-gamma-state="{{ macro_regime.state }}">
+          <div class="marketPulseGammaStateOrb" aria-hidden="true">Ⲅ</div>
+          <div class="marketPulseGammaStateTop">
+            <span class="marketPulseGammaStateDot" aria-hidden="true">Ⲅ</span>
+            <div class="marketPulseGammaStateCopy">
+              <div class="marketPulseGammaStateEyebrow">Regime</div>
+              <div class="marketPulseGammaStateLabel" id="marketPulseHeaderGammaLabel">{{ gamma_display_title }}</div>
+              <div class="marketPulseGammaBadgeRow" id="marketPulseHeaderBadgeRow">
+                {% for badge in gamma_badges %}
+                  <span class="marketPulseGammaBadge">{{ badge }}</span>
+                {% endfor %}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div class="marketPulseBiasCard {% if local_bias.state == 'above_local' %}is-positive{% elif local_bias.state == 'below_local' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderBiasCard" data-gamma-state="{{ macro_regime.state }}">
-        <div class="marketPulseBiasCardLabel">Actionability</div>
-        <div class="marketPulseActionGrid">
-          <div class="marketPulseActionItem action-row action-row--decision">
-            <div class="marketPulseActionIcon">{{ mp_icon('crosshair') }}</div>
-            <span>Decision</span>
-            <strong id="marketPulseHeaderDecision">{{ decision_label }}</strong>
-            <small>{{ decision_detail }}</small>
-            <span class="state-pill {% if decision_label == 'Actionable' %}state-pill--execute{% else %}state-pill--wait{% endif %}" id="marketPulseHeaderDecisionStatePill">{{ 'EXECUTE' if decision_label == 'Actionable' else 'PLANNING ONLY' if decision_label == 'Planning only' else 'NO TRADE' if decision_label == 'No trade' else 'WAIT' }}</span>
-          </div>
-          <div class="marketPulseActionItem action-row action-row--bias{% if local_bias.state == 'below_local' or 'RISK' in (bias_summary or '') %} action-row--bias-risk{% endif %}" id="marketPulseHeaderBiasRow">
-            <div class="marketPulseActionIcon">{{ mp_icon('compass') }}</div>
-            <span>Bias</span>
-            <strong id="marketPulseHeaderBiasPrimary">{{ bias_summary }}</strong>
-            <small id="marketPulseHeaderBiasSecondary">{{ playbook.get('bias_label') or local_bias.action or 'Wait for cleaner structure' }}</small>
-          </div>
-          <div class="marketPulseActionItem action-row action-row--tradeability">
-            <div class="marketPulseActionIcon">{{ mp_icon('shield-check') if decision_label == 'Actionable' else mp_icon('shield-alert') }}</div>
-            <span>Tradeability</span>
-            <strong id="marketPulseHeaderTradeability">{{ tradeability_display }}</strong>
-            <small>{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Awaiting trigger' }}</small>
+        <div class="marketPulseBiasCard marketPulseCockpitActionability {% if local_bias.state == 'above_local' %}is-positive{% elif local_bias.state == 'below_local' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderBiasCard" data-gamma-state="{{ macro_regime.state }}">
+          <div class="marketPulseBiasCardLabel">Actionability</div>
+          <div class="marketPulseActionGrid">
+            <div class="marketPulseActionItem action-row action-row--decision">
+              <div class="marketPulseActionIcon">{{ mp_icon('crosshair') }}</div>
+              <span>Decision</span>
+              <strong id="marketPulseHeaderDecision">{{ decision_label }}</strong>
+              <small>{{ decision_detail }}</small>
+              <span class="state-pill {% if decision_label == 'Actionable' %}state-pill--execute{% else %}state-pill--wait{% endif %}" id="marketPulseHeaderDecisionStatePill">{{ 'EXECUTE' if decision_label == 'Actionable' else 'PLANNING ONLY' if decision_label == 'Planning only' else 'NO TRADE' if decision_label == 'No trade' else 'WAIT' }}</span>
+            </div>
+            <div class="marketPulseActionItem action-row action-row--bias{% if local_bias.state == 'below_local' or 'RISK' in (bias_summary or '') %} action-row--bias-risk{% endif %}" id="marketPulseHeaderBiasRow">
+              <div class="marketPulseActionIcon">{{ mp_icon('compass') }}</div>
+              <span>Bias</span>
+              <strong id="marketPulseHeaderBiasPrimary">{{ bias_summary }}</strong>
+              <small id="marketPulseHeaderBiasSecondary">{{ playbook.get('bias_label') or local_bias.action or 'Wait for cleaner structure' }}</small>
+            </div>
+            <div class="marketPulseActionItem action-row action-row--tradeability">
+              <div class="marketPulseActionIcon">{{ mp_icon('shield-check') if decision_label == 'Actionable' else mp_icon('shield-alert') }}</div>
+              <span>Tradeability</span>
+              <strong id="marketPulseHeaderTradeability">{{ tradeability_display }}</strong>
+              <small>{{ playbook.get('trade_gate_label') or structure_snapshot.get('required_trigger') or 'Awaiting trigger' }}</small>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-    <div class="marketPulsePlaybookActions">
+        <div class="marketPulsePlaybookActions marketPulseCockpitUtility">
           <button
             id="marketPulseContextRefreshBtn"
             class="notifRefreshBtn marketPulseContextRefreshBtn"
@@ -210,6 +210,8 @@
             </svg>
           </button>
           <a class="btn" href="/candle-opens"><span class="marketPulseInlineIcon">{{ mp_icon('candles') }}</span><span>Candle Opens</span></a>
+        </div>
+      </div>
     </div>
   </div>
   <div class="srOnly" aria-hidden="true">
