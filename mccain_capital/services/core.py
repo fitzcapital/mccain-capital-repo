@@ -901,6 +901,39 @@ def _market_pulse_cached_playbook_snapshot(
     return cached
 
 
+def _market_pulse_cached_playbook_matches_quotes(
+    cached_snapshot: Dict[str, Any],
+    quotes: List[Dict[str, Any]],
+    ticker: str,
+) -> bool:
+    """Return False when a cached playbook visibly disagrees with the live quote."""
+
+    if not isinstance(cached_snapshot, dict):
+        return False
+    selected_ticker = get_supported_playbook_ticker(ticker)
+    live_quote = _market_pulse_quote_for_ticker(quotes, selected_ticker)
+    live_price = _market_pulse_positive_float(live_quote.get("price"))
+    if live_price is None:
+        return True
+
+    cached_quote = dict(cached_snapshot.get("playbook_quote") or {})
+    if selected_ticker == "SPX" and not cached_quote:
+        cached_quote = dict(cached_snapshot.get("spx_quote") or {})
+    cached_structure = dict(cached_snapshot.get("market_structure_snapshot") or {})
+    cached_price = _market_pulse_positive_float(cached_quote.get("price"))
+    if cached_price is None:
+        cached_price = _market_pulse_positive_float(cached_structure.get("spot"))
+    if cached_price is None:
+        return True
+
+    threshold = (
+        GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD
+        if selected_ticker == "SPX"
+        else max(0.35, live_price * 0.0015)
+    )
+    return abs(live_price - cached_price) <= threshold
+
+
 def _market_pulse_store_playbook_snapshot(now_et: datetime, payload: Dict[str, Any]) -> None:
     _market_pulse_playbook_cache["generated_at"] = now_et
     _market_pulse_playbook_cache["payload"] = copy.deepcopy(payload)
@@ -2566,15 +2599,17 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
 
     started = time.perf_counter()
     now_et = app_runtime.now_et()
+    session_mode = _market_pulse_snapshot_session_mode(now_et)
     fetched_label = now_et.strftime("%b %d, %Y %I:%M:%S %p ET")
     fetched_at = _market_pulse_cache.get("fetched_at")
     cached_payload = _market_pulse_cache.get("payload")
+    memory_ttl_seconds = 5 if session_mode == "regular" else MARKET_PULSE_CACHE_TTL_SECONDS
     if (
         (not force_refresh)
         and isinstance(fetched_at, datetime)
         and isinstance(cached_payload, dict)
         and _market_pulse_payload_has_current_symbols(cached_payload)
-        and (now_et - fetched_at).total_seconds() < MARKET_PULSE_CACHE_TTL_SECONDS
+        and (now_et - fetched_at).total_seconds() < memory_ttl_seconds
     ):
         normalized_cache = _market_pulse_attach_replay_cache(
             _market_pulse_force_symbol_set(cached_payload)
@@ -2583,7 +2618,7 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
         normalized_cache["source_note"] = "Using recent cached Tradier snapshot within refresh TTL."
         return normalized_cache
 
-    if not force_refresh:
+    if not force_refresh and session_mode != "regular":
         disk_payload = _load_market_pulse_disk_cache()
         if isinstance(disk_payload, dict) and _market_pulse_payload_has_current_symbols(disk_payload):
             _market_pulse_cache["fetched_at"] = now_et
@@ -2602,7 +2637,10 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
             return fallback
 
     symbols = [str(spec.get("symbol") or "").strip().upper() for spec in MARKET_PULSE_SYMBOLS]
-    quotes_by_symbol = market_data_service.get_watchlist_tradier(symbols)
+    quotes_by_symbol = market_data_service.get_watchlist_tradier(
+        symbols,
+        force_refresh=force_refresh,
+    )
     usable_quote_count = sum(
         1 for quote in quotes_by_symbol.values() if _market_pulse_positive_float(quote.get("price"))
     )
@@ -7286,6 +7324,60 @@ def _market_pulse_quote_for_ticker(
     return dict(fallback or {})
 
 
+def _market_pulse_overlay_live_worker_quotes(
+    quotes: List[Dict[str, Any]],
+    ticker: str,
+) -> List[Dict[str, Any]]:
+    """Prefer the fast market worker price for active live-session display."""
+
+    try:
+        from mccain_capital.services import market_worker
+
+        worker_snapshot = market_worker.get_market_snapshot()
+    except Exception:
+        return list(quotes or [])
+
+    prices = dict((worker_snapshot or {}).get("prices") or {})
+    selected_ticker = get_supported_playbook_ticker(ticker)
+    symbols = {"SPX", selected_ticker}
+    live_quotes: Dict[str, Dict[str, Any]] = {}
+    for symbol in symbols:
+        live_quote = dict(prices.get(symbol) or {})
+        live_price = _market_pulse_positive_float(live_quote.get("price"))
+        if live_price is None:
+            continue
+        live_quote["price"] = live_price
+        live_quote["symbol"] = symbol
+        live_quote["label"] = symbol
+        live_quote.setdefault("provider", "market_worker")
+        live_quote.setdefault("reason", "market_worker_live")
+        if worker_snapshot.get("updated_at") and not live_quote.get("as_of"):
+            live_quote["as_of"] = worker_snapshot.get("updated_at")
+        live_quotes[symbol] = live_quote
+
+    if not live_quotes:
+        return list(quotes or [])
+
+    merged: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in list(quotes or []):
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or row.get("label") or "").strip().upper()
+        live_quote = live_quotes.get(symbol)
+        if live_quote:
+            next_row = dict(row)
+            next_row.update({k: v for k, v in live_quote.items() if v is not None})
+            merged.append(next_row)
+            seen.add(symbol)
+        else:
+            merged.append(dict(row))
+    for symbol, live_quote in live_quotes.items():
+        if symbol not in seen:
+            merged.append(dict(live_quote))
+    return merged
+
+
 def _market_pulse_fetch_playbook_quote(ticker: str) -> Dict[str, Any]:
     symbol = get_supported_playbook_ticker(ticker)
     raw_symbol = str(ticker or "").strip().upper()
@@ -11550,6 +11642,24 @@ def stream_market():
                 (cached_playbook or {}).get("market_structure_snapshot") or {}
             )
             current_playbook_view = dict((cached_playbook or {}).get("playbook_view") or {})
+            live_stream_spot = _market_pulse_positive_float(current_spx_quote.get("price"))
+            if live_stream_spot is not None:
+                current_structure_snapshot["spot"] = live_stream_spot
+                current_structure_snapshot["spot_source_label"] = "Live Session"
+                current_structure_snapshot["spot_source_short_label"] = f"{selected_ticker} Spot"
+                current_structure_snapshot["snapshot_timestamp_label"] = _format_iso_et_label(
+                    current_spx_quote.get("as_of") or current_spx_quote.get("asof")
+                )
+                spot_meta = dict(current_structure_snapshot.get("spot_meta") or {})
+                spot_meta.update(
+                    {
+                        "value": live_stream_spot,
+                        "source": "stream_quote",
+                        "as_of": current_spx_quote.get("as_of") or current_spx_quote.get("asof"),
+                    }
+                )
+                current_structure_snapshot["spot_meta"] = spot_meta
+                current_playbook_view["spot_label"] = f"{live_stream_spot:,.2f}"
             payload["gamma_map"] = current_gamma_snapshot
             payload["ticker"] = selected_ticker
             payload["execution_model"] = current_execution_model
@@ -11718,8 +11828,20 @@ def market_pulse_page():
                 raw_quotes = [q for q in raw_quotes if q is not vix_row]
             raw_quotes.append(vix_fallback)
     quotes = _market_pulse_enrich_quotes(raw_quotes, now_et)
+    if not current_app.config.get("TESTING"):
+        quotes = _market_pulse_enrich_quotes(
+            _market_pulse_overlay_live_worker_quotes(quotes, selected_ticker),
+            now_et,
+        )
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
+    if cached_playbook_snapshot and not _market_pulse_cached_playbook_matches_quotes(
+        cached_playbook_snapshot,
+        quotes,
+        selected_ticker,
+    ):
+        cached_playbook_snapshot = {}
+        gamma_snapshot = {}
     try:
         page_spot = float(spx_quote.get("price")) if spx_quote.get("price") is not None else None
         gamma_spot = (
@@ -11962,8 +12084,20 @@ def market_pulse_context_api():
 
     raw_quotes = list(snapshot.get("quotes") or [])
     quotes = _market_pulse_enrich_quotes(raw_quotes, now_et)
+    if not current_app.config.get("TESTING"):
+        quotes = _market_pulse_enrich_quotes(
+            _market_pulse_overlay_live_worker_quotes(quotes, selected_ticker),
+            now_et,
+        )
     spx_quote = next((q for q in quotes if str(q.get("label") or "") == "SPX"), {})
     vix_quote = next((q for q in quotes if str(q.get("label") or "") == "VIX"), {})
+    if cached_playbook_snapshot and not _market_pulse_cached_playbook_matches_quotes(
+        cached_playbook_snapshot,
+        quotes,
+        selected_ticker,
+    ):
+        cached_playbook_snapshot = {}
+        gamma_snapshot = {}
     quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
     series_points = {
         str(q.get("label") or q.get("symbol") or ""): list(q.get("series") or [])

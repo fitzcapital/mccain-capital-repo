@@ -66283,3 +66283,62 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardStageSide::after{
   box-shadow:none !important;
   filter:none !important;
 }
+
+/* Professional typography authority for the trading app surfaces. */
+body[data-theme="cinematic-nebula"]{
+  --app-professional-font:"Inter","Avenir Next","SF Pro Text","SF Pro Display","Segoe UI",Roboto,Arial,sans-serif;
+  font-family:var(--app-professional-font) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  label,
+  small,
+  strong,
+  span,
+  .btn,
+  .pill,
+  .trendChip,
+  .pageTitle,
+  .card,
+  .dashboardModeShell,
+  .dashboardModeShell *,
+  .dashboardStage,
+  .dashboardStage *,
+  .dashboardPrimaryBand,
+  .dashboardPrimaryBand *,
+  .dashboardCommandDeck,
+  .dashboardCommandDeck *,
+  .dashboardTapeMonitor,
+  .dashboardTapeMonitor *,
+  .marketPulseSection,
+  .marketPulseSection *
+){
+  font-family:var(--app-professional-font) !important;
+}
+
+body[data-theme="cinematic-nebula"] :where(
+  .pageTitle,
+  .dashboardHeroTitle,
+  .dashboardCommandCardValue,
+  .dashboardProjectionTarget strong,
+  .dashboardTapeAssetPrice,
+  .dashboardTapeAssetChange,
+  .marketPulseHeaderLevelItem strong,
+  .marketPulseExecutionHeroMetric strong,
+  .marketPulseTapeCard strong
+){
+  letter-spacing:0 !important;
+  font-variant-numeric:tabular-nums lining-nums;
+}

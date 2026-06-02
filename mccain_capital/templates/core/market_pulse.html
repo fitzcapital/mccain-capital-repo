@@ -42,7 +42,7 @@
 {% set selected_ticker = ticker or 'QQQ' %}
 {% set quote = playbook_quote or spx_quote or {} %}
 {% set priority_context = playbook_priority_context or spx_priority_context or {} %}
-{% set spot_price_label = playbook.get('spot_label') or ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is not none else '—') %}
+{% set spot_price_label = ('%.2f'|format(quote.get('price')) if quote.get('price') is number else ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is number else (playbook.get('spot_label') or '—'))) %}
 {% set market_closed = execution_chart.mode != 'live_session' %}
 {% set model_levels = {
   'spot': structure_snapshot.get('spot'),
@@ -59,7 +59,7 @@
 {% set put_wall_num = model_levels.put_wall if model_levels.put_wall is number else none %}
 {% set next_call_wall_num = structure_snapshot.get('next_call_wall') if structure_snapshot.get('next_call_wall') is number else none %}
 {% set next_put_wall_num = structure_snapshot.get('next_put_wall') if structure_snapshot.get('next_put_wall') is number else none %}
-{% set spot_num = model_levels.spot if model_levels.spot is number else (quote.get('price') if quote.get('price') is number else none) %}
+{% set spot_num = quote.get('price') if quote.get('price') is number else (model_levels.spot if model_levels.spot is number else none) %}
 {% set macro_regime = {
   'state': playbook.get('gamma_regime') or structure_snapshot.get('gamma_regime') or 'unavailable',
   'title': playbook.get('gamma_regime_label') or structure_snapshot.get('gamma_regime_label') or 'REGIME UNAVAILABLE',
@@ -148,7 +148,7 @@
         <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</div>
         <div class="marketPulseHeaderLevels" id="marketPulseHeaderSubline">
           {% for item in level_strip %}
-            <div class="marketPulseHeaderLevelItem{% if item.label == 'LF' and item.value == 'No local flip in band' %} is-muted{% endif %}">
+            <div class="marketPulseHeaderLevelItem is-{{ item.label|lower|replace(' ', '-') }}{% if item.label == 'Spot' %} is-live{% endif %}{% if item.label == 'LF' and item.value == 'No local flip in band' %} is-muted{% endif %}">
               <span><span class="marketPulseHeaderLevelIcon">{{ mp_icon(item.icon) }}</span><span>{{ item.label }}</span></span>
               <strong>{{ item.value }}</strong>
             </div>

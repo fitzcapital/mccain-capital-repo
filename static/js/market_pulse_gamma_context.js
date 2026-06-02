@@ -818,6 +818,18 @@
     }
   };
 
+  const compactSecondary = (primary, candidates) => {
+    const normalizedPrimary = String(primary || "").trim().toLowerCase();
+    const choices = Array.isArray(candidates) ? candidates : [];
+    for (const candidate of choices) {
+      const text = String(candidate || "").trim();
+      if (!text) continue;
+      if (text.toLowerCase() === normalizedPrimary) continue;
+      return text;
+    }
+    return "";
+  };
+
   const renderHeaderLevels = (items) => {
     const node = document.getElementById("marketPulseHeaderSubline");
     if (!node) return;
@@ -836,10 +848,22 @@
       const label = String(item.label || "");
       const value = String(item.value ?? "—");
       const icon = String(item.icon || "");
+      const key = label.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "level";
       const muted = label === "LF" && value === LOCAL_FLIP_NONE_LABEL ? " is-muted" : "";
+      const live = label === "Spot" ? " is-live" : "";
       const iconMarkup = icon ? `<span class="marketPulseHeaderLevelIcon">${levelIcon(icon)}</span>` : "";
-      return `<div class="marketPulseHeaderLevelItem${muted}"><span>${iconMarkup}<span>${label}</span></span><strong>${value}</strong></div>`;
+      return `<div class="marketPulseHeaderLevelItem is-${key}${live}${muted}"><span>${iconMarkup}<span>${label}</span></span><strong>${value}</strong></div>`;
     }).join("");
+  };
+
+  const patchHeaderLiveSpot = (spot, asOf) => {
+    const liveSpot = asNum(spot);
+    if (liveSpot === null) return;
+    const headerSpotValue = document.querySelector("#marketPulseHeaderSubline .marketPulseHeaderLevelItem:first-child strong");
+    if (headerSpotValue) {
+      headerSpotValue.textContent = formatNumber(liveSpot, 2);
+    }
+    setText("marketPulseHeaderSnapshot", `Live Session ${formatEtLabel(asOf || new Date().toISOString())}`);
   };
 
   const renderSimpleBadges = (id, labels) => {
@@ -1073,6 +1097,20 @@
       ...(current.gamma_snapshot || {}),
       ...(gamma || {}),
     };
+    const nextMarketStructure = {
+      ...((current || {}).market_structure_snapshot || {}),
+    };
+    const liveSpot = asNum(nextPlaybookQuote.price);
+    if (liveSpot !== null) {
+      nextMarketStructure.spot = liveSpot;
+      nextMarketStructure.spot_meta = {
+        ...((nextMarketStructure || {}).spot_meta || {}),
+        value: liveSpot,
+        source: "stream_quote",
+        as_of: nextPlaybookQuote.as_of || nextPlaybookQuote.asof || nextMarketStructure.as_of || null,
+      };
+      patchHeaderLiveSpot(liveSpot, nextPlaybookQuote.as_of || nextPlaybookQuote.asof || payload.updated_at || payload.server_ts);
+    }
     current = {
       ...(current || {}),
       playbook_quote: nextPlaybookQuote,
@@ -1087,6 +1125,7 @@
       },
       quotes_map: nextQuotesMap,
       gamma_snapshot: nextGammaSnapshot,
+      market_structure_snapshot: nextMarketStructure,
       execution_model: patchExecutionModelForStream(
         payload.execution_model || current.execution_model,
         nextPlaybookQuote,
@@ -2330,8 +2369,11 @@
     const sessionHigh = asNum(quote.day_high);
     const sessionLow = asNum(quote.day_low);
 
+    const quoteSpot = asNum(quote.price);
+    const structureSpot = asNum((base.market_structure_snapshot || {}).spot);
+
     return {
-      spot: asNum(quote.price),
+      spot: quoteSpot ?? structureSpot,
       dayOpen,
       sessionHigh,
       sessionLow,
@@ -2553,7 +2595,9 @@
     setText("spxPriorityFooterMeta", String((model && model.posture_summary) || `${footerLabel} • ${formatNumber(input.spot, 2)} • ${footerTime}`));
     updateSparkNode(document.querySelector("#spxPriorityCard .marketMiniSparkWrap"), quotePoints, sparkTone(playbookQuote.change_pct));
     applyGlowState([shell, spotPanel], playbookQuote.change_pct);
-    setText("marketPulseFetchedAt", formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso));
+    const renderedAtLabel = formatEtLabel(base.updated_at || base.server_ts || base.market_now_iso);
+    setText("marketPulseFetchedAt", renderedAtLabel);
+    setText("marketPulseHeaderSnapshot", `${panelMode === "live" ? "Live Session" : footerLabel} ${renderedAtLabel}`);
     renderHeaderLevels([
       { label: "Spot", icon: "activity", value: formatNumber(input.spot, 2) },
       { label: "Main", icon: "orbit", value: formatNumber(input.gammaFlip, 0) },
@@ -2566,8 +2610,18 @@
     const gammaMeta = gammaStateMeta(derived.dealerRegime);
     const decisionMeta = decisionStateMeta(decisionLabel);
     setText("marketPulseHeaderDecision", decisionLabel);
-    setText("marketPulseHeaderBiasPrimary", modelPlaybook.bias_summary_label || executionPlan.bias || biasContext);
-    setText("marketPulseHeaderBiasSecondary", modelPlaybook.bias_label || biasContext || "Wait for cleaner structure");
+    const headerBiasPrimary = modelPlaybook.bias_summary_label || executionPlan.bias || biasContext;
+    setText("marketPulseHeaderBiasPrimary", headerBiasPrimary);
+    setText(
+      "marketPulseHeaderBiasSecondary",
+      compactSecondary(headerBiasPrimary, [
+        modelPlaybook.bias_label,
+        structureSnapshot.current_read,
+        structureSnapshot.plan_note,
+        biasContext,
+        "Wait for cleaner structure",
+      ])
+    );
     setText("marketPulseHeaderTradeability", modelPlaybook.tradeability_display_label || derived.tradeability.label || "Trigger required");
     setText("marketPulseHeaderDecisionStatePill", decisionMeta.pillLabel);
     renderSimpleBadges("marketPulseHeaderBadgeRow", gammaMeta.badges);

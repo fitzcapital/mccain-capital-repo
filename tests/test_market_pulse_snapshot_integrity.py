@@ -415,6 +415,48 @@ def test_playbook_snapshot_valid_rejects_invariant_violations():
     )
 
 
+def test_cached_playbook_rejected_when_live_quote_diverges_from_spot():
+    cached = {
+        "ticker": "SPX",
+        "playbook_quote": {"price": 7542.32},
+        "market_structure_snapshot": {"spot": 7542.32},
+    }
+    quotes = [{"symbol": "SPX", "label": "SPX", "price": 7594.11}]
+
+    assert core._market_pulse_cached_playbook_matches_quotes(cached, quotes, "SPX") is False
+
+
+def test_cached_playbook_kept_when_live_quote_matches_spot():
+    cached = {
+        "ticker": "SPX",
+        "playbook_quote": {"price": 7594.11},
+        "market_structure_snapshot": {"spot": 7594.11},
+    }
+    quotes = [{"symbol": "SPX", "label": "SPX", "price": 7595.25}]
+
+    assert core._market_pulse_cached_playbook_matches_quotes(cached, quotes, "SPX") is True
+
+
+def test_live_worker_quote_overlays_stale_spx_quote(monkeypatch):
+    from mccain_capital.services import market_worker
+
+    monkeypatch.setattr(
+        market_worker,
+        "get_market_snapshot",
+        lambda: {
+            "updated_at": "2026-06-01T13:31:00-04:00",
+            "prices": {"SPX": {"price": 7601.1, "pct_change": 0.42, "provider": "tradier"}},
+        },
+    )
+    quotes = [{"symbol": "SPX", "label": "SPX", "price": 7542.32, "series": [7542.32]}]
+
+    merged = core._market_pulse_overlay_live_worker_quotes(quotes, "SPX")
+
+    assert merged[0]["price"] == 7601.1
+    assert merged[0]["series"] == [7542.32]
+    assert merged[0]["as_of"] == "2026-06-01T13:31:00-04:00"
+
+
 def test_structure_snapshot_after_hours_uses_planning_labels_not_unknown():
     snapshot = core._market_pulse_structure_snapshot(
         spx_quote={"price": 6608.0, "asof": "2026-04-07T16:00:00-04:00"},
