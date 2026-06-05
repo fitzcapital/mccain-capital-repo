@@ -923,7 +923,7 @@ def test_dashboard_primary_decision_actions_link_to_market_pulse_trade_gate_and_
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'href="/market-pulse?ticker=QQQ&amp;refresh=1"' in body
+    assert 'href="/market-pulse?ticker=QQQ"' in body
     assert 'href="/ops/trading-window"' in body
     assert 'href="/calendar"' in body
 

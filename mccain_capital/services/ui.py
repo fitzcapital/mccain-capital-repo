@@ -704,19 +704,20 @@ def _macro_notice_detail(
 
 def _global_top_notice() -> dict | None:
     now_et = datetime.now(TZ)
+    horizon = now_et + timedelta(hours=24)
     payload: list[dict] = []
     weekly_payload = get_forex_factory_feed()
-    next_week_payload = get_forex_factory_next_week_feed()
     if isinstance(weekly_payload, list):
         payload.extend(weekly_payload)
-    if isinstance(next_week_payload, list):
-        payload.extend(next_week_payload)
+    if horizon.isocalendar()[:2] != now_et.isocalendar()[:2]:
+        next_week_payload = get_forex_factory_next_week_feed()
+        if isinstance(next_week_payload, list):
+            payload.extend(next_week_payload)
 
     if not payload:
         return None
 
     cutoff = now_et - timedelta(minutes=1)
-    horizon = now_et + timedelta(hours=24)
     events: list[dict] = []
     for row in payload:
         if not isinstance(row, dict):

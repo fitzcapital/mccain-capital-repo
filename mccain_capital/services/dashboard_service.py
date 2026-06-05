@@ -132,23 +132,30 @@ def dashboard_planning_refresh_api():
     dashboard_instrument = dict(tape_prices.get(selected_ticker) or {})
     dashboard_vix = dict(tape_prices.get("VIX") or {})
 
-    try:
-        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
-    except Exception:
-        gamma_snapshot = {}
+    cached_playbook_snapshot = core_svc._market_pulse_cached_playbook_snapshot(
+        now_et,
+        ticker=selected_ticker,
+    )
+    if cached_playbook_snapshot and not force_refresh:
+        playbook_snapshot = cached_playbook_snapshot
+        gamma_snapshot = dict(playbook_snapshot.get("gamma_snapshot") or {})
+    else:
+        try:
+            gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+        except Exception:
+            gamma_snapshot = {}
+        playbook_snapshot = core_svc.get_or_build_market_pulse_snapshot(
+            ticker=selected_ticker,
+            force_refresh=force_refresh,
+            now_et=now_et,
+            preloaded_gamma_snapshot=gamma_snapshot,
+            preloaded_macro_events=[],
+        )
 
     try:
-        news_snapshot = core_svc._market_news_snapshot(page_type="dashboard")
+        news_snapshot = core_svc._market_news_snapshot(page_type="dashboard", macro_events=[])
     except Exception:
         news_snapshot = {"macro_events": []}
-
-    playbook_snapshot = core_svc.get_or_build_market_pulse_snapshot(
-        ticker=selected_ticker,
-        force_refresh=force_refresh,
-        now_et=now_et,
-        preloaded_gamma_snapshot=gamma_snapshot,
-        preloaded_macro_events=list(news_snapshot.get("macro_events") or []),
-    )
     dashboard_playbook_view = dict(playbook_snapshot.get("playbook_view") or {})
     dashboard_market_structure_snapshot = dict(
         playbook_snapshot.get("market_structure_snapshot") or {}
@@ -195,7 +202,7 @@ def dashboard_planning_refresh_api():
         dashboard_year=year,
         dashboard_month=month,
         scope_mode=("active" if scope_mode == "active" else "all"),
-        market_pulse_href=url_for("market_pulse_page", ticker=selected_ticker, refresh=1),
+        market_pulse_href=url_for("market_pulse_page", ticker=selected_ticker),
     )
     return jsonify(
         {

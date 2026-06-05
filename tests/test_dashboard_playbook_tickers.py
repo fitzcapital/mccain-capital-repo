@@ -21,7 +21,7 @@ def test_dashboard_defaults_to_qqq_switcher_and_market_pulse_links(client):
     assert 'data-dashboard-ticker-switch="QQQ"' in body
     assert 'data-dashboard-ticker-switch="SPY"' in body
     assert 'data-dashboard-ticker-switch="SPX"' in body
-    assert 'href="/market-pulse?ticker=QQQ&amp;refresh=1"' in body
+    assert 'href="/market-pulse?ticker=QQQ"' in body
     assert 'href="/dashboard?ticker=SPY' in body
     assert 'href="/dashboard?ticker=SPX' in body
 
@@ -32,7 +32,7 @@ def test_dashboard_honors_spy_ticker_in_switcher_and_links(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'data-selected-ticker="SPY"' in body
-    assert 'href="/market-pulse?ticker=SPY&amp;refresh=1"' in body
+    assert 'href="/market-pulse?ticker=SPY"' in body
     assert 'href="/dashboard?ticker=QQQ' in body
     assert 'href="/dashboard?ticker=SPX' in body
 
@@ -43,7 +43,7 @@ def test_dashboard_honors_spx_ticker_in_switcher_and_links(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'data-selected-ticker="SPX"' in body
-    assert 'href="/market-pulse?ticker=SPX&amp;refresh=1"' in body
+    assert 'href="/market-pulse?ticker=SPX"' in body
     assert 'href="/dashboard?ticker=QQQ' in body
     assert 'href="/dashboard?ticker=SPY' in body
 

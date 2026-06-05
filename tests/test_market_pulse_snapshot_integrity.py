@@ -395,6 +395,54 @@ def test_playbook_snapshot_valid_rejects_zero_and_unavailable():
     )
 
 
+def test_playbook_snapshot_valid_rejects_unavailable_levels_with_spot():
+    assert (
+        core._market_pulse_playbook_snapshot_valid(
+            {
+                "market_structure_snapshot": {
+                    "app_state": "AFTER_HOURS_VALID",
+                    "spot_meta": {"value": 741.74},
+                    "levels_source": "unavailable",
+                    "level_meta": {
+                        "main_flip": {"value": None},
+                        "local_flip": {"value": None},
+                        "call_wall": {"value": None},
+                        "put_wall": {"value": None},
+                    },
+                }
+            }
+        )
+        is False
+    )
+
+
+def test_cached_playbook_rejects_fresh_unavailable_payload(monkeypatch):
+    now = datetime.fromisoformat("2026-06-04T17:50:00-04:00")
+    monkeypatch.setattr(core, "_load_market_pulse_playbook_disk_cache", lambda: None)
+    monkeypatch.setitem(core._market_pulse_playbook_cache, "generated_at", now)
+    monkeypatch.setitem(
+        core._market_pulse_playbook_cache,
+        "payload",
+        {
+            "ticker": "QQQ",
+            "market_structure_snapshot": {
+                "app_state": "AFTER_HOURS_VALID",
+                "spot": 741.74,
+                "spot_meta": {"value": 741.74},
+                "levels_source": "unavailable",
+                "level_meta": {
+                    "main_flip": {"value": None},
+                    "local_flip": {"value": None},
+                    "call_wall": {"value": None},
+                    "put_wall": {"value": None},
+                },
+            },
+        },
+    )
+
+    assert core._market_pulse_cached_playbook_snapshot(now, ticker="QQQ") is None
+
+
 def test_playbook_snapshot_valid_rejects_invariant_violations():
     assert (
         core._market_pulse_playbook_snapshot_valid(

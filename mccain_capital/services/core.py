@@ -239,6 +239,7 @@ _market_pulse_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_news_cache: Dict[str, Any] = {"fetched_at": None, "payload": None}
 _market_pulse_x_user_cache: Dict[str, Any] = {"fetched_at": None, "payload": {}}
 _market_pulse_playbook_cache: Dict[str, Any] = {"generated_at": None, "payload": None}
+_market_pulse_replay_cache_mem: Dict[str, Any] = {"path": "", "mtime": None, "payload": None}
 
 LOGGER = logging.getLogger(__name__)
 USD_CALENDAR_FALLBACK_EVENTS: Tuple[Tuple[str, str, str], ...] = (
@@ -312,12 +313,31 @@ def _load_market_pulse_disk_cache() -> Dict[str, Any] | None:
 
 
 def _load_market_pulse_replay_cache() -> Dict[str, Any] | None:
+    path = _market_pulse_replay_cache_file()
     try:
-        with open(_market_pulse_replay_cache_file(), "r", encoding="utf-8") as f:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        _market_pulse_replay_cache_mem.update({"path": path, "mtime": None, "payload": None})
+        return None
+    if (
+        _market_pulse_replay_cache_mem.get("path") == path
+        and _market_pulse_replay_cache_mem.get("mtime") == mtime
+        and isinstance(_market_pulse_replay_cache_mem.get("payload"), dict)
+    ):
+        return copy.deepcopy(_market_pulse_replay_cache_mem["payload"])
+    try:
+        with open(path, "r", encoding="utf-8") as f:
             parsed = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
+        _market_pulse_replay_cache_mem.update({"path": path, "mtime": None, "payload": None})
         return None
-    return parsed if isinstance(parsed, dict) else None
+    if not isinstance(parsed, dict):
+        _market_pulse_replay_cache_mem.update({"path": path, "mtime": None, "payload": None})
+        return None
+    _market_pulse_replay_cache_mem.update(
+        {"path": path, "mtime": mtime, "payload": copy.deepcopy(parsed)}
+    )
+    return parsed
 
 
 def _load_market_pulse_playbook_disk_cache() -> Dict[str, Any] | None:
@@ -339,10 +359,18 @@ def _save_market_pulse_disk_cache(payload: Dict[str, Any]) -> None:
 
 
 def _save_market_pulse_replay_cache(payload: Dict[str, Any]) -> None:
+    path = _market_pulse_replay_cache_file()
     try:
         os.makedirs(app_runtime.upload_root(), exist_ok=True)
-        with open(_market_pulse_replay_cache_file(), "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
+        _market_pulse_replay_cache_mem.update(
+            {
+                "path": path,
+                "mtime": os.path.getmtime(path),
+                "payload": copy.deepcopy(payload),
+            }
+        )
     except OSError:
         return
 
@@ -789,6 +817,99 @@ def _market_pulse_yahoo_href(symbol: str) -> str:
     return "https://finance.yahoo.com/quote/" + urllib.parse.quote(symbol, safe="")
 
 
+def _market_pulse_compact_quote_payload(quote: Dict[str, Any]) -> Dict[str, Any]:
+    """Return browser quote state without bulky replay series."""
+
+    if not isinstance(quote, dict):
+        return {}
+    keep_keys = {
+        "symbol",
+        "label",
+        "group",
+        "focus",
+        "name",
+        "provider",
+        "reason",
+        "price",
+        "change",
+        "change_pct",
+        "pct_change",
+        "market_state",
+        "data_state",
+        "data_status_label",
+        "data_reason",
+        "as_of",
+        "asof",
+        "asof_epoch",
+        "day_range",
+        "day_open",
+        "prior_close",
+        "prev_close",
+        "previous_close",
+        "prior_day_low",
+        "prior_day_high",
+        "vwap",
+        "source_badge_label",
+        "source_badge_tone",
+    }
+    compact = {key: quote.get(key) for key in keep_keys if key in quote}
+    mini_series = quote.get("mini_series")
+    if isinstance(mini_series, list):
+        compact["mini_series"] = list(mini_series)[-40:]
+    return compact
+
+
+def _market_pulse_compact_quotes_map(
+    quotes: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    compact: Dict[str, Dict[str, Any]] = {}
+    for quote in quotes:
+        if not isinstance(quote, dict):
+            continue
+        label = str(quote.get("label") or quote.get("symbol") or "").strip()
+        if label:
+            compact[label] = _market_pulse_compact_quote_payload(quote)
+    return compact
+
+
+def _market_pulse_compact_series_points(
+    series_points: Dict[str, List[Dict[str, Any]]],
+    *,
+    limit: int = 80,
+) -> Dict[str, List[Dict[str, Any]]]:
+    compact: Dict[str, List[Dict[str, Any]]] = {}
+    for symbol, rows in (series_points or {}).items():
+        key = str(symbol or "").strip()
+        if not key or not isinstance(rows, list):
+            continue
+        points: List[Dict[str, Any]] = []
+        for row in rows[-limit:]:
+            if isinstance(row, dict):
+                value = row.get("v", row.get("close"))
+                if not isinstance(value, (int, float)):
+                    continue
+                point: Dict[str, Any] = {"v": float(value), "close": float(value)}
+                if row.get("ts"):
+                    point["ts"] = row.get("ts")
+                if row.get("label"):
+                    point["label"] = row.get("label")
+                points.append(point)
+            elif isinstance(row, (int, float)):
+                points.append({"v": float(row), "close": float(row)})
+        if points:
+            compact[key] = points
+    return compact
+
+
+def _market_pulse_compact_gamma_payload(gamma_snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(gamma_snapshot, dict):
+        return {}
+    compact = copy.deepcopy(gamma_snapshot)
+    compact.pop("chart_json", None)
+    compact.pop("grouped_strike_rows", None)
+    return compact
+
+
 def _format_iso_et_label(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
@@ -872,6 +993,8 @@ def _market_pulse_cached_playbook_snapshot(
         if not isinstance(payload, dict):
             return None
         if expected_ticker and str(payload.get("ticker") or "").upper() != expected_ticker:
+            return None
+        if not _market_pulse_playbook_snapshot_valid(payload):
             return None
         return copy.deepcopy(payload)
 
@@ -2025,9 +2148,13 @@ def _market_pulse_playbook_snapshot_valid(payload: Dict[str, Any]) -> bool:
     structure = dict(payload.get("market_structure_snapshot") or {})
     spot_meta = dict(structure.get("spot_meta") or {})
     spot_value = _market_pulse_positive_float(spot_meta.get("value"))
+    if spot_value is None:
+        spot_value = _market_pulse_positive_float(structure.get("spot"))
     app_state = str(structure.get("app_state") or "")
     levels_source = str(structure.get("levels_source") or "")
     if app_state == "UNAVAILABLE" or spot_value is None:
+        return False
+    if levels_source == "unavailable":
         return False
     if levels_source != "unavailable":
         level_meta = dict(structure.get("level_meta") or {})
@@ -2934,6 +3061,63 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
     _market_pulse_cache["payload"] = result
     _save_market_pulse_disk_cache(result)
     return result
+
+
+def _market_pulse_fast_page_snapshot(
+    now_et: datetime,
+    cached_playbook_snapshot: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Return non-blocking quote state for initial Market Pulse page render."""
+
+    fetched_at = _market_pulse_cache.get("fetched_at")
+    cached_payload = _market_pulse_cache.get("payload")
+    if (
+        isinstance(fetched_at, datetime)
+        and isinstance(cached_payload, dict)
+        and _market_pulse_payload_has_current_symbols(cached_payload)
+    ):
+        snapshot = _market_pulse_attach_replay_cache(_market_pulse_force_symbol_set(cached_payload))
+        snapshot["source_label"] = "Tradier market feed (cached snapshot)"
+        snapshot["source_note"] = "Using cached quote state for fast page load."
+        snapshot.setdefault("integrity", {})
+        if isinstance(snapshot["integrity"], dict):
+            snapshot["integrity"]["cached_only"] = True
+            snapshot["integrity"]["forced_refresh"] = False
+        return snapshot
+
+    disk_payload = _load_market_pulse_disk_cache()
+    if isinstance(disk_payload, dict) and _market_pulse_payload_has_current_symbols(disk_payload):
+        _market_pulse_cache["fetched_at"] = now_et
+        _market_pulse_cache["payload"] = copy.deepcopy(disk_payload)
+        snapshot = _market_pulse_attach_replay_cache(_market_pulse_force_symbol_set(disk_payload))
+        snapshot["source_label"] = "Market feed cached snapshot"
+        snapshot["source_note"] = "Using cached quote state for fast page load."
+        snapshot.setdefault("integrity", {})
+        if isinstance(snapshot["integrity"], dict):
+            snapshot["integrity"]["cached_only"] = True
+            snapshot["integrity"]["forced_refresh"] = False
+        return snapshot
+
+    cached_quotes = list(cached_playbook_snapshot.get("quotes") or [])
+    if cached_quotes:
+        return {
+            "available": True,
+            "fetched_at": str(
+                cached_playbook_snapshot.get("market_now_iso")
+                or cached_playbook_snapshot.get("server_ts")
+                or now_et.isoformat()
+            ),
+            "source_label": "Playbook cached quote state",
+            "source_note": "Using cached playbook quote state for fast page load.",
+            "quotes": cached_quotes,
+            "integrity": {
+                "cached_only": True,
+                "forced_refresh": False,
+                "tracked_count": len(cached_quotes),
+            },
+        }
+
+    return {}
 
 
 def _market_pulse_context(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -7997,7 +8181,42 @@ def _market_news_snapshot(
     feed_limit: int = 0,
 ) -> Dict[str, Any]:
     now_et = now_et or app_runtime.now_et()
-    macro_events = list(macro_events or _market_news_macro_events(now_et))
+    cache_page_type = str(page_type or "")
+    cache_feed_limit = int(feed_limit or 0)
+
+    if not force_refresh_feed:
+        cached_at = _market_news_cache.get("fetched_at")
+        cached_payload = _market_news_cache.get("payload")
+        cached_page_type = str(_market_news_cache.get("page_type") or "")
+        cached_feed_limit = int(_market_news_cache.get("feed_limit") or 0)
+        if (
+            isinstance(cached_at, datetime)
+            and isinstance(cached_payload, dict)
+            and cached_page_type == cache_page_type
+            and cached_feed_limit == cache_feed_limit
+            and max(0.0, (now_et - cached_at).total_seconds()) <= MARKET_NEWS_CACHE_TTL_SECONDS
+        ):
+            return copy.deepcopy(cached_payload)
+
+        disk_cached = _load_market_news_disk_cache() or {}
+        disk_payload = dict(disk_cached.get("payload") or {})
+        disk_fetched_raw = str(disk_cached.get("fetched_at") or "").strip()
+        disk_fetched_at = _parse_iso_et(disk_fetched_raw) if disk_fetched_raw else None
+        if (
+            disk_fetched_at is not None
+            and disk_payload
+            and str(disk_cached.get("page_type") or "") == cache_page_type
+            and int(disk_cached.get("feed_limit") or 0) == cache_feed_limit
+            and max(0.0, (now_et - disk_fetched_at).total_seconds())
+            <= MARKET_NEWS_CACHE_TTL_SECONDS
+        ):
+            _market_news_cache["fetched_at"] = disk_fetched_at
+            _market_news_cache["payload"] = copy.deepcopy(disk_payload)
+            _market_news_cache["page_type"] = cache_page_type
+            _market_news_cache["feed_limit"] = cache_feed_limit
+            return disk_payload
+
+    macro_events = _market_news_macro_events(now_et) if macro_events is None else list(macro_events)
 
     feed_snapshot = build_twitter_feed_snapshot(
         limit=feed_limit,
@@ -8020,7 +8239,17 @@ def _market_news_snapshot(
         "market_feed_snapshot": feed_snapshot,
     }
     _market_news_cache["fetched_at"] = now_et
-    _market_news_cache["payload"] = result
+    _market_news_cache["payload"] = copy.deepcopy(result)
+    _market_news_cache["page_type"] = cache_page_type
+    _market_news_cache["feed_limit"] = cache_feed_limit
+    _save_market_news_disk_cache(
+        {
+            "fetched_at": now_et.isoformat(),
+            "page_type": cache_page_type,
+            "feed_limit": cache_feed_limit,
+            "payload": result,
+        }
+    )
     return result
 
 
@@ -10143,7 +10372,6 @@ def _dashboard_tape_viewmodel(
                 dashboard_vix = dict(fallback.get("VIX") or dashboard_vix)
     now_epoch = int(app_runtime.now_et().timestamp())
     intraday_rows_cache: Dict[str, List[Dict[str, Any]]] = {}
-    pulse_snapshot_box: Dict[str, Any] = {"value": None}
 
     def _dashboard_intraday_rows(symbol: str) -> List[Dict[str, Any]]:
         key = str(symbol or "").strip().upper()
@@ -10203,30 +10431,6 @@ def _dashboard_tape_viewmodel(
                     deduped_vix.append(value)
             if len(deduped_vix) >= 4:
                 return deduped_vix[-40:]
-        if pulse_snapshot_box["value"] is None:
-            try:
-                pulse_snapshot_box["value"] = _market_pulse_snapshot(
-                    force_refresh=False,
-                    persist_replay=False,
-                )
-            except Exception:
-                pulse_snapshot_box["value"] = {}
-        for quote in list((pulse_snapshot_box["value"] or {}).get("quotes") or []):
-            if not isinstance(quote, dict):
-                continue
-            quote_symbol = str(quote.get("label") or quote.get("symbol") or "").strip().upper()
-            if quote_symbol != key:
-                continue
-            pulse_src = quote.get("mini_series")
-            if not isinstance(pulse_src, list):
-                pulse_src = quote.get("series") if isinstance(quote.get("series"), list) else []
-            pulse_points: List[float] = []
-            for item in pulse_src[-120:]:
-                value = item.get("v") if isinstance(item, dict) else item
-                if isinstance(value, (int, float)):
-                    pulse_points.append(float(value))
-            if len(pulse_points) >= 4:
-                return pulse_points[-40:]
         points_src = (tape_snapshot.get("series_points") or {}).get(key) or []
         points: List[float] = []
         if isinstance(points_src, list):
@@ -11198,47 +11402,6 @@ def dashboard():
             "source_display": str(enriched.get("source_badge_label") or "—"),
         }
 
-    dashboard_instrument = _enrich_dashboard_quote(selected_ticker, dashboard_instrument)
-    dashboard_peer = _enrich_dashboard_quote(alternate_ticker, dashboard_peer)
-    dashboard_vix = _enrich_dashboard_quote("VIX", dashboard_vix)
-    dashboard_tape_symbols = _dashboard_tape_symbols(selected_ticker)
-    dashboard_tape_quotes: Dict[str, Dict[str, Any]] = {
-        selected_ticker: dict(dashboard_instrument),
-        alternate_ticker: dict(dashboard_peer),
-        "VIX": dict(dashboard_vix),
-    }
-    extra_tape_quotes: Dict[str, Dict[str, Any]] = {}
-    if current_app.config.get("TESTING"):
-        try:
-            extra_tape_quotes = market_data_service.get_watchlist_tradier(
-                [symbol for symbol in dashboard_tape_symbols if symbol not in dashboard_tape_quotes]
-            )
-        except Exception:
-            extra_tape_quotes = {}
-    for symbol in dashboard_tape_symbols:
-        if symbol in dashboard_tape_quotes:
-            continue
-        worker_quote = dict(tape_prices.get(symbol) or {})
-        if current_app.config.get("TESTING"):
-            fallback_quote = dict(extra_tape_quotes.get(symbol) or {})
-            source_quote = dict(fallback_quote)
-            for key, value in worker_quote.items():
-                if value is None and key in source_quote:
-                    continue
-                source_quote[key] = value
-        else:
-            source_quote = worker_quote
-        dashboard_tape_quotes[symbol] = _enrich_dashboard_quote(
-            symbol,
-            source_quote,
-        )
-    dashboard_spx_diagnostic = _enrich_dashboard_quote("SPX", dict(tape_prices.get("SPX") or {}))
-    dashboard_tape_rows = [
-        _dashboard_tape_row_viewmodel("SPY", dashboard_tape_quotes.get("SPY") or {}, "market proxy"),
-        _dashboard_tape_row_viewmodel("QQQ", dashboard_tape_quotes.get("QQQ") or {}, "tech proxy"),
-        _dashboard_tape_row_viewmodel("VIX", dashboard_tape_quotes.get("VIX") or {}, "volatility"),
-        _dashboard_tape_row_viewmodel("SPX", dashboard_tape_quotes.get("SPX") or {}, "cash proxy"),
-    ]
     journal_today_rows = [dict(r) for r in journal_repo.fetch_entries(d=today_key)]
     journal_capture_count_today = 0
     for row in journal_today_rows:
@@ -11481,7 +11644,7 @@ def dashboard():
             f"/dashboard?y={year}&m={month}&scope=all&ticker={selected_ticker}"
             f"&pace_tf={pace_timeframe_key}"
         ),
-        market_pulse_href=url_for("market_pulse_page", ticker=selected_ticker, refresh=1),
+        market_pulse_href=url_for("market_pulse_page", ticker=selected_ticker),
         dashboard_year=year,
         dashboard_month=month,
         pace_timeframe=pace_scope,
@@ -11777,10 +11940,16 @@ def market_pulse_page():
     now_et = app_runtime.now_et()
     if not current_app.config.get("TESTING"):
         market_pulse_runtime.ensure_market_pulse_runtime_started()
-    snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
     cached_playbook_snapshot = dict(
         _market_pulse_cached_playbook_snapshot(now_et, ticker=selected_ticker) or {}
     )
+    snapshot = (
+        _market_pulse_snapshot(force_refresh=True)
+        if force_refresh
+        else _market_pulse_fast_page_snapshot(now_et, cached_playbook_snapshot)
+    )
+    if not snapshot:
+        snapshot = _market_pulse_snapshot(force_refresh=False)
     gamma_snapshot = dict(cached_playbook_snapshot.get("gamma_snapshot") or {})
     if force_refresh:
         gamma_snapshot = gamma_map_service.get_gamma_snapshot()
@@ -11883,7 +12052,7 @@ def market_pulse_page():
         if warning_text not in warnings:
             warnings.append(warning_text)
         gamma_snapshot["warnings"] = warnings
-    quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
+    quotes_map = _market_pulse_compact_quotes_map(quotes)
     series_points = {
         str(q.get("label") or q.get("symbol") or ""): list(q.get("series") or [])
         for q in quotes
@@ -11902,6 +12071,7 @@ def market_pulse_page():
         ]
         if len(fallback_values) >= 4:
             series_points[label] = [{"v": value, "close": value} for value in fallback_values]
+    series_points = _market_pulse_compact_series_points(series_points, limit=80)
     context = _market_pulse_context(quotes)
     macro_events: List[Dict[str, Any]] = []
     playbook_snapshot = (
@@ -12005,6 +12175,10 @@ def market_pulse_page():
         playbook_quote=playbook_quote,
         spx_quote=spx_quote,
         vix_quote=vix_quote,
+        base_playbook_quote=_market_pulse_compact_quote_payload(playbook_quote),
+        base_spx_quote=_market_pulse_compact_quote_payload(spx_quote),
+        base_vix_quote=_market_pulse_compact_quote_payload(vix_quote),
+        base_gamma_snapshot=_market_pulse_compact_gamma_payload(gamma_snapshot),
         quotes_map=quotes_map,
         core_quotes=core_quotes,
         leader_quotes=leader_quotes,
@@ -12071,10 +12245,16 @@ def market_pulse_context_api():
     now_et = app_runtime.now_et()
     if not current_app.config.get("TESTING"):
         market_pulse_runtime.ensure_market_pulse_runtime_started()
-    snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
     cached_playbook_snapshot = dict(
         _market_pulse_cached_playbook_snapshot(now_et, ticker=selected_ticker) or {}
     )
+    snapshot = (
+        _market_pulse_snapshot(force_refresh=True)
+        if force_refresh
+        else _market_pulse_fast_page_snapshot(now_et, cached_playbook_snapshot)
+    )
+    if not snapshot:
+        snapshot = _market_pulse_snapshot(force_refresh=False)
     gamma_snapshot = dict(cached_playbook_snapshot.get("gamma_snapshot") or {})
     if force_refresh:
         gamma_snapshot = gamma_map_service.get_gamma_snapshot()
@@ -12098,14 +12278,15 @@ def market_pulse_context_api():
     ):
         cached_playbook_snapshot = {}
         gamma_snapshot = {}
-    quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
-    series_points = {
-        str(q.get("label") or q.get("symbol") or ""): list(q.get("series") or [])
-        for q in quotes
-        if isinstance(q, dict) and str(q.get("label") or q.get("symbol") or "").strip()
-    }
+    quotes_map = _market_pulse_compact_quotes_map(quotes)
+    series_points: Dict[str, List[Dict[str, Any]]] = {}
     context = _market_pulse_context(quotes)
-    macro_events = _market_news_macro_events(now_et)
+    include_macro = (request.args.get("include_macro") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    macro_events = _market_news_macro_events(now_et) if include_macro else []
     playbook_snapshot = (
         cached_playbook_snapshot
         if cached_playbook_snapshot and not force_refresh
@@ -12138,10 +12319,10 @@ def market_pulse_context_api():
             "ok": True,
             "payload": {
                 "ticker": selected_ticker,
-                "playbook_quote": playbook_quote,
-                "spx_quote": spx_quote,
-                "vix_quote": vix_quote,
-                "gamma_snapshot": gamma_snapshot,
+                "playbook_quote": _market_pulse_compact_quote_payload(playbook_quote),
+                "spx_quote": _market_pulse_compact_quote_payload(spx_quote),
+                "vix_quote": _market_pulse_compact_quote_payload(vix_quote),
+                "gamma_snapshot": _market_pulse_compact_gamma_payload(gamma_snapshot),
                 "execution_model": execution_model,
                 "market_structure_snapshot": market_structure_snapshot,
                 "playbook_view": playbook_view,
@@ -12391,14 +12572,17 @@ def market_pulse_news_feed_api():
         min(100, requested_limit or (15 if page_type == "market-pulse" else 5 if page_type == "dashboard" else 15)),
     )
     now_et = app_runtime.now_et()
-    playbook_snapshot = get_or_build_market_pulse_snapshot(
-        force_refresh=force_refresh, now_et=now_et
-    )
+    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    selected_ticker = str(ticker_context["ticker"])
+    playbook_snapshot = _market_pulse_cached_playbook_snapshot(
+        now_et,
+        ticker=selected_ticker,
+    ) or {}
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     news_snapshot = _market_news_snapshot(
         now_et=now_et,
         market_structure_snapshot=market_structure_snapshot,
-        macro_events=_market_news_macro_events(now_et),
+        macro_events=[],
         force_refresh_feed=force_refresh,
         page_type=page_type,
         feed_limit=limit,
