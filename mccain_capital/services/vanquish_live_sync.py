@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -309,6 +310,220 @@ def _is_resource_error(message: str) -> bool:
     return any(marker in text for marker in _RESOURCE_ERROR_MARKERS)
 
 
+def _validate_statement_html(
+    html_text: str,
+    *,
+    final_url: str = "",
+    status: Optional[int] = None,
+    headers: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    text = html_text or ""
+    lowered = text.lower()
+    url_lower = (final_url or "").lower()
+    content_type = str((headers or {}).get("content-type") or "").lower()
+    has_table = "<table" in lowered
+    has_html_shape = "<html" in lowered or has_table or "<!doctype html" in lowered
+    has_login_url = "login" in url_lower and "/account/statement/" not in url_lower
+    has_login_form = (
+        "password" in lowered
+        and "login" in lowered
+        and ("<input" in lowered or "loginform" in lowered or "sign in" in lowered)
+    )
+    has_statement_marker = any(
+        marker in lowered
+        for marker in (
+            "account statement",
+            "/account/statement/",
+            "transaction time",
+            "ending balance",
+            "net liquidating",
+            "instrument",
+        )
+    )
+    has_trade_marker = bool(
+        re.search(
+            r"\b(?:spx|ndx|qqq|spy|es|mes|nq|mnq)\s+[a-z]{3}/\d{1,2}/\d{2}\s+",
+            lowered,
+        )
+    )
+    has_balance_marker = bool(
+        re.search(
+            r"\b(?:ending\s+balance|net\s+liquidating\s+value|account\s+value|balance)\b",
+            lowered,
+        )
+    )
+    markers = {
+        "has_table": has_table,
+        "has_html_shape": has_html_shape,
+        "has_login_url": has_login_url,
+        "has_login_form": has_login_form,
+        "has_statement_marker": has_statement_marker,
+        "has_trade_marker": has_trade_marker,
+        "has_balance_marker": has_balance_marker,
+        "content_type": content_type,
+    }
+
+    if status is not None and int(status) != 200:
+        return {
+            "ok": False,
+            "reason": f"Statement request returned HTTP {status}.",
+            "markers": markers,
+        }
+    if not text.strip():
+        return {"ok": False, "reason": "Statement HTML was empty.", "markers": markers}
+    if has_login_url or has_login_form:
+        return {
+            "ok": False,
+            "reason": "Captured broker login page instead of statement HTML.",
+            "markers": markers,
+        }
+    if content_type and "html" not in content_type and not has_html_shape:
+        return {
+            "ok": False,
+            "reason": f"Statement response was not HTML ({content_type}).",
+            "markers": markers,
+        }
+    if not has_html_shape:
+        return {
+            "ok": False,
+            "reason": "Statement response did not look like HTML.",
+            "markers": markers,
+        }
+    if not (has_statement_marker or has_trade_marker or has_balance_marker):
+        return {
+            "ok": False,
+            "reason": "Statement HTML lacked statement, trade, and balance markers.",
+            "markers": markers,
+        }
+    if not (has_table or has_trade_marker or has_balance_marker):
+        return {
+            "ok": False,
+            "reason": "Statement HTML had no table, trade rows, or balance text.",
+            "markers": markers,
+        }
+    return {"ok": True, "reason": "Statement HTML validated.", "markers": markers}
+
+
+def _capture_result(
+    *,
+    method: str,
+    html_text: str,
+    final_url: str,
+    validation: Dict[str, Any],
+    status: Optional[int] = None,
+    headers: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return {
+        "method": method,
+        "html_text": html_text or "",
+        "final_url": final_url or "",
+        "status": status,
+        "headers": headers or {},
+        "validation": validation,
+    }
+
+
+def _write_capture_artifacts(
+    debug_dir: Optional[str],
+    artifacts: List[str],
+    *,
+    stem: str,
+    capture: Dict[str, Any],
+) -> None:
+    html_path = _debug_write(debug_dir, f"{stem}.html", str(capture.get("html_text") or ""))
+    if html_path:
+        artifacts.append(html_path)
+    meta_path = _debug_write(
+        debug_dir,
+        f"{stem}_meta.json",
+        json.dumps(
+            {
+                "capture_method": capture.get("method"),
+                "http_status": capture.get("status"),
+                "final_url": capture.get("final_url"),
+                "validation_result": capture.get("validation"),
+                "headers": capture.get("headers") or {},
+            },
+            indent=2,
+        ),
+    )
+    if meta_path:
+        artifacts.append(meta_path)
+
+
+def _capture_attempt_summary(capture: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "method": capture.get("method"),
+        "http_status": capture.get("status"),
+        "final_url": capture.get("final_url"),
+        "validation_result": capture.get("validation"),
+    }
+
+
+def _capture_rejection_reason(capture: Dict[str, Any]) -> str:
+    validation = capture.get("validation") if isinstance(capture, dict) else None
+    if isinstance(validation, dict):
+        return str(validation.get("reason") or "validation failed")
+    return "validation failed"
+
+
+def _capture_is_valid(capture: Dict[str, Any], warnings: List[str], prefix: str) -> bool:
+    validation = capture.get("validation") if isinstance(capture, dict) else None
+    if isinstance(validation, dict) and validation.get("ok"):
+        return True
+    warnings.append(f"{prefix}: {_capture_rejection_reason(capture)}")
+    return False
+
+
+def _fetch_statement_html_with_context_request(
+    context: Any,
+    statement_url: str,
+    *,
+    timeout_ms: int,
+) -> Dict[str, Any]:
+    response = context.request.get(
+        statement_url,
+        timeout=timeout_ms,
+        headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+    )
+    status = int(getattr(response, "status", 0) or 0)
+    headers = dict(getattr(response, "headers", {}) or {})
+    html_text = response.text()
+    final_url = str(getattr(response, "url", "") or statement_url)
+    validation = _validate_statement_html(
+        html_text,
+        final_url=final_url,
+        status=status,
+        headers=headers,
+    )
+    return _capture_result(
+        method="authenticated_request",
+        html_text=html_text,
+        final_url=final_url,
+        status=status,
+        headers=headers,
+        validation=validation,
+    )
+
+
+def _capture_statement_from_page(
+    page: Any,
+    *,
+    method: str,
+    status: Optional[int] = None,
+) -> Dict[str, Any]:
+    html_text = page.content()
+    final_url = str(getattr(page, "url", "") or "")
+    validation = _validate_statement_html(html_text, final_url=final_url, status=status)
+    return _capture_result(
+        method=method,
+        html_text=html_text,
+        final_url=final_url,
+        status=status,
+        validation=validation,
+    )
+
+
 @contextmanager
 def _browser_boot_gate(timeout_s: float = 20.0):
     deadline = time.time() + timeout_s
@@ -316,7 +531,9 @@ def _browser_boot_gate(timeout_s: float = 20.0):
     acquired_thread = False
     try:
         while time.time() < deadline:
-            acquired_thread = _BROWSER_BOOT_LOCK.acquire(timeout=min(0.5, max(0.05, deadline - time.time())))
+            acquired_thread = _BROWSER_BOOT_LOCK.acquire(
+                timeout=min(0.5, max(0.05, deadline - time.time()))
+            )
             if not acquired_thread:
                 continue
             if fcntl is None:
@@ -427,7 +644,8 @@ def _bootstrap_browser_session(
             except Exception as e:
                 last_error = str(e).strip() or e.__class__.__name__
                 warnings.append(
-                    f"Browser bootstrap attempt {attempt} ({profile['label']}) failed: {last_error}."
+                    f"Browser bootstrap attempt {attempt} ({profile['label']}) failed: "
+                    f"{last_error}."
                 )
                 _safe_close(context)
                 _safe_close(browser)
@@ -531,10 +749,12 @@ def fetch_statement_html_via_login(
     )
 
     current_stage = "init"
+    login_urls = [f"{origin}/#/login", login_url]
     meta: Dict[str, Any] = {
         "selector_profile_version": SELECTOR_PROFILE_VERSION,
         "used_statement_url_fallback": False,
         "opened_statement_popup": False,
+        "login_url_candidates": login_urls,
     }
 
     def mark(stage: str, message: str) -> None:
@@ -556,23 +776,33 @@ def fetch_statement_html_via_login(
             mark=mark,
         )
         mark("open_login", "Opening broker login page.")
-        page.goto(login_url, wait_until="domcontentloaded")
-        # Vanquish login UI can finish client-side hydration after initial paint.
-        try:
-            page.wait_for_load_state("networkidle", timeout=12000)
-        except Exception:
-            pass
-        page.wait_for_timeout(1200)
+        opened_login_url = login_url
+        user_input = None
+        for candidate_url in login_urls:
+            opened_login_url = candidate_url
+            page.goto(candidate_url, wait_until="domcontentloaded")
+            # Vanquish login UI can finish client-side hydration after initial paint.
+            try:
+                page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1200)
+            user_input = _wait_for_login_username(page, timeout_ms=8000)
+            if user_input:
+                break
+            warnings.append(f"Login form did not hydrate at {candidate_url}; trying fallback.")
+        meta["opened_login_url"] = opened_login_url
         shot = _debug_shot(page, debug_dir, "01_open_login.png")
         if shot:
             artifacts.append(shot)
 
         mark("locate_username", "Finding username field.")
-        user_input = _wait_for_login_username(page, timeout_ms=20000)
+        if not user_input:
+            user_input = _wait_for_login_username(page, timeout_ms=12000)
         if not user_input:
             warnings.append("Login form did not hydrate in time; reloading login page once.")
             try:
-                page.goto(login_url, wait_until="domcontentloaded")
+                page.goto(opened_login_url, wait_until="domcontentloaded")
                 try:
                     page.wait_for_load_state("networkidle", timeout=12000)
                 except Exception:
@@ -680,101 +910,252 @@ def fetch_statement_html_via_login(
             _safe_close(browser)
             raise _stage_error(
                 "submit_login",
-                "Still on login page after submit. Credentials may be invalid or MFA/CAPTCHA is required.",
+                "Still on login page after submit. Credentials may be invalid or "
+                "MFA/CAPTCHA is required.",
             )
 
-        # Preferred flow: hamburger menu -> Account Statement -> Generate Statement.
-        mark("open_workspace_menu", "Opening workspace menu.")
-        statement_page = page
-        menu_clicked = _click_first(page, SELECTOR_PROFILES["workspace_menu"])
-        if not menu_clicked:
-            warnings.append("Could not click hamburger menu; using statement URL fallback.")
+        mark("capture_statement_request", "Fetching statement HTML from authenticated session.")
+        capture: Optional[Dict[str, Any]] = None
+        capture_attempts: List[Dict[str, Any]] = []
+        try:
+            request_capture = _fetch_statement_html_with_context_request(
+                context,
+                statement_url,
+                timeout_ms=timeout_ms,
+            )
+            _write_capture_artifacts(
+                debug_dir,
+                artifacts,
+                stem="statement_request",
+                capture=request_capture,
+            )
+            capture_attempts.append(_capture_attempt_summary(request_capture))
+            mark("validate_statement_html", "Validating statement HTML.")
+            if _capture_is_valid(
+                request_capture,
+                warnings,
+                "Authenticated statement request rejected",
+            ):
+                capture = request_capture
+        except Exception as e:
+            warnings.append(f"Authenticated statement request failed: {e}")
+
+        if capture is None:
+            mark("capture_statement_html", "Opening statement URL directly.")
             meta["used_statement_url_fallback"] = True
-            page.goto(statement_url, wait_until="domcontentloaded")
-        else:
-            page.wait_for_timeout(600)
-            mark("open_statement_dialog", "Opening statement dialog.")
-            statement_clicked = _click_first(page, SELECTOR_PROFILES["account_statement_menu_item"])
-            if not statement_clicked:
-                warnings.append("Could not open Account Statement from menu; using URL fallback.")
-                meta["used_statement_url_fallback"] = True
-                page.goto(statement_url, wait_until="domcontentloaded")
-            else:
-                page.wait_for_timeout(900)
-                mark("configure_statement_period", "Setting statement date range.")
-                if not _set_statement_period_fields(page, from_date, to_date):
-                    warnings.append(
-                        "Could not set custom From/To in dialog; using visible defaults."
+            try:
+                response = page.goto(
+                    statement_url,
+                    wait_until="domcontentloaded",
+                    timeout=timeout_ms,
+                )
+                try:
+                    page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                except PlaywrightTimeoutError:
+                    warnings.append("Direct statement page did not reach network idle; continuing.")
+                status = int(getattr(response, "status", 0) or 0) if response else None
+                page_capture = _capture_statement_from_page(
+                    page,
+                    method="direct_page_navigation",
+                    status=status,
+                )
+                _write_capture_artifacts(
+                    debug_dir,
+                    artifacts,
+                    stem="direct_statement_page",
+                    capture=page_capture,
+                )
+                capture_attempts.append(_capture_attempt_summary(page_capture))
+                mark("validate_statement_html", "Validating statement HTML.")
+                if _capture_is_valid(page_capture, warnings, "Direct statement page rejected"):
+                    capture = page_capture
+            except Exception as e:
+                warnings.append(f"Direct statement page capture failed: {e}")
+
+        if capture is None:
+            mark("ui_statement_fallback", "Using broker UI fallback.")
+            meta["used_ui_fallback"] = True
+            statement_page = page
+            response_capture: Optional[Dict[str, Any]] = None
+
+            def capture_statement_response(response) -> None:
+                nonlocal response_capture
+                if response_capture is not None:
+                    return
+                try:
+                    response_url = str(getattr(response, "url", "") or "")
+                    if "/account/statement/" not in response_url:
+                        return
+                    body = response.text()
+                    status = int(getattr(response, "status", 0) or 0)
+                    headers = dict(getattr(response, "headers", {}) or {})
+                    validation = _validate_statement_html(
+                        body,
+                        final_url=response_url,
+                        status=status,
+                        headers=headers,
                     )
-                _click_first(page, ["label:has-text('HTML')", "text=HTML"])
-                generate_btn = _first_visible(page, SELECTOR_PROFILES["generate_statement_button"])
-                if not generate_btn:
-                    warnings.append("Generate Statement button not found; using URL fallback.")
-                    meta["used_statement_url_fallback"] = True
-                    page.goto(statement_url, wait_until="domcontentloaded")
-                else:
-                    mark("generate_statement", "Generating statement HTML.")
+                    candidate = _capture_result(
+                        method="ui_response_intercept",
+                        html_text=body,
+                        final_url=response_url,
+                        status=status,
+                        headers=headers,
+                        validation=validation,
+                    )
+                    if validation.get("ok"):
+                        response_capture = candidate
+                except Exception:
+                    return
+
+            try:
+                page.on("response", capture_statement_response)
+            except Exception:
+                warnings.append("Could not attach statement response interceptor.")
+
+            try:
+                if "/account/statement/" in str(getattr(page, "url", "") or ""):
+                    page.goto(origin, wait_until="domcontentloaded", timeout=timeout_ms)
                     try:
-                        popup_page = None
-                        with context.expect_page(timeout=12000) as popup_info:
-                            generate_btn.click(timeout=7000)
-                        popup_page = popup_info.value
-                        popup_page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
+                        page.wait_for_load_state("networkidle", timeout=12000)
+                    except PlaywrightTimeoutError:
+                        pass
+                    page.wait_for_timeout(1200)
+            except Exception:
+                warnings.append("Could not return to workspace before UI fallback.")
+
+            mark("open_workspace_menu", "Opening workspace menu.")
+            menu_clicked = _click_first(page, SELECTOR_PROFILES["workspace_menu"])
+            if not menu_clicked:
+                warnings.append("Could not click hamburger menu during UI fallback.")
+            else:
+                page.wait_for_timeout(600)
+                mark("open_statement_dialog", "Opening statement dialog.")
+                statement_clicked = _click_first(
+                    page,
+                    SELECTOR_PROFILES["account_statement_menu_item"],
+                )
+                if not statement_clicked:
+                    warnings.append(
+                        "Could not open Account Statement from menu during UI fallback."
+                    )
+                else:
+                    page.wait_for_timeout(900)
+                    mark("configure_statement_period", "Setting statement date range.")
+                    if not _set_statement_period_fields(page, from_date, to_date):
+                        warnings.append(
+                            "Could not set custom From/To in dialog; using visible defaults."
+                        )
+                    _click_first(page, ["label:has-text('HTML')", "text=HTML"])
+                    generate_btn = _first_visible(
+                        page,
+                        SELECTOR_PROFILES["generate_statement_button"],
+                    )
+                    if not generate_btn:
+                        warnings.append("Generate Statement button not found during UI fallback.")
+                    else:
+                        mark("generate_statement", "Generating statement HTML.")
                         try:
-                            popup_page.wait_for_load_state("networkidle", timeout=timeout_ms)
-                        except PlaywrightTimeoutError:
-                            warnings.append(
-                                "Generated statement tab opened but did not reach network idle."
-                            )
-                        statement_page = popup_page
-                        meta["opened_statement_popup"] = True
-                        warnings.append("Captured statement from generated popup tab.")
-                    except Exception:
-                        # Some sessions render statement in same tab instead of popup.
-                        try:
-                            generate_btn.click(timeout=7000)
-                            page.wait_for_url("**/account/statement/**", timeout=timeout_ms)
-                            statement_page = page
-                        except Exception:
+                            with context.expect_page(timeout=12000) as popup_info:
+                                generate_btn.click(timeout=7000)
+                            popup_page = popup_info.value
+                            popup_page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
                             try:
-                                page.wait_for_load_state("networkidle", timeout=timeout_ms)
-                                statement_page = page
+                                popup_page.wait_for_load_state("networkidle", timeout=timeout_ms)
                             except PlaywrightTimeoutError:
                                 warnings.append(
-                                    "Generate clicked but navigation confirmation timed out."
+                                    "Generated statement tab opened but did not reach network idle."
                                 )
-                        try:
-                            page.wait_for_load_state("networkidle", timeout=timeout_ms)
-                        except PlaywrightTimeoutError:
-                            pass
+                            statement_page = popup_page
+                            meta["opened_statement_popup"] = True
+                            warnings.append("Captured statement from generated popup tab.")
+                        except Exception:
+                            try:
+                                generate_btn.click(timeout=7000)
+                                page.wait_for_url("**/account/statement/**", timeout=timeout_ms)
+                                statement_page = page
+                            except Exception:
+                                try:
+                                    page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                                    statement_page = page
+                                except PlaywrightTimeoutError:
+                                    warnings.append(
+                                        "Generate clicked but navigation confirmation timed out."
+                                    )
+                            try:
+                                page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                            except PlaywrightTimeoutError:
+                                pass
 
-        shot = _debug_shot(page, debug_dir, "04_statement_page.png")
-        if shot:
-            artifacts.append(shot)
-        try:
-            statement_page.wait_for_load_state("networkidle", timeout=timeout_ms)
-        except PlaywrightTimeoutError:
-            warnings.append("Statement page load did not reach network idle; continuing.")
+            shot = _debug_shot(page, debug_dir, "04_statement_page.png")
+            if shot:
+                artifacts.append(shot)
+            try:
+                statement_page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            except PlaywrightTimeoutError:
+                warnings.append("Statement page load did not reach network idle; continuing.")
 
-        if statement_page is not page:
-            shot = _debug_shot(statement_page, debug_dir, "05_generated_tab.png")
+            if statement_page is not page:
+                shot = _debug_shot(statement_page, debug_dir, "05_generated_tab.png")
+                if shot:
+                    artifacts.append(shot)
+
+            shot = _debug_shot(statement_page, debug_dir, "05_after_generate.png")
             if shot:
                 artifacts.append(shot)
 
-        shot = _debug_shot(statement_page, debug_dir, "05_after_generate.png")
-        if shot:
-            artifacts.append(shot)
+            if response_capture is not None:
+                _write_capture_artifacts(
+                    debug_dir,
+                    artifacts,
+                    stem="ui_fallback_statement",
+                    capture=response_capture,
+                )
+                capture = response_capture
+                capture_attempts.append(_capture_attempt_summary(response_capture))
+            else:
+                page_capture = _capture_statement_from_page(
+                    statement_page,
+                    method="ui_page_content",
+                )
+                _write_capture_artifacts(
+                    debug_dir,
+                    artifacts,
+                    stem="ui_fallback_statement",
+                    capture=page_capture,
+                )
+                capture_attempts.append(_capture_attempt_summary(page_capture))
+                if _capture_is_valid(page_capture, warnings, "UI statement page rejected"):
+                    capture = page_capture
 
-        mark("capture_statement_html", "Capturing statement HTML.")
-        html_text = statement_page.content()
+        if capture is None:
+            meta["capture_attempts"] = capture_attempts
+            raise _stage_error(
+                "capture_statement_html",
+                "Could not capture validated statement HTML from authenticated session "
+                "or UI fallback.",
+            )
+
+        html_text = str(capture.get("html_text") or "")
         html_path = _debug_write(debug_dir, "final_statement.html", html_text)
         if html_path:
             artifacts.append(html_path)
+        meta.update(
+            {
+                "capture_method": capture.get("method"),
+                "http_status": capture.get("status"),
+                "final_url": capture.get("final_url"),
+                "statement_url": statement_url,
+                "validation_result": capture.get("validation"),
+                "used_ui_fallback": bool(meta.get("used_ui_fallback")),
+                "capture_attempts": capture_attempts,
+            }
+        )
         debug_meta = {
-            "login_url": login_url,
+            "login_url": meta.get("opened_login_url") or login_url,
             "statement_url": statement_url,
             "workspace_url": page.url,
-            "final_url": statement_page.url,
+            "final_url": capture.get("final_url"),
             "stage": current_stage,
             "selector_profile_version": SELECTOR_PROFILE_VERSION,
             "warnings": warnings,
@@ -793,9 +1174,13 @@ def fetch_statement_html_via_login(
         _safe_close(context)
         _safe_close(browser)
 
+    validation_result = meta.get("validation_result") if isinstance(meta, dict) else None
+    if isinstance(validation_result, dict) and not validation_result.get("ok"):
+        raise _stage_error(
+            "capture_statement_html",
+            str(validation_result.get("reason") or "Statement HTML validation failed."),
+        )
     lowered = html_text.lower()
-    if "<table" not in lowered:
-        warnings.append("No HTML table detected in generated statement page.")
     if "password" in lowered and "login" in lowered:
         raise _stage_error(
             "capture_statement_html", "Received login page instead of statement HTML."

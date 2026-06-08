@@ -143,6 +143,98 @@ def test_broker_import_supports_short_sell_then_buy_round_trip(app):
     assert round(float(row["total_spent"] or 0.0), 2) == 1200.00
 
 
+def test_statement_html_parser_normalizes_column_headers(tmp_path):
+    html_path = tmp_path / "statement.html"
+    html_path.write_text(
+        """
+        <html><body>
+          <table>
+            <tr><td>Ending Balance</td><td>$50,125.50</td></tr>
+          </table>
+          <table>
+            <tr>
+              <th>instrument</th>
+              <th>transaction&nbsp;time</th>
+              <th>direction</th>
+              <th>contract(s)</th>
+              <th>execution price</th>
+              <th>fees</th>
+            </tr>
+            <tr>
+              <td>SPX JAN/30/26 6935 PUT</td>
+              <td>1/30/26, 10:00 AM</td>
+              <td>SELL</td>
+              <td>1</td>
+              <td>12.00</td>
+              <td>0.70</td>
+            </tr>
+          </table>
+        </body></html>
+        """,
+        encoding="utf-8",
+    )
+
+    paste_text, balance, warnings = importing.parse_statement_html_to_broker_paste(str(html_path))
+
+    assert paste_text == "SPX JAN/30/26 6935 PUT | 1/30/26, 10:00 AM | SELL | 1 | 12.0 | 0.7"
+    assert balance == 50125.50
+    assert not any("Could not locate" in warning for warning in warnings)
+
+
+def test_statement_html_parser_falls_back_to_statement_rows(tmp_path):
+    html_path = tmp_path / "statement.html"
+    html_path.write_text(
+        """
+        <html><body>
+          <table>
+            <tr>
+              <td>SPX JAN/30/26 6935 PUT</td>
+              <td>123:1</td>
+              <td>1/30/26, 10:00 AM</td>
+              <td>BUY</td>
+              <td>1</td>
+              <td>10.00</td>
+              <td>987654</td>
+              <td>TRADE</td>
+              <td>-1,000.00</td>
+              <td>0.00</td>
+              <td>0.70</td>
+              <td>0.00</td>
+              <td>-1,000.70</td>
+              <td>50,125.50</td>
+            </tr>
+            <tr>
+              <td>SPX JAN/30/26 6935 PUT</td>
+              <td>123:2</td>
+              <td>1/30/26, 10:30 AM</td>
+              <td>SELL</td>
+              <td>1</td>
+              <td>12.00</td>
+              <td>987655</td>
+              <td>TRADE</td>
+              <td>1,200.00</td>
+              <td>200.00</td>
+              <td>0.70</td>
+              <td>0.00</td>
+              <td>1,199.30</td>
+              <td>51,324.80</td>
+            </tr>
+          </table>
+        </body></html>
+        """,
+        encoding="utf-8",
+    )
+
+    paste_text, balance, warnings = importing.parse_statement_html_to_broker_paste(str(html_path))
+
+    assert paste_text.splitlines() == [
+        "SPX JAN/30/26 6935 PUT | 1/30/26, 10:00 AM | BUY | 1 | 10.0 | 0.7 | 50125.5",
+        "SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 1 | 12.0 | 0.7 | 51324.8",
+    ]
+    assert balance is None
+    assert any("row fallback" in warning for warning in warnings)
+
+
 def test_auto_review_payload_adds_no_cut_20_loss_rule_break():
     payload = importing._auto_review_payload(
         {

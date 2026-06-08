@@ -78,6 +78,39 @@ class _FakeLoginPage:
         }
 
 
+class _FakeStatementResponse:
+    def __init__(
+        self,
+        *,
+        status=200,
+        url="https://trade.vanquishtrader.com/account/statement/?format=html",
+        headers=None,
+        text="",
+    ):
+        self.status = status
+        self.url = url
+        self.headers = headers or {"content-type": "text/html; charset=utf-8"}
+        self._text = text
+
+    def text(self):
+        return self._text
+
+
+class _FakeStatementRequest:
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append({"url": url, "kwargs": kwargs})
+        return self.response
+
+
+class _FakeStatementContext:
+    def __init__(self, response):
+        self.request = _FakeStatementRequest(response)
+
+
 def _insert_trade(
     *,
     trade_date: str,
@@ -879,6 +912,81 @@ def test_vanquish_login_probe_includes_selector_counts_and_controls():
     assert payload["selector_counts"]["login_user"]["[data-testid='login_user_name']"] == 0
     assert payload["inputs"][0]["testid"] == "login_user_name"
     assert payload["buttons"][0]["testid"] == "login_submit_button"
+
+
+def test_statement_html_validation_accepts_trade_table_and_balance_only():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    trade_html = """
+      <html><body>
+        <h1>Account Statement</h1>
+        <table>
+          <tr><th>Instrument</th><th>Transaction Time</th></tr>
+          <tr><td>SPX JAN/30/26 6935 PUT</td><td>1/30/26, 10:00 AM</td></tr>
+        </table>
+      </body></html>
+    """
+    balance_html = """
+      <html><body>
+        <h1>Account Statement</h1>
+        <div>Ending Balance</div><div>$50,125.50</div>
+      </body></html>
+    """
+
+    assert live_sync._validate_statement_html(trade_html, final_url="/account/statement/")["ok"]
+    assert live_sync._validate_statement_html(balance_html, final_url="/account/statement/")["ok"]
+
+
+def test_statement_html_validation_rejects_login_and_shell_pages():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    login_html = """
+      <html><body>
+        <form id="loginForm"><input type="password"><button>Login</button></form>
+      </body></html>
+    """
+    shell_html = "<html><body><div id='root'>Loading workspace</div></body></html>"
+
+    login_result = live_sync._validate_statement_html(
+        login_html,
+        final_url="https://trade.vanquishtrader.com/login",
+    )
+    shell_result = live_sync._validate_statement_html(
+        shell_html,
+        final_url="https://trade.vanquishtrader.com/workspace",
+    )
+    empty_result = live_sync._validate_statement_html("", final_url="/account/statement/")
+
+    assert login_result["ok"] is False
+    assert "login page" in login_result["reason"].lower()
+    assert shell_result["ok"] is False
+    assert "lacked statement" in shell_result["reason"].lower()
+    assert empty_result["ok"] is False
+    assert "empty" in empty_result["reason"].lower()
+
+
+def test_statement_context_request_returns_validated_capture_metadata():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    html = """
+      <html><body>
+        <h1>Account Statement</h1>
+        <table><tr><td>Ending Balance</td><td>$50,125.50</td></tr></table>
+      </body></html>
+    """
+    context = _FakeStatementContext(_FakeStatementResponse(text=html))
+
+    capture = live_sync._fetch_statement_html_with_context_request(
+        context,
+        "https://trade.vanquishtrader.com/account/statement/?format=html",
+        timeout_ms=1234,
+    )
+
+    assert capture["method"] == "authenticated_request"
+    assert capture["status"] == 200
+    assert capture["validation"]["ok"] is True
+    assert context.request.calls[0]["kwargs"]["timeout"] == 1234
+    assert "text/html" in context.request.calls[0]["kwargs"]["headers"]["Accept"]
 
 
 def test_live_sync_reports_browser_boot_stage(monkeypatch):

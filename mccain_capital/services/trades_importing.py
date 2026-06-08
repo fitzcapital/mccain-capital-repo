@@ -6,6 +6,7 @@ depending on the legacy ``app_core`` module.
 
 from __future__ import annotations
 
+import html as html_lib
 import re
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -146,10 +147,21 @@ BROKER_OCR_RE = re.compile(
 
 
 def _pick_col(df, want: str) -> Optional[str]:
-    for name in COL_ALIASES.get(want, [want]):
-        if name in df.columns:
-            return name
+    wanted = {_normalize_col_label(name) for name in COL_ALIASES.get(want, [want])}
+    for col in df.columns:
+        if _normalize_col_label(col) in wanted:
+            return col
     return None
+
+
+def _normalize_col_label(col: Any) -> str:
+    if isinstance(col, tuple):
+        parts = [str(part) for part in col if str(part) and not str(part).startswith("Unnamed:")]
+        col = " ".join(parts)
+    label = str(col or "").replace("\u202f", " ").replace("\u00a0", " ")
+    label = re.sub(r"Unnamed:\s*\d+(?:_level_\d+)?", " ", label, flags=re.IGNORECASE)
+    label = re.sub(r"[^a-z0-9]+", " ", label.lower())
+    return " ".join(label.split())
 
 
 def _clean_money(tok: str) -> Optional[float]:
@@ -295,6 +307,84 @@ def parse_vanquish_statement_table_to_broker_paste(text: str) -> Tuple[str, List
     return "\n".join(out), warnings
 
 
+def _cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        if value != value:
+            return ""
+    except Exception:
+        pass
+    return str(value).replace("\u202f", " ").replace("\u00a0", " ").strip()
+
+
+def _broker_paste_from_statement_rows(rows: List[str]) -> str:
+    out: List[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        raw = normalize_ocr(row)
+        if not raw or looks_like_header(raw):
+            continue
+
+        trade = parse_vanquish_trade_line(raw)
+        parsed = parse_broker_line_any(raw)
+        if trade:
+            fee = trade.get("commission") or DEFAULT_FEE_PER_CONTRACT
+            line = (
+                f"{trade['instrument']} | {trade['time']} | {trade['side']} | "
+                f"{trade['size']} | {trade['price']} | {fee}"
+            )
+            if parsed and parsed.get("balance") is not None:
+                line = f"{line} | {parsed['balance']}"
+        elif parsed:
+            fee = parsed.get("fee")
+            fee = DEFAULT_FEE_PER_CONTRACT if fee is None else fee
+            line = (
+                f"{parsed['desc']} | {parsed['dt']} | {parsed['side']} | "
+                f"{parsed['qty']} | {parsed['price']} | {fee}"
+            )
+            if parsed.get("balance") is not None:
+                line = f"{line} | {parsed['balance']}"
+        else:
+            continue
+
+        key = normalize_broker_raw_line(line)
+        if key not in seen:
+            seen.add(key)
+            out.append(line)
+    return "\n".join(out)
+
+
+def _statement_rows_from_tables(tables: List[Any]) -> List[str]:
+    rows: List[str] = []
+    for tbl in tables:
+        try:
+            for _, row in tbl.iterrows():
+                cells = [_cell_text(value) for value in list(row.values)]
+                cells = [cell for cell in cells if cell]
+                if cells:
+                    rows.append("\t".join(cells))
+        except Exception:
+            continue
+    return rows
+
+
+def _statement_rows_from_html(html_text: str) -> List[str]:
+    text = html_text or ""
+    text = re.sub(r"(?i)</t[dh]>", "\t", text)
+    text = re.sub(r"(?i)</tr>", "\n", text)
+    text = re.sub(r"(?is)<script\b.*?</script>|<style\b.*?</style>", " ", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = html_lib.unescape(text)
+    rows = []
+    for line in text.splitlines():
+        line = normalize_ocr(line)
+        line = re.sub(r"[ \t]+", "\t", line) if "\t" in line else re.sub(r"\s{2,}", "\t", line)
+        if line:
+            rows.append(line)
+    return rows
+
+
 def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[float], List[str]]:
     warnings: List[str] = []
 
@@ -376,6 +466,20 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
             break
 
     if tx_tbl is None:
+        fallback_rows = _statement_rows_from_tables(tables)
+        fallback_text = _broker_paste_from_statement_rows(fallback_rows)
+        if not fallback_text:
+            try:
+                with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+                    fallback_text = _broker_paste_from_statement_rows(
+                        _statement_rows_from_html(f.read())
+                    )
+            except Exception:
+                fallback_text = ""
+        if fallback_text:
+            warnings.append("Parsed transaction rows using statement row fallback.")
+            return fallback_text, balance_val, warnings
+
         found_cols = [list(map(str, t.columns)) for t in tables[:3]]
         warnings.append("Could not locate a transactions table with expected columns.")
         warnings.append(f"Sample columns from first tables: {found_cols}")
@@ -411,6 +515,10 @@ def parse_statement_html_to_broker_paste(html_path: str) -> Tuple[str, Optional[
             continue
 
     if not lines:
+        fallback_text = _broker_paste_from_statement_rows(_statement_rows_from_tables([tx_tbl]))
+        if fallback_text:
+            warnings.append("Parsed transaction rows using statement row fallback.")
+            return fallback_text, balance_val, warnings
         warnings.append("Found a transactions table but no usable transaction rows parsed.")
 
     return "\n".join(lines), balance_val, warnings
