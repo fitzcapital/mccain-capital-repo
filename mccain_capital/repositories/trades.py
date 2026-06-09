@@ -339,6 +339,38 @@ def get_account(account_id: int) -> Optional[Dict[str, Any]]:
     return account
 
 
+def find_account_by_broker_account_id(
+    broker_account_id: str, *, include_archived: bool = False
+) -> Optional[Dict[str, Any]]:
+    normalized = normalize_broker_account_id(broker_account_id)
+    if not normalized:
+        return None
+    archived_filter = "" if include_archived else "AND archived = 0"
+    with db() as conn:
+        row = conn.execute(
+            f"""
+            SELECT *
+            FROM accounts
+            WHERE broker_account_id = ?
+              {archived_filter}
+            ORDER BY archived ASC, updated_at DESC, created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (normalized,),
+        ).fetchone()
+    if not row:
+        return None
+    account = dict(row)
+    account["prop_firm"] = str(account.get("prop_firm") or "").strip() or DEFAULT_PROP_FIRM
+    account["display_broker_account_id"] = display_broker_account_id(account.get("broker_account_id"))
+    account["account_size"] = _account_display_size(account)
+    account["current_balance"] = latest_balance_overall(
+        account_id=int(account["id"]),
+        starting_balance=float(account.get("starting_balance") or 0.0),
+    )
+    return account
+
+
 def list_accounts(include_archived: bool = False) -> List[Dict[str, Any]]:
     where = "" if include_archived else "WHERE archived = 0"
     with db() as conn:
@@ -440,6 +472,43 @@ def update_account(
                 size_value,
                 starting,
                 float(max_drawdown or 0.0),
+                now,
+                int(account_id),
+            ),
+        )
+        conn.commit()
+
+
+def update_account_broker_metrics(
+    account_id: int,
+    *,
+    broker_equity: float | None = None,
+    broker_equity_peak: float | None = None,
+    broker_remaining_drawdown: float | None = None,
+    broker_max_loss: float | None = None,
+    updated_at: str | None = None,
+) -> None:
+    if not account_id:
+        return
+    now = updated_at or now_iso()
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE accounts
+            SET broker_equity = ?,
+                broker_equity_peak = ?,
+                broker_remaining_drawdown = ?,
+                broker_max_loss = ?,
+                broker_metrics_updated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                broker_equity,
+                broker_equity_peak,
+                broker_remaining_drawdown,
+                broker_max_loss,
+                now,
                 now,
                 int(account_id),
             ),

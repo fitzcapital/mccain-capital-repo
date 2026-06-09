@@ -419,6 +419,41 @@ def test_archive_account_hides_it_and_falls_back_to_remaining_active_account(cli
     assert str(snapshot.get("account_id") or "") == str(second_account_id)
 
 
+def test_save_account_reuses_existing_active_broker_account(client):
+    existing_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Protect",
+        broker_account_id="default:OEV0035974",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=5000.0,
+    )
+
+    resp = client.post(
+        "/trades/upload/statement?ws=live",
+        data={
+            "intent": "save_account",
+            "account_name": "Protect",
+            "broker_account_id": "OEV0035974",
+            "account_size": "50000",
+            "starting_balance": "50000",
+            "max_drawdown": "5000",
+            "selected_account_id": "",
+        },
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Account updated." in body
+    matching = [
+        row
+        for row in trades_repo.list_accounts()
+        if row.get("broker_account_id") == "default:OEV0035974"
+    ]
+    assert [int(row["id"]) for row in matching] == [int(existing_account_id)]
+
+
 def test_bulk_archive_accounts_hides_selected_and_falls_back_to_remaining_account(client):
     first_account_id = trades_repo.create_account(
         prop_firm="Vanquish",
@@ -891,6 +926,139 @@ def test_vanquish_login_wait_handles_hydrated_username_field():
 
     assert locator.selector == stable
     assert page.wait_count >= 2
+
+
+def test_vanquish_dashboard_metrics_parser_extracts_account_values():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    text = """
+    Options 50k Evaluation
+    OEV0059123
+    Metrics
+    Equity $52,309.40 2.4%
+    Equity Peak $52,309.40
+    Remaining drawdown $2,500.00
+    Max. Loss $49,809.40
+    """
+
+    parsed = live_sync.parse_account_metrics_from_dashboard_text(text, "default:OEV0059123")
+
+    assert parsed["ok"] is True
+    assert parsed["metrics"]["broker_equity"] == 52309.40
+    assert parsed["metrics"]["broker_equity_peak"] == 52309.40
+    assert parsed["metrics"]["broker_remaining_drawdown"] == 2500.00
+    assert parsed["metrics"]["broker_max_loss"] == 49809.40
+
+
+def test_update_account_broker_metrics_persists_values(app):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+
+    trades_repo.update_account_broker_metrics(
+        int(account_id),
+        broker_equity=52309.40,
+        broker_equity_peak=52309.40,
+        broker_remaining_drawdown=2500.00,
+        broker_max_loss=49809.40,
+        updated_at="2026-06-09T10:00:00-04:00",
+    )
+
+    account = trades_repo.get_account(int(account_id))
+    assert account is not None
+    assert account["broker_equity"] == 52309.40
+    assert account["broker_equity_peak"] == 52309.40
+    assert account["broker_remaining_drawdown"] == 2500.00
+    assert account["broker_max_loss"] == 49809.40
+    assert account["broker_metrics_updated_at"] == "2026-06-09T10:00:00-04:00"
+
+
+def test_dashboard_update_account_refreshes_broker_metrics_only(client, monkeypatch):
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    calls = []
+
+    def fake_fetch_account_metrics(**kwargs):
+        calls.append(kwargs)
+        return (
+            {
+                "broker_equity": 52309.40,
+                "broker_equity_peak": 52309.40,
+                "broker_remaining_drawdown": 2500.00,
+                "broker_max_loss": 49809.40,
+            },
+            [],
+            [],
+            {"status": "success"},
+        )
+
+    monkeypatch.setattr(
+        live_sync,
+        "fetch_account_metrics_via_dashboard",
+        fake_fetch_account_metrics,
+    )
+
+    resp = client.post(
+        "/dashboard/account-metrics",
+        data={"account_id": str(account_id)},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert calls and calls[0]["account"] == "default:OEV0059123"
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] == 52309.40
+    assert account["broker_remaining_drawdown"] == 2500.00
+    with db() as conn:
+        trade_count = conn.execute("SELECT COUNT(*) AS c FROM trades").fetchone()["c"]
+    assert trade_count == 0
+
+
+def test_dashboard_update_account_reports_missing_google_session(client, monkeypatch):
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+
+    def fake_fetch_account_metrics(**_kwargs):
+        return None, [], [], {"status": "auth_required"}
+
+    monkeypatch.setattr(
+        live_sync,
+        "fetch_account_metrics_via_dashboard",
+        fake_fetch_account_metrics,
+    )
+
+    resp = client.post(
+        "/dashboard/account-metrics",
+        data={"account_id": str(account_id)},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Vanquish dashboard login is required" in body
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] is None
 
 
 def test_vanquish_login_probe_includes_selector_counts_and_controls():

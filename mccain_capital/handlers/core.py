@@ -146,6 +146,10 @@ def dashboard_recompute_balances():
     return svc.dashboard_recompute_balances()
 
 
+def dashboard_refresh_account_metrics():
+    return svc.dashboard_refresh_account_metrics()
+
+
 def dashboard_milestone_update():
     return svc.dashboard_milestone_update()
 

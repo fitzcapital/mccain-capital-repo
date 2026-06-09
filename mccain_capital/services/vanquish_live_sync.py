@@ -264,6 +264,224 @@ def _debug_shot(page, debug_dir: Optional[str], name: str) -> Optional[str]:
         return None
 
 
+def _broker_account_token(account: str) -> str:
+    raw = str(account or "").strip()
+    return raw.split(":", 1)[1].strip() if ":" in raw else raw
+
+
+def _money_from_text(value: str) -> Optional[float]:
+    text = str(value or "").replace("\u202f", " ").replace("\u00a0", " ")
+    match = re.search(r"[-+]?\$?\s*[\d,]+(?:\.\d{1,2})?", text)
+    if not match:
+        return None
+    token = match.group(0).replace("$", "").replace(",", "")
+    token = re.sub(r"\s+", "", token)
+    try:
+        return float(token)
+    except Exception:
+        return None
+
+
+def parse_account_metrics_from_dashboard_text(text: str, account: str) -> Dict[str, Any]:
+    account_token = _broker_account_token(account)
+    normalized = str(text or "").replace("\u202f", " ").replace("\u00a0", " ")
+    normalized = re.sub(r"[ \t]+", " ", normalized)
+    if account_token and account_token not in normalized:
+        return {
+            "ok": False,
+            "reason": f"Account {account_token} was not found on dashboard accounts page.",
+            "account": account_token,
+            "metrics": {},
+        }
+
+    if account_token:
+        idx = normalized.find(account_token)
+        start = max(0, idx - 1500)
+        end = min(len(normalized), idx + 3500)
+        scoped = normalized[start:end]
+    else:
+        scoped = normalized
+
+    labels = {
+        "broker_equity": r"\bEquity\b(?!\s+Peak)",
+        "broker_equity_peak": r"\bEquity\s+Peak\b",
+        "broker_remaining_drawdown": r"\bRemaining\s+drawdown\b",
+        "broker_max_loss": r"\bMax\.?\s+Loss\b",
+    }
+    metrics: Dict[str, float] = {}
+    for key, label_pattern in labels.items():
+        match = re.search(
+            label_pattern + r"(?P<tail>.{0,140})",
+            scoped,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if not match:
+            continue
+        value = _money_from_text(match.group("tail"))
+        if value is not None:
+            metrics[key] = value
+
+    ok = all(key in metrics for key in labels)
+    return {
+        "ok": ok,
+        "reason": "" if ok else "Could not parse all account dashboard metrics.",
+        "account": account_token,
+        "metrics": metrics,
+        "markers": {
+            "found_account": bool(account_token and account_token in normalized),
+            "parsed_keys": sorted(metrics.keys()),
+        },
+    }
+
+
+def fetch_account_metrics_via_dashboard(
+    *,
+    account: str,
+    headless: bool = True,
+    timeout_ms: int = 45000,
+    debug_dir: Optional[str] = None,
+    progress_cb: Optional[Callable[[str, str], None]] = None,
+) -> Tuple[Optional[Dict[str, Any]], List[str], List[str], Dict[str, Any]]:
+    warnings: List[str] = []
+    artifacts: List[str] = []
+    account_token = _broker_account_token(account)
+    meta: Dict[str, Any] = {
+        "account": account_token,
+        "dashboard_url": "https://www.vanquishtrader.com/dashboard/accounts",
+        "requires_google_session": True,
+    }
+    if not account_token:
+        warnings.append("Skipped dashboard account metrics: broker account id is missing.")
+        meta["status"] = "skipped"
+        return None, warnings, artifacts, meta
+
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except Exception as e:  # pragma: no cover - dependency optional at runtime
+        warnings.append(f"Skipped dashboard account metrics: Playwright unavailable ({e}).")
+        meta["status"] = "playwright_unavailable"
+        return None, warnings, artifacts, meta
+
+    def mark(stage: str, message: str) -> None:
+        if progress_cb:
+            try:
+                progress_cb(stage, message)
+            except Exception:
+                pass
+
+    profile_dir = str(
+        os.environ.get("VANQUISH_DASHBOARD_PROFILE_DIR")
+        or os.path.join(
+            os.environ.get("PERSISTENT_DATA_DIR", "persistent-data"),
+            "vanquish-dashboard-profile",
+        )
+    )
+    storage_state_path = str(
+        os.environ.get("VANQUISH_DASHBOARD_STORAGE_STATE")
+        or os.path.join(
+            os.environ.get("PERSISTENT_DATA_DIR", "persistent-data"),
+            "vanquish-dashboard-storage-state.json",
+        )
+    )
+    os.makedirs(profile_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(storage_state_path) or ".", exist_ok=True)
+    use_storage_state = os.path.isfile(storage_state_path)
+    browser = None
+    context = None
+    with sync_playwright() as p:
+        try:
+            mark("capture_account_metrics", "Opening Vanquish account metrics dashboard.")
+            launch_args = [
+                "--window-size=1920,1080",
+                "--disable-dev-shm-usage",
+                "--no-first-run",
+            ]
+            context_kwargs = {
+                "viewport": {"width": 1920, "height": 1080},
+                "screen": {"width": 1920, "height": 1080},
+            }
+            if use_storage_state:
+                browser = p.chromium.launch(
+                    headless=headless,
+                    args=launch_args,
+                    chromium_sandbox=False,
+                )
+                context = browser.new_context(
+                    storage_state=storage_state_path,
+                    **context_kwargs,
+                )
+            else:
+                context = p.chromium.launch_persistent_context(
+                    profile_dir,
+                    headless=headless,
+                    args=launch_args,
+                    chromium_sandbox=False,
+                    **context_kwargs,
+                )
+            page = context.pages[0] if context.pages else context.new_page()
+            page.set_default_timeout(timeout_ms)
+            page.goto(meta["dashboard_url"], wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            except PlaywrightTimeoutError:
+                warnings.append("Dashboard accounts page did not reach network idle; parsing visible text.")
+            try:
+                page.wait_for_timeout(2000)
+            except Exception:
+                pass
+
+            shot = _debug_shot(page, debug_dir, "account_metrics_dashboard.png")
+            if shot:
+                artifacts.append(shot)
+            html_path = _debug_write(debug_dir, "account_metrics_dashboard.html", page.content())
+            if html_path:
+                artifacts.append(html_path)
+            visible_text = page.locator("body").inner_text(timeout=timeout_ms)
+            text_path = _debug_write(debug_dir, "account_metrics_dashboard.txt", visible_text)
+            if text_path:
+                artifacts.append(text_path)
+            url_lower = str(getattr(page, "url", "") or "").lower()
+            text_lower = visible_text.lower()
+            if "accounts.google.com" in url_lower or (
+                "sign in with google" in text_lower and account_token not in visible_text
+            ):
+                warnings.append(
+                    "Dashboard account metrics require Google login. Run one headed sync after "
+                    "signing into Vanquish dashboard to seed the dashboard profile."
+                )
+                meta.update({"status": "auth_required", "final_url": page.url})
+                return None, warnings, artifacts, meta
+
+            parsed = parse_account_metrics_from_dashboard_text(visible_text, account_token)
+            try:
+                context.storage_state(path=storage_state_path)
+            except Exception:
+                warnings.append("Could not refresh Vanquish dashboard storage-state file.")
+            meta.update(
+                {
+                    "status": "success" if parsed.get("ok") else "parse_failed",
+                    "final_url": page.url,
+                    "validation_result": parsed,
+                    "profile_dir": profile_dir,
+                    "storage_state_path": storage_state_path,
+                    "used_storage_state": use_storage_state,
+                }
+            )
+            if not parsed.get("ok"):
+                warnings.append(str(parsed.get("reason") or "Dashboard metrics parse failed."))
+                return None, warnings, artifacts, meta
+            return dict(parsed.get("metrics") or {}), warnings, artifacts, meta
+        except Exception as e:
+            warnings.append(f"Dashboard account metrics capture failed: {e}")
+            meta["status"] = "failed"
+            meta["error"] = str(e)
+            return None, warnings, artifacts, meta
+        finally:
+            _safe_close(context)
+            _safe_close(browser)
+
+
 def _wait_until_enabled(locator, timeout_ms: int = 6000) -> bool:
     import time
 

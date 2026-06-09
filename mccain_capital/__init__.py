@@ -2,6 +2,7 @@
 
 import hmac
 import os
+import secrets
 import time
 from datetime import timedelta
 
@@ -26,6 +27,14 @@ def _validate_csrf() -> bool:
     sent = str(request.headers.get("X-CSRF-Token") or request.form.get("csrf_token") or "").strip()
     expected = str(session.get("_csrf_token") or "").strip()
     return bool(sent and expected and hmac.compare_digest(sent, expected))
+
+
+def _ensure_csrf_token() -> str:
+    token = str(session.get("_csrf_token") or "").strip()
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
 
 
 def create_app():
@@ -89,6 +98,8 @@ def create_app():
             if app.config.get("REQUEST_PROFILING_ENABLED", True):
                 g._request_started_at = time.perf_counter()
                 runtime.reset_request_metrics()
+            if request.method.upper() not in _UNSAFE_METHODS:
+                _ensure_csrf_token()
             if app.config.get("SAFE_MODE"):
                 allow_safe = {"safe_mode_page", "healthz", "favicon", "static"}
                 if request.endpoint not in allow_safe:
@@ -118,6 +129,10 @@ def create_app():
                 return None
             nxt = request.full_path if request.query_string else request.path
             return redirect(url_for("login_page", next=nxt))
+
+        @app.context_processor
+        def _csrf_context():
+            return {"csrf_token": _ensure_csrf_token()}
 
         @app.after_request
         def _security_headers(resp):

@@ -65,6 +65,28 @@ def test_dashboard_balance_summary_uses_scoped_account_balance_when_active(app):
     assert summary["trajectory_title"] == "Active Account Profit"
 
 
+def test_dashboard_balance_summary_prefers_broker_equity_when_active(app):
+    summary = core_service._dashboard_balance_summary(
+        scope_active=True,
+        scope_account_id=42,
+        scope_start="2026-02-20",
+        scope_starting_balance=50000.0,
+        selected_account={"current_balance": 51179.0, "broker_equity": 52309.40},
+    )
+
+    assert summary["overall_balance"] == 52309.40
+    assert round(summary["overall_profit"], 2) == 2309.40
+    assert summary["balance_source"] == "broker_equity"
+
+
+def test_remaining_drawdown_tone_thresholds():
+    assert core_service._remaining_drawdown_tone(2251.0) == "positive"
+    assert core_service._remaining_drawdown_tone(2250.0) == "warning"
+    assert core_service._remaining_drawdown_tone(2000.0) == "warning"
+    assert core_service._remaining_drawdown_tone(1500.0) == "warning"
+    assert core_service._remaining_drawdown_tone(1499.0) == "negative"
+
+
 def test_balance_integrity_snapshot_skips_stored_drift_for_active_account_scope(app):
     account_id = trades_repo.create_account(
         prop_firm="Vanquish",

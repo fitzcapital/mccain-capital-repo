@@ -9857,6 +9857,8 @@ def _dashboard_pace_viewmodel(
     return {
         "headline": app_runtime.money(display_avg),
         "headline_suffix": scope_suffix,
+        "daily_value": applied_avg,
+        "live_daily_value": live_avg,
         "daily_headline": app_runtime.money(applied_avg),
         "daily_profit_headline": app_runtime.money(applied_avg),
         "base_balance": app_runtime.money(base_balance),
@@ -9987,9 +9989,16 @@ def _dashboard_balance_summary(
         account_id=scope_account_id if scope_active else None,
     )
     if scope_has_bound_account:
+        broker_equity = selected_account.get("broker_equity") if selected_account else None
         scoped_balance = selected_account.get("current_balance") if selected_account else None
-        if isinstance(scoped_balance, (int, float)):
+        if isinstance(broker_equity, (int, float)):
+            overall_balance = float(broker_equity)
+            balance_source = "broker_equity"
+            balance_source_detail = "Vanquish broker dashboard equity."
+        elif isinstance(scoped_balance, (int, float)):
             overall_balance = float(scoped_balance)
+            balance_source = "account_balance"
+            balance_source_detail = "Stored account ledger balance."
         else:
             overall_balance = float(
                 trades_repo.latest_balance_overall(
@@ -9998,10 +10007,14 @@ def _dashboard_balance_summary(
                     starting_balance=scope_starting_balance,
                 )
             )
+            balance_source = "ledger"
+            balance_source_detail = "Derived from imported trade ledger."
         overall_profit = overall_balance - scope_starting_balance
     else:
         overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
         overall_profit = overall_balance
+        balance_source = "ledger"
+        balance_source_detail = str(balance_integrity.get("source_detail") or "All-history ledger.")
     if scope_active:
         trajectory_title = "Active Account Profit"
         trajectory_caption = "Scoped account profit first. Funded size stays in the background."
@@ -10012,8 +10025,51 @@ def _dashboard_balance_summary(
         "balance_integrity": balance_integrity,
         "overall_balance": overall_balance,
         "overall_profit": overall_profit,
+        "balance_source": balance_source,
+        "balance_source_detail": balance_source_detail,
         "trajectory_title": trajectory_title,
         "trajectory_caption": trajectory_caption,
+    }
+
+
+def _remaining_drawdown_tone(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return "neutral"
+    remaining = float(value)
+    if remaining > 2250:
+        return "positive"
+    if remaining < 1500:
+        return "negative"
+    return "warning"
+
+
+def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[str, Any]:
+    if not account:
+        return {"has_metrics": False, "remaining_drawdown_tone": "neutral"}
+    remaining = account.get("broker_remaining_drawdown")
+    remaining_source = "broker"
+    if remaining is None and isinstance(account.get("max_drawdown"), (int, float)):
+        remaining = float(account.get("max_drawdown") or 0.0)
+        remaining_source = "configured"
+    has_metrics = any(
+        account.get(key) is not None
+        for key in (
+            "broker_equity",
+            "broker_equity_peak",
+            "broker_remaining_drawdown",
+            "broker_max_loss",
+        )
+    )
+    return {
+        "has_metrics": has_metrics or remaining is not None,
+        "has_broker_metrics": has_metrics,
+        "broker_equity": account.get("broker_equity"),
+        "broker_equity_peak": account.get("broker_equity_peak"),
+        "broker_remaining_drawdown": remaining,
+        "remaining_drawdown_source": remaining_source,
+        "broker_max_loss": account.get("broker_max_loss"),
+        "broker_metrics_updated_at": account.get("broker_metrics_updated_at") or "",
+        "remaining_drawdown_tone": _remaining_drawdown_tone(remaining),
     }
 
 
@@ -10759,8 +10815,11 @@ def dashboard():
     balance_integrity = balance_summary["balance_integrity"]
     overall_balance = float(balance_summary["overall_balance"])
     overall_profit = float(balance_summary["overall_profit"])
+    balance_source = str(balance_summary.get("balance_source") or "ledger")
+    balance_source_detail = str(balance_summary.get("balance_source_detail") or "")
     trajectory_title = str(balance_summary["trajectory_title"])
     trajectory_caption = str(balance_summary["trajectory_caption"])
+    selected_account_broker_metrics = _account_broker_metrics_viewmodel(selected_account)
     sync_status = get_system_status()
     dashboard_live_sync = trades_sync.dashboard_live_sync_state()
     data_trust = dashboard_data_trust(sync_status, balance_integrity)
@@ -11519,11 +11578,24 @@ def dashboard():
     if scope_active and selected_account:
         for entry in snapshot_bar.get("entries") or []:
             if str(entry.get("label") or "") == "Account":
-                entry["value"] = str(selected_account.get("account_name") or scope_label or "Active Account")
-                account_detail_parts = [app_runtime.money(selected_account.get("starting_balance") or 0.0)]
-                display_account_id = str(selected_account.get("display_broker_account_id") or "").strip()
+                entry["value"] = str(
+                    selected_account.get("account_name") or scope_label or "Active Account"
+                )
+                account_detail_parts = [
+                    app_runtime.money(selected_account.get("starting_balance") or 0.0)
+                ]
+                display_account_id = str(
+                    selected_account.get("display_broker_account_id") or ""
+                ).strip()
                 if display_account_id:
                     account_detail_parts.append(display_account_id)
+                if selected_account_broker_metrics.get("broker_remaining_drawdown") is not None:
+                    account_detail_parts.append(
+                        "DD left "
+                        + app_runtime.money(
+                            selected_account_broker_metrics.get("broker_remaining_drawdown")
+                        )
+                    )
                 entry["detail"] = " · ".join(part for part in account_detail_parts if part)
                 break
     readiness = _dashboard_readiness_viewmodel(
@@ -11580,6 +11652,8 @@ def dashboard():
         month_name=month_name,
         overall_balance=overall_balance,
         overall_profit=overall_profit,
+        balance_source=balance_source,
+        balance_source_detail=balance_source_detail,
         trajectory_title=trajectory_title,
         trajectory_caption=trajectory_caption,
         calendar_scope_label=calendar_scope_label,
@@ -11624,6 +11698,7 @@ def dashboard():
         dashboard_market_structure_snapshot=dashboard_market_structure_snapshot,
         accounts=accounts,
         selected_account=selected_account,
+        selected_account_broker_metrics=selected_account_broker_metrics,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
         dashboard_reflection=dashboard_reflection,
@@ -13092,6 +13167,80 @@ def dashboard_recompute_balances():
     redirect_url = url_for("dashboard", scope=requested_scope if requested_scope == "active" else "all")
     if wants_json:
         return jsonify({"ok": True, "redirect_url": redirect_url})
+    return redirect(redirect_url)
+
+
+def dashboard_refresh_account_metrics():
+    from mccain_capital.repositories import trades as trades_repo
+    from mccain_capital.services import vanquish_live_sync
+
+    wants_json = (
+        "application/json" in str(request.headers.get("Accept") or "").lower()
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    try:
+        account_id = int(request.form.get("account_id") or request.args.get("account_id") or 0)
+    except (TypeError, ValueError):
+        account_id = 0
+    account = trades_repo.get_account(account_id) if account_id else None
+    redirect_url = (
+        url_for("dashboard", scope="active", account_id=account_id)
+        if account_id
+        else url_for("dashboard")
+    )
+    if not account:
+        message = "Select a valid account before refreshing broker metrics."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    broker_account_id = str(account.get("broker_account_id") or "").strip()
+    if not broker_account_id:
+        message = "Account has no broker account id to refresh from Vanquish."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    metrics, warnings, _artifacts, meta = vanquish_live_sync.fetch_account_metrics_via_dashboard(
+        account=broker_account_id,
+        headless=True,
+        debug_dir=None,
+        progress_cb=None,
+    )
+    if metrics:
+        trades_repo.update_account_broker_metrics(
+            account_id,
+            broker_equity=metrics.get("broker_equity"),
+            broker_equity_peak=metrics.get("broker_equity_peak"),
+            broker_remaining_drawdown=metrics.get("broker_remaining_drawdown"),
+            broker_max_loss=metrics.get("broker_max_loss"),
+        )
+        trades_repo.set_active_account(account_id)
+        message = "Vanquish account metrics refreshed."
+        flash(message, "success")
+        if wants_json:
+            return jsonify(
+                {"ok": True, "message": message, "metrics": metrics, "redirect_url": redirect_url}
+            )
+        return redirect(redirect_url)
+
+    status = str((meta or {}).get("status") or "").strip()
+    if status == "auth_required":
+        message = (
+            "Vanquish dashboard login is required. Reconnect the Google dashboard session, "
+            "then update the account again."
+        )
+    else:
+        detail = "; ".join(str(w) for w in warnings if w) or "Vanquish metrics were not available."
+        message = f"Could not refresh Vanquish account metrics: {detail}"
+    flash(message, "warn")
+    if wants_json:
+        return (
+            jsonify({"ok": False, "message": message, "meta": meta, "redirect_url": redirect_url}),
+            400,
+        )
     return redirect(redirect_url)
 
 

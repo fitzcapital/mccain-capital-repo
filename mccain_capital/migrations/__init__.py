@@ -958,6 +958,21 @@ def _migration_0013_multi_account_ledgers(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_0014_account_broker_metrics(conn: sqlite3.Connection) -> None:
+    _migration_0013_multi_account_ledgers(conn)
+    account_cols = {str(r["name"]) for r in conn.execute("PRAGMA table_info(accounts)").fetchall()}
+    for col_name in (
+        "broker_equity",
+        "broker_equity_peak",
+        "broker_remaining_drawdown",
+        "broker_max_loss",
+    ):
+        if col_name not in account_cols:
+            conn.execute(f"ALTER TABLE accounts ADD COLUMN {col_name} REAL")
+    if "broker_metrics_updated_at" not in account_cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN broker_metrics_updated_at TEXT NOT NULL DEFAULT ''")
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
@@ -972,6 +987,7 @@ MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0011_trading_scope_hardening", _migration_0011_trading_scope_hardening),
     ("0012_full_trading_host_coverage", _migration_0012_full_trading_host_coverage),
     ("0013_multi_account_ledgers", _migration_0013_multi_account_ledgers),
+    ("0014_account_broker_metrics", _migration_0014_account_broker_metrics),
 ]
 
 

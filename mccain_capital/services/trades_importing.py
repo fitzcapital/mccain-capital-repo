@@ -931,15 +931,22 @@ def insert_trades_from_broker_paste_with_report(
         }
         return 0, (errors or ["No valid fills to import."]), report
 
-    def side_rank(s: str) -> int:
-        return 0 if s == "BUY" else 1
+    dated_fills = [f for f in fills if f.get("dt_obj") is not None]
+    descending_source_order = False
+    if len(dated_fills) >= 2:
+        first_dt = dated_fills[0]["dt_obj"]
+        last_dt = dated_fills[-1]["dt_obj"]
+        descending_source_order = bool(first_dt and last_dt and first_dt > last_dt)
+
+    def same_minute_rank(f: Dict[str, Any]) -> int:
+        line_no = int(f.get("line_no") or 0)
+        return -line_no if descending_source_order else line_no
 
     fills_sorted = sorted(
         fills,
         key=lambda f: (
             f["dt_obj"] if f["dt_obj"] else datetime.max,
-            side_rank(f["side"]),
-            f["line_no"],
+            same_minute_rank(f),
         ),
     )
 

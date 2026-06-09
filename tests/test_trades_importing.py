@@ -3,6 +3,9 @@
 from mccain_capital.runtime import db
 from mccain_capital.services import trades_importing as importing
 
+TEST_ACCOUNT_ID = 0
+TEST_UPLOAD_ID = 0
+
 
 def test_parse_broker_line_with_balance_column():
     line = "SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 2 | 18.90 | 0.70 | 50924.40"
@@ -28,7 +31,12 @@ def test_broker_import_is_idempotent_and_uses_statement_ending_balance(app):
         ]
     )
 
-    inserted_1, msgs_1 = importing.insert_trades_from_broker_paste(text, ending_balance=50198.60)
+    inserted_1, msgs_1 = importing.insert_trades_from_broker_paste(
+        text,
+        account_id=TEST_ACCOUNT_ID,
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
+    )
     assert inserted_1 == 1
     assert all("duplicate" not in m.lower() for m in msgs_1)
 
@@ -37,7 +45,12 @@ def test_broker_import_is_idempotent_and_uses_statement_ending_balance(app):
     assert row is not None
     assert round(float(row["balance"] or 0.0), 2) == 50198.60
 
-    inserted_2, msgs_2 = importing.insert_trades_from_broker_paste(text, ending_balance=50198.60)
+    inserted_2, msgs_2 = importing.insert_trades_from_broker_paste(
+        text,
+        account_id=TEST_ACCOUNT_ID,
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
+    )
     assert inserted_2 == 0
     assert any("duplicate" in m.lower() for m in msgs_2)
 
@@ -56,12 +69,20 @@ def test_broker_import_dedupes_when_contract_format_changes(app):
         ]
     )
 
-    inserted_1, msgs_1 = importing.insert_trades_from_broker_paste(original, ending_balance=50198.60)
+    inserted_1, msgs_1 = importing.insert_trades_from_broker_paste(
+        original,
+        account_id=TEST_ACCOUNT_ID,
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
+    )
     assert inserted_1 == 1
     assert all("duplicate" not in m.lower() for m in msgs_1)
 
     inserted_2, msgs_2 = importing.insert_trades_from_broker_paste(
-        changed_format, ending_balance=50198.60
+        changed_format,
+        account_id=TEST_ACCOUNT_ID,
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
     )
     assert inserted_2 == 0
     assert any("duplicate" in m.lower() for m in msgs_2)
@@ -75,7 +96,10 @@ def test_broker_import_reconciliation_report_fields(app):
         ]
     )
     inserted, messages, report = importing.insert_trades_from_broker_paste_with_report(
-        text, ending_balance=50198.60
+        text,
+        account_id=TEST_ACCOUNT_ID,
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
     )
     assert inserted == 1
     assert isinstance(messages, list)
@@ -96,7 +120,11 @@ def test_broker_import_preflight_commit_false_does_not_write(app):
         ]
     )
     inserted, messages, report = importing.insert_trades_from_broker_paste_with_report(
-        text, ending_balance=50198.60, commit=False
+        text,
+        account_id=TEST_ACCOUNT_ID,
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
+        commit=False,
     )
     assert inserted == 1
     assert isinstance(messages, list)
@@ -116,7 +144,10 @@ def test_broker_import_supports_short_sell_then_buy_round_trip(app):
     )
 
     inserted, messages, report = importing.insert_trades_from_broker_paste_with_report(
-        text, ending_balance=50198.60
+        text,
+        account_id=TEST_ACCOUNT_ID,
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
     )
 
     assert inserted == 1
@@ -141,6 +172,43 @@ def test_broker_import_supports_short_sell_then_buy_round_trip(app):
     assert round(float(row["gross_pl"] or 0.0), 2) == 200.00
     assert round(float(row["net_pl"] or 0.0), 2) == 198.60
     assert round(float(row["total_spent"] or 0.0), 2) == 1200.00
+
+
+def test_broker_import_preserves_statement_order_for_same_minute_reentries(app):
+    text = "\n".join(
+        [
+            "SPX JUN/08/26 7450 CALL | 6/8/26, 9:54 AM | SELL | 4 | 19.90 | 1.40",
+            "SPX JUN/08/26 7450 CALL | 6/8/26, 9:53 AM | BUY | 4 | 19.50 | 1.40",
+            "SPX JUN/08/26 7450 CALL | 6/8/26, 9:53 AM | SELL | 5 | 18.60 | 1.75",
+            "SPX JUN/08/26 7450 CALL | 6/8/26, 9:53 AM | BUY | 5 | 18.40 | 1.75",
+        ]
+    )
+
+    inserted, messages, report = importing.insert_trades_from_broker_paste_with_report(
+        text,
+        account_id=TEST_ACCOUNT_ID,
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50253.70,
+    )
+
+    assert inserted == 2
+    assert all("could not parse" not in message.lower() for message in messages)
+    assert report["pairs_completed"] == 2
+    assert report["open_contracts"] == 0
+
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT entry_time, exit_time, entry_price, exit_price, contracts, net_pl
+            FROM trades
+            ORDER BY id
+            """
+        ).fetchall()
+
+    assert len(rows) == 2
+    assert [round(float(row["net_pl"] or 0.0), 2) for row in rows] == [96.50, 157.20]
+    assert [round(float(row["entry_price"] or 0.0), 2) for row in rows] == [18.40, 19.50]
+    assert [round(float(row["exit_price"] or 0.0), 2) for row in rows] == [18.60, 19.90]
 
 
 def test_statement_html_parser_normalizes_column_headers(tmp_path):

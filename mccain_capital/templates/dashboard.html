@@ -328,6 +328,14 @@
                 >
                   <span class="dashboardSnapshotDropdownTitle">{{ account.account_name }}</span>
                   <span class="dashboardSnapshotDropdownMeta">{{ money(account.starting_balance or 0) }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}</span>
+                  {% if account.get('broker_equity') is not none and account.get('broker_equity_peak') is not none %}
+                    <span class="dashboardSnapshotDropdownMeta">Broker equity {{ money(account.get('broker_equity')) }} · Peak {{ money(account.get('broker_equity_peak')) }}</span>
+                  {% endif %}
+                  {% set account_remaining_dd = account.get('broker_remaining_drawdown') if account.get('broker_remaining_drawdown') is not none else account.get('max_drawdown') %}
+                  {% if account_remaining_dd is not none %}
+                    {% set account_dd_tone = 'positive' if account_remaining_dd > 2250 else 'negative' if account_remaining_dd < 1500 else 'warning' %}
+                    <span class="dashboardSnapshotDropdownMeta {% if account_dd_tone == 'positive' %}metaGreen{% elif account_dd_tone == 'negative' %}metaRed{% else %}metaAmber{% endif %}">Remaining DD {{ money(account_remaining_dd) }}</span>
+                  {% endif %}
                 </a>
               </div>
             {% endfor %}
@@ -335,7 +343,14 @@
           <div class="dashboardSnapshotDropdownActions">
             <a class="btn" href="/trades/upload/statement?ws=live&account_id=all&account_editor=new">Add Account</a>
             {% if selected_account %}
-              <a class="btn" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}&account_editor=edit">Update Account</a>
+              <form method="post" action="{{ url_for('dashboard_refresh_account_metrics') }}" class="inlineForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="account_id" value="{{ selected_account.id }}">
+                <button class="btn" type="submit" title="Update Account" aria-label="Update Account">
+                  <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('sync') }}</span>
+                  <span class="srOnly">Update Account</span>
+                </button>
+              </form>
               <a class="btn" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}">Live Upload</a>
             {% endif %}
             {% if accounts %}
@@ -1236,13 +1251,29 @@
 	              <span class="trendChip">MTD {{ money(mtd_net) }}</span>
 	            </div>
 	            <div class="showcaseValue">{{ money(overall_profit) }}</div>
-	            <div class="tiny" style="margin-top:6px; color:rgba(237,244,255,.72);" title="{{ balance_integrity.source_detail }}">
+	            <div class="tiny" style="margin-top:6px; color:rgba(237,244,255,.72);" title="{{ balance_source_detail or balance_integrity.source_detail }}">
 		              {% if selected_account or (calendar_scope_label == 'Active Account') %}
-		                Funded {{ money(balance_integrity.starting_balance) }} · Balance {{ money(overall_balance) }}
+		                Funded {{ money(balance_integrity.starting_balance) }} · Balance {{ money(overall_balance) }}{% if balance_source == 'broker_equity' %} · Broker equity{% endif %}
 		              {% else %}
 		                Start {{ money(balance_integrity.starting_balance) }} · Balance {{ money(overall_balance) }}
 		              {% endif %}
 	            </div>
+	            {% if selected_account_broker_metrics.has_metrics %}
+	              <div class="trendChips" style="margin-top:10px;">
+	                {% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}
+	                  <span class="trendChip {{ selected_account_broker_metrics.remaining_drawdown_tone }}">Remaining DD {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}{% if selected_account_broker_metrics.remaining_drawdown_source == 'configured' %} configured{% endif %}</span>
+	                {% endif %}
+	                {% if selected_account_broker_metrics.broker_equity_peak is not none %}
+	                  <span class="trendChip">Peak {{ money(selected_account_broker_metrics.broker_equity_peak) }}</span>
+	                {% endif %}
+	                {% if selected_account_broker_metrics.broker_max_loss is not none %}
+	                  <span class="trendChip">Max Loss {{ money(selected_account_broker_metrics.broker_max_loss) }}</span>
+	                {% endif %}
+	              </div>
+	              {% if selected_account_broker_metrics.broker_metrics_updated_at %}
+	                <div class="tiny" style="margin-top:6px; color:rgba(171,186,211,.72);">Broker metrics {{ selected_account_broker_metrics.broker_metrics_updated_at }}</div>
+	              {% endif %}
+	            {% endif %}
 	            <div class="showcaseMeta">
 	              Week {{ money(this_week_total) }} · YTD {{ money(ytd_net) }} · {{ ytd_trades }} trades tracked
 	            </div>
@@ -1382,7 +1413,7 @@
   start_day_label='',
   end_day_label='',
   latest_day_label='',
-  target_daily=(pace_card.headline|replace('$', '')|replace(',', '')|float),
+  target_daily=(pace_card.daily_value|float),
   recent_days=[],
   streak=0,
   recent_wins=0,
@@ -1636,6 +1667,24 @@
             <span class="dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('wallet') }}</span><span>{% if selected_account %}Funded account context{% else %}Profit context{% endif %}</span></span>
             <strong>{{ '%.0f'|format(balance_progress.pct) }}%</strong>
           </div>
+          {% if selected_account and selected_account_broker_metrics.broker_remaining_drawdown is not none %}
+            <div class="dashboardPerformancePaceMeta" style="margin-top:8px;">
+              <span class="{% if selected_account_broker_metrics.remaining_drawdown_tone == 'positive' %}metaGreen{% elif selected_account_broker_metrics.remaining_drawdown_tone == 'negative' %}metaRed{% else %}metaAmber{% endif %}">
+                Remaining DD: {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}{% if selected_account_broker_metrics.remaining_drawdown_source == 'configured' %} configured{% endif %}
+              </span>
+              {% if balance_source != 'broker_equity' %}
+                <span>Balance source: ledger</span>
+              {% endif %}
+              <form method="post" action="{{ url_for('dashboard_refresh_account_metrics') }}" class="inlineForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="account_id" value="{{ selected_account.id }}">
+                <button class="btn" type="submit" title="Update Account" aria-label="Update Account">
+                  <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('sync') }}</span>
+                  <span class="srOnly">Update Account</span>
+                </button>
+              </form>
+            </div>
+          {% endif %}
           <div class="dashboardProgress dashboardProgress-primary dashboardBalanceProgress" style="--progress-pct: {{ '%.1f'|format(balance_progress.pct) }}%">
             <div class="dashboardProgressBarFill"></div>
             <div class="dashboardProgressBarCap" aria-hidden="true"></div>

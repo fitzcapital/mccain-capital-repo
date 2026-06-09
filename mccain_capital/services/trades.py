@@ -292,6 +292,7 @@ SYNC_STAGE_LABELS = {
     "parse_statement_html": "Parsing statement rows.",
     "reconcile_gate": "Running reconcile guardrails.",
     "import_trades": "Importing trades.",
+    "capture_account_metrics": "Capturing account metrics.",
     "import_complete": "Import complete.",
 }
 
@@ -1822,6 +1823,38 @@ def _import_broker_paste_with_report(
     return func(text, **kwargs)
 
 
+def _capture_account_metrics_for_sync(
+    *,
+    account_id: int,
+    broker_account_id: str,
+    headless: bool,
+    debug_dir: Optional[str],
+    progress_cb: Optional[Callable[[str, str], None]],
+) -> Dict[str, Any]:
+    if account_id <= 0:
+        return {"metrics": None, "warns": ["Skipped account metrics: no selected account."]}
+    metrics, warns, artifacts_abs, meta = vanquish_live_sync.fetch_account_metrics_via_dashboard(
+        account=broker_account_id,
+        headless=headless,
+        debug_dir=debug_dir,
+        progress_cb=progress_cb,
+    )
+    if metrics:
+        repo.update_account_broker_metrics(
+            account_id,
+            broker_equity=metrics.get("broker_equity"),
+            broker_equity_peak=metrics.get("broker_equity_peak"),
+            broker_remaining_drawdown=metrics.get("broker_remaining_drawdown"),
+            broker_max_loss=metrics.get("broker_max_loss"),
+        )
+    return {
+        "metrics": metrics,
+        "warns": warns,
+        "artifacts_abs": artifacts_abs,
+        "meta": meta,
+    }
+
+
 def _handle_statement_html_import(
     path: str,
     mode: str,
@@ -2513,16 +2546,30 @@ def trades_upload_pdf():
                 repo.set_active_account(target_account_id)
                 flash("Account updated.", "success")
             else:
-                created = repo.create_account(
-                    prop_firm=repo.DEFAULT_PROP_FIRM,
-                    account_name=account_name,
-                    broker_account_id=broker_account_id,
-                    account_size=account_size,
-                    starting_balance=float(starting_balance),
-                    max_drawdown=max_drawdown,
-                )
+                existing_account = repo.find_account_by_broker_account_id(broker_account_id)
+                if existing_account:
+                    created = int(existing_account["id"])
+                    repo.update_account(
+                        created,
+                        prop_firm=repo.DEFAULT_PROP_FIRM,
+                        account_name=account_name,
+                        broker_account_id=broker_account_id,
+                        account_size=account_size,
+                        starting_balance=float(starting_balance),
+                        max_drawdown=max_drawdown,
+                    )
+                    flash("Account updated.", "success")
+                else:
+                    created = repo.create_account(
+                        prop_firm=repo.DEFAULT_PROP_FIRM,
+                        account_name=account_name,
+                        broker_account_id=broker_account_id,
+                        account_size=account_size,
+                        starting_balance=float(starting_balance),
+                        max_drawdown=max_drawdown,
+                    )
+                    flash("Account created.", "success")
                 repo.set_active_account(int(created))
-                flash("Account created.", "success")
             return redirect(url_for("trades_upload_pdf", ws=workspace, account_id=""))
         if form_intent == "archive_account":
             target_account_id = _coerce_account_id(request.form.get("selected_account_id"))
@@ -2939,6 +2986,17 @@ def _run_live_sync_once(
                     status="success",
                     message="No trade rows found; imported statement ending balance snapshot.",
                 )
+                metrics_result = _capture_account_metrics_for_sync(
+                    account_id=account_id,
+                    broker_account_id=account,
+                    headless=headless,
+                    debug_dir=debug_dir,
+                    progress_cb=progress_cb,
+                )
+                warns_all = warns_all + list(metrics_result.get("warns") or [])
+                artifacts_rel = artifacts_rel + [
+                    _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
+                ]
                 result.update(
                     {
                         "ok": True,
@@ -2949,6 +3007,8 @@ def _run_live_sync_once(
                         "artifacts_rel": artifacts_rel,
                         "statement_path": path,
                         "batch_id": balance_batch_id,
+                        "account_metrics": metrics_result.get("metrics"),
+                        "account_metrics_meta": metrics_result.get("meta"),
                     }
                 )
                 return result
@@ -3022,6 +3082,17 @@ def _run_live_sync_once(
             commit=True,
             import_batch_id=batch_id,
         )
+        metrics_result = _capture_account_metrics_for_sync(
+            account_id=account_id,
+            broker_account_id=account,
+            headless=headless,
+            debug_dir=debug_dir,
+            progress_cb=progress_cb,
+        )
+        warns_all = warns_all + list(metrics_result.get("warns") or [])
+        artifacts_rel = artifacts_rel + [
+            _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
+        ]
         msg = f"{source_label}: inserted {inserted} trade(s)."
         if errors:
             msg = f"{msg} Warnings: {len(errors)}."
@@ -3037,6 +3108,8 @@ def _run_live_sync_once(
                 "artifacts_rel": artifacts_rel,
                 "statement_path": path,
                 "batch_id": batch_id,
+                "account_metrics": metrics_result.get("metrics"),
+                "account_metrics_meta": metrics_result.get("meta"),
             }
         )
         return result
@@ -3073,6 +3146,17 @@ def _run_live_sync_once(
         upload_id=upload_id,
         raw_line=source_label,
     )
+    metrics_result = _capture_account_metrics_for_sync(
+        account_id=int(selected_account["id"]),
+        broker_account_id=account,
+        headless=headless,
+        debug_dir=debug_dir,
+        progress_cb=progress_cb,
+    )
+    warns_all = warns_all + list(metrics_result.get("warns") or [])
+    artifacts_rel = artifacts_rel + [
+        _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
+    ]
     result.update(
         {
             "ok": True,
@@ -3082,6 +3166,8 @@ def _run_live_sync_once(
             "artifacts_rel": artifacts_rel,
             "statement_path": path,
             "batch_id": batch_id,
+            "account_metrics": metrics_result.get("metrics"),
+            "account_metrics_meta": metrics_result.get("meta"),
         }
     )
     return result
@@ -3206,6 +3292,8 @@ def _execute_sync_job(
                 "warn_count": len(run.get("warns") or []),
                 "error_count": len(run.get("errors") or []),
                 "inserted": int(run.get("inserted") or 0),
+                "account_metrics": run.get("account_metrics"),
+                "account_metrics_meta": run.get("account_metrics_meta"),
                 "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
                 "statement_file": (
                     _debug_relative(run.get("statement_path", ""))
@@ -3230,6 +3318,8 @@ def _execute_sync_job(
                     "stage_help": SYNC_STAGE_HELP.get(stage, ""),
                     "requested": requested,
                     "sync_meta": run.get("sync_meta", {}),
+                    "account_metrics": run.get("account_metrics"),
+                    "account_metrics_meta": run.get("account_metrics_meta"),
                     "artifacts_rel": summary["artifacts_rel"],
                     "statement_file": summary["statement_file"],
                     "duration_sec": duration_sec,

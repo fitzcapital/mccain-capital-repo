@@ -124,6 +124,12 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/dashboard/account-metrics",
+        endpoint="dashboard_refresh_account_metrics",
+        view_func=h.dashboard_refresh_account_metrics,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/dashboard/milestone",
         endpoint="dashboard_milestone_update",
         view_func=h.dashboard_milestone_update,

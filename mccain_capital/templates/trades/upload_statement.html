@@ -307,6 +307,12 @@
               <strong>{{ selected_account.account_name if selected_account else 'Create or select an account' }}</strong>
               {% if selected_account and selected_account.display_broker_account_id %}<span class="trendChip">{{ selected_account.display_broker_account_id }}</span>{% endif %}
               {% if selected_account and selected_account.account_size %}<span class="trendChip positive">{{ money(selected_account.account_size) }}</span>{% endif %}
+              {% if selected_account and selected_account.get('broker_equity') is not none %}<span class="trendChip positive">Equity {{ money(selected_account.get('broker_equity')) }}</span>{% endif %}
+              {% set live_remaining_dd = selected_account.get('broker_remaining_drawdown') if selected_account and selected_account.get('broker_remaining_drawdown') is not none else selected_account.get('max_drawdown') if selected_account else none %}
+              {% if live_remaining_dd is not none %}
+                {% set live_dd_tone = 'positive' if live_remaining_dd > 2250 else 'negative' if live_remaining_dd < 1500 else 'warning' %}
+                <span class="trendChip {{ live_dd_tone }}">DD left {{ money(live_remaining_dd) }}</span>
+              {% endif %}
               {% if not selected_account %}<span class="trendChip warning">Required before import</span>{% endif %}
             </div>
             <div class="tiny line15 syncCredentialHint">Selected ledger only · full-file scan · account-only dedupe</div>
