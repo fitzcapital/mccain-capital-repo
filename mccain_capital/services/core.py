@@ -10861,10 +10861,20 @@ def dashboard():
         )
     ]
     ytd_stats = trades_repo.trade_day_stats(ytd_trades_list)
-    ytd_cons = trades_repo.calc_consistency(ytd_trades_list)
     ytd_wins = int(ytd_stats.get("wins", 0) or 0)
     ytd_losses = int(ytd_stats.get("losses", 0) or 0)
     ytd_win_rate = float(ytd_stats.get("win_rate", 0.0))
+    next_month = date(year + (1 if month == 12 else 0), 1 if month == 12 else month + 1, 1)
+    consistency_trades_list = [
+        dict(r)
+        for r in trades_repo.fetch_trades_range(
+            date(year, month, 1).isoformat(),
+            next_month.isoformat(),
+            account_id=scoped_account_id,
+        )
+    ]
+    consistency = trades_repo.calc_consistency(consistency_trades_list)
+    consistency_label = f"{month_name.split()[0]} Consistency"
     today_key = app_runtime.today_iso()
     today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="", account_id=scoped_account_id)]
     today_stats = trades_repo.trade_day_stats(today_rows)
@@ -10904,12 +10914,16 @@ def dashboard():
         "Attack window"
         if today_count
         and today_net > 0
-        and (ytd_cons.get("ratio") is None or ytd_cons.get("ratio", 1.0) <= 0.30)
+        and (consistency.get("ratio") is None or consistency.get("ratio", 1.0) <= 0.30)
         else "Protect capital" if today_count and today_net < 0 else "Wait for clean signal"
     )
     risk_posture_detail = (
         f"Today {today_wins}W/{today_losses}L · Consistency "
-        + (f"{float(ytd_cons['ratio']) * 100.0:.1f}%" if ytd_cons.get("ratio") is not None else "—")
+        + (
+            f"{float(consistency['ratio']) * 100.0:.1f}%"
+            if consistency.get("ratio") is not None
+            else "—"
+        )
         + "."
     )
     pattern_watch = (
@@ -11672,7 +11686,8 @@ def dashboard():
         ytd_wins=ytd_wins,
         ytd_losses=ytd_losses,
         ytd_win_rate=ytd_win_rate,
-        ytd_cons=ytd_cons,
+        consistency=consistency,
+        consistency_label=consistency_label,
         cons_threshold=0.30,
         today_net=today_net,
         today_win_rate=today_win_rate,

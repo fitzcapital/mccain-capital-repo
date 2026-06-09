@@ -1166,7 +1166,7 @@
             data-status-section="Risk Posture"
             data-status-title="{{ risk_posture_title }}"
             data-status-primary="Today {{ today_wins }}W / {{ today_losses }}L"
-            data-status-line1="Consistency {{ '%.1f'|format((ytd_cons.ratio or 0) * 100) if ytd_cons.ratio is not none else '—' }}%"
+            data-status-line1="Consistency {{ '%.1f'|format((consistency.ratio or 0) * 100) if consistency.ratio is not none else '—' }}%"
             data-status-line2="{{ setup_focus|replace('Lead setup ','') }}"
             data-status-line3="{{ today_count }} trades tracked"
             data-status-tags="Risk||Guardrail Aware"
@@ -1208,7 +1208,7 @@
           <div class="dashboardStatusDetailTitle" id="dashboardStatusDetailTitle">{{ risk_posture_title }}</div>
           <div class="dashboardStatusDetailPrimary" id="dashboardStatusDetailPrimary">Today {{ today_wins }}W / {{ today_losses }}L</div>
           <div class="dashboardStatusDetailLines" id="dashboardStatusDetailLines">
-            <div class="dashboardStatusDetailLine">Consistency {{ '%.1f'|format((ytd_cons.ratio or 0) * 100) if ytd_cons.ratio is not none else '—' }}%</div>
+            <div class="dashboardStatusDetailLine">Consistency {{ '%.1f'|format((consistency.ratio or 0) * 100) if consistency.ratio is not none else '—' }}%</div>
             <div class="dashboardStatusDetailLine">{{ setup_focus|replace('Lead setup ','') }}</div>
             <div class="dashboardStatusDetailLine">{{ today_count }} trades tracked</div>
           </div>
@@ -1712,23 +1712,23 @@
       </div>
     </div>
     <div class="summaryGrid">
-      <div class="summaryStat {{ ytd_cons.class }}{% if ytd_cons.ratio is not none and ytd_cons.ratio > cons_threshold %} dashboardConsistencyDanger{% elif ytd_cons.ratio is not none %} dashboardConsistencySafe{% endif %}">
-        <div class="k dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('score') }}</span><span>Consistency (YTD)</span></div>
+      <div class="summaryStat {{ consistency.class }}{% if consistency.ratio is not none and consistency.ratio > cons_threshold %} dashboardConsistencyDanger{% elif consistency.ratio is not none %} dashboardConsistencySafe{% endif %}">
+        <div class="k dashboardInlineLabel"><span class="dashboardLabelIcon">{{ dashboard_icon('score') }}</span><span>{{ consistency_label }}</span></div>
         <div class="v">
-          {% if ytd_cons.ratio is none %}
+          {% if consistency.ratio is none %}
             —
           {% else %}
-            {{ '%.1f'|format(ytd_cons.ratio * 100) }}%
+            {{ '%.1f'|format(consistency.ratio * 100) }}%
           {% endif %}
         </div>
 
         <div class="tiny stack8">
-          Max: {{ money(ytd_cons.biggest) }} / {{ money(ytd_cons.denom) }}
+          Max: {{ money(consistency.biggest) }} / {{ money(consistency.denom) }}
           &nbsp; • &nbsp; Line: {{ '%.0f'|format(cons_threshold * 100) }}%
         </div>
 
-        {% if ytd_cons.ratio is not none %}
-          {% set bar_pct = (ytd_cons.ratio * 100) %}
+        {% if consistency.ratio is not none %}
+          {% set bar_pct = (consistency.ratio * 100) %}
           {% if bar_pct < 0 %}{% set bar_pct = 0 %}{% endif %}
           {% if bar_pct > 100 %}{% set bar_pct = 100 %}{% endif %}
 
@@ -1736,7 +1736,7 @@
           {% if line_pct < 0 %}{% set line_pct = 0 %}{% endif %}
           {% if line_pct > 100 %}{% set line_pct = 100 %}{% endif %}
           {% set overflow_pct = 0 %}
-          {% if ytd_cons.ratio > cons_threshold %}
+          {% if consistency.ratio > cons_threshold %}
             {% set overflow_pct = bar_pct - line_pct %}
             {% if overflow_pct < 0 %}{% set overflow_pct = 0 %}{% endif %}
           {% endif %}
@@ -1744,14 +1744,14 @@
           <div class="consistencyBar dashboardProgress dashboardProgress-primary" style="--bar-pct: {{ bar_pct }}%; --progress-pct: {{ bar_pct }}%; --line-pct: {{ line_pct }}%;">
             <div class="consistencyFill dashboardProgressBarFill"></div>
             <div class="consistencyLine" title="Threshold"></div>
-            {% if ytd_cons.ratio > cons_threshold %}
+            {% if consistency.ratio > cons_threshold %}
               <div class="consistencyOverflow" style="--overflow-pct: {{ overflow_pct }}%; --line-pct: {{ line_pct }}%;"></div>
               <div class="consistencyAlert"></div>
             {% endif %}
           </div>
 
-          <div class="tiny stack8{% if ytd_cons.ratio > cons_threshold %} dashboardConsistencyStatus is-danger{% else %} dashboardConsistencyStatus is-safe{% endif %}">
-            {% if ytd_cons.ratio <= cons_threshold %}
+          <div class="tiny stack8{% if consistency.ratio > cons_threshold %} dashboardConsistencyStatus is-danger{% else %} dashboardConsistencyStatus is-safe{% endif %}">
+            {% if consistency.ratio <= cons_threshold %}
               ✅ Within threshold · Stable execution
             {% else %}
               ❌ Over threshold · Guardrail warning
