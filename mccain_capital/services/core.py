@@ -6658,8 +6658,10 @@ def get_or_build_market_pulse_snapshot(
     spx_quote = next(
         (q for q in quotes if str(q.get("label") or q.get("symbol") or "").upper() == "SPX"), {}
     )
+    raw_integrity = dict(raw_snapshot.get("integrity") or {})
+    initial_cached_only = bool(raw_integrity.get("cached_only")) and not force_refresh
     selected_quote_loaded = _market_pulse_quote_for_ticker(quotes, selected_ticker)
-    if selected_ticker != "SPX" and not selected_quote_loaded:
+    if selected_ticker != "SPX" and not selected_quote_loaded and not initial_cached_only:
         fetched_quote = _market_pulse_fetch_playbook_quote(selected_ticker)
         if fetched_quote:
             quotes.append(fetched_quote)
@@ -9933,6 +9935,7 @@ def _dashboard_calendar_payload(
     scope_start: str,
     scope_starting_balance: float,
     scope_label: str,
+    scope_account_ids: list[int] | None = None,
 ) -> Dict[str, Any]:
     from mccain_capital.repositories import trades as trades_repo
 
@@ -9941,7 +9944,8 @@ def _dashboard_calendar_payload(
         month,
         start_date=scope_start if scope_active else "",
         starting_balance=scope_starting_balance if scope_active else 0.0,
-        account_id=scope_account_id if scope_active else None,
+        account_id=scope_account_id if scope_active and not scope_account_ids else None,
+        account_ids=scope_account_ids if scope_active else None,
     )
     for week in list(heat.get("weeks") or []):
         for day in list((week or {}).get("days") or []):
@@ -9955,7 +9959,8 @@ def _dashboard_calendar_payload(
                         as_of=day_iso,
                         start_date=scope_start if scope_active else "",
                         starting_balance=scope_starting_balance if scope_active else 0.0,
-                        account_id=scope_account_id if scope_active else None,
+                        account_id=scope_account_id if scope_active and not scope_account_ids else None,
+                        account_ids=scope_account_ids if scope_active else None,
                     )
                 )
                 day["display_balance"] = (
@@ -9982,6 +9987,11 @@ def _dashboard_balance_summary(
 ) -> Dict[str, Any]:
     from mccain_capital.repositories import trades as trades_repo
 
+    def _number(value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
     scope_has_bound_account = bool(scope_active and scope_account_id)
     balance_integrity = trades_repo.balance_integrity_snapshot(
         start_date=scope_start if scope_active else None,
@@ -9989,16 +9999,25 @@ def _dashboard_balance_summary(
         account_id=scope_account_id if scope_active else None,
     )
     if scope_has_bound_account:
-        broker_equity = selected_account.get("broker_equity") if selected_account else None
-        scoped_balance = selected_account.get("current_balance") if selected_account else None
-        if isinstance(broker_equity, (int, float)):
+        broker_equity = _number(selected_account.get("broker_equity") if selected_account else None)
+        scoped_balance = _number(selected_account.get("current_balance") if selected_account else None)
+        broker_equity_stale = (
+            broker_equity is not None
+            and scoped_balance is not None
+            and abs(float(broker_equity) - float(scoped_balance)) > 0.01
+        )
+        if broker_equity is not None and not broker_equity_stale:
             overall_balance = float(broker_equity)
             balance_source = "broker_equity"
             balance_source_detail = "Vanquish broker dashboard equity."
-        elif isinstance(scoped_balance, (int, float)):
+        elif scoped_balance is not None:
             overall_balance = float(scoped_balance)
             balance_source = "account_balance"
-            balance_source_detail = "Stored account ledger balance."
+            balance_source_detail = (
+                "Latest statement/ledger balance; stored broker equity was stale."
+                if broker_equity_stale
+                else "Stored account ledger balance."
+            )
         else:
             overall_balance = float(
                 trades_repo.latest_balance_overall(
@@ -10043,14 +10062,159 @@ def _remaining_drawdown_tone(value: Any) -> str:
     return "warning"
 
 
+def _broker_metrics_source_key(account_id: Any) -> str:
+    return f"dashboard_broker_metrics_source:{int(account_id or 0)}"
+
+
+def _broker_metrics_diagnostics_key(account_id: Any) -> str:
+    return f"dashboard_broker_metrics_diagnostics:{int(account_id or 0)}"
+
+
+def _broker_metrics_source(account_id: Any) -> str:
+    if not account_id:
+        return ""
+    source = str(app_runtime.get_setting_value(_broker_metrics_source_key(account_id), "") or "")
+    return source if source in {"broker", "manual", "statement"} else ""
+
+
+def _set_broker_metrics_source(account_id: Any, source: str) -> None:
+    if account_id:
+        app_runtime.set_setting_value(_broker_metrics_source_key(account_id), source)
+
+
+def _load_broker_metrics_diagnostics(account_id: Any) -> Dict[str, Any]:
+    if not account_id:
+        return {}
+    raw = str(app_runtime.get_setting_value(_broker_metrics_diagnostics_key(account_id), "") or "")
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _store_broker_metrics_diagnostics(
+    account_id: Any,
+    *,
+    status: str,
+    message: str,
+    warnings: List[str] | None = None,
+    artifacts: List[str] | None = None,
+    meta: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    if not account_id:
+        return {}
+    meta = dict(meta or {})
+    validation = dict(meta.get("validation_result") or {})
+    markers = dict(validation.get("markers") or {})
+    payload: Dict[str, Any] = {
+        "status": str(status or "").strip() or "unknown",
+        "message": str(message or "").strip(),
+        "account": meta.get("account") or "",
+        "final_url": meta.get("final_url") or "",
+        "dashboard_url": meta.get("dashboard_url") or "",
+        "parsed_keys": list(markers.get("parsed_keys") or []),
+        "account_match": markers.get("account_match") or "",
+        "graphql_response_count": int(meta.get("graphql_response_count") or 0),
+        "graphql_candidate_count": int(meta.get("graphql_candidate_count") or 0),
+        "graphql_operation_names": list(meta.get("graphql_operation_names") or []),
+        "used_storage_state": bool(meta.get("used_storage_state")),
+        "storage_state_path": meta.get("storage_state_path") or "",
+        "warnings": [str(w) for w in (warnings or []) if w],
+        "artifacts": [str(a) for a in (artifacts or []) if a],
+        "updated_at": app_runtime.now_iso(),
+    }
+    app_runtime.set_setting_value(
+        _broker_metrics_diagnostics_key(account_id),
+        json.dumps(payload, separators=(",", ":"), default=str),
+    )
+    return payload
+
+
+def _broker_metrics_diagnostics_summary(diagnostics: Dict[str, Any]) -> Dict[str, Any]:
+    if not diagnostics:
+        return {"has_diagnostics": False, "label": "", "detail": "", "tone": "neutral"}
+    status = str(diagnostics.get("status") or "").strip()
+    if status == "auth_required":
+        label = "Google session required"
+        detail = "Vanquish redirected to Google login or the saved dashboard session is expired."
+        tone = "warning"
+    elif status == "seeded":
+        label = "Dashboard session seeded"
+        detail = "The headed Vanquish dashboard session was saved for future diagnostic refreshes."
+        tone = "positive"
+    elif status == "parse_failed":
+        label = "Account metrics not found"
+        detail = "Vanquish loaded, but the selected account card or required metric labels were not visible."
+        tone = "warning"
+    elif status == "failed":
+        label = "Browser capture failed"
+        detail = "Playwright could not complete the Vanquish dashboard capture."
+        tone = "negative"
+    elif status == "success":
+        label = "Vanquish refresh succeeded"
+        detail = "The latest broker metrics came from the Vanquish dashboard."
+        tone = "positive"
+    else:
+        label = "Vanquish refresh diagnostics"
+        detail = str(diagnostics.get("message") or "Latest refresh metadata is available.")
+        tone = "neutral"
+    return {
+        "has_diagnostics": True,
+        "label": label,
+        "detail": detail,
+        "tone": tone,
+        "status": status,
+    }
+
+
 def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[str, Any]:
     if not account:
-        return {"has_metrics": False, "remaining_drawdown_tone": "neutral"}
+        return {
+            "has_metrics": False,
+            "has_broker_metrics": False,
+            "has_core_broker_metrics": False,
+            "broker_equity": None,
+            "broker_equity_source": "",
+            "broker_equity_source_label": "",
+            "broker_equity_is_stale": False,
+            "broker_equity_peak": None,
+            "broker_remaining_drawdown": None,
+            "remaining_drawdown_source": "",
+            "remaining_drawdown_source_label": "",
+            "has_broker_risk_metrics": False,
+            "broker_max_loss": None,
+            "broker_metrics_updated_at": "",
+            "broker_metrics_updated_label": "",
+            "broker_metrics_diagnostics": {},
+            "broker_metrics_diagnostics_summary": {
+                "has_diagnostics": False,
+                "label": "",
+                "detail": "",
+                "tone": "neutral",
+            },
+            "remaining_drawdown_tone": "neutral",
+        }
+    account_id = account.get("id")
+    metrics_source = _broker_metrics_source(account_id)
+    broker_equity = account.get("broker_equity")
+    account_balance = account.get("current_balance")
+    broker_equity_source = metrics_source or "broker"
+    broker_equity_is_stale = False
+    if isinstance(broker_equity, (int, float)) and isinstance(account_balance, (int, float)):
+        broker_equity_is_stale = abs(float(broker_equity) - float(account_balance)) > 0.01
+        if broker_equity_is_stale:
+            broker_equity = float(account_balance)
+            broker_equity_source = "statement"
     remaining = account.get("broker_remaining_drawdown")
-    remaining_source = "broker"
-    if remaining is None and isinstance(account.get("max_drawdown"), (int, float)):
-        remaining = float(account.get("max_drawdown") or 0.0)
-        remaining_source = "configured"
+    has_remaining_drawdown = isinstance(remaining, (int, float))
+    has_broker_risk_metrics = has_remaining_drawdown
+    remaining_source = metrics_source or ("broker" if has_remaining_drawdown else "missing")
+    if not has_remaining_drawdown:
+        remaining_source = "missing"
+    has_core_broker_metrics = isinstance(broker_equity, (int, float)) or has_remaining_drawdown
     has_metrics = any(
         account.get(key) is not None
         for key in (
@@ -10060,15 +10224,32 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
             "broker_max_loss",
         )
     )
+    updated_at = account.get("broker_metrics_updated_at") or ""
+    source_labels = {
+        "manual": "Manual value",
+        "broker": "Broker value",
+        "statement": "Statement balance active",
+        "missing": "Missing",
+    }
+    diagnostics = _load_broker_metrics_diagnostics(account_id)
     return {
-        "has_metrics": has_metrics or remaining is not None,
+        "has_metrics": has_metrics,
         "has_broker_metrics": has_metrics,
-        "broker_equity": account.get("broker_equity"),
+        "has_core_broker_metrics": has_core_broker_metrics,
+        "broker_equity": broker_equity,
+        "broker_equity_source": broker_equity_source,
+        "broker_equity_source_label": source_labels.get(broker_equity_source, "Broker value"),
+        "broker_equity_is_stale": broker_equity_is_stale,
         "broker_equity_peak": account.get("broker_equity_peak"),
         "broker_remaining_drawdown": remaining,
         "remaining_drawdown_source": remaining_source,
+        "remaining_drawdown_source_label": source_labels.get(remaining_source, "Broker value"),
+        "has_broker_risk_metrics": has_broker_risk_metrics,
         "broker_max_loss": account.get("broker_max_loss"),
-        "broker_metrics_updated_at": account.get("broker_metrics_updated_at") or "",
+        "broker_metrics_updated_at": updated_at,
+        "broker_metrics_updated_label": _format_iso_et_label(updated_at),
+        "broker_metrics_diagnostics": diagnostics,
+        "broker_metrics_diagnostics_summary": _broker_metrics_diagnostics_summary(diagnostics),
         "remaining_drawdown_tone": _remaining_drawdown_tone(remaining),
     }
 
@@ -10535,21 +10716,21 @@ def _dashboard_tape_viewmodel(
             try:
                 as_of_dt = datetime.fromisoformat(as_of_raw.replace("Z", "+00:00"))
                 age_s = max(0, now_epoch - int(as_of_dt.timestamp()))
-                age_label = _market_data_age_label(age_s)
+                age_label = "Fresh" if age_s < 60 else _market_data_age_label(age_s)
             except Exception:
                 has_timestamp = False
-                age_label = "unavailable"
+                age_label = "No tick"
         else:
-            age_label = "unavailable" if state == "Unavailable" else "0s old"
-        band = "Critical" if age_s >= 900 else state
+            age_label = "No tick"
+        band = "Wait" if not has_timestamp else "Critical" if age_s >= 900 else state
         compact = f"{age_s // 3600}h" if age_s >= 3600 else f"{age_s // 60}m" if age_s >= 60 else f"{age_s}s"
         return {
             "age_seconds": age_s,
             "age_label": age_label,
-            "compact": "unavailable" if not has_timestamp else compact,
+            "compact": "wait" if not has_timestamp else "fresh" if age_s < 60 else compact,
             "band": band,
             "status_label": "" if band == "Live" else band,
-            "tone": "missing" if state == "Unavailable" else "critical" if age_s >= 900 else "delayed" if state in {"Delayed", "Cached"} else "live",
+            "tone": "delayed" if not has_timestamp else "critical" if age_s >= 900 else "delayed" if state in {"Delayed", "Cached"} else "live",
         }
 
     def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
@@ -10777,6 +10958,16 @@ def dashboard():
     except Exception:
         scope_account_id = None
     selected_account = trades_repo.get_account(scope_account_id) if scope_account_id else None
+    scoped_ledger_account_ids = (
+        trades_repo.account_continuity_ids(scope_account_id)
+        if scope_active and scope_account_id
+        else []
+    )
+    continuity_label = (
+        trades_repo.account_continuity_label(scope_account_id)
+        if scope_active and scope_account_id and len(scoped_ledger_account_ids) > 1
+        else ""
+    )
     scope_start = str(scope.get("start_date") or "")
     scope_starting_balance = float(scope.get("starting_balance") or 0.0)
     anchor = app_runtime.now_et().date()
@@ -10784,7 +10975,11 @@ def dashboard():
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
     pace_timeframe_key = _dashboard_pace_timeframe(request.args.get("pace_tf"))
     pace_scope = _dashboard_pace_scope_context(year, month, pace_timeframe_key, anchor)
-    calendar_scope_label = "Active Account" if scope_active else "All History"
+    calendar_scope_label = (
+        "Continuity Ledger"
+        if scope_active and continuity_label
+        else "Active Account" if scope_active else "All History"
+    )
     calendar_payload = _dashboard_calendar_payload(
         year=year,
         month=month,
@@ -10793,6 +10988,7 @@ def dashboard():
         scope_start=scope_start,
         scope_starting_balance=scope_starting_balance,
         scope_label=calendar_scope_label,
+        scope_account_ids=scoped_ledger_account_ids if scoped_ledger_account_ids else None,
     )
     heat = calendar_payload["heat"]
     prev_y, prev_m = (year, month - 1)
@@ -10838,16 +11034,40 @@ def dashboard():
         else date(year, month, 1).isoformat()
     )
     scoped_account_id = scope_account_id if scope_active else None
-    this_week_total = trades_repo.week_total_net(week_anchor, account_id=scoped_account_id)
-    mtd_net = trades_repo.month_total_net(year, month, account_id=scoped_account_id)
-    ytd_net = trades_repo.ytd_total_net(year, account_id=scoped_account_id)
-    mtd_trades = trades_repo.month_trade_count(year, month, account_id=scoped_account_id)
-    ytd_trades = trades_repo.ytd_trade_count(year, account_id=scoped_account_id)
+    scoped_account_ids = scoped_ledger_account_ids if scope_active else []
+    this_week_total = trades_repo.week_total_net(
+        week_anchor,
+        account_id=scoped_account_id if not scoped_account_ids else None,
+        account_ids=scoped_account_ids or None,
+    )
+    mtd_net = trades_repo.month_total_net(
+        year,
+        month,
+        account_id=scoped_account_id if not scoped_account_ids else None,
+        account_ids=scoped_account_ids or None,
+    )
+    ytd_net = trades_repo.ytd_total_net(
+        year,
+        account_id=scoped_account_id if not scoped_account_ids else None,
+        account_ids=scoped_account_ids or None,
+    )
+    mtd_trades = trades_repo.month_trade_count(
+        year,
+        month,
+        account_id=scoped_account_id if not scoped_account_ids else None,
+        account_ids=scoped_account_ids or None,
+    )
+    ytd_trades = trades_repo.ytd_trade_count(
+        year,
+        account_id=scoped_account_id if not scoped_account_ids else None,
+        account_ids=scoped_account_ids or None,
+    )
     proj = trades_repo.projections_from_daily(
         trades_repo.last_n_trading_day_totals(
             20,
             since_date=scope_start if scope_active else "",
-            account_id=scoped_account_id,
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
         ),
         overall_balance,
     )
@@ -10857,7 +11077,8 @@ def dashboard():
         for r in trades_repo.fetch_trades_range(
             date(year, 1, 1).isoformat(),
             date(year + 1, 1, 1).isoformat(),
-            account_id=scoped_account_id,
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
         )
     ]
     ytd_stats = trades_repo.trade_day_stats(ytd_trades_list)
@@ -10870,13 +11091,22 @@ def dashboard():
         for r in trades_repo.fetch_trades_range(
             date(year, month, 1).isoformat(),
             next_month.isoformat(),
-            account_id=scoped_account_id,
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
         )
     ]
     consistency = trades_repo.calc_consistency(consistency_trades_list)
     consistency_label = f"{month_name.split()[0]} Consistency"
     today_key = app_runtime.today_iso()
-    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="", account_id=scoped_account_id)]
+    today_rows = [
+        dict(r)
+        for r in trades_repo.fetch_trades(
+            d=today_key,
+            q="",
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
+        )
+    ]
     today_stats = trades_repo.trade_day_stats(today_rows)
     today_net = float(today_stats.get("total", 0.0))
     today_win_rate = float(today_stats.get("win_rate", 0.0))
@@ -11058,10 +11288,7 @@ def dashboard():
         # Worker tape points can be sparse or too smooth after a cold start.
         if pulse_snapshot_cache is None:
             try:
-                pulse_snapshot_cache = _market_pulse_snapshot(
-                    force_refresh=False,
-                    persist_replay=False,
-                )
+                pulse_snapshot_cache = _market_pulse_fast_page_snapshot(now_et, {})
             except Exception:
                 pulse_snapshot_cache = {}
         pulse_snapshot = pulse_snapshot_cache
@@ -11171,14 +11398,14 @@ def dashboard():
             try:
                 as_of_dt = datetime.fromisoformat(as_of_raw.replace("Z", "+00:00"))
                 age_s = max(0, now_epoch - int(as_of_dt.timestamp()))
-                age_label = _market_data_age_label(age_s)
+                age_label = "Fresh" if age_s < 60 else _market_data_age_label(age_s)
             except Exception:
                 has_timestamp = False
-                age_label = "unavailable"
+                age_label = "No tick"
         else:
-            age_label = "unavailable" if state == "Unavailable" else "0s old"
+            age_label = "No tick"
 
-        band = "Critical" if age_s >= 900 else state
+        band = "Wait" if not has_timestamp else "Critical" if age_s >= 900 else state
         if age_s >= 3600:
             compact = f"{age_s // 3600}h"
         elif age_s >= 60:
@@ -11189,10 +11416,10 @@ def dashboard():
         return {
             "age_seconds": age_s,
             "age_label": age_label,
-            "compact": "unavailable" if not has_timestamp else compact,
+            "compact": "wait" if not has_timestamp else "fresh" if age_s < 60 else compact,
             "band": band,
             "status_label": "" if band == "Live" else band,
-            "tone": _dashboard_status_tone(state, age_s),
+            "tone": "delayed" if not has_timestamp else _dashboard_status_tone(state, age_s),
         }
 
     def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
@@ -11714,6 +11941,8 @@ def dashboard():
         accounts=accounts,
         selected_account=selected_account,
         selected_account_broker_metrics=selected_account_broker_metrics,
+        continuity_label=continuity_label,
+        scoped_ledger_account_ids=scoped_ledger_account_ids,
         daily_brief=daily_brief,
         dashboard_checklist=dashboard_checklist,
         dashboard_reflection=dashboard_reflection,
@@ -11933,15 +12162,19 @@ def stream_market():
                 interval = 0.25
             if interval < 0.20:
                 interval = 0.20
-            # Keep sync workers healthy by rotating SSE connections before worker timeout.
+            # Keep dashboard reloads healthy under the small local gthread pool.
+            # Long-lived SSE requests can briefly survive reloads and occupy every
+            # request thread, so rotate aggressively and let the client reconnect.
             try:
                 max_stream_s = float(
-                    app_runtime.get_setting_value("market_stream_max_seconds", 110) or 110
+                    app_runtime.get_setting_value("market_stream_max_seconds", 8) or 8
                 )
             except Exception:
-                max_stream_s = 110.0
-            if max_stream_s < 30:
-                max_stream_s = 30.0
+                max_stream_s = 8.0
+            if max_stream_s < 4:
+                max_stream_s = 4.0
+            if max_stream_s > 20:
+                max_stream_s = 20.0
             if (time.time() - started_at) >= max_stream_s:
                 break
             time.sleep(interval)
@@ -12001,19 +12234,22 @@ def stream_options_panel():
     @stream_with_context
     def generate():
         started_at = time.time()
+        max_stream_seconds = int(current_app.config.get("OPTIONS_STREAM_MAX_SECONDS", 8) or 8)
+        max_stream_seconds = max(4, min(max_stream_seconds, 20))
         while True:
             payload = options_panel_service.get_options_snapshot()
             yield f"data: {json.dumps(payload)}\\n\\n"
             if is_testing:
                 break
-            # Rotate stream to avoid sync-worker timeout churn.
-            if (time.time() - started_at) >= 110:
+            # Rotate quickly so page reloads cannot exhaust the small web-worker pool.
+            if (time.time() - started_at) >= max_stream_seconds:
                 break
             time.sleep(2)
 
     response = Response(generate(), mimetype="text/event-stream")
-    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Connection"] = "keep-alive"
+    response.headers["X-Accel-Buffering"] = "no"
     return response
 
 
@@ -12026,28 +12262,36 @@ def market_pulse_page():
         return redirect(url_for("login_page", next="/market-pulse"))
     ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
     selected_ticker = str(ticker_context["ticker"])
-    force_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    requested_refresh = (request.args.get("refresh") or "").strip().lower() in {"1", "true", "yes"}
+    is_testing = bool(current_app.config.get("TESTING"))
+    force_refresh = requested_refresh if is_testing else False
     now_et = app_runtime.now_et()
-    if not current_app.config.get("TESTING"):
+    if not is_testing and requested_refresh:
         market_pulse_runtime.ensure_market_pulse_runtime_started()
     cached_playbook_snapshot = dict(
         _market_pulse_cached_playbook_snapshot(now_et, ticker=selected_ticker) or {}
     )
-    snapshot = (
-        _market_pulse_snapshot(force_refresh=True)
-        if force_refresh
-        else _market_pulse_fast_page_snapshot(now_et, cached_playbook_snapshot)
-    )
-    if not snapshot:
-        snapshot = _market_pulse_snapshot(force_refresh=False)
+    if is_testing:
+        snapshot = _market_pulse_snapshot(force_refresh=force_refresh)
+    else:
+        snapshot = _market_pulse_fast_page_snapshot(now_et, cached_playbook_snapshot)
+        if not snapshot:
+            snapshot = {
+                "available": False,
+                "fetched_at": "",
+                "source_label": "Market feed cached snapshot",
+                "source_note": "Market data is loading in the background.",
+                "quotes": [],
+                "integrity": {
+                    "cached_only": True,
+                    "forced_refresh": False,
+                    "tracked_count": 0,
+                },
+            }
     gamma_snapshot = dict(cached_playbook_snapshot.get("gamma_snapshot") or {})
-    if force_refresh:
+    if requested_refresh:
         gamma_snapshot = gamma_map_service.get_gamma_snapshot()
     options_snapshot = options_panel_service.get_options_snapshot()
-    if force_refresh and not current_app.config.get("TESTING"):
-        runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
-        gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
-        options_snapshot = dict(runtime_payload.get("options_snapshot") or options_snapshot)
     options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
     options_contracts = list(options_spx.get("contracts") or [])
     gamma_updated_label = (
@@ -12068,7 +12312,9 @@ def market_pulse_page():
         None,
     )
     vix_debug_reason = ""
-    if not isinstance(vix_row, dict) or vix_row.get("price") in {None, ""}:
+    if (requested_refresh or is_testing) and (
+        not isinstance(vix_row, dict) or vix_row.get("price") in {None, ""}
+    ):
         vix_fallback = None
         try:
             tradier_vix = market_data_service.get_watchlist_tradier(["VIX"])
@@ -13218,9 +13464,10 @@ def dashboard_refresh_account_metrics():
             return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
         return redirect(redirect_url)
 
-    metrics, warnings, _artifacts, meta = vanquish_live_sync.fetch_account_metrics_via_dashboard(
+    metrics, warnings, artifacts, meta = vanquish_live_sync.fetch_account_metrics_via_dashboard(
         account=broker_account_id,
         headless=True,
+        timeout_ms=30000,
         debug_dir=None,
         progress_cb=None,
     )
@@ -13232,8 +13479,17 @@ def dashboard_refresh_account_metrics():
             broker_remaining_drawdown=metrics.get("broker_remaining_drawdown"),
             broker_max_loss=metrics.get("broker_max_loss"),
         )
+        _set_broker_metrics_source(account_id, "broker")
         trades_repo.set_active_account(account_id)
         message = "Vanquish account metrics refreshed."
+        _store_broker_metrics_diagnostics(
+            account_id,
+            status="success",
+            message=message,
+            warnings=warnings,
+            artifacts=artifacts,
+            meta=meta,
+        )
         flash(message, "success")
         if wants_json:
             return jsonify(
@@ -13250,11 +13506,338 @@ def dashboard_refresh_account_metrics():
     else:
         detail = "; ".join(str(w) for w in warnings if w) or "Vanquish metrics were not available."
         message = f"Could not refresh Vanquish account metrics: {detail}"
+    diagnostics = _store_broker_metrics_diagnostics(
+        account_id,
+        status=status or "failed",
+        message=message,
+        warnings=warnings,
+        artifacts=artifacts,
+        meta=meta,
+    )
     flash(message, "warn")
     if wants_json:
         return (
-            jsonify({"ok": False, "message": message, "meta": meta, "redirect_url": redirect_url}),
+            jsonify(
+                {
+                    "ok": False,
+                    "message": message,
+                    "meta": meta,
+                    "diagnostics": diagnostics,
+                    "redirect_url": redirect_url,
+                }
+            ),
             400,
+        )
+    return redirect(redirect_url)
+
+
+def dashboard_seed_vanquish_session():
+    from mccain_capital.repositories import trades as trades_repo
+    from mccain_capital.services import vanquish_live_sync
+
+    wants_json = (
+        "application/json" in str(request.headers.get("Accept") or "").lower()
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    try:
+        account_id = int(request.form.get("account_id") or request.args.get("account_id") or 0)
+    except (TypeError, ValueError):
+        account_id = 0
+    account = trades_repo.get_account(account_id) if account_id else None
+    redirect_url = (
+        url_for("dashboard", scope="active", account_id=account_id)
+        if account_id
+        else url_for("dashboard")
+    )
+    if not account:
+        message = "Select a valid account before seeding the Vanquish dashboard session."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    warnings, artifacts, meta = vanquish_live_sync.seed_dashboard_session(
+        headless=False,
+        timeout_ms=180000,
+        debug_dir=None,
+        progress_cb=None,
+    )
+    status = str((meta or {}).get("status") or "").strip()
+    if status == "seeded":
+        message = "Vanquish dashboard session seeded. Run diagnostic refresh next."
+        category = "success"
+        ok = True
+    elif status == "auth_required":
+        message = (
+            "Vanquish dashboard still needs Google login. Complete login in the headed "
+            "browser window, then seed again."
+        )
+        category = "warn"
+        ok = False
+    else:
+        detail = "; ".join(str(w) for w in warnings if w) or "Vanquish dashboard session was not saved."
+        message = f"Could not seed Vanquish dashboard session: {detail}"
+        category = "warn"
+        ok = False
+
+    diagnostics = _store_broker_metrics_diagnostics(
+        account_id,
+        status=status or "failed",
+        message=message,
+        warnings=warnings,
+        artifacts=artifacts,
+        meta=meta,
+    )
+    trades_repo.set_active_account(account_id)
+    flash(message, category)
+    if wants_json:
+        status_code = 200 if ok else 400
+        return (
+            jsonify(
+                {
+                    "ok": ok,
+                    "message": message,
+                    "meta": meta,
+                    "diagnostics": diagnostics,
+                    "redirect_url": redirect_url,
+                }
+            ),
+            status_code,
+        )
+    return redirect(redirect_url)
+
+
+def dashboard_manual_drawdown_update():
+    from mccain_capital.repositories import trades as trades_repo
+
+    wants_json = (
+        "application/json" in str(request.headers.get("Accept") or "").lower()
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    try:
+        account_id = int(request.form.get("account_id") or request.args.get("account_id") or 0)
+    except (TypeError, ValueError):
+        account_id = 0
+    account = trades_repo.get_account(account_id) if account_id else None
+    default_redirect_url = (
+        url_for("dashboard", scope="active", account_id=account_id)
+        if account_id
+        else url_for("dashboard")
+    )
+    raw_next = str(request.form.get("next") or "").strip()
+    redirect_url = (
+        raw_next
+        if raw_next.startswith("/") and not raw_next.startswith("//")
+        else default_redirect_url
+    )
+    if not account:
+        message = "Select a valid account before updating drawdown."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    raw_drawdown = str(
+        request.form.get("broker_remaining_drawdown")
+        or request.form.get("remaining_drawdown")
+        or ""
+    ).strip()
+    cleaned = re.sub(r"[^0-9.\-]+", "", raw_drawdown)
+    try:
+        remaining_drawdown = float(cleaned)
+    except (TypeError, ValueError):
+        remaining_drawdown = -1.0
+    if remaining_drawdown < 0:
+        message = "Enter a valid remaining drawdown amount."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    trades_repo.update_account_broker_metrics(
+        account_id,
+        broker_equity=account.get("broker_equity"),
+        broker_equity_peak=account.get("broker_equity_peak"),
+        broker_remaining_drawdown=round(remaining_drawdown, 2),
+        broker_max_loss=account.get("broker_max_loss"),
+    )
+    _set_broker_metrics_source(account_id, "manual")
+    trades_repo.set_active_account(account_id)
+    message = f"Remaining drawdown updated to {app_runtime.money(remaining_drawdown)}."
+    flash(message, "success")
+    if wants_json:
+        return jsonify(
+            {
+                "ok": True,
+                "message": message,
+                "remaining_drawdown": round(remaining_drawdown, 2),
+                "redirect_url": redirect_url,
+            }
+        )
+    return redirect(redirect_url)
+
+
+def dashboard_manual_broker_metrics_update():
+    from mccain_capital.repositories import trades as trades_repo
+
+    wants_json = (
+        "application/json" in str(request.headers.get("Accept") or "").lower()
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    try:
+        account_id = int(request.form.get("account_id") or request.args.get("account_id") or 0)
+    except (TypeError, ValueError):
+        account_id = 0
+    account = trades_repo.get_account(account_id) if account_id else None
+    redirect_url = (
+        url_for("dashboard", scope="active", account_id=account_id)
+        if account_id
+        else url_for("dashboard")
+    )
+    if not account:
+        message = "Select a valid account before updating broker metrics."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    def _optional_money(field: str) -> float | None:
+        raw = str(request.form.get(field) or "").strip()
+        if not raw:
+            return None
+        cleaned = re.sub(r"[^0-9.\-]+", "", raw)
+        try:
+            value = float(cleaned)
+        except (TypeError, ValueError):
+            return -1.0
+        return round(value, 2) if value >= 0 else -1.0
+
+    broker_equity = _optional_money("broker_equity")
+    remaining_drawdown = _optional_money("broker_remaining_drawdown")
+    if broker_equity == -1.0 or remaining_drawdown == -1.0:
+        message = "Enter valid broker equity and drawdown amounts."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+    if broker_equity is None and remaining_drawdown is None:
+        message = "Enter broker equity, remaining drawdown, or both."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    next_equity = broker_equity if broker_equity is not None else account.get("broker_equity")
+    next_drawdown = (
+        remaining_drawdown
+        if remaining_drawdown is not None
+        else account.get("broker_remaining_drawdown")
+    )
+    current_peak = account.get("broker_equity_peak")
+    if next_equity is not None:
+        try:
+            next_peak = max(float(current_peak), float(next_equity))
+        except (TypeError, ValueError):
+            next_peak = float(next_equity)
+    else:
+        next_peak = current_peak
+
+    trades_repo.update_account_broker_metrics(
+        account_id,
+        broker_equity=next_equity,
+        broker_equity_peak=next_peak,
+        broker_remaining_drawdown=next_drawdown,
+        broker_max_loss=account.get("broker_max_loss"),
+    )
+    _set_broker_metrics_source(account_id, "manual")
+    trades_repo.set_active_account(account_id)
+    changed = []
+    if broker_equity is not None:
+        changed.append(f"equity {app_runtime.money(broker_equity)}")
+    if remaining_drawdown is not None:
+        changed.append(f"drawdown {app_runtime.money(remaining_drawdown)}")
+    message = f"Broker metrics updated: {', '.join(changed)}."
+    flash(message, "success")
+    if wants_json:
+        return jsonify(
+            {
+                "ok": True,
+                "message": message,
+                "broker_equity": next_equity,
+                "broker_equity_peak": next_peak,
+                "remaining_drawdown": next_drawdown,
+                "redirect_url": redirect_url,
+            }
+        )
+    return redirect(redirect_url)
+
+
+def dashboard_manual_equity_update():
+    from mccain_capital.repositories import trades as trades_repo
+
+    wants_json = (
+        "application/json" in str(request.headers.get("Accept") or "").lower()
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    try:
+        account_id = int(request.form.get("account_id") or request.args.get("account_id") or 0)
+    except (TypeError, ValueError):
+        account_id = 0
+    account = trades_repo.get_account(account_id) if account_id else None
+    redirect_url = (
+        url_for("dashboard", scope="active", account_id=account_id)
+        if account_id
+        else url_for("dashboard")
+    )
+    if not account:
+        message = "Select a valid account before updating broker equity."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    raw_equity = str(
+        request.form.get("broker_equity")
+        or request.form.get("equity")
+        or ""
+    ).strip()
+    cleaned = re.sub(r"[^0-9.\-]+", "", raw_equity)
+    try:
+        broker_equity = float(cleaned)
+    except (TypeError, ValueError):
+        broker_equity = -1.0
+    if broker_equity < 0:
+        message = "Enter a valid broker equity amount."
+        flash(message, "warn")
+        if wants_json:
+            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
+        return redirect(redirect_url)
+
+    current_peak = account.get("broker_equity_peak")
+    try:
+        broker_equity_peak = max(float(current_peak), broker_equity)
+    except (TypeError, ValueError):
+        broker_equity_peak = broker_equity
+    trades_repo.update_account_broker_metrics(
+        account_id,
+        broker_equity=round(broker_equity, 2),
+        broker_equity_peak=round(broker_equity_peak, 2),
+        broker_remaining_drawdown=account.get("broker_remaining_drawdown"),
+        broker_max_loss=account.get("broker_max_loss"),
+    )
+    _set_broker_metrics_source(account_id, "manual")
+    trades_repo.set_active_account(account_id)
+    message = f"Broker equity updated to {app_runtime.money(broker_equity)}."
+    flash(message, "success")
+    if wants_json:
+        return jsonify(
+            {
+                "ok": True,
+                "message": message,
+                "broker_equity": round(broker_equity, 2),
+                "broker_equity_peak": round(broker_equity_peak, 2),
+                "redirect_url": redirect_url,
+            }
         )
     return redirect(redirect_url)
 

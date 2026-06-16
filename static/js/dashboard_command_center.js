@@ -34,7 +34,7 @@ function initCalendarPreview(root = document) {
       const winRate = d.winRate || "0";
       record.textContent = `${d.wins || "0"}W / ${d.losses || "0"}L (${winRate}%)`;
       balance.textContent = d.balance || "—";
-      open.href = d.openUrl || "/trades";
+      open.href = d.openUrl || (d.iso ? `/trades?d=${encodeURIComponent(d.iso)}` : "/trades");
       preview.hidden = false;
     });
   });
@@ -237,6 +237,13 @@ const marketSessionState = (now = new Date()) => {
 
   let loading = false;
 
+  const bindCalendarPreview = () => {
+    if (lazyShell.dataset) {
+      delete lazyShell.dataset.calendarPreviewBound;
+    }
+    initCalendarPreview(lazyShell);
+  };
+
   const setPlaceholder = (message, tone = "info") => {
     lazyShell.innerHTML = `
       <div class="dashboardCalendarLazyPlaceholder is-${tone}">
@@ -262,7 +269,7 @@ const marketSessionState = (now = new Date()) => {
       }
       lazyShell.innerHTML = await response.text();
       lazyShell.dataset.loaded = "1";
-      initCalendarPreview(lazyShell);
+      bindCalendarPreview();
     } catch (_error) {
       setPlaceholder("Calendar could not load. Collapse and reopen to retry.", "error");
     } finally {
@@ -280,6 +287,8 @@ const marketSessionState = (now = new Date()) => {
   if (details.open) {
     void loadCalendar();
   }
+
+  bindCalendarPreview();
 })();
 
 (function () {
@@ -390,12 +399,17 @@ const marketSessionState = (now = new Date()) => {
         + `<rect class="marketMiniSparkBody ${cls}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${topY.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" rx=".08" ry=".08" />`
       );
     }).join("");
+    const lastCandle = candles[candles.length - 1];
+    const lastCenterX = plotStart + (((candles.length - 0.5) * plotWidth) / Math.max(candles.length, 1));
+    const lastCloseY = yFor(lastCandle.close);
+    const lastCloseClass = lastCandle.close > lastCandle.open ? "up" : lastCandle.close < lastCandle.open ? "down" : "flat";
     return (
       `<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">`
       + `<line class="marketMiniSparkGuide" x1="0" y1="14" x2="138" y2="14" />`
       + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="138" y2="${baselineY}" />`
       + `<line class="marketMiniSparkGuide" x1="0" y1="46" x2="138" y2="46" />`
       + bars
+      + `<circle class="marketMiniSparkPoint ${lastCloseClass}" cx="${lastCenterX.toFixed(2)}" cy="${lastCloseY.toFixed(2)}" r="2.3" />`
       + `</svg>`
     );
   };
@@ -480,17 +494,17 @@ const marketSessionState = (now = new Date()) => {
     if (seconds >= 72 * 3600) return "72h+ old";
     if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h old`;
     if (seconds >= 60) return `${Math.floor(seconds / 60)}m old`;
-    return `${seconds}s old`;
+    return "Fresh";
   };
 
   const formatFreshness = (iso, state) => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
     if (!Number.isFinite(ts)) {
       return {
-        full: "waiting for feed",
-        compact: "standby",
-        band: "Standby",
-        status: "Standby",
+        full: "No tick",
+        compact: "wait",
+        band: "Wait",
+        status: "Wait",
         tone: "delayed",
       };
     }
@@ -509,7 +523,7 @@ const marketSessionState = (now = new Date()) => {
 
   const deriveState = (quote) => {
     const price = asNum((quote || {}).price);
-    if (price === null) return "Standby";
+    if (price === null) return "Wait";
     const provider = String((quote || {}).provider || "").toLowerCase();
     const reason = String((quote || {}).reason || "").toLowerCase();
     if (provider === "tradier" && reason.startsWith("tradier_")) return "Live";
@@ -528,7 +542,7 @@ const marketSessionState = (now = new Date()) => {
 
   const stateClass = (state) => {
     if (state === "Live") return "live";
-    if (state === "Delayed" || state === "Cached") return "delayed";
+    if (state === "Delayed" || state === "Cached" || state === "Wait") return "delayed";
     if (state === "Critical") return "critical";
     return "missing";
   };
@@ -627,12 +641,12 @@ const marketSessionState = (now = new Date()) => {
       chgpNode.textContent = "—";
     }
     if (marketStateNode && lower(marketStateNode) === "unavailable") {
-      marketStateNode.textContent = "Standby";
+      marketStateNode.textContent = "Wait";
       marketStateNode.classList.remove("is-missing");
       marketStateNode.classList.add("is-delayed");
     }
     if (liveNode && (lower(liveNode) === "unavailable" || lower(liveNode) === "loading...")) {
-      liveNode.textContent = "waiting for feed";
+      liveNode.textContent = "No tick";
       liveNode.classList.remove("is-missing");
       liveNode.classList.add("is-delayed");
     }
@@ -640,7 +654,7 @@ const marketSessionState = (now = new Date()) => {
       detailChgNode.textContent = "—";
     }
     if (detailLiveNode && (lower(detailLiveNode) === "loading..." || lower(detailLiveNode) === "unavailable")) {
-      detailLiveNode.textContent = "standby";
+      detailLiveNode.textContent = "wait";
     }
   };
 
@@ -659,6 +673,7 @@ const marketSessionState = (now = new Date()) => {
     const rowMarketStateNode = row.querySelector('[data-role="market-state"]');
     const rowLiveNode = row.querySelector('[data-role="row-live"]');
     const rowRangeNode = row.querySelector('[data-role="detail-range"]');
+    const rowRangeValueNode = rowRangeNode?.querySelector(".dashboardTapeRangeValue") || rowRangeNode;
     const detailChgNode = detailNode?.querySelector('[data-role="detail-chg"]');
     const detailOpenNode = detailNode?.querySelector('[data-role="detail-open"]');
     const detailPrevNode = detailNode?.querySelector('[data-role="detail-prev"]');
@@ -737,15 +752,15 @@ const marketSessionState = (now = new Date()) => {
     if (rowLiveNode && String((quote || {}).as_of || "").trim()) {
       dashboardUIFX.setText(rowLiveNode, freshness.full);
     }
-    if (rowRangeNode && ((quote || {}).day_low !== undefined || (quote || {}).day_high !== undefined)) {
+    if (rowRangeValueNode && ((quote || {}).day_low !== undefined || (quote || {}).day_high !== undefined)) {
       const dayLow = asNum((quote || {}).day_low);
       const dayHigh = asNum((quote || {}).day_high);
       if (dayLow !== null && dayHigh !== null) {
-        dashboardUIFX.setText(rowRangeNode, `${formatValue(dayLow, 2)} to ${formatValue(dayHigh, 2)}`);
+        dashboardUIFX.setText(rowRangeValueNode, `${formatValue(dayLow, 2)} to ${formatValue(dayHigh, 2)}`);
       }
-    } else if (rowRangeNode) {
+    } else if (rowRangeValueNode) {
       const derivedRange = displayRangeFromPoints(usablePoints);
-      if (derivedRange) dashboardUIFX.setText(rowRangeNode, derivedRange);
+      if (derivedRange) dashboardUIFX.setText(rowRangeValueNode, derivedRange);
     }
 
     if (detailChgNode) {

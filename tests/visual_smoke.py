@@ -88,8 +88,11 @@ def _assert_tape_visuals(page, name: str) -> None:
           const cards = Array.from(document.querySelectorAll(
             '.marketPulseTapeCard, .dashboardTapeAssetCard'
           ));
-          const lines = cards.flatMap((card) => Array.from(card.querySelectorAll(
-            'polyline.marketMiniSparkLine'
+          const bodies = cards.flatMap((card) => Array.from(card.querySelectorAll(
+            '.marketMiniSparkBody'
+          )));
+          const wicks = cards.flatMap((card) => Array.from(card.querySelectorAll(
+            '.marketMiniSparkWick'
           )));
           const points = cards.flatMap((card) => Array.from(card.querySelectorAll(
             '.marketMiniSparkPoint'
@@ -97,26 +100,29 @@ def _assert_tape_visuals(page, name: str) -> None:
           const guides = cards.flatMap((card) => Array.from(card.querySelectorAll(
             '.marketMiniSparkGuide'
           )));
-          const multiPointLines = lines.filter((line) => {
-            const raw = String(line.getAttribute('points') || '').trim();
-            return raw ? raw.split(/\\s+/).length >= 4 : false;
+          const visibleBodies = bodies.filter((body) => {
+            const width = Number(body.getAttribute('width') || 0);
+            const height = Number(body.getAttribute('height') || 0);
+            return width > 0 && height > 0;
           }).length;
           return {
             cards: cards.length,
-            lines: lines.length,
+            bodies: bodies.length,
+            wicks: wicks.length,
             points: points.length,
             guides: guides.length,
-            multiPointLines,
+            visibleBodies,
           };
         }
         """
     )
-    if result["lines"] and (
-        result["multiPointLines"] != result["lines"]
-        or result["points"] < result["multiPointLines"] * 3
-        or result["guides"] < result["multiPointLines"] * 2
+    if result["bodies"] and (
+        result["visibleBodies"] != result["bodies"]
+        or result["wicks"] < result["bodies"]
+        or result["points"] < max(1, result["cards"])
+        or result["guides"] < max(1, result["cards"] * 2)
     ):
-        raise RuntimeError(f"{name} tape sparklines lack multi-point detail: {result}")
+        raise RuntimeError(f"{name} tape candles lack visible detail: {result}")
 
 
 def _assert_topbar_menu_visuals(page, name: str) -> None:

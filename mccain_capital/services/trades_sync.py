@@ -345,6 +345,15 @@ def trades_sync_live():
     if from_date > to_date:
         from_date, to_date = to_date, from_date
     selected_account = legacy._sync_account(request.form.get("selected_account_id"), account)
+    if selected_account:
+        selected_broker_account = legacy.repo.normalize_broker_account_id(
+            selected_account.get("display_broker_account_id")
+            or legacy.repo.display_broker_account_id(selected_account.get("broker_account_id"))
+            or selected_account.get("broker_account_id")
+            or ""
+        )
+        if selected_broker_account:
+            account = selected_broker_account
 
     requested = legacy._sync_requested_payload(
         source="manual_live",

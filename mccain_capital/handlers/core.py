@@ -150,6 +150,22 @@ def dashboard_refresh_account_metrics():
     return svc.dashboard_refresh_account_metrics()
 
 
+def dashboard_seed_vanquish_session():
+    return svc.dashboard_seed_vanquish_session()
+
+
+def dashboard_manual_drawdown_update():
+    return svc.dashboard_manual_drawdown_update()
+
+
+def dashboard_manual_broker_metrics_update():
+    return svc.dashboard_manual_broker_metrics_update()
+
+
+def dashboard_manual_equity_update():
+    return svc.dashboard_manual_equity_update()
+
+
 def dashboard_milestone_update():
     return svc.dashboard_milestone_update()
 

@@ -262,6 +262,7 @@ SYNC_STAGE_HELP = {
     "locate_username": "Could not find the username input. Broker UI likely changed.",
     "locate_password": "Could not find the password input. Broker login form likely changed.",
     "submit_login": "Login did not complete. Validate credentials or check for MFA/CAPTCHA.",
+    "auth_required": "Broker returned a login page instead of statement HTML. Refresh credentials/session or use manual statement upload for this run.",
     "open_workspace_menu": "Could not open the app menu after login. Workspace may still be loading.",
     "open_statement_dialog": "Could not open Account Statement from the menu.",
     "configure_statement_period": "Could not set statement date range in the dialog.",
@@ -282,6 +283,7 @@ SYNC_STAGE_LABELS = {
     "fill_username": "Entering username.",
     "locate_password": "Finding password field.",
     "submit_login": "Submitting broker login.",
+    "auth_required": "Broker session required.",
     "open_workspace_menu": "Opening workspace menu.",
     "open_statement_dialog": "Opening statement dialog.",
     "configure_statement_period": "Setting statement date range.",
@@ -576,9 +578,14 @@ def _force_reset_sync_job(job_id: str) -> Dict[str, Any]:
     if not job:
         return {}
     status = str(job.get("status") or "").strip().lower()
-    if status in {"success", "failed", "debug_only", "cancelled"}:
+    stage = str(job.get("stage") or "").strip().lower()
+    resettable_failed_startup = status == "failed" and stage == "system_resource"
+    if status in {"success", "debug_only", "cancelled"} or (
+        status == "failed" and not resettable_failed_startup
+    ):
         return job
     _sync_cancel_event(job_id).set()
+    vanquish_live_sync.reset_browser_boot_lane()
     summary = {
         "message": "Sync lane force-reset. Late output from the prior run will be ignored.",
         "warn_count": 0,
@@ -1170,7 +1177,27 @@ def _load_last_sync_status() -> Dict[str, Any]:
     return parsed
 
 
+def _reset_browser_boot_lane_after_resource_failure(payload: Dict[str, Any]) -> None:
+    status = str(payload.get("status") or "").strip().lower()
+    stage = str(payload.get("stage") or "").strip().lower()
+    if status != "failed" or stage != "system_resource":
+        return
+    message = str(payload.get("message") or "").strip().lower()
+    if not (
+        "chromium" in message
+        or "browser boot" in message
+        or "startup resources" in message
+        or "resource temporarily unavailable" in message
+        or "can't start new thread" in message
+        or "cannot start new thread" in message
+        or "pthread_create" in message
+    ):
+        return
+    vanquish_live_sync.reset_browser_boot_lane()
+
+
 def _save_last_sync_status(payload: Dict[str, Any]) -> None:
+    _reset_browser_boot_lane_after_resource_failure(payload)
     _safe_write_json(_broker_sync_status_path(), payload)
     status = str(payload.get("status") or "").strip().lower()
     if status not in {"success", "failed", "debug_only"}:
@@ -1696,10 +1723,19 @@ def _debug_relative(path: str) -> str:
 def _classify_sync_stage(raw_error: str, fallback_stage: str = "unknown") -> str:
     text = str(raw_error or "").strip().lower()
     if (
+        "login page instead of statement html" in text
+        or "broker login page instead of statement html" in text
+        or "received login page" in text
+    ):
+        return "auth_required"
+    if (
         "resource temporarily unavailable" in text
         or "[errno 11]" in text
         or "can't start new thread" in text
         or "cannot start new thread" in text
+        or "pthread_create" in text
+        or "startup resources are busy" in text
+        or "another browser boot is still active" in text
     ):
         return "system_resource"
     if "permission denied" in text or "[errno 13]" in text:
@@ -1855,6 +1891,20 @@ def _capture_account_metrics_for_sync(
     }
 
 
+def _sync_account_broker_equity_from_statement(
+    *,
+    account_id: int,
+    statement_ending_balance: float | None,
+) -> bool:
+    if account_id <= 0 or statement_ending_balance is None:
+        return False
+    repo.update_account_broker_equity_from_statement(
+        account_id,
+        broker_equity=float(statement_ending_balance),
+    )
+    return True
+
+
 def _handle_statement_html_import(
     path: str,
     mode: str,
@@ -1881,6 +1931,10 @@ def _handle_statement_html_import(
                     account_id=int(account["id"]),
                     upload_id=upload_id,
                     raw_line=source_label,
+                )
+                _sync_account_broker_equity_from_statement(
+                    account_id=int(account["id"]),
+                    statement_ending_balance=balance_val,
                 )
                 ledger_balance = latest_balance_overall(
                     account_id=int(account["id"]),
@@ -1974,6 +2028,10 @@ def _handle_statement_html_import(
             commit=True,
             import_batch_id=batch_id,
         )
+        _sync_account_broker_equity_from_statement(
+            account_id=int(account["id"]),
+            statement_ending_balance=balance_val,
+        )
         _record_import_batch(
             batch_id=batch_id,
             source=source_label,
@@ -2018,6 +2076,10 @@ def _handle_statement_html_import(
         account_id=int(account["id"]),
         upload_id=upload_id,
         raw_line=source_label,
+    )
+    _sync_account_broker_equity_from_statement(
+        account_id=int(account["id"]),
+        statement_ending_balance=balance_val,
     )
     _record_import_batch(
         batch_id=batch_id,
@@ -2524,6 +2586,10 @@ def trades_upload_pdf():
     if request.method == "POST":
         form_intent = (request.form.get("intent") or "import").strip().lower()
         if form_intent == "save_account":
+            prior_scope = repo.account_scope_snapshot()
+            prior_account_id = _coerce_account_id(
+                request.form.get("rollover_from_account_id") or prior_scope.get("account_id")
+            )
             account_name = (request.form.get("account_name") or "").strip()
             broker_account_id = (request.form.get("broker_account_id") or "").strip()
             account_size = parse_float(request.form.get("account_size") or "")
@@ -2544,6 +2610,8 @@ def trades_upload_pdf():
                     max_drawdown=max_drawdown,
                 )
                 repo.set_active_account(target_account_id)
+                if repo.maybe_link_rollover_account(int(target_account_id), prior_account_id):
+                    flash("Linked prior eval account for dashboard continuity.", "success")
                 flash("Account updated.", "success")
             else:
                 existing_account = repo.find_account_by_broker_account_id(broker_account_id)
@@ -2558,6 +2626,8 @@ def trades_upload_pdf():
                         starting_balance=float(starting_balance),
                         max_drawdown=max_drawdown,
                     )
+                    if repo.maybe_link_rollover_account(int(created), prior_account_id):
+                        flash("Linked prior eval account for dashboard continuity.", "success")
                     flash("Account updated.", "success")
                 else:
                     created = repo.create_account(
@@ -2569,6 +2639,8 @@ def trades_upload_pdf():
                         max_drawdown=max_drawdown,
                     )
                     flash("Account created.", "success")
+                    if repo.maybe_link_rollover_account(int(created), prior_account_id):
+                        flash("Linked prior eval account for dashboard continuity.", "success")
                 repo.set_active_account(int(created))
             return redirect(url_for("trades_upload_pdf", ws=workspace, account_id=""))
         if form_intent == "archive_account":
@@ -2640,12 +2712,27 @@ def trades_upload_pdf():
             )
         f = request.files.get("pdf")
         mode = (request.form.get("mode") or "broker").strip()  # broker | balance
+        pasted_html = (request.form.get("statement_html") or "").strip()
         selected_account = _require_import_account(request.form.get("selected_account_id"))
         if not selected_account:
             return redirect(url_for("trades_upload_pdf", ws=workspace))
 
-        if not f or not f.filename:
+        if (not f or not f.filename) and not pasted_html:
             return render_page(simple_msg("Please upload a file."), active="trades")
+
+        if pasted_html and (not f or not f.filename):
+            filename = f"statement_paste_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            path = os.path.join(_upload_dir(), filename)
+            os.makedirs(_upload_dir(), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as out:
+                out.write(pasted_html)
+            return _handle_statement_html_import(
+                path,
+                mode=mode,
+                source_label="STATEMENT HTML PASTE",
+                account=selected_account,
+                filename=filename,
+            )
 
         filename = secure_filename(f.filename)
         _, ext = os.path.splitext(filename.lower())
@@ -2764,6 +2851,7 @@ def trades_upload_pdf():
 
     # GET
     selected_account = _selected_account(request.args.get("account_id"))
+    rollover_from_account_id = _coerce_account_id(request.args.get("rollover_from"))
     account_form_mode = (
         "new" if workspace == "live" and account_editor_mode == "new" else "edit" if selected_account else "new"
     )
@@ -2809,6 +2897,7 @@ def trades_upload_pdf():
         selected_account=selected_account,
         account_form_mode=account_form_mode,
         account_form_account=account_form_account,
+        rollover_from_account_id=rollover_from_account_id,
         live_account_form_open=(
             workspace == "live"
             and account_editor_mode in {"edit", "new"}
@@ -2997,6 +3086,10 @@ def _run_live_sync_once(
                 artifacts_rel = artifacts_rel + [
                     _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
                 ]
+                _sync_account_broker_equity_from_statement(
+                    account_id=account_id,
+                    statement_ending_balance=balance_for_snapshot,
+                )
                 result.update(
                     {
                         "ok": True,
@@ -3093,6 +3186,10 @@ def _run_live_sync_once(
         artifacts_rel = artifacts_rel + [
             _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
         ]
+        _sync_account_broker_equity_from_statement(
+            account_id=account_id,
+            statement_ending_balance=balance_val,
+        )
         msg = f"{source_label}: inserted {inserted} trade(s)."
         if errors:
             msg = f"{msg} Warnings: {len(errors)}."
@@ -3157,6 +3254,10 @@ def _run_live_sync_once(
     artifacts_rel = artifacts_rel + [
         _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
     ]
+    _sync_account_broker_equity_from_statement(
+        account_id=int(selected_account["id"]),
+        statement_ending_balance=balance_val,
+    )
     result.update(
         {
             "ok": True,
@@ -3542,17 +3643,12 @@ def _start_sync_job(
         _start_sync_job_thread(app, worker_payload)
     except Exception as e:
         raw_message = str(e)
-        if _classify_sync_stage(raw_message, "queue_dispatch") == "system_resource":
-            _update_bg_job(
-                job["id"],
-                status="running",
-                stage="queue_dispatch",
-                message="Sync worker resources were constrained; running import inline.",
-            )
-            _execute_sync_job(app=app, **worker_payload)
-            return _get_bg_job(job["id"])
         fail_message = _strip_stage_prefix(raw_message)
         stage = _classify_sync_stage(raw_message, "queue_dispatch")
+        if stage == "system_resource":
+            fail_message = (
+                "Chromium startup resources are busy. Another browser boot is still active."
+            )
         _save_last_sync_status(
             {
                 "job_id": job["id"],
@@ -3582,8 +3678,11 @@ def _start_sync_job(
                 tone="danger",
                 title="Live Sync Failed",
                 happened=fail_message,
-                changed="The sync job could not be handed off to the background dispatcher.",
-                next_action="Retry once load settles. If it repeats, inspect app resource limits.",
+                changed="No trade import was committed.",
+                next_action=(
+                    "Click Force Reset Lane, wait a few seconds, then retry once. "
+                    "Use manual statement upload if startup remains busy."
+                ),
                 actions=[
                     {
                         "label": "Open Live Sync",
@@ -3649,6 +3748,16 @@ def trades_sync_live():
         flash("Saved live sync credentials cleared.", "success")
         return redirect(url_for("trades_upload_pdf", ws="live"))
 
+    active_job = _latest_active_sync_job()
+    if active_job:
+        message = "A live sync job is already active. Force Reset Lane before starting another run."
+        if wants_async:
+            return jsonify(
+                {"ok": False, "message": message, "job": _job_response_payload(active_job)}
+            ), 409
+        flash(message, "warn")
+        return redirect(url_for("trades_upload_pdf", ws="live", job=active_job["id"]))
+
     password_for_run = password or stored_password
 
     if not username or not password_for_run:
@@ -3673,8 +3782,14 @@ def trades_sync_live():
                 {"ok": False, "message": "Please select an account before uploading trades."}
             ), 400
         return redirect(url_for("trades_upload_pdf", ws="live"))
-    if not account:
-        account = str(selected_account.get("broker_account_id") or "").strip()
+    selected_broker_account = repo.normalize_broker_account_id(
+        selected_account.get("display_broker_account_id")
+        or repo.display_broker_account_id(selected_account.get("broker_account_id"))
+        or selected_account.get("broker_account_id")
+        or ""
+    )
+    if selected_broker_account:
+        account = selected_broker_account
 
     requested = _sync_requested_payload(
         source="manual_live",

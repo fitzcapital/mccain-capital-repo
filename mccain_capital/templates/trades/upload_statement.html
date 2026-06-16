@@ -249,6 +249,7 @@
 {% set credential_save_requested = effective_requested.get('credential_save_requested') %}
 {% set credential_save_status = (effective_requested.get('credential_save_status') or '')|lower %}
 {% set credential_save_detail = effective_requested.get('credential_save_detail') or '' %}
+{% set manual_recovery_visible = effective_status in ['failed', 'stale'] or effective_stage in ['capture_statement_html', 'auth_required'] %}
 <div class="workspaceShell syncWorkspaceLive">
   <div class="workspacePrimary">
     <div class="card stack12 syncLaunchHero">
@@ -284,6 +285,16 @@
           <input type="hidden" name="selected_account_id" value="{{ account.id }}" />
         </form>
         {% endfor %}
+        {% if selected_account %}
+        <form
+          method="post"
+          action="{{ url_for('dashboard_manual_drawdown_update') }}"
+          id="live-drawdown-form"
+        >
+          <input type="hidden" name="account_id" value="{{ selected_account.id }}">
+          <input type="hidden" name="next" value="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}">
+        </form>
+        {% endif %}
         <form method="post" action="/trades/sync/live" id="live-sync-form">
           <div class="row">
             <div class="fieldGrow2">
@@ -313,9 +324,26 @@
                 {% set live_dd_tone = 'positive' if live_remaining_dd > 2250 else 'negative' if live_remaining_dd < 1500 else 'warning' %}
                 <span class="trendChip {{ live_dd_tone }}">DD left {{ money(live_remaining_dd) }}</span>
               {% endif %}
+              {% if selected_account %}
+                <div class="syncInlineDrawdownForm">
+                  <label class="srOnly" for="live-manual-drawdown-input">Manual remaining drawdown</label>
+                  <input
+                    id="live-manual-drawdown-input"
+                    form="live-drawdown-form"
+                    name="broker_remaining_drawdown"
+                    type="number"
+                    inputmode="decimal"
+                    min="0"
+                    step="0.01"
+                    value="{% if selected_account.get('broker_remaining_drawdown') is not none %}{{ '%.2f'|format(selected_account.get('broker_remaining_drawdown')) }}{% endif %}"
+                    placeholder="Remaining DD"
+                  >
+                  <button class="btn" type="submit" form="live-drawdown-form">Save DD</button>
+                </div>
+              {% endif %}
               {% if not selected_account %}<span class="trendChip warning">Required before import</span>{% endif %}
             </div>
-            <div class="tiny line15 syncCredentialHint">Selected ledger only · full-file scan · account-only dedupe</div>
+            <div class="tiny line15 syncCredentialHint">Live upload updates equity · remaining drawdown is manual · rollover-aware dedupe</div>
           </div>
           <div class="row syncLaunchCompactRow">
             <div>
@@ -394,6 +422,7 @@
             <summary><span class="syncFieldIcon">{{ app_icon('self') }}</span><span>{{ 'New Account' if account_form_mode == 'new' else 'Update Account' }}</span></summary>
             <div class="stack10">
               <input type="hidden" name="selected_account_id" value="{{ account_form_account.id if account_form_account else '' }}" form="live-account-form" />
+              <input type="hidden" name="rollover_from_account_id" value="{{ rollover_from_account_id or '' }}" form="live-account-form" />
               <div class="row syncLaunchCompactRow">
                 <div class="fieldGrow2">
                   <label class="syncFieldLabel"><span class="syncFieldIcon">{{ app_icon('brief') }}</span><span>Account Name</span></label>
@@ -421,6 +450,7 @@
               {% if account_form_mode == 'new' %}
               <div class="tiny line15 syncCredentialHint">
                 New account mode is blank on purpose. Saving here creates a separate ledger and does not modify the selected account above.
+                {% if rollover_from_account_id %}If this is an OPA performance account, the prior eval account stays linked for dashboard continuity.{% endif %}
               </div>
               {% endif %}
               <div class="rightActions">
@@ -428,7 +458,7 @@
                 {% if account_form_mode == 'new' %}
                 <a class="btn" href="/trades/upload/statement?ws=live{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}">Cancel</a>
                 {% else %}
-                <a class="btn" href="/trades/upload/statement?ws=live&account_editor=new{% if selected_account %}&account_id={{ selected_account.id }}{% else %}&account_id=all{% endif %}">New Account</a>
+                <a class="btn" href="/trades/upload/statement?ws=live&account_editor=new{% if selected_account %}&account_id={{ selected_account.id }}&rollover_from={{ selected_account.id }}{% else %}&account_id=all{% endif %}">New Account</a>
                 {% endif %}
                 {% if selected_account and account_form_mode != 'new' %}
                 <button class="btn" type="submit" form="live-archive-account-form">Archive Account</button>
@@ -440,7 +470,7 @@
             <summary><span class="syncFieldIcon">{{ app_icon('ops') }}</span><span>Advanced Sync Options</span></summary>
             <div class="stack10">
               <input type="hidden" name="base_url" value="{{ broker_cfg.base_url }}" />
-              <input type="hidden" name="account" value="{{ broker_cfg.account_display or (selected_account.display_broker_account_id if selected_account else '') }}" />
+              <input type="hidden" name="account" value="{{ selected_account.display_broker_account_id if selected_account and selected_account.display_broker_account_id else broker_cfg.account_display }}" />
               <input type="hidden" name="wl" value="{{ broker_cfg.wl }}" />
               <input type="hidden" name="time_zone" value="{{ broker_cfg.time_zone }}" />
               <input type="hidden" name="date_locale" value="{{ broker_cfg.date_locale }}" />
@@ -575,6 +605,53 @@
             {{ job.get('result_html', '')|safe }}
           </div>
         </details>
+      </div>
+    </div>
+
+    <div class="card stack12 syncManualRecoveryCard" id="sync-manual-recovery-card" {% if not manual_recovery_visible %}hidden{% endif %}>
+      <div class="toolbar">
+        <div class="pillRow">
+          <div class="pill">Manual HTML Recovery</div>
+          <div class="trendChip warning">Parser fallback</div>
+        </div>
+        <div class="workspaceSectionLead">When live capture fails, upload or paste the broker statement HTML and import it with the same parser.</div>
+        <form method="post" action="/trades/upload/statement?ws=upload" enctype="multipart/form-data" id="statement-recovery-form" class="stack12">
+          <div class="row syncLaunchCompactRow">
+            <div class="fieldGrow2">
+              <label>Account Ledger</label>
+              <select name="selected_account_id">
+                <option value="">Select account…</option>
+                {% for account in accounts or [] %}
+                  <option value="{{ account.id }}" {% if selected_account and account.id == selected_account.id %}selected{% endif %}>
+                    {{ account.account_name }}{% if account.display_broker_account_id %} · {{ account.display_broker_account_id }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Mode</label>
+              <select name="mode">
+                <option value="broker">Broker fills → trades</option>
+                <option value="balance">Statement → ending balance snapshot</option>
+              </select>
+            </div>
+          </div>
+          <div class="stack10">
+            <label>HTML File</label>
+            <input type="file" name="pdf" accept="text/html,.html,.htm" />
+          </div>
+          <div class="stack10">
+            <label>Paste Statement HTML</label>
+            <textarea name="statement_html" rows="8" placeholder="Paste the exported statement HTML here when you do not have a file."></textarea>
+          </div>
+          <div class="rightActions">
+            <button class="btn primary" type="submit" id="statement-recovery-submit">Parse HTML</button>
+            <a class="btn" href="/trades/upload/statement?ws=upload{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}">Open Upload Lane</a>
+          </div>
+          <div class="tiny stack8" id="statement-recovery-loading" style="display:none;" aria-live="polite">
+            Processing statement HTML...
+          </div>
+        </form>
       </div>
     </div>
 
@@ -1269,6 +1346,13 @@
         const shouldShowFeedback = terminal || Number(feedbackSummary.inserted || 0) || Number(feedbackSummary.warn_count || 0) || Number(feedbackSummary.error_count || 0);
         feedbackCard.hidden = !shouldShowFeedback;
       }
+      const manualRecovery = document.getElementById('sync-manual-recovery-card');
+      if (manualRecovery) {
+        manualRecovery.hidden = !(
+          ['failed', 'stale'].includes(status) ||
+          ['capture_statement_html', 'auth_required'].includes(stage)
+        );
+      }
     }
 
     function syncRunwayIdForJob(job) {
@@ -1304,6 +1388,7 @@
       const loading = document.getElementById(loadingId);
       if (!form || !submitBtn || !loading) return;
       form.addEventListener('submit', function() {
+        if (form.dataset.asyncSubmit === '1') return;
         submitBtn.disabled = true;
         submitBtn.textContent = busyText;
         loading.style.display = 'block';
@@ -1587,13 +1672,24 @@
       const button = document.getElementById(submitId);
       const loading = document.getElementById(loadingId);
       if (!form || !button || !loading) return;
+      form.dataset.asyncSubmit = '1';
       form.addEventListener('submit', function(e) {
         e.preventDefault();
         setSyncSubmitState(button, loading, true, busyText, idleText);
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+        const csrfInput = form.querySelector('input[name="csrf_token"]');
+        const headers = { 'Accept': 'application/json' };
+        if (csrfInput && csrfInput.value) {
+          headers['X-CSRFToken'] = csrfInput.value;
+          headers['X-CSRF-Token'] = csrfInput.value;
+        }
         fetch(form.action + '?async=1', {
           method: 'POST',
-          headers: { 'Accept': 'application/json' },
-          body: new FormData(form)
+          headers: headers,
+          credentials: 'same-origin',
+          body: new FormData(form),
+          signal: controller.signal
         })
           .then(parseAsyncJson)
           .then((payload) => {
@@ -1608,7 +1704,10 @@
             pollJobCard(String(payload.job.id));
           })
           .catch((err) => {
-            const message = err && err.message ? String(err.message) : 'Could not start the sync job.';
+            const aborted = err && err.name === 'AbortError';
+            const message = aborted
+              ? 'Sync start timed out before the server accepted the job. Try Force Reset Lane, wait a few seconds, then retry once.'
+              : (err && err.message ? String(err.message) : 'Could not start the sync job.');
             const hasActiveJob = !!(err && err.payload && err.payload.job && err.payload.job.id);
             if (err && err.payload && err.payload.job && err.payload.job.id) {
               updateJobCard(err.payload.job);
@@ -1633,6 +1732,9 @@
               loading.style.display = 'block';
               loading.textContent = message;
             }
+          })
+          .finally(() => {
+            window.clearTimeout(timeoutId);
           });
       });
     }
@@ -1667,6 +1769,7 @@
     }
 
     bindLoading('statement-upload-form', 'statement-upload-submit', 'statement-upload-loading', '⏳ Processing...');
+    bindLoading('statement-recovery-form', 'statement-recovery-submit', 'statement-recovery-loading', 'Processing...');
     bindLoading('live-sync-form', 'live-sync-submit', 'live-sync-loading', '⏳ Syncing...');
     bindLoading('auto-sync-config-form', 'auto-sync-config-submit', 'auto-sync-config-loading', '⏳ Saving...');
     bindLoading('auto-sync-run-form', 'auto-sync-run-submit', 'auto-sync-run-loading', '⏳ Running...');

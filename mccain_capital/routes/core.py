@@ -130,6 +130,30 @@ def register(app):
         methods=["POST"],
     )
     app.add_url_rule(
+        "/dashboard/vanquish-session",
+        endpoint="dashboard_seed_vanquish_session",
+        view_func=h.dashboard_seed_vanquish_session,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/account-drawdown",
+        endpoint="dashboard_manual_drawdown_update",
+        view_func=h.dashboard_manual_drawdown_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/account-manual-metrics",
+        endpoint="dashboard_manual_broker_metrics_update",
+        view_func=h.dashboard_manual_broker_metrics_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/dashboard/account-equity",
+        endpoint="dashboard_manual_equity_update",
+        view_func=h.dashboard_manual_equity_update,
+        methods=["POST"],
+    )
+    app.add_url_rule(
         "/dashboard/milestone",
         endpoint="dashboard_milestone_update",
         view_func=h.dashboard_milestone_update,

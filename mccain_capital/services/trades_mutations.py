@@ -6,6 +6,7 @@ from datetime import datetime
 import sqlite3
 from typing import Any, List
 
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.services import trades as legacy
 
 QUICK_SETUP_CHOICES = {"Sweep", "Reversal", "Continuation", "Chop", "Other"}
@@ -78,49 +79,89 @@ def _preserve_review_with_setup(review: dict[str, Any], setup: str) -> dict[str,
 
 
 def trades_duplicate(trade_id: int):
-    src = legacy.get_trade(trade_id)
-    if not src:
+    src_row = legacy.get_trade(trade_id)
+    if not src_row:
         legacy.abort(404)
+    src = dict(src_row)
 
     net_pl = float(src["net_pl"] or 0.0)
-    new_balance = (legacy.latest_balance_overall() or 50000.0) + net_pl
+    account_id = src.get("account_id")
+    try:
+        scoped_account_id = int(account_id) if account_id not in (None, "") else None
+    except (TypeError, ValueError):
+        scoped_account_id = None
+    starting_balance = None
+    if scoped_account_id:
+        account = trades_repo.get_account(scoped_account_id)
+        if account:
+            starting_balance = float(account.get("starting_balance") or 50000.0)
+    new_balance = (
+        trades_repo.latest_balance_overall(
+            account_id=scoped_account_id,
+            starting_balance=starting_balance,
+        )
+        or 50000.0
+    ) + net_pl
 
     with legacy.db() as conn:
+        columns = _trades_table_columns(conn)
+        insert_columns = [
+            "trade_date",
+            "entry_time",
+            "exit_time",
+            "ticker",
+            "opt_type",
+            "strike",
+            "entry_price",
+            "exit_price",
+            "contracts",
+            "total_spent",
+            "stop_pct",
+            "target_pct",
+            "stop_price",
+            "take_profit",
+            "risk",
+            "comm",
+            "gross_pl",
+            "net_pl",
+            "result_pct",
+            "balance",
+            "raw_line",
+            "created_at",
+            "trade_source",
+        ]
+        values = [
+            src["trade_date"],
+            src["entry_time"] or "",
+            src["exit_time"] or "",
+            src["ticker"] or "",
+            src["opt_type"] or "",
+            src["strike"],
+            src["entry_price"],
+            src["exit_price"],
+            src["contracts"],
+            src["total_spent"],
+            src["stop_pct"],
+            src["target_pct"],
+            src["stop_price"],
+            src["take_profit"],
+            src["risk"],
+            src["comm"],
+            src["gross_pl"],
+            src["net_pl"],
+            src["result_pct"],
+            new_balance,
+            f"DUPLICATE OF #{trade_id}",
+            legacy.now_iso(),
+            str(src.get("trade_source") or "Manual Entry"),
+        ]
+        if "account_id" in columns:
+            insert_columns.append("account_id")
+            values.append(scoped_account_id)
+        qmarks = ",".join(["?"] * len(insert_columns))
         conn.execute(
-            """
-            INSERT INTO trades (
-                trade_date, entry_time, exit_time, ticker, opt_type, strike,
-                entry_price, exit_price, contracts, total_spent,
-                stop_pct, target_pct, stop_price, take_profit,
-                risk, comm, gross_pl, net_pl, result_pct, balance,
-                raw_line, created_at, trade_source
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                src["trade_date"],
-                src["entry_time"] or "",
-                src["exit_time"] or "",
-                src["ticker"] or "",
-                src["opt_type"] or "",
-                src["strike"],
-                src["entry_price"],
-                src["exit_price"],
-                src["contracts"],
-                src["total_spent"],
-                src["stop_pct"],
-                src["target_pct"],
-                src["stop_price"],
-                src["take_profit"],
-                src["risk"],
-                src["comm"],
-                src["gross_pl"],
-                src["net_pl"],
-                src["result_pct"],
-                new_balance,
-                f"DUPLICATE OF #{trade_id}",
-                legacy.now_iso(),
-                str(src.get("trade_source") or "Manual Entry"),
-            ),
+            f"INSERT INTO trades ({','.join(insert_columns)}) VALUES ({qmarks})",
+            values,
         )
 
     d = legacy.request.args.get("d", "") or (src["trade_date"] or "")

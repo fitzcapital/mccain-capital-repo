@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:
@@ -73,6 +73,8 @@ SELECTOR_PROFILES: Dict[str, List[str]] = {
         "button:has-text('Sign in')",
     ],
     "workspace_menu": [
+        "[data-test-id='system_menu_button']",
+        "[data-testid='system_menu_button']",
         "button.button.button-appMenu.button-icon",
         "button[class*='button-appMenu']",
         "button[aria-label*='menu' i]",
@@ -94,6 +96,18 @@ SELECTOR_PROFILES: Dict[str, List[str]] = {
         "input[value*='Generate']",
     ],
 }
+
+
+def reset_browser_boot_lane() -> None:
+    """Clear stale browser boot coordination after a user-forced sync reset."""
+    if fcntl is None:
+        return
+    try:
+        os.unlink(_BROWSER_BOOT_LOCK_PATH)
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
 
 
 def _contexts(page) -> List[Any]:
@@ -269,6 +283,99 @@ def _broker_account_token(account: str) -> str:
     return raw.split(":", 1)[1].strip() if ":" in raw else raw
 
 
+def _statement_url(
+    origin: str,
+    statement_path: str,
+    *,
+    wl: str,
+    from_date: str,
+    to_date: str,
+    time_zone: str,
+    account_token: str,
+    date_locale: str,
+    report_locale: str,
+) -> str:
+    return f"{origin}{statement_path}?" + urllib.parse.urlencode(
+        {
+            "wl": wl,
+            "format": "html",
+            "from": from_date,
+            "to": to_date,
+            "timeZone": time_zone,
+            "account": account_token,
+            "dateLocale": date_locale,
+            "reportLocale": report_locale,
+        }
+    )
+
+
+def _extract_active_workspace_account_token(html_text: str) -> Optional[str]:
+    text = str(html_text or "")
+    if not text:
+        return None
+    account_pattern = re.compile(r"\b[A-Z]{2,4}\d{5,}\b")
+    marker_patterns = (
+        r"account_switcher_button",
+        r"account-switcher-control",
+        r"account-title",
+    )
+    for marker in marker_patterns:
+        match = re.search(marker, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        start = max(0, match.start() - 1200)
+        end = min(len(text), match.end() + 1800)
+        tokens = account_pattern.findall(text[start:end].upper())
+        if not tokens:
+            continue
+        broker_tokens = [token for token in tokens if token.startswith(("OPA", "OEV"))]
+        return broker_tokens[0] if broker_tokens else tokens[0]
+    return None
+
+
+def _active_workspace_account_token(page) -> Optional[str]:
+    selectors = [
+        "[data-test-id='account_switcher_button']",
+        "[data-testid='account_switcher_button']",
+        "[class*='account-switcher-control']",
+    ]
+    for selector in selectors:
+        try:
+            locator = page.locator(selector)
+            if locator.count() <= 0:
+                continue
+            token = _extract_active_workspace_account_token(locator.first.inner_text(timeout=1500))
+            if token:
+                return token
+        except Exception:
+            continue
+    try:
+        return _extract_active_workspace_account_token(page.content())
+    except Exception:
+        return None
+
+
+def _compact_account_token(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper())
+
+
+def _find_account_span(text: str, account_token: str) -> Optional[Tuple[int, int]]:
+    token = _compact_account_token(account_token)
+    if not token:
+        return None
+    direct = re.search(re.escape(account_token), text, flags=re.IGNORECASE)
+    if direct:
+        return direct.span()
+    flexible_pattern = r"[\W_]*".join(re.escape(char) for char in token)
+    flexible = re.search(flexible_pattern, text, flags=re.IGNORECASE)
+    if flexible:
+        return flexible.span()
+    compact_text = _compact_account_token(text)
+    if token not in compact_text:
+        return None
+    return (0, len(text))
+
+
 def _money_from_text(value: str) -> Optional[float]:
     text = str(value or "").replace("\u202f", " ").replace("\u00a0", " ")
     match = re.search(r"[-+]?\$?\s*[\d,]+(?:\.\d{1,2})?", text)
@@ -286,18 +393,12 @@ def parse_account_metrics_from_dashboard_text(text: str, account: str) -> Dict[s
     account_token = _broker_account_token(account)
     normalized = str(text or "").replace("\u202f", " ").replace("\u00a0", " ")
     normalized = re.sub(r"[ \t]+", " ", normalized)
-    if account_token and account_token not in normalized:
-        return {
-            "ok": False,
-            "reason": f"Account {account_token} was not found on dashboard accounts page.",
-            "account": account_token,
-            "metrics": {},
-        }
+    account_span = _find_account_span(normalized, account_token) if account_token else None
 
-    if account_token:
-        idx = normalized.find(account_token)
+    if account_span:
+        idx = account_span[0]
         start = max(0, idx - 1500)
-        end = min(len(normalized), idx + 3500)
+        end = min(len(normalized), account_span[1] + 3500)
         scoped = normalized[start:end]
     else:
         scoped = normalized
@@ -322,16 +423,325 @@ def parse_account_metrics_from_dashboard_text(text: str, account: str) -> Dict[s
             metrics[key] = value
 
     ok = all(key in metrics for key in labels)
+    found_account = bool(account_span) or not account_token
+    if ok and not found_account:
+        reason = ""
+    elif ok:
+        reason = ""
+    elif account_token and not found_account:
+        reason = (
+            f"Account {account_token} was not found on dashboard accounts page and "
+            "not all metrics were visible."
+        )
+    else:
+        reason = "Could not parse all account dashboard metrics."
     return {
         "ok": ok,
-        "reason": "" if ok else "Could not parse all account dashboard metrics.",
+        "reason": reason,
         "account": account_token,
         "metrics": metrics,
         "markers": {
-            "found_account": bool(account_token and account_token in normalized),
+            "found_account": found_account,
+            "account_match": "label" if found_account else "metrics_only",
             "parsed_keys": sorted(metrics.keys()),
         },
     }
+
+
+def _number_from_graphql_value(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        return _money_from_text(value)
+    return None
+
+
+def _graphql_account_matches(candidate: Dict[str, Any], account_token: str) -> bool:
+    wanted = _compact_account_token(account_token)
+    if not wanted:
+        return True
+    account_keys = (
+        "account",
+        "accountId",
+        "accountID",
+        "accountNumber",
+        "accountName",
+        "brokerAccountId",
+        "brokerAccountID",
+        "login",
+        "name",
+        "number",
+        "tradingAccountId",
+    )
+    for key in account_keys:
+        value = candidate.get(key)
+        if isinstance(value, dict):
+            if _graphql_account_matches(value, account_token):
+                return True
+            continue
+        compact = _compact_account_token(str(value or ""))
+        if wanted and compact and (wanted in compact or compact in wanted):
+            return True
+    return False
+
+
+def _walk_graphql_dicts(value: Any) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    if isinstance(value, dict):
+        out.append(value)
+        for child in value.values():
+            out.extend(_walk_graphql_dicts(child))
+    elif isinstance(value, list):
+        for child in value:
+            out.extend(_walk_graphql_dicts(child))
+    return out
+
+
+def _graphql_metric_value(candidate: Dict[str, Any], keys: Tuple[str, ...]) -> Optional[float]:
+    lower_lookup = {str(key).lower(): value for key, value in candidate.items()}
+    for key in keys:
+        value = lower_lookup.get(key.lower())
+        parsed = _number_from_graphql_value(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def parse_account_metrics_from_graphql_payload(
+    payload: Any,
+    account: str,
+) -> Dict[str, Any]:
+    account_token = _broker_account_token(account)
+    all_dicts = _walk_graphql_dicts(payload)
+    candidates: List[Dict[str, Any]] = []
+    for item in all_dicts:
+        has_metric_shape = any(
+            key.lower()
+            in {
+                "equity",
+                "balance",
+                "equitypeak",
+                "highwatermark",
+                "failurethreshold",
+                "drawdown",
+                "remainingdrawdown",
+                "trailingdrawdown",
+            }
+            for key in item
+        )
+        if has_metric_shape:
+            candidates.append(item)
+
+    matched = [
+        candidate for candidate in candidates if _graphql_account_matches(candidate, account_token)
+    ]
+    complete_candidates = [
+        candidate
+        for candidate in candidates
+        if _graphql_metric_value(candidate, ("equity", "balance", "currentEquity")) is not None
+        and (
+            _graphql_metric_value(
+                candidate,
+                ("failureThreshold", "maxLoss", "lossLimitThreshold", "drawdownLimit"),
+            )
+            is not None
+            or _graphql_metric_value(
+                candidate,
+                ("remainingDrawdown", "drawdownRemaining", "availableDrawdown"),
+            )
+            is not None
+        )
+    ]
+    search_space = matched or (complete_candidates if len(complete_candidates) == 1 else [])
+    best_metrics: Dict[str, float] = {}
+    for candidate in search_space:
+        equity = _graphql_metric_value(candidate, ("equity", "balance", "currentEquity"))
+        peak = _graphql_metric_value(
+            candidate,
+            ("equityPeak", "peakEquity", "highWaterMark", "maxEquity"),
+        )
+        max_loss = _graphql_metric_value(
+            candidate,
+            ("failureThreshold", "maxLoss", "lossLimitThreshold", "drawdownLimit"),
+        )
+        remaining = _graphql_metric_value(
+            candidate,
+            ("remainingDrawdown", "drawdownRemaining", "availableDrawdown"),
+        )
+        drawdown = _graphql_metric_value(candidate, ("drawdown", "trailingDrawdown"))
+        metrics: Dict[str, float] = {}
+        if equity is not None:
+            metrics["broker_equity"] = equity
+        if peak is not None:
+            metrics["broker_equity_peak"] = peak
+        elif equity is not None:
+            metrics["broker_equity_peak"] = equity
+        if max_loss is not None:
+            metrics["broker_max_loss"] = max_loss
+        if remaining is not None:
+            metrics["broker_remaining_drawdown"] = remaining
+        elif equity is not None and max_loss is not None:
+            metrics["broker_remaining_drawdown"] = round(equity - max_loss, 2)
+        elif drawdown is not None and drawdown >= 0:
+            metrics["broker_remaining_drawdown"] = drawdown
+
+        if len(metrics) > len(best_metrics):
+            best_metrics = metrics
+        if {"broker_equity", "broker_remaining_drawdown", "broker_max_loss"}.issubset(metrics):
+            best_metrics = metrics
+            break
+
+    ok = bool(
+        best_metrics.get("broker_equity") is not None
+        and (
+            best_metrics.get("broker_remaining_drawdown") is not None
+            or best_metrics.get("broker_max_loss") is not None
+        )
+    )
+    return {
+        "ok": ok,
+        "reason": "" if ok else "No complete account metrics were found in GraphQL responses.",
+        "account": account_token,
+        "metrics": best_metrics,
+        "markers": {
+            "found_account": bool(matched) or (not account_token and bool(candidates)),
+            "account_match": "graphql" if matched else "single_candidate" if search_space else "none",
+            "candidate_count": len(candidates),
+            "matched_candidate_count": len(matched),
+            "parsed_keys": sorted(best_metrics.keys()),
+            "source": "graphql",
+        },
+    }
+
+
+def _dashboard_body_text(page: Any, timeout_ms: int) -> str:
+    try:
+        return str(page.locator("body").inner_text(timeout=timeout_ms) or "")
+    except Exception:
+        return ""
+
+
+def _dashboard_requires_auth(*, final_url: str, visible_text: str, account_token: str = "") -> bool:
+    url_lower = str(final_url or "").strip().lower()
+    text_lower = str(visible_text or "").lower()
+    auth_url_markers = (
+        "accounts.google.com",
+        "/login",
+        "/signin",
+        "/sign-in",
+        "/signup",
+        "/sign-up",
+        "/auth/",
+    )
+    auth_text_markers = (
+        "sign in with google",
+        "continue with google",
+        "log in with google",
+        "create an account",
+        "sign up",
+    )
+    has_account_text = bool(account_token and account_token in str(visible_text or ""))
+    return any(marker in url_lower for marker in auth_url_markers) or (
+        not has_account_text and any(marker in text_lower for marker in auth_text_markers)
+    )
+
+
+def _advance_dashboard_account_view(page: Any, account_token: str) -> str:
+    script = """
+    (token) => {
+      const compact = (value) => String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+      const wanted = compact(token);
+      const visible = (el) => {
+        if (!el || !el.isConnected) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 6 && rect.height > 6 && style.visibility !== 'hidden' && style.display !== 'none';
+      };
+      const clickTarget = (el) => {
+        const target = el.closest('button,a,[role="button"],[tabindex]') || el;
+        target.click();
+        return true;
+      };
+      const accountNodes = Array.from(document.querySelectorAll('button,a,[role="button"],[tabindex],div,span,li'))
+        .filter(visible)
+        .filter((el) => compact(el.innerText || el.textContent || '').includes(wanted));
+      if (accountNodes.length) return clickTarget(accountNodes[0]);
+
+      const controls = Array.from(document.querySelectorAll('button,[role="button"],a')).filter(visible);
+      const explicitNext = controls.find((el) => {
+        const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.innerText || ''}`.toLowerCase();
+        return label.includes('next') || label.includes('right');
+      });
+      if (explicitNext) return clickTarget(explicitNext);
+
+      const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+      const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+      const rightRailButton = controls
+        .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+        .filter(({ rect }) => (
+          rect.left > viewportW * 0.72 &&
+          rect.top < viewportH * 0.42 &&
+          rect.width >= 28 &&
+          rect.width <= 110 &&
+          rect.height >= 28 &&
+          rect.height <= 110
+        ))
+        .sort((a, b) => b.rect.left - a.rect.left)[0];
+      if (rightRailButton) return clickTarget(rightRailButton.el);
+      return false;
+    }
+    """
+    try:
+        return "clicked" if page.evaluate(script, account_token) else "not_found"
+    except Exception as exc:
+        return f"failed:{exc}"
+
+
+def _read_dashboard_account_metrics(
+    page: Any,
+    account_token: str,
+    *,
+    timeout_ms: int,
+    warnings: List[str],
+    meta: Dict[str, Any],
+) -> Tuple[str, Dict[str, Any]]:
+    last_text = ""
+    last_parsed: Dict[str, Any] = {}
+    selection_steps: List[Dict[str, Any]] = []
+    for attempt in range(1, 8):
+        visible_text = _dashboard_body_text(page, timeout_ms)
+        last_text = visible_text
+        parsed = parse_account_metrics_from_dashboard_text(visible_text, account_token)
+        last_parsed = parsed
+        markers = dict(parsed.get("markers") or {})
+        selection_steps.append(
+            {
+                "attempt": attempt,
+                "ok": bool(parsed.get("ok")),
+                "found_account": bool(markers.get("found_account")),
+                "parsed_keys": markers.get("parsed_keys") or [],
+            }
+        )
+        if parsed.get("ok") and (
+            markers.get("found_account") or markers.get("account_match") == "metrics_only"
+        ):
+            break
+        action = _advance_dashboard_account_view(page, account_token)
+        selection_steps[-1]["action"] = action
+        if action == "not_found":
+            break
+        try:
+            page.wait_for_timeout(1000)
+        except Exception:
+            pass
+    meta["account_selection_steps"] = selection_steps
+    if not last_parsed.get("ok"):
+        warnings.append(
+            "Vanquish account metrics were not visible after checking dashboard account cards."
+        )
+    return last_text, last_parsed
 
 
 def fetch_account_metrics_via_dashboard(
@@ -389,7 +799,7 @@ def fetch_account_metrics_via_dashboard(
     use_storage_state = os.path.isfile(storage_state_path)
     browser = None
     context = None
-    with sync_playwright() as p:
+    with _browser_boot_gate(timeout_s=12.0), sync_playwright() as p:
         try:
             mark("capture_account_metrics", "Opening Vanquish account metrics dashboard.")
             launch_args = [
@@ -421,6 +831,32 @@ def fetch_account_metrics_via_dashboard(
                 )
             page = context.pages[0] if context.pages else context.new_page()
             page.set_default_timeout(timeout_ms)
+            graphql_payloads: List[Any] = []
+            graphql_operation_names: List[str] = []
+
+            def capture_graphql_response(response: Any) -> None:
+                try:
+                    url = str(getattr(response, "url", "") or "").lower()
+                    if "graphql" not in url and "appsync" not in url:
+                        return
+                    payload = response.json()
+                except Exception:
+                    return
+                graphql_payloads.append(payload)
+                try:
+                    request_payload = response.request.post_data_json
+                    if callable(request_payload):
+                        request_payload = request_payload()
+                except Exception:
+                    request_payload = None
+                request_items = request_payload if isinstance(request_payload, list) else [request_payload]
+                for item in request_items:
+                    if isinstance(item, dict) and item.get("operationName"):
+                        operation = str(item.get("operationName") or "")
+                        if operation and operation not in graphql_operation_names:
+                            graphql_operation_names.append(operation)
+
+            page.on("response", capture_graphql_response)
             page.goto(meta["dashboard_url"], wait_until="domcontentloaded", timeout=timeout_ms)
             try:
                 page.wait_for_load_state("networkidle", timeout=timeout_ms)
@@ -431,33 +867,73 @@ def fetch_account_metrics_via_dashboard(
             except Exception:
                 pass
 
+            visible_text = _dashboard_body_text(page, timeout_ms)
+            if _dashboard_requires_auth(
+                final_url=str(getattr(page, "url", "") or ""),
+                visible_text=visible_text,
+                account_token=account_token,
+            ):
+                warnings.append(
+                    "Dashboard account metrics require Vanquish/Google login. Seed the dashboard "
+                    "session, then run diagnostic refresh again."
+                )
+                meta.update({"status": "auth_required", "final_url": page.url})
+                return None, warnings, artifacts, meta
+
+            graphql_parsed = {"ok": False, "markers": {"parsed_keys": []}, "metrics": {}}
+            for payload in graphql_payloads:
+                parsed_payload = parse_account_metrics_from_graphql_payload(payload, account_token)
+                if len(parsed_payload.get("metrics") or {}) > len(
+                    graphql_parsed.get("metrics") or {}
+                ):
+                    graphql_parsed = parsed_payload
+                if parsed_payload.get("ok"):
+                    graphql_parsed = parsed_payload
+                    break
+            meta.update(
+                {
+                    "graphql_response_count": len(graphql_payloads),
+                    "graphql_operation_names": graphql_operation_names[:20],
+                    "graphql_candidate_count": (
+                        graphql_parsed.get("markers", {}).get("candidate_count", 0)
+                    ),
+                }
+            )
+
             shot = _debug_shot(page, debug_dir, "account_metrics_dashboard.png")
             if shot:
                 artifacts.append(shot)
             html_path = _debug_write(debug_dir, "account_metrics_dashboard.html", page.content())
             if html_path:
                 artifacts.append(html_path)
-            visible_text = page.locator("body").inner_text(timeout=timeout_ms)
             text_path = _debug_write(debug_dir, "account_metrics_dashboard.txt", visible_text)
             if text_path:
                 artifacts.append(text_path)
-            url_lower = str(getattr(page, "url", "") or "").lower()
-            text_lower = visible_text.lower()
-            if "accounts.google.com" in url_lower or (
-                "sign in with google" in text_lower and account_token not in visible_text
-            ):
-                warnings.append(
-                    "Dashboard account metrics require Google login. Run one headed sync after "
-                    "signing into Vanquish dashboard to seed the dashboard profile."
-                )
-                meta.update({"status": "auth_required", "final_url": page.url})
-                return None, warnings, artifacts, meta
-
-            parsed = parse_account_metrics_from_dashboard_text(visible_text, account_token)
             try:
                 context.storage_state(path=storage_state_path)
             except Exception:
                 warnings.append("Could not refresh Vanquish dashboard storage-state file.")
+
+            if graphql_parsed.get("ok"):
+                meta.update(
+                    {
+                        "status": "success",
+                        "final_url": page.url,
+                        "validation_result": graphql_parsed,
+                        "profile_dir": profile_dir,
+                        "storage_state_path": storage_state_path,
+                        "used_storage_state": use_storage_state,
+                    }
+                )
+                return dict(graphql_parsed.get("metrics") or {}), warnings, artifacts, meta
+
+            visible_text, parsed = _read_dashboard_account_metrics(
+                page,
+                account_token,
+                timeout_ms=timeout_ms,
+                warnings=warnings,
+                meta=meta,
+            )
             meta.update(
                 {
                     "status": "success" if parsed.get("ok") else "parse_failed",
@@ -480,6 +956,151 @@ def fetch_account_metrics_via_dashboard(
         finally:
             _safe_close(context)
             _safe_close(browser)
+
+
+def seed_dashboard_session(
+    *,
+    headless: bool = False,
+    timeout_ms: int = 180000,
+    debug_dir: Optional[str] = None,
+    progress_cb: Optional[Callable[[str, str], None]] = None,
+) -> Tuple[List[str], List[str], Dict[str, Any]]:
+    warnings: List[str] = []
+    artifacts: List[str] = []
+    meta: Dict[str, Any] = {
+        "dashboard_url": "https://www.vanquishtrader.com/dashboard/accounts",
+        "requires_google_session": True,
+        "status": "started",
+    }
+
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except Exception as e:  # pragma: no cover - dependency optional at runtime
+        warnings.append(f"Skipped dashboard session seed: Playwright unavailable ({e}).")
+        meta["status"] = "playwright_unavailable"
+        return warnings, artifacts, meta
+
+    def mark(stage: str, message: str) -> None:
+        if progress_cb:
+            try:
+                progress_cb(stage, message)
+            except Exception:
+                pass
+
+    profile_dir = str(
+        os.environ.get("VANQUISH_DASHBOARD_PROFILE_DIR")
+        or os.path.join(
+            os.environ.get("PERSISTENT_DATA_DIR", "persistent-data"),
+            "vanquish-dashboard-profile",
+        )
+    )
+    storage_state_path = str(
+        os.environ.get("VANQUISH_DASHBOARD_STORAGE_STATE")
+        or os.path.join(
+            os.environ.get("PERSISTENT_DATA_DIR", "persistent-data"),
+            "vanquish-dashboard-storage-state.json",
+        )
+    )
+    os.makedirs(profile_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(storage_state_path) or ".", exist_ok=True)
+    meta.update(
+        {
+            "profile_dir": profile_dir,
+            "storage_state_path": storage_state_path,
+            "used_storage_state": False,
+        }
+    )
+
+    context = None
+    with _browser_boot_gate(timeout_s=45.0), sync_playwright() as p:
+        try:
+            mark("seed_dashboard_session", "Opening headed Vanquish dashboard session.")
+            context = p.chromium.launch_persistent_context(
+                profile_dir,
+                headless=headless,
+                args=[
+                    "--window-size=1920,1080",
+                    "--disable-dev-shm-usage",
+                    "--no-first-run",
+                ],
+                chromium_sandbox=False,
+                viewport={"width": 1920, "height": 1080},
+                screen={"width": 1920, "height": 1080},
+            )
+            page = context.pages[0] if context.pages else context.new_page()
+            page.set_default_timeout(timeout_ms)
+            page.goto(meta["dashboard_url"], wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            except PlaywrightTimeoutError:
+                warnings.append("Dashboard seed page did not reach network idle; checking visible state.")
+
+            deadline = time.time() + (max(timeout_ms, 1000) / 1000.0)
+            visible_text = ""
+            while time.time() < deadline:
+                visible_text = _dashboard_body_text(page, min(timeout_ms, 5000))
+                if not _dashboard_requires_auth(
+                    final_url=str(getattr(page, "url", "") or ""),
+                    visible_text=visible_text,
+                ):
+                    break
+                try:
+                    page.wait_for_timeout(1500)
+                except Exception:
+                    time.sleep(1.5)
+
+            final_url = str(getattr(page, "url", "") or "")
+            auth_required = _dashboard_requires_auth(
+                final_url=final_url,
+                visible_text=visible_text,
+            )
+
+            shot = _debug_shot(page, debug_dir, "dashboard_session_seed.png")
+            if shot:
+                artifacts.append(shot)
+            html_path = _debug_write(debug_dir, "dashboard_session_seed.html", page.content())
+            if html_path:
+                artifacts.append(html_path)
+            text_path = _debug_write(debug_dir, "dashboard_session_seed.txt", visible_text)
+            if text_path:
+                artifacts.append(text_path)
+            try:
+                context.storage_state(path=storage_state_path)
+            except Exception:
+                warnings.append("Could not write Vanquish dashboard storage-state file.")
+
+            meta.update(
+                {
+                    "status": "auth_required" if auth_required else "seeded",
+                    "final_url": final_url,
+                    "validation_result": {
+                        "ok": not auth_required,
+                        "reason": (
+                            "Dashboard session still requires Google login."
+                            if auth_required
+                            else "Dashboard session state saved."
+                        ),
+                        "markers": {
+                            "storage_state_written": os.path.isfile(storage_state_path),
+                            "visible_text_chars": len(visible_text),
+                        },
+                    },
+                }
+            )
+            if auth_required:
+                warnings.append(
+                    "Dashboard session still requires Google login. Complete login in the headed "
+                    "browser window and run the seed action again."
+                )
+            return warnings, artifacts, meta
+        except Exception as e:
+            warnings.append(f"Dashboard session seed failed: {e}")
+            meta["status"] = "failed"
+            meta["error"] = str(e)
+            return warnings, artifacts, meta
+        finally:
+            _safe_close(context)
 
 
 def _wait_until_enabled(locator, timeout_ms: int = 6000) -> bool:
@@ -547,6 +1168,16 @@ def _validate_statement_html(
         and "login" in lowered
         and ("<input" in lowered or "loginform" in lowered or "sign in" in lowered)
     )
+    is_statement_url = "/account/statement/" in url_lower
+    looks_like_app_shell = (
+        not is_statement_url
+        and (
+            "window.config.mode" in lowered
+            or "dxtrade5.nocache" in lowered
+            or "window['x-dx-vendor']" in lowered
+            or "var dictionary=" in lowered
+        )
+    )
     has_statement_marker = any(
         marker in lowered
         for marker in (
@@ -575,6 +1206,7 @@ def _validate_statement_html(
         "has_html_shape": has_html_shape,
         "has_login_url": has_login_url,
         "has_login_form": has_login_form,
+        "looks_like_app_shell": looks_like_app_shell,
         "has_statement_marker": has_statement_marker,
         "has_trade_marker": has_trade_marker,
         "has_balance_marker": has_balance_marker,
@@ -593,6 +1225,12 @@ def _validate_statement_html(
         return {
             "ok": False,
             "reason": "Captured broker login page instead of statement HTML.",
+            "markers": markers,
+        }
+    if looks_like_app_shell:
+        return {
+            "ok": False,
+            "reason": "Captured broker workspace shell instead of statement HTML.",
             "markers": markers,
         }
     if content_type and "html" not in content_type and not has_html_shape:
@@ -797,6 +1435,7 @@ def _bootstrap_browser_session(
     debug_dir: Optional[str],
     warnings: List[str],
     mark: Callable[[str, str], None],
+    use_boot_gate: bool = True,
 ):
     launch_profiles = [
         {
@@ -829,7 +1468,8 @@ def _bootstrap_browser_session(
         },
     ]
     last_error = ""
-    with _browser_boot_gate():
+    boot_gate = _browser_boot_gate() if use_boot_gate else nullcontext()
+    with boot_gate:
         for attempt, profile in enumerate(launch_profiles, start=1):
             browser = None
             context = None
@@ -953,26 +1593,31 @@ def fetch_statement_html_via_login(
     origin = f"{scheme}://{netloc}".rstrip("/")
     login_url = origin
     statement_path = "/account/statement/"
-    statement_url = f"{origin}{statement_path}?" + urllib.parse.urlencode(
-        {
-            "wl": wl,
-            "format": "html",
-            "from": from_date,
-            "to": to_date,
-            "timeZone": time_zone,
-            "account": account,
-            "dateLocale": date_locale,
-            "reportLocale": report_locale,
-        }
+    configured_account_token = _broker_account_token(account)
+    statement_account_token = configured_account_token
+    statement_url = _statement_url(
+        origin,
+        statement_path,
+        wl=wl,
+        from_date=from_date,
+        to_date=to_date,
+        time_zone=time_zone,
+        account_token=statement_account_token,
+        date_locale=date_locale,
+        report_locale=report_locale,
     )
 
     current_stage = "init"
     login_urls = [f"{origin}/#/login", login_url]
     meta: Dict[str, Any] = {
         "selector_profile_version": SELECTOR_PROFILE_VERSION,
+        "capture_strategy": "direct_statement_url_first",
         "used_statement_url_fallback": False,
+        "used_context_request_fallback": False,
         "opened_statement_popup": False,
         "login_url_candidates": login_urls,
+        "configured_account_token": configured_account_token,
+        "resolved_account_token": statement_account_token,
     }
 
     def mark(stage: str, message: str) -> None:
@@ -984,7 +1629,7 @@ def fetch_statement_html_via_login(
             except Exception:
                 pass
 
-    with sync_playwright() as p:
+    with _browser_boot_gate(timeout_s=45.0), sync_playwright() as p:
         browser, context, page, tracing_enabled, debug_dir = _bootstrap_browser_session(
             playwright=p,
             headless=headless,
@@ -992,6 +1637,7 @@ def fetch_statement_html_via_login(
             debug_dir=debug_dir,
             warnings=warnings,
             mark=mark,
+            use_boot_gate=False,
         )
         mark("open_login", "Opening broker login page.")
         opened_login_url = login_url
@@ -1132,63 +1778,124 @@ def fetch_statement_html_via_login(
                 "MFA/CAPTCHA is required.",
             )
 
-        mark("capture_statement_request", "Fetching statement HTML from authenticated session.")
+        active_account_token = _active_workspace_account_token(page)
+        if active_account_token:
+            meta["workspace_account_token"] = active_account_token
+            if (
+                statement_account_token
+                and active_account_token.upper() != statement_account_token.upper()
+            ):
+                warnings.append(
+                    "Using active broker workspace account "
+                    f"{active_account_token} instead of configured account "
+                    f"{statement_account_token}."
+                )
+                statement_account_token = active_account_token
+                statement_url = _statement_url(
+                    origin,
+                    statement_path,
+                    wl=wl,
+                    from_date=from_date,
+                    to_date=to_date,
+                    time_zone=time_zone,
+                    account_token=statement_account_token,
+                    date_locale=date_locale,
+                    report_locale=report_locale,
+                )
+            elif not statement_account_token:
+                statement_account_token = active_account_token
+                statement_url = _statement_url(
+                    origin,
+                    statement_path,
+                    wl=wl,
+                    from_date=from_date,
+                    to_date=to_date,
+                    time_zone=time_zone,
+                    account_token=statement_account_token,
+                    date_locale=date_locale,
+                    report_locale=report_locale,
+                )
+        meta["resolved_account_token"] = statement_account_token
+
         capture: Optional[Dict[str, Any]] = None
         capture_attempts: List[Dict[str, Any]] = []
+
+        mark("capture_statement_html", "Opening statement URL from authenticated session.")
         try:
-            request_capture = _fetch_statement_html_with_context_request(
-                context,
+            response = page.goto(
                 statement_url,
-                timeout_ms=timeout_ms,
+                wait_until="domcontentloaded",
+                timeout=timeout_ms,
+            )
+            status = int(getattr(response, "status", 0) or 0) if response else None
+            page_capture = _capture_statement_from_page(
+                page,
+                method="direct_page_navigation",
+                status=status,
             )
             _write_capture_artifacts(
                 debug_dir,
                 artifacts,
-                stem="statement_request",
-                capture=request_capture,
+                stem="direct_statement_page",
+                capture=page_capture,
             )
-            capture_attempts.append(_capture_attempt_summary(request_capture))
+            capture_attempts.append(_capture_attempt_summary(page_capture))
             mark("validate_statement_html", "Validating statement HTML.")
-            if _capture_is_valid(
-                request_capture,
-                warnings,
-                "Authenticated statement request rejected",
-            ):
-                capture = request_capture
+            if _capture_is_valid(page_capture, warnings, "Direct statement page rejected"):
+                capture = page_capture
+            else:
+                try:
+                    page.wait_for_load_state("networkidle", timeout=5000)
+                    settled_capture = _capture_statement_from_page(
+                        page,
+                        method="direct_page_navigation_settled",
+                        status=status,
+                    )
+                    _write_capture_artifacts(
+                        debug_dir,
+                        artifacts,
+                        stem="direct_statement_page_settled",
+                        capture=settled_capture,
+                    )
+                    capture_attempts.append(_capture_attempt_summary(settled_capture))
+                    if _capture_is_valid(
+                        settled_capture,
+                        warnings,
+                        "Settled direct statement page rejected",
+                    ):
+                        capture = settled_capture
+                except PlaywrightTimeoutError:
+                    warnings.append(
+                        "Direct statement page did not settle quickly; trying request fallback."
+                    )
         except Exception as e:
-            warnings.append(f"Authenticated statement request failed: {e}")
+            warnings.append(f"Direct statement page capture failed: {e}")
 
         if capture is None:
-            mark("capture_statement_html", "Opening statement URL directly.")
-            meta["used_statement_url_fallback"] = True
+            mark("capture_statement_request", "Fetching statement HTML from authenticated session.")
+            meta["used_context_request_fallback"] = True
             try:
-                response = page.goto(
+                request_capture = _fetch_statement_html_with_context_request(
+                    context,
                     statement_url,
-                    wait_until="domcontentloaded",
-                    timeout=timeout_ms,
-                )
-                try:
-                    page.wait_for_load_state("networkidle", timeout=timeout_ms)
-                except PlaywrightTimeoutError:
-                    warnings.append("Direct statement page did not reach network idle; continuing.")
-                status = int(getattr(response, "status", 0) or 0) if response else None
-                page_capture = _capture_statement_from_page(
-                    page,
-                    method="direct_page_navigation",
-                    status=status,
+                    timeout_ms=timeout_ms,
                 )
                 _write_capture_artifacts(
                     debug_dir,
                     artifacts,
-                    stem="direct_statement_page",
-                    capture=page_capture,
+                    stem="statement_request",
+                    capture=request_capture,
                 )
-                capture_attempts.append(_capture_attempt_summary(page_capture))
+                capture_attempts.append(_capture_attempt_summary(request_capture))
                 mark("validate_statement_html", "Validating statement HTML.")
-                if _capture_is_valid(page_capture, warnings, "Direct statement page rejected"):
-                    capture = page_capture
+                if _capture_is_valid(
+                    request_capture,
+                    warnings,
+                    "Authenticated statement request rejected",
+                ):
+                    capture = request_capture
             except Exception as e:
-                warnings.append(f"Direct statement page capture failed: {e}")
+                warnings.append(f"Authenticated statement request failed: {e}")
 
         if capture is None:
             mark("ui_statement_fallback", "Using broker UI fallback.")
@@ -1401,7 +2108,7 @@ def fetch_statement_html_via_login(
     lowered = html_text.lower()
     if "password" in lowered and "login" in lowered:
         raise _stage_error(
-            "capture_statement_html", "Received login page instead of statement HTML."
+            "auth_required", "Received login page instead of statement HTML."
         )
     warnings.append(f"Selector profile: {SELECTOR_PROFILE_VERSION}")
     meta["stage"] = current_stage

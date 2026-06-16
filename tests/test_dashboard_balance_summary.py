@@ -71,12 +71,27 @@ def test_dashboard_balance_summary_prefers_broker_equity_when_active(app):
         scope_account_id=42,
         scope_start="2026-02-20",
         scope_starting_balance=50000.0,
-        selected_account={"current_balance": 51179.0, "broker_equity": 52309.40},
+        selected_account={"current_balance": 52309.40, "broker_equity": 52309.40},
     )
 
     assert summary["overall_balance"] == 52309.40
     assert round(summary["overall_profit"], 2) == 2309.40
     assert summary["balance_source"] == "broker_equity"
+
+
+def test_dashboard_balance_summary_uses_statement_balance_when_broker_equity_is_stale(app):
+    summary = core_service._dashboard_balance_summary(
+        scope_active=True,
+        scope_account_id=42,
+        scope_start="2026-02-20",
+        scope_starting_balance=50000.0,
+        selected_account={"current_balance": 52544.0, "broker_equity": 52309.40},
+    )
+
+    assert summary["overall_balance"] == 52544.0
+    assert round(summary["overall_profit"], 2) == 2544.0
+    assert summary["balance_source"] == "account_balance"
+    assert "stale" in summary["balance_source_detail"].lower()
 
 
 def test_remaining_drawdown_tone_thresholds():

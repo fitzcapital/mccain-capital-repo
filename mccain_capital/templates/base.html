@@ -186,9 +186,10 @@
         overlay.setAttribute("aria-hidden", "false");
         overlay.dataset.active = "1";
         if (onMarketPulsePage || onDashboardPage) scheduleSoftProgress();
+        const failsafeMs = onMarketPulsePage ? 7000 : 10000;
         loaderState.failsafeTimer = window.setTimeout(() => {
           if (loaderState.active) complete();
-        }, onMarketPulsePage ? 15000 : 10000);
+        }, failsafeMs);
       };
 
       const hide = (clearFlag = true) => {
@@ -240,7 +241,13 @@
         clearPayload();
       }
       window.addEventListener("load", () => {
-        if (!loaderState.active || onMarketPulsePage) return;
+        if (!loaderState.active) return;
+        if (onMarketPulsePage) {
+          window.setTimeout(() => {
+            if (loaderState.active) complete();
+          }, 900);
+          return;
+        }
         complete();
       }, { once: true });
       window.addEventListener("pageshow", (event) => {

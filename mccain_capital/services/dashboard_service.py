@@ -31,12 +31,21 @@ def dashboard_calendar_fragment():
         scope_account_id = int(scope.get("account_id") or 0) or None
     except Exception:
         scope_account_id = None
+    scoped_ledger_account_ids = (
+        trades_repo.account_continuity_ids(scope_account_id)
+        if scope_active and scope_account_id
+        else []
+    )
     scope_start = str(scope.get("start_date") or "")
     scope_starting_balance = float(scope.get("starting_balance") or 0.0)
     anchor = core_svc.app_runtime.now_et().date()
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
-    calendar_scope_label = "Active Account" if scope_active else "All History"
+    calendar_scope_label = (
+        "Continuity Ledger"
+        if scope_active and len(scoped_ledger_account_ids) > 1
+        else "Active Account" if scope_active else "All History"
+    )
     calendar_payload = core_svc._dashboard_calendar_payload(
         year=year,
         month=month,
@@ -45,6 +54,7 @@ def dashboard_calendar_fragment():
         scope_start=scope_start,
         scope_starting_balance=scope_starting_balance,
         scope_label=calendar_scope_label,
+        scope_account_ids=scoped_ledger_account_ids if scoped_ledger_account_ids else None,
     )
     return render_template(
         "dashboard/_calendar_panel.html",
@@ -76,6 +86,11 @@ def dashboard_planning_refresh_api():
     except Exception:
         scope_account_id = None
     scoped_account_id = scope_account_id if scope_active else None
+    scoped_account_ids = (
+        trades_repo.account_continuity_ids(scope_account_id)
+        if scope_active and scope_account_id
+        else []
+    )
 
     try:
         market_worker.start_market_worker_once()
@@ -88,7 +103,15 @@ def dashboard_planning_refresh_api():
     year = int(request.args.get("y") or anchor.year)
     month = max(1, min(12, int(request.args.get("m") or anchor.month)))
 
-    today_rows = [dict(r) for r in trades_repo.fetch_trades(d=today_key, q="", account_id=scoped_account_id)]
+    today_rows = [
+        dict(r)
+        for r in trades_repo.fetch_trades(
+            d=today_key,
+            q="",
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
+        )
+    ]
     today_stats = trades_repo.trade_day_stats(today_rows)
     today_net = float(today_stats.get("total", 0.0))
     today_wins = int(today_stats.get("wins", 0) or 0)
@@ -100,7 +123,8 @@ def dashboard_planning_refresh_api():
         for r in trades_repo.fetch_trades_range(
             date(year, 1, 1).isoformat(),
             date(year + 1, 1, 1).isoformat(),
-            account_id=scoped_account_id,
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
         )
     ]
     ytd_cons = trades_repo.calc_consistency(ytd_trades_list)

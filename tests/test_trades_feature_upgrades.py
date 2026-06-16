@@ -127,35 +127,57 @@ def _insert_trade(
     result_pct=None,
     entry_time: str = "9:35 AM",
     exit_time: str = "",
+    account_id=None,
 ):
     with db() as conn:
+        columns = [
+            "trade_date",
+            "entry_time",
+            "exit_time",
+            "ticker",
+            "opt_type",
+            "strike",
+            "entry_price",
+            "exit_price",
+            "contracts",
+            "total_spent",
+            "comm",
+            "gross_pl",
+            "net_pl",
+            "result_pct",
+            "balance",
+            "raw_line",
+            "created_at",
+        ]
+        values = [
+            trade_date,
+            entry_time,
+            exit_time,
+            ticker,
+            opt_type,
+            strike,
+            entry_price,
+            exit_price,
+            contracts,
+            total_spent,
+            comm,
+            gross_pl,
+            net_pl,
+            result_pct,
+            50000.0,
+            "seed",
+            now_iso(),
+        ]
+        table_columns = {r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()}
+        if "account_id" in table_columns:
+            columns.append("account_id")
+            values.append(account_id)
+        qmarks = ",".join(["?"] * len(columns))
         conn.execute(
             """
-            INSERT INTO trades (
-                trade_date, entry_time, exit_time, ticker, opt_type, strike,
-                entry_price, exit_price, contracts, total_spent, comm,
-                gross_pl, net_pl, result_pct, balance, raw_line, created_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                trade_date,
-                entry_time,
-                exit_time,
-                ticker,
-                opt_type,
-                strike,
-                entry_price,
-                exit_price,
-                contracts,
-                total_spent,
-                comm,
-                gross_pl,
-                net_pl,
-                result_pct,
-                50000.0,
-                "seed",
-                now_iso(),
-            ),
+            INSERT INTO trades ({columns}) VALUES ({qmarks})
+            """.format(columns=",".join(columns), qmarks=qmarks),
+            values,
         )
         row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
     return int(row["id"])
@@ -192,6 +214,50 @@ def test_open_positions_page_lists_incomplete_rows(client):
     assert b"Open Positions" in resp.data
     assert b"SPX CALL 6000" in resp.data
     assert b"QQQ PUT 500" not in resp.data
+
+
+def test_duplicate_trade_preserves_account_scope(client):
+    account_id = trades_repo.create_account(
+        account_name="OPA",
+        starting_balance=50000.0,
+        broker_account_id="default:OPA0003049",
+    )
+    trades_repo.set_active_account(int(account_id))
+    trade_id = _insert_trade(
+        trade_date="2026-06-11",
+        ticker="SPX",
+        opt_type="CALL",
+        strike=7450,
+        entry_price=1.0,
+        exit_price=2.0,
+        gross_pl=98.0,
+        net_pl=98.0,
+        account_id=int(account_id),
+    )
+
+    resp = client.post(
+        f"/trades/duplicate/{trade_id}?d=2026-06-11&q=",
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 302
+    with db() as conn:
+        rows = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT account_id, raw_line, trade_source
+                FROM trades
+                WHERE ticker = 'SPX'
+                ORDER BY id
+                """
+            ).fetchall()
+        ]
+
+    assert len(rows) == 2
+    assert {int(row["account_id"]) for row in rows} == {int(account_id)}
+    assert rows[-1]["raw_line"] == f"DUPLICATE OF #{trade_id}"
+    assert rows[-1]["trade_source"] == "Manual Entry"
 
 
 def test_rebuild_reviews_creates_missing_review(client):
@@ -342,6 +408,10 @@ def test_upload_statement_live_workspace_injects_csrf_into_all_sync_forms(client
         form_end = html.index("</form>", form_start)
         form_html = html[form_start:form_end]
         assert 'name="csrf_token"' in form_html
+    assert "form.dataset.asyncSubmit = '1'" in html
+    assert "new AbortController()" in html
+    assert "credentials: 'same-origin'" in html
+    assert "headers['X-CSRFToken']" in html
 
 
 def test_live_sync_workspace_surfaces_account_and_credentials_actions(client):
@@ -362,8 +432,9 @@ def test_live_sync_workspace_surfaces_account_and_credentials_actions(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Edit Credentials" in body
-    assert "Selected ledger only" in body
-    assert "account-only dedupe" in body
+    assert "Live upload updates equity" in body
+    assert "remaining drawdown is manual" in body
+    assert "rollover-aware dedupe" in body
     assert "Vanquish Account Number" in body
     assert "ACC123" in body
     assert "default:ACC123" not in body
@@ -373,6 +444,225 @@ def test_live_sync_workspace_surfaces_account_and_credentials_actions(client):
     assert 'name="selected_account_id" value="" form="live-account-form"' in body
     assert "New account mode is blank on purpose." in body
     assert "Cancel" in body
+
+
+def test_live_sync_workspace_surfaces_manual_drawdown_without_equity_override(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        int(account_id),
+        broker_equity=50083.40,
+        broker_equity_peak=50083.40,
+        broker_remaining_drawdown=2216.90,
+        broker_max_loss=47866.50,
+    )
+
+    resp = client.get(
+        f"/trades/upload/statement?ws=live&account_id={account_id}",
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Equity $50,083.40" in body
+    assert "DD left $2,216.90" in body
+    assert "Live upload updates equity" in body
+    assert "remaining drawdown is manual" in body
+    assert 'name="broker_remaining_drawdown"' in body
+    assert "Save DD" in body
+    assert "Manual equity override" not in body
+    live_form_start = body.index('id="live-sync-form"')
+    live_form_end = body.index("</form>", live_form_start)
+    live_form_html = body[live_form_start:live_form_end]
+    assert 'id="live-sync-submit"' in live_form_html
+    assert "<form" not in live_form_html
+    assert 'id="live-drawdown-form"' in body
+    assert 'form="live-drawdown-form"' in body
+
+
+def test_manual_drawdown_update_can_return_to_import_workspace(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        int(account_id),
+        broker_equity=50083.40,
+        broker_equity_peak=50083.40,
+        broker_remaining_drawdown=2216.90,
+        broker_max_loss=47866.50,
+    )
+
+    resp = client.post(
+        "/dashboard/account-drawdown",
+        data={
+            "account_id": str(account_id),
+            "broker_remaining_drawdown": "2100.25",
+            "next": f"/trades/upload/statement?ws=live&account_id={account_id}",
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith(
+        f"/trades/upload/statement?ws=live&account_id={account_id}"
+    )
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] == 50083.40
+    assert account["broker_remaining_drawdown"] == 2100.25
+
+
+def test_live_sync_failure_surfaces_manual_html_recovery(client, monkeypatch, tmp_path):
+    from mccain_capital.services import trades as trades_svc
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    status_path = tmp_path / ".vanquish_sync_last_run.json"
+    monkeypatch.setattr(trades_svc, "BROKER_SYNC_STATUS_PATH", str(status_path))
+    trades_svc._save_last_sync_status(
+        {
+            "status": "failed",
+            "stage": "capture_statement_html",
+            "message": "Could not capture validated statement HTML.",
+            "requested": {"source": "manual_live"},
+            "updated_at": now_iso(),
+        }
+    )
+
+    resp = client.get(
+        f"/trades/upload/statement?ws=live&account_id={account_id}",
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Manual HTML Recovery" in body
+    assert 'name="statement_html"' in body
+    assert 'id="statement-recovery-form"' in body
+    assert "Parse HTML" in body
+
+
+def test_statement_upload_accepts_pasted_html(client, monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    captured = {}
+
+    def fake_handle(path, mode, source_label, *, account, filename):
+        captured.update(
+            {
+                "path": path,
+                "mode": mode,
+                "source_label": source_label,
+                "account_id": int(account["id"]),
+                "filename": filename,
+            }
+        )
+        return "parsed pasted html"
+
+    monkeypatch.setattr(trades_svc, "_handle_statement_html_import", fake_handle)
+
+    resp = client.post(
+        "/trades/upload/statement?ws=upload",
+        data={
+            "mode": "broker",
+            "selected_account_id": str(account_id),
+            "statement_html": "<html><body><h1>Account Statement</h1></body></html>",
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_data(as_text=True) == "parsed pasted html"
+    assert captured["mode"] == "broker"
+    assert captured["source_label"] == "STATEMENT HTML PASTE"
+    assert captured["account_id"] == int(account_id)
+    assert captured["filename"].endswith(".html")
+
+
+def test_live_sync_uses_selected_account_broker_id_over_stale_config(
+    client, monkeypatch, tmp_path
+):
+    from mccain_capital.services import trades as trades_svc
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Performance",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    launched = {}
+    monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(tmp_path / ".bg_jobs"))
+    monkeypatch.setattr(trades_svc, "trade_lockout_state", lambda _day: {"locked": False})
+    monkeypatch.setattr(trades_svc, "_get_auto_sync_password", lambda _cfg: "demo-pass")
+    monkeypatch.setattr(trades_svc, "_latest_active_sync_job", lambda: {})
+    monkeypatch.setattr(
+        trades_svc,
+        "_load_broker_sync_config",
+        lambda: {
+            "username": "demo-user",
+            "base_url": "https://trade.vanquishtrader.com",
+            "account": "default:OEV0052447",
+            "wl": "vanquishtrader",
+            "time_zone": "America/New_York",
+            "date_locale": "en-US",
+            "report_locale": "en",
+        },
+    )
+
+    def fake_start_sync_job(**kwargs):
+        launched.update(kwargs)
+        return {
+            "id": "job-123",
+            "status": "queued",
+            "stage": "start",
+            "message": "Queued.",
+            "requested": kwargs["requested"],
+        }
+
+    monkeypatch.setattr(trades_svc, "_start_sync_job", fake_start_sync_job)
+
+    resp = client.post(
+        "/trades/sync/live?async=1",
+        data={
+            "mode": "broker",
+            "selected_account_id": str(account_id),
+            "from_date": "2026-06-15",
+            "to_date": "2026-06-15",
+            "account": "default:OEV0052447",
+        },
+        headers={"Accept": "application/json"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 200
+    assert launched["account"] == "default:OPA0003049"
+    assert launched["requested"]["account"] == "default:OPA0003049"
 
 
 def test_archive_account_hides_it_and_falls_back_to_remaining_active_account(client):
@@ -686,6 +976,51 @@ def test_live_sync_force_reset_clears_running_lane(client, monkeypatch):
     assert resp.headers["Location"].endswith(f"/trades/upload/statement?ws=live&job={job['id']}")
 
 
+def test_live_sync_force_reset_clears_failed_startup_lane(monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    job = {
+        "id": "job-live-startup-failed",
+        "kind": "sync",
+        "status": "failed",
+        "stage": "system_resource",
+        "message": "Chromium startup resources are busy.",
+        "updated_at": now_iso(),
+        "created_at": now_iso(),
+        "summary": {},
+        "requested": {"source": "manual_live"},
+    }
+    reset_calls = []
+    saved_statuses = []
+
+    monkeypatch.setattr(
+        trades_svc,
+        "_get_bg_job",
+        lambda job_id: dict(job) if job_id == job["id"] else {},
+    )
+    monkeypatch.setattr(
+        trades_svc.vanquish_live_sync,
+        "reset_browser_boot_lane",
+        lambda: reset_calls.append(True),
+    )
+    monkeypatch.setattr(trades_svc, "_save_last_sync_status", lambda payload: saved_statuses.append(payload))
+
+    def _update_bg_job(job_id, **updates):
+        assert job_id == job["id"]
+        out = dict(job)
+        out.update(updates)
+        return out
+
+    monkeypatch.setattr(trades_svc, "_update_bg_job", _update_bg_job)
+
+    out = trades_svc._force_reset_sync_job(job["id"])
+
+    assert reset_calls == [True]
+    assert out["status"] == "cancelled"
+    assert out["stage"] == "reset_required"
+    assert saved_statuses[-1]["stage"] == "reset_required"
+
+
 def test_trades_page_source_uses_focus_fallback():
     src = open(
         "mccain_capital/services/trades_page.py",
@@ -950,6 +1285,156 @@ def test_vanquish_dashboard_metrics_parser_extracts_account_values():
     assert parsed["metrics"]["broker_max_loss"] == 49809.40
 
 
+def test_vanquish_dashboard_metrics_parser_matches_spaced_account_token():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    text = """
+    Options 50k Evaluation
+    OEV 005 9123 copy
+    Metrics
+    Equity $53,681.20 2.62%
+    Equity Peak $53,721.90
+    Remaining drawdown $2,459.30
+    Max. Loss $51,221.90
+    """
+
+    parsed = live_sync.parse_account_metrics_from_dashboard_text(text, "default:OEV0059123")
+
+    assert parsed["ok"] is True
+    assert parsed["markers"]["found_account"] is True
+    assert parsed["metrics"]["broker_equity"] == 53681.20
+    assert parsed["metrics"]["broker_equity_peak"] == 53721.90
+    assert parsed["metrics"]["broker_remaining_drawdown"] == 2459.30
+    assert parsed["metrics"]["broker_max_loss"] == 51221.90
+
+
+def test_vanquish_dashboard_metrics_parser_uses_visible_metrics_when_account_text_distorted():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    text = """
+    Options 50k Evaluation
+    Metrics
+    Equity $53,681.20 2.62%
+    Equity Peak $53,721.90
+    Remaining drawdown $2,459.30
+    Max. Loss $51,221.90
+    """
+
+    parsed = live_sync.parse_account_metrics_from_dashboard_text(text, "default:OEV0059123")
+
+    assert parsed["ok"] is True
+    assert parsed["markers"]["found_account"] is False
+    assert parsed["markers"]["account_match"] == "metrics_only"
+    assert parsed["metrics"]["broker_remaining_drawdown"] == 2459.30
+
+
+def test_vanquish_dashboard_metrics_parser_extracts_current_risk_card_values():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    text = """
+    Options 50k Evaluation
+    OEV0059123
+    Metrics
+    Equity $54,385.00 1.23%
+    Equity Peak $54,431.05
+    Remaining drawdown $2,453.95
+    Max. Loss $51,931.05
+    """
+
+    parsed = live_sync.parse_account_metrics_from_dashboard_text(text, "default:OEV0059123")
+
+    assert parsed["ok"] is True
+    assert parsed["metrics"]["broker_equity"] == 54385.00
+    assert parsed["metrics"]["broker_equity_peak"] == 54431.05
+    assert parsed["metrics"]["broker_remaining_drawdown"] == 2453.95
+    assert parsed["metrics"]["broker_max_loss"] == 51931.05
+
+
+def test_vanquish_dashboard_auth_detector_treats_signup_as_login_required():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    assert live_sync._dashboard_requires_auth(
+        final_url="https://www.vanquishtrader.com/signup",
+        visible_text="Create an account Continue with Google",
+        account_token="OPA0003049",
+    )
+
+
+def test_vanquish_dashboard_auth_detector_allows_loaded_account_page():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    assert not live_sync._dashboard_requires_auth(
+        final_url="https://www.vanquishtrader.com/dashboard/accounts",
+        visible_text="OPA0003049 Equity $50,100.00 Remaining drawdown $2,400.00",
+        account_token="OPA0003049",
+    )
+
+
+def test_vanquish_graphql_metrics_parser_extracts_plan_account_values():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    payload = {
+        "data": {
+            "syncPlanAccounts": {
+                "items": [
+                    {
+                        "accountId": "OPA0003049",
+                        "equity": 50123.45,
+                        "equityPeak": 50200.00,
+                        "failureThreshold": 47623.45,
+                    }
+                ]
+            }
+        }
+    }
+
+    parsed = live_sync.parse_account_metrics_from_graphql_payload(
+        payload,
+        "default:OPA0003049",
+    )
+
+    assert parsed["ok"] is True
+    assert parsed["markers"]["source"] == "graphql"
+    assert parsed["markers"]["account_match"] == "graphql"
+    assert parsed["metrics"]["broker_equity"] == 50123.45
+    assert parsed["metrics"]["broker_equity_peak"] == 50200.00
+    assert parsed["metrics"]["broker_max_loss"] == 47623.45
+    assert parsed["metrics"]["broker_remaining_drawdown"] == 2500.00
+
+
+def test_vanquish_graphql_metrics_parser_rejects_account_mismatch_when_multiple_candidates():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    payload = {
+        "data": {
+            "syncPlanAccounts": {
+                "items": [
+                    {
+                        "accountId": "OPA0000001",
+                        "equity": 50123.45,
+                        "failureThreshold": 47623.45,
+                    },
+                    {
+                        "accountId": "OPA0000002",
+                        "equity": 50222.00,
+                        "failureThreshold": 47722.00,
+                    },
+                ]
+            }
+        }
+    }
+
+    parsed = live_sync.parse_account_metrics_from_graphql_payload(
+        payload,
+        "default:OPA0003049",
+    )
+
+    assert parsed["ok"] is False
+    assert parsed["metrics"] == {}
+    assert parsed["markers"]["candidate_count"] == 2
+    assert parsed["markers"]["matched_candidate_count"] == 0
+
+
 def test_update_account_broker_metrics_persists_values(app):
     account_id = trades_repo.create_account(
         prop_firm="Vanquish",
@@ -973,6 +1458,38 @@ def test_update_account_broker_metrics_persists_values(app):
     assert account is not None
     assert account["broker_equity"] == 52309.40
     assert account["broker_equity_peak"] == 52309.40
+    assert account["broker_remaining_drawdown"] == 2500.00
+    assert account["broker_max_loss"] == 49809.40
+    assert account["broker_metrics_updated_at"] == "2026-06-09T10:00:00-04:00"
+
+
+def test_statement_balance_updates_broker_equity_without_wiping_risk_metrics(app):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        int(account_id),
+        broker_equity=52309.40,
+        broker_equity_peak=52309.40,
+        broker_remaining_drawdown=2500.00,
+        broker_max_loss=49809.40,
+        updated_at="2026-06-09T10:00:00-04:00",
+    )
+
+    trades_repo.update_account_broker_equity_from_statement(
+        int(account_id),
+        broker_equity=52544.00,
+        updated_at="2026-06-10T09:55:00-04:00",
+    )
+
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] == 52544.00
+    assert account["broker_equity_peak"] == 52544.00
     assert account["broker_remaining_drawdown"] == 2500.00
     assert account["broker_max_loss"] == 49809.40
     assert account["broker_metrics_updated_at"] == "2026-06-09T10:00:00-04:00"
@@ -1061,6 +1578,255 @@ def test_dashboard_update_account_reports_missing_google_session(client, monkeyp
     assert account["broker_equity"] is None
 
 
+def test_dashboard_failed_account_refresh_surfaces_diagnostics(client, monkeypatch):
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+
+    def fake_fetch_account_metrics(**_kwargs):
+        return (
+            None,
+            ["Account OPA0003049 was not found on dashboard accounts page."],
+            ["/tmp/account_metrics_dashboard.txt"],
+            {
+                "status": "parse_failed",
+                "account": "OPA0003049",
+                "final_url": "https://www.vanquishtrader.com/dashboard/accounts",
+                "used_storage_state": True,
+                "storage_state_path": "/data/vanquish-dashboard-storage-state.json",
+                "validation_result": {
+                    "markers": {"parsed_keys": ["broker_equity", "broker_remaining_drawdown"]}
+                },
+            },
+        )
+
+    monkeypatch.setattr(
+        live_sync,
+        "fetch_account_metrics_via_dashboard",
+        fake_fetch_account_metrics,
+    )
+
+    resp = client.post(
+        "/dashboard/account-metrics",
+        data={"account_id": str(account_id)},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Account metrics not found" not in body
+    assert "OPA0003049" in body
+    assert "broker_equity, broker_remaining_drawdown" not in body
+    assert "Account OPA0003049 was not found" in body
+
+
+def test_dashboard_seed_vanquish_session_surfaces_success_diagnostics(client, monkeypatch):
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        int(account_id),
+        broker_equity=50123.45,
+        broker_equity_peak=50123.45,
+        broker_remaining_drawdown=2416.60,
+        broker_max_loss=47623.45,
+    )
+    calls = []
+
+    def fake_seed_dashboard_session(**kwargs):
+        calls.append(kwargs)
+        return (
+            [],
+            ["/tmp/dashboard_session_seed.txt"],
+            {
+                "status": "seeded",
+                "final_url": "https://www.vanquishtrader.com/dashboard/accounts",
+                "used_storage_state": False,
+                "storage_state_path": "/data/vanquish-dashboard-storage-state.json",
+                "validation_result": {
+                    "ok": True,
+                    "markers": {"storage_state_written": True, "visible_text_chars": 2048},
+                },
+            },
+        )
+
+    monkeypatch.setattr(live_sync, "seed_dashboard_session", fake_seed_dashboard_session)
+
+    resp = client.post(
+        "/dashboard/vanquish-session",
+        data={"account_id": str(account_id)},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert calls and calls[0]["headless"] is False
+    body = resp.get_data(as_text=True)
+    assert "Dashboard session seeded" not in body
+    assert "https://www.vanquishtrader.com/dashboard/accounts" not in body
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] == 50123.45
+    assert account["broker_remaining_drawdown"] == 2416.60
+
+
+def test_dashboard_seed_vanquish_session_reports_auth_required(client, monkeypatch):
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+
+    def fake_seed_dashboard_session(**_kwargs):
+        return (
+            ["Dashboard session still requires Google login."],
+            [],
+            {
+                "status": "auth_required",
+                "final_url": "https://accounts.google.com/",
+                "used_storage_state": False,
+                "storage_state_path": "/data/vanquish-dashboard-storage-state.json",
+            },
+        )
+
+    monkeypatch.setattr(live_sync, "seed_dashboard_session", fake_seed_dashboard_session)
+
+    resp = client.post(
+        "/dashboard/vanquish-session",
+        data={"account_id": str(account_id)},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Google session required" not in body
+    assert "https://accounts.google.com/" not in body
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] is None
+
+
+def test_dashboard_manual_drawdown_updates_only_remaining_drawdown(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        int(account_id),
+        broker_equity=54385.00,
+        broker_equity_peak=54431.05,
+        broker_remaining_drawdown=2453.95,
+        broker_max_loss=51931.05,
+        updated_at="2026-06-11T10:53:17-04:00",
+    )
+
+    resp = client.post(
+        "/dashboard/account-drawdown",
+        data={"account_id": str(account_id), "broker_remaining_drawdown": "$2,300.50"},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] == 54385.00
+    assert account["broker_equity_peak"] == 54431.05
+    assert account["broker_remaining_drawdown"] == 2300.50
+    assert account["broker_max_loss"] == 51931.05
+    with db() as conn:
+        trade_count = conn.execute("SELECT COUNT(*) AS c FROM trades").fetchone()["c"]
+    assert trade_count == 0
+
+
+def test_dashboard_manual_equity_updates_only_broker_equity(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        int(account_id),
+        broker_equity=50083.40,
+        broker_equity_peak=50100.00,
+        broker_remaining_drawdown=2400.00,
+        broker_max_loss=47600.00,
+        updated_at="2026-06-11T10:53:17-04:00",
+    )
+
+    resp = client.post(
+        "/dashboard/account-equity",
+        data={"account_id": str(account_id), "broker_equity": "$50,250.25"},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] == 50250.25
+    assert account["broker_equity_peak"] == 50250.25
+    assert account["broker_remaining_drawdown"] == 2400.00
+    assert account["broker_max_loss"] == 47600.00
+    with db() as conn:
+        trade_count = conn.execute("SELECT COUNT(*) AS c FROM trades").fetchone()["c"]
+    assert trade_count == 0
+
+
+def test_dashboard_manual_broker_metrics_updates_equity_and_drawdown(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+
+    resp = client.post(
+        "/dashboard/account-manual-metrics",
+        data={
+            "account_id": str(account_id),
+            "broker_equity": "$50,083.40",
+            "broker_remaining_drawdown": "$2,416.60",
+        },
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    account = trades_repo.get_account(int(account_id))
+    assert account["broker_equity"] == 50083.40
+    assert account["broker_equity_peak"] == 50083.40
+    assert account["broker_remaining_drawdown"] == 2416.60
+    body = resp.get_data(as_text=True)
+    assert "Broker equity and remaining drawdown are missing" not in body
+    assert "Needs Vanquish refresh" not in body
+    assert "Manual value" in body
+    assert "Peak/max loss unavailable" not in body
+    with db() as conn:
+        trade_count = conn.execute("SELECT COUNT(*) AS c FROM trades").fetchone()["c"]
+    assert trade_count == 0
+
+
 def test_vanquish_login_probe_includes_selector_counts_and_controls():
     from mccain_capital.services import vanquish_live_sync as live_sync
 
@@ -1114,6 +1880,14 @@ def test_statement_html_validation_rejects_login_and_shell_pages():
       </body></html>
     """
     shell_html = "<html><body><div id='root'>Loading workspace</div></body></html>"
+    dxtrade_shell_html = """
+      <html><head><script>
+        var dictionary = {"accountstatement.generate":"Generate Statement","account.metrics":"[]"};
+        window.config = window.config || {};
+        window.config.mode = "auth";
+      </script><script src="dxtrade5.nocache.js"></script></head>
+      <body id="root"></body></html>
+    """
 
     login_result = live_sync._validate_statement_html(
         login_html,
@@ -1123,14 +1897,54 @@ def test_statement_html_validation_rejects_login_and_shell_pages():
         shell_html,
         final_url="https://trade.vanquishtrader.com/workspace",
     )
+    dxtrade_shell_result = live_sync._validate_statement_html(
+        dxtrade_shell_html,
+        final_url="https://trade.vanquishtrader.com/",
+    )
     empty_result = live_sync._validate_statement_html("", final_url="/account/statement/")
 
     assert login_result["ok"] is False
     assert "login page" in login_result["reason"].lower()
     assert shell_result["ok"] is False
     assert "lacked statement" in shell_result["reason"].lower()
+    assert dxtrade_shell_result["ok"] is False
+    assert "workspace shell" in dxtrade_shell_result["reason"].lower()
     assert empty_result["ok"] is False
     assert "empty" in empty_result["reason"].lower()
+
+
+def test_live_sync_extracts_active_workspace_account_from_switcher_html():
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    html = """
+      <div data-test-id="account_switcher_button">
+        <div class="account-switcher-control-h__account-title___1BZ3j">OPA0003049, </div>
+        <div>Balance $51,073.30</div>
+      </div>
+    """
+
+    assert live_sync._extract_active_workspace_account_token(html) == "OPA0003049"
+
+
+def test_statement_url_uses_compact_broker_account_token():
+    from urllib.parse import parse_qs, urlparse
+
+    from mccain_capital.services import vanquish_live_sync as live_sync
+
+    url = live_sync._statement_url(
+        "https://trade.vanquishtrader.com",
+        "/account/statement/",
+        wl="vanquishtrader",
+        from_date="2026-06-15",
+        to_date="2026-06-15",
+        time_zone="America/New_York",
+        account_token=live_sync._broker_account_token("Funded: OPA0003049"),
+        date_locale="en-US",
+        report_locale="en",
+    )
+
+    params = parse_qs(urlparse(url).query)
+    assert params["account"] == ["OPA0003049"]
 
 
 def test_statement_context_request_returns_validated_capture_metadata():
@@ -2307,29 +3121,26 @@ def test_start_sync_job_launches_dedicated_worker_thread(client, monkeypatch):
     assert launched["worker_payload"]["requested"] == {"source": "manual_live"}
 
 
-def test_start_sync_job_runs_inline_when_worker_thread_start_is_resource_constrained(
+def test_start_sync_job_fails_fast_when_worker_thread_start_is_resource_constrained(
     client, monkeypatch, tmp_path
 ):
     from mccain_capital.services import trades as trades_svc
 
+    reset_calls = []
     monkeypatch.setattr(trades_svc, "BG_JOB_DIR", str(tmp_path / ".bg_jobs"))
+    monkeypatch.setattr(
+        trades_svc.vanquish_live_sync,
+        "reset_browser_boot_lane",
+        lambda: reset_calls.append(True),
+    )
     monkeypatch.setattr(
         trades_svc,
         "_start_sync_job_thread",
         lambda _app, _payload: (_ for _ in ()).throw(RuntimeError("can't start new thread")),
     )
 
-    executed = {}
-
     def _fake_execute_sync_job(*, app, job, **_kwargs):
-        executed["app"] = app
-        executed["job_id"] = job["id"]
-        trades_svc._update_bg_job(
-            job["id"],
-            status="success",
-            stage="import_complete",
-            message="Inline live import finished.",
-        )
+        raise AssertionError("resource-constrained startup must not run inline")
 
     monkeypatch.setattr(trades_svc, "_execute_sync_job", _fake_execute_sync_job)
 
@@ -2357,10 +3168,21 @@ def test_start_sync_job_runs_inline_when_worker_thread_start_is_resource_constra
             requested={"source": "manual_live"},
         )
 
-    assert executed["app"] is app
-    assert executed["job_id"] == job["id"]
-    assert job["status"] == "success"
-    assert job["stage"] == "import_complete"
+    assert job["status"] == "failed"
+    assert job["stage"] == "system_resource"
+    assert "startup resources are busy" in str(job["message"]).lower()
+    assert reset_calls == [True]
+
+
+def test_classify_sync_stage_treats_login_page_statement_as_auth_required():
+    from mccain_capital.services import trades as trades_svc
+
+    stage = trades_svc._classify_sync_stage(
+        "Received login page instead of statement HTML.",
+        "capture_statement_html",
+    )
+
+    assert stage == "auth_required"
 
 
 def test_load_last_sync_status_reclassifies_thread_error(tmp_path, monkeypatch):
@@ -2384,6 +3206,38 @@ def test_load_last_sync_status_reclassifies_thread_error(tmp_path, monkeypatch):
 
     assert status["stage"] == "system_resource"
     assert status["stage_help"] == trades_svc.SYNC_STAGE_HELP["system_resource"]
+
+
+def test_live_sync_startup_busy_message_resets_browser_boot_lane(tmp_path, monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    reset_calls = []
+    monkeypatch.setattr(
+        trades_svc,
+        "BROKER_SYNC_STATUS_PATH",
+        str(tmp_path / ".vanquish_sync_last_run.json"),
+    )
+    monkeypatch.setattr(
+        trades_svc.vanquish_live_sync,
+        "reset_browser_boot_lane",
+        lambda: reset_calls.append(True),
+    )
+
+    stage = trades_svc._classify_sync_stage(
+        "Chromium startup resources are busy. Another browser boot is still active.",
+        "unknown",
+    )
+    trades_svc._save_last_sync_status(
+        {
+            "status": "failed",
+            "stage": stage,
+            "message": "Chromium startup resources are busy. Another browser boot is still active.",
+            "updated_at": now_iso(),
+        }
+    )
+
+    assert stage == "system_resource"
+    assert reset_calls == [True]
 
 
 def test_live_sync_async_start_ignores_dispatcher_boot_failures(

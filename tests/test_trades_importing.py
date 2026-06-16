@@ -1,6 +1,7 @@
 """Broker import behavior tests."""
 
 from mccain_capital.runtime import db
+from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.services import trades_importing as importing
 
 TEST_ACCOUNT_ID = 0
@@ -86,6 +87,59 @@ def test_broker_import_dedupes_when_contract_format_changes(app):
     )
     assert inserted_2 == 0
     assert any("duplicate" in m.lower() for m in msgs_2)
+
+
+def test_broker_import_dedupes_against_linked_rollover_account(app):
+    eval_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Eval 50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    performance_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Performance 50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_account_continuity(int(performance_account_id), [int(eval_account_id)])
+    text = "\n".join(
+        [
+            "SPX JAN/30/26 6935 PUT | 1/30/26, 10:00 AM | BUY | 1 | 10.00 | 0.70",
+            "SPX JAN/30/26 6935 PUT | 1/30/26, 10:30 AM | SELL | 1 | 12.00 | 0.70",
+        ]
+    )
+
+    inserted_1, msgs_1 = importing.insert_trades_from_broker_paste(
+        text,
+        account_id=int(eval_account_id),
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
+    )
+    assert inserted_1 == 1
+    assert all("duplicate" not in m.lower() for m in msgs_1)
+
+    inserted_2, msgs_2 = importing.insert_trades_from_broker_paste(
+        text,
+        account_id=int(performance_account_id),
+        upload_id=TEST_UPLOAD_ID,
+        ending_balance=50198.60,
+    )
+
+    assert inserted_2 == 0
+    assert any("duplicate" in m.lower() for m in msgs_2)
+    with db() as conn:
+        counts = {
+            int(row["account_id"]): int(row["c"])
+            for row in conn.execute(
+                "SELECT account_id, COUNT(*) AS c FROM trades GROUP BY account_id"
+            ).fetchall()
+        }
+    assert counts == {int(eval_account_id): 1}
 
 
 def test_broker_import_reconciliation_report_fields(app):

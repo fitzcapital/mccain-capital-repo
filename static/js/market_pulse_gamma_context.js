@@ -2850,4 +2850,6 @@
     dispatchStreamStatus("Live stream connecting", "Restoring live feed…");
     connectStream();
   });
+  window.addEventListener("pagehide", closeStream);
+  window.addEventListener("beforeunload", closeStream);
 })();

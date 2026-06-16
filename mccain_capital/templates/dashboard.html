@@ -331,7 +331,7 @@
                   {% if account.get('broker_equity') is not none and account.get('broker_equity_peak') is not none %}
                     <span class="dashboardSnapshotDropdownMeta">Broker equity {{ money(account.get('broker_equity')) }} · Peak {{ money(account.get('broker_equity_peak')) }}</span>
                   {% endif %}
-                  {% set account_remaining_dd = account.get('broker_remaining_drawdown') if account.get('broker_remaining_drawdown') is not none else account.get('max_drawdown') %}
+                  {% set account_remaining_dd = account.get('broker_remaining_drawdown') %}
                   {% if account_remaining_dd is not none %}
                     {% set account_dd_tone = 'positive' if account_remaining_dd > 2250 else 'negative' if account_remaining_dd < 1500 else 'warning' %}
                     <span class="dashboardSnapshotDropdownMeta {% if account_dd_tone == 'positive' %}metaGreen{% elif account_dd_tone == 'negative' %}metaRed{% else %}metaAmber{% endif %}">Remaining DD {{ money(account_remaining_dd) }}</span>
@@ -341,16 +341,12 @@
             {% endfor %}
           </div>
           <div class="dashboardSnapshotDropdownActions">
-            <a class="btn" href="/trades/upload/statement?ws=live&account_id=all&account_editor=new">Add Account</a>
+            <a class="btn" href="/trades/upload/statement?ws=live&account_id=all&account_editor=new{% if selected_account %}&rollover_from={{ selected_account.id }}{% endif %}">Add Account</a>
             {% if selected_account %}
-              <form method="post" action="{{ url_for('dashboard_refresh_account_metrics') }}" class="inlineForm">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="account_id" value="{{ selected_account.id }}">
-                <button class="btn" type="submit" title="Update Account" aria-label="Update Account">
-                  <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('sync') }}</span>
-                  <span class="srOnly">Update Account</span>
-                </button>
-              </form>
+              <a class="btn" href="#broker-metrics-editor" title="Edit broker metrics" aria-label="Edit broker metrics">
+                <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('sync') }}</span>
+                <span>Edit Metrics</span>
+              </a>
               <a class="btn" href="/trades/upload/statement?ws=live&account_id={{ selected_account.id }}">Live Upload</a>
             {% endif %}
             {% if accounts %}
@@ -776,7 +772,7 @@
             </details>
           </div>
         </div>
-        <div class="dashboardTapeHeaderStatus">
+        <div class="dashboardTapeHeaderStatus" aria-label="Market tape feed controls">
           <span class="liveTapeBadge" data-tone="off" id="dashboardTapeStreamStatus" aria-label="Booting" title="Booting">
             <span class="liveTapeBadgeGlyph" aria-hidden="true"></span>
             <span class="srOnly" id="dashboardTapeStreamStatusText">Booting</span>
@@ -793,7 +789,7 @@
               <path d="M21 3v6h-6"></path>
             </svg>
           </button>
-          <span class="tiny muted" id="dashboardTapeUpdatedAt">{{ dashboard_tape_updated_label or '—' }}</span>
+          <span class="dashboardTapeUpdatedLabel" id="dashboardTapeUpdatedAt">{{ dashboard_tape_updated_label or 'Awaiting feed' }}</span>
         </div>
       </div>
       <div class="liveTapeWatchTableShell dashboardTapeCardStackShell marketPulseTapeShell">
@@ -810,15 +806,22 @@
           </div>
           <div class="marketMiniSparkWrap tone-{{ tape_tone }} spark-{{ spark_tone }} dashboardTapeSpark" data-role="sparkline">{{ row.sparkline_svg|safe }}</div>
           <div class="marketPulseWatchValueRow dashboardTapeAssetBody">
-            <div class="v liveTapeWatchCell-last dashboardCoreTapeStat dashboardTapeAssetPrice" data-role="last">{{ row.price_display }}</div>
-            <div class="tiny liveTapeWatchCell-chgp dashboardCoreTapeStat dashboardTapeAssetChange" data-role="chgp">{{ row.pct_change_display }}</div>
+            <div class="dashboardTapeAssetMetric dashboardTapeAssetMetric--price">
+              <span class="dashboardTapeMetricLabel">Price</span>
+              <span class="v liveTapeWatchCell-last dashboardCoreTapeStat dashboardTapeAssetPrice" data-role="last">{{ row.price_display }}</span>
+            </div>
+            <div class="dashboardTapeAssetMetric dashboardTapeAssetMetric--move">
+              <span class="dashboardTapeMetricLabel">Move</span>
+              <span class="tiny liveTapeWatchCell-chgp dashboardCoreTapeStat dashboardTapeAssetChange" data-role="chgp">{{ row.pct_change_display }}</span>
+            </div>
           </div>
           <div class="tiny muted marketPulseWatchMetaRow dashboardTapeAssetMeta">
-            <span class="dashboardTapeAssetStatus is-{{ row.freshness_tone }}" data-role="market-state">{{ row.market_state_display }}</span>
-            <span class="dashboardTapeAssetFreshness is-{{ row.freshness_tone }}" data-role="row-live">{{ row.freshness_display }}</span>
+            <span class="dashboardTapeAssetStatus is-{{ row.freshness_tone }}" data-role="market-state">{{ row.market_state_display or 'Wait' }}</span>
+            <span class="dashboardTapeAssetFreshness is-{{ row.freshness_tone }}" data-role="row-live">{{ row.freshness_display or 'Awaiting tick' }}</span>
           </div>
           <div class="tiny muted marketPulseWatchRange dashboardTapeAssetRange" data-role="detail-range">
-            {{ row.range_display }}
+            <span class="dashboardTapeRangeLabel">Range</span>
+            <span class="dashboardTapeRangeValue">{{ row.range_display }}</span>
           </div>
         </button>
         <div class="liveTapeWatchDetail" data-detail-symbol="{{ row.symbol }}" hidden>
@@ -1261,7 +1264,7 @@
 	            {% if selected_account_broker_metrics.has_metrics %}
 	              <div class="trendChips" style="margin-top:10px;">
 	                {% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}
-	                  <span class="trendChip {{ selected_account_broker_metrics.remaining_drawdown_tone }}">Remaining DD {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}{% if selected_account_broker_metrics.remaining_drawdown_source == 'configured' %} configured{% endif %}</span>
+	                  <span class="trendChip {{ selected_account_broker_metrics.remaining_drawdown_tone }}">Remaining DD {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}</span>
 	                {% endif %}
 	                {% if selected_account_broker_metrics.broker_equity_peak is not none %}
 	                  <span class="trendChip">Peak {{ money(selected_account_broker_metrics.broker_equity_peak) }}</span>
@@ -1427,9 +1430,9 @@
       {% set spark_value = (day.display_balance if day.display_balance is not none else day.balance)|float %}
       {% set balance_spark.values = balance_spark.values + [spark_value] %}
       {% set performance_chart.days = performance_chart.days + [day.daynum|int] %}
-      {% set performance_chart.actuals = performance_chart.actuals + [spark_value] %}
       {% set performance_chart.recent_days = performance_chart.recent_days + [day] %}
       {% set performance_scope.total = performance_scope.total + (day.net|float) %}
+      {% set performance_chart.actuals = performance_chart.actuals + [performance_scope.total] %}
       {% set performance_scope.trades = performance_scope.trades + (day.trade_count|int) %}
       {% if day.net > 0 %}
         {% set performance_scope.wins = performance_scope.wins + 1 %}
@@ -1473,7 +1476,7 @@
   {% set performance_chart.end_day_label = performance_month_label ~ ' ' ~ performance_chart.days[-1] %}
   {% set performance_chart.latest_day_label = performance_month_label ~ ' ' ~ performance_chart.days[-1] %}
   {% for actual_value in performance_chart.actuals %}
-    {% set projected_value = performance_chart.actuals[0] + (performance_chart.target_daily * loop.index0) %}
+    {% set projected_value = performance_chart.target_daily * loop.index %}
     {% set performance_chart.targets = performance_chart.targets + [projected_value] %}
     {% if performance_chart.min is none or actual_value < performance_chart.min %}
       {% set performance_chart.min = actual_value %}
@@ -1509,7 +1512,7 @@
   {% endfor %}
 {% elif performance_chart.actuals|length == 1 %}
   {% set performance_chart.actual_last = performance_chart.actuals[0] %}
-  {% set performance_chart.target_last = performance_chart.actuals[0] %}
+  {% set performance_chart.target_last = performance_chart.target_daily %}
   {% set performance_chart.actual_points = '3.00,20.00 97.00,20.00' %}
   {% set performance_chart.target_points = '3.00,20.00 97.00,20.00' %}
   {% set performance_chart.actual_last_x = 97 %}
@@ -1579,12 +1582,179 @@
   <span class="dashboardProjectEyebrow"><span class="dashboardLabelIcon">{{ dashboard_icon('chart') }}</span><span>Reference Deck</span></span>
   <span class="dashboardProjectSubhead">Performance and pace stay available, but they should not compete with the operating zone.</span>
 </div>
+<div class="dashboardBrokerCommandStrip{% if selected_account_broker_metrics.remaining_drawdown_tone %} is-{{ selected_account_broker_metrics.remaining_drawdown_tone }}{% endif %}">
+  <div class="dashboardBrokerIdentity">
+    <span class="dashboardBrokerEyebrow">Account Context</span>
+    <strong>{{ selected_account.account_name if selected_account else 'All History' }}</strong>
+    <small>
+      {% if selected_account and selected_account.display_broker_account_id %}
+        {{ selected_account.display_broker_account_id }}
+      {% elif selected_account %}
+        Manual account
+      {% else %}
+        Combined ledger view
+      {% endif %}
+    </small>
+    {% if continuity_label %}
+      <small>Continuity includes {{ continuity_label }}</small>
+    {% endif %}
+  </div>
+  <div class="dashboardBrokerMetric dashboardBrokerMetric-manual">
+    <span>Broker Equity</span>
+    <strong>
+      {% if selected_account_broker_metrics.broker_equity is not none %}
+        {{ money(selected_account_broker_metrics.broker_equity) }}
+      {% else %}
+        —
+      {% endif %}
+    </strong>
+    <small>
+      {% if balance_source == 'broker_equity' %}
+        Live upload balance
+      {% elif selected_account_broker_metrics.broker_equity_source == 'statement' %}
+        Statement balance active
+      {% elif selected_account_broker_metrics.broker_equity is not none %}
+        {{ selected_account_broker_metrics.broker_equity_source_label }}
+      {% elif selected_account %}
+        Ledger fallback active
+      {% else %}
+        No broker account selected
+      {% endif %}
+    </small>
+  </div>
+  <div class="dashboardBrokerMetric dashboardBrokerMetric-manual dashboardBrokerMetric-risk{% if selected_account_broker_metrics.remaining_drawdown_tone %} is-{{ selected_account_broker_metrics.remaining_drawdown_tone }}{% endif %}">
+    <span>Remaining Drawdown</span>
+    <strong>
+      {% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}
+        {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}
+      {% else %}
+        —
+      {% endif %}
+    </strong>
+    <small>
+      {% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}
+        {{ selected_account_broker_metrics.remaining_drawdown_source_label }}
+      {% else %}
+        Missing
+      {% endif %}
+    </small>
+    {% if selected_account %}
+      <details class="dashboardBrokerManualControl">
+        <summary title="Manual drawdown override" aria-label="Manual drawdown override">
+          <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('review') }}</span>
+          <span class="srOnly">Manual drawdown override</span>
+        </summary>
+        <form
+          method="post"
+          action="{{ url_for('dashboard_manual_drawdown_update') }}"
+          class="dashboardBrokerManualForm"
+        >
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="account_id" value="{{ selected_account.id }}">
+          <label class="srOnly" for="manual-drawdown-input">Manual remaining drawdown</label>
+          <input
+            id="manual-drawdown-input"
+            name="broker_remaining_drawdown"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="0.01"
+            value="{% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}{{ '%.2f'|format(selected_account_broker_metrics.broker_remaining_drawdown) }}{% endif %}"
+            placeholder="Manual DD"
+          >
+          <button class="btn dashboardMiniIconButton" type="submit" title="Save manual drawdown" aria-label="Save manual drawdown">
+            <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('sync') }}</span>
+            <span class="srOnly">Save manual drawdown</span>
+          </button>
+        </form>
+      </details>
+    {% endif %}
+  </div>
+  <div class="dashboardBrokerMetric">
+    <span>Ledger P&amp;L{% if continuity_label %} · continuity{% endif %}</span>
+    <strong>{{ money(overall_profit) }}</strong>
+    <small>
+      MTD {{ money(mtd_net) }} · {{ performance_scope.trades }} trades in scope
+      {% if continuity_label %} · {{ continuity_label }}{% endif %}
+    </small>
+  </div>
+  <div class="dashboardBrokerActionRail" aria-label="Dashboard actions">
+    {% if selected_account %}
+      <details class="dashboardBrokerMetricsEditor" id="broker-metrics-editor">
+        <summary class="btn dashboardIconButton" title="Edit broker metrics" aria-label="Edit broker metrics">
+          <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('sync') }}</span>
+          <span class="srOnly">Edit broker metrics</span>
+        </summary>
+        <form
+          method="post"
+          action="{{ url_for('dashboard_manual_broker_metrics_update') }}"
+          class="dashboardBrokerMetricsEditorForm"
+        >
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="account_id" value="{{ selected_account.id }}">
+          <label>
+            <span>Broker Equity</span>
+            <input
+              name="broker_equity"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              step="0.01"
+              value="{% if selected_account_broker_metrics.broker_equity is not none %}{{ '%.2f'|format(selected_account_broker_metrics.broker_equity) }}{% endif %}"
+              placeholder="50000.00"
+            >
+          </label>
+          <label>
+            <span>Remaining DD</span>
+            <input
+              name="broker_remaining_drawdown"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              step="0.01"
+              value="{% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}{{ '%.2f'|format(selected_account_broker_metrics.broker_remaining_drawdown) }}{% endif %}"
+              placeholder="2500.00"
+            >
+          </label>
+          <button class="btn dashboardBrokerMetricsSave" type="submit">
+            <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('wallet') }}</span>
+            <span>Save</span>
+          </button>
+        </form>
+      </details>
+    {% endif %}
+    <a class="btn dashboardIconButton" href="/trades/upload/statement" title="Live upload" aria-label="Live upload">
+      <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('wallet') }}</span>
+      <span class="srOnly">Live upload</span>
+    </a>
+    <a class="btn dashboardIconButton" href="/trades/upload/statement?ws=reconcile" title="Reconcile ledger" aria-label="Reconcile ledger">
+      <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('review') }}</span>
+      <span class="srOnly">Reconcile ledger</span>
+    </a>
+  </div>
+  <div class="dashboardBrokerFreshness">
+    {% if selected_account_broker_metrics.broker_equity_is_stale %}
+      Statement balance is newer than stored broker equity
+    {% elif selected_account_broker_metrics.broker_metrics_updated_label %}
+      Broker updated {{ selected_account_broker_metrics.broker_metrics_updated_label }}
+    {% elif selected_account %}
+      Broker metrics not refreshed yet
+    {% else %}
+      Ledger-only view
+    {% endif %}
+  </div>
+</div>
+{% if selected_account and not selected_account_broker_metrics.has_core_broker_metrics %}
+  <div class="dashboardBrokerStaleWarning">
+    Broker equity and remaining drawdown are missing. Open Edit Metrics and enter both values.
+  </div>
+{% endif %}
 <div class="dashboardAnalyticsCluster dashboardProjectGrid">
   <div class="card primaryCard summaryPanel dashboardAnalyticsPrimary{% if not performance_chart.actuals %} is-empty{% endif %}"><div class="toolbar">
     <div class="calendarHead">
       <div>
         <div class="pill"><span class="dashboardPillIcon">{{ dashboard_icon('chart') }}</span><span>Performance Deck</span></div>
-        <div class="summaryLead stack8">Scoped balance, week pressure, and consistency.</div>
+        <div class="summaryLead stack8">Ledger P&amp;L, target pressure, and month consistency.</div>
       </div>
       <div class="calendarNav">
         <a class="btn" href="{{ dashboard_nav.prev_href }}">Prev</a>
@@ -1597,8 +1767,8 @@
     <div class="summaryHero">
       <div class="summaryHeroMain">
         <div class="summaryMonth">{{ performance_scope_title }}</div>
-        <div class="summaryBalance">{{ money(overall_profit) }}</div>
-        <div class="summaryCaption">{{ pace_timeframe.label }} scope · {{ pace_timeframe.summary }}</div>
+        <div class="summaryBalance">{{ money(performance_scope.total) }}</div>
+        <div class="summaryCaption">Ledger P&amp;L · {{ pace_timeframe.label }} scope · {{ pace_timeframe.summary }}</div>
         <div class="dashboardPerformanceBoard dashboardPerformanceBoard-{{ performance_chart.status }}">
           <div class="dashboardPerformanceBoardHead">
             <div class="dashboardPerformanceScore">
@@ -1670,19 +1840,13 @@
           {% if selected_account and selected_account_broker_metrics.broker_remaining_drawdown is not none %}
             <div class="dashboardPerformancePaceMeta" style="margin-top:8px;">
               <span class="{% if selected_account_broker_metrics.remaining_drawdown_tone == 'positive' %}metaGreen{% elif selected_account_broker_metrics.remaining_drawdown_tone == 'negative' %}metaRed{% else %}metaAmber{% endif %}">
-                Remaining DD: {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}{% if selected_account_broker_metrics.remaining_drawdown_source == 'configured' %} configured{% endif %}
+                Remaining DD: {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}
               </span>
               {% if balance_source != 'broker_equity' %}
                 <span>Balance source: ledger</span>
+              {% elif selected_account_broker_metrics.broker_metrics_updated_label %}
+                <span>Broker updated {{ selected_account_broker_metrics.broker_metrics_updated_label }}</span>
               {% endif %}
-              <form method="post" action="{{ url_for('dashboard_refresh_account_metrics') }}" class="inlineForm">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="account_id" value="{{ selected_account.id }}">
-                <button class="btn" type="submit" title="Update Account" aria-label="Update Account">
-                  <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('sync') }}</span>
-                  <span class="srOnly">Update Account</span>
-                </button>
-              </form>
             </div>
           {% endif %}
           <div class="dashboardProgress dashboardProgress-primary dashboardBalanceProgress" style="--progress-pct: {{ '%.1f'|format(balance_progress.pct) }}%">
@@ -1768,10 +1932,10 @@
         <div class="summaryStat"><div class="k">YTD Net</div><div class="v">{{ money(ytd_net) }}</div></div>
         <div class="summaryStat"><div class="k">Trades (MTD)</div><div class="v">{{ mtd_trades }}</div></div>
         <div class="summaryStat"><div class="k">Trades (YTD)</div><div class="v">{{ ytd_trades }}</div></div>
-        <div class="summaryStat"><div class="k">Diagnostics</div><div class="v"><a class="btn primary" href="/analytics?tab=diagnostics">Open</a></div></div>
-        <div class="summaryStat"><div class="k">Behavior Heatmap</div><div class="v"><a class="btn primary" href="/analytics?tab=behavior">Open</a></div></div>
-        <div class="summaryStat"><div class="k">Reconcile</div><div class="v"><a class="btn primary" href="/trades/upload/statement?ws=reconcile">Open</a></div></div>
-        <div class="summaryStat"><div class="k">Ops Alerts</div><div class="v"><a class="btn primary" href="/ops/alerts">Open</a></div></div>
+        <a class="summaryStat summaryStat-action" href="/analytics?tab=diagnostics" aria-label="Open diagnostics"><span class="k">Diagnostics</span><span class="dashboardActionIcon" aria-hidden="true">{{ dashboard_icon('review') }}</span></a>
+        <a class="summaryStat summaryStat-action" href="/analytics?tab=behavior" aria-label="Open behavior heatmap"><span class="k">Behavior Heatmap</span><span class="dashboardActionIcon" aria-hidden="true">{{ dashboard_icon('chart') }}</span></a>
+        <a class="summaryStat summaryStat-action" href="/trades/upload/statement?ws=reconcile" aria-label="Open reconcile"><span class="k">Reconcile</span><span class="dashboardActionIcon" aria-hidden="true">{{ dashboard_icon('wallet') }}</span></a>
+        <a class="summaryStat summaryStat-action" href="/ops/alerts" aria-label="Open ops alerts"><span class="k">Ops Alerts</span><span class="dashboardActionIcon" aria-hidden="true">{{ dashboard_icon('risk') }}</span></a>
       </div>
     </details>
   </div></div>

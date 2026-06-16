@@ -21,11 +21,19 @@ from mccain_capital.runtime import (
     parse_int,
     split_row,
 )
+from mccain_capital.repositories import trades as trades_repo
 
 DEFAULT_FEE_PER_CONTRACT = 0.70
 
 # OCR helpers
 PLACEHOLDERS = {"-", "—", "–", "_", "—-", "—_"}
+
+
+def _dedupe_account_ids(account_id: int) -> list[int]:
+    continuity_ids = trades_repo.account_continuity_ids(int(account_id))
+    if continuity_ids:
+        return continuity_ids
+    return [int(account_id)]
 
 
 def normalize_ocr(s: str) -> str:
@@ -1070,14 +1078,16 @@ def insert_trades_from_broker_paste_with_report(
         )
 
     with db() as conn:
+        dedupe_account_ids = _dedupe_account_ids(int(account_id))
+        dedupe_marks = ",".join(["?"] * len(dedupe_account_ids))
         existing_rows = conn.execute(
-            """
+            f"""
             SELECT trade_date, entry_time, exit_time, ticker, opt_type, strike,
                    entry_price, exit_price, contracts, comm, gross_pl, net_pl, raw_line
             FROM trades
-            WHERE account_id = ?
+            WHERE account_id IN ({dedupe_marks})
             """,
-            (int(account_id),),
+            dedupe_account_ids,
         ).fetchall()
         existing = {db_trade_identity(r) for r in existing_rows}
         to_insert: List[Dict[str, Any]] = []

@@ -229,6 +229,9 @@ def _resolve_scope_selection(
 
     if mode == "current":
         effective_start = account_start
+        if start_date and (not effective_start or start_date > effective_start):
+            effective_start = start_date
+        effective_end = end_date
         scope_label = "Current Account"
         scope_starting_balance = float(
             account_scope.get("starting_balance") or history_starting_balance
@@ -236,7 +239,10 @@ def _resolve_scope_selection(
         detail_parts = [account_label]
         if account_type:
             detail_parts.append(account_type)
-        detail_parts.append(f"from {account_start}")
+        if start_date or end_date:
+            detail_parts.append(f"{start_date or account_start or '…'} → {end_date or '…'}")
+        else:
+            detail_parts.append(f"from {account_start}")
         scope_detail = " · ".join(part for part in detail_parts if part)
     elif mode == "custom":
         effective_start = start_date
@@ -950,12 +956,16 @@ def trades_page():
     if d and not start_date and not end_date:
         start_date = d
         end_date = d
+        if not scope_preset:
+            scope_preset = "custom"
     active_day = end_date or d or today_iso()
     history_starting_balance = float(get_setting_float("starting_balance", 50000.0))
     account_scope = trades_repo.account_scope_snapshot()
     account_scope_mode = (
         str(legacy.request.args.get("account_scope_mode", "") or "").strip().lower()
     )
+    if d and not account_scope_mode:
+        account_scope_mode = "custom"
     resolved_scope = _resolve_scope_selection(
         requested_mode=account_scope_mode,
         start_date=start_date,

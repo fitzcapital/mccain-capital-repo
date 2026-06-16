@@ -113,11 +113,147 @@ def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(clien
         "Import</a>"
         in body
     )
-    assert f"/trades/upload/statement?ws=live&account_id={account_id}&account_editor=edit" in body
     assert "/trades/upload/statement?ws=live&account_id=all&account_editor=new" in body
     assert "Archive selected" in body
     assert "ACC999" in body
     assert "default:ACC999" not in body
+
+
+def test_dashboard_add_account_link_carries_rollover_context(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Eval 50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_active_account(int(account_id))
+
+    resp = client.get("/dashboard?scope=active", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert (
+        "/trades/upload/statement?ws=live&account_id=all&account_editor=new"
+        f"&rollover_from={account_id}"
+    ) in body
+
+
+def test_saving_opa_account_links_prior_eval_for_continuity(client):
+    eval_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Eval 50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_active_account(int(eval_account_id))
+
+    resp = client.post(
+        "/trades/upload/statement?ws=live&account_id=all&account_editor=new",
+        data={
+            "intent": "save_account",
+            "selected_account_id": "",
+            "rollover_from_account_id": str(eval_account_id),
+            "account_name": "Performance 50k",
+            "broker_account_id": "OPA0003049",
+            "account_size": "50000",
+            "starting_balance": "50000",
+            "max_drawdown": "2500",
+        },
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    performance_account = trades_repo.find_account_by_broker_account_id("OPA0003049")
+    assert performance_account is not None
+    assert performance_account["starting_balance"] == 50000.0
+    assert trades_repo.account_continuity_ids(int(performance_account["id"])) == [
+        int(eval_account_id),
+        int(performance_account["id"]),
+    ]
+    scope = trades_repo.account_scope_snapshot()
+    assert int(scope["account_id"]) == int(performance_account["id"])
+
+
+def test_dashboard_continuity_uses_prior_eval_for_ledger_not_broker(client):
+    eval_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Eval 50k",
+        broker_account_id="default:OEV0059123",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    performance_account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="Performance 50k",
+        broker_account_id="default:OPA0003049",
+        account_size=50000.0,
+        starting_balance=50000.0,
+        max_drawdown=2500.0,
+    )
+    trades_repo.set_account_continuity(int(performance_account_id), [int(eval_account_id)])
+    trades_repo.set_active_account(int(performance_account_id))
+    trades_repo.update_account_broker_metrics(
+        int(performance_account_id),
+        broker_equity=50125.0,
+        broker_equity_peak=50125.0,
+        broker_remaining_drawdown=2400.0,
+        broker_max_loss=47600.0,
+        updated_at="2026-06-11T09:30:00-04:00",
+    )
+    with db() as conn:
+        for account_id, raw_line, net_pl, balance in (
+            (eval_account_id, "eval rollover trade", 250.0, 50250.0),
+            (performance_account_id, "performance trade", 125.0, 50125.0),
+        ):
+            conn.execute(
+                """
+                INSERT INTO trades (
+                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                    entry_price, exit_price, contracts, total_spent, comm,
+                    gross_pl, net_pl, result_pct, balance, raw_line, created_at, account_id
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    "2026-06-11",
+                    "10:05 AM",
+                    "10:20 AM",
+                    "SPX",
+                    "CALL",
+                    6900.0,
+                    1.0,
+                    2.0,
+                    1,
+                    100.0,
+                    1.0,
+                    net_pl,
+                    net_pl,
+                    100.0,
+                    balance,
+                    raw_line,
+                    now_iso(),
+                    int(account_id),
+                ),
+            )
+
+    resp = client.get(
+        f"/dashboard?y=2026&m=6&scope=active&account_id={performance_account_id}",
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Broker Equity" in body
+    assert "$50,125.00" in body
+    assert "Ledger P&amp;L" in body
+    assert "continuity" in body
+    assert "$375.00" in body
+    assert "OEV0059123 + OPA0003049" in body
+    assert "Continuity Ledger" in body
 
 
 def test_trades_page_uses_action_specific_hero_and_trust_badges(client):
@@ -1970,6 +2106,7 @@ def test_market_pulse_sparkline_renders_guides_and_candles():
     assert "marketMiniSparkBaseline" in svg
     assert "marketMiniSparkWick" in svg
     assert "marketMiniSparkBody" in svg
+    assert "marketMiniSparkPoint" in svg
     assert svg.count("<rect") >= 2
     assert "10.0,11.0" not in svg
 
@@ -2155,6 +2292,7 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
     body = resp.get_data(as_text=True)
     assert body.count("marketMiniSparkBody") >= 8
     assert body.count("marketMiniSparkWick") >= 8
+    assert body.count("marketMiniSparkPoint") >= 4
     assert body.count("marketMiniSparkGuide") >= 8
     assert body.count("marketMiniSparkBaseline") >= 4
     assert "Broad tape is defensive" in body

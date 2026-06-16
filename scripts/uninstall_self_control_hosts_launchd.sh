@@ -9,6 +9,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 launchctl bootout system/com.mccain.selfcontrolhosts >/dev/null 2>&1 || true
+launchctl disable system/com.mccain.selfcontrolhosts >/dev/null 2>&1 || true
 rm -f "${PLIST_PATH}"
 
 echo "Uninstalled com.mccain.selfcontrolhosts launch daemon."
