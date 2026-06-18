@@ -66277,55 +66277,68 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeUpdatedLabel{
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard{
-  padding:24px 24px 20px !important;
+  padding:16px 18px 17px !important;
   min-height:0 !important;
+  height:auto !important;
   border-width:1px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  gap:0 !important;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchCardTop{
-  min-height:48px;
-  align-items:flex-start !important;
+  min-height:38px;
+  align-items:center !important;
+  margin-bottom:4px !important;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState{
-  min-width:112px;
+  min-width:98px;
   justify-content:center;
   text-align:center;
-  padding:9px 18px !important;
+  padding:7px 16px !important;
+  border-radius:999px !important;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSpark{
-  margin:16px 0 10px !important;
+  width:50% !important;
+  min-height:40px !important;
+  height:40px !important;
+  margin:-2px auto 4px !important;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetBody{
   display:grid !important;
-  grid-template-columns:minmax(0, 1fr) auto;
+  grid-template-columns:minmax(0, 1fr) minmax(68px, max-content);
   align-items:end;
-  gap:18px;
-  margin-top:auto;
+  gap:8px;
+  margin-top:0 !important;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetMetric{
   min-width:0;
   display:flex;
   flex-direction:column;
-  gap:4px;
+  gap:3px;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetMetric--move{
   align-items:flex-end;
   text-align:right;
-  padding-bottom:3px;
+  padding-bottom:6px;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMetricLabel,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeRangeLabel{
-  color:rgba(148, 168, 197, .88);
-  font-size:11px;
-  line-height:1;
-  letter-spacing:.10em;
-  text-transform:uppercase;
+  position:absolute !important;
+  width:1px !important;
+  height:1px !important;
+  padding:0 !important;
+  margin:-1px !important;
+  overflow:hidden !important;
+  clip:rect(0, 0, 0, 0) !important;
+  white-space:nowrap !important;
+  border:0 !important;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetPrice{
@@ -66337,6 +66350,9 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetPrice{
   border:0 !important;
   background:none !important;
   box-shadow:none !important;
+  font-size:20px !important;
+  line-height:1.55 !important;
+  letter-spacing:0 !important;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetPrice::after{
@@ -66346,18 +66362,21 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetPrice::aft
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetChange{
   display:block !important;
   color:rgba(84, 246, 235, .99);
-  font-size:22px !important;
+  font-size:17px !important;
   line-height:1 !important;
   text-shadow:0 0 16px rgba(84, 246, 235, .22);
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetMeta{
-  display:grid !important;
-  grid-template-columns:minmax(0, 1fr) auto;
-  gap:12px;
+  display:flex !important;
+  grid-template-columns:none !important;
+  gap:6px;
   align-items:center;
-  margin-top:10px !important;
+  justify-content:flex-start;
+  margin-top:2px !important;
   color:rgba(188, 202, 226, .94) !important;
+  font-size:16px !important;
+  line-height:1.05 !important;
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetStatus,
@@ -66369,7 +66388,14 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetFreshness{
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetFreshness{
-  text-align:right;
+  text-align:left;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetStatus::after{
+  content:"·";
+  display:inline-block;
+  margin-left:6px;
+  color:rgba(150, 170, 202, .82);
 }
 
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetStatus.is-critical,
@@ -66387,10 +66413,11 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetFreshness.
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeAssetRange{
   display:flex !important;
   align-items:center;
-  gap:8px;
-  margin-top:5px !important;
+  gap:0;
+  margin-top:2px !important;
   color:rgba(170, 187, 215, .95) !important;
-  line-height:1.08 !important;
+  font-size:16px !important;
+  line-height:1.05 !important;
   white-space:nowrap;
   overflow:hidden;
 }
@@ -66426,6 +66453,81 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative .dashboardTapeAssetChange,
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative [data-role="change-line"]{
   color:rgba(84, 132, 255, .99) !important;
+}
+
+/* Dashboard Market Tape compact card authority: match the Market Pulse tape card hierarchy. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeCardStackShell{
+  padding:0 !important;
+  margin-top:16px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeCardStack{
+  display:grid !important;
+  grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+  gap:12px !important;
+  align-items:stretch !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard{
+  min-height:138px !important;
+  max-height:none !important;
+  padding:10px 12px 11px !important;
+  border-radius:10px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .k,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .liveTapeWatchSymbol{
+  font-size:18px !important;
+  line-height:1 !important;
+  letter-spacing:0 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeMetricLabel,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeRangeLabel{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetPrice{
+  max-width:100% !important;
+  overflow:hidden !important;
+  text-overflow:clip !important;
+  white-space:nowrap !important;
+  font-size:20px !important;
+  line-height:1.55 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetChange{
+  min-width:68px !important;
+  overflow:visible !important;
+  white-space:nowrap !important;
+  font-size:17px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetMeta,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetRange{
+  font-size:16px !important;
+  line-height:1.05 !important;
+  letter-spacing:0 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetRange{
+  display:block !important;
+  margin-top:2px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeRangeValue{
+  display:block !important;
+}
+
+@media (max-width: 760px){
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeCardStack{
+    grid-template-columns:1fr !important;
+  }
+
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard{
+    min-height:132px !important;
+  }
 }
 
 /* Final shell cleanup: keep Cinematic Nebula on the fixed canvas and a soft body glow only.
@@ -67004,6 +67106,103 @@ body.page-dashboard .dashboardAnalyticsCluster details[data-dashboard-optional="
   grid-template-columns:repeat(4, minmax(130px, 1fr));
 }
 
+body.page-dashboard .dashboardPerformanceControls{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+  min-width:0;
+}
+
+body.page-dashboard .dashboardRangePopover{
+  position:relative;
+  z-index:25;
+  flex:0 0 auto;
+}
+
+body.page-dashboard .dashboardRangePopover > summary{
+  width:44px;
+  min-width:44px;
+  height:44px;
+  min-height:44px;
+  padding:0;
+  justify-content:center;
+  list-style:none;
+}
+
+body.page-dashboard .dashboardRangePopover > summary::-webkit-details-marker{
+  display:none;
+}
+
+body.page-dashboard .dashboardRangePopover.is-active > summary{
+  border-color:rgba(91, 230, 255, .45);
+  color:rgba(91, 230, 255, .95);
+  box-shadow:0 0 0 1px rgba(91, 230, 255, .10), 0 12px 28px rgba(91, 230, 255, .14);
+}
+
+body.page-dashboard .dashboardRangeToggle .dashboardButtonIcon{
+  margin:0;
+}
+
+body.page-dashboard .dashboardRangeToggle svg{
+  width:18px;
+  height:18px;
+}
+
+body.page-dashboard .dashboardRangeForm{
+  position:absolute;
+  top:calc(100% + 10px);
+  right:0;
+  z-index:80;
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  align-items:end;
+  gap:10px;
+  width:min(360px, calc(100vw - 32px));
+  padding:12px;
+  border:1px solid rgba(78, 112, 166, .36);
+  border-radius:14px;
+  background:
+    linear-gradient(180deg, rgba(16, 29, 50, .98), rgba(6, 11, 20, .98)),
+    rgba(6, 11, 20, .98);
+  box-shadow:0 18px 44px rgba(0, 0, 0, .46), 0 0 0 1px rgba(91, 230, 255, .08);
+}
+
+body.page-dashboard .dashboardRangeForm label{
+  display:grid;
+  gap:4px;
+  min-width:0;
+  color:rgba(181, 197, 219, .72);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.10em;
+  line-height:1;
+  text-transform:uppercase;
+}
+
+body.page-dashboard .dashboardRangeForm input[type="date"]{
+  width:100%;
+  min-height:40px;
+  padding:8px 10px;
+  border-radius:12px;
+  font-size:13px;
+  font-weight:800;
+  color:rgba(244, 249, 255, .94);
+}
+
+body.page-dashboard .dashboardRangeForm .btn{
+  min-height:40px;
+  padding:8px 12px;
+}
+
+body.page-dashboard .dashboardRangeActions{
+  grid-column:1 / -1;
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
+
 body.page-dashboard .summaryStat-action{
   display:flex;
   align-items:center;
@@ -67078,6 +67277,28 @@ body.page-dashboard .summaryStat-action .dashboardButtonIcon{
 }
 
 @media (max-width: 720px){
+  body.page-dashboard .dashboardPerformanceControls{
+    width:100%;
+    justify-content:space-between;
+    flex-wrap:nowrap;
+  }
+
+  body.page-dashboard .dashboardPerformanceControls .calendarNav{
+    width:auto;
+    flex:1 1 auto;
+  }
+
+  body.page-dashboard .dashboardRangeForm{
+    grid-template-columns:1fr;
+    right:0;
+    width:min(340px, calc(100vw - 32px));
+  }
+
+  body.page-dashboard .dashboardRangeActions .btn{
+    width:100%;
+    justify-content:center;
+  }
+
   body.page-dashboard .dashboardBrokerCommandStrip{
     grid-template-columns:1fr;
     padding:12px;
@@ -67153,6 +67374,20 @@ body[data-theme="cinematic-nebula"].page-dashboard #dashboardTapeStreamStatus::b
 body.page-dashboard #dashboardTapeStreamStatus[data-tone]::before,
 body[data-theme="cinematic-nebula"] .page-dashboard #dashboardTapeStreamStatus[data-tone]::before,
 body[data-theme="cinematic-nebula"].page-dashboard #dashboardTapeStreamStatus[data-tone]::before{
+  background:#ff4d6d !important;
+  box-shadow:0 0 8px rgba(255,77,109,.46) !important;
+}
+
+body.page-dashboard #dashboardTapeStreamStatus[data-tone="live"]::before,
+body[data-theme="cinematic-nebula"] .page-dashboard #dashboardTapeStreamStatus[data-tone="live"]::before,
+body[data-theme="cinematic-nebula"].page-dashboard #dashboardTapeStreamStatus[data-tone="live"]::before{
+  background:#38e58b !important;
+  box-shadow:0 0 10px rgba(56,229,139,.52) !important;
+}
+
+body.page-dashboard #dashboardTapeStreamStatus[data-tone="closed"]::before,
+body[data-theme="cinematic-nebula"] .page-dashboard #dashboardTapeStreamStatus[data-tone="closed"]::before,
+body[data-theme="cinematic-nebula"].page-dashboard #dashboardTapeStreamStatus[data-tone="closed"]::before{
   background:#ff4d6d !important;
   box-shadow:0 0 8px rgba(255,77,109,.46) !important;
 }

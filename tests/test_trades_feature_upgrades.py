@@ -3351,6 +3351,15 @@ def test_stale_sync_job_is_reconciled_when_polled(client, monkeypatch, tmp_path)
     assert sync_status["stage"] == "stale"
 
 
+def test_sync_startup_stale_timeout_exceeds_browser_boot_gate():
+    from mccain_capital.services import trades as trades_svc
+
+    assert (
+        trades_svc.SYNC_JOB_QUEUED_STALE_SECONDS
+        > trades_svc.vanquish_live_sync.BROWSER_BOOT_GATE_TIMEOUT_SECONDS
+    )
+
+
 def test_sync_runtime_state_reconciles_stale_jobs_at_startup(monkeypatch, tmp_path):
     from mccain_capital.services import trades as trades_svc
 

@@ -25,6 +25,7 @@ except Exception:  # pragma: no cover - non-POSIX fallback
 SELECTOR_PROFILE_VERSION = "2026-05-27.v3"
 _BROWSER_BOOT_LOCK = threading.Lock()
 _BROWSER_BOOT_LOCK_PATH = os.path.join(tempfile.gettempdir(), "mccain_browser_boot.lock")
+BROWSER_BOOT_GATE_TIMEOUT_SECONDS = 45.0
 _RESOURCE_ERROR_MARKERS = (
     "resource temporarily unavailable",
     "can't start new thread",
@@ -1013,7 +1014,7 @@ def seed_dashboard_session(
     )
 
     context = None
-    with _browser_boot_gate(timeout_s=45.0), sync_playwright() as p:
+    with _browser_boot_gate(timeout_s=BROWSER_BOOT_GATE_TIMEOUT_SECONDS), sync_playwright() as p:
         try:
             mark("seed_dashboard_session", "Opening headed Vanquish dashboard session.")
             context = p.chromium.launch_persistent_context(
@@ -1629,7 +1630,7 @@ def fetch_statement_html_via_login(
             except Exception:
                 pass
 
-    with _browser_boot_gate(timeout_s=45.0), sync_playwright() as p:
+    with _browser_boot_gate(timeout_s=BROWSER_BOOT_GATE_TIMEOUT_SECONDS), sync_playwright() as p:
         browser, context, page, tracing_enabled, debug_dir = _bootstrap_browser_session(
             playwright=p,
             headless=headless,

@@ -1007,6 +1007,7 @@
 	            <details class="syncDetails stack10 dashboardMilestoneControls">
 	              <summary>Set Milestone</summary>
 	            <form method="post" action="/dashboard/milestone" class="stack10">
+	              <input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
 	              <input type="hidden" name="y" value="{{ dashboard_year }}"/>
 	              <input type="hidden" name="m" value="{{ dashboard_month }}"/>
 	              <input type="hidden" name="scope" value="{{ scope_mode }}"/>
@@ -1402,6 +1403,7 @@
 {% set performance_scope = namespace(total=0, trades=0, wins=0, losses=0) %}
 {% set performance_chart = namespace(
   days=[],
+  day_labels=[],
   actuals=[],
   targets=[],
   min=None,
@@ -1422,36 +1424,34 @@
   recent_wins=0,
   recent_losses=0
 ) %}
-{% for wk in heat.weeks %}
-  {% for day in wk.days %}
-    {% set day_iso = day.iso|string %}
-    {% set day_in_pace_scope = pace_timeframe.key == 'm' or (day_iso >= pace_timeframe.start_iso and day_iso <= pace_timeframe.end_iso) %}
-    {% if day_in_pace_scope and day.daynum is not none and day.wd is not none and day.wd < 5 and day.balance is not none %}
-      {% set spark_value = (day.display_balance if day.display_balance is not none else day.balance)|float %}
-      {% set balance_spark.values = balance_spark.values + [spark_value] %}
-      {% set performance_chart.days = performance_chart.days + [day.daynum|int] %}
-      {% set performance_chart.recent_days = performance_chart.recent_days + [day] %}
-      {% set performance_scope.total = performance_scope.total + (day.net|float) %}
-      {% set performance_chart.actuals = performance_chart.actuals + [performance_scope.total] %}
-      {% set performance_scope.trades = performance_scope.trades + (day.trade_count|int) %}
-      {% if day.net > 0 %}
-        {% set performance_scope.wins = performance_scope.wins + 1 %}
-      {% elif day.net < 0 %}
-        {% set performance_scope.losses = performance_scope.losses + 1 %}
-      {% endif %}
-      {% if balance_spark.min is none or spark_value < balance_spark.min %}
-        {% set balance_spark.min = spark_value %}
-      {% endif %}
-      {% if balance_spark.max is none or spark_value > balance_spark.max %}
-        {% set balance_spark.max = spark_value %}
-      {% endif %}
+{% for day in performance_days %}
+  {% set day_iso = day.iso|string %}
+  {% if day.wd is not none and day.wd < 5 and day.balance is not none %}
+    {% set spark_value = (day.display_balance if day.display_balance is not none else day.balance)|float %}
+    {% set balance_spark.values = balance_spark.values + [spark_value] %}
+    {% set performance_chart.days = performance_chart.days + [(day.chart_day if day.chart_day is defined else day.daynum)|int] %}
+    {% set performance_chart.day_labels = performance_chart.day_labels + [(day.label_short if day.label_short is defined else day.daynum|string)] %}
+    {% set performance_chart.recent_days = performance_chart.recent_days + [day] %}
+    {% set performance_scope.total = performance_scope.total + (day.net|float) %}
+    {% set performance_chart.actuals = performance_chart.actuals + [performance_scope.total] %}
+    {% set performance_scope.trades = performance_scope.trades + (day.trade_count|int) %}
+    {% if day.net > 0 %}
+      {% set performance_scope.wins = performance_scope.wins + 1 %}
+    {% elif day.net < 0 %}
+      {% set performance_scope.losses = performance_scope.losses + 1 %}
     {% endif %}
-  {% endfor %}
+    {% if balance_spark.min is none or spark_value < balance_spark.min %}
+      {% set balance_spark.min = spark_value %}
+    {% endif %}
+    {% if balance_spark.max is none or spark_value > balance_spark.max %}
+      {% set balance_spark.max = spark_value %}
+    {% endif %}
+  {% endif %}
 {% endfor %}
 {% set balance_spark_range = (balance_spark.max - balance_spark.min) if balance_spark.max is not none and balance_spark.min is not none else 0 %}
 {% set performance_month_label = month_name.split(' ')[0][:3] if month_name else '' %}
-{% set performance_scope_title = month_name if pace_timeframe.key == 'm' else pace_timeframe.label %}
-{% set performance_scope_metric_label = 'Month Total' if pace_timeframe.key == 'm' else pace_timeframe.label ~ ' Total' %}
+{% set performance_scope_title = performance_range.title %}
+{% set performance_scope_metric_label = performance_range.metric_label %}
 {% set balance_progress = namespace(pct=0) %}
 {% if balance_spark.values|length > 1 and balance_spark_range > 0 %}
   {% set balance_progress.pct = (((balance_spark.values[-1] - balance_spark.min) / balance_spark_range) * 100) %}
@@ -1472,9 +1472,9 @@
   {% endfor %}
 {% endif %}
 {% if performance_chart.actuals %}
-  {% set performance_chart.start_day_label = performance_month_label ~ ' ' ~ performance_chart.days[0] %}
-  {% set performance_chart.end_day_label = performance_month_label ~ ' ' ~ performance_chart.days[-1] %}
-  {% set performance_chart.latest_day_label = performance_month_label ~ ' ' ~ performance_chart.days[-1] %}
+  {% set performance_chart.start_day_label = performance_chart.day_labels[0] %}
+  {% set performance_chart.end_day_label = performance_chart.day_labels[-1] %}
+  {% set performance_chart.latest_day_label = performance_chart.day_labels[-1] %}
   {% for actual_value in performance_chart.actuals %}
     {% set projected_value = performance_chart.target_daily * loop.index %}
     {% set performance_chart.targets = performance_chart.targets + [projected_value] %}
@@ -1520,8 +1520,8 @@
 {% else %}
   {% set performance_chart.actual_points = '3.00,20.00 97.00,20.00' %}
   {% set performance_chart.target_points = '3.00,20.00 97.00,20.00' %}
-  {% set performance_chart.start_day_label = performance_month_label ~ ' 1' %}
-  {% set performance_chart.end_day_label = performance_month_label ~ ' ' ~ last_dom %}
+  {% set performance_chart.start_day_label = performance_range.start_iso %}
+  {% set performance_chart.end_day_label = performance_range.end_iso %}
 {% endif %}
 {% if performance_chart.actual_last > performance_chart.target_last %}
   {% set performance_chart.status = 'ahead' %}
@@ -1633,7 +1633,7 @@
     </strong>
     <small>
       {% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}
-        {{ selected_account_broker_metrics.remaining_drawdown_source_label }}
+        {{ selected_account_broker_metrics.remaining_drawdown_source_label }}{% if selected_account_broker_metrics.drawdown_off_peak_label %} · {{ selected_account_broker_metrics.drawdown_off_peak_label }}{% endif %}
       {% else %}
         Missing
       {% endif %}
@@ -1754,12 +1754,41 @@
     <div class="calendarHead">
       <div>
         <div class="pill"><span class="dashboardPillIcon">{{ dashboard_icon('chart') }}</span><span>Performance Deck</span></div>
-        <div class="summaryLead stack8">Ledger P&amp;L, target pressure, and month consistency.</div>
+        <div class="summaryLead stack8">Ledger P&amp;L, target pressure, and selected-range consistency.</div>
       </div>
-      <div class="calendarNav">
-        <a class="btn" href="{{ dashboard_nav.prev_href }}">Prev</a>
-        <a class="btn" href="{{ dashboard_nav.current_href }}">This Month</a>
-        <a class="btn" href="{{ dashboard_nav.next_href }}">Next</a>
+      <div class="dashboardPerformanceControls">
+        <div class="calendarNav">
+          <a class="btn" href="{{ dashboard_nav.prev_href }}">Prev</a>
+          <a class="btn" href="{{ dashboard_nav.current_href }}">This Month</a>
+          <a class="btn" href="{{ dashboard_nav.next_href }}">Next</a>
+        </div>
+        <details class="dashboardRangePopover{% if performance_range.active %} is-active{% endif %}">
+          <summary class="btn dashboardIconButton dashboardRangeToggle" title="Performance range" aria-label="Performance range">
+            <span class="dashboardButtonIcon" aria-hidden="true">{{ dashboard_icon('calendar') }}</span>
+            <span class="srOnly">Performance range</span>
+          </summary>
+          <form class="dashboardRangeForm" method="get" action="{{ url_for('dashboard') }}">
+            <input type="hidden" name="y" value="{{ dashboard_year }}">
+            <input type="hidden" name="m" value="{{ dashboard_month }}">
+            <input type="hidden" name="scope" value="{{ scope_mode }}">
+            <input type="hidden" name="ticker" value="{{ selected_ticker }}">
+            <input type="hidden" name="pace_tf" value="{{ pace_timeframe.key }}">
+            <label>
+              <span>From</span>
+              <input type="date" name="range_start" value="{{ performance_range.start_iso }}">
+            </label>
+            <label>
+              <span>To</span>
+              <input type="date" name="range_end" value="{{ performance_range.end_iso }}">
+            </label>
+            <div class="dashboardRangeActions">
+              <button class="btn primary" type="submit">Apply</button>
+              {% if performance_range.active %}
+                <a class="btn" href="{{ dashboard_nav.range_clear_href }}">Clear</a>
+              {% endif %}
+            </div>
+          </form>
+        </details>
       </div>
     </div>
 
@@ -1768,7 +1797,7 @@
       <div class="summaryHeroMain">
         <div class="summaryMonth">{{ performance_scope_title }}</div>
         <div class="summaryBalance">{{ money(performance_scope.total) }}</div>
-        <div class="summaryCaption">Ledger P&amp;L · {{ pace_timeframe.label }} scope · {{ pace_timeframe.summary }}</div>
+        <div class="summaryCaption">Ledger P&amp;L · {{ performance_range.caption }}</div>
         <div class="dashboardPerformanceBoard dashboardPerformanceBoard-{{ performance_chart.status }}">
           <div class="dashboardPerformanceBoardHead">
             <div class="dashboardPerformanceScore">
@@ -1798,7 +1827,7 @@
                   {% set tile_tone = 'loss' %}
                 {% endif %}
                 <div class="dashboardPerformanceTile dashboardPerformanceTile-{{ tile_tone }}" title="{{ day.iso }} · {{ money(day.net) }}">
-                  <span class="dashboardPerformanceTileDay">{{ day.daynum }}</span>
+                  <span class="dashboardPerformanceTileDay">{{ day.label_short if day.label_short is defined else day.daynum }}</span>
                   <strong class="dashboardPerformanceTileValue">{{ money_compact(day.net) }}</strong>
                 </div>
               {% endfor %}
@@ -1812,7 +1841,7 @@
             {% endif %}
           </div>
           {% if not performance_chart.actuals %}
-            <div class="dashboardPerformanceEmptyNote">No closed trades are in this {{ pace_timeframe.label|lower }} scope yet.</div>
+            <div class="dashboardPerformanceEmptyNote">No closed trades are in this {{ performance_range.scope_label|lower }} yet.</div>
           {% endif %}
           <div class="dashboardPerformancePaceRow">
             <div class="dashboardPerformancePaceLabels">
@@ -1840,7 +1869,7 @@
           {% if selected_account and selected_account_broker_metrics.broker_remaining_drawdown is not none %}
             <div class="dashboardPerformancePaceMeta" style="margin-top:8px;">
               <span class="{% if selected_account_broker_metrics.remaining_drawdown_tone == 'positive' %}metaGreen{% elif selected_account_broker_metrics.remaining_drawdown_tone == 'negative' %}metaRed{% else %}metaAmber{% endif %}">
-                Remaining DD: {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}
+                Remaining DD: {{ money(selected_account_broker_metrics.broker_remaining_drawdown) }}{% if selected_account_broker_metrics.drawdown_off_peak_label %} · {{ selected_account_broker_metrics.drawdown_off_peak_label }}{% endif %}
               </span>
               {% if balance_source != 'broker_equity' %}
                 <span>Balance source: ledger</span>
@@ -1870,7 +1899,7 @@
           </div>
           <div class="summaryChipValue">
             <strong>{{ performance_scope.trades }}</strong>
-            <small>{{ performance_scope.wins }}W / {{ performance_scope.losses }}L · {{ pace_timeframe.label }} scope</small>
+            <small>{{ performance_scope.wins }}W / {{ performance_scope.losses }}L · {{ performance_range.scope_label }}</small>
           </div>
         </div>
       </div>

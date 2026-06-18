@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
+import re
 from zoneinfo import ZoneInfo
 
 from mccain_capital import app_core as core
@@ -117,6 +118,44 @@ def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(clien
     assert "Archive selected" in body
     assert "ACC999" in body
     assert "default:ACC999" not in body
+
+
+def test_dashboard_milestone_save_persists_settings_and_redirects(client, app):
+    app.config["CSRF_ENABLED"] = True
+    page = client.get("/dashboard", follow_redirects=True)
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    match = re.search(
+        r'<form method="post" action="/dashboard/milestone"[^>]*>.*?'
+        r'<input type="hidden" name="csrf_token" value="([^"]+)"',
+        body,
+        re.S,
+    )
+    assert match
+
+    resp = client.post(
+        "/dashboard/milestone",
+        data={
+            "csrf_token": match.group(1),
+            "milestone_name": "Profit Milestone",
+            "milestone_profit_source": "ytd",
+            "milestone_profit_goal": "7500",
+            "milestone_target_balance": "0.00",
+            "y": "2026",
+            "m": "6",
+            "scope": "all",
+            "ticker": "QQQ",
+            "pace_tf": "d",
+        },
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert "Profit Milestone" in resp.get_data(as_text=True)
+    assert get_setting_value("dashboard_milestone_name") == "Profit Milestone"
+    assert get_setting_value("dashboard_milestone_profit_source") == "ytd"
+    assert get_setting_value("dashboard_milestone_profit_goal") == "7500.00"
+    assert get_setting_value("dashboard_milestone_target_balance") == "0.00"
 
 
 def test_dashboard_add_account_link_carries_rollover_context(client):

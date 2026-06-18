@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from flask import (
     abort,
@@ -349,11 +349,36 @@ def _load_market_pulse_playbook_disk_cache() -> Dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _atomic_dump_market_pulse_json(path: str, payload: Dict[str, Any], *, default=None) -> None:
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=directory,
+            prefix=f".{os.path.basename(path)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            tmp_path = f.name
+            json.dump(payload, f, indent=2, default=default)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        if tmp_path:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+
+
 def _save_market_pulse_disk_cache(payload: Dict[str, Any]) -> None:
     try:
-        os.makedirs(app_runtime.upload_root(), exist_ok=True)
-        with open(_market_pulse_cache_file(), "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+        _atomic_dump_market_pulse_json(_market_pulse_cache_file(), payload)
     except OSError:
         return
 
@@ -361,9 +386,7 @@ def _save_market_pulse_disk_cache(payload: Dict[str, Any]) -> None:
 def _save_market_pulse_replay_cache(payload: Dict[str, Any]) -> None:
     path = _market_pulse_replay_cache_file()
     try:
-        os.makedirs(app_runtime.upload_root(), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+        _atomic_dump_market_pulse_json(path, payload)
         _market_pulse_replay_cache_mem.update(
             {
                 "path": path,
@@ -377,9 +400,7 @@ def _save_market_pulse_replay_cache(payload: Dict[str, Any]) -> None:
 
 def _save_market_pulse_playbook_disk_cache(payload: Dict[str, Any]) -> None:
     try:
-        os.makedirs(app_runtime.upload_root(), exist_ok=True)
-        with open(_market_pulse_playbook_cache_file(), "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, default=str)
+        _atomic_dump_market_pulse_json(_market_pulse_playbook_cache_file(), payload, default=str)
     except (TypeError, OSError):
         return
 
@@ -908,6 +929,34 @@ def _market_pulse_compact_gamma_payload(gamma_snapshot: Dict[str, Any]) -> Dict[
     compact.pop("chart_json", None)
     compact.pop("grouped_strike_rows", None)
     return compact
+
+
+def _market_pulse_gamma_snapshot_has_core_levels(gamma_snapshot: Dict[str, Any]) -> bool:
+    if not isinstance(gamma_snapshot, dict):
+        return False
+    core_level_keys = (
+        "gamma_flip_combined_basket",
+        "local_flip_aggregated_gamma",
+        "call_wall_aggregated_gamma",
+        "put_wall_aggregated_gamma",
+    )
+    return any(_market_pulse_positive_float(gamma_snapshot.get(key)) for key in core_level_keys)
+
+
+def _market_pulse_resolve_page_gamma_snapshot(
+    cached_playbook_snapshot: Dict[str, Any],
+    *,
+    requested_refresh: bool,
+    load_current: Callable[[], Dict[str, Any]],
+) -> Dict[str, Any]:
+    gamma_snapshot = dict((cached_playbook_snapshot or {}).get("gamma_snapshot") or {})
+    if not requested_refresh and _market_pulse_gamma_snapshot_has_core_levels(gamma_snapshot):
+        return gamma_snapshot
+    try:
+        loaded_snapshot = load_current()
+    except Exception:
+        return gamma_snapshot
+    return dict(loaded_snapshot or gamma_snapshot) if isinstance(loaded_snapshot, dict) else gamma_snapshot
 
 
 def _format_iso_et_label(value: Any) -> str:
@@ -1736,6 +1785,15 @@ def _market_pulse_resolve_gamma_payload(
         "next_call_wall": gamma_snapshot.get("next_call_wall_above"),
         "next_put_wall": gamma_snapshot.get("next_put_wall_below"),
     }
+    sanitized_partial_wall_order = False
+    stale_flags = {str(item) for item in list(gamma_snapshot.get("stale_flags") or [])}
+    if snapshot_status in {"degraded", "stale"} and "missing_expiries" in stale_flags:
+        raw_call_wall = _market_pulse_positive_float(raw_levels.get("call_wall"))
+        raw_put_wall = _market_pulse_positive_float(raw_levels.get("put_wall"))
+        if raw_call_wall is not None and raw_put_wall is not None and raw_call_wall <= raw_put_wall:
+            raw_levels["call_wall"] = max(raw_call_wall, raw_put_wall)
+            raw_levels["put_wall"] = min(raw_call_wall, raw_put_wall)
+            sanitized_partial_wall_order = True
     required_level_count = sum(
         1
         for key in ("main_flip", "local_flip", "call_wall", "put_wall")
@@ -1746,6 +1804,14 @@ def _market_pulse_resolve_gamma_payload(
         next_call_wall=raw_levels.get("next_call_wall"),
         next_put_wall=raw_levels.get("next_put_wall"),
     )
+    if sanitized_partial_wall_order:
+        raw_invariants["status"] = "soft_invalid"
+        raw_invariants.setdefault("soft_issues", []).append(
+            "wall_order_sanitized_from_partial_basket"
+        )
+        raw_invariants["issues"] = list(raw_invariants.get("hard_issues") or []) + list(
+            raw_invariants.get("soft_issues") or []
+        )
     current_snapshot_usable = (
         snapshot_status in {"healthy", "degraded", "stale"}
         and required_level_count >= 3
@@ -5034,7 +5100,6 @@ def _market_pulse_gamma_regime_viewmodel(
             "gamma_regime_subtitle": subtitle,
         }
 
-    provisional_prefix = "Provisional " if normalized_regime_status == "provisional" else ""
     provisional_subtitle = (
         "Core levels present · medium confidence"
         if normalized_regime_status == "provisional"
@@ -5043,32 +5108,32 @@ def _market_pulse_gamma_regime_viewmodel(
     if "strong_negative" in regime_lower:
         return {
             "gamma_regime": "negative",
-            "gamma_regime_label": f"{provisional_prefix}Negative Gamma",
+            "gamma_regime_label": "Negative Gamma",
             "gamma_regime_subtitle": provisional_subtitle or "Strong trend / momentum active",
         }
     if "negative" in regime_lower:
         return {
             "gamma_regime": "negative",
-            "gamma_regime_label": f"{provisional_prefix}Negative Gamma",
+            "gamma_regime_label": "Negative Gamma",
             "gamma_regime_subtitle": provisional_subtitle or "Trend / momentum active",
         }
     if "strong_positive" in regime_lower:
         return {
             "gamma_regime": "positive",
-            "gamma_regime_label": f"{provisional_prefix}Positive Gamma",
+            "gamma_regime_label": "Positive Gamma",
             "gamma_regime_subtitle": provisional_subtitle
             or "Strong mean reversion / pinning active",
         }
     if "positive" in regime_lower:
         return {
             "gamma_regime": "positive",
-            "gamma_regime_label": f"{provisional_prefix}Positive Gamma",
+            "gamma_regime_label": "Positive Gamma",
             "gamma_regime_subtitle": provisional_subtitle or "Mean reversion active",
         }
     if "neutral" in regime_lower or "flip" in regime_lower:
         return {
             "gamma_regime": "neutral",
-            "gamma_regime_label": f"{provisional_prefix}Neutral Gamma",
+            "gamma_regime_label": "Neutral Gamma",
             "gamma_regime_subtitle": provisional_subtitle or "Mixed dealer structure",
         }
     return {
@@ -7645,7 +7710,14 @@ def _market_pulse_scaled_gamma_snapshot(
     target_quote: Dict[str, Any],
 ) -> Dict[str, Any]:
     scaled = copy.deepcopy(dict(base_gamma_snapshot or {}))
-    ratio = _market_pulse_proxy_ratio(base_quote, target_quote)
+    ratio_base_quote = dict(base_quote or {})
+    if _market_pulse_positive_float(ratio_base_quote.get("price")) is None:
+        fallback_spx_spot = _market_pulse_positive_float(
+            scaled.get("spot_price_used") or scaled.get("spot")
+        )
+        if fallback_spx_spot is not None:
+            ratio_base_quote["price"] = fallback_spx_spot
+    ratio = _market_pulse_proxy_ratio(ratio_base_quote, target_quote)
     if ratio is None:
         scaled["spot"] = _market_pulse_round_price(target_quote.get("price"))
         scaled["spot_price_used"] = _market_pulse_round_price(target_quote.get("price"))
@@ -9977,6 +10049,46 @@ def _dashboard_calendar_payload(
     }
 
 
+def _dashboard_account_equity_from_balance(
+    account: Dict[str, Any] | None,
+    balance_value: Any,
+) -> float | None:
+    if not isinstance(balance_value, (int, float)):
+        return None
+    balance = float(balance_value)
+    if not account:
+        return balance
+    try:
+        account_size = float(account.get("account_size") or 0.0)
+        starting_balance = float(account.get("starting_balance") or 0.0)
+    except Exception:
+        return balance
+    if (
+        account_size > 0
+        and starting_balance > 0
+        and account_size > starting_balance * 1.5
+        and balance < account_size * 0.5
+    ):
+        return account_size + (balance - starting_balance)
+    return balance
+
+
+def _dashboard_account_profit_anchor(
+    account: Dict[str, Any] | None,
+    fallback_starting_balance: float,
+) -> float:
+    if not account:
+        return float(fallback_starting_balance)
+    try:
+        account_size = float(account.get("account_size") or 0.0)
+        starting_balance = float(account.get("starting_balance") or 0.0)
+    except Exception:
+        return float(fallback_starting_balance)
+    if account_size > 0 and starting_balance > 0 and account_size > starting_balance * 1.5:
+        return account_size
+    return float(fallback_starting_balance)
+
+
 def _dashboard_balance_summary(
     *,
     scope_active: bool,
@@ -10001,19 +10113,31 @@ def _dashboard_balance_summary(
     if scope_has_bound_account:
         broker_equity = _number(selected_account.get("broker_equity") if selected_account else None)
         scoped_balance = _number(selected_account.get("current_balance") if selected_account else None)
+        normalized_scoped_equity = _dashboard_account_equity_from_balance(
+            selected_account,
+            scoped_balance,
+        )
+        scoped_balance_was_normalized = (
+            scoped_balance is not None
+            and normalized_scoped_equity is not None
+            and abs(float(scoped_balance) - float(normalized_scoped_equity)) > 0.01
+        )
         broker_equity_stale = (
             broker_equity is not None
-            and scoped_balance is not None
-            and abs(float(broker_equity) - float(scoped_balance)) > 0.01
+            and normalized_scoped_equity is not None
+            and abs(float(broker_equity) - float(normalized_scoped_equity)) > 0.01
         )
         if broker_equity is not None and not broker_equity_stale:
             overall_balance = float(broker_equity)
             balance_source = "broker_equity"
             balance_source_detail = "Vanquish broker dashboard equity."
-        elif scoped_balance is not None:
-            overall_balance = float(scoped_balance)
+        elif normalized_scoped_equity is not None:
+            overall_balance = float(normalized_scoped_equity)
             balance_source = "account_balance"
             balance_source_detail = (
+                "Latest statement/ledger balance normalized to funded account size."
+                if scoped_balance_was_normalized
+                else
                 "Latest statement/ledger balance; stored broker equity was stale."
                 if broker_equity_stale
                 else "Stored account ledger balance."
@@ -10028,7 +10152,10 @@ def _dashboard_balance_summary(
             )
             balance_source = "ledger"
             balance_source_detail = "Derived from imported trade ledger."
-        overall_profit = overall_balance - scope_starting_balance
+        overall_profit = overall_balance - _dashboard_account_profit_anchor(
+            selected_account,
+            scope_starting_balance,
+        )
     else:
         overall_balance = float(balance_integrity.get("canonical_balance") or 0.0)
         overall_profit = overall_balance
@@ -10060,6 +10187,33 @@ def _remaining_drawdown_tone(value: Any) -> str:
     if remaining < 1500:
         return "negative"
     return "warning"
+
+
+def _drawdown_peak_gap_viewmodel(account: Dict[str, Any], remaining: Any) -> Dict[str, Any]:
+    peak = account.get("max_drawdown")
+    if not isinstance(peak, (int, float)) or float(peak) <= 0:
+        peak = account.get("broker_max_loss")
+    if (
+        not isinstance(peak, (int, float))
+        or float(peak) <= 0
+        or not isinstance(remaining, (int, float))
+    ):
+        return {
+            "drawdown_peak": None,
+            "drawdown_off_peak": None,
+            "drawdown_peak_pct": None,
+            "drawdown_off_peak_label": "",
+        }
+    peak_value = float(peak)
+    remaining_value = float(remaining)
+    off_peak = max(0.0, peak_value - remaining_value)
+    peak_pct = max(0.0, min(100.0, (remaining_value / peak_value) * 100.0))
+    return {
+        "drawdown_peak": round(peak_value, 2),
+        "drawdown_off_peak": round(off_peak, 2),
+        "drawdown_peak_pct": round(peak_pct, 2),
+        "drawdown_off_peak_label": f"{app_runtime.money(off_peak)} off peak",
+    }
 
 
 def _broker_metrics_source_key(account_id: Any) -> str:
@@ -10182,6 +10336,10 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
             "broker_equity_is_stale": False,
             "broker_equity_peak": None,
             "broker_remaining_drawdown": None,
+            "drawdown_peak": None,
+            "drawdown_off_peak": None,
+            "drawdown_peak_pct": None,
+            "drawdown_off_peak_label": "",
             "remaining_drawdown_source": "",
             "remaining_drawdown_source_label": "",
             "has_broker_risk_metrics": False,
@@ -10201,12 +10359,18 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
     metrics_source = _broker_metrics_source(account_id)
     broker_equity = account.get("broker_equity")
     account_balance = account.get("current_balance")
+    normalized_account_equity = _dashboard_account_equity_from_balance(account, account_balance)
     broker_equity_source = metrics_source or "broker"
     broker_equity_is_stale = False
     if isinstance(broker_equity, (int, float)) and isinstance(account_balance, (int, float)):
-        broker_equity_is_stale = abs(float(broker_equity) - float(account_balance)) > 0.01
+        comparison_equity = (
+            normalized_account_equity
+            if normalized_account_equity is not None
+            else float(account_balance)
+        )
+        broker_equity_is_stale = abs(float(broker_equity) - float(comparison_equity)) > 0.01
         if broker_equity_is_stale:
-            broker_equity = float(account_balance)
+            broker_equity = float(comparison_equity)
             broker_equity_source = "statement"
     remaining = account.get("broker_remaining_drawdown")
     has_remaining_drawdown = isinstance(remaining, (int, float))
@@ -10232,6 +10396,7 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
         "missing": "Missing",
     }
     diagnostics = _load_broker_metrics_diagnostics(account_id)
+    drawdown_peak_gap = _drawdown_peak_gap_viewmodel(account, remaining)
     return {
         "has_metrics": has_metrics,
         "has_broker_metrics": has_metrics,
@@ -10242,6 +10407,7 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
         "broker_equity_is_stale": broker_equity_is_stale,
         "broker_equity_peak": account.get("broker_equity_peak"),
         "broker_remaining_drawdown": remaining,
+        **drawdown_peak_gap,
         "remaining_drawdown_source": remaining_source,
         "remaining_drawdown_source_label": source_labels.get(remaining_source, "Broker value"),
         "has_broker_risk_metrics": has_broker_risk_metrics,
@@ -10927,6 +11093,135 @@ def _dashboard_tape_viewmodel(
     }
 
 
+def _parse_dashboard_date(value: Any) -> Optional[date]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _dashboard_short_date_label(day: date) -> str:
+    return day.strftime("%b %d").replace(" 0", " ")
+
+
+def _dashboard_performance_range_context(
+    *,
+    year: int,
+    month: int,
+    pace_scope: Dict[str, Any],
+    raw_start: Any,
+    raw_end: Any,
+) -> Dict[str, Any]:
+    range_start = _parse_dashboard_date(raw_start)
+    range_end = _parse_dashboard_date(raw_end)
+    is_custom = bool(range_start and range_end)
+    if is_custom and range_start and range_end and range_start > range_end:
+        range_start, range_end = range_end, range_start
+
+    if not is_custom:
+        if str(pace_scope.get("key") or "") == "m":
+            range_start = date(year, month, 1)
+            range_end = (
+                date(year + (1 if month == 12 else 0), 1 if month == 12 else month + 1, 1)
+                - timedelta(days=1)
+            )
+        else:
+            range_start = _parse_dashboard_date(pace_scope.get("start_iso")) or date(
+                year, month, 1
+            )
+            range_end = _parse_dashboard_date(pace_scope.get("end_iso")) or range_start
+
+    assert range_start is not None
+    assert range_end is not None
+    end_exclusive = range_end + timedelta(days=1)
+    if is_custom:
+        title = f"{_dashboard_short_date_label(range_start)} - {_dashboard_short_date_label(range_end)}"
+        if range_start.year != range_end.year:
+            title = (
+                f"{_dashboard_short_date_label(range_start)}, {range_start.year} - "
+                f"{_dashboard_short_date_label(range_end)}, {range_end.year}"
+            )
+        caption = f"Selected range · {range_start.isoformat()} to {range_end.isoformat()}"
+        metric_label = "Range Total"
+        consistency_label = "Range Consistency"
+        scope_label = "Selected Range"
+    else:
+        title = str(pace_scope.get("label") or "")
+        metric_label = "Month Total" if str(pace_scope.get("key") or "") == "m" else f"{title} Total"
+        caption = f"{title} scope · {pace_scope.get('summary') or ''}".strip()
+        consistency_label = f"{date(year, month, 1).strftime('%B')} Consistency"
+        scope_label = f"{title} scope"
+    return {
+        "active": is_custom,
+        "start": range_start,
+        "end": range_end,
+        "start_iso": range_start.isoformat(),
+        "end_iso": range_end.isoformat(),
+        "end_exclusive_iso": end_exclusive.isoformat(),
+        "title": title,
+        "caption": caption,
+        "metric_label": metric_label,
+        "consistency_label": consistency_label,
+        "scope_label": scope_label,
+    }
+
+
+def _dashboard_performance_days(
+    trades: List[Dict[str, Any]],
+    *,
+    range_start: date,
+) -> List[Dict[str, Any]]:
+    grouped: Dict[str, Dict[str, Any]] = {}
+    cumulative = 0.0
+    for row in trades:
+        iso = str(row.get("trade_date") or "").strip()
+        if not iso:
+            continue
+        try:
+            day = datetime.strptime(iso, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        bucket = grouped.setdefault(
+            iso,
+            {
+                "iso": iso,
+                "daynum": day.day,
+                "chart_day": (day - range_start).days,
+                "label_short": _dashboard_short_date_label(day),
+                "wd": day.weekday(),
+                "net": 0.0,
+                "trade_count": 0,
+                "wins": 0,
+                "losses": 0,
+                "balance": None,
+                "display_balance": None,
+                "has_trades": False,
+            },
+        )
+        try:
+            net = float(row.get("net_pl") or 0.0)
+        except Exception:
+            net = 0.0
+        bucket["net"] = float(bucket["net"]) + net
+        bucket["trade_count"] = int(bucket["trade_count"]) + 1
+        bucket["has_trades"] = True
+        if net > 0:
+            bucket["wins"] = int(bucket["wins"]) + 1
+        elif net < 0:
+            bucket["losses"] = int(bucket["losses"]) + 1
+    out: List[Dict[str, Any]] = []
+    for iso in sorted(grouped):
+        item = grouped[iso]
+        cumulative += float(item["net"])
+        item["balance"] = cumulative
+        item["display_balance"] = cumulative
+        out.append(item)
+    return out
+
+
 def dashboard():
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
@@ -11035,6 +11330,27 @@ def dashboard():
     )
     scoped_account_id = scope_account_id if scope_active else None
     scoped_account_ids = scoped_ledger_account_ids if scope_active else []
+    performance_range = _dashboard_performance_range_context(
+        year=year,
+        month=month,
+        pace_scope=pace_scope,
+        raw_start=request.args.get("range_start"),
+        raw_end=request.args.get("range_end"),
+    )
+    performance_trades_list = [
+        dict(r)
+        for r in trades_repo.fetch_trades_range(
+            str(performance_range["start_iso"]),
+            str(performance_range["end_exclusive_iso"]),
+            account_id=scoped_account_id if not scoped_account_ids else None,
+            account_ids=scoped_account_ids or None,
+        )
+        if str(dict(r).get("ticker") or "") != "ACCT"
+    ]
+    performance_days = _dashboard_performance_days(
+        performance_trades_list,
+        range_start=performance_range["start"],
+    )
     this_week_total = trades_repo.week_total_net(
         week_anchor,
         account_id=scoped_account_id if not scoped_account_ids else None,
@@ -11085,18 +11401,9 @@ def dashboard():
     ytd_wins = int(ytd_stats.get("wins", 0) or 0)
     ytd_losses = int(ytd_stats.get("losses", 0) or 0)
     ytd_win_rate = float(ytd_stats.get("win_rate", 0.0))
-    next_month = date(year + (1 if month == 12 else 0), 1 if month == 12 else month + 1, 1)
-    consistency_trades_list = [
-        dict(r)
-        for r in trades_repo.fetch_trades_range(
-            date(year, month, 1).isoformat(),
-            next_month.isoformat(),
-            account_id=scoped_account_id if not scoped_account_ids else None,
-            account_ids=scoped_account_ids or None,
-        )
-    ]
+    consistency_trades_list = performance_trades_list
     consistency = trades_repo.calc_consistency(consistency_trades_list)
-    consistency_label = f"{month_name.split()[0]} Consistency"
+    consistency_label = str(performance_range["consistency_label"])
     today_key = app_runtime.today_iso()
     today_rows = [
         dict(r)
@@ -11878,6 +12185,14 @@ def dashboard():
     dashboard_tape_rows = tape_viewmodel["dashboard_tape_rows"]
     dashboard_tape_updated_raw = tape_viewmodel["dashboard_tape_updated"]
     dashboard_tape_updated_label = tape_viewmodel["dashboard_tape_updated_label"]
+    performance_range_query = (
+        {
+            "range_start": str(performance_range["start_iso"]),
+            "range_end": str(performance_range["end_iso"]),
+        }
+        if bool(performance_range.get("active"))
+        else {}
+    )
 
     content = render_template(
         "dashboard.html",
@@ -11916,6 +12231,8 @@ def dashboard():
         consistency=consistency,
         consistency_label=consistency_label,
         cons_threshold=0.30,
+        performance_range=performance_range,
+        performance_days=performance_days,
         today_net=today_net,
         today_win_rate=today_win_rate,
         today_wins=today_wins,
@@ -11975,6 +12292,7 @@ def dashboard():
                 scope=("active" if scope_active else "all"),
                 ticker=selected_ticker,
                 pace_tf=key,
+                **performance_range_query,
             )
             for key in ("d", "w", "m")
         },
@@ -11986,17 +12304,28 @@ def dashboard():
                 scope=("active" if scope_active else "all"),
                 ticker=selected_ticker,
                 pace_tf=pace_timeframe_key,
+                **performance_range_query,
             ),
             "current_href": url_for(
                 "dashboard",
                 scope=("active" if scope_active else "all"),
                 ticker=selected_ticker,
                 pace_tf=pace_timeframe_key,
+                **performance_range_query,
             ),
             "next_href": url_for(
                 "dashboard",
                 y=next_y,
                 m=next_m,
+                scope=("active" if scope_active else "all"),
+                ticker=selected_ticker,
+                pace_tf=pace_timeframe_key,
+                **performance_range_query,
+            ),
+            "range_clear_href": url_for(
+                "dashboard",
+                y=year,
+                m=month,
                 scope=("active" if scope_active else "all"),
                 ticker=selected_ticker,
                 pace_tf=pace_timeframe_key,
@@ -12288,9 +12617,11 @@ def market_pulse_page():
                     "tracked_count": 0,
                 },
             }
-    gamma_snapshot = dict(cached_playbook_snapshot.get("gamma_snapshot") or {})
-    if requested_refresh:
-        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    gamma_snapshot = _market_pulse_resolve_page_gamma_snapshot(
+        cached_playbook_snapshot,
+        requested_refresh=requested_refresh,
+        load_current=gamma_map_service.get_gamma_snapshot,
+    )
     options_snapshot = options_panel_service.get_options_snapshot()
     options_spx = dict((options_snapshot.get("symbols") or {}).get("SPX") or {})
     options_contracts = list(options_spx.get("contracts") or [])
@@ -12346,7 +12677,11 @@ def market_pulse_page():
         selected_ticker,
     ):
         cached_playbook_snapshot = {}
-        gamma_snapshot = {}
+        gamma_snapshot = _market_pulse_resolve_page_gamma_snapshot(
+            cached_playbook_snapshot,
+            requested_refresh=True,
+            load_current=gamma_map_service.get_gamma_snapshot,
+        )
     try:
         page_spot = float(spx_quote.get("price")) if spx_quote.get("price") is not None else None
         gamma_spot = (
@@ -12591,9 +12926,11 @@ def market_pulse_context_api():
     )
     if not snapshot:
         snapshot = _market_pulse_snapshot(force_refresh=False)
-    gamma_snapshot = dict(cached_playbook_snapshot.get("gamma_snapshot") or {})
-    if force_refresh:
-        gamma_snapshot = gamma_map_service.get_gamma_snapshot()
+    gamma_snapshot = _market_pulse_resolve_page_gamma_snapshot(
+        cached_playbook_snapshot,
+        requested_refresh=force_refresh,
+        load_current=gamma_map_service.get_gamma_snapshot,
+    )
     if force_refresh and not current_app.config.get("TESTING"):
         runtime_payload = market_pulse_runtime.refresh_market_pulse_runtime(force_gamma=True)
         gamma_snapshot = dict(runtime_payload.get("gamma_snapshot") or gamma_snapshot)
@@ -12613,7 +12950,11 @@ def market_pulse_context_api():
         selected_ticker,
     ):
         cached_playbook_snapshot = {}
-        gamma_snapshot = {}
+        gamma_snapshot = _market_pulse_resolve_page_gamma_snapshot(
+            cached_playbook_snapshot,
+            requested_refresh=True,
+            load_current=gamma_map_service.get_gamma_snapshot,
+        )
     quotes_map = _market_pulse_compact_quotes_map(quotes)
     series_points: Dict[str, List[Dict[str, Any]]] = {}
     context = _market_pulse_context(quotes)

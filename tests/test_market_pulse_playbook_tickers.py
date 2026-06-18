@@ -68,3 +68,24 @@ def test_scaled_gamma_snapshot_scales_levels_and_localizes_warning():
     assert payload["void_zone"] == {"start": 499.2, "end": 500.6}
     assert payload["warnings"][0] == "SPY snapshot warning"
     assert any("SPY playbook levels are currently scaled" in item for item in payload["warnings"])
+
+
+def test_scaled_gamma_snapshot_uses_gamma_spot_when_spx_quote_missing():
+    payload = core._market_pulse_scaled_gamma_snapshot(
+        ticker="QQQ",
+        base_gamma_snapshot={
+            "spot_price_used": 7400.0,
+            "gamma_flip_combined_basket": 7420.0,
+            "local_flip_aggregated_gamma": 7390.0,
+            "call_wall_aggregated_gamma": 7450.0,
+            "put_wall_aggregated_gamma": 7350.0,
+        },
+        base_quote={},
+        target_quote={"price": 740.0, "provider": "market_worker"},
+    )
+
+    assert payload["proxy_source"] == "scaled_from_spx_gamma_snapshot"
+    assert payload["proxy_scale_ratio"] == 0.1
+    assert payload["gamma_flip_combined_basket"] == 742.0
+    assert payload["call_wall_aggregated_gamma"] == 745.0
+    assert payload["put_wall_aggregated_gamma"] == 735.0

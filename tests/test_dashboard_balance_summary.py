@@ -94,6 +94,102 @@ def test_dashboard_balance_summary_uses_statement_balance_when_broker_equity_is_
     assert "stale" in summary["balance_source_detail"].lower()
 
 
+def test_dashboard_balance_summary_normalizes_funded_account_equity_from_small_ledger_base(app):
+    summary = core_service._dashboard_balance_summary(
+        scope_active=True,
+        scope_account_id=42,
+        scope_start="2026-02-20",
+        scope_starting_balance=7500.0,
+        selected_account={
+            "account_size": 75000.0,
+            "starting_balance": 7500.0,
+            "current_balance": 8959.50,
+            "broker_equity": 75000.0,
+        },
+    )
+
+    assert summary["overall_balance"] == 76459.50
+    assert round(summary["overall_profit"], 2) == 1459.50
+    assert summary["balance_source"] == "account_balance"
+    assert "normalized" in summary["balance_source_detail"].lower()
+
+
+def test_account_broker_metrics_normalizes_stale_equity_from_small_ledger_base(app):
+    metrics = core_service._account_broker_metrics_viewmodel(
+        {
+            "id": 42,
+            "account_size": 75000.0,
+            "starting_balance": 7500.0,
+            "current_balance": 8959.50,
+            "broker_equity": 75000.0,
+            "broker_remaining_drawdown": 3750.0,
+        }
+    )
+
+    assert metrics["broker_equity"] == 76459.50
+    assert metrics["broker_equity_source"] == "statement"
+    assert metrics["broker_equity_is_stale"] is True
+
+
+def test_account_broker_metrics_reports_drawdown_off_peak_from_max_drawdown(app):
+    metrics = core_service._account_broker_metrics_viewmodel(
+        {
+            "id": 42,
+            "max_drawdown": 3750.0,
+            "broker_remaining_drawdown": 3696.50,
+        }
+    )
+
+    assert metrics["drawdown_peak"] == 3750.0
+    assert metrics["drawdown_off_peak"] == 53.50
+    assert round(metrics["drawdown_peak_pct"], 2) == 98.57
+    assert metrics["drawdown_off_peak_label"] == "$53.50 off peak"
+
+
+def test_account_broker_metrics_clamps_drawdown_off_peak_at_zero(app):
+    metrics = core_service._account_broker_metrics_viewmodel(
+        {
+            "id": 42,
+            "max_drawdown": 3750.0,
+            "broker_remaining_drawdown": 3800.0,
+        }
+    )
+
+    assert metrics["drawdown_off_peak"] == 0.0
+    assert metrics["drawdown_peak_pct"] == 100.0
+    assert metrics["drawdown_off_peak_label"] == "$0.00 off peak"
+
+
+def test_account_broker_metrics_hides_drawdown_off_peak_without_peak(app):
+    metrics = core_service._account_broker_metrics_viewmodel(
+        {
+            "id": 42,
+            "broker_remaining_drawdown": 2400.0,
+        }
+    )
+
+    assert metrics["drawdown_peak"] is None
+    assert metrics["drawdown_off_peak"] is None
+    assert metrics["drawdown_peak_pct"] is None
+    assert metrics["drawdown_off_peak_label"] == ""
+
+
+def test_account_broker_metrics_falls_back_to_broker_max_loss_for_drawdown_peak(app):
+    metrics = core_service._account_broker_metrics_viewmodel(
+        {
+            "id": 42,
+            "max_drawdown": 0.0,
+            "broker_max_loss": 2500.0,
+            "broker_remaining_drawdown": 2100.0,
+        }
+    )
+
+    assert metrics["drawdown_peak"] == 2500.0
+    assert metrics["drawdown_off_peak"] == 400.0
+    assert metrics["drawdown_peak_pct"] == 84.0
+    assert metrics["drawdown_off_peak_label"] == "$400.00 off peak"
+
+
 def test_remaining_drawdown_tone_thresholds():
     assert core_service._remaining_drawdown_tone(2251.0) == "positive"
     assert core_service._remaining_drawdown_tone(2250.0) == "warning"

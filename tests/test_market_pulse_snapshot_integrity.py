@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from mccain_capital.services import core
@@ -67,6 +68,65 @@ def _execution_model(
         },
         "posture_summary": "Core levels are usable for intraday planning.",
     }
+
+
+def test_market_pulse_playbook_cache_write_is_atomic(tmp_path, monkeypatch):
+    cache_path = tmp_path / ".market_pulse_playbook_cache.json"
+    original = {"ticker": "QQQ", "playbook_quote": {"price": 734.08}}
+    cache_path.write_text(json.dumps(original), encoding="utf-8")
+
+    monkeypatch.setattr(core, "_market_pulse_playbook_cache_file", lambda: str(cache_path))
+
+    def fail_after_partial_write(payload, handle, **_kwargs):
+        handle.write('{"ticker":')
+        raise TypeError("synthetic serialization failure")
+
+    monkeypatch.setattr(core.json, "dump", fail_after_partial_write)
+
+    core._save_market_pulse_playbook_disk_cache({"ticker": "QQQ", "bad": object()})
+
+    assert json.loads(cache_path.read_text(encoding="utf-8")) == original
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_market_pulse_page_gamma_snapshot_falls_back_when_cache_has_no_levels():
+    calls = []
+    fallback_snapshot = {
+        "gamma_flip_combined_basket": 7350.0,
+        "local_flip_aggregated_gamma": 7330.0,
+        "call_wall_aggregated_gamma": 7400.0,
+        "put_wall_aggregated_gamma": 7300.0,
+    }
+
+    resolved = core._market_pulse_resolve_page_gamma_snapshot(
+        {},
+        requested_refresh=False,
+        load_current=lambda: calls.append(True) or fallback_snapshot,
+    )
+
+    assert calls == [True]
+    assert resolved == fallback_snapshot
+
+
+def test_market_pulse_page_gamma_snapshot_keeps_usable_cached_levels():
+    calls = []
+    cached_snapshot = {
+        "gamma_snapshot": {
+            "gamma_flip_combined_basket": 7350.0,
+            "local_flip_aggregated_gamma": 7330.0,
+            "call_wall_aggregated_gamma": 7400.0,
+            "put_wall_aggregated_gamma": 7300.0,
+        }
+    }
+
+    resolved = core._market_pulse_resolve_page_gamma_snapshot(
+        cached_snapshot,
+        requested_refresh=False,
+        load_current=lambda: calls.append(True) or {},
+    )
+
+    assert calls == []
+    assert resolved == cached_snapshot["gamma_snapshot"]
 
 
 def test_after_hours_spot_prefers_official_close_over_zero():
@@ -463,6 +523,33 @@ def test_playbook_snapshot_valid_rejects_invariant_violations():
     )
 
 
+def test_degraded_partial_gamma_sanitizes_inverted_primary_walls():
+    payload = core._market_pulse_resolve_gamma_payload(
+        gamma_snapshot={
+            "snapshot_status": "degraded",
+            "snapshot_status_label": "Degraded Gamma Basket: 1 of 2 expiries available",
+            "stale_flags": ["missing_expiries"],
+            "gamma_flip_combined_basket": 7670.0,
+            "local_flip_aggregated_gamma": None,
+            "call_wall_aggregated_gamma": 7430.0,
+            "put_wall_aggregated_gamma": 7435.0,
+            "spot_price_used": 7491.22,
+            "last_successful_compute": "2026-06-18T10:20:24-04:00",
+        },
+        last_good_snapshot=None,
+        session_mode="regular",
+        now_et=datetime.fromisoformat("2026-06-18T10:21:00-04:00"),
+    )
+
+    assert payload["levels_source"] == "live_session_snapshot"
+    assert payload["gamma_data_status"] == "partial"
+    assert payload["structure_invariant_status"] == "soft_invalid"
+    assert "wall_order_sanitized_from_partial_basket" in payload["structure_invariant_issues"]
+    assert payload["level_meta"]["call_wall"]["value"] == 7435.0
+    assert payload["level_meta"]["put_wall"]["value"] == 7430.0
+    assert payload["level_meta"]["main_flip"]["value"] == 7670.0
+
+
 def test_cached_playbook_rejected_when_live_quote_diverges_from_spot():
     cached = {
         "ticker": "SPX",
@@ -593,7 +680,7 @@ def test_structure_snapshot_promotes_partial_regular_board_to_provisional_regime
     assert snapshot["gamma_regime_state"] == "provisional"
     assert snapshot["gamma_board_status"] == "Partial"
     assert snapshot["gamma_regime"] == "negative"
-    assert snapshot["gamma_regime_label"] == "Provisional Negative Gamma"
+    assert snapshot["gamma_regime_label"] == "Negative Gamma"
     assert snapshot["gamma_regime_subtitle"] == "Core levels present · medium confidence"
     assert snapshot["gamma_regime_confidence"] == "Medium"
     assert snapshot["regime_confidence"] == "medium"

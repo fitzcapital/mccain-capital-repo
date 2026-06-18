@@ -107,9 +107,11 @@ const marketSessionState = (now = new Date()) => {
   const minutes = hour * 60 + minute;
   const isRegularSession = !isWeekend && minutes >= 570 && minutes < 960;
   const isAfterClose = isWeekend || minutes >= 960;
+  const isClosed = !isRegularSession;
   return {
     isRegularSession,
     isAfterClose,
+    isClosed,
   };
 };
 
@@ -790,8 +792,8 @@ const marketSessionState = (now = new Date()) => {
       : normalized.includes("unavailable") || normalized.includes("error")
       ? "missing"
       : "live";
-    const displayLabel = sessionState.isAfterClose
-      ? "After hours"
+    const displayLabel = sessionState.isClosed
+      ? "Closed"
       : tone === "live" && sessionState.isRegularSession
       ? "Pulse"
       : tone === "delayed"
@@ -799,7 +801,7 @@ const marketSessionState = (now = new Date()) => {
         : tone === "missing"
           ? "Dark"
           : "Booting";
-    const badgeTone = sessionState.isAfterClose
+    const badgeTone = sessionState.isClosed
       ? "closed"
       : tone === "live" && sessionState.isRegularSession
         ? "live"
@@ -861,6 +863,14 @@ const marketSessionState = (now = new Date()) => {
     return numeric === null ? "--" : String(Math.round(numeric));
   };
 
+  const compactGammaRegimeLabel = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized.includes("negative")) return "Negative Gamma";
+    if (normalized.includes("positive")) return "Positive Gamma";
+    if (normalized.includes("neutral")) return "Neutral Gamma";
+    return String(value || "").trim();
+  };
+
   const structureToneForKey = (key, structure) => {
     if (key === "regime") {
       const regime = String((structure && (structure.gamma_regime || structure.gamma_regime_label)) || "").toLowerCase();
@@ -886,7 +896,9 @@ const marketSessionState = (now = new Date()) => {
   const structureValueForKey = (key, structure) => {
     if (!structure || typeof structure !== "object") return "--";
     if (key === "regime") {
-      const regimeLabel = String(structure.gamma_regime_label || structure.gamma_regime || "Unavailable").trim();
+      const regimeLabel = compactGammaRegimeLabel(
+        structure.gamma_regime_label || structure.gamma_regime || "Unavailable"
+      );
       const normalized = regimeLabel.toLowerCase();
       if (normalized === "positive gamma" || normalized === "positive") return "Positive Ⲅ";
       if (normalized === "negative gamma" || normalized === "negative") return "Negative Ⲅ";
