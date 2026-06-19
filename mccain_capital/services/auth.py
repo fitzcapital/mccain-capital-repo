@@ -9,7 +9,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from mccain_capital import auth
 from mccain_capital.runtime import set_setting_value
-from mccain_capital.services.auth_passkeys import passkeys_available
+from mccain_capital.services.auth_passkeys import passkey_localhost_redirect, passkeys_available
 from mccain_capital.services.ui import csrf_input_html, render_page
 
 
@@ -76,6 +76,10 @@ def login_page():
         return redirect(url_for("setup_page"))
     if auth.is_authenticated():
         return redirect(url_for("dashboard"))
+    if request.method == "GET" and passkeys_available():
+        local_redirect = passkey_localhost_redirect()
+        if local_redirect is not None:
+            return local_redirect
 
     err = ""
     if request.method == "POST":

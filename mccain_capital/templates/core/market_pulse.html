@@ -118,7 +118,12 @@
         <div class="marketPulseHeroKicker">Market Pulse</div>
         <div class="marketPulseTickerRow">
           <h2 class="pageTitle" id="marketPulseTitle">{{ selected_ticker }} PLAYBOOK</h2>
-          <div class="marketPulseTickerSwitcher" role="tablist" aria-label="Gamma playbook ticker">
+          <div
+            class="marketPulseTickerSwitcher"
+            role="tablist"
+            aria-label="Gamma playbook ticker"
+            data-playbook-symbol-search-control
+          >
             {% for switch_ticker in supported_tickers %}
               <a
                 class="marketPulseTickerSwitch{% if switch_ticker == selected_ticker %} is-active{% endif %}"
@@ -126,23 +131,43 @@
                 role="tab"
                 aria-selected="{{ 'true' if switch_ticker == selected_ticker else 'false' }}"
                 data-playbook-ticker-switch="{{ switch_ticker }}"
+                data-symbol-quick="{{ switch_ticker }}"
               >{{ switch_ticker }}</a>
             {% endfor %}
-            <form class="marketPulseTickerSearch" action="/market-pulse" method="get" data-playbook-ticker-search>
-              <input
-                type="search"
-                name="ticker"
-                value="{% if selected_ticker not in supported_tickers %}{{ selected_ticker }}{% endif %}"
-                placeholder="Search ticker"
-                maxlength="12"
-                autocomplete="off"
-                spellcheck="false"
-                aria-label="Search playbook ticker"
-                data-playbook-ticker-input
-              >
-              {% if feed_mode == 'raw' %}<input type="hidden" name="feed" value="raw">{% endif %}
-              <button type="submit" aria-label="Load ticker playbook" title="Load ticker playbook">GO</button>
-            </form>
+            <button
+              class="marketPulseTickerSearchToggle"
+              type="button"
+              aria-label="Search ticker"
+              aria-expanded="false"
+              data-symbol-search-toggle
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6"></circle>
+                <path d="m16 16 4 4"></path>
+              </svg>
+            </button>
+            <div class="marketPulseTickerSearchPopover" data-symbol-search-popover hidden>
+              <form class="marketPulseTickerSearch" action="/market-pulse" method="get" data-symbol-search-form aria-label="Search playbook ticker">
+                <input
+                  type="search"
+                  name="ticker"
+                  value="{{ selected_ticker }}"
+                  placeholder="Search ticker"
+                  maxlength="12"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-label="Search playbook ticker"
+                  data-symbol-search-input
+                >
+                <div class="marketPulseTickerSearchQuick" aria-label="Quick ticker search">
+                  {% for switch_ticker in supported_tickers %}
+                    <button class="marketPulseTickerSearchQuickButton" type="button" data-symbol-popover-quick="{{ switch_ticker }}">{{ switch_ticker }}</button>
+                  {% endfor %}
+                </div>
+                <button class="marketPulseTickerSearchSubmit" type="submit" aria-label="Load ticker playbook" title="Load ticker playbook">Search</button>
+                <div class="marketPulseTickerSearchMessage" data-symbol-search-message hidden></div>
+              </form>
+            </div>
           </div>
         </div>
         <div class="marketPulsePlaybookMeta tiny muted" id="marketPulseHeaderSnapshot">{{ structure_snapshot.get('spot_source_label') or 'Last Valid Session' }} {{ structure_snapshot.get('last_valid_snapshot_time_label') or structure_snapshot.get('snapshot_timestamp_label') or execution_chart.last_valid_session_label or '—' }}</div>
@@ -670,6 +695,7 @@
   data-supported-symbols='{{ gamma_ladder_supported_symbols|tojson }}'
   data-supported-windows='{{ gamma_ladder_window_presets|tojson }}'
   data-symbol="SPX"
+  data-default-dte="0"
   data-regime="mixed_gamma"
   aria-label="Dynamic gamma ladder"
 >
@@ -690,21 +716,41 @@
               data-gamma-symbol-pill="{{ gamma_symbol }}"
             >{{ gamma_symbol }}</button>
           {% endfor %}
+            <button
+              class="gamma-symbol-searchToggle"
+              type="button"
+              aria-label="Search ticker"
+              aria-expanded="false"
+              data-gamma-symbol-search-toggle
+            >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="6"></circle>
+              <path d="m16 16 4 4"></path>
+            </svg>
+          </button>
         </div>
-        <form class="gamma-symbol-search" data-gamma-symbol-search aria-label="Search Gamma ladder symbol">
-          <input
-            class="gamma-symbol-search__input"
-            type="search"
-            name="symbol"
-            value="SPX"
-            placeholder="NVDA"
-            maxlength="12"
-            autocomplete="off"
-            spellcheck="false"
-            data-gamma-symbol-input
-          />
-          <button class="gamma-symbol-search__button" type="submit">Search</button>
-        </form>
+        <div class="gamma-symbol-searchPopover" data-gamma-symbol-search-popover hidden>
+          <form class="gamma-symbol-search" data-gamma-symbol-search aria-label="Search Gamma ladder symbol">
+            <input
+              class="gamma-symbol-search__input"
+              type="search"
+              name="symbol"
+              value="SPX"
+              placeholder="NVDA"
+              maxlength="12"
+              autocomplete="off"
+              spellcheck="false"
+              data-gamma-symbol-input
+            />
+            <div class="gamma-symbol-search__quick" aria-label="Quick symbols">
+              {% for gamma_symbol in gamma_ladder_supported_symbols %}
+                <button class="gamma-symbol-search__quickButton" type="button" data-gamma-symbol-quick="{{ gamma_symbol }}">{{ gamma_symbol }}</button>
+              {% endfor %}
+            </div>
+            <button class="gamma-symbol-search__button" type="submit">Search</button>
+            <div class="gamma-symbol-search__message" data-symbol-search-message hidden></div>
+          </form>
+        </div>
         <div class="gamma-window-switcher" role="tablist" aria-label="Gamma ladder strike window">
           {% for gamma_window in gamma_ladder_window_presets %}
             <button
@@ -716,6 +762,25 @@
             >{{ gamma_window|title }}</button>
           {% endfor %}
         </div>
+        <div class="gamma-dte-control">
+          <div
+            class="gamma-dte-switcher"
+            role="tablist"
+            aria-label="Gamma ladder days to expiration"
+            data-tooltip='{"title":"DTE","body":"DTE means Days To Expiration. Lower DTE usually has stronger intraday impact."}'
+          >
+            {% for gamma_dte in ["0", "1", "3", "7", "all"] %}
+              <button
+                class="gamma-dte-pill{% if gamma_dte == '0' %} active{% endif %}"
+                type="button"
+                role="tab"
+                aria-selected="{{ 'true' if gamma_dte == '0' else 'false' }}"
+                data-gamma-dte-pill="{{ gamma_dte }}"
+              >{{ "All" if gamma_dte == "all" else gamma_dte ~ "DTE" }}</button>
+            {% endfor %}
+          </div>
+          <div class="gamma-dte-limited">Only 3DTE data available</div>
+        </div>
       </div>
     </div>
     <div class="gamma-ladder-meta" data-gamma-header>
@@ -726,10 +791,30 @@
       <div class="gamma-ladder-meta__stats">
         <span class="gamma-ladder-regime gamma-ladder-regime--mixed_gamma" data-gamma-regime>Loading regime</span>
         <span class="gamma-ladder-meta__stat" data-gamma-expiration>Awaiting expiration</span>
-        <span class="gamma-ladder-meta__stat" data-gamma-updated>Updated —</span>
+        <span class="gamma-ladder-meta__stat gamma-ladder-updateStat">
+          <span data-gamma-updated>· Updated —</span>
+          <button
+            class="gamma-ladder-refreshButton"
+            type="button"
+            aria-label="Refresh gamma ladder"
+            data-gamma-refresh
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 11a8 8 0 0 0-14.6-4.5L3 9"></path>
+              <path d="M3 4v5h5"></path>
+              <path d="M4 13a8 8 0 0 0 14.6 4.5L21 15"></path>
+              <path d="M21 20v-5h-5"></path>
+            </svg>
+            <span class="gamma-ladder-refreshSpinner" aria-hidden="true"></span>
+          </button>
+        </span>
       </div>
     </div>
     <div class="gamma-ladder-summary tiny muted" data-gamma-summary>Loading focused window…</div>
+    <div class="gamma-decision-panels" data-gamma-decision-panels hidden>
+      <div class="gamma-structure-card" data-gamma-structure-summary></div>
+      <div class="gamma-top-levels" data-gamma-top-levels></div>
+    </div>
     <div class="gamma-ladder-stage">
       <div class="gamma-ladder-shimmer" data-gamma-loading aria-hidden="true">
         {% for _ in range(5) %}
@@ -957,7 +1042,7 @@
         <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if delta_val is not none and delta_val > 0 %}glow-green{% elif delta_val is not none and delta_val < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
           <div class="marketPulseWatchCardTop">
             <div class="k"><span class="marketPulseTapeTrendIcon marketPulseTapeTrendIcon--{{ 'up' if delta_val is not none and delta_val > 0 else 'down' if delta_val is not none and delta_val < 0 else 'mixed' }}">{{ mp_icon('up') if delta_val is not none and delta_val > 0 else mp_icon('down') if delta_val is not none and delta_val < 0 else mp_icon('activity') }}</span>{{ q.label }}</div>
-            <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip" title="{{ watch_title }}">{{ watch_state }}</span>
+            <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip" data-state-label="{{ watch_state|upper }}" title="{{ watch_title }}">{{ watch_state }}</span>
           </div>
           <div class="marketMiniSparkWrap tone-{{ watch_tone }} spark-{{ spark_tone }}" data-role="sparkline">{{ q.sparkline_svg|safe }}</div>
           <div class="marketPulseWatchValueRow">
@@ -1366,6 +1451,7 @@
 <script src="{{ url_for('static', filename='vendor/lightweight-charts.standalone.production.js') }}"></script>
 <script src="{{ url_for('static', filename='js/spx_hero_chart.js') }}?v={{ static_v }}&rev=market-pulse-incremental-20260425a"></script>
 <script src="{{ url_for('static', filename='js/market_pulse_gamma_context.js') }}?v={{ market_now_iso|urlencode }}"></script>
+<script src="{{ url_for('static', filename='js/symbol_search_control.js') }}?v={{ static_v }}&rev=symbol-search-20260619a"></script>
 <script src="{{ url_for('static', filename='js/gamma_ladder.js') }}?v={{ static_v }}&rev=gamma-ladder-20260521a"></script>
 <script>
   window.marketFeedItems = {{ whales_items | tojson | safe }};
@@ -1379,9 +1465,7 @@
   const contextRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-context-refresh]"));
   const tapeRefreshButtons = Array.from(document.querySelectorAll("[data-market-pulse-tape-refresh]"));
   const tapeShell = document.querySelector(".marketPulseTapeShell");
-  const tickerSwitches = Array.from(document.querySelectorAll("[data-playbook-ticker-switch]"));
-  const tickerSearchForm = document.querySelector("[data-playbook-ticker-search]");
-  const tickerSearchInput = document.querySelector("[data-playbook-ticker-input]");
+  const tickerSearchRoot = document.querySelector("[data-playbook-symbol-search-control]");
   const loadingOverlay = document.getElementById("marketPulseLoadingOverlay");
   const loadingTitle = document.getElementById("marketPulseLoadingTitle");
   const loadingSub = document.getElementById("marketPulseLoadingSub");
@@ -1423,7 +1507,7 @@
   } catch (_err) {
     basePayload = null;
   }
-  const currentTicker = ((basePayload && basePayload.ticker) || "{{ selected_ticker }}").toUpperCase();
+  let currentTicker = ((basePayload && basePayload.ticker) || "{{ selected_ticker }}").toUpperCase();
   const contextApiUrl = (basePayload && basePayload.context_api_url) || "{{ market_pulse_context_api_url }}";
   const tapeApiUrl = (basePayload && basePayload.tape_api_url) || "{{ market_pulse_tape_api_url }}";
   storageSet(TICKER_KEY, currentTicker);
@@ -1485,10 +1569,11 @@
     }
     contextRefreshPromise = (async () => {
       try {
-        const params = new URLSearchParams();
-        if (forceRefresh) params.set("refresh", "1");
-        params.set("_", String(Date.now()));
-        const response = await fetch(`${contextApiUrl}?${params.toString()}`, {
+        const url = new URL(contextApiUrl, window.location.origin);
+        url.searchParams.set("ticker", currentTicker);
+        if (forceRefresh) url.searchParams.set("refresh", "1");
+        url.searchParams.set("_", String(Date.now()));
+        const response = await fetch(url.toString(), {
           cache: "no-store",
           credentials: "same-origin",
         });
@@ -1529,34 +1614,29 @@
     }
   };
 
-  tickerSwitches.forEach((link) => {
-    link.addEventListener("click", (event) => {
-      const nextTicker = String(link.dataset.playbookTickerSwitch || "").toUpperCase();
-      if (!nextTicker || nextTicker === currentTicker) {
-        event.preventDefault();
-        return;
-      }
-      storageSet(TICKER_KEY, nextTicker);
-      showReloadOverlay(`${nextTicker} Playbook`, `Loading ${nextTicker} gamma, structure, and execution context…`);
-    });
-  });
   const sanitizeTicker = (value) => String(value || "").toUpperCase().replace(/[^A-Z0-9.-]/g, "").slice(0, 12);
-  if (tickerSearchInput) {
-    tickerSearchInput.addEventListener("input", () => {
-      const nextValue = sanitizeTicker(tickerSearchInput.value);
-      if (tickerSearchInput.value !== nextValue) tickerSearchInput.value = nextValue;
-    });
-  }
-  if (tickerSearchForm && tickerSearchInput) {
-    tickerSearchForm.addEventListener("submit", (event) => {
-      const nextTicker = sanitizeTicker(tickerSearchInput.value);
-      if (!nextTicker || nextTicker === currentTicker) {
-        event.preventDefault();
-        return;
-      }
-      tickerSearchInput.value = nextTicker;
-      storageSet(TICKER_KEY, nextTicker);
-      showReloadOverlay(`${nextTicker} Playbook`, `Loading ${nextTicker} gamma, structure, and execution context…`);
+  const loadTickerPlaybook = (symbol) => {
+    const nextTicker = sanitizeTicker(symbol);
+    if (!nextTicker || nextTicker === currentTicker) return;
+    currentTicker = nextTicker;
+    storageSet(TICKER_KEY, nextTicker);
+    showReloadOverlay(`${nextTicker} Playbook`, `Loading ${nextTicker} gamma, structure, and execution context…`);
+    const url = new URL(window.location.href);
+    url.searchParams.set("ticker", nextTicker);
+    {% if feed_mode == 'raw' %}url.searchParams.set("feed", "raw");{% endif %}
+    window.location.assign(url.toString());
+  };
+  if (tickerSearchRoot && window.SymbolSearchControl) {
+    new window.SymbolSearchControl({
+      root: tickerSearchRoot,
+      selectedSymbol: currentTicker,
+      allowedSymbols: {{ supported_tickers|tojson }},
+      onSymbolChange: loadTickerPlaybook,
+      showQuickButtons: true,
+      placeholder: "Search ticker",
+      unsupportedMessage: "Only QQQ, SPY, and SPX are supported.",
+      activeClass: "is-active",
+      quickButtonSelector: "[data-playbook-ticker-switch]",
     });
   }
 

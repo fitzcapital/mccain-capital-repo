@@ -612,6 +612,41 @@ def test_passkeys_page_renders_registered_devices_for_authenticated_user(client)
     assert "Register Passkey" in body
 
 
+def test_passkeys_page_redirects_loopback_ip_to_localhost(client):
+    from mccain_capital.runtime import set_setting_value
+
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("secret-pass-123"))
+    with client.session_transaction(base_url="http://127.0.0.1:5001") as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.get("/auth/passkeys", base_url="http://127.0.0.1:5001")
+
+    assert resp.status_code == 302
+    assert resp.headers["Location"] == "http://localhost:5001/auth/passkeys"
+
+
+def test_passkey_registration_options_use_localhost_rp_for_loopback_ip(client):
+    from mccain_capital.runtime import set_setting_value
+
+    set_setting_value("auth_username", "owner")
+    set_setting_value("auth_password_hash", generate_password_hash("secret-pass-123"))
+    with client.session_transaction(base_url="http://127.0.0.1:5001") as sess:
+        sess["auth_ok"] = True
+        sess["auth_user"] = "owner"
+
+    resp = client.post(
+        "/auth/passkeys/register/options",
+        base_url="http://127.0.0.1:5001",
+        headers={"Origin": "http://localhost:5001"},
+        json={},
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["publicKey"]["rp"]["id"] == "localhost"
+
+
 def test_ops_alerts_page_uses_extracted_workflow_template(client):
     with client.session_transaction() as sess:
         sess["auth_ok"] = True
@@ -1780,7 +1815,7 @@ def test_gamma_ladder_api_defaults_to_spx(client, monkeypatch):
     monkeypatch.setattr(
         gamma_map_service,
         "build_gamma_ladder",
-        lambda symbol, window="standard": {
+        lambda symbol, window="standard", dte="0": {
             "ok": True,
             "symbol": symbol,
             "spot": 7415.22,
@@ -1799,6 +1834,7 @@ def test_gamma_ladder_api_defaults_to_spx(client, monkeypatch):
             "window_max_strike": 7475.0,
             "window_mode": "spot_band",
             "window_preset": window,
+            "dte_preset": dte,
             "rows": [{"strike": 7425.0, "call_gex": 12.0, "put_gex": -8.0, "net_gex": 4.0}],
         },
     )
@@ -1812,6 +1848,7 @@ def test_gamma_ladder_api_defaults_to_spx(client, monkeypatch):
     assert payload["rows_total"] == 96
     assert payload["rows_visible"] == 17
     assert payload["window_preset"] == "standard"
+    assert payload["dte_preset"] == "0"
     assert payload["rows"]
 
 
@@ -1823,7 +1860,7 @@ def test_gamma_ladder_api_accepts_searched_symbols_and_normalizes_invalid(client
     monkeypatch.setattr(
         gamma_map_service,
         "build_gamma_ladder",
-        lambda symbol, window="standard": seen.append((symbol, window))
+        lambda symbol, window="standard", dte="0": seen.append((symbol, window, dte))
         or {
             "ok": True,
             "symbol": symbol,
@@ -1843,12 +1880,13 @@ def test_gamma_ladder_api_accepts_searched_symbols_and_normalizes_invalid(client
             "window_max_strike": 542.0,
             "window_mode": "spot_band",
             "window_preset": window,
+            "dte_preset": dte,
             "rows": [{"strike": 535.0, "call_gex": 5.0, "put_gex": -2.0, "net_gex": 3.0}],
         },
     )
 
-    spy_resp = client.get("/api/gamma-ladder?symbol=SPY&window=tight", follow_redirects=True)
-    nvda_resp = client.get("/api/gamma-ladder?symbol=NVDA&window=wide", follow_redirects=True)
+    spy_resp = client.get("/api/gamma-ladder?symbol=SPY&window=tight&dte=0", follow_redirects=True)
+    nvda_resp = client.get("/api/gamma-ladder?symbol=NVDA&window=wide&dte=7", follow_redirects=True)
     bad_resp = client.get("/api/gamma-ladder?symbol=bad!&window=nope", follow_redirects=True)
 
     assert spy_resp.status_code == 200
@@ -1857,16 +1895,18 @@ def test_gamma_ladder_api_accepts_searched_symbols_and_normalizes_invalid(client
     assert nvda_resp.status_code == 200
     assert nvda_resp.get_json()["symbol"] == "NVDA"
     assert nvda_resp.get_json()["window_preset"] == "wide"
+    assert nvda_resp.get_json()["dte_preset"] == "7"
     assert bad_resp.status_code == 200
     assert bad_resp.get_json()["symbol"] == "SPX"
     assert bad_resp.get_json()["window_preset"] == "standard"
-    assert ("NVDA", "wide") in seen
+    assert bad_resp.get_json()["dte_preset"] == "0"
+    assert ("NVDA", "wide", "7") in seen
 
 
 def test_gamma_ladder_api_error_returns_requested_symbol(client, monkeypatch):
     from mccain_capital.services import gamma_map_service
 
-    def _raise(symbol, window="standard"):
+    def _raise(symbol, window="standard", dte="0"):
         raise RuntimeError(f"{symbol} options chain unavailable.")
 
     monkeypatch.setattr(gamma_map_service, "build_gamma_ladder", _raise)

@@ -3434,16 +3434,36 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
     max_v = max(float(c["high"]) for c in candles)
     if abs(max_v - min_v) < 1e-9:
         max_v = min_v + 1.0
-    candle_gap = 1.35
-    slot_width = 12.2
-    plot_width = min(width - 10.0, len(candles) * slot_width)
-    plot_start = (width - plot_width) / 2.0
-    candle_width = min(11.6, max(8.6, slot_width - candle_gap))
-
     def _y(value: float) -> float:
         return ((max_v - value) / (max_v - min_v)) * (height - 12) + 6
 
-    baseline_y = _y(candles[0]["open"])
+    baseline_y = height / 2.0
+    plot_width = width - 6.0
+    plot_start = 3.0
+    slot_width = plot_width / max(len(candles), 1)
+    candle_gap = 1.1
+    candle_width = min(10.8, max(6.2, slot_width - candle_gap))
+    path_points = [
+        (
+            plot_start + (((idx + 0.5) * plot_width) / max(len(candles), 1)),
+            _y(float(candle["close"])),
+        )
+        for idx, candle in enumerate(candles)
+    ]
+    trend_path = ""
+    if path_points:
+        trend_path = f"M {path_points[0][0]:.2f} {path_points[0][1]:.2f}"
+        for idx in range(1, len(path_points)):
+            prev_x, prev_y = path_points[idx - 1]
+            point_x, point_y = path_points[idx]
+            mid_x = (prev_x + point_x) / 2.0
+            mid_y = (prev_y + point_y) / 2.0
+            trend_path += (
+                f" Q {prev_x:.2f} {prev_y:.2f} {mid_x:.2f} {mid_y:.2f}"
+                f" T {point_x:.2f} {point_y:.2f}"
+            )
+    zone_top = max(6.0, baseline_y - 12.0)
+    zone_bottom = min(height - 6.0, baseline_y + 4.0)
     candle_markup: List[str] = []
     for idx, candle in enumerate(candles):
         center_x = plot_start + (((idx + 0.5) * plot_width) / max(len(candles), 1))
@@ -3454,12 +3474,13 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
         top_y = min(open_y, close_y)
         body_height = max(3.2, abs(close_y - open_y))
         cls = "up" if candle["close"] > candle["open"] else "down" if candle["close"] < candle["open"] else "flat"
+        current_cls = " current" if idx == len(candles) - 1 else ""
         candle_markup.append(
-            f'<line class="marketMiniSparkWick {cls}" x1="{center_x:.2f}" y1="{high_y:.2f}" '
+            f'<line class="marketMiniSparkWick {cls}{current_cls}" x1="{center_x:.2f}" y1="{high_y:.2f}" '
             f'x2="{center_x:.2f}" y2="{low_y:.2f}" />'
         )
         candle_markup.append(
-            f'<rect class="marketMiniSparkBody {cls}" x="{(center_x - candle_width / 2):.2f}" '
+            f'<rect class="marketMiniSparkBody {cls}{current_cls}" x="{(center_x - candle_width / 2):.2f}" '
             f'y="{top_y:.2f}" width="{candle_width:.2f}" height="{body_height:.2f}" rx=".08" ry=".08" />'
         )
     last_close_y = _y(candles[-1]["close"])
@@ -3470,12 +3491,15 @@ def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
     )
     return (
         '<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">'
-        + '<line class="marketMiniSparkGuide" x1="0" y1="14" x2="138" y2="14" />'
-        f'<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" '
-        f'y1="{baseline_y:.2f}" x2="138" y2="{baseline_y:.2f}" />'
-        + '<line class="marketMiniSparkGuide" x1="0" y1="46" x2="138" y2="46" />'
+        + f'<rect class="marketMiniSparkZone marketMiniSparkZone--resistance" x="3" y="{zone_top:.2f}" width="132" height="7" rx="3" />'
+        + f'<rect class="marketMiniSparkZone marketMiniSparkZone--support" x="3" y="{zone_bottom:.2f}" width="132" height="7" rx="3" />'
+        + '<line class="marketMiniSparkGuide" x1="3" y1="14" x2="135" y2="14" />'
+        + f'<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="3" y1="{baseline_y:.2f}" x2="135" y2="{baseline_y:.2f}" />'
+        + '<line class="marketMiniSparkGuide" x1="3" y1="46" x2="135" y2="46" />'
+        + (f'<path class="marketMiniSparkTrend {last_close_class}" d="{trend_path}" />' if trend_path else "")
         + "".join(candle_markup)
-        + f'<circle class="marketMiniSparkPoint {last_close_class}" cx="{center_x:.2f}" cy="{last_close_y:.2f}" r="2.3" />'
+        + f'<line class="marketMiniSparkPriceMarker {last_close_class}" x1="{max(3.0, center_x - 5.0):.2f}" y1="{last_close_y:.2f}" x2="135" y2="{last_close_y:.2f}" />'
+        + f'<circle class="marketMiniSparkPoint {last_close_class}" cx="{center_x:.2f}" cy="{last_close_y:.2f}" r="2.7" />'
         + "</svg>"
     )
 
@@ -10882,12 +10906,12 @@ def _dashboard_tape_viewmodel(
             try:
                 as_of_dt = datetime.fromisoformat(as_of_raw.replace("Z", "+00:00"))
                 age_s = max(0, now_epoch - int(as_of_dt.timestamp()))
-                age_label = "Fresh" if age_s < 60 else _market_data_age_label(age_s)
+                age_label = "Data Fresh" if age_s < 60 else _market_data_age_label(age_s)
             except Exception:
                 has_timestamp = False
-                age_label = "No tick"
+                age_label = "Awaiting Tick"
         else:
-            age_label = "No tick"
+            age_label = "Awaiting Tick"
         band = "Wait" if not has_timestamp else "Critical" if age_s >= 900 else state
         compact = f"{age_s // 3600}h" if age_s >= 3600 else f"{age_s // 60}m" if age_s >= 60 else f"{age_s}s"
         return {
@@ -10896,7 +10920,7 @@ def _dashboard_tape_viewmodel(
             "compact": "wait" if not has_timestamp else "fresh" if age_s < 60 else compact,
             "band": band,
             "status_label": "" if band == "Live" else band,
-            "tone": "delayed" if not has_timestamp else "critical" if age_s >= 900 else "delayed" if state in {"Delayed", "Cached"} else "live",
+            "tone": "missing" if not has_timestamp else "critical" if age_s >= 900 else "delayed" if state in {"Delayed", "Cached"} else "live",
         }
 
     def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
@@ -11705,12 +11729,12 @@ def dashboard():
             try:
                 as_of_dt = datetime.fromisoformat(as_of_raw.replace("Z", "+00:00"))
                 age_s = max(0, now_epoch - int(as_of_dt.timestamp()))
-                age_label = "Fresh" if age_s < 60 else _market_data_age_label(age_s)
+                age_label = "Data Fresh" if age_s < 60 else _market_data_age_label(age_s)
             except Exception:
                 has_timestamp = False
-                age_label = "No tick"
+                age_label = "Awaiting Tick"
         else:
-            age_label = "No tick"
+            age_label = "Awaiting Tick"
 
         band = "Wait" if not has_timestamp else "Critical" if age_s >= 900 else state
         if age_s >= 3600:
@@ -11726,7 +11750,7 @@ def dashboard():
             "compact": "wait" if not has_timestamp else "fresh" if age_s < 60 else compact,
             "band": band,
             "status_label": "" if band == "Live" else band,
-            "tone": "delayed" if not has_timestamp else _dashboard_status_tone(state, age_s),
+            "tone": "missing" if not has_timestamp else _dashboard_status_tone(state, age_s),
         }
 
     def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
@@ -13023,14 +13047,16 @@ def gamma_ladder_api():
         return jsonify({"ok": False, "error": "auth_required"}), 401
     symbol = gamma_map_service.normalize_gamma_ladder_symbol(request.args.get("symbol") or "")
     window = gamma_map_service.normalize_gamma_ladder_window(request.args.get("window") or "")
+    dte = gamma_map_service.normalize_gamma_ladder_dte(request.args.get("dte") or "")
     try:
-        payload = gamma_map_service.build_gamma_ladder(symbol, window=window)
+        payload = gamma_map_service.build_gamma_ladder(symbol, window=window, dte=dte)
     except Exception as exc:
         return jsonify(
             {
                 "ok": False,
                 "symbol": symbol,
                 "window_preset": window,
+                "dte_preset": dte,
                 "message": str(exc) or "Gamma ladder unavailable.",
             }
         ), 503

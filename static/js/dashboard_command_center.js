@@ -381,12 +381,26 @@ const marketSessionState = (now = new Date()) => {
     let maxV = Math.max(...candles.map((row) => row.high));
     if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
     const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
-    const baselineY = yFor(candles[0].open).toFixed(2);
-    const candleGap = 1.35;
-    const slotWidth = 12.2;
-    const plotWidth = Math.min(width - 10, candles.length * slotWidth);
-    const plotStart = (width - plotWidth) / 2;
-    const candleWidth = Math.min(11.6, Math.max(8.6, slotWidth - candleGap));
+    const baselineY = (height / 2).toFixed(2);
+    const plotWidth = width - 6;
+    const plotStart = 3;
+    const slotWidth = plotWidth / Math.max(candles.length, 1);
+    const candleGap = 1.1;
+    const candleWidth = Math.min(10.8, Math.max(6.2, slotWidth - candleGap));
+    const pathPoints = candles.map((candle, index) => {
+      const centerX = plotStart + (((index + 0.5) * plotWidth) / Math.max(candles.length, 1));
+      return [centerX, yFor(candle.close)];
+    });
+    const trendPath = pathPoints.length
+      ? pathPoints.reduce((path, point, index) => {
+          if (index === 0) return `M ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+          const prev = pathPoints[index - 1];
+          const midX = (prev[0] + point[0]) / 2;
+          return `${path} Q ${prev[0].toFixed(2)} ${prev[1].toFixed(2)} ${midX.toFixed(2)} ${((prev[1] + point[1]) / 2).toFixed(2)} T ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+        }, "")
+      : "";
+    const zoneTop = Math.max(6, Number(baselineY) - 12).toFixed(2);
+    const zoneBottom = Math.min(height - 6, Number(baselineY) + 4).toFixed(2);
     const bars = candles.map((candle, index) => {
       const centerX = plotStart + (((index + 0.5) * plotWidth) / Math.max(candles.length, 1));
       const openY = yFor(candle.open);
@@ -396,9 +410,10 @@ const marketSessionState = (now = new Date()) => {
       const topY = Math.min(openY, closeY);
       const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
       const cls = candle.close > candle.open ? "up" : candle.close < candle.open ? "down" : "flat";
+      const currentClass = index === candles.length - 1 ? " current" : "";
       return (
-        `<line class="marketMiniSparkWick ${cls}" x1="${centerX.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${lowY.toFixed(2)}" />`
-        + `<rect class="marketMiniSparkBody ${cls}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${topY.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" rx=".08" ry=".08" />`
+        `<line class="marketMiniSparkWick ${cls}${currentClass}" x1="${centerX.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${lowY.toFixed(2)}" />`
+        + `<rect class="marketMiniSparkBody ${cls}${currentClass}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${topY.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" rx=".08" ry=".08" />`
       );
     }).join("");
     const lastCandle = candles[candles.length - 1];
@@ -407,11 +422,15 @@ const marketSessionState = (now = new Date()) => {
     const lastCloseClass = lastCandle.close > lastCandle.open ? "up" : lastCandle.close < lastCandle.open ? "down" : "flat";
     return (
       `<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">`
-      + `<line class="marketMiniSparkGuide" x1="0" y1="14" x2="138" y2="14" />`
-      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="0" y1="${baselineY}" x2="138" y2="${baselineY}" />`
-      + `<line class="marketMiniSparkGuide" x1="0" y1="46" x2="138" y2="46" />`
+      + `<rect class="marketMiniSparkZone marketMiniSparkZone--resistance" x="3" y="${zoneTop}" width="132" height="7" rx="3" />`
+      + `<rect class="marketMiniSparkZone marketMiniSparkZone--support" x="3" y="${zoneBottom}" width="132" height="7" rx="3" />`
+      + `<line class="marketMiniSparkGuide" x1="3" y1="14" x2="135" y2="14" />`
+      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="3" y1="${baselineY}" x2="135" y2="${baselineY}" />`
+      + `<line class="marketMiniSparkGuide" x1="3" y1="46" x2="135" y2="46" />`
+      + (trendPath ? `<path class="marketMiniSparkTrend ${lastCloseClass}" d="${trendPath}" />` : "")
       + bars
-      + `<circle class="marketMiniSparkPoint ${lastCloseClass}" cx="${lastCenterX.toFixed(2)}" cy="${lastCloseY.toFixed(2)}" r="2.3" />`
+      + `<line class="marketMiniSparkPriceMarker ${lastCloseClass}" x1="${Math.max(3, lastCenterX - 5).toFixed(2)}" y1="${lastCloseY.toFixed(2)}" x2="135" y2="${lastCloseY.toFixed(2)}" />`
+      + `<circle class="marketMiniSparkPoint ${lastCloseClass}" cx="${lastCenterX.toFixed(2)}" cy="${lastCloseY.toFixed(2)}" r="2.7" />`
       + `</svg>`
     );
   };
@@ -503,11 +522,11 @@ const marketSessionState = (now = new Date()) => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
     if (!Number.isFinite(ts)) {
       return {
-        full: "No tick",
+        full: "Awaiting Tick",
         compact: "wait",
         band: "Wait",
         status: "Wait",
-        tone: "delayed",
+        tone: "missing",
       };
     }
     const ageS = Math.max(0, (Date.now() - ts) / 1000);
@@ -515,7 +534,7 @@ const marketSessionState = (now = new Date()) => {
     const compact = compactAgeLabel(seconds).replace(" old", "");
     const band = seconds >= 900 ? "Critical" : state;
     return {
-      full: compactAgeLabel(seconds),
+      full: seconds < 60 ? "Data Fresh" : compactAgeLabel(seconds),
       compact,
       band,
       status: band === "Live" ? "" : band,
@@ -648,7 +667,7 @@ const marketSessionState = (now = new Date()) => {
       marketStateNode.classList.add("is-delayed");
     }
     if (liveNode && (lower(liveNode) === "unavailable" || lower(liveNode) === "loading...")) {
-      liveNode.textContent = "No tick";
+      liveNode.textContent = "Awaiting Tick";
       liveNode.classList.remove("is-missing");
       liveNode.classList.add("is-delayed");
     }
@@ -740,6 +759,7 @@ const marketSessionState = (now = new Date()) => {
     if (stateNode) {
       dashboardUIFX.setText(stateNode, tapeLabel);
       stateNode.title = tapeState.title;
+      stateNode.dataset.stateLabel = tapeLabel;
       stateNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
       stateNode.classList.add(`tone-${tapeTone}`);
     }

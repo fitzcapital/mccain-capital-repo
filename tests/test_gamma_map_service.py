@@ -177,6 +177,16 @@ def test_normalize_gamma_ladder_window_defaults_to_standard():
     assert svc.normalize_gamma_ladder_window("bad") == "standard"
 
 
+def test_normalize_gamma_ladder_dte_defaults_to_zero_dte():
+    assert svc.normalize_gamma_ladder_dte("0DTE") == "0"
+    assert svc.normalize_gamma_ladder_dte("1") == "1"
+    assert svc.normalize_gamma_ladder_dte("3dte") == "3"
+    assert svc.normalize_gamma_ladder_dte("7dte") == "7"
+    assert svc.normalize_gamma_ladder_dte("all") == "all"
+    assert svc.normalize_gamma_ladder_dte("") == "0"
+    assert svc.normalize_gamma_ladder_dte("bad") == "0"
+
+
 def test_get_spot_quote_uses_requested_symbol(monkeypatch):
     seen = {}
 
@@ -202,14 +212,26 @@ def test_classify_gamma_ladder_regime_maps_to_public_states():
     assert svc.classify_gamma_ladder_regime(0.0)[0] == "mixed_gamma"
 
 
-def test_build_gamma_ladder_caches_per_symbol_and_expiration(monkeypatch):
+def test_build_gamma_ladder_caches_per_symbol_expiration_and_dte(monkeypatch):
     ladder_input = pd.DataFrame(
         [
             {"strike": 530.0, "call_gex": 20.0, "put_gex": -10.0, "net_gex": 10.0},
             {"strike": 535.0, "call_gex": 35.0, "put_gex": -4.0, "net_gex": 31.0},
         ]
     )
-    monkeypatch.setattr(svc, "_get_nearest_expiration_for_symbol", lambda symbol: "2026-05-21")
+    monkeypatch.setattr(
+        svc,
+        "_select_gamma_ladder_expirations",
+        lambda symbol, dte, expirations=None: (
+            ["2026-05-21"] if dte != "7" else ["2026-05-28"],
+            dte,
+        ),
+    )
+    monkeypatch.setattr(
+        svc,
+        "_get_expirations_for_symbol",
+        lambda symbol: ["2026-05-21", "2026-05-28"],
+    )
     monkeypatch.setattr(
         svc,
         "_get_spot_quote_for_symbol",
@@ -217,8 +239,10 @@ def test_build_gamma_ladder_caches_per_symbol_and_expiration(monkeypatch):
     )
     monkeypatch.setattr(
         svc,
-        "_get_options_chain_for_ladder",
-        lambda symbol, expiration: pd.DataFrame([{"expiration": expiration, "strike": 530.0}]),
+        "fetch_chain_for_expiries",
+        lambda symbol, expirations: pd.DataFrame(
+            [{"expiration": list(expirations)[0], "strike": 530.0}]
+        ),
     )
     monkeypatch.setattr(
         svc,
@@ -242,7 +266,7 @@ def test_build_gamma_ladder_caches_per_symbol_and_expiration(monkeypatch):
     monkeypatch.setattr(svc, "GAMMA_LADDER_CACHE_TTL_SECONDS", 60)
     svc._GAMMA_LADDER_CACHE.clear()
 
-    qqq = svc.build_gamma_ladder("QQQ", window="wide")
+    qqq = svc.build_gamma_ladder("QQQ", window="wide", dte="7")
     spy = svc.build_gamma_ladder("SPY", window="standard")
 
     assert qqq["symbol"] == "QQQ"
@@ -250,9 +274,10 @@ def test_build_gamma_ladder_caches_per_symbol_and_expiration(monkeypatch):
     assert qqq["rows_total"] == 24
     assert qqq["rows_visible"] == 2
     assert qqq["window_preset"] == "wide"
+    assert qqq["dte_preset"] == "7"
     assert spy["window_preset"] == "standard"
-    assert "gamma_ladder_QQQ_2026-05-21_wide" in svc._GAMMA_LADDER_CACHE
-    assert "gamma_ladder_SPY_2026-05-21_standard" in svc._GAMMA_LADDER_CACHE
+    assert "gamma_ladder_QQQ_7:2026-05-28_wide" in svc._GAMMA_LADDER_CACHE
+    assert "gamma_ladder_SPY_0:2026-05-21_standard" in svc._GAMMA_LADDER_CACHE
 
 
 def test_focused_gamma_ladder_rows_trims_oversized_ladders_and_preserves_key_rows():

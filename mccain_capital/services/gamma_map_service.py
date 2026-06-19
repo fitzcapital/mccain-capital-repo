@@ -177,6 +177,21 @@ def gamma_ladder_cache_key(symbol: str, expiration: str, window: str = "standard
     )
 
 
+def normalize_gamma_ladder_dte(dte: str) -> str:
+    value = str(dte or "").strip().lower()
+    if value in {"0", "0dte"}:
+        return "0"
+    if value in {"1", "1dte"}:
+        return "1"
+    if value in {"3", "3dte"}:
+        return "3"
+    if value in {"7", "7dte"}:
+        return "7"
+    if value in {"all", "all_expirations"}:
+        return "all"
+    return "0"
+
+
 def _gamma_ladder_cache_get(key: str) -> Optional[Dict[str, Any]]:
     if not key:
         return None
@@ -1099,6 +1114,15 @@ def get_nearest_expiration(symbol: str) -> str:
 def _get_nearest_expiration_for_symbol(symbol: str) -> str:
     normalized = normalize_gamma_ladder_symbol(symbol)
     today = app_runtime.today_iso()
+    values = _get_expirations_for_symbol(normalized)
+    if not values:
+        return today
+    future = [value for value in values if value >= today]
+    return future[0] if future else values[0]
+
+
+def _get_expirations_for_symbol(symbol: str) -> List[str]:
+    normalized = normalize_gamma_ladder_symbol(symbol)
     payload = _tradier_json(
         "/v1/markets/options/expirations",
         {"symbol": normalized, "includeAllRoots": "true", "strikes": "false"},
@@ -1110,11 +1134,85 @@ def _get_nearest_expiration_for_symbol(symbol: str) -> str:
         values = [str(item).strip() for item in expirations if str(item).strip()]
     else:
         values = []
-    if not values:
-        return today
-    sorted_values = sorted(values)
-    future = [value for value in sorted_values if value >= today]
-    return future[0] if future else sorted_values[0]
+    return sorted(values)
+
+
+def _select_gamma_ladder_expirations(
+    symbol: str, dte: str, expirations: Optional[List[str]] = None
+) -> Tuple[List[str], str]:
+    normalized = normalize_gamma_ladder_symbol(symbol)
+    dte_preset = normalize_gamma_ladder_dte(dte)
+    today = app_runtime.now_et().date()
+    expirations = list(expirations) if expirations is not None else _get_expirations_for_symbol(normalized)
+    if not expirations:
+        return [today.isoformat()], dte_preset
+
+    future = []
+    for expiration in expirations:
+        try:
+            expiration_date = date.fromisoformat(str(expiration))
+        except Exception:
+            continue
+        if expiration_date >= today:
+            future.append((expiration_date, str(expiration)))
+    candidates = future or [
+        (date.fromisoformat(str(expiration)), str(expiration))
+        for expiration in expirations
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", str(expiration))
+    ]
+    if not candidates:
+        return [expirations[0]], dte_preset
+    if dte_preset == "all":
+        return [expiration for _, expiration in candidates], dte_preset
+
+    target = today + timedelta(days=int(dte_preset))
+    closest = min(candidates, key=lambda item: (abs((item[0] - target).days), item[0]))
+    return [closest[1]], dte_preset
+
+
+def _available_gamma_ladder_dte_options(expirations: List[str]) -> List[str]:
+    today = app_runtime.now_et().date()
+    valid_count = 0
+    for expiration in expirations:
+        try:
+            delta_days = (date.fromisoformat(str(expiration)) - today).days
+        except Exception:
+            continue
+        if delta_days < 0:
+            continue
+        valid_count += 1
+    if valid_count > 1:
+        return ["0", "1", "3", "7", "all"]
+    return ["3"]
+
+
+def _gamma_ladder_recent_price_context(symbol: str) -> Dict[str, Any]:
+    try:
+        rows = list(market_data_service.get_intraday(normalize_gamma_ladder_symbol(symbol)) or [])
+    except Exception:
+        rows = []
+    closes: List[float] = []
+    highs: List[float] = []
+    lows: List[float] = []
+    for row in rows[-12:]:
+        if not isinstance(row, dict):
+            continue
+        close = _safe_float(row.get("close") or row.get("price") or row.get("value"))
+        high = _safe_float(row.get("high") or close)
+        low = _safe_float(row.get("low") or close)
+        if close is not None:
+            closes.append(float(close))
+        if high is not None:
+            highs.append(float(high))
+        if low is not None:
+            lows.append(float(low))
+    return {
+        "previous_spot": closes[-2] if len(closes) >= 2 else None,
+        "recent_high": max(highs) if highs else None,
+        "recent_low": min(lows) if lows else None,
+        "recent_closes": closes[-5:],
+        "candle_timeframe": "5min",
+    }
 
 
 def fetch_chain_for_expiries(symbol: str, expiries: List[str]) -> pd.DataFrame:
@@ -2113,11 +2211,15 @@ def compute_local_gamma_flip(
     }
 
 
-def build_gamma_ladder(symbol: str, window: str = "standard") -> Dict[str, Any]:
+def build_gamma_ladder(symbol: str, window: str = "standard", dte: str = "0") -> Dict[str, Any]:
     normalized = normalize_gamma_ladder_symbol(symbol)
     window_preset = normalize_gamma_ladder_window(window)
-    expiration = _get_nearest_expiration_for_symbol(normalized)
-    cache_key = gamma_ladder_cache_key(normalized, expiration, window_preset)
+    listed_expirations = _get_expirations_for_symbol(normalized)
+    expirations, dte_preset = _select_gamma_ladder_expirations(
+        normalized, dte, expirations=listed_expirations
+    )
+    expiration = ",".join(expirations)
+    cache_key = gamma_ladder_cache_key(normalized, f"{dte_preset}:{expiration}", window_preset)
     cached = _gamma_ladder_cache_get(cache_key)
     if cached is not None:
         return cached
@@ -2126,8 +2228,9 @@ def build_gamma_ladder(symbol: str, window: str = "standard") -> Dict[str, Any]:
     spot = _safe_float(quote.get("spot"))
     if spot is None or spot <= 0:
         raise RuntimeError(f"{normalized} spot quote unavailable.")
+    recent_context = _gamma_ladder_recent_price_context(normalized)
 
-    chain = _get_options_chain_for_ladder(normalized, expiration)
+    chain = fetch_chain_for_expiries(normalized, expirations)
     if chain.empty:
         raise RuntimeError(f"{normalized} options chain unavailable for {expiration}.")
 
@@ -2143,11 +2246,23 @@ def build_gamma_ladder(symbol: str, window: str = "standard") -> Dict[str, Any]:
         "symbol": normalized,
         "spot": float(spot),
         "expiration": expiration,
-        "expiration_label": _expiration_label(expiration),
+        "expirations": expirations,
+        "dte_preset": dte_preset,
+        "available_dte_options": _available_gamma_ladder_dte_options(listed_expirations),
+        "expiration_label": (
+            "All DTE"
+            if dte_preset == "all"
+            else _expiration_label(expirations[0] if expirations else expiration)
+        ),
         "regime": str(exposure.get("regime") or "mixed_gamma"),
         "regime_label": str(exposure.get("regime_label") or "Mixed Gamma Regime"),
         "updated_at": updated_at,
         "updated_label": _format_ladder_updated_label(updated_at),
+        "previous_spot": recent_context.get("previous_spot"),
+        "recent_high": recent_context.get("recent_high"),
+        "recent_low": recent_context.get("recent_low"),
+        "recent_closes": recent_context.get("recent_closes") or [],
+        "candle_timeframe": recent_context.get("candle_timeframe") or "5min",
         "total_net_gamma": float(exposure.get("total_net_gamma") or 0.0),
         "flip_strike": exposure.get("flip_strike"),
         "strongest_level": exposure.get("strongest_level"),

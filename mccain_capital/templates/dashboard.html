@@ -802,7 +802,7 @@
           <div class="marketPulseWatchCardTop">
             <div class="k liveTapeWatchSymbol"><span class="dashboardTapeRowTrend dashboardTapeRowTrend--{{ visual_row_tone }}">{{ dashboard_icon('signal-up') if visual_row_tone == 'up' else dashboard_icon('signal-down') if visual_row_tone == 'down' else dashboard_icon('tape') }}</span><span>{{ row.symbol }}</span></div>
             {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
-            <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state" title="{{ row.state_title or 'No clean tape edge yet.' }}">{{ row.state_label }}</span>
+            <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state" data-state-label="{{ row.state_label }}" title="{{ row.state_title or 'No clean tape edge yet.' }}">{{ row.state_label }}</span>
           </div>
           <div class="marketMiniSparkWrap tone-{{ tape_tone }} spark-{{ spark_tone }} dashboardTapeSpark" data-role="sparkline">{{ row.sparkline_svg|safe }}</div>
           <div class="marketPulseWatchValueRow dashboardTapeAssetBody">
@@ -817,7 +817,7 @@
           </div>
           <div class="tiny muted marketPulseWatchMetaRow dashboardTapeAssetMeta">
             <span class="dashboardTapeAssetStatus is-{{ row.freshness_tone }}" data-role="market-state">{{ row.market_state_display or 'Wait' }}</span>
-            <span class="dashboardTapeAssetFreshness is-{{ row.freshness_tone }}" data-role="row-live">{{ row.freshness_display or 'Awaiting tick' }}</span>
+            <span class="dashboardTapeAssetFreshness is-{{ row.freshness_tone }}" data-role="row-live">{{ row.freshness_display or 'Awaiting Tick' }}</span>
           </div>
           <div class="tiny muted marketPulseWatchRange dashboardTapeAssetRange" data-role="detail-range">
             <span class="dashboardTapeRangeLabel">Range</span>

@@ -67853,3 +67853,250 @@ body[data-theme="black"].page-market-pulse .marketPulseTapeShell .marketMiniSpar
     grid-template-columns:1fr !important;
   }
 }
+
+/* Monitor card premium polish: subtle chart depth, hierarchy, and live state. */
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard{
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard:hover{
+  transform:translateY(-2px) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 24px 42px rgba(0, 0, 0, .46),
+    0 0 34px rgba(91, 168, 255, .20),
+    0 0 76px rgba(91, 168, 255, .14),
+    0 0 0 1px rgba(118, 174, 246, .14) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .liveTapeWatchSymbol{
+  color:rgba(245, 250, 255, .99) !important;
+  font-size:1.08rem !important;
+  line-height:1 !important;
+  letter-spacing:.08em !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState{
+  position:relative !important;
+  gap:7px !important;
+  font-size:.72rem !important;
+  letter-spacing:.10em !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState::before{
+  content:"";
+  width:6px;
+  height:6px;
+  flex:0 0 6px;
+  border-radius:999px;
+  background:rgba(116, 172, 245, .95);
+  box-shadow:0 0 10px rgba(116, 172, 245, .42);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="MIXED"]{
+  border-color:rgba(255, 198, 92, .44) !important;
+  background:rgba(64, 49, 22, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 13px rgba(255, 198, 92, .13) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="MIXED"]::before{
+  background:rgba(255, 198, 92, .96);
+  box-shadow:0 0 10px rgba(255, 198, 92, .42);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="STRONG"],
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-ON"]{
+  border-color:rgba(84, 246, 235, .48) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="STRONG"]::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-ON"]::before{
+  background:rgba(84, 246, 235, .96);
+  box-shadow:0 0 10px rgba(84, 246, 235, .44);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="WEAK"],
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-OFF"]{
+  border-color:rgba(255, 92, 124, .46) !important;
+  background:rgba(72, 24, 38, .32) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="WEAK"]::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-OFF"]::before{
+  background:rgba(255, 92, 124, .96);
+  box-shadow:0 0 10px rgba(255, 92, 124, .42);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetPrice{
+  font-size:18px !important;
+  color:rgba(226, 238, 255, .92) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetMeta,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetRange{
+  color:rgba(165, 184, 214, .84) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus::before{
+  content:"";
+  display:inline-block;
+  width:5px;
+  height:5px;
+  margin-right:6px;
+  border-radius:999px;
+  vertical-align:middle;
+  background:rgba(116, 172, 245, .88);
+  box-shadow:0 0 8px rgba(116, 172, 245, .28);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-live::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-live::before{
+  background:rgba(84, 246, 235, .90);
+  box-shadow:0 0 8px rgba(84, 246, 235, .30);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-delayed::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-delayed::before{
+  background:rgba(255, 198, 92, .90);
+  box-shadow:0 0 8px rgba(255, 198, 92, .28);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-critical::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-missing::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-critical::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-missing::before{
+  background:rgba(255, 92, 124, .92);
+  box-shadow:0 0 8px rgba(255, 92, 124, .30);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSpark,
+body[data-theme="black"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkWrap{
+  width:76% !important;
+  min-width:158px !important;
+  max-width:220px !important;
+  height:56px !important;
+  margin:0 auto 4px !important;
+  padding:3px 4px !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSpark{
+  width:100% !important;
+  height:100% !important;
+  overflow:visible !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkZone{
+  opacity:.075 !important;
+  pointer-events:none;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkZone--support{
+  fill:rgba(84, 246, 235, .70) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkZone--resistance{
+  fill:rgba(255, 92, 124, .62) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkTrend{
+  fill:none !important;
+  stroke:rgba(120, 174, 255, .16) !important;
+  stroke-width:1.4 !important;
+  stroke-linecap:round !important;
+  stroke-linejoin:round !important;
+  pointer-events:none;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkTrend.up{
+  stroke:rgba(245, 249, 255, .16) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkTrend.down{
+  stroke:rgba(84, 132, 255, .17) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkBaseline{
+  stroke:rgba(160, 188, 230, .105) !important;
+  stroke-width:.9 !important;
+  stroke-dasharray:3 7 !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkPriceMarker{
+  stroke:rgba(228, 238, 255, .30) !important;
+  stroke-width:.75 !important;
+  stroke-dasharray:2 4 !important;
+  opacity:.80 !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkPriceMarker.down{
+  stroke:rgba(84, 132, 255, .36) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkWick.current,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkBody.current{
+  opacity:1 !important;
+  filter:drop-shadow(0 0 5px rgba(245, 249, 255, .20)) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkWick.current.down,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkBody.current.down{
+  filter:drop-shadow(0 0 5px rgba(84, 132, 255, .26)) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkPoint{
+  stroke:rgba(4, 9, 18, .82) !important;
+  stroke-width:.9 !important;
+  filter:drop-shadow(0 0 6px rgba(245, 249, 255, .26)) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkPoint.down{
+  filter:drop-shadow(0 0 6px rgba(84, 132, 255, .32)) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .liveTapeBadge[data-tone="live"] .liveTapeBadgeGlyph,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .liveTapeBadge[data-tone="live"]::before{
+  animation:dashboardMonitorLiveBreath 2.8s ease-in-out infinite !important;
+}
+
+@keyframes dashboardMonitorLiveBreath{
+  0%, 100%{
+    opacity:.72;
+    box-shadow:0 0 0 0 rgba(84, 246, 235, .18), 0 0 10px rgba(84, 246, 235, .24);
+  }
+  50%{
+    opacity:1;
+    box-shadow:0 0 0 7px rgba(84, 246, 235, 0), 0 0 18px rgba(84, 246, 235, .36);
+  }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard,
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .liveTapeBadge[data-tone="live"] .liveTapeBadgeGlyph,
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .liveTapeBadge[data-tone="live"]::before{
+    animation:none !important;
+    transition:none !important;
+  }
+}
+
+/* Final dashboard tape type scale: compact handwritten labels without changing the font. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetMeta,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetRange{
+  font-size:14px !important;
+  line-height:1.15 !important;
+  letter-spacing:0 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .k,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .liveTapeWatchSymbol{
+  font-size:15px !important;
+  line-height:1.1 !important;
+  letter-spacing:0 !important;
+}
