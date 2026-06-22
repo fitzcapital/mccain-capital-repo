@@ -1065,11 +1065,26 @@
           </div>
           <div class="tiny muted marketPulseWatchMetaRow">
             <span data-role="market-state" hidden>{{ q.market_state }}</span>
-            <span data-role="freshness">{{ (q.freshness_label or (q.asof or fetched_at))|replace('Closed · last quote ', 'Critical · ')|replace('Closed · last snapshot ', 'Critical · ')|replace('last quote ', '') }}</span>
+            {% set freshness_label = (q.freshness_label or (q.asof or fetched_at))|replace('Closed · last quote ', 'Last quote ')|replace('Closed · last snapshot ', 'Last snapshot ') %}
+            {% set freshness_lower = freshness_label|lower %}
+            {% set has_quote_price = q.price is not none %}
+            {% set freshness_tone = 'missing' if not has_quote_price or 'missing' in freshness_lower or 'unavailable' in freshness_lower or 'no tick' in freshness_lower or 'no live data' in freshness_lower else 'delayed' if 'critical' in freshness_lower or 'stale' in freshness_lower or 'closed' in freshness_lower or 'delayed' in freshness_lower or 'cached' in freshness_lower or 'wait' in freshness_lower or 'old' in freshness_lower or 'last quote' in freshness_lower or 'last snapshot' in freshness_lower else 'live' %}
+            {% set freshness_glyph = '✓' if freshness_tone == 'live' else '◷' if freshness_tone == 'delayed' else '!' %}
+            <span
+              class="marketPulseFreshnessIndicator is-{{ freshness_tone }}"
+              data-role="freshness"
+              data-freshness-label="{{ freshness_label }}"
+              data-freshness-tone="{{ freshness_tone }}"
+              title="{{ freshness_label }}"
+              aria-label="{{ freshness_label }}"
+            >
+              <span class="marketPulseFreshnessGlyph" aria-hidden="true">{{ freshness_glyph }}</span>
+              <span class="srOnly">{{ freshness_label }}</span>
+            </span>
           </div>
           <div class="tiny muted" data-role="reason-line" hidden></div>
           <div class="tiny muted" data-role="source-badge" hidden>{{ q.source_badge_label or q.source_label or source_label }}</div>
-          <div class="tiny muted marketPulseWatchRange" data-role="range-line">{{ q.day_range }}</div>
+          <div class="tiny muted marketPulseWatchRange" data-role="range-line">{{ q.day_range_compact or q.range_display or q.day_range }}</div>
         </div>
       {% endfor %}
     </div>
@@ -2352,10 +2367,56 @@
       let text = String(label || "").trim();
       if (!text) return stateText || "Live";
       return text
-        .replace(/^Closed\s*·\s*last quote\s*/i, "Critical · ")
-        .replace(/^Closed\s*·\s*last snapshot\s*/i, "Critical · ")
-        .replace(/last quote\s*/i, "")
+        .replace(/^Closed\s*·\s*last quote\s*/i, "Last quote ")
+        .replace(/^Closed\s*·\s*last snapshot\s*/i, "Last snapshot ")
         .trim() || stateText || "Live";
+    };
+    const freshnessTone = (state, label, hasPrice = true) => {
+      const normalizedState = String(state || "").toLowerCase();
+      const normalizedLabel = String(label || "").toLowerCase();
+      if (
+        !hasPrice
+        || normalizedState === "missing"
+        || normalizedLabel.includes("missing")
+        || normalizedLabel.includes("unavailable")
+        || normalizedLabel.includes("no tick")
+        || normalizedLabel.includes("no live data")
+      ) return "missing";
+      if (
+        normalizedState === "delayed"
+        || normalizedState === "cached"
+        || normalizedLabel.includes("critical")
+        || normalizedLabel.includes("stale")
+        || normalizedLabel.includes("closed")
+        || normalizedLabel.includes("delayed")
+        || normalizedLabel.includes("cached")
+        || normalizedLabel.includes("wait")
+        || normalizedLabel.includes("old")
+        || normalizedLabel.includes("last quote")
+        || normalizedLabel.includes("last snapshot")
+      ) return "delayed";
+      return "live";
+    };
+    const freshnessGlyph = (tone) => tone === "live" ? "✓" : tone === "delayed" ? "◷" : "!";
+    const setFreshnessIndicator = (node, label, state, hasPrice = true) => {
+      if (!node) return;
+      const cleanLabel = String(label || "Awaiting Tick").trim() || "Awaiting Tick";
+      const tone = freshnessTone(state, cleanLabel, hasPrice);
+      node.classList.remove("is-live", "is-delayed", "is-missing", "is-critical");
+      node.classList.add(`is-${tone}`);
+      node.dataset.freshnessLabel = cleanLabel;
+      node.dataset.freshnessTone = tone;
+      node.title = cleanLabel;
+      node.setAttribute("aria-label", cleanLabel);
+      node.textContent = "";
+      const glyph = document.createElement("span");
+      glyph.className = "marketPulseFreshnessGlyph";
+      glyph.setAttribute("aria-hidden", "true");
+      glyph.textContent = freshnessGlyph(tone);
+      const sr = document.createElement("span");
+      sr.className = "srOnly";
+      sr.textContent = cleanLabel;
+      node.append(glyph, sr);
     };
     const updateCard = (card, quote) => {
       if (!card || !quote || typeof quote !== "object") return;
@@ -2367,13 +2428,15 @@
       setText(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2));
       setText(card.querySelector('[data-role="change-line"]'), formatSigned(pct));
       setText(card.querySelector('[data-role="market-state"]'), quote.market_state || "Live");
-      setText(
+      setFreshnessIndicator(
         card.querySelector('[data-role="freshness"]'),
         dashboardTapeFreshnessLabel(
           quote.freshness_label || "Live",
           quote.market_state || "Live",
           quote.as_of || quote.asof || ""
-        )
+        ),
+        quote.market_state || "Live",
+        price !== null
       );
       const sparkNode = card.querySelector('[data-role="sparkline"]');
       if (sparkNode) {

@@ -227,6 +227,19 @@ def _bars_for_session_day(
     return out
 
 
+def _session_day_from_bars(bars: List[Dict[str, Any]]) -> Optional[date]:
+    days: List[date] = []
+    for bar in bars:
+        ts = _as_float(bar.get("time"))
+        if ts is None:
+            continue
+        try:
+            days.append(datetime.fromtimestamp(int(ts), tz=app_runtime.TZ).date())
+        except Exception:
+            continue
+    return max(days) if days else None
+
+
 def _regular_session_bars_for_anchor_day(
     *,
     current_bars: List[Dict[str, Any]],
@@ -244,7 +257,7 @@ def _regular_session_bars_for_anchor_day(
     current_regular = _bars_for_session_day(current_bars, session_day=anchor_day, regular_only=True)
     if current_regular:
         return current_regular
-    prior_session_day = _previous_trading_day(anchor_day)
+    prior_session_day = _session_day_from_bars(prior_bars) or _previous_trading_day(anchor_day)
     return _bars_for_session_day(prior_bars, session_day=prior_session_day, regular_only=True)
 
 
@@ -263,7 +276,7 @@ def _extended_hours_bars_for_anchor_day(
     all-session tape instead of returning an empty chart.
     """
 
-    prior_session_day = _previous_trading_day(anchor_day)
+    prior_session_day = _session_day_from_bars(prior_bars) or _previous_trading_day(anchor_day)
     prior_regular = _bars_for_session_day(
         prior_bars, session_day=prior_session_day, regular_only=True
     )
@@ -311,7 +324,7 @@ def _two_session_regular_bars(
     falls back to the prior regular session only.
     """
 
-    prior_session_day = _previous_trading_day(anchor_day)
+    prior_session_day = _session_day_from_bars(prior_bars) or _previous_trading_day(anchor_day)
     prior_regular = _bars_for_session_day(
         prior_bars, session_day=prior_session_day, regular_only=True
     )
@@ -368,7 +381,7 @@ def _opening_session_carryover_bars(
             ),
         }
 
-    prior_session_day = _previous_trading_day(session_day)
+    prior_session_day = _session_day_from_bars(prior_bars) or _previous_trading_day(session_day)
     prior_regular = _bars_for_session_day(
         prior_bars, session_day=prior_session_day, regular_only=True
     )

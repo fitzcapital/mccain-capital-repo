@@ -1,15 +1,15 @@
 from mccain_capital.services import core
 
 
-def test_get_supported_playbook_ticker_defaults_to_qqq():
-    assert core.get_supported_playbook_ticker(None) == "QQQ"
-    assert core.get_supported_playbook_ticker("") == "QQQ"
+def test_get_supported_playbook_ticker_defaults_to_spx():
+    assert core.get_supported_playbook_ticker(None) == "SPX"
+    assert core.get_supported_playbook_ticker("") == "SPX"
     assert core.get_supported_playbook_ticker("spx") == "SPX"
     assert core.get_supported_playbook_ticker("qqq") == "QQQ"
     assert core.get_supported_playbook_ticker("SPY") == "SPY"
     assert core.get_supported_playbook_ticker("nvda") == "NVDA"
     assert core.get_supported_playbook_ticker("BRK.B") == "BRK.B"
-    assert core.get_supported_playbook_ticker("bad!") == "QQQ"
+    assert core.get_supported_playbook_ticker("bad!") == "SPX"
 
 
 def test_market_pulse_renders_spx_ticker_switch(client):
@@ -19,10 +19,20 @@ def test_market_pulse_renders_spx_ticker_switch(client):
     body = resp.get_data(as_text=True)
     assert 'href="/market-pulse?ticker=SPX"' in body
     assert 'data-playbook-ticker-switch="SPX"' in body
-    assert "data-playbook-ticker-search" in body
-    assert "data-playbook-ticker-input" in body
+    assert "data-playbook-symbol-search-control" in body
+    assert "data-symbol-search-input" in body
     assert 'class="marketPulseTickerSwitch is-active"' in body
     assert "SPX PLAYBOOK" in body
+
+
+def test_market_pulse_defaults_to_spx_playbook(client):
+    resp = client.get("/market-pulse", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "SPX PLAYBOOK" in body
+    assert '"ticker": "SPX"' in body
+    assert 'value="SPX"' in body
 
 
 def test_market_pulse_accepts_custom_ticker_search(client):

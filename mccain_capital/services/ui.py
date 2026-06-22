@@ -12,7 +12,7 @@ import urllib.request
 from zoneinfo import ZoneInfo
 from typing import Any, Mapping
 
-from flask import current_app, render_template, render_template_string, session
+from flask import current_app, render_template, session
 
 from mccain_capital.auth import auth_enabled, effective_username, is_authenticated
 from mccain_capital import runtime as app_runtime

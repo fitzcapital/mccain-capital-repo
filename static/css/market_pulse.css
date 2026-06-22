@@ -5793,6 +5793,120 @@ body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .mar
   stroke:rgba(190, 206, 234, .98) !important;
 }
 
+/* Market Pulse tape clarity pass: icon freshness, no fog wash. */
+body.page-market-pulse .marketPulseTapeShell::before,
+body.page-market-pulse .marketPulseTapeShell::after,
+body.page-market-pulse .marketPulseTapeRail::before,
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap::before,
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkWrap::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  filter:none !important;
+  background:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell{
+  background:
+    linear-gradient(180deg, rgba(4, 9, 19, .12), rgba(2, 7, 14, .05)) !important;
+}
+
+body.page-market-pulse .marketPulseWatchMetaRow [data-role="freshness"],
+body.page-market-pulse .marketPulseFreshnessIndicator{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  width:18px !important;
+  min-width:18px !important;
+  height:18px !important;
+  padding:0 !important;
+  border-radius:999px !important;
+  overflow:visible !important;
+}
+
+body.page-market-pulse .marketPulseFreshnessGlyph{
+  display:inline-grid;
+  place-items:center;
+  width:16px;
+  height:16px;
+  border-radius:999px;
+  font-size:11px;
+  line-height:1;
+  font-weight:900;
+  color:rgba(212, 255, 251, .96);
+  background:rgba(84, 246, 235, .12);
+  border:1px solid rgba(84, 246, 235, .34);
+  box-shadow:0 0 9px rgba(84, 246, 235, .24), inset 0 1px 0 rgba(255,255,255,.08);
+  text-shadow:0 0 8px rgba(84, 246, 235, .42);
+}
+
+body.page-market-pulse .marketPulseFreshnessIndicator.is-delayed .marketPulseFreshnessGlyph,
+body.page-market-pulse [data-role="freshness"].is-delayed .marketPulseFreshnessGlyph{
+  color:rgba(255, 229, 178, .98);
+  background:rgba(255, 198, 92, .13);
+  border-color:rgba(255, 198, 92, .38);
+  box-shadow:0 0 9px rgba(255, 198, 92, .22), inset 0 1px 0 rgba(255,255,255,.08);
+  text-shadow:0 0 8px rgba(255, 198, 92, .38);
+}
+
+body.page-market-pulse .marketPulseFreshnessIndicator.is-critical .marketPulseFreshnessGlyph,
+body.page-market-pulse .marketPulseFreshnessIndicator.is-missing .marketPulseFreshnessGlyph,
+body.page-market-pulse [data-role="freshness"].is-critical .marketPulseFreshnessGlyph,
+body.page-market-pulse [data-role="freshness"].is-missing .marketPulseFreshnessGlyph{
+  color:rgba(255, 218, 226, .98);
+  background:rgba(255, 92, 124, .13);
+  border-color:rgba(255, 92, 124, .42);
+  box-shadow:0 0 9px rgba(255, 92, 124, .22), inset 0 1px 0 rgba(255,255,255,.08);
+  text-shadow:0 0 8px rgba(255, 92, 124, .38);
+}
+
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkAmbient{
+  pointer-events:none;
+  transform-box:fill-box;
+  transform-origin:center;
+}
+
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkAmbientBand{
+  fill:url(#dashboardTapeAmbientGradient) !important;
+  opacity:calc(var(--spark-band-opacity, .10) * .74) !important;
+  filter:blur(2px) drop-shadow(0 0 7px rgba(84, 246, 235, .10)) !important;
+  mix-blend-mode:screen;
+  transform-box:fill-box;
+  transform-origin:center;
+}
+
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkAmbientBand--2,
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkAmbientBand--4{
+  filter:blur(2.7px) drop-shadow(0 0 8px rgba(126, 92, 255, .08)) !important;
+}
+
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkAmbientBand--3,
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkAmbientBand--5{
+  filter:blur(1.4px) drop-shadow(0 0 8px rgba(84, 132, 255, .09)) !important;
+}
+
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkParticle{
+  fill:rgba(192, 236, 255, .64) !important;
+  opacity:calc(var(--spark-particle-opacity, .10) * .74) !important;
+  filter:drop-shadow(0 0 4px rgba(84, 246, 235, .14)) !important;
+  pointer-events:none;
+}
+
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkCurrentGlow{
+  fill:rgba(212, 244, 255, .12) !important;
+  stroke:rgba(84, 246, 235, .12) !important;
+  stroke-width:.7 !important;
+  opacity:.58 !important;
+  filter:blur(1.8px) drop-shadow(0 0 7px rgba(84, 246, 235, .14)) !important;
+  pointer-events:none;
+}
+
+body.page-market-pulse .marketPulseTapeShell .marketMiniSparkCurrentGlow.down{
+  fill:rgba(154, 184, 255, .12) !important;
+  stroke:rgba(120, 174, 255, .12) !important;
+  filter:blur(1.8px) drop-shadow(0 0 7px rgba(120, 174, 255, .14)) !important;
+}
+
 /* Final Market Pulse tape alignment with the dashboard monitor card type scale. */
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchMetaRow,
 body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchRange{

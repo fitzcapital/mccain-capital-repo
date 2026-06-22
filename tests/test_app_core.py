@@ -10,6 +10,7 @@ from mccain_capital import app_core as core
 from mccain_capital.repositories import trades as trades_repo
 from mccain_capital.runtime import db, get_setting_value, now_iso, set_setting_value, today_iso
 from mccain_capital.services import core as core_service
+from mccain_capital.services import market_pulse_tape
 from mccain_capital.services import ui as ui_service
 from werkzeug.security import generate_password_hash
 
@@ -38,6 +39,97 @@ def test_request_profiling_headers_applied(client):
     assert int(resp.headers["X-SQLite-Query-Count"]) >= 0
     assert "app;dur=" in resp.headers["Server-Timing"]
     assert "sqlite;dur=" in resp.headers["Server-Timing"]
+
+
+def test_calc_consistency_next_trade_cap_for_positive_pnl():
+    consistency = trades_repo.calc_consistency(
+        [
+            {"net_pl": 493.0},
+            {"net_pl": 493.0},
+            {"net_pl": 493.0},
+            {"net_pl": 493.0},
+            {"net_pl": 64.20},
+        ]
+    )
+
+    assert consistency["ratio"] == 493.0 / 2036.20
+    assert consistency["cap_available"] is True
+    assert consistency["cap_status"] == "within"
+    assert round(consistency["next_win_cap"], 2) == 872.66
+    assert round(consistency["remaining_room"], 2) == 379.66
+
+
+def test_calc_consistency_next_trade_cap_flags_over_threshold():
+    consistency = trades_repo.calc_consistency(
+        [
+            {"net_pl": 800.0},
+            {"net_pl": 700.0},
+            {"net_pl": 500.0},
+        ]
+    )
+
+    assert consistency["ratio"] == 0.4
+    assert consistency["cap_available"] is True
+    assert consistency["cap_status"] == "over"
+    assert round(consistency["next_win_cap"], 2) == 857.14
+    assert round(consistency["remaining_room"], 2) == 57.14
+
+
+def test_calc_consistency_cap_unavailable_without_positive_denominator():
+    empty = trades_repo.calc_consistency([])
+    flat = trades_repo.calc_consistency([{"net_pl": 100.0}, {"net_pl": -100.0}])
+
+    assert empty["cap_available"] is False
+    assert empty["next_win_cap"] is None
+    assert flat["cap_available"] is False
+    assert flat["next_win_cap"] is None
+
+
+def test_dashboard_renders_consistency_next_trade_cap(client):
+    with db() as conn:
+        created = now_iso()
+        for raw_line, net_pl, balance in (
+            ("consistency cap biggest", 493.0, 50493.0),
+            ("consistency cap second", 493.0, 50986.0),
+            ("consistency cap third", 493.0, 51479.0),
+            ("consistency cap fourth", 493.0, 51972.0),
+            ("consistency cap base", 64.20, 52036.20),
+        ):
+            conn.execute(
+                """
+                INSERT INTO trades (
+                    trade_date, entry_time, exit_time, ticker, opt_type, strike,
+                    entry_price, exit_price, contracts, total_spent, comm, gross_pl,
+                    net_pl, result_pct, balance, raw_line, created_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    today_iso(),
+                    "9:35 AM",
+                    "9:48 AM",
+                    "SPX",
+                    "CALL",
+                    5000.0,
+                    1.0,
+                    1.3,
+                    1,
+                    100.0,
+                    1.0,
+                    net_pl,
+                    net_pl,
+                    30.0,
+                    balance,
+                    raw_line,
+                    created,
+                ),
+            )
+
+    resp = client.get("/dashboard", follow_redirects=True)
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "Next cap: $872.66 max winner to stay ≤ 30%." in body
+    assert "Use this as the per-trade ceiling across the next 10 trades." in body
 
 
 def test_core_pages_are_reachable(client):
@@ -1133,7 +1225,7 @@ def test_dashboard_primary_decision_actions_link_to_market_pulse_trade_gate_and_
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'href="/market-pulse?ticker=QQQ"' in body
+    assert 'href="/market-pulse?ticker=SPX"' in body
     assert 'href="/ops/trading-window"' in body
     assert 'href="/calendar"' in body
 
@@ -2058,6 +2150,94 @@ def test_market_pulse_source_is_normalized_to_yahoo():
     assert "finnhub" not in str(out["source_note"]).lower()
 
 
+def test_market_pulse_range_payload_prefers_ohlc_rows():
+    out = market_pulse_tape.range_payload(
+        [
+            {"high": 747.25, "low": 745.35, "close": 746.2},
+            {"high": 746.97, "low": 745.8, "close": 746.74},
+        ],
+        source="current_session",
+    )
+
+    assert out["day_range"] == "745.35 to 747.25"
+    assert out["day_range_compact"] == "745.35-747.25"
+    assert out["range_display"] == "745.35-747.25"
+    assert out["day_range_source"] == "current_session"
+
+
+def test_market_pulse_range_payload_falls_back_to_replay_values():
+    out = market_pulse_tape.range_payload(
+        [{"v": 745.35}, {"v": 746.97}, {"v": 746.21}],
+        source="cached_replay",
+    )
+
+    assert out["day_range"] == "745.35 to 746.97"
+    assert out["day_range_compact"] == "745.35-746.97"
+    assert out["day_range_source"] == "cached_replay"
+
+
+def test_market_pulse_range_payload_empty_when_no_range_data():
+    assert market_pulse_tape.range_payload([], source="cached_replay") == {}
+    assert market_pulse_tape.range_payload([{"v": 745.35}], source="cached_replay") == {}
+
+
+def test_market_pulse_tape_api_uses_prior_open_day_range(client, monkeypatch):
+    from mccain_capital.services import market_data_service
+
+    monkeypatch.setattr(
+        core_service,
+        "MARKET_PULSE_SYMBOLS",
+        [{"symbol": "SPY", "label": "SPY", "group": "core", "focus": ""}],
+    )
+    monkeypatch.setattr(
+        market_data_service,
+        "get_watchlist",
+        lambda _symbols, allow_yf_fallback=False, force_refresh=False: {
+            "SPY": {
+                "price": 746.74,
+                "pct_change": 1.04,
+                "provider": "tradier",
+                "reason": "tradier_live_quote",
+                "as_of": "2026-06-19T16:00:00-04:00",
+            }
+        },
+    )
+    monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
+    monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
+    monkeypatch.setattr(
+        market_data_service,
+        "get_prior_session_intraday",
+        lambda _symbol, anchor_session_day=None: [
+            {
+                "ts": "2026-06-18T13:30:00+00:00",
+                "open": 745.80,
+                "high": 746.10,
+                "low": 745.35,
+                "close": 745.90,
+                "volume": 100,
+            },
+            {
+                "ts": "2026-06-18T19:59:00+00:00",
+                "open": 745.90,
+                "high": 746.97,
+                "low": 746.01,
+                "close": 746.74,
+                "volume": 100,
+            },
+        ],
+    )
+
+    resp = client.get("/api/market-pulse/tape?include_series=1")
+
+    assert resp.status_code == 200
+    payload = resp.get_json()["payload"]
+    spy = payload["quotes_map"]["SPY"]
+    assert spy["day_range"] == "745.35 to 746.97"
+    assert spy["day_range_compact"] == "745.35-746.97"
+    assert spy["range_display"] == "745.35-746.97"
+    assert spy["day_range_source"] == "prior_session"
+
+
 def test_market_pulse_cached_payload_is_expanded_to_current_symbol_set():
     old_payload = {
         "available": True,
@@ -2179,7 +2359,7 @@ def test_market_pulse_closed_session_quotes_do_not_trigger_unsafe_guardrail():
 
 
 def test_market_pulse_sparkline_renders_guides_and_candles():
-    svg = core_service._market_pulse_sparkline_svg([10.0, 11.0, 10.5, 12.0, 11.75], "up")
+    svg = market_pulse_tape.sparkline_svg([10.0, 11.0, 10.5, 12.0, 11.75], "up")
 
     assert "marketMiniSparkGuide" in svg
     assert "marketMiniSparkBaseline" in svg
@@ -2372,8 +2552,12 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
     assert body.count("marketMiniSparkBody") >= 8
     assert body.count("marketMiniSparkWick") >= 8
     assert body.count("marketMiniSparkPoint") >= 4
-    assert body.count("marketMiniSparkGuide") >= 8
+    assert body.count("marketMiniSparkAmbientBand") >= 12
+    assert body.count("marketMiniSparkCurrentGlow") >= 4
     assert body.count("marketMiniSparkBaseline") >= 4
+    assert body.count("dashboardTapeFreshnessGlyph") >= 4
+    assert body.count("data-freshness-label=") >= 4
+    assert body.count('data-role="row-live"') >= 4
     assert "Broad tape is defensive" in body
 
 

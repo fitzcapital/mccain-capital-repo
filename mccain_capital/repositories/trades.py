@@ -1177,9 +1177,48 @@ def trade_day_stats(trades: List[object]) -> Dict[str, Any]:
     }
 
 
+def _empty_consistency() -> Dict[str, Any]:
+    return {
+        "ratio": None,
+        "status": "—",
+        "class": "",
+        "biggest": 0.0,
+        "denom": 0.0,
+        "next_win_cap": None,
+        "remaining_room": None,
+        "cap_available": False,
+        "cap_status": "unavailable",
+    }
+
+
+def _consistency_cap(
+    *,
+    biggest: float,
+    denom: float,
+    ratio: Optional[float],
+    threshold: float = 0.30,
+) -> Dict[str, Any]:
+    if ratio is None or denom <= 0 or threshold <= 0 or threshold >= 1:
+        return {
+            "next_win_cap": None,
+            "remaining_room": None,
+            "cap_available": False,
+            "cap_status": "unavailable",
+        }
+
+    max_next_win = (threshold * denom) / (1.0 - threshold)
+    remaining_room = max_next_win - biggest
+    return {
+        "next_win_cap": max_next_win,
+        "remaining_room": remaining_room,
+        "cap_available": True,
+        "cap_status": "over" if ratio > threshold else "within",
+    }
+
+
 def calc_consistency(trades: List[object]) -> Dict[str, Any]:
     if not trades:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
+        return _empty_consistency()
 
     net_vals: List[float] = []
     for t in trades:
@@ -1195,7 +1234,7 @@ def calc_consistency(trades: List[object]) -> Dict[str, Any]:
             continue
 
     if not net_vals:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
+        return _empty_consistency()
 
     total_pnl = sum(net_vals)
     winners = [v for v in net_vals if v > 0]
@@ -1210,7 +1249,7 @@ def calc_consistency(trades: List[object]) -> Dict[str, Any]:
         denom = abs(total_pnl)
         ratio = (biggest / denom) if denom else None
     else:
-        return {"ratio": None, "status": "—", "class": "", "biggest": 0.0, "denom": 0.0}
+        return _empty_consistency()
 
     ok = (ratio is not None) and (ratio <= 0.30)
     return {
@@ -1219,6 +1258,7 @@ def calc_consistency(trades: List[object]) -> Dict[str, Any]:
         "class": "glow-green" if ok else "glow-red",
         "biggest": biggest,
         "denom": denom,
+        **_consistency_cap(biggest=biggest, denom=denom, ratio=ratio),
     }
 
 

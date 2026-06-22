@@ -1422,10 +1422,67 @@
     let text = String(label || "").trim();
     if (!text) return state === "live" ? "Live" : "Awaiting refresh";
     text = text
-      .replace(/^Closed\s*·\s*last quote\s*/i, "Critical · ")
-      .replace(/^Closed\s*·\s*last snapshot\s*/i, "Critical · ")
-      .replace(/last quote\s*/i, "");
+      .replace(/^Closed\s*·\s*last quote\s*/i, "Last quote ")
+      .replace(/^Closed\s*·\s*last snapshot\s*/i, "Last snapshot ");
     return text.trim() || stateLabel;
+  };
+
+  const freshnessTone = (state, label, hasPrice = true) => {
+    const normalizedState = String(state || "").toLowerCase();
+    const normalizedLabel = String(label || "").toLowerCase();
+    if (
+      !hasPrice
+      || normalizedState === "missing"
+      || normalizedLabel.includes("missing")
+      || normalizedLabel.includes("unavailable")
+      || normalizedLabel.includes("no tick")
+      || normalizedLabel.includes("no live data")
+    ) {
+      return "missing";
+    }
+    if (
+      normalizedState === "delayed"
+      || normalizedState === "cached"
+      || normalizedLabel.includes("critical")
+      || normalizedLabel.includes("stale")
+      || normalizedLabel.includes("closed")
+      || normalizedLabel.includes("delayed")
+      || normalizedLabel.includes("cached")
+      || normalizedLabel.includes("wait")
+      || normalizedLabel.includes("old")
+      || normalizedLabel.includes("last quote")
+      || normalizedLabel.includes("last snapshot")
+    ) {
+      return "delayed";
+    }
+    return "live";
+  };
+
+  const freshnessGlyph = (tone) => {
+    if (tone === "live") return "✓";
+    if (tone === "delayed") return "◷";
+    return "!";
+  };
+
+  const setFreshnessIndicator = (node, label, state, hasPrice = true) => {
+    if (!node) return;
+    const cleanLabel = String(label || "Awaiting Tick").trim() || "Awaiting Tick";
+    const tone = freshnessTone(state, cleanLabel, hasPrice);
+    node.classList.remove("is-live", "is-delayed", "is-missing", "is-critical");
+    node.classList.add(`is-${tone}`);
+    node.dataset.freshnessLabel = cleanLabel;
+    node.dataset.freshnessTone = tone;
+    node.title = cleanLabel;
+    node.setAttribute("aria-label", cleanLabel);
+    node.textContent = "";
+    const glyph = document.createElement("span");
+    glyph.className = "marketPulseFreshnessGlyph";
+    glyph.setAttribute("aria-hidden", "true");
+    glyph.textContent = freshnessGlyph(tone);
+    const sr = document.createElement("span");
+    sr.className = "srOnly";
+    sr.textContent = cleanLabel;
+    node.append(glyph, sr);
   };
 
   const updateStateChip = (node, state, labelOverride = "") => {
@@ -2297,13 +2354,16 @@
         );
       }
     }
-    updateTextNode(
+    setFreshnessIndicator(
       card.querySelector('[data-role="freshness"]'),
       dashboardTapeFreshnessLabel(
-        String(quote.freshness_label || "").trim() || (state === "live" ? "Live" : formatEtLabel(asOf)),
+        String(quote.freshness_label || "").trim()
+          || (state === "live" ? "Live" : formatEtLabel(asOf)),
         state,
         asOf
-      )
+      ),
+      state,
+      price !== null
     );
     updateTextNode(card.querySelector('[data-role="price"]'), price === null ? "—" : price.toFixed(2), {
       live: true,
@@ -2318,11 +2378,17 @@
       }
     );
     updateTextNode(card.querySelector('[data-role="source-badge"]'), sourceBadgeLabel(quote));
+    const quoteRange = String(
+      quote.range_display || quote.day_range_compact || quote.day_range || ""
+    ).trim();
     const hasSeriesPoints = Array.isArray(points) && seriesValueCount(points) >= 4;
     if (hasSeriesPoints) {
       updateSparkNode(card.querySelector('[data-role="sparkline"]'), points, tone);
       updateTextNode(card.querySelector('[data-role="range-line"]'), formatRange(points));
     } else {
+      if (quoteRange && quoteRange !== "—" && quoteRange !== "-") {
+        updateTextNode(card.querySelector('[data-role="range-line"]'), quoteRange.replace(/\s+to\s+/i, "-"));
+      }
       const sparkNode = card.querySelector('[data-role="sparkline"]');
       if (sparkNode) {
         sparkNode.classList.remove("spark-pos", "spark-neg", "spark-flat");

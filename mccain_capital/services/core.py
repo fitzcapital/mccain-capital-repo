@@ -62,6 +62,11 @@ from mccain_capital.services.viewmodels import (
     sync_state_badges,
 )
 from mccain_capital.services.market_pulse_health import build_market_source_health
+from mccain_capital.services.market_pulse_tape import (
+    apply_range_payload as _market_pulse_apply_range_payload,
+    range_payload as _market_pulse_range_payload,
+    sparkline_svg as _market_pulse_sparkline_svg,
+)
 from mccain_capital.services import market_data_service
 from mccain_capital.services import trades_sync
 from mccain_capital.services.gamma_context_service import (
@@ -102,7 +107,7 @@ MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
     {"handle": "unusual_whales", "label": "Unusual Whales", "lane": "Options Flow"},
 )
 SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("QQQ", "SPY", "SPX")
-DEFAULT_PLAYBOOK_TICKER = "QQQ"
+DEFAULT_PLAYBOOK_TICKER = "SPX"
 PLAYBOOK_TICKER_STORAGE_KEY = "mc_playbook_ticker"
 PLAYBOOK_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,11}$")
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
@@ -863,7 +868,12 @@ def _market_pulse_compact_quote_payload(quote: Dict[str, Any]) -> Dict[str, Any]
         "asof",
         "asof_epoch",
         "day_range",
+        "day_range_compact",
+        "day_range_source",
         "day_open",
+        "day_high",
+        "day_low",
+        "range_display",
         "prior_close",
         "prev_close",
         "previous_close",
@@ -3020,20 +3030,16 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
             q["prior_session_series"] = list(cached_replay_points)
             if cached_replay_day:
                 q["prior_session_day"] = cached_replay_day
-        if prior_rows:
-            prior_highs = [
-                float(r.get("high"))
-                for r in prior_rows
-                if isinstance(r, dict) and r.get("high") is not None
-            ]
-            prior_lows = [
-                float(r.get("low"))
-                for r in prior_rows
-                if isinstance(r, dict) and r.get("low") is not None
-            ]
-            if prior_highs and prior_lows:
-                q["prior_day_high"] = max(prior_highs)
-                q["prior_day_low"] = min(prior_lows)
+        prior_range = _market_pulse_range_payload(prior_rows, source="prior_session")
+        if prior_range:
+            q["prior_day_high"] = prior_range["day_high"]
+            q["prior_day_low"] = prior_range["day_low"]
+        current_range = _market_pulse_range_payload(rows, source="current_session")
+        cached_range = _market_pulse_range_payload(
+            list(q.get("prior_session_series") or []),
+            source="cached_replay",
+        )
+        _market_pulse_apply_range_payload(q, current_range or prior_range or cached_range)
         current_vwap = _market_pulse_series_vwap(rows)
         if current_vwap is not None:
             q["vwap"] = current_vwap
@@ -3062,22 +3068,6 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
                     break
             if first_open is not None:
                 q["day_open"] = first_open
-            highs = [
-                float(r.get("high"))
-                for r in rows
-                if isinstance(r, dict) and r.get("high") is not None
-            ]
-            lows = [
-                float(r.get("low"))
-                for r in rows
-                if isinstance(r, dict) and r.get("low") is not None
-            ]
-            if highs and lows:
-                day_low = min(lows)
-                day_high = max(highs)
-                q["day_low"] = day_low
-                q["day_high"] = day_high
-                q["day_range"] = f"{day_low:,.2f} to {day_high:,.2f}"
     if counts["live"] == 0:
         disk_payload = _load_market_pulse_disk_cache()
         if isinstance(cached_payload, dict) and _market_pulse_payload_has_current_symbols(cached_payload):
@@ -3405,105 +3395,6 @@ def _market_pulse_stats(quotes: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _market_pulse_sparkline_svg(series: List[float], tone: str) -> str:
-    values = [float(v) for v in series if isinstance(v, (int, float))]
-    if len(values) < 4:
-        return '<div class="marketMiniSparkEmpty">No trend</div>'
-
-    target_bars = min(10, max(8, int(math.ceil(len(values) / 2))))
-    chunk_size = max(1, int(math.ceil(len(values) / target_bars)))
-    candles: List[Dict[str, float]] = []
-    for start in range(0, len(values), chunk_size):
-        chunk = values[start : start + chunk_size]
-        if not chunk:
-            continue
-        candles.append(
-            {
-                "open": float(chunk[0]),
-                "high": float(max(chunk)),
-                "low": float(min(chunk)),
-                "close": float(chunk[-1]),
-            }
-        )
-    if len(candles) < 2:
-        return '<div class="marketMiniSparkEmpty">No trend</div>'
-
-    width = 138.0
-    height = 60.0
-    min_v = min(float(c["low"]) for c in candles)
-    max_v = max(float(c["high"]) for c in candles)
-    if abs(max_v - min_v) < 1e-9:
-        max_v = min_v + 1.0
-    def _y(value: float) -> float:
-        return ((max_v - value) / (max_v - min_v)) * (height - 12) + 6
-
-    baseline_y = height / 2.0
-    plot_width = width - 6.0
-    plot_start = 3.0
-    slot_width = plot_width / max(len(candles), 1)
-    candle_gap = 1.1
-    candle_width = min(10.8, max(6.2, slot_width - candle_gap))
-    path_points = [
-        (
-            plot_start + (((idx + 0.5) * plot_width) / max(len(candles), 1)),
-            _y(float(candle["close"])),
-        )
-        for idx, candle in enumerate(candles)
-    ]
-    trend_path = ""
-    if path_points:
-        trend_path = f"M {path_points[0][0]:.2f} {path_points[0][1]:.2f}"
-        for idx in range(1, len(path_points)):
-            prev_x, prev_y = path_points[idx - 1]
-            point_x, point_y = path_points[idx]
-            mid_x = (prev_x + point_x) / 2.0
-            mid_y = (prev_y + point_y) / 2.0
-            trend_path += (
-                f" Q {prev_x:.2f} {prev_y:.2f} {mid_x:.2f} {mid_y:.2f}"
-                f" T {point_x:.2f} {point_y:.2f}"
-            )
-    zone_top = max(6.0, baseline_y - 12.0)
-    zone_bottom = min(height - 6.0, baseline_y + 4.0)
-    candle_markup: List[str] = []
-    for idx, candle in enumerate(candles):
-        center_x = plot_start + (((idx + 0.5) * plot_width) / max(len(candles), 1))
-        open_y = _y(candle["open"])
-        close_y = _y(candle["close"])
-        high_y = _y(candle["high"])
-        low_y = _y(candle["low"])
-        top_y = min(open_y, close_y)
-        body_height = max(3.2, abs(close_y - open_y))
-        cls = "up" if candle["close"] > candle["open"] else "down" if candle["close"] < candle["open"] else "flat"
-        current_cls = " current" if idx == len(candles) - 1 else ""
-        candle_markup.append(
-            f'<line class="marketMiniSparkWick {cls}{current_cls}" x1="{center_x:.2f}" y1="{high_y:.2f}" '
-            f'x2="{center_x:.2f}" y2="{low_y:.2f}" />'
-        )
-        candle_markup.append(
-            f'<rect class="marketMiniSparkBody {cls}{current_cls}" x="{(center_x - candle_width / 2):.2f}" '
-            f'y="{top_y:.2f}" width="{candle_width:.2f}" height="{body_height:.2f}" rx=".08" ry=".08" />'
-        )
-    last_close_y = _y(candles[-1]["close"])
-    last_close_class = (
-        "up"
-        if candles[-1]["close"] > candles[-1]["open"]
-        else "down" if candles[-1]["close"] < candles[-1]["open"] else "flat"
-    )
-    return (
-        '<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">'
-        + f'<rect class="marketMiniSparkZone marketMiniSparkZone--resistance" x="3" y="{zone_top:.2f}" width="132" height="7" rx="3" />'
-        + f'<rect class="marketMiniSparkZone marketMiniSparkZone--support" x="3" y="{zone_bottom:.2f}" width="132" height="7" rx="3" />'
-        + '<line class="marketMiniSparkGuide" x1="3" y1="14" x2="135" y2="14" />'
-        + f'<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="3" y1="{baseline_y:.2f}" x2="135" y2="{baseline_y:.2f}" />'
-        + '<line class="marketMiniSparkGuide" x1="3" y1="46" x2="135" y2="46" />'
-        + (f'<path class="marketMiniSparkTrend {last_close_class}" d="{trend_path}" />' if trend_path else "")
-        + "".join(candle_markup)
-        + f'<line class="marketMiniSparkPriceMarker {last_close_class}" x1="{max(3.0, center_x - 5.0):.2f}" y1="{last_close_y:.2f}" x2="135" y2="{last_close_y:.2f}" />'
-        + f'<circle class="marketMiniSparkPoint {last_close_class}" cx="{center_x:.2f}" cy="{last_close_y:.2f}" r="2.7" />'
-        + "</svg>"
-    )
-
-
 def _market_pulse_resolve_sparkline_values(quote: Dict[str, Any]) -> List[float]:
     values: List[float] = []
     for source_key in ("mini_series", "series", "prior_session_series"):
@@ -3658,6 +3549,25 @@ def _market_pulse_enrich_quotes(
                 for value in mini[-40:]
                 if isinstance(value, (int, float))
             ]
+        range_display = str(
+            q.get("day_range_compact") or q.get("range_display") or q.get("day_range") or "—"
+        )
+        if range_display in {
+            "",
+            "—",
+            "-",
+        }:
+            fallback_range = _market_pulse_range_payload(
+                list(q.get("prior_session_series") or q.get("series") or []),
+                source="cached_replay",
+            )
+            _market_pulse_apply_range_payload(q, fallback_range)
+        elif not str(q.get("day_range_compact") or "").strip():
+            day_range_full = str(q.get("day_range") or "—")
+            q["day_range_compact"] = (
+                day_range_full.replace(" to ", "-") if day_range_full != "—" else "—"
+            )
+            q["range_display"] = q["day_range_compact"]
         tone = "flat"
         if len(mini) >= 2:
             delta = float(mini[-1]) - float(mini[0])
@@ -3665,7 +3575,11 @@ def _market_pulse_enrich_quotes(
                 tone = "up"
             elif delta < 0:
                 tone = "down"
-        q["sparkline_svg"] = _market_pulse_sparkline_svg(mini[-40:], tone)
+        q["sparkline_svg"] = _market_pulse_sparkline_svg(
+            mini[-40:],
+            tone,
+            str(q.get("label") or q.get("symbol") or ""),
+        )
         enriched.append(q)
     return enriched
 
@@ -11003,7 +10917,11 @@ def _dashboard_tape_viewmodel(
         if len(chart_series) >= 2:
             delta = float(chart_series[-1]) - float(chart_series[0])
             tone = "up" if delta > 0 else "down" if delta < 0 else "flat"
-        enriched["sparkline_svg"] = _market_pulse_sparkline_svg(chart_series[-40:], tone)
+        enriched["sparkline_svg"] = _market_pulse_sparkline_svg(
+            chart_series[-40:],
+            tone,
+            str(enriched.get("label") or enriched.get("symbol") or ""),
+        )
         change_points = price - prev_close if price is not None and prev_close is not None else None
         day_open = _float_or_none(enriched.get("day_open"))
         gap_points = day_open - prev_close if day_open is not None and prev_close is not None and prev_close > 0 else None
@@ -11911,7 +11829,11 @@ def dashboard():
                 tone = "up"
             elif delta < 0:
                 tone = "down"
-        enriched["sparkline_svg"] = _market_pulse_sparkline_svg(chart_series[-40:], tone)
+        enriched["sparkline_svg"] = _market_pulse_sparkline_svg(
+            chart_series[-40:],
+            tone,
+            str(enriched.get("label") or enriched.get("symbol") or ""),
+        )
 
         change_points = None
         if price is not None and prev_close is not None:
@@ -13164,12 +13086,34 @@ def market_pulse_tape_api():
     quotes = _market_pulse_enrich_quotes(raw_quotes, now_et)
     series_points: Dict[str, List[Dict[str, Any]]] = {}
 
-    def _load_tape_series(symbol: str) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    def _load_tape_series(
+        symbol: str,
+    ) -> Tuple[
+        str,
+        List[Dict[str, Any]],
+        List[Dict[str, Any]],
+        List[Dict[str, Any]],
+        List[Dict[str, Any]],
+    ]:
         try:
             rows = market_data_service.get_intraday(symbol)
         except Exception:
             rows = []
-        return symbol, rows, _market_pulse_rows_to_points(rows)
+        try:
+            prior_rows = market_data_service.get_prior_session_intraday(
+                symbol,
+                anchor_session_day=_market_pulse_rows_session_day(rows),
+            )
+        except Exception:
+            prior_rows = []
+        prior_points = _market_pulse_rows_to_points(prior_rows)
+        if len(prior_points) < 2:
+            cached_points, cached_day = _market_pulse_cached_replay_series(symbol)
+            if cached_day == now_et.date().isoformat():
+                cached_points = []
+        else:
+            cached_points = []
+        return symbol, rows, _market_pulse_rows_to_points(rows), prior_rows, cached_points
 
     quote_by_symbol: Dict[str, Dict[str, Any]] = {}
     label_by_symbol: Dict[str, str] = {}
@@ -13190,29 +13134,38 @@ def market_pulse_tape_api():
                 executor.submit(_load_tape_series, symbol): symbol for symbol in quote_by_symbol
             }
             for future in as_completed(futures):
-                symbol, rows, points = future.result()
+                symbol, rows, points, prior_rows, cached_points = future.result()
                 q = quote_by_symbol.get(symbol)
                 label = label_by_symbol.get(symbol, symbol)
                 if not q:
                     continue
+                current_range = _market_pulse_range_payload(rows, source="current_session")
+                prior_range = _market_pulse_range_payload(prior_rows, source="prior_session")
+                cached_range = _market_pulse_range_payload(cached_points, source="cached_replay")
+                _market_pulse_apply_range_payload(q, current_range or prior_range or cached_range)
                 if len(points) >= 4:
                     series_points[label] = points
                     q["series"] = points
                     q["mini_series"] = [
                         float(p["v"]) for p in points if isinstance(p.get("v"), (int, float))
                     ]
-                    highs = [
-                        float(r.get("high"))
-                        for r in rows
-                        if isinstance(r, dict) and r.get("high") is not None
+                elif len(prior_rows) >= 2:
+                    prior_points = _market_pulse_rows_to_points(prior_rows)
+                    series_points[label] = prior_points
+                    q["prior_session_series"] = prior_points
+                    q["mini_series"] = [
+                        float(p["v"])
+                        for p in prior_points
+                        if isinstance(p.get("v"), (int, float))
                     ]
-                    lows = [
-                        float(r.get("low"))
-                        for r in rows
-                        if isinstance(r, dict) and r.get("low") is not None
+                elif len(cached_points) >= 2:
+                    series_points[label] = cached_points
+                    q["prior_session_series"] = cached_points
+                    q["mini_series"] = [
+                        float(p["v"])
+                        for p in cached_points
+                        if isinstance(p.get("v"), (int, float))
                     ]
-                    if highs and lows:
-                        q["day_range"] = f"{min(lows):,.2f} to {max(highs):,.2f}"
     quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
     stats = _market_pulse_stats(quotes)
     context = _market_pulse_context(quotes)
@@ -15079,7 +15032,7 @@ def _candle_page_top_notice(
         except ValueError:
             continue
         if starts_at.tzinfo is None:
-            starts_at = starts_at.replace(tzinfo=TZ)
+            starts_at = starts_at.replace(tzinfo=app_runtime.TZ)
         if starts_at < now_et or starts_at > horizon:
             continue
         day_prefix = "" if starts_at.date() == now_et.date() else f"{starts_at.strftime('%a')} "

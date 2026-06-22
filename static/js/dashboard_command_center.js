@@ -356,7 +356,53 @@ const marketSessionState = (now = new Date()) => {
     .map((row) => (row && typeof row === "object" ? asNum(row.v ?? row.close) : asNum(row)))
     .filter((value) => value !== null);
 
-  const buildSparklineSvg = (points, tone) => {
+  const symbolSeed = (symbol) => {
+    const text = String(symbol || "TAPE").toUpperCase();
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  };
+
+  const seededUnit = (seed, offset) => {
+    let value = (seed + Math.imul(offset + 1, 0x9e3779b9)) >>> 0;
+    value ^= value << 13;
+    value ^= value >>> 17;
+    value ^= value << 5;
+    return ((value >>> 0) % 1000) / 1000;
+  };
+
+  const buildAmbientLayers = (symbol, width, height) => {
+    const seed = symbolSeed(symbol);
+    const bandCount = 3 + (seed % 3);
+    const bands = [];
+    const centerY = height / 2;
+    for (let index = 0; index < bandCount; index += 1) {
+      const unit = seededUnit(seed, index);
+      const bandWidth = 74 + (unit * 48);
+      const x = 8 + (seededUnit(seed, index + 7) * Math.max(1, width - bandWidth - 16));
+      const y = centerY - 11 + (index * 5.2) + ((seededUnit(seed, index + 13) - 0.5) * 3.6);
+      const opacity = 0.08 + (seededUnit(seed, index + 23) * 0.08);
+      bands.push(
+        `<rect class="marketMiniSparkAmbientBand marketMiniSparkAmbientBand--${index + 1}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${bandWidth.toFixed(2)}" height="${(5.8 + (unit * 2.6)).toFixed(2)}" rx="6" style="--spark-band-opacity:${opacity.toFixed(3)}" />`
+      );
+    }
+    const particles = [];
+    for (let index = 0; index < 4; index += 1) {
+      const x = 12 + (seededUnit(seed, index + 31) * (width - 24));
+      const y = 14 + (seededUnit(seed, index + 41) * (height - 28));
+      const radius = 0.55 + (seededUnit(seed, index + 51) * 0.55);
+      const opacity = 0.10 + (seededUnit(seed, index + 61) * 0.08);
+      particles.push(
+        `<circle class="marketMiniSparkParticle" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${radius.toFixed(2)}" style="--spark-particle-opacity:${opacity.toFixed(3)}" />`
+      );
+    }
+    return `<g class="marketMiniSparkAmbient" data-ambient-symbol="${String(symbol || "TAPE").toUpperCase()}">${bands.join("")}${particles.join("")}</g>`;
+  };
+
+  const buildSparklineSvg = (points, tone, symbol = "") => {
     const values = seriesValues(points);
     if (values.length < 4) {
       return '<div class="marketMiniSparkEmpty">No trend</div>';
@@ -399,8 +445,6 @@ const marketSessionState = (now = new Date()) => {
           return `${path} Q ${prev[0].toFixed(2)} ${prev[1].toFixed(2)} ${midX.toFixed(2)} ${((prev[1] + point[1]) / 2).toFixed(2)} T ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
         }, "")
       : "";
-    const zoneTop = Math.max(6, Number(baselineY) - 12).toFixed(2);
-    const zoneBottom = Math.min(height - 6, Number(baselineY) + 4).toFixed(2);
     const bars = candles.map((candle, index) => {
       const centerX = plotStart + (((index + 0.5) * plotWidth) / Math.max(candles.length, 1));
       const openY = yFor(candle.open);
@@ -422,12 +466,11 @@ const marketSessionState = (now = new Date()) => {
     const lastCloseClass = lastCandle.close > lastCandle.open ? "up" : lastCandle.close < lastCandle.open ? "down" : "flat";
     return (
       `<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">`
-      + `<rect class="marketMiniSparkZone marketMiniSparkZone--resistance" x="3" y="${zoneTop}" width="132" height="7" rx="3" />`
-      + `<rect class="marketMiniSparkZone marketMiniSparkZone--support" x="3" y="${zoneBottom}" width="132" height="7" rx="3" />`
-      + `<line class="marketMiniSparkGuide" x1="3" y1="14" x2="135" y2="14" />`
+      + `<defs><linearGradient id="dashboardTapeAmbientGradient" x1="0%" y1="50%" x2="100%" y2="50%"><stop offset="0%" stop-color="#7e5cff" /><stop offset="52%" stop-color="#5484ff" /><stop offset="100%" stop-color="#54f6eb" /></linearGradient></defs>`
+      + buildAmbientLayers(symbol, width, height)
       + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="3" y1="${baselineY}" x2="135" y2="${baselineY}" />`
-      + `<line class="marketMiniSparkGuide" x1="3" y1="46" x2="135" y2="46" />`
       + (trendPath ? `<path class="marketMiniSparkTrend ${lastCloseClass}" d="${trendPath}" />` : "")
+      + `<circle class="marketMiniSparkCurrentGlow ${lastCloseClass}" cx="${lastCenterX.toFixed(2)}" cy="${lastCloseY.toFixed(2)}" r="10.5" />`
       + bars
       + `<line class="marketMiniSparkPriceMarker ${lastCloseClass}" x1="${Math.max(3, lastCenterX - 5).toFixed(2)}" y1="${lastCloseY.toFixed(2)}" x2="135" y2="${lastCloseY.toFixed(2)}" />`
       + `<circle class="marketMiniSparkPoint ${lastCloseClass}" cx="${lastCenterX.toFixed(2)}" cy="${lastCloseY.toFixed(2)}" r="2.7" />`
@@ -440,7 +483,8 @@ const marketSessionState = (now = new Date()) => {
     const sparkClass = tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat";
     node.classList.remove("spark-pos", "spark-neg", "spark-flat");
     node.classList.add(sparkClass);
-    node.innerHTML = buildSparklineSvg(points, tone);
+    const symbol = node.closest("[data-watch-symbol]")?.dataset.watchSymbol || "";
+    node.innerHTML = buildSparklineSvg(points, tone, symbol);
     return true;
   };
 
@@ -540,6 +584,31 @@ const marketSessionState = (now = new Date()) => {
       status: band === "Live" ? "" : band,
       tone: stateClass(band === "Critical" ? band : state),
     };
+  };
+
+  const freshnessGlyph = (tone) => {
+    if (tone === "live") return "✓";
+    if (tone === "delayed") return "◷";
+    return "!";
+  };
+
+  const setFreshnessIndicator = (node, label, tone) => {
+    if (!node) return;
+    const cleanLabel = String(label || "Awaiting Tick").trim() || "Awaiting Tick";
+    const cleanTone = String(tone || "missing").trim() || "missing";
+    node.dataset.freshnessLabel = cleanLabel;
+    node.dataset.freshnessTone = cleanTone;
+    node.title = cleanLabel;
+    node.setAttribute("aria-label", cleanLabel);
+    node.textContent = "";
+    const glyph = document.createElement("span");
+    glyph.className = "dashboardTapeFreshnessGlyph";
+    glyph.setAttribute("aria-hidden", "true");
+    glyph.textContent = freshnessGlyph(cleanTone);
+    const sr = document.createElement("span");
+    sr.className = "srOnly";
+    sr.textContent = cleanLabel;
+    node.append(glyph, sr);
   };
 
   const deriveState = (quote) => {
@@ -667,9 +736,9 @@ const marketSessionState = (now = new Date()) => {
       marketStateNode.classList.add("is-delayed");
     }
     if (liveNode && (lower(liveNode) === "unavailable" || lower(liveNode) === "loading...")) {
-      liveNode.textContent = "Awaiting Tick";
       liveNode.classList.remove("is-missing");
       liveNode.classList.add("is-delayed");
+      setFreshnessIndicator(liveNode, "Awaiting Tick", "delayed");
     }
     if (detailChgNode && (lower(detailChgNode) === "loading..." || lower(detailChgNode) === "unavailable")) {
       detailChgNode.textContent = "—";
@@ -771,8 +840,8 @@ const marketSessionState = (now = new Date()) => {
     if (rowMarketStateNode) {
       dashboardUIFX.setText(rowMarketStateNode, freshness.status);
     }
-    if (rowLiveNode && String((quote || {}).as_of || "").trim()) {
-      dashboardUIFX.setText(rowLiveNode, freshness.full);
+    if (rowLiveNode) {
+      setFreshnessIndicator(rowLiveNode, freshness.full, freshness.tone);
     }
     if (rowRangeValueNode && ((quote || {}).day_low !== undefined || (quote || {}).day_high !== undefined)) {
       const dayLow = asNum((quote || {}).day_low);

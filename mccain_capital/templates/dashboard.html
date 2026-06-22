@@ -817,7 +817,18 @@
           </div>
           <div class="tiny muted marketPulseWatchMetaRow dashboardTapeAssetMeta">
             <span class="dashboardTapeAssetStatus is-{{ row.freshness_tone }}" data-role="market-state">{{ row.market_state_display or 'Wait' }}</span>
-            <span class="dashboardTapeAssetFreshness is-{{ row.freshness_tone }}" data-role="row-live">{{ row.freshness_display or 'Awaiting Tick' }}</span>
+            {% set freshness_glyph = '✓' if row.freshness_tone == 'live' else '◷' if row.freshness_tone == 'delayed' else '!' %}
+            <span
+              class="dashboardTapeAssetFreshness is-{{ row.freshness_tone }}"
+              data-role="row-live"
+              data-freshness-label="{{ row.freshness_display or 'Awaiting Tick' }}"
+              data-freshness-tone="{{ row.freshness_tone }}"
+              title="{{ row.freshness_display or 'Awaiting Tick' }}"
+              aria-label="{{ row.freshness_display or 'Awaiting Tick' }}"
+            >
+              <span class="dashboardTapeFreshnessGlyph" aria-hidden="true">{{ freshness_glyph }}</span>
+              <span class="srOnly">{{ row.freshness_display or 'Awaiting Tick' }}</span>
+            </span>
           </div>
           <div class="tiny muted marketPulseWatchRange dashboardTapeAssetRange" data-role="detail-range">
             <span class="dashboardTapeRangeLabel">Range</span>
@@ -1919,6 +1930,19 @@
           Max: {{ money(consistency.biggest) }} / {{ money(consistency.denom) }}
           &nbsp; • &nbsp; Line: {{ '%.0f'|format(cons_threshold * 100) }}%
         </div>
+
+        {% if consistency.cap_available and consistency.next_win_cap is not none %}
+          <div class="tiny stack8 dashboardConsistencyCap{% if consistency.cap_status == 'over' %} is-danger{% else %} is-safe{% endif %}">
+            {% if consistency.cap_status == 'over' %}
+              Reduce concentration: current biggest exceeds the {{ '%.0f'|format(cons_threshold * 100) }}% line.
+            {% else %}
+              Next cap: {{ money(consistency.next_win_cap) }} max winner to stay ≤ {{ '%.0f'|format(cons_threshold * 100) }}%.
+            {% endif %}
+          </div>
+          <div class="tiny stack8 dashboardConsistencyCapNote">
+            Use this as the per-trade ceiling across the next 10 trades.
+          </div>
+        {% endif %}
 
         {% if consistency.ratio is not none %}
           {% set bar_pct = (consistency.ratio * 100) %}

@@ -897,21 +897,31 @@ def get_prior_session_intraday(
 ) -> List[Dict[str, Any]]:
     anchor_day = anchor_session_day or app_runtime.now_et().date()
     session_day = _previous_trading_day(anchor_day)
-    cache_key = f"{str(symbol or '').strip().upper()}::{session_day.isoformat()}"
-    cached_rows = _curve_cache_get(
-        _PRIOR_SESSION_CURVE_CACHE,
-        cache_key,
-        ttl_seconds=MARKET_CURVE_CACHE_TTL_SECONDS,
-    )
-    if cached_rows is not None:
-        return cached_rows
+    symbol_key = str(symbol or "").strip().upper()
+    checked = 0
+    while checked < 7 and session_day < anchor_day:
+        if session_day.weekday() >= 5:
+            session_day -= timedelta(days=1)
+            continue
+        checked += 1
+        cache_key = f"{symbol_key}::{session_day.isoformat()}"
+        cached_rows = _curve_cache_get(
+            _PRIOR_SESSION_CURVE_CACHE,
+            cache_key,
+            ttl_seconds=MARKET_CURVE_CACHE_TTL_SECONDS,
+        )
+        if cached_rows is not None:
+            if cached_rows:
+                return cached_rows
+            session_day -= timedelta(days=1)
+            continue
 
-    tradier_rows = _tradier_intraday_rows_for_date(symbol, session_day)
-    if len(tradier_rows) >= 20:
-        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
-    if tradier_rows:
-        return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
-    return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, [])
+        tradier_rows = _tradier_intraday_rows_for_date(symbol, session_day)
+        if tradier_rows:
+            return _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, tradier_rows)
+        _curve_cache_set(_PRIOR_SESSION_CURVE_CACHE, cache_key, [])
+        session_day -= timedelta(days=1)
+    return []
 
 
 def get_watchlist(

@@ -241,6 +241,37 @@ def test_get_prior_session_intraday_uses_short_lived_curve_cache(monkeypatch):
     assert first is not second
 
 
+def test_get_prior_session_intraday_walks_back_when_previous_weekday_closed(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(market_data_service, "_PRIOR_SESSION_CURVE_CACHE", {})
+    monkeypatch.setattr(market_data_service, "_massive_api_key", lambda: "")
+
+    def _fake_rows(symbol, session_day):
+        calls.append((symbol, session_day.isoformat()))
+        if session_day == date(2026, 6, 18):
+            return [
+                {
+                    "ts": "2026-06-18T15:55:00-04:00",
+                    "open": 740.0,
+                    "high": 741.0,
+                    "low": 739.5,
+                    "close": 740.62,
+                    "volume": 100,
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(market_data_service, "_tradier_intraday_rows_for_date", _fake_rows)
+
+    rows = market_data_service.get_prior_session_intraday(
+        "QQQ", anchor_session_day=date(2026, 6, 20)
+    )
+
+    assert calls == [("QQQ", "2026-06-19"), ("QQQ", "2026-06-18")]
+    assert rows[0]["ts"] == "2026-06-18T15:55:00-04:00"
+
+
 def test_get_price_returns_none_when_tradier_has_no_quote(monkeypatch):
     monkeypatch.setattr(market_data_service, "_tradier_quote_map", lambda symbols: {})
     monkeypatch.setattr(
