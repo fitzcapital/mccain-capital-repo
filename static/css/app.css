@@ -68267,3 +68267,189 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
   opacity:.36 !important;
   filter:blur(5px) !important;
 }
+
+/* Full-DOM starfield fix: one document-sized shell layer owns all stars. */
+body[data-theme="cinematic-nebula"]{
+  position:relative;
+}
+
+body[data-theme="cinematic-nebula"] .shellStarfield{
+  position:absolute !important;
+  top:0 !important;
+  left:0 !important;
+  right:auto !important;
+  bottom:auto !important;
+  width:var(--shell-starfield-width, 100%) !important;
+  height:var(--shell-starfield-height, 100%) !important;
+  min-width:100%;
+  min-height:100%;
+  pointer-events:none;
+  overflow:hidden;
+  z-index:0;
+  background-image:
+    radial-gradient(circle at 26px 42px, rgba(238, 252, 255, .58) 0 1.2px, transparent 1.9px),
+    radial-gradient(circle at 184px 116px, rgba(96, 228, 255, .42) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 302px 206px, rgba(0, 255, 159, .28) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 98px 228px, rgba(238, 252, 255, .32) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 378px 62px, rgba(96, 228, 255, .30) 0 1.1px, transparent 1.8px),
+    radial-gradient(820px 460px at 16% 0%, rgba(50, 184, 255, .12), transparent 74%),
+    radial-gradient(860px 480px at 88% 8%, rgba(0, 255, 159, .085), transparent 76%),
+    radial-gradient(980px 540px at 58% 84%, rgba(26, 168, 255, .055), transparent 82%) !important;
+  background-repeat:
+    repeat,
+    repeat,
+    repeat,
+    repeat,
+    repeat,
+    no-repeat,
+    no-repeat,
+    no-repeat !important;
+  background-size:
+    360px 300px,
+    520px 420px,
+    440px 380px,
+    610px 520px,
+    700px 460px,
+    100% 100%,
+    100% 100%,
+    100% 100% !important;
+  background-position:
+    0 0,
+    38px 18px,
+    92px 74px,
+    124px 20px,
+    210px 126px,
+    0 0,
+    0 0,
+    0 0 !important;
+}
+
+body[data-theme="cinematic-nebula"] .shellStarfieldCanvas{
+  display:block;
+  width:100% !important;
+  height:100% !important;
+}
+
+body[data-theme="cinematic-nebula"]:not([data-starfield="on"]) .shellStarfield{
+  opacity:.98 !important;
+}
+
+body[data-theme="cinematic-nebula"]:not([data-starfield="on"]) .shellStarfieldCanvas{
+  opacity:0 !important;
+}
+
+body[data-theme="cinematic-nebula"] .shellStarfield::before,
+body[data-theme="cinematic-nebula"] .shellStarfield::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background-repeat:repeat;
+  mix-blend-mode:screen;
+}
+
+body[data-theme="cinematic-nebula"] .shellStarfield::before{
+  background-image:
+    radial-gradient(circle at 42px 78px, rgba(242, 252, 255, .62) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 214px 34px, rgba(88, 226, 255, .40) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 336px 176px, rgba(0, 255, 159, .24) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 122px 258px, rgba(242, 252, 255, .28) 0 .9px, transparent 1.7px);
+  background-size:420px 340px, 560px 430px, 490px 390px, 640px 520px;
+  background-position:0 0, 84px 36px, 148px 92px, 232px 18px;
+  opacity:.78;
+}
+
+body[data-theme="cinematic-nebula"] .shellStarfield::after{
+  background-image:
+    radial-gradient(circle at 82px 92px, rgba(144, 231, 255, .26) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 286px 266px, rgba(248, 253, 255, .22) 0 .9px, transparent 1.7px),
+    radial-gradient(circle at 452px 118px, rgba(0, 255, 159, .18) 0 .9px, transparent 1.7px);
+  background-size:680px 520px, 740px 560px, 820px 620px;
+  background-position:120px 44px, 0 110px, 300px 0;
+  opacity:.68;
+}
+
+body[data-theme="cinematic-nebula"]:not([data-starfield="on"]) .shellStarfield{
+  background-image:
+    radial-gradient(circle at 18px 26px, rgba(246, 253, 255, .66) 0 1.2px, transparent 1.9px),
+    radial-gradient(circle at 96px 118px, rgba(96, 228, 255, .48) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 214px 64px, rgba(0, 255, 159, .34) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 328px 186px, rgba(238, 252, 255, .44) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 446px 92px, rgba(96, 228, 255, .38) 0 1.1px, transparent 1.8px),
+    radial-gradient(circle at 572px 242px, rgba(246, 253, 255, .30) 0 .9px, transparent 1.6px),
+    radial-gradient(circle at 702px 138px, rgba(0, 255, 159, .24) 0 .9px, transparent 1.7px),
+    radial-gradient(820px 460px at 16% 0%, rgba(50, 184, 255, .13), transparent 74%),
+    radial-gradient(860px 480px at 88% 8%, rgba(0, 255, 159, .09), transparent 76%),
+    radial-gradient(980px 540px at 58% 84%, rgba(26, 168, 255, .06), transparent 82%) !important;
+  background-repeat:
+    repeat,
+    repeat,
+    repeat,
+    repeat,
+    repeat,
+    repeat,
+    repeat,
+    no-repeat,
+    no-repeat,
+    no-repeat !important;
+  background-size:
+    280px 230px,
+    360px 300px,
+    430px 340px,
+    520px 420px,
+    610px 500px,
+    700px 540px,
+    820px 620px,
+    100% 100%,
+    100% 100%,
+    100% 100% !important;
+  background-position:
+    0 0,
+    32px 16px,
+    74px 58px,
+    126px 24px,
+    202px 112px,
+    280px 40px,
+    360px 180px,
+    0 0,
+    0 0,
+    0 0 !important;
+}
+
+body[data-theme="cinematic-nebula"]:not([data-starfield="on"]) .shellStarfield::before{
+  opacity:.94;
+}
+
+body[data-theme="cinematic-nebula"]:not([data-starfield="on"]) .shellStarfield::after{
+  opacity:.82;
+}
+
+body[data-theme="cinematic-nebula"] .wrap::before,
+body[data-theme="cinematic-nebula"] .wrap::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  background-image:none !important;
+}
+
+/* GPU stability: keep the static starfield, but avoid expensive blending/glow in low-gpu mode. */
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .shellStarfield{
+  transition:none !important;
+  will-change:auto !important;
+}
+
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .shellStarfieldCanvas{
+  opacity:.42 !important;
+  mix-blend-mode:normal !important;
+}
+
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"]:not([data-starfield="on"]) .shellStarfieldCanvas{
+  opacity:0 !important;
+}
+
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .shellStarfield::before,
+html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .shellStarfield::after{
+  mix-blend-mode:normal !important;
+  filter:none !important;
+}

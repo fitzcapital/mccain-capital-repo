@@ -562,9 +562,19 @@ const marketSessionState = (now = new Date()) => {
     return "Fresh";
   };
 
-  const formatFreshness = (iso, state) => {
+  const formatFreshness = (iso, state, hasPrice = false) => {
     const ts = typeof iso === "string" ? Date.parse(iso) : NaN;
     if (!Number.isFinite(ts)) {
+      if (hasPrice) {
+        const tone = stateClass(state);
+        return {
+          full: "Quote Loaded",
+          compact: "quote",
+          band: state,
+          status: state === "Live" ? "" : state,
+          tone,
+        };
+      }
       return {
         full: "Awaiting Tick",
         compact: "wait",
@@ -770,7 +780,7 @@ const marketSessionState = (now = new Date()) => {
     const detailLiveNode = detailNode?.querySelector('[data-role="detail-live"]');
     const openValue = asNum((quote || {}).day_open ?? (quote || {}).open);
     const prevCloseValue = inferPreviousClose(quote);
-    const freshness = formatFreshness((quote || {}).as_of, state);
+    const freshness = formatFreshness((quote || {}).as_of || (quote || {}).asof, state, price !== null);
     const usablePoints = seriesValues(points).length >= 2 ? points : quoteSeriesPoints(quote);
     const tapeState = tapeStateFor(symbol, pct);
     const tapeLabel = tapeState.label;

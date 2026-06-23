@@ -75,7 +75,7 @@ def dashboard_planning_refresh_api():
     if core_svc.auth_enabled() and not core_svc.is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
 
-    ticker_context = core_svc.get_playbook_ticker_context(request.args.get("ticker"))
+    ticker_context = core_svc.get_dashboard_ticker_context(request.args.get("ticker"))
     selected_ticker = str(ticker_context["ticker"])
     force_refresh = (request.args.get("force") or "").strip() == "1"
     scope_mode = (request.args.get("scope") or "all").strip().lower()
@@ -248,7 +248,7 @@ def dashboard_tape_refresh_api():
     if core_svc.auth_enabled() and not core_svc.is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
 
-    ticker_context = core_svc.get_playbook_ticker_context(request.args.get("ticker"))
+    ticker_context = core_svc.get_dashboard_ticker_context(request.args.get("ticker"))
     symbols = core_svc._dashboard_tape_symbols(str(ticker_context["ticker"]))
     try:
         market_worker.start_market_worker_once()

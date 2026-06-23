@@ -3351,6 +3351,17 @@ def test_stale_sync_job_is_reconciled_when_polled(client, monkeypatch, tmp_path)
     assert sync_status["stage"] == "stale"
 
 
+def test_open_statement_dialog_stale_timeout_is_shorter_than_general_sync_timeout(monkeypatch):
+    from mccain_capital.services import trades as trades_svc
+
+    monkeypatch.setattr(trades_svc, "SYNC_JOB_STALE_SECONDS", 300)
+    monkeypatch.setattr(trades_svc, "SYNC_JOB_UI_STAGE_STALE_SECONDS", 75)
+
+    assert trades_svc._sync_job_stale_after("running", "open_statement_dialog") == 75.0
+    assert trades_svc._sync_job_stale_after("running", "generate_statement") == 300.0
+    assert "Broker UI stalled" in trades_svc._stale_sync_job_message("open_statement_dialog")
+
+
 def test_sync_startup_stale_timeout_exceeds_browser_boot_gate():
     from mccain_capital.services import trades as trades_svc
 

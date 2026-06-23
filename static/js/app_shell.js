@@ -666,6 +666,7 @@
       height: 0,
       dpr: 1,
       lastTs: 0,
+      drawTs: 0,
       resizeTimer: 0,
       ctx: starfieldCanvas ? starfieldCanvas.getContext("2d") : null,
     };
@@ -757,30 +758,62 @@
       starfieldState.ctx.clearRect(0, 0, starfieldCanvas.width, starfieldCanvas.height);
     };
 
-    const buildStarfield = () => {
-      if (!starfieldCanvas || !starfieldState.ctx) return;
+    const starfieldSize = () => {
       const viewportWidth = Math.max(window.innerWidth || 0, docEl.clientWidth || 0, 320);
       const viewportHeight = Math.max(window.innerHeight || 0, docEl.clientHeight || 0, 320);
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.8);
-      starfieldState.width = viewportWidth;
-      starfieldState.height = viewportHeight;
+      const fieldWidth = Math.ceil(Math.max(
+        viewportWidth,
+        docEl.scrollWidth || 0,
+        body.scrollWidth || 0,
+        docEl.offsetWidth || 0,
+        body.offsetWidth || 0
+      ));
+      const fieldHeight = Math.ceil(Math.max(
+        viewportHeight,
+        docEl.scrollHeight || 0,
+        body.scrollHeight || 0,
+        docEl.offsetHeight || 0,
+        body.offsetHeight || 0
+      ));
+      return { viewportWidth, viewportHeight, fieldWidth, fieldHeight };
+    };
+
+    const syncStarfieldShellSize = () => {
+      const { fieldWidth, fieldHeight } = starfieldSize();
+      docEl.style.setProperty("--shell-starfield-width", `${fieldWidth}px`);
+      docEl.style.setProperty("--shell-starfield-height", `${fieldHeight}px`);
+      if (starfieldHost) {
+        starfieldHost.style.width = `${fieldWidth}px`;
+        starfieldHost.style.height = `${fieldHeight}px`;
+      }
+      return { fieldWidth, fieldHeight };
+    };
+
+    const buildStarfield = () => {
+      if (!starfieldCanvas || !starfieldState.ctx) return;
+      const { viewportWidth, fieldWidth, fieldHeight } = starfieldSize();
+      const dpr = lowPerf() ? 1 : Math.min(window.devicePixelRatio || 1, 1.8);
+      starfieldState.width = fieldWidth;
+      starfieldState.height = fieldHeight;
       starfieldState.dpr = dpr;
-      starfieldCanvas.width = Math.round(viewportWidth * dpr);
-      starfieldCanvas.height = Math.round(viewportHeight * dpr);
-      starfieldCanvas.style.width = `${viewportWidth}px`;
-      starfieldCanvas.style.height = `${viewportHeight}px`;
+      starfieldCanvas.width = Math.round(fieldWidth * dpr);
+      starfieldCanvas.height = Math.round(fieldHeight * dpr);
+      syncStarfieldShellSize();
+      starfieldCanvas.style.width = `${fieldWidth}px`;
+      starfieldCanvas.style.height = `${fieldHeight}px`;
       starfieldState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const starCount = lowPerf()
-        ? (viewportWidth < 720 ? 100 : 160)
+      const baseStarCount = lowPerf()
+        ? (viewportWidth < 720 ? 70 : 110)
         : (viewportWidth < 720 ? 180 : 300);
+      const starCount = lowPerf() ? baseStarCount : Math.round(baseStarCount * 1.35);
       const maxDepth = 3.4;
       starfieldState.stars = Array.from({ length: starCount }, () => {
         const depth = 0.8 + (Math.random() * maxDepth);
         const bright = depth > 2.55 || Math.random() > 0.9;
         const velocity = reducedMotion() ? 0.12 : 0.35 + (depth * 0.48);
         return {
-          x: Math.random() * viewportWidth,
-          y: Math.random() * viewportHeight,
+          x: Math.random() * fieldWidth,
+          y: Math.random() * fieldHeight,
           depth,
           vx: velocity,
           vy: (Math.random() - 0.5) * (reducedMotion() ? 0.012 : 0.075),
@@ -818,6 +851,13 @@
       const width = starfieldState.width;
       const height = starfieldState.height;
       const palette = starfieldTheme();
+      const gpuQuiet = lowPerf();
+      const minFrameMs = gpuQuiet ? 55 : 0;
+      if (minFrameMs && starfieldState.drawTs && timestamp - starfieldState.drawTs < minFrameMs) {
+        starfieldState.frame = window.requestAnimationFrame(drawStarfield);
+        return;
+      }
+      starfieldState.drawTs = timestamp;
       const dt = starfieldState.lastTs ? Math.min((timestamp - starfieldState.lastTs) / 16.67, 2) : 1;
       starfieldState.lastTs = timestamp;
       ctx.clearRect(0, 0, width, height);
@@ -830,7 +870,7 @@
 
       for (let i = 0; i < starfieldState.stars.length; i += 1) {
         const star = starfieldState.stars[i];
-        const trail = reducedMotion() ? 0 : Math.min(2.8, star.depth * 0.8);
+        const trail = (gpuQuiet || reducedMotion()) ? 0 : Math.min(2.8, star.depth * 0.8);
         const pulse = 0.78 + Math.sin(star.pulse) * 0.26;
         const radius = star.radius * pulse;
         star.x += star.vx * dt;
@@ -843,7 +883,7 @@
         if (star.y < -14) star.y = height + 14;
         else if (star.y > height + 14) star.y = -14;
 
-        if (!reducedMotion() && star.depth > 2.1) {
+        if (!gpuQuiet && !reducedMotion() && star.depth > 2.1) {
           const gradient = ctx.createLinearGradient(star.x - trail, star.y, star.x, star.y);
           gradient.addColorStop(0, palette.tail);
           gradient.addColorStop(1, palette.line);
@@ -858,8 +898,8 @@
 
         ctx.beginPath();
         ctx.fillStyle = palette[star.tint];
-        ctx.shadowBlur = star.bright ? 18 : 8;
-        ctx.shadowColor = star.tint === "blue" ? palette.blue : palette.ice;
+        ctx.shadowBlur = gpuQuiet ? 0 : (star.bright ? 18 : 8);
+        ctx.shadowColor = gpuQuiet ? "transparent" : (star.tint === "blue" ? palette.blue : palette.ice);
         ctx.globalAlpha = Math.max(0.14, Math.min(1, star.alpha * pulse));
         ctx.arc(star.x, star.y, radius, 0, Math.PI * 2);
         ctx.fill();
@@ -898,12 +938,14 @@
     const stopStarfield = () => {
       starfieldState.active = false;
       starfieldState.lastTs = 0;
+      starfieldState.drawTs = 0;
       if (starfieldState.frame) {
         window.cancelAnimationFrame(starfieldState.frame);
         starfieldState.frame = 0;
       }
       clearStarfield();
       body.removeAttribute("data-starfield");
+      syncStarfieldShellSize();
       if (starfieldHost) starfieldHost.setAttribute("aria-hidden", "true");
     };
 
@@ -915,6 +957,17 @@
       if (starfieldHost) starfieldHost.setAttribute("aria-hidden", "false");
       if (starfieldState.frame) window.cancelAnimationFrame(starfieldState.frame);
       starfieldState.frame = window.requestAnimationFrame(drawStarfield);
+    };
+
+    const scheduleStarfieldRebuild = (delay = 160) => {
+      window.clearTimeout(starfieldState.resizeTimer);
+      starfieldState.resizeTimer = window.setTimeout(() => {
+        if (!starfieldState.enabled || reducedMotion() || doc.visibilityState === "hidden") return;
+        const { fieldWidth, fieldHeight } = starfieldSize();
+        const heightDelta = Math.abs(fieldHeight - starfieldState.height);
+        const widthDelta = Math.abs(fieldWidth - starfieldState.width);
+        if (heightDelta > 24 || widthDelta > 8) startStarfield();
+      }, delay);
     };
 
     const syncStarfieldMotionState = () => {
@@ -959,7 +1012,14 @@
     else if (savedGuide === "0") setGuidedMode(false);
     else setGuidedMode(!firstRunSeen);
     const savedStarAnimation = storageGet(starAnimationKey);
-    setStarAnimationEnabled(savedStarAnimation !== "0");
+    const lowGpuStarDefaultKey = "mc_star_animation_low_gpu_default_v1";
+    const lowGpuDefaultApplied = storageGet(lowGpuStarDefaultKey) === "1";
+    if (lowPerf() && !lowGpuDefaultApplied) {
+      storageSet(lowGpuStarDefaultKey, "1");
+      setStarAnimationEnabled(false);
+    } else {
+      setStarAnimationEnabled(savedStarAnimation == null ? !lowPerf() : savedStarAnimation !== "0");
+    }
 
     if (reducedMotionQuery && typeof reducedMotionQuery.addEventListener === "function") {
       reducedMotionQuery.addEventListener("change", () => {
@@ -967,12 +1027,18 @@
       });
     }
     window.addEventListener("resize", () => {
-      window.clearTimeout(starfieldState.resizeTimer);
-      starfieldState.resizeTimer = window.setTimeout(() => {
-        if (!starfieldState.enabled || reducedMotion() || doc.visibilityState === "hidden") return;
-        startStarfield();
-      }, 120);
+      scheduleStarfieldRebuild(120);
     });
+    if (typeof ResizeObserver === "function") {
+      const resizeObserver = new ResizeObserver(() => {
+        scheduleStarfieldRebuild(160);
+      });
+      resizeObserver.observe(body);
+      resizeObserver.observe(docEl);
+    }
+    window.setTimeout(() => {
+      scheduleStarfieldRebuild(0);
+    }, 900);
     doc.addEventListener("visibilitychange", syncStarfieldMotionState);
   }
 

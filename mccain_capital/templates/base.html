@@ -39,7 +39,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=tape-clarity-20260620a">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=gpu-stability-20260622a">
   {% if active in ['market-pulse', 'market_pulse'] %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=tape-clarity-20260620a">
   {% endif %}
@@ -1623,7 +1623,7 @@
     newEntryUrl: "{{ url_for('new_entry') }}",
   };
 </script>
-<script defer src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}&rev=starfield-shell-20260522a"></script>
+<script defer src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}&rev=gpu-stability-20260622a"></script>
 {% if active == 'self-control' %}
 <script defer src="{{ url_for('static', filename='js/self_control_console.js') }}?v={{ static_v }}"></script>
 {% endif %}

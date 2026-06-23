@@ -108,6 +108,7 @@ MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
 )
 SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("QQQ", "SPY", "SPX")
 DEFAULT_PLAYBOOK_TICKER = "SPX"
+DASHBOARD_PLAYBOOK_TICKERS: Tuple[str, ...] = ("SPY", "SPX")
 PLAYBOOK_TICKER_STORAGE_KEY = "mc_playbook_ticker"
 PLAYBOOK_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,11}$")
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
@@ -7493,6 +7494,19 @@ def get_playbook_ticker_context(value: Any) -> Dict[str, Any]:
     }
 
 
+def get_dashboard_ticker_context(value: Any) -> Dict[str, Any]:
+    ticker = get_supported_playbook_ticker(value)
+    if ticker not in DASHBOARD_PLAYBOOK_TICKERS:
+        ticker = DEFAULT_PLAYBOOK_TICKER
+    alternate = "SPY" if ticker == "SPX" else DEFAULT_PLAYBOOK_TICKER
+    return {
+        "ticker": ticker,
+        "alternate_ticker": alternate,
+        "supported_tickers": DASHBOARD_PLAYBOOK_TICKERS,
+        "storage_key": PLAYBOOK_TICKER_STORAGE_KEY,
+    }
+
+
 def _dashboard_tape_symbols(selected_ticker: str) -> List[str]:
     return ["SPY", "QQQ", "VIX", "SPX"]
 
@@ -10813,7 +10827,9 @@ def _dashboard_tape_viewmodel(
         ]
         return replay_values[-40:] if len(replay_values) >= 8 else []
 
-    def _dashboard_freshness_contract(state: str, as_of_raw: str) -> Dict[str, Any]:
+    def _dashboard_freshness_contract(
+        state: str, as_of_raw: str, *, has_price: bool = False
+    ) -> Dict[str, Any]:
         age_s = 0
         has_timestamp = bool(as_of_raw)
         if has_timestamp:
@@ -10825,16 +10841,41 @@ def _dashboard_tape_viewmodel(
                 has_timestamp = False
                 age_label = "Awaiting Tick"
         else:
-            age_label = "Awaiting Tick"
-        band = "Wait" if not has_timestamp else "Critical" if age_s >= 900 else state
-        compact = f"{age_s // 3600}h" if age_s >= 3600 else f"{age_s // 60}m" if age_s >= 60 else f"{age_s}s"
+            age_label = "Quote Loaded" if has_price else "Awaiting Tick"
+        if not has_timestamp and has_price:
+            band = state
+        else:
+            band = "Wait" if not has_timestamp else "Critical" if age_s >= 900 else state
+        compact = (
+            f"{age_s // 3600}h"
+            if age_s >= 3600
+            else f"{age_s // 60}m" if age_s >= 60 else f"{age_s}s"
+        )
+        if not has_timestamp and has_price:
+            tone = (
+                "missing"
+                if state == "Unavailable"
+                else "delayed" if state in {"Delayed", "Cached"} else "live"
+            )
+        elif not has_timestamp:
+            tone = "missing"
+        elif age_s >= 900:
+            tone = "critical"
+        elif state in {"Delayed", "Cached"}:
+            tone = "delayed"
+        else:
+            tone = "live"
         return {
             "age_seconds": age_s,
             "age_label": age_label,
-            "compact": "wait" if not has_timestamp else "fresh" if age_s < 60 else compact,
+            "compact": (
+                "quote"
+                if not has_timestamp and has_price
+                else "wait" if not has_timestamp else "fresh" if age_s < 60 else compact
+            ),
             "band": band,
             "status_label": "" if band == "Live" else band,
-            "tone": "missing" if not has_timestamp else "critical" if age_s >= 900 else "delayed" if state in {"Delayed", "Cached"} else "live",
+            "tone": tone,
         }
 
     def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
@@ -10935,7 +10976,11 @@ def _dashboard_tape_viewmodel(
             day_range_full = str(enriched.get("day_range") or "—")
             enriched["day_range_compact"] = day_range_full.replace(" to ", "-") if day_range_full != "—" else "—"
         source_badge = _quote_source_badge(enriched)
-        freshness = _dashboard_freshness_contract(state, str(enriched.get("as_of") or "").strip())
+        freshness = _dashboard_freshness_contract(
+            state,
+            str(enriched.get("as_of") or enriched.get("asof") or "").strip(),
+            has_price=price is not None,
+        )
         enriched["source_label"] = source_badge["label"]
         enriched["source_short"] = source_badge["label"]
         enriched["source_badge_label"] = source_badge["label"]
@@ -11171,7 +11216,7 @@ def dashboard():
     from mccain_capital.repositories import journal as journal_repo
     from mccain_capital.repositories import trades as trades_repo
 
-    ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
+    ticker_context = get_dashboard_ticker_context(request.args.get("ticker"))
     selected_ticker = str(ticker_context["ticker"])
     alternate_ticker = str(ticker_context["alternate_ticker"])
     requested_account_raw = str(request.args.get("account_id") or "").strip().lower()
@@ -11640,7 +11685,9 @@ def dashboard():
             return "delayed"
         return "live"
 
-    def _dashboard_freshness_contract(state: str, as_of_raw: str) -> Dict[str, Any]:
+    def _dashboard_freshness_contract(
+        state: str, as_of_raw: str, *, has_price: bool = False
+    ) -> Dict[str, Any]:
         age_s = 0
         has_timestamp = bool(as_of_raw)
         if has_timestamp:
@@ -11652,9 +11699,12 @@ def dashboard():
                 has_timestamp = False
                 age_label = "Awaiting Tick"
         else:
-            age_label = "Awaiting Tick"
+            age_label = "Quote Loaded" if has_price else "Awaiting Tick"
 
-        band = "Wait" if not has_timestamp else "Critical" if age_s >= 900 else state
+        if not has_timestamp and has_price:
+            band = state
+        else:
+            band = "Wait" if not has_timestamp else "Critical" if age_s >= 900 else state
         if age_s >= 3600:
             compact = f"{age_s // 3600}h"
         elif age_s >= 60:
@@ -11665,10 +11715,18 @@ def dashboard():
         return {
             "age_seconds": age_s,
             "age_label": age_label,
-            "compact": "wait" if not has_timestamp else "fresh" if age_s < 60 else compact,
+            "compact": (
+                "quote"
+                if not has_timestamp and has_price
+                else "wait" if not has_timestamp else "fresh" if age_s < 60 else compact
+            ),
             "band": band,
             "status_label": "" if band == "Live" else band,
-            "tone": "missing" if not has_timestamp else _dashboard_status_tone(state, age_s),
+            "tone": (
+                _dashboard_status_tone(state, age_s)
+                if not has_timestamp and has_price
+                else "missing" if not has_timestamp else _dashboard_status_tone(state, age_s)
+            ),
         }
 
     def _enrich_dashboard_quote(symbol: str, quote: Dict[str, Any]) -> Dict[str, Any]:
@@ -11870,7 +11928,11 @@ def dashboard():
         enriched["source_short"] = source_badge["label"]
         enriched["source_badge_label"] = source_badge["label"]
         enriched["source_badge_tone"] = source_badge["tone"]
-        freshness = _dashboard_freshness_contract(state, str(enriched.get("as_of") or "").strip())
+        freshness = _dashboard_freshness_contract(
+            state,
+            str(enriched.get("as_of") or enriched.get("asof") or "").strip(),
+            has_price=price is not None,
+        )
         enriched["market_state_display"] = state
         enriched["freshness_age_seconds"] = freshness["age_seconds"]
         enriched["freshness_band_display"] = freshness["band"]

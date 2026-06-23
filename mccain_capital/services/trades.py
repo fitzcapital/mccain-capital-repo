@@ -147,6 +147,9 @@ SYNC_JOB_STALE_SECONDS = int(os.environ.get("SYNC_JOB_STALE_SECONDS", "300") or 
 SYNC_JOB_QUEUED_STALE_SECONDS = int(
     os.environ.get("SYNC_JOB_QUEUED_STALE_SECONDS", "120") or 120
 )
+SYNC_JOB_UI_STAGE_STALE_SECONDS = int(
+    os.environ.get("SYNC_JOB_UI_STAGE_STALE_SECONDS", "75") or 75
+)
 
 
 class SyncJobCancelled(RuntimeError):
@@ -341,6 +344,11 @@ def _stale_sync_job_message(stage: str) -> str:
             f"Sync startup stalled during {stage_label}. "
             "The lane was unlocked so you can retry after load settles."
         )
+    if normalized in {"open_workspace_menu", "open_statement_dialog"}:
+        return (
+            f"Broker UI stalled during {stage_label}. "
+            "The lane was unlocked so you can retry or inspect the latest debug artifacts."
+        )
     return (
         f"Sync job became stale before completion during {stage_label}. "
         "The worker likely stopped or the app restarted. Start a new sync run."
@@ -352,6 +360,8 @@ def _sync_job_stale_after(status: str, stage: str) -> float:
     normalized_stage = str(stage or "").strip().lower()
     if normalized_status == "queued" or _is_sync_startup_stage(normalized_stage):
         return float(SYNC_JOB_QUEUED_STALE_SECONDS)
+    if normalized_stage in {"open_workspace_menu", "open_statement_dialog"}:
+        return float(SYNC_JOB_UI_STAGE_STALE_SECONDS)
     return float(SYNC_JOB_STALE_SECONDS)
 
 
