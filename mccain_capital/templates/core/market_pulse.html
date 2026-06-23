@@ -180,7 +180,7 @@
           {% endfor %}
         </div>
       </div>
-      <div class="marketPulseCockpitDecisionBand">
+      <div class="marketPulseCockpitDecisionBand marketPulseCockpitDecisionBand-compact">
         <div class="marketPulseGammaStateCard marketPulseCockpitRegime {{ gamma_state_class }} {% if macro_regime.state == 'positive' %}is-positive{% elif macro_regime.state == 'negative' %}is-negative{% else %}is-neutral{% endif %}" id="marketPulseHeaderGammaCard" data-gamma-state="{{ macro_regime.state }}">
           <div class="marketPulseGammaStateOrb" aria-hidden="true">Ⲅ</div>
           <div class="marketPulseGammaStateTop">
@@ -1611,6 +1611,7 @@
     try {
       const params = new URLSearchParams();
       params.set("refresh", "1");
+      params.set("include_series", "1");
       params.set("_", String(Date.now()));
       const response = await fetch(`${tapeApiUrl}?${params.toString()}`, {
         cache: "no-store",
@@ -2318,6 +2319,11 @@
     }
   };
   const tapeButtons = () => Array.from(document.querySelectorAll("[data-market-pulse-tape-refresh]"));
+  const coreTapeHasRenderableValues = () => Array.from(document.querySelectorAll(".marketPulseTapeCard[data-symbol]"))
+    .some((card) => {
+      const text = String(card.querySelector('[data-role="price"]')?.textContent || "").trim();
+      return /\d/.test(text);
+    });
   const setRefreshState = (loading) => {
     const shell = document.querySelector(".marketPulseTapeShell");
     if (shell) {
@@ -2330,6 +2336,7 @@
       button.setAttribute("aria-busy", loading ? "true" : "false");
     });
   };
+  let coreTapeRefreshInFlight = false;
   const watchStateFor = (symbol, pct) => {
     if (["SPX", "SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) return {
       label: "RISK-ON",
@@ -2475,12 +2482,14 @@
     if (meta.advancers !== undefined) setText(document.getElementById("marketPulseAdvancers"), String(meta.advancers));
     if (meta.decliners !== undefined) setText(document.getElementById("marketPulseDecliners"), String(meta.decliners));
   };
-  window.refreshMarketPulseCoreTape = async () => {
-    if (tapeButtons().some((button) => button.disabled)) return;
-    setRefreshState(true);
+  window.refreshMarketPulseCoreTape = async ({ showRefreshState = true } = {}) => {
+    if (coreTapeRefreshInFlight) return;
+    coreTapeRefreshInFlight = true;
+    if (showRefreshState) setRefreshState(true);
     try {
       const url = new URL(tapeApiUrl(), window.location.origin);
       url.searchParams.set("refresh", "1");
+      url.searchParams.set("include_series", "1");
       url.searchParams.set("_", String(Date.now()));
       const response = await fetch(url.toString(), {
         cache: "no-store",
@@ -2497,7 +2506,8 @@
     } catch (_err) {
       // Preserve the current tape if the manual refresh fails.
     } finally {
-      setRefreshState(false);
+      coreTapeRefreshInFlight = false;
+      if (showRefreshState) setRefreshState(false);
     }
   };
   document.addEventListener("click", (event) => {
@@ -2505,7 +2515,10 @@
     if (!trigger) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    window.refreshMarketPulseCoreTape();
+    window.refreshMarketPulseCoreTape({ showRefreshState: true });
   }, true);
+  window.setTimeout(() => {
+    window.refreshMarketPulseCoreTape({ showRefreshState: false });
+  }, coreTapeHasRenderableValues() ? 220 : 650);
 })();
 </script>

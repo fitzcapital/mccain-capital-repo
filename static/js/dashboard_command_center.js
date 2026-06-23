@@ -321,6 +321,23 @@ const marketSessionState = (now = new Date()) => {
   const shell = document.getElementById("dashboardModeShell");
   const activeTicker = String(shell?.dataset.selectedTicker || "QQQ").toUpperCase();
 
+  // Hybrid (Option 1+2): remove any skeleton state after paint for initial content to show
+  if (tapeCard) {
+    const hydrate = () => {
+      tapeCard.classList.remove("is-skeleton");
+      rows.forEach(r => r.classList.remove("is-skeleton"));
+      rows.forEach((row) => {
+        const spark = row.querySelector('[data-role="sparkline"]');
+        if (spark) spark.classList.remove("is-skeleton");
+      });
+    };
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(hydrate, { timeout: 300 });
+    } else {
+      setTimeout(hydrate, 80);
+    }
+  }
+
   let freshTimer = null;
   let openSymbol = "";
   let stream = null;
@@ -355,6 +372,25 @@ const marketSessionState = (now = new Date()) => {
   const seriesValues = (points) => (Array.isArray(points) ? points : [])
     .map((row) => (row && typeof row === "object" ? asNum(row.v ?? row.close) : asNum(row)))
     .filter((value) => value !== null);
+
+  const computeCandles = (points) => {
+    const values = seriesValues(points);
+    if (values.length < 4) return [];
+    const targetBars = Math.min(10, Math.max(8, Math.ceil(values.length / 2)));
+    const chunkSize = Math.max(1, Math.ceil(values.length / targetBars));
+    const candles = [];
+    for (let index = 0; index < values.length; index += chunkSize) {
+      const chunk = values.slice(index, index + chunkSize);
+      if (!chunk.length) continue;
+      candles.push({
+        open: chunk[0],
+        high: Math.max(...chunk),
+        low: Math.min(...chunk),
+        close: chunk[chunk.length - 1],
+      });
+    }
+    return candles.length >= 2 ? candles : [];
+  };
 
   const symbolSeed = (symbol) => {
     const text = String(symbol || "TAPE").toUpperCase();
@@ -403,24 +439,10 @@ const marketSessionState = (now = new Date()) => {
   };
 
   const buildSparklineSvg = (points, tone, symbol = "") => {
-    const values = seriesValues(points);
-    if (values.length < 4) {
+    const candles = computeCandles(points);
+    if (!candles.length) {
       return '<div class="marketMiniSparkEmpty">No trend</div>';
     }
-    const targetBars = Math.min(10, Math.max(8, Math.ceil(values.length / 2)));
-    const chunkSize = Math.max(1, Math.ceil(values.length / targetBars));
-    const candles = [];
-    for (let index = 0; index < values.length; index += chunkSize) {
-      const chunk = values.slice(index, index + chunkSize);
-      if (!chunk.length) continue;
-      candles.push({
-        open: chunk[0],
-        high: Math.max(...chunk),
-        low: Math.min(...chunk),
-        close: chunk[chunk.length - 1],
-      });
-    }
-    if (candles.length < 2) return '<div class="marketMiniSparkEmpty">No trend</div>';
     const width = 138;
     const height = 60;
     let minV = Math.min(...candles.map((row) => row.low));
@@ -479,13 +501,122 @@ const marketSessionState = (now = new Date()) => {
   };
 
   const updateSparkNode = (node, points, tone) => {
-    if (!node || seriesValues(points).length < 2) return false;
+    if (!node) return false;
+    const candles = computeCandles(points);
+    if (!candles.length) return false;
+
     const sparkClass = tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat";
-    node.classList.remove("spark-pos", "spark-neg", "spark-flat");
+    node.classList.remove("spark-pos", "spark-neg", "spark-flat", "is-skeleton");
     node.classList.add(sparkClass);
+
+    const parentRow = node.closest(".liveTapeWatchRow");
+    if (parentRow) parentRow.classList.remove("is-skeleton");
+    const card = document.querySelector(".dashboardCoreTapeCard");
+    if (card) card.classList.remove("is-skeleton");
+
+    const existingSvg = node.querySelector("svg.marketMiniSpark");
+    const prevCandleCount = existingSvg ? existingSvg.querySelectorAll(".marketMiniSparkBody").length : 0;
     const symbol = node.closest("[data-watch-symbol]")?.dataset.watchSymbol || "";
-    node.innerHTML = buildSparklineSvg(points, tone, symbol);
+
+    // Hybrid: full rebuild only on initial, bar count change, or fallback
+    if (!existingSvg || candles.length !== prevCandleCount) {
+      node.innerHTML = buildSparklineSvg(points, tone, symbol);
+      return true;
+    }
+
+    // Targeted incremental update for live ticks (much cheaper, no full innerHTML/reparse)
+    try {
+    const width = 138;
+    const height = 60;
+    const minV = Math.min(...candles.map((c) => c.low));
+    const maxV = Math.max(...candles.map((c) => c.high)) || (minV + 1);
+    const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
+    const plotWidth = width - 6;
+    const plotStart = 3;
+    const slotWidth = plotWidth / Math.max(candles.length, 1);
+    const candleGap = 1.1;
+    const candleWidth = Math.min(10.8, Math.max(6.2, slotWidth - candleGap));
+    const lastIdx = candles.length - 1;
+    const lastCandle = candles[lastIdx];
+    const lastCenterX = plotStart + (((lastIdx + 0.5) * plotWidth) / Math.max(candles.length, 1));
+    const openY = yFor(lastCandle.open);
+    const closeY = yFor(lastCandle.close);
+    const highY = yFor(lastCandle.high);
+    const lowY = yFor(lastCandle.low);
+    const topY = Math.min(openY, closeY);
+    const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
+    const cls = lastCandle.close > lastCandle.open ? "up" : lastCandle.close < lastCandle.open ? "down" : "flat";
+
+    // Update last wick
+    const lastWick = existingSvg.querySelector(".marketMiniSparkWick.current");
+    if (lastWick) {
+      lastWick.setAttribute("x1", lastCenterX.toFixed(2));
+      lastWick.setAttribute("x2", lastCenterX.toFixed(2));
+      lastWick.setAttribute("y1", highY.toFixed(2));
+      lastWick.setAttribute("y2", lowY.toFixed(2));
+      lastWick.setAttribute("class", `marketMiniSparkWick ${cls} current`);
+    }
+
+    // Update last body
+    const lastBody = existingSvg.querySelector(".marketMiniSparkBody.current");
+    if (lastBody) {
+      lastBody.setAttribute("x", (lastCenterX - (candleWidth / 2)).toFixed(2));
+      lastBody.setAttribute("y", topY.toFixed(2));
+      lastBody.setAttribute("width", candleWidth.toFixed(2));
+      lastBody.setAttribute("height", bodyHeight.toFixed(2));
+      lastBody.setAttribute("class", `marketMiniSparkBody ${cls} current`);
+    }
+
+    // Update trend path (re-set full d is cheap vs full rebuild)
+    const trendPathEl = existingSvg.querySelector(".marketMiniSparkTrend");
+    if (trendPathEl && candles.length >= 2) {
+      // Recompute simple last segment for efficiency (or full for correctness)
+      const pathPoints = candles.map((candle, i) => {
+        const cx = plotStart + (((i + 0.5) * plotWidth) / Math.max(candles.length, 1));
+        return [cx, yFor(candle.close)];
+      });
+      let newD = "";
+      pathPoints.forEach((pt, i) => {
+        if (i === 0) newD = `M ${pt[0].toFixed(2)} ${pt[1].toFixed(2)}`;
+        else {
+          const prev = pathPoints[i-1];
+          const midX = (prev[0] + pt[0]) / 2;
+          newD += ` Q ${prev[0].toFixed(2)} ${prev[1].toFixed(2)} ${midX.toFixed(2)} ${((prev[1] + pt[1]) / 2).toFixed(2)} T ${pt[0].toFixed(2)} ${pt[1].toFixed(2)}`;
+        }
+      });
+      trendPathEl.setAttribute("d", newD);
+      trendPathEl.setAttribute("class", `marketMiniSparkTrend ${cls}`);
+    }
+
+    // Update glow, marker, point (the live elements)
+    const glow = existingSvg.querySelector(".marketMiniSparkCurrentGlow");
+    if (glow) {
+      glow.setAttribute("cx", lastCenterX.toFixed(2));
+      glow.setAttribute("cy", closeY.toFixed(2));
+      glow.setAttribute("class", `marketMiniSparkCurrentGlow ${cls}`);
+    }
+
+    const marker = existingSvg.querySelector(".marketMiniSparkPriceMarker");
+    if (marker) {
+      marker.setAttribute("x1", Math.max(3, lastCenterX - 5).toFixed(2));
+      marker.setAttribute("y1", closeY.toFixed(2));
+      marker.setAttribute("y2", closeY.toFixed(2));
+      marker.setAttribute("class", `marketMiniSparkPriceMarker ${cls}`);
+    }
+
+    const point = existingSvg.querySelector(".marketMiniSparkPoint");
+    if (point) {
+      point.setAttribute("cx", lastCenterX.toFixed(2));
+      point.setAttribute("cy", closeY.toFixed(2));
+      point.setAttribute("class", `marketMiniSparkPoint ${cls}`);
+    }
+
     return true;
+    } catch (e) {
+      // Fallback to full rebuild on any mutation error
+      node.innerHTML = buildSparklineSvg(points, tone, symbol);
+      return true;
+    }
   };
 
   const hasMeaningfulText = (node) => {
@@ -1353,10 +1484,12 @@ const marketSessionState = (now = new Date()) => {
       tapeRefreshBtn.classList.toggle("is-loading", !!loading);
       tapeRefreshBtn.setAttribute("aria-busy", loading ? "true" : "false");
     };
-    const refreshTape = async () => {
-      if (!endpoint || tapeRefreshBtn.disabled) return;
+    let tapeRefreshInFlight = false;
+    const refreshTape = async ({ showLoading = true } = {}) => {
+      if (!endpoint || tapeRefreshInFlight) return;
+      tapeRefreshInFlight = true;
       setTapeRefreshState(true);
-      if (typeof window.showDashboardLoading === "function") {
+      if (showLoading && typeof window.showDashboardLoading === "function") {
         window.showDashboardLoading("Refreshing dashboard tape", "Updating live tape state.");
       }
       try {
@@ -1376,22 +1509,19 @@ const marketSessionState = (now = new Date()) => {
       } catch (_error) {
         // Keep existing rows/status if the manual refresh fails.
       } finally {
-        if (typeof window.completeDashboardLoading === "function") {
+        if (showLoading && typeof window.completeDashboardLoading === "function") {
           window.completeDashboardLoading();
         }
+        tapeRefreshInFlight = false;
         setTapeRefreshState(false);
       }
     };
     tapeRefreshBtn.addEventListener("click", () => {
-      void refreshTape();
+      void refreshTape({ showLoading: true });
     });
-    if (!tapeHasRenderableValues()) {
-      window.setTimeout(() => {
-        if (!tapeHasRenderableValues()) {
-          void refreshTape();
-        }
-      }, 650);
-    }
+    window.setTimeout(() => {
+      void refreshTape({ showLoading: false });
+    }, tapeHasRenderableValues() ? 220 : 650);
   }
 
   if (decisionCard && decisionRefreshBtn) {

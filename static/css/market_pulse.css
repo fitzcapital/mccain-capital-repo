@@ -30,6 +30,18 @@ body.page-market-pulse .marketPulseCommandHeader-compact{
   padding:24px !important;
 }
 
+/* Streamlined compact decision band for better scannability (best UI iteration) */
+body.page-market-pulse .marketPulseCockpitDecisionBand-compact .marketPulseActionGrid {
+  gap: 6px;
+}
+body.page-market-pulse .marketPulseCockpitDecisionBand-compact .marketPulseActionItem small {
+  font-size: 9px;
+  opacity: .75;
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 body.page-market-pulse .marketPulseCommandHeader-compact > .toolbar.gamma-ladder-toolbar{
   width:100%;
 }

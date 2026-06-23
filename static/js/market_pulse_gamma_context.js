@@ -1303,13 +1303,11 @@
     return { label: "Mixed", tone: "neutral", title: "No clean tape edge yet." };
   };
 
-  const buildSparklineSvg = (points, tone) => {
+  const computeCandles = (points) => {
     const values = (Array.isArray(points) ? points : [])
       .map((row) => (row && typeof row === "object" ? asNum(row.v) : asNum(row)))
       .filter((value) => value !== null);
-    if (values.length < 4) {
-      return '<div class="marketMiniSparkEmpty">No trend</div>';
-    }
+    if (values.length < 4) return [];
     const targetBars = Math.min(10, Math.max(8, Math.ceil(values.length / 2)));
     const chunkSize = Math.max(1, Math.ceil(values.length / targetBars));
     const candles = [];
@@ -1323,7 +1321,14 @@
         close: chunk[chunk.length - 1],
       });
     }
-    if (candles.length < 2) return '<div class="marketMiniSparkEmpty">No trend</div>';
+    return candles.length >= 2 ? candles : [];
+  };
+
+  const buildSparklineSvg = (points, tone) => {
+    const candles = computeCandles(points);
+    if (!candles.length) {
+      return '<div class="marketMiniSparkEmpty">No trend</div>';
+    }
     const width = 138;
     const height = 60;
     let minV = Math.min(...candles.map((row) => row.low));
@@ -1345,9 +1350,10 @@
       const topY = Math.min(openY, closeY);
       const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
       const cls = candle.close > candle.open ? "up" : candle.close < candle.open ? "down" : "flat";
+      const currentClass = index === candles.length - 1 ? " current" : "";
       return (
-        `<line class="marketMiniSparkWick ${cls}" x1="${centerX.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${lowY.toFixed(2)}" />`
-        + `<rect class="marketMiniSparkBody ${cls}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${topY.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" rx=".08" ry=".08" />`
+        `<line class="marketMiniSparkWick ${cls}${currentClass}" x1="${centerX.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${lowY.toFixed(2)}" />`
+        + `<rect class="marketMiniSparkBody ${cls}${currentClass}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${topY.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" rx=".08" ry=".08" />`
       );
     }).join("");
     return (
@@ -1519,10 +1525,68 @@
   };
 
   const updateSparkNode = (node, points, tone) => {
-    if (!node) return;
+    if (!node) return false;
+    const candles = computeCandles(points);
+    if (!candles.length) return false;
+
     node.classList.remove("spark-pos", "spark-neg", "spark-flat");
     node.classList.add(tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat");
-    node.innerHTML = buildSparklineSvg(points, tone);
+
+    const existingSvg = node.querySelector("svg.marketMiniSpark");
+    const prevCandleCount = existingSvg ? existingSvg.querySelectorAll(".marketMiniSparkBody").length : 0;
+
+    // Hybrid (like live tape): full rebuild only for initial or when bar count changes
+    if (!existingSvg || candles.length !== prevCandleCount) {
+      node.innerHTML = buildSparklineSvg(points, tone);
+      return true;
+    }
+
+    // Targeted incremental for live ticks
+    try {
+      const width = 138;
+      const height = 60;
+      const minV = Math.min(...candles.map((c) => c.low));
+      const maxV = Math.max(...candles.map((c) => c.high)) || (minV + 1);
+      const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
+      const plotWidth = width - 10;  // adapted from MP build
+      const plotStart = (width - plotWidth) / 2;
+      const slotWidth = plotWidth / Math.max(candles.length, 1);
+      const candleGap = 1.35;
+      const candleWidth = Math.min(11.6, Math.max(8.6, slotWidth - candleGap));
+      const lastIdx = candles.length - 1;
+      const lastCandle = candles[lastIdx];
+      const lastCenterX = plotStart + (((lastIdx + 0.5) * plotWidth) / Math.max(candles.length, 1));
+      const openY = yFor(lastCandle.open);
+      const closeY = yFor(lastCandle.close);
+      const highY = yFor(lastCandle.high);
+      const lowY = yFor(lastCandle.low);
+      const topY = Math.min(openY, closeY);
+      const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
+      const cls = lastCandle.close > lastCandle.open ? "up" : lastCandle.close < lastCandle.open ? "down" : "flat";
+
+      const lastWick = existingSvg.querySelector(".marketMiniSparkWick.current");
+      if (lastWick) {
+        lastWick.setAttribute("x1", lastCenterX.toFixed(2));
+        lastWick.setAttribute("x2", lastCenterX.toFixed(2));
+        lastWick.setAttribute("y1", highY.toFixed(2));
+        lastWick.setAttribute("y2", lowY.toFixed(2));
+        lastWick.setAttribute("class", `marketMiniSparkWick ${cls} current`);
+      }
+
+      const lastBody = existingSvg.querySelector(".marketMiniSparkBody.current");
+      if (lastBody) {
+        lastBody.setAttribute("x", (lastCenterX - (candleWidth / 2)).toFixed(2));
+        lastBody.setAttribute("y", topY.toFixed(2));
+        lastBody.setAttribute("width", candleWidth.toFixed(2));
+        lastBody.setAttribute("height", bodyHeight.toFixed(2));
+        lastBody.setAttribute("class", `marketMiniSparkBody ${cls} current`);
+      }
+
+      return true;
+    } catch (e) {
+      node.innerHTML = buildSparklineSvg(points, tone);
+      return true;
+    }
   };
 
   const applyGlowState = (nodes, pctChange) => {
