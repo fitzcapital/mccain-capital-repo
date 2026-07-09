@@ -764,10 +764,38 @@
           <div class="dashboardTapeHeaderBrand">
           <div class="dashboardTapeSectionLabel"><span class="dashboardLabelIcon dashboardLabelIcon--accent">{{ dashboard_icon('tape') }}</span><span>Market Tape</span></div>
           <div class="dashboardTapeHeaderSubline">
+            <div class="dashboardTapeWindowPicker" data-tape-window-picker>
+              <button
+                class="dashboardTapeWindowButton"
+                type="button"
+                data-role="tape-window-toggle"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                aria-label="Market tape timeframe"
+                title="Market tape timeframe"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8.5"></circle>
+                  <path d="M12 7.5v5l3.25 2"></path>
+                </svg>
+                <span data-role="tape-window-label">1H</span>
+              </button>
+              <div class="dashboardTapeWindowMenu" data-role="tape-window-menu" role="menu" hidden>
+                {% for tape_window in ['15M', '30M', '1H', '6H', '24H'] %}
+                <button
+                  class="dashboardTapeWindowOption"
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked="{{ 'true' if tape_window == '1H' else 'false' }}"
+                  data-tape-window="{{ tape_window }}"
+                >{{ tape_window }}</button>
+                {% endfor %}
+              </div>
+            </div>
             <details class="inlineHelp dashboardTapeHelper">
               <summary aria-label="Market tape legend">?</summary>
               <div class="helpPopover">
-                Compressed recent intraday bars. White candles close up, blue candles close down, cyan labels indicate positive tape, and blue labels indicate negative tape.
+                The clock window controls each card's point move, percent move, and micro chart. Candles use real OHLC bars when available; close-only data falls back to a calm line.
               </div>
             </details>
           </div>
@@ -792,60 +820,82 @@
           <span class="dashboardTapeUpdatedLabel" id="dashboardTapeUpdatedAt">{{ dashboard_tape_updated_label or 'Awaiting feed' }}</span>
         </div>
       </div>
-      <div class="liveTapeWatchTableShell dashboardTapeCardStackShell marketPulseTapeShell">
-        <div class="liveTapeWatchTable dashboardTapeCardStack" aria-label="Live tape watchlist">
-        {% for row in dashboard_tape_rows %}
-        {% set tape_tone = row.tape_tone or ('positive' if row.state_label in ['RISK-ON', 'STRONG'] else 'negative' if row.state_label in ['RISK-OFF', 'WEAK'] else 'neutral' if row.state_label == 'MIXED' else 'positive' if row.row_tone == 'up' else 'negative' if row.row_tone == 'down' else 'neutral') %}
-        {% set spark_tone = 'pos' if row.row_tone == 'up' else 'neg' if row.row_tone == 'down' else 'flat' %}
-        {% set visual_row_tone = row.row_tone if row.row_tone in ['up', 'down'] else 'flat' %}
-        <button type="button" class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardCoreTapeRow dashboardTapeAssetCard tone-{{ tape_tone }} is-{{ visual_row_tone }}" data-watch-symbol="{{ row.symbol }}" data-tape-tone="{{ tape_tone }}" aria-expanded="false">
-          <div class="marketPulseWatchCardTop">
-            <div class="k liveTapeWatchSymbol"><span class="dashboardTapeRowTrend dashboardTapeRowTrend--{{ visual_row_tone }}">{{ dashboard_icon('signal-up') if visual_row_tone == 'up' else dashboard_icon('signal-down') if visual_row_tone == 'down' else dashboard_icon('tape') }}</span><span>{{ row.symbol }}</span></div>
+      <div class="liveTapeWatchTableShell dashboardTapeCardStackShell dashboardTapeDualShell marketPulseTapeShell">
+        <div class="liveTapeWatchTable dashboardTapeCardStack dashboardTapeDualStack" aria-label="Live tape chart lanes">
+        {% for lane_id, lane_label, lane_default in [('top', 'Top', 'SPX'), ('bottom', 'Bottom', 'VIX')] %}
+        {% set lane_matches = dashboard_tape_rows|selectattr('symbol', 'equalto', lane_default)|list %}
+        {% set row = lane_matches[0] if lane_matches else (dashboard_tape_rows[0] if dashboard_tape_rows else {}) %}
+        {% set lane_symbol = row.symbol|default(lane_default, true) %}
+        {% set lane_state = row.state_label|default('MIXED', true) %}
+        {% set lane_row_tone = row.row_tone|default('flat', true) %}
+        {% set tape_tone = row.tape_tone|default('positive' if lane_state in ['RISK-ON', 'STRONG'] else 'negative' if lane_state in ['RISK-OFF', 'WEAK'] else 'neutral' if lane_state == 'MIXED' else 'positive' if lane_row_tone == 'up' else 'negative' if lane_row_tone == 'down' else 'neutral', true) %}
+        {% set visual_row_tone = lane_row_tone if lane_row_tone in ['up', 'down'] else 'flat' %}
+        {% set timeframes = row.timeframes|default({}, true) %}
+        {% set last_hour = timeframes.get('1H') or row.last_hour|default({}, true) %}
+        {% set freshness_tone = row.freshness_tone|default('delayed', true) %}
+        {% set freshness_glyph = '✓' if freshness_tone == 'live' else '◷' if freshness_tone == 'delayed' else '!' %}
+        <article class="stat marketPulseTapeCard marketPulseWatchCard liveTapeWatchRow dashboardCoreTapeRow dashboardTapeAssetCard dashboardTapeChartLane tone-{{ tape_tone }} is-{{ visual_row_tone }}" data-watch-symbol="{{ lane_symbol }}" data-tape-lane="{{ lane_id }}" data-default-symbol="{{ lane_default }}" data-tape-tone="{{ tape_tone }}" aria-label="{{ lane_label }} market tape chart">
+          <div class="dashboardTapeChartLaneTop">
+            <div class="k liveTapeWatchSymbol">
+              <span class="dashboardTapeRowTrend dashboardTapeRowTrend--{{ visual_row_tone }}">{{ dashboard_icon('signal-up') if visual_row_tone == 'up' else dashboard_icon('signal-down') if visual_row_tone == 'down' else dashboard_icon('tape') }}</span>
+              <span data-role="lane-symbol">{{ lane_symbol }}</span>
+              <button class="dashboardTapeSymbolSearchToggle" type="button" data-role="tape-symbol-toggle" aria-expanded="false" aria-label="Change {{ lane_label }} ticker" title="Change ticker">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5"></circle>
+                  <path d="m16 16 4 4"></path>
+                </svg>
+              </button>
+            </div>
+            <div class="dashboardTapeSymbolSearchPopover" data-role="tape-symbol-popover" hidden>
+              <form class="dashboardTapeSymbolSearch" data-role="tape-symbol-form" aria-label="{{ lane_label }} ticker search">
+                <label for="dashboard-tape-symbol-{{ lane_id }}">{{ lane_label }}</label>
+                <input id="dashboard-tape-symbol-{{ lane_id }}" data-role="tape-symbol-input" value="{{ lane_symbol }}" autocomplete="off" spellcheck="false" inputmode="latin" maxlength="8">
+                <button type="submit">Apply</button>
+              </form>
+            </div>
             {% if row.descriptor %}<span class="srOnly">{{ row.descriptor }}</span>{% endif %}
-            <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state" data-state-label="{{ row.state_label }}" title="{{ row.state_title or 'No clean tape edge yet.' }}">{{ row.state_label }}</span>
+            <span class="trendChip marketPulseWatchState tone-{{ tape_tone }}" data-role="state" data-state-label="{{ lane_state }}" title="{{ row.state_title|default('No clean tape edge yet.', true) }}">{{ lane_state }}</span>
           </div>
-          <div class="marketMiniSparkWrap tone-{{ tape_tone }} spark-{{ spark_tone }} dashboardTapeSpark" data-role="sparkline">{{ row.sparkline_svg|safe }}</div>
-          <div class="marketPulseWatchValueRow dashboardTapeAssetBody">
+          <div
+            class="dashboardTapeHourModule tone-{{ tape_tone }} is-{{ last_hour.tone|default('flat', true) }}"
+            data-role="last-hour"
+            data-hour-status="{{ last_hour.status|default('missing', true) }}"
+            data-timeframes='{{ timeframes|tojson }}'
+          >
+            <div class="dashboardTapeHourHead">
+              <span class="dashboardTapeHourLabel" data-role="last-hour-label" aria-hidden="true">{{ last_hour.label|default('1H', true) }}</span>
+              <span class="dashboardTapeHourChange" data-role="last-hour-change">{{ last_hour.change_display|default('—', true) }}</span>
+            </div>
+            <div class="dashboardTapeHourChartWrap" data-role="last-hour-chart">{{ last_hour.svg|safe }}</div>
+            <div class="dashboardTapeHourFoot">
+              <span class="dashboardTapeHourPct" data-role="last-hour-pct">{{ last_hour.pct_display|default('—', true) }}</span>
+            </div>
+          </div>
+          <div class="dashboardTapeChartLaneBottom">
             <div class="dashboardTapeAssetMetric dashboardTapeAssetMetric--price">
               <span class="dashboardTapeMetricLabel">Price</span>
-              <span class="v liveTapeWatchCell-last dashboardCoreTapeStat dashboardTapeAssetPrice" data-role="last">{{ row.price_display }}</span>
+              <span class="v liveTapeWatchCell-last dashboardCoreTapeStat dashboardTapeAssetPrice" data-role="last">{{ row.price_display|default('Standby', true) }}</span>
             </div>
-            <div class="dashboardTapeAssetMetric dashboardTapeAssetMetric--move">
-              <span class="dashboardTapeMetricLabel">Move</span>
-              <span class="tiny liveTapeWatchCell-chgp dashboardCoreTapeStat dashboardTapeAssetChange" data-role="chgp">{{ row.pct_change_display }}</span>
+            <div class="tiny muted marketPulseWatchMetaRow dashboardTapeAssetMeta">
+              <span class="dashboardTapeAssetStatus is-{{ freshness_tone }}" data-role="market-state">{{ row.market_state_display|default('Wait', true) }}</span>
+              <span
+                class="dashboardTapeAssetFreshness is-{{ freshness_tone }}"
+                data-role="row-live"
+                data-freshness-label="{{ row.freshness_display|default('Awaiting Tick', true) }}"
+                data-freshness-tone="{{ freshness_tone }}"
+                title="{{ row.freshness_display|default('Awaiting Tick', true) }}"
+                aria-label="{{ row.freshness_display|default('Awaiting Tick', true) }}"
+              >
+                <span class="dashboardTapeFreshnessGlyph" aria-hidden="true">{{ freshness_glyph }}</span>
+                <span class="srOnly">{{ row.freshness_display|default('Awaiting Tick', true) }}</span>
+              </span>
+            </div>
+            <div class="tiny muted marketPulseWatchRange dashboardTapeAssetRange" data-role="detail-range">
+              <span class="dashboardTapeRangeLabel">Range</span>
+              <span class="dashboardTapeRangeValue">{{ row.range_display|default('—', true) }}</span>
             </div>
           </div>
-          <div class="tiny muted marketPulseWatchMetaRow dashboardTapeAssetMeta">
-            <span class="dashboardTapeAssetStatus is-{{ row.freshness_tone }}" data-role="market-state">{{ row.market_state_display or 'Wait' }}</span>
-            {% set freshness_glyph = '✓' if row.freshness_tone == 'live' else '◷' if row.freshness_tone == 'delayed' else '!' %}
-            <span
-              class="dashboardTapeAssetFreshness is-{{ row.freshness_tone }}"
-              data-role="row-live"
-              data-freshness-label="{{ row.freshness_display or 'Awaiting Tick' }}"
-              data-freshness-tone="{{ row.freshness_tone }}"
-              title="{{ row.freshness_display or 'Awaiting Tick' }}"
-              aria-label="{{ row.freshness_display or 'Awaiting Tick' }}"
-            >
-              <span class="dashboardTapeFreshnessGlyph" aria-hidden="true">{{ freshness_glyph }}</span>
-              <span class="srOnly">{{ row.freshness_display or 'Awaiting Tick' }}</span>
-            </span>
-          </div>
-          <div class="tiny muted marketPulseWatchRange dashboardTapeAssetRange" data-role="detail-range">
-            <span class="dashboardTapeRangeLabel">Range</span>
-            <span class="dashboardTapeRangeValue">{{ row.range_display }}</span>
-          </div>
-        </button>
-        <div class="liveTapeWatchDetail" data-detail-symbol="{{ row.symbol }}" hidden>
-          <div class="liveTapeWatchDetailGrid">
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Chg</span><span class="liveTapeWatchDetailValue" data-role="detail-chg">{{ row.change_display }}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Open</span><span class="liveTapeWatchDetailValue" data-role="detail-open">{{ row.open_display }}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Prev</span><span class="liveTapeWatchDetailValue" data-role="detail-prev">{{ row.prev_display }}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Freshness</span><span class="liveTapeWatchDetailValue" data-role="detail-live">{{ row.live_display }}</span></div>
-            <div class="liveTapeWatchDetailItem dashboardGapLine"><span class="liveTapeWatchDetailKey">Gap O/N:</span><span class="liveTapeWatchDetailValue" data-role="detail-gap">{{ row.gap_display }}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Range</span><span class="liveTapeWatchDetailValue" data-role="detail-range">{{ row.range_display }}</span></div>
-            <div class="liveTapeWatchDetailItem"><span class="liveTapeWatchDetailKey">Source</span><span class="liveTapeWatchDetailValue" data-role="detail-source">{{ row.source_display }}</span></div>
-          </div>
-        </div>
+        </article>
         {% endfor %}
         </div>
       </div>
@@ -2152,4 +2202,4 @@
     </div>
 </details>
 </div>
-<script defer src="{{ url_for('static', filename='js/dashboard_command_center.js') }}?v={{ static_v }}"></script>
+<script defer src="{{ url_for('static', filename='js/dashboard_command_center.js') }}?v={{ static_v }}&rev=dashboard-tape-search-bars-20260627a"></script>

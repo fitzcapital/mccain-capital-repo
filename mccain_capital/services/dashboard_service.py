@@ -2,12 +2,53 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from flask import jsonify, render_template, request, url_for
 
 from mccain_capital.services import core as core_svc
+
+
+def _dashboard_tape_float(row: Dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = row.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
+
+
+def _dashboard_tape_ohlc_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    ohlc_rows: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        open_v = _dashboard_tape_float(row, "open", "o")
+        high_v = _dashboard_tape_float(row, "high", "h")
+        low_v = _dashboard_tape_float(row, "low", "l")
+        close_v = _dashboard_tape_float(row, "close", "c", "v")
+        if open_v is None or high_v is None or low_v is None or close_v is None:
+            continue
+        normalized = dict(row)
+        normalized.update(
+            {
+                "open": open_v,
+                "high": max(open_v, high_v, low_v, close_v),
+                "low": min(open_v, high_v, low_v, close_v),
+                "close": close_v,
+            }
+        )
+        ohlc_rows.append(normalized)
+    return ohlc_rows
+
+
+def _dashboard_tape_close_rows(values: List[float]) -> List[Dict[str, float]]:
+    return [
+        {"v": float(value), "close": float(value)}
+        for value in values
+        if isinstance(value, (int, float))
+    ]
 
 
 def dashboard_calendar_fragment():
@@ -244,12 +285,23 @@ def dashboard_planning_refresh_api():
 def dashboard_tape_refresh_api():
     from mccain_capital.services import market_data_service
     from mccain_capital.services import market_worker
+    from mccain_capital.services.market_pulse_tape import last_hour_payload, timeframe_payloads
 
     if core_svc.auth_enabled() and not core_svc.is_authenticated():
         return jsonify({"ok": False, "error": "auth_required"}), 401
 
-    ticker_context = core_svc.get_dashboard_ticker_context(request.args.get("ticker"))
-    symbols = core_svc._dashboard_tape_symbols(str(ticker_context["ticker"]))
+    requested_symbols_raw = str(request.args.get("symbols") or "").strip()
+    requested_symbols: List[str] = []
+    if requested_symbols_raw:
+        for raw_symbol in requested_symbols_raw.split(","):
+            symbol = re.sub(r"[^A-Z0-9.^-]", "", raw_symbol.strip().upper())
+            if symbol == "^VIX":
+                symbol = "VIX"
+            if symbol and symbol not in requested_symbols:
+                requested_symbols.append(symbol)
+            if len(requested_symbols) >= 2:
+                break
+    symbols = requested_symbols or ["SPX", "VIX"]
     try:
         market_worker.start_market_worker_once()
     except Exception:
@@ -270,19 +322,42 @@ def dashboard_tape_refresh_api():
                 prices[sym] = quote
 
     series_points: Dict[str, List[Dict[str, float]]] = {}
+    timeframes: Dict[str, Dict[str, Dict[str, object]]] = {}
+    last_hour: Dict[str, Dict[str, object]] = {}
     for sym in symbols:
         quote = dict(prices.get(sym) or {})
         quote.setdefault("symbol", sym)
         quote.setdefault("label", sym)
+        try:
+            intraday_rows = [
+                dict(row)
+                for row in market_data_service.get_intraday(sym)
+                if isinstance(row, dict)
+            ]
+        except Exception:
+            intraday_rows = []
         spark_values = core_svc._market_pulse_resolve_sparkline_values(quote)
+        if len(spark_values) < 4 and intraday_rows:
+            intraday_values = [
+                float(row.get("close"))
+                for row in intraday_rows[-120:]
+                if isinstance(row.get("close"), (int, float))
+            ]
+            deduped_intraday: List[float] = []
+            for value in intraday_values:
+                if not deduped_intraday or abs(deduped_intraday[-1] - value) > 0.01:
+                    deduped_intraday.append(value)
+            if len(deduped_intraday) >= 4:
+                spark_values = deduped_intraday[-40:]
+                prices[sym] = {
+                    **quote,
+                    "mini_series": spark_values,
+                    "series": [{"v": value, "close": value} for value in spark_values],
+                }
         if len(spark_values) < 4 and sym in {"VIX", "^VIX"}:
-            try:
-                rows = market_data_service.get_intraday(sym)
-            except Exception:
-                rows = []
             vix_values = [
                 float(row.get("close"))
-                for row in rows[-120:]
+                for row in intraday_rows[-120:]
                 if isinstance(row, dict) and isinstance(row.get("close"), (int, float))
             ]
             deduped_vix: List[float] = []
@@ -296,6 +371,36 @@ def dashboard_tape_refresh_api():
                     "mini_series": spark_values,
                     "series": [{"v": value, "close": value} for value in spark_values],
                 }
+        hour_source = _dashboard_tape_ohlc_rows(intraday_rows)
+        if not hour_source:
+            try:
+                prior_rows = [
+                    dict(row)
+                    for row in market_data_service.get_prior_session_intraday(sym)
+                    if isinstance(row, dict)
+                ]
+            except Exception:
+                prior_rows = []
+            hour_source = _dashboard_tape_ohlc_rows(prior_rows)
+        if not hour_source:
+            try:
+                cached_replay_points, _cached_day = core_svc._market_pulse_cached_replay_series(sym)
+            except Exception:
+                cached_replay_points = []
+            hour_source = _dashboard_tape_ohlc_rows(cached_replay_points)
+            if not hour_source:
+                cached_values = [
+                    value
+                    for row in cached_replay_points
+                    if isinstance(row, dict)
+                    and (value := _dashboard_tape_float(row, "close", "c", "v")) is not None
+                ]
+                if len(cached_values) >= 2:
+                    hour_source = _dashboard_tape_close_rows(cached_values[-120:])
+        if not hour_source and len(spark_values) >= 2:
+            hour_source = _dashboard_tape_close_rows(spark_values[-60:])
+        timeframes[sym] = timeframe_payloads(hour_source, symbol=sym)
+        last_hour[sym] = timeframes[sym].get("1H") or last_hour_payload(hour_source, symbol=sym)
         if len(spark_values) >= 4:
             series_points[sym] = [
                 {"v": float(value), "close": float(value)}
@@ -315,6 +420,8 @@ def dashboard_tape_refresh_api():
             "ok": True,
             "quotes": {sym: dict(prices.get(sym) or {}) for sym in symbols},
             "series_points": series_points,
+            "timeframes": timeframes,
+            "last_hour": last_hour,
             "updated_at": updated_raw,
             "updated_label": updated_label or "—",
         }

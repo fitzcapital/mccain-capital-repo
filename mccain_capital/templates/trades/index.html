@@ -85,23 +85,44 @@
       </div>
     {% endif %}
 
+    {# Prominent quick bucket chips - high-signal discipline filters for fast review navigation #}
+    <div class="tradesBucketChips" role="group" aria-label="Quick review buckets">
+      <span class="tradesBucketChipsLabel">Quick Buckets</span>
+      {% set bucket_options = [
+        ('good_wins', 'Good Wins'),
+        ('good_losses', 'Good Losses'),
+        ('bad_losses', 'Bad Losses'),
+        ('oversized', 'Oversized'),
+        ('missing_stop', 'Missing Stop'),
+        ('rule_breaks', 'Rule Breaks'),
+        ('best_r', 'Best R'),
+        ('worst_discipline', 'Worst Discipline')
+      ] %}
+      {% for bval, blabel in bucket_options %}
+        <button type="button" class="btn btnCompact tradesBucketChip{% if review_filters.bucket == bval %} is-active{% endif %}" data-bucket-chip="{{ bval }}" title="Filter to {{ blabel }}">{{ blabel }}</button>
+      {% endfor %}
+      <button type="button" class="btn btnCompact tradesBucketChip" data-bucket-chip="" title="Clear bucket filter">All</button>
+    </div>
+
     <form method="get" action="/trades" class="tradesFilterForm">
       <input type="hidden" name="account_scope_mode" value="{{ account_scope_mode }}" />
-      <div class="fieldGrow2">
-        <label for="search">Search</label>
-        <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
-      </div>
-      <div class="fieldGrow1">
-        <label>Start Date</label>
-        <input class="tradeDateFilterInput" type="date" name="start_date" value="{{ start_date or '' }}" />
-      </div>
-      <div class="fieldGrow1">
-        <label>End Date</label>
-        <input class="tradeDateFilterInput" type="date" name="end_date" value="{{ end_date or '' }}" />
-      </div>
-      <div class="fieldGrow1">
-        <label>Preset</label>
-        <select name="scope_preset">
+      <div class="tradesFilterGroup" data-group="core">
+        <div class="tradesFilterGroupLabel">Core</div>
+        <div class="fieldGrow2">
+          <label for="search">Search</label>
+          <input id="search" name="q" value="{{ q }}" placeholder="SPX, CALL, PUT…" />
+        </div>
+        <div class="fieldGrow1">
+          <label>Start Date</label>
+          <input class="tradeDateFilterInput" type="date" name="start_date" value="{{ start_date or '' }}" />
+        </div>
+        <div class="fieldGrow1">
+          <label>End Date</label>
+          <input class="tradeDateFilterInput" type="date" name="end_date" value="{{ end_date or '' }}" />
+        </div>
+        <div class="fieldGrow1">
+          <label>Preset</label>
+          <select name="scope_preset">
           <option value="custom" {% if not request.args.get('scope_preset') or request.args.get('scope_preset') == 'custom' %}selected{% endif %}>Custom</option>
           <option value="7d" {% if request.args.get('scope_preset') == '7d' %}selected{% endif %}>7D</option>
           <option value="30d" {% if request.args.get('scope_preset') == '30d' %}selected{% endif %}>30D</option>
@@ -109,6 +130,9 @@
           <option value="ytd" {% if request.args.get('scope_preset') == 'ytd' %}selected{% endif %}>YTD</option>
         </select>
       </div>
+    </div>
+    <div class="tradesFilterGroup" data-group="discipline">
+      <div class="tradesFilterGroupLabel">Discipline &amp; Quality</div>
       <div class="fieldGrow1">
         <label>Setup</label>
         <input name="setup" value="{{ review_filters.setup }}" placeholder="Sweep, Continuation" />
@@ -134,6 +158,9 @@
           <option value="F" {% if request.args.get('trade_grade') == 'F' %}selected{% endif %}>F</option>
         </select>
       </div>
+      </div>
+      <div class="tradesFilterGroup" data-group="discipline">
+        <div class="tradesFilterGroupLabel">Discipline &amp; Quality</div>
       <div class="fieldGrow1">
         <label>Review State</label>
         <select name="review_state">
@@ -143,9 +170,10 @@
           <option value="Fully Reviewed" {% if request.args.get('review_state') == 'Fully Reviewed' %}selected{% endif %}>Fully Reviewed</option>
         </select>
       </div>
-      <div class="fieldGrow1">
-        <label>Bucket</label>
-        <select name="bucket">
+    </div>
+      <div class="fieldGrow1 tradesBucketSelectWrap" data-legacy-bucket>
+        <label>Bucket (full list)</label>
+        <select name="bucket" id="tradesBucketSelect">
           <option value="" {% if not request.args.get('bucket') %}selected{% endif %}>All</option>
           <option value="good_wins" {% if request.args.get('bucket') == 'good_wins' %}selected{% endif %}>Good Wins</option>
           <option value="good_losses" {% if request.args.get('bucket') == 'good_losses' %}selected{% endif %}>Good Losses</option>
@@ -278,6 +306,23 @@
     </div>
   </div>
 </section>
+
+<script>
+  // Trades quick bucket chips: update the legacy select + auto-submit for fast workflow
+  (function(){
+    const chips = document.querySelectorAll('.tradesBucketChip');
+    const select = document.getElementById('tradesBucketSelect');
+    if (!chips.length || !select) return;
+    const form = document.querySelector('form.tradesFilterForm') || select.form;
+    chips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const val = chip.getAttribute('data-bucket-chip') || '';
+        select.value = val;
+        if (form) form.submit();
+      });
+    });
+  })();
+</script>
 
 <section class="tradesReviewWorkflowRail">
   <a class="btn{% if request.args.get('review_state') == 'Not Reviewed' %} primary{% endif %}" href="/trades?{{ clear_bucket_query }}{% if clear_bucket_query %}&{% endif %}review_state=Not+Reviewed">Not Reviewed</a>

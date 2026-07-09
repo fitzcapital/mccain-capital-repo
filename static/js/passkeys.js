@@ -160,8 +160,7 @@
     registerButton.addEventListener("click", () => runRegister(registerButton));
   }
 
-  const loginButton = document.querySelector("[data-passkey-login]");
-  if (loginButton) {
+  document.querySelectorAll("[data-passkey-login]").forEach((loginButton) => {
     loginButton.addEventListener("click", () => runLogin(loginButton));
-  }
+  });
 })();
