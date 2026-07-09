@@ -9,11 +9,10 @@ from calendar import monthrange
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
-from flask import jsonify, render_template, request
+from flask import jsonify, redirect, request, url_for
 
 from mccain_capital import runtime as app_runtime
 from mccain_capital.runtime import now_iso, today_iso
-from mccain_capital.services.ui import render_page
 
 _STORE_FILE = "budget.json"
 _INCOME_TYPES = {"job", "trading", "business", "side_hustle", "other"}
@@ -49,8 +48,7 @@ _PRIORITIES = {"low", "medium", "high"}
 
 
 def budget_page():
-    content = render_template("budget.html", today=today_iso(), current_month=_month_label(_today()))
-    return render_page(content, active="budget", title="McCain Capital · Budget Command Center")
+    return redirect(url_for("executive_dashboard"), code=302)
 
 
 def api_summary():

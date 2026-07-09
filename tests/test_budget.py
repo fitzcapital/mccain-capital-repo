@@ -2,20 +2,12 @@ from mccain_capital import runtime
 from mccain_capital.services import budget as budget_service
 
 
-def test_budget_page_renders_and_nav_links(client, tmp_path, monkeypatch):
+def test_budget_page_redirects_to_executive(client, tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "PERSISTENT_DATA_DIR", str(tmp_path))
 
-    resp = client.get("/budget", follow_redirects=True)
-    assert resp.status_code == 200
-    body = resp.get_data(as_text=True)
-    assert "Budget Command Center" in body
-    assert "Month-by-month financial log" in body
-    assert "Chase Credit Card — Locked / Paydown Only" in body
-    assert "Paycheck 1: $188" in body
-    assert "Consumer credit is not purchasing power. Treasury is purchasing power." in body
-    assert "liabilities under management, not operating tools" in body
-    assert "js/budget.js" in body
-    assert 'href="/budget"' in body
+    resp = client.get("/budget", follow_redirects=False)
+    assert resp.status_code in {301, 302, 303, 307, 308}
+    assert resp.headers["Location"].endswith("/executive")
 
 
 def test_budget_profile_and_items_persist_and_summarize(client, tmp_path, monkeypatch):
