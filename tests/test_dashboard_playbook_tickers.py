@@ -3,37 +3,37 @@ from datetime import datetime
 from mccain_capital.services import core
 
 
-def test_get_playbook_ticker_context_defaults_to_spx():
+def test_get_playbook_ticker_context_defaults_to_spy():
     context = core.get_playbook_ticker_context(None)
 
-    assert context["ticker"] == "SPX"
+    assert context["ticker"] == "SPY"
     assert context["alternate_ticker"] == "QQQ"
     assert tuple(context["supported_tickers"]) == ("QQQ", "SPY", "SPX")
     assert context["storage_key"] == "mc_playbook_ticker"
 
 
-def test_dashboard_defaults_to_spx_switcher_and_market_pulse_links(client):
+def test_dashboard_defaults_to_spy_switcher_and_market_pulse_links(client):
     resp = client.get("/dashboard", follow_redirects=True)
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'data-selected-ticker="SPX"' in body
+    assert 'data-selected-ticker="SPY"' in body
     assert 'data-dashboard-ticker-switch="SPY"' in body
     assert 'data-dashboard-ticker-switch="SPX"' in body
-    assert 'href="/market-pulse?ticker=SPX"' in body
-    assert 'data-dashboard-ticker-switch="QQQ"' not in body
-    assert 'href="/dashboard?ticker=QQQ' not in body
+    assert 'href="/market-pulse?ticker=SPY"' in body
+    assert 'data-dashboard-ticker-switch="QQQ"' in body
+    assert 'href="/dashboard?ticker=QQQ' in body
     assert 'href="/dashboard?ticker=SPY' in body
 
 
-def test_dashboard_normalizes_legacy_qqq_query_to_spx(client):
+def test_dashboard_honors_qqq_ticker_in_switcher_and_links(client):
     resp = client.get("/dashboard?ticker=QQQ", follow_redirects=True)
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'data-selected-ticker="SPX"' in body
-    assert 'href="/market-pulse?ticker=SPX"' in body
-    assert 'data-dashboard-ticker-switch="QQQ"' not in body
+    assert 'data-selected-ticker="QQQ"' in body
+    assert 'href="/market-pulse?ticker=QQQ"' in body
+    assert 'data-dashboard-ticker-switch="QQQ"' in body
 
 
 def test_dashboard_honors_spy_ticker_in_switcher_and_links(client):
@@ -43,7 +43,7 @@ def test_dashboard_honors_spy_ticker_in_switcher_and_links(client):
     body = resp.get_data(as_text=True)
     assert 'data-selected-ticker="SPY"' in body
     assert 'href="/market-pulse?ticker=SPY"' in body
-    assert 'href="/dashboard?ticker=QQQ' not in body
+    assert 'href="/dashboard?ticker=QQQ' in body
     assert 'href="/dashboard?ticker=SPX' in body
 
 
@@ -54,7 +54,7 @@ def test_dashboard_honors_spx_ticker_in_switcher_and_links(client):
     body = resp.get_data(as_text=True)
     assert 'data-selected-ticker="SPX"' in body
     assert 'href="/market-pulse?ticker=SPX"' in body
-    assert 'href="/dashboard?ticker=QQQ' not in body
+    assert 'href="/dashboard?ticker=QQQ' in body
     assert 'href="/dashboard?ticker=SPY' in body
 
 

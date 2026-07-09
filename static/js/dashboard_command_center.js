@@ -120,7 +120,7 @@ const marketSessionState = (now = new Date()) => {
   if (!shell) return;
 
   const storageKey = String(shell.dataset.playbookTickerStorageKey || "mc_playbook_ticker");
-  const selectedTicker = String(shell.dataset.selectedTicker || "QQQ").toUpperCase();
+  const selectedTicker = String(shell.dataset.selectedTicker || "SPY").toUpperCase();
   const supportedTickers = new Set(["QQQ", "SPY", "SPX"]);
   const switchLinks = Array.from(document.querySelectorAll("[data-dashboard-ticker-switch]"));
 
@@ -148,13 +148,14 @@ const marketSessionState = (now = new Date()) => {
   const url = new URL(window.location.href);
   const queryTicker = normalizeTicker(url.searchParams.get("ticker"));
   const storedTicker = normalizeTicker(storageGet(storageKey));
-  if (!queryTicker && storedTicker && storedTicker !== selectedTicker) {
+  const staleLegacyDefault = selectedTicker === "SPY" && ["SPX", "QQQ"].includes(storedTicker);
+  if (!queryTicker && storedTicker && storedTicker !== selectedTicker && !staleLegacyDefault) {
     url.searchParams.set("ticker", storedTicker);
     window.location.replace(url.toString());
     return;
   }
 
-  storageSet(storageKey, queryTicker || selectedTicker || "QQQ");
+  storageSet(storageKey, queryTicker || selectedTicker || "SPY");
   switchLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
       const nextTicker = normalizeTicker(link.dataset.dashboardTickerSwitch);
@@ -306,6 +307,10 @@ const marketSessionState = (now = new Date()) => {
   const updatedNode = document.getElementById("dashboardTapeUpdatedAt");
   const tapeCard = document.querySelector(".dashboardCoreTapeCard");
   const tapeRefreshBtn = document.getElementById("dashboardTapeRefreshBtn");
+  const tapeWindowToggle = tapeCard?.querySelector('[data-role="tape-window-toggle"]') || null;
+  const tapeWindowLabel = tapeCard?.querySelector('[data-role="tape-window-label"]') || null;
+  const tapeWindowMenu = tapeCard?.querySelector('[data-role="tape-window-menu"]') || null;
+  const tapeWindowOptions = Array.from(tapeCard?.querySelectorAll("[data-tape-window]") || []);
   const gammaStrip = document.getElementById("dashboardGammaStrip");
   const gammaMeta = document.getElementById("dashboardGammaMeta");
   const decisionCard = document.querySelector(".dashboardDecisionCard");
@@ -318,8 +323,68 @@ const marketSessionState = (now = new Date()) => {
   const decisionTradeGateValue = document.getElementById("dashboardDecisionTradeGateValue");
   const briefCardShell = document.getElementById("dashboardBriefCardShell");
   if (!rows.length || !statusNode || !updatedNode) return;
+
+  const TAPE_WINDOWS = ["15M", "30M", "1H", "6H", "24H"];
+  const TAPE_WINDOW_STORAGE_KEY = "mccain.dashboard.tapeWindow";
+  const TAPE_SYMBOL_STORAGE_KEY = "mccain.dashboard.tapeChartSymbols";
+  const DEFAULT_TAPE_SYMBOLS = { top: "SPX", bottom: "VIX" };
+  const normalizeTapeWindow = (value) => {
+    const key = String(value || "").trim().toUpperCase();
+    return TAPE_WINDOWS.includes(key) ? key : "1H";
+  };
+  const normalizeTapeSymbol = (value, fallback = "SPX") => {
+    const key = String(value || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9.^-]/g, "");
+    if (!key) return fallback;
+    return key === "^VIX" ? "VIX" : key;
+  };
+  const readStoredTapeWindow = () => {
+    try {
+      return window.localStorage?.getItem(TAPE_WINDOW_STORAGE_KEY);
+    } catch (_error) {
+      return "";
+    }
+  };
+  const readStoredTapeSymbols = () => {
+    try {
+      const parsed = JSON.parse(window.localStorage?.getItem(TAPE_SYMBOL_STORAGE_KEY) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_error) {
+      return {};
+    }
+  };
+  const writeStoredTapeSymbols = () => {
+    try {
+      const payload = {};
+      rows.forEach((row) => {
+        const lane = String(row.dataset.tapeLane || "").toLowerCase();
+        if (!lane) return;
+        payload[lane] = normalizeTapeSymbol(
+          row.dataset.watchSymbol,
+          DEFAULT_TAPE_SYMBOLS[lane] || "SPX"
+        );
+      });
+      window.localStorage?.setItem(TAPE_SYMBOL_STORAGE_KEY, JSON.stringify(payload));
+    } catch (_error) {
+      // Local storage is optional; the active page state still updates.
+    }
+  };
+  let activeTapeWindow = normalizeTapeWindow(readStoredTapeWindow());
+  const latestTimeframes = {};
+  const parseTimeframes = (node) => {
+    const raw = String(node?.dataset?.timeframes || "").trim();
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_error) {
+      return {};
+    }
+  };
   const shell = document.getElementById("dashboardModeShell");
-  const activeTicker = String(shell?.dataset.selectedTicker || "QQQ").toUpperCase();
+  const activeTicker = String(shell?.dataset.selectedTicker || "SPY").toUpperCase();
 
   // Hybrid (Option 1+2): remove any skeleton state after paint for initial content to show
   if (tapeCard) {
@@ -373,23 +438,39 @@ const marketSessionState = (now = new Date()) => {
     .map((row) => (row && typeof row === "object" ? asNum(row.v ?? row.close) : asNum(row)))
     .filter((value) => value !== null);
 
-  const computeCandles = (points) => {
+  const computeSparkPoints = (points) => {
     const values = seriesValues(points);
-    if (values.length < 4) return [];
-    const targetBars = Math.min(10, Math.max(8, Math.ceil(values.length / 2)));
-    const chunkSize = Math.max(1, Math.ceil(values.length / targetBars));
-    const candles = [];
-    for (let index = 0; index < values.length; index += chunkSize) {
-      const chunk = values.slice(index, index + chunkSize);
-      if (!chunk.length) continue;
-      candles.push({
-        open: chunk[0],
-        high: Math.max(...chunk),
-        low: Math.min(...chunk),
-        close: chunk[chunk.length - 1],
-      });
+    if (values.length < 2) return null;
+    const recent = values.slice(-40);
+    const width = 138;
+    const height = 60;
+    const plotStart = 5;
+    const plotEnd = width - 5;
+    const plotWidth = plotEnd - plotStart;
+    let minV = Math.min(...recent);
+    let maxV = Math.max(...recent);
+    const centerV = recent[recent.length - 1] || 0;
+    const visualFloor = Math.max(Math.abs(centerV) * 0.0012, 0.18);
+    if (Math.abs(maxV - minV) < visualFloor) {
+      const midV = (maxV + minV) / 2;
+      minV = midV - (visualFloor / 2);
+      maxV = midV + (visualFloor / 2);
     }
-    return candles.length >= 2 ? candles : [];
+    const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 14)) + 7;
+    const coords = recent.map((value, index) => [
+      plotStart + ((index * plotWidth) / Math.max(recent.length - 1, 1)),
+      yFor(value),
+    ]);
+    const first = recent[0];
+    const last = recent[recent.length - 1];
+    return {
+      coords,
+      baselineY: yFor(first),
+      className: last > first ? "up" : last < first ? "down" : "flat",
+      height,
+      plotStart,
+      plotEnd,
+    };
   };
 
   const symbolSeed = (symbol) => {
@@ -410,20 +491,30 @@ const marketSessionState = (now = new Date()) => {
     return ((value >>> 0) % 1000) / 1000;
   };
 
-  const buildAmbientLayers = (symbol, width, height) => {
+  const buildAmbientLayers = (symbol, width, height, { softGlow = false } = {}) => {
     const seed = symbolSeed(symbol);
     const bandCount = 3 + (seed % 3);
     const bands = [];
     const centerY = height / 2;
     for (let index = 0; index < bandCount; index += 1) {
       const unit = seededUnit(seed, index);
-      const bandWidth = 74 + (unit * 48);
-      const x = 8 + (seededUnit(seed, index + 7) * Math.max(1, width - bandWidth - 16));
-      const y = centerY - 11 + (index * 5.2) + ((seededUnit(seed, index + 13) - 0.5) * 3.6);
       const opacity = 0.08 + (seededUnit(seed, index + 23) * 0.08);
-      bands.push(
-        `<rect class="marketMiniSparkAmbientBand marketMiniSparkAmbientBand--${index + 1}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${bandWidth.toFixed(2)}" height="${(5.8 + (unit * 2.6)).toFixed(2)}" rx="6" style="--spark-band-opacity:${opacity.toFixed(3)}" />`
-      );
+      if (softGlow) {
+        const cx = 28 + (seededUnit(seed, index + 7) * (width - 56));
+        const cy = centerY - 6 + (index * 4) + ((seededUnit(seed, index + 13) - 0.5) * 5);
+        const rx = 16 + (unit * 14);
+        const ry = 2.6 + (seededUnit(seed, index + 17) * 1.8);
+        bands.push(
+          `<ellipse class="marketMiniSparkAmbientGlow marketMiniSparkAmbientGlow--${index + 1}" cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" style="--spark-glow-opacity:${opacity.toFixed(3)}" />`
+        );
+      } else {
+        const bandWidth = 74 + (unit * 48);
+        const x = 8 + (seededUnit(seed, index + 7) * Math.max(1, width - bandWidth - 16));
+        const y = centerY - 11 + (index * 5.2) + ((seededUnit(seed, index + 13) - 0.5) * 3.6);
+        bands.push(
+          `<rect class="marketMiniSparkAmbientBand marketMiniSparkAmbientBand--${index + 1}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${bandWidth.toFixed(2)}" height="${(5.8 + (unit * 2.6)).toFixed(2)}" rx="6" style="--spark-band-opacity:${opacity.toFixed(3)}" />`
+        );
+      }
     }
     const particles = [];
     for (let index = 0; index < 4; index += 1) {
@@ -439,71 +530,40 @@ const marketSessionState = (now = new Date()) => {
   };
 
   const buildSparklineSvg = (points, tone, symbol = "") => {
-    const candles = computeCandles(points);
-    if (!candles.length) {
+    const spark = computeSparkPoints(points);
+    if (!spark) {
       return '<div class="marketMiniSparkEmpty">No trend</div>';
     }
     const width = 138;
     const height = 60;
-    let minV = Math.min(...candles.map((row) => row.low));
-    let maxV = Math.max(...candles.map((row) => row.high));
-    if (Math.abs(maxV - minV) < 1e-9) maxV = minV + 1;
-    const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
-    const baselineY = (height / 2).toFixed(2);
-    const plotWidth = width - 6;
-    const plotStart = 3;
-    const slotWidth = plotWidth / Math.max(candles.length, 1);
-    const candleGap = 1.1;
-    const candleWidth = Math.min(10.8, Math.max(6.2, slotWidth - candleGap));
-    const pathPoints = candles.map((candle, index) => {
-      const centerX = plotStart + (((index + 0.5) * plotWidth) / Math.max(candles.length, 1));
-      return [centerX, yFor(candle.close)];
-    });
-    const trendPath = pathPoints.length
-      ? pathPoints.reduce((path, point, index) => {
+    const linePath = spark.coords.reduce((path, point, index) => {
           if (index === 0) return `M ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
-          const prev = pathPoints[index - 1];
+      const prev = spark.coords[index - 1];
           const midX = (prev[0] + point[0]) / 2;
-          return `${path} Q ${prev[0].toFixed(2)} ${prev[1].toFixed(2)} ${midX.toFixed(2)} ${((prev[1] + point[1]) / 2).toFixed(2)} T ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+      return `${path} C ${midX.toFixed(2)} ${prev[1].toFixed(2)} ${midX.toFixed(2)} ${point[1].toFixed(2)} ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
         }, "")
-      : "";
-    const bars = candles.map((candle, index) => {
-      const centerX = plotStart + (((index + 0.5) * plotWidth) / Math.max(candles.length, 1));
-      const openY = yFor(candle.open);
-      const closeY = yFor(candle.close);
-      const highY = yFor(candle.high);
-      const lowY = yFor(candle.low);
-      const topY = Math.min(openY, closeY);
-      const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
-      const cls = candle.close > candle.open ? "up" : candle.close < candle.open ? "down" : "flat";
-      const currentClass = index === candles.length - 1 ? " current" : "";
-      return (
-        `<line class="marketMiniSparkWick ${cls}${currentClass}" x1="${centerX.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${lowY.toFixed(2)}" />`
-        + `<rect class="marketMiniSparkBody ${cls}${currentClass}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${topY.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" rx=".08" ry=".08" />`
-      );
-    }).join("");
-    const lastCandle = candles[candles.length - 1];
-    const lastCenterX = plotStart + (((candles.length - 0.5) * plotWidth) / Math.max(candles.length, 1));
-    const lastCloseY = yFor(lastCandle.close);
-    const lastCloseClass = lastCandle.close > lastCandle.open ? "up" : lastCandle.close < lastCandle.open ? "down" : "flat";
+    const firstPoint = spark.coords[0];
+    const lastPoint = spark.coords[spark.coords.length - 1];
+    const areaPath = `${linePath} L ${lastPoint[0].toFixed(2)} ${(height - 6).toFixed(2)} L ${firstPoint[0].toFixed(2)} ${(height - 6).toFixed(2)} Z`;
+    const lastCloseClass = spark.className;
     return (
-      `<svg viewBox="0 0 138 60" class="marketMiniSpark" aria-hidden="true">`
+      `<svg viewBox="0 0 138 60" class="marketMiniSpark marketMiniSpark--line" aria-hidden="true">`
       + `<defs><linearGradient id="dashboardTapeAmbientGradient" x1="0%" y1="50%" x2="100%" y2="50%"><stop offset="0%" stop-color="#7e5cff" /><stop offset="52%" stop-color="#5484ff" /><stop offset="100%" stop-color="#54f6eb" /></linearGradient></defs>`
       + buildAmbientLayers(symbol, width, height)
-      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="3" y1="${baselineY}" x2="135" y2="${baselineY}" />`
-      + (trendPath ? `<path class="marketMiniSparkTrend ${lastCloseClass}" d="${trendPath}" />` : "")
-      + `<circle class="marketMiniSparkCurrentGlow ${lastCloseClass}" cx="${lastCenterX.toFixed(2)}" cy="${lastCloseY.toFixed(2)}" r="10.5" />`
-      + bars
-      + `<line class="marketMiniSparkPriceMarker ${lastCloseClass}" x1="${Math.max(3, lastCenterX - 5).toFixed(2)}" y1="${lastCloseY.toFixed(2)}" x2="135" y2="${lastCloseY.toFixed(2)}" />`
-      + `<circle class="marketMiniSparkPoint ${lastCloseClass}" cx="${lastCenterX.toFixed(2)}" cy="${lastCloseY.toFixed(2)}" r="2.7" />`
+      + `<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="${spark.plotStart.toFixed(2)}" y1="${spark.baselineY.toFixed(2)}" x2="${spark.plotEnd.toFixed(2)}" y2="${spark.baselineY.toFixed(2)}" />`
+      + `<path class="marketMiniSparkArea ${lastCloseClass}" d="${areaPath}" />`
+      + `<path class="marketMiniSparkLine ${lastCloseClass}" d="${linePath}" />`
+      + `<circle class="marketMiniSparkCurrentGlow ${lastCloseClass}" cx="${lastPoint[0].toFixed(2)}" cy="${lastPoint[1].toFixed(2)}" r="10.5" />`
+      + `<line class="marketMiniSparkPriceMarker ${lastCloseClass}" x1="${Math.max(spark.plotStart, lastPoint[0] - 5).toFixed(2)}" y1="${lastPoint[1].toFixed(2)}" x2="${spark.plotEnd.toFixed(2)}" y2="${lastPoint[1].toFixed(2)}" />`
+      + `<circle class="marketMiniSparkPoint ${lastCloseClass}" cx="${lastPoint[0].toFixed(2)}" cy="${lastPoint[1].toFixed(2)}" r="2.7" />`
       + `</svg>`
     );
   };
 
   const updateSparkNode = (node, points, tone) => {
     if (!node) return false;
-    const candles = computeCandles(points);
-    if (!candles.length) return false;
+    const spark = computeSparkPoints(points);
+    if (!spark) return false;
 
     const sparkClass = tone === "up" ? "spark-pos" : tone === "down" ? "spark-neg" : "spark-flat";
     node.classList.remove("spark-pos", "spark-neg", "spark-flat", "is-skeleton");
@@ -515,105 +575,55 @@ const marketSessionState = (now = new Date()) => {
     if (card) card.classList.remove("is-skeleton");
 
     const existingSvg = node.querySelector("svg.marketMiniSpark");
-    const prevCandleCount = existingSvg ? existingSvg.querySelectorAll(".marketMiniSparkBody").length : 0;
     const symbol = node.closest("[data-watch-symbol]")?.dataset.watchSymbol || "";
 
-    // Hybrid: full rebuild only on initial, bar count change, or fallback
-    if (!existingSvg || candles.length !== prevCandleCount) {
+    if (!existingSvg || !existingSvg.classList.contains("marketMiniSpark--line")) {
       node.innerHTML = buildSparklineSvg(points, tone, symbol);
       return true;
     }
 
-    // Targeted incremental update for live ticks (much cheaper, no full innerHTML/reparse)
     try {
-    const width = 138;
-    const height = 60;
-    const minV = Math.min(...candles.map((c) => c.low));
-    const maxV = Math.max(...candles.map((c) => c.high)) || (minV + 1);
-    const yFor = (value) => (((maxV - value) / (maxV - minV)) * (height - 12)) + 6;
-    const plotWidth = width - 6;
-    const plotStart = 3;
-    const slotWidth = plotWidth / Math.max(candles.length, 1);
-    const candleGap = 1.1;
-    const candleWidth = Math.min(10.8, Math.max(6.2, slotWidth - candleGap));
-    const lastIdx = candles.length - 1;
-    const lastCandle = candles[lastIdx];
-    const lastCenterX = plotStart + (((lastIdx + 0.5) * plotWidth) / Math.max(candles.length, 1));
-    const openY = yFor(lastCandle.open);
-    const closeY = yFor(lastCandle.close);
-    const highY = yFor(lastCandle.high);
-    const lowY = yFor(lastCandle.low);
-    const topY = Math.min(openY, closeY);
-    const bodyHeight = Math.max(3.2, Math.abs(closeY - openY));
-    const cls = lastCandle.close > lastCandle.open ? "up" : lastCandle.close < lastCandle.open ? "down" : "flat";
-
-    // Update last wick
-    const lastWick = existingSvg.querySelector(".marketMiniSparkWick.current");
-    if (lastWick) {
-      lastWick.setAttribute("x1", lastCenterX.toFixed(2));
-      lastWick.setAttribute("x2", lastCenterX.toFixed(2));
-      lastWick.setAttribute("y1", highY.toFixed(2));
-      lastWick.setAttribute("y2", lowY.toFixed(2));
-      lastWick.setAttribute("class", `marketMiniSparkWick ${cls} current`);
-    }
-
-    // Update last body
-    const lastBody = existingSvg.querySelector(".marketMiniSparkBody.current");
-    if (lastBody) {
-      lastBody.setAttribute("x", (lastCenterX - (candleWidth / 2)).toFixed(2));
-      lastBody.setAttribute("y", topY.toFixed(2));
-      lastBody.setAttribute("width", candleWidth.toFixed(2));
-      lastBody.setAttribute("height", bodyHeight.toFixed(2));
-      lastBody.setAttribute("class", `marketMiniSparkBody ${cls} current`);
-    }
-
-    // Update trend path (re-set full d is cheap vs full rebuild)
-    const trendPathEl = existingSvg.querySelector(".marketMiniSparkTrend");
-    if (trendPathEl && candles.length >= 2) {
-      // Recompute simple last segment for efficiency (or full for correctness)
-      const pathPoints = candles.map((candle, i) => {
-        const cx = plotStart + (((i + 0.5) * plotWidth) / Math.max(candles.length, 1));
-        return [cx, yFor(candle.close)];
-      });
-      let newD = "";
-      pathPoints.forEach((pt, i) => {
-        if (i === 0) newD = `M ${pt[0].toFixed(2)} ${pt[1].toFixed(2)}`;
-        else {
-          const prev = pathPoints[i-1];
-          const midX = (prev[0] + pt[0]) / 2;
-          newD += ` Q ${prev[0].toFixed(2)} ${prev[1].toFixed(2)} ${midX.toFixed(2)} ${((prev[1] + pt[1]) / 2).toFixed(2)} T ${pt[0].toFixed(2)} ${pt[1].toFixed(2)}`;
-        }
-      });
-      trendPathEl.setAttribute("d", newD);
-      trendPathEl.setAttribute("class", `marketMiniSparkTrend ${cls}`);
-    }
-
-    // Update glow, marker, point (the live elements)
-    const glow = existingSvg.querySelector(".marketMiniSparkCurrentGlow");
-    if (glow) {
-      glow.setAttribute("cx", lastCenterX.toFixed(2));
-      glow.setAttribute("cy", closeY.toFixed(2));
-      glow.setAttribute("class", `marketMiniSparkCurrentGlow ${cls}`);
-    }
-
-    const marker = existingSvg.querySelector(".marketMiniSparkPriceMarker");
-    if (marker) {
-      marker.setAttribute("x1", Math.max(3, lastCenterX - 5).toFixed(2));
-      marker.setAttribute("y1", closeY.toFixed(2));
-      marker.setAttribute("y2", closeY.toFixed(2));
-      marker.setAttribute("class", `marketMiniSparkPriceMarker ${cls}`);
-    }
-
-    const point = existingSvg.querySelector(".marketMiniSparkPoint");
-    if (point) {
-      point.setAttribute("cx", lastCenterX.toFixed(2));
-      point.setAttribute("cy", closeY.toFixed(2));
-      point.setAttribute("class", `marketMiniSparkPoint ${cls}`);
-    }
-
-    return true;
+      const linePath = spark.coords.reduce((path, point, index) => {
+        if (index === 0) return `M ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+        const prev = spark.coords[index - 1];
+        const midX = (prev[0] + point[0]) / 2;
+        return `${path} C ${midX.toFixed(2)} ${prev[1].toFixed(2)} ${midX.toFixed(2)} ${point[1].toFixed(2)} ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+      }, "");
+      const firstPoint = spark.coords[0];
+      const lastPoint = spark.coords[spark.coords.length - 1];
+      const areaPath = `${linePath} L ${lastPoint[0].toFixed(2)} ${(spark.height - 6).toFixed(2)} L ${firstPoint[0].toFixed(2)} ${(spark.height - 6).toFixed(2)} Z`;
+      const cls = spark.className;
+      existingSvg.querySelector(".marketMiniSparkLine")?.setAttribute("d", linePath);
+      existingSvg.querySelector(".marketMiniSparkLine")?.setAttribute("class", `marketMiniSparkLine ${cls}`);
+      existingSvg.querySelector(".marketMiniSparkArea")?.setAttribute("d", areaPath);
+      existingSvg.querySelector(".marketMiniSparkArea")?.setAttribute("class", `marketMiniSparkArea ${cls}`);
+      const baseline = existingSvg.querySelector(".marketMiniSparkBaseline");
+      if (baseline) {
+        baseline.setAttribute("y1", spark.baselineY.toFixed(2));
+        baseline.setAttribute("y2", spark.baselineY.toFixed(2));
+      }
+      const glow = existingSvg.querySelector(".marketMiniSparkCurrentGlow");
+      if (glow) {
+        glow.setAttribute("cx", lastPoint[0].toFixed(2));
+        glow.setAttribute("cy", lastPoint[1].toFixed(2));
+        glow.setAttribute("class", `marketMiniSparkCurrentGlow ${cls}`);
+      }
+      const marker = existingSvg.querySelector(".marketMiniSparkPriceMarker");
+      if (marker) {
+        marker.setAttribute("x1", Math.max(spark.plotStart, lastPoint[0] - 5).toFixed(2));
+        marker.setAttribute("y1", lastPoint[1].toFixed(2));
+        marker.setAttribute("x2", spark.plotEnd.toFixed(2));
+        marker.setAttribute("y2", lastPoint[1].toFixed(2));
+        marker.setAttribute("class", `marketMiniSparkPriceMarker ${cls}`);
+      }
+      const point = existingSvg.querySelector(".marketMiniSparkPoint");
+      if (point) {
+        point.setAttribute("cx", lastPoint[0].toFixed(2));
+        point.setAttribute("cy", lastPoint[1].toFixed(2));
+        point.setAttribute("class", `marketMiniSparkPoint ${cls}`);
+      }
+      return true;
     } catch (e) {
-      // Fallback to full rebuild on any mutation error
       node.innerHTML = buildSparklineSvg(points, tone, symbol);
       return true;
     }
@@ -799,6 +809,175 @@ const marketSessionState = (now = new Date()) => {
       : `${formatValue(low, 2)}-${formatValue(high, 2)}`;
   };
 
+  const normalizeHourTone = (tone, change = null) => {
+    const raw = String(tone || "").toLowerCase();
+    if (raw === "up" || raw === "positive") return "up";
+    if (raw === "down" || raw === "negative") return "down";
+    const numeric = asNum(change);
+    if (numeric !== null && numeric > 0) return "up";
+    if (numeric !== null && numeric < 0) return "down";
+    return "flat";
+  };
+
+  const HOUR_CHART_WIDTH = 360;
+  const HOUR_CHART_HEIGHT = 128;
+  const HOUR_CHART_PAD_X = 16;
+  const HOUR_CHART_TOP = 12;
+  const HOUR_CHART_BOTTOM = 112;
+
+  const hourScale = (values) => {
+    const clean = values.map((value) => asNum(value)).filter((value) => value !== null);
+    if (clean.length < 2) return null;
+    let minV = Math.min(...clean);
+    let maxV = Math.max(...clean);
+    const centerV = clean[clean.length - 1] || 0;
+    const visualFloor = Math.max(Math.abs(centerV) * 0.0009, 0.12);
+    if (Math.abs(maxV - minV) < visualFloor) {
+      const mid = (minV + maxV) / 2;
+      minV = mid - (visualFloor / 2);
+      maxV = mid + (visualFloor / 2);
+    }
+    const plotHeight = HOUR_CHART_BOTTOM - HOUR_CHART_TOP;
+    const y = (value) => (
+      (((maxV - value) / (maxV - minV)) * plotHeight) + HOUR_CHART_TOP
+    );
+    return {
+      y,
+      minV,
+      maxV,
+      height: HOUR_CHART_HEIGHT,
+      plotStart: HOUR_CHART_PAD_X,
+      plotEnd: HOUR_CHART_WIDTH - HOUR_CHART_PAD_X,
+    };
+  };
+
+  const buildLastHourChart = (lastHour, symbol = "") => {
+    const payload = lastHour && typeof lastHour === "object" ? lastHour : {};
+    const candles = Array.isArray(payload.candles) ? payload.candles : [];
+    const linePoints = Array.isArray(payload.line_points) ? payload.line_points : [];
+    const tone = normalizeHourTone(payload.tone, payload.change);
+    const ohlc = candles
+      .map((row) => ({
+        open: asNum(row.open),
+        high: asNum(row.high),
+        low: asNum(row.low),
+        close: asNum(row.close),
+      }))
+      .filter((row) => row.open !== null && row.high !== null && row.low !== null && row.close !== null);
+    const closeOnly = linePoints.map((value) => asNum(value)).filter((value) => value !== null);
+    const values = ohlc.length >= 2
+      ? ohlc.flatMap((row) => [row.high, row.low, row.close])
+      : closeOnly;
+    const scale = hourScale(values);
+    if (!scale) return '<div class="dashboardTapeHourEmpty">No trend</div>';
+    const baselineValues = ohlc.length >= 2 ? ohlc.map((row) => row.close) : closeOnly;
+    const baselineY = scale.y(baselineValues[0]);
+    const parts = [
+      `<svg viewBox="0 0 ${HOUR_CHART_WIDTH} ${HOUR_CHART_HEIGHT}" class="dashboardTapeHourChart${ohlc.length >= 2 ? " is-ohlc" : " is-close-only"}" aria-hidden="true">`,
+      `<line class="dashboardTapeHourBaseline" x1="${scale.plotStart.toFixed(2)}" y1="${baselineY.toFixed(2)}" x2="${scale.plotEnd.toFixed(2)}" y2="${baselineY.toFixed(2)}" />`,
+    ];
+    let lastX = scale.plotEnd;
+    let lastY = baselineY;
+    if (ohlc.length >= 2) {
+      const slot = (scale.plotEnd - scale.plotStart) / Math.max(ohlc.length, 1);
+      const candleWidth = Math.min(17, Math.max(8.5, slot * 0.58));
+      ohlc.forEach((row, index) => {
+        const centerX = scale.plotStart + ((index + 0.5) * slot);
+        const openY = scale.y(row.open);
+        const closeY = scale.y(row.close);
+        const highY = scale.y(Math.max(row.open, row.high, row.low, row.close));
+        const lowY = scale.y(Math.min(row.open, row.high, row.low, row.close));
+        const cls = row.close > row.open ? "up" : row.close < row.open ? "down" : "flat";
+        const current = index === ohlc.length - 1 ? " current" : "";
+        parts.push(`<line class="dashboardTapeHourWick ${cls}${current}" x1="${centerX.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${lowY.toFixed(2)}" />`);
+        parts.push(`<rect class="dashboardTapeHourBody ${cls}${current}" x="${(centerX - (candleWidth / 2)).toFixed(2)}" y="${Math.min(openY, closeY).toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${Math.max(5.5, Math.abs(closeY - openY)).toFixed(2)}" rx=".45" />`);
+        lastX = centerX;
+        lastY = closeY;
+      });
+    } else {
+      const coords = closeOnly.map((value, index) => [
+        scale.plotStart + ((index * (scale.plotEnd - scale.plotStart)) / Math.max(closeOnly.length - 1, 1)),
+        scale.y(value),
+      ]);
+      const path = coords.reduce((memo, point, index) => {
+        if (index === 0) return `M ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+        const prev = coords[index - 1];
+        const midX = (prev[0] + point[0]) / 2;
+        return `${memo} C ${midX.toFixed(2)} ${prev[1].toFixed(2)} ${midX.toFixed(2)} ${point[1].toFixed(2)} ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+      }, "");
+      parts.push(`<path class="dashboardTapeHourLine ${tone}" d="${path}" />`);
+      [lastX, lastY] = coords[coords.length - 1];
+    }
+    parts.push(`<circle class="dashboardTapeHourPoint ${tone}" cx="${lastX.toFixed(2)}" cy="${lastY.toFixed(2)}" r="3.4" />`);
+    parts.push("</svg>");
+    return parts.join("");
+  };
+
+  const updateLastHourNode = (row, lastHour) => {
+    const module = row.querySelector('[data-role="last-hour"]');
+    if (!module || !lastHour || typeof lastHour !== "object") return;
+    const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
+    const tone = normalizeHourTone(lastHour.tone, lastHour.change);
+    module.classList.remove("is-up", "is-down", "is-flat");
+    module.classList.add(`is-${tone}`);
+    module.dataset.hourStatus = String(lastHour.status || "missing");
+    const labelNode = module.querySelector('[data-role="last-hour-label"]');
+    const changeNode = module.querySelector('[data-role="last-hour-change"]');
+    const pctNode = module.querySelector('[data-role="last-hour-pct"]');
+    const chartNode = module.querySelector('[data-role="last-hour-chart"]');
+    if (labelNode) dashboardUIFX.setText(labelNode, String(lastHour.label || activeTapeWindow || "1H"));
+    if (changeNode) dashboardUIFX.setText(changeNode, String(lastHour.change_display || "—"));
+    if (pctNode) dashboardUIFX.setText(pctNode, String(lastHour.pct_display || "—"));
+    if (chartNode) chartNode.innerHTML = buildLastHourChart(lastHour, symbol);
+  };
+
+  const setWindowMenuOpen = (open) => {
+    if (!tapeWindowMenu || !tapeWindowToggle) return;
+    tapeWindowMenu.hidden = !open;
+    tapeWindowToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+
+  const timeframePayloadForRow = (row, legacyLastHour = null) => {
+    const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
+    const frames = latestTimeframes[symbol] || {};
+    return (
+      frames[activeTapeWindow]
+      || frames["1H"]
+      || (legacyLastHour && typeof legacyLastHour === "object" ? legacyLastHour : null)
+    );
+  };
+
+  const updateTapeWindowControls = () => {
+    if (tapeWindowLabel) {
+      dashboardUIFX.setText(tapeWindowLabel, activeTapeWindow);
+    }
+    tapeWindowOptions.forEach((option) => {
+      const selected = normalizeTapeWindow(option.dataset.tapeWindow) === activeTapeWindow;
+      option.setAttribute("aria-checked", selected ? "true" : "false");
+      option.classList.toggle("is-active", selected);
+    });
+  };
+
+  const renderActiveTimeframe = () => {
+    rows.forEach((row) => {
+      const payload = timeframePayloadForRow(row);
+      if (payload) updateLastHourNode(row, payload);
+    });
+  };
+
+  const setActiveTapeWindow = (value, { persist = true } = {}) => {
+    activeTapeWindow = normalizeTapeWindow(value);
+    if (persist) {
+      try {
+        window.localStorage?.setItem(TAPE_WINDOW_STORAGE_KEY, activeTapeWindow);
+      } catch (_error) {
+        // Local storage is an enhancement; switching still works without it.
+      }
+    }
+    updateTapeWindowControls();
+    renderActiveTimeframe();
+  };
+
   const tapeStateFor = (symbol, pct) => {
     if (["SPY", "QQQ", "IWM"].includes(symbol)) {
       if (pct !== null && pct >= 0.35) {
@@ -837,6 +1016,61 @@ const marketSessionState = (now = new Date()) => {
     };
   };
 
+  const setTapeRowSymbol = (row, value) => {
+    if (!row) return "";
+    const lane = String(row.dataset.tapeLane || "").toLowerCase();
+    const fallback = DEFAULT_TAPE_SYMBOLS[lane] || String(row.dataset.defaultSymbol || "SPX");
+    const symbol = normalizeTapeSymbol(value, fallback);
+    const previous = String(row.dataset.watchSymbol || "").toUpperCase();
+    row.dataset.watchSymbol = symbol;
+    row.setAttribute("aria-label", `${lane ? `${lane} ` : ""}${symbol} market tape chart`);
+    const symbolNode = row.querySelector('[data-role="lane-symbol"]');
+    const inputNode = row.querySelector('[data-role="tape-symbol-input"]');
+    const lastNode = row.querySelector('[data-role="last"]');
+    const stateNode = row.querySelector('[data-role="state"]');
+    const rangeNode = row.querySelector('[data-role="detail-range"] .dashboardTapeRangeValue');
+    if (symbolNode) dashboardUIFX.setText(symbolNode, symbol);
+    if (inputNode) inputNode.value = symbol;
+    if (previous && previous !== symbol) {
+      row.dataset.pendingSymbolRefresh = "true";
+      delete latestTimeframes[previous];
+      if (lastNode) lastNode.textContent = "Standby";
+      if (stateNode) {
+        stateNode.textContent = "MIXED";
+        stateNode.dataset.stateLabel = "MIXED";
+        stateNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
+        stateNode.classList.add("tone-neutral");
+      }
+      if (rangeNode) rangeNode.textContent = "—";
+    }
+    return symbol;
+  };
+
+  const setTapeSearchOpen = (row, open) => {
+    if (!row) return;
+    const toggle = row.querySelector('[data-role="tape-symbol-toggle"]');
+    const popover = row.querySelector('[data-role="tape-symbol-popover"]');
+    const input = row.querySelector('[data-role="tape-symbol-input"]');
+    if (!toggle || !popover) return;
+    popover.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    row.classList.toggle("is-search-open", !!open);
+    if (open && input) {
+      input.value = normalizeTapeSymbol(row.dataset.watchSymbol, row.dataset.defaultSymbol || "SPX");
+      window.setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+    }
+  };
+
+  const closeTapeSearches = (exceptRow = null) => {
+    rows.forEach((row) => {
+      if (exceptRow && row === exceptRow) return;
+      setTapeSearchOpen(row, false);
+    });
+  };
+
   const setExpandedSymbol = (symbol) => {
     openSymbol = String(symbol || "").toUpperCase();
     rows.forEach((row) => {
@@ -848,7 +1082,8 @@ const marketSessionState = (now = new Date()) => {
   };
 
   rows.forEach((row) => {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (event) => {
+      if (row.dataset.tapeLane || event.target.closest('[data-role="tape-symbol-form"]')) return;
       const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
       setExpandedSymbol(symbol === openSymbol ? "" : symbol);
     });
@@ -857,7 +1092,6 @@ const marketSessionState = (now = new Date()) => {
   const sanitizeTapePlaceholder = (row) => {
     if (!row) return;
     const lastNode = row.querySelector('[data-role="last"]');
-    const chgpNode = row.querySelector('[data-role="chgp"]');
     const marketStateNode = row.querySelector('[data-role="market-state"]');
     const liveNode = row.querySelector('[data-role="row-live"]');
     const detailNode = detailPanels.get(String(row.dataset.watchSymbol || "").toUpperCase());
@@ -867,9 +1101,6 @@ const marketSessionState = (now = new Date()) => {
     const lower = (node) => String(node?.textContent || "").trim().toLowerCase();
     if (lastNode && (lower(lastNode) === "loading..." || lower(lastNode) === "unavailable")) {
       lastNode.textContent = "Standby";
-    }
-    if (chgpNode && (lower(chgpNode) === "loading..." || lower(chgpNode) === "unavailable")) {
-      chgpNode.textContent = "—";
     }
     if (marketStateNode && lower(marketStateNode) === "unavailable") {
       marketStateNode.textContent = "Wait";
@@ -891,7 +1122,7 @@ const marketSessionState = (now = new Date()) => {
 
   rows.forEach((row) => sanitizeTapePlaceholder(row));
 
-  const updateRow = (row, quote, points) => {
+  const updateRow = (row, quote, points, lastHour = null) => {
     const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
     const detailNode = detailPanels.get(symbol);
     const price = asNum((quote || {}).price);
@@ -899,7 +1130,6 @@ const marketSessionState = (now = new Date()) => {
     const absChange = inferAbsoluteChange(price, pct);
     const state = deriveState(quote);
     const lastNode = row.querySelector('[data-role="last"]');
-    const chgpNode = row.querySelector('[data-role="chgp"]');
     const stateNode = row.querySelector('[data-role="state"]');
     const rowMarketStateNode = row.querySelector('[data-role="market-state"]');
     const rowLiveNode = row.querySelector('[data-role="row-live"]');
@@ -922,7 +1152,6 @@ const marketSessionState = (now = new Date()) => {
       && !String((quote || {}).provider || "").trim()
       && (
         hasMeaningfulText(lastNode)
-        || hasMeaningfulText(chgpNode)
       )
     );
 
@@ -937,16 +1166,6 @@ const marketSessionState = (now = new Date()) => {
         lastNode.textContent = "Standby";
       }
     }
-    if (chgpNode) {
-      if (pct !== null) {
-        dashboardUIFX.setText(chgpNode, `${formatSigned(pct, 2)}%`, { live: true, direction: tapeTone === "positive" ? "up" : tapeTone === "negative" ? "down" : "neutral" });
-      } else if (!hasMeaningfulText(chgpNode)) {
-        chgpNode.textContent = "—";
-      }
-      chgpNode.classList.remove("tone-positive", "tone-negative", "tone-neutral");
-      chgpNode.classList.add(`tone-${tapeTone}`);
-    }
-
     row.classList.remove(
       "is-up",
       "is-down",
@@ -963,9 +1182,7 @@ const marketSessionState = (now = new Date()) => {
     row.classList.add(tapeTone === "positive" ? "is-up" : tapeTone === "negative" ? "is-down" : "is-flat");
     row.classList.add(`tone-${tapeTone}`);
     row.dataset.tapeTone = tapeTone;
-    if (!updateSparkNode(row.querySelector('[data-role="sparkline"]'), usablePoints, pct > 0 ? "up" : pct < 0 ? "down" : "flat")) {
-      applyMixedToneToSparkline(row, tapeTone, pct);
-    }
+    updateLastHourNode(row, lastHour);
     if (stateNode) {
       dashboardUIFX.setText(stateNode, tapeLabel);
       stateNode.title = tapeState.title;
@@ -1069,17 +1286,81 @@ const marketSessionState = (now = new Date()) => {
     return hasMeaningfulText(lastNode) && String(lastNode.textContent || "").trim().toLowerCase() !== "loading...";
   });
 
-  const applyTapeSnapshot = (quotes, updatedLabel, seriesPoints = {}) => {
+  const applyTapeSnapshot = (quotes, updatedLabel, seriesPoints = {}, lastHour = {}, timeframes = {}) => {
     const payload = quotes && typeof quotes === "object" ? quotes : {};
     const series = seriesPoints && typeof seriesPoints === "object" ? seriesPoints : {};
+    const hourPayload = lastHour && typeof lastHour === "object" ? lastHour : {};
+    const timeframePayload = timeframes && typeof timeframes === "object" ? timeframes : {};
     rows.forEach((row) => {
       const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
-      updateRow(row, payload[symbol] || {}, series[symbol] || []);
+      if (timeframePayload[symbol] && typeof timeframePayload[symbol] === "object") {
+        latestTimeframes[symbol] = timeframePayload[symbol];
+        delete row.dataset.pendingSymbolRefresh;
+      } else if (!latestTimeframes[symbol] && hourPayload[symbol]) {
+        latestTimeframes[symbol] = { "1H": hourPayload[symbol] };
+        delete row.dataset.pendingSymbolRefresh;
+      }
+      updateRow(row, payload[symbol] || {}, series[symbol] || [], timeframePayloadForRow(row, hourPayload[symbol] || null));
     });
     if (updatedLabel && updatedNode) {
       updatedNode.textContent = updatedLabel;
     }
   };
+
+  const selectedTapeSymbols = () => {
+    const symbols = [];
+    rows.forEach((row) => {
+      const lane = String(row.dataset.tapeLane || "").toLowerCase();
+      if (!lane) return;
+      const symbol = normalizeTapeSymbol(
+        row.dataset.watchSymbol,
+        DEFAULT_TAPE_SYMBOLS[lane] || "SPX"
+      );
+      if (symbol && !symbols.includes(symbol)) symbols.push(symbol);
+    });
+    return symbols;
+  };
+
+  const storedTapeSymbols = readStoredTapeSymbols();
+  rows.forEach((row) => {
+    const lane = String(row.dataset.tapeLane || "").toLowerCase();
+    if (!lane || !storedTapeSymbols[lane]) return;
+    setTapeRowSymbol(row, storedTapeSymbols[lane]);
+  });
+  rows.forEach((row) => {
+    if (row.dataset.pendingSymbolRefresh === "true") return;
+    const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
+    const frames = parseTimeframes(row.querySelector('[data-role="last-hour"]'));
+    if (Object.keys(frames).length) {
+      latestTimeframes[symbol] = frames;
+    }
+  });
+  updateTapeWindowControls();
+  renderActiveTimeframe();
+
+  if (tapeWindowToggle && tapeWindowMenu) {
+    tapeWindowToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setWindowMenuOpen(tapeWindowMenu.hidden);
+    });
+    tapeWindowOptions.forEach((option) => {
+      option.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setActiveTapeWindow(option.dataset.tapeWindow);
+        setWindowMenuOpen(false);
+      });
+    });
+    document.addEventListener("click", (event) => {
+      if (!tapeCard?.contains(event.target)) {
+        setWindowMenuOpen(false);
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setWindowMenuOpen(false);
+      }
+    });
+  }
 
   const gammaCardByKey = (key) => document.getElementById(`dashboardGammaChip-${key}`);
   const gammaIconByKey = (key) => document.getElementById(`dashboardGammaIcon-${key}`);
@@ -1349,7 +1630,8 @@ const marketSessionState = (now = new Date()) => {
     updateGammaStrip(payload.market_structure_snapshot || null, payload.dashboard_gamma || null);
     rows.forEach((row) => {
       const symbol = String(row.dataset.watchSymbol || "").toUpperCase();
-      updateRow(row, prices[symbol] || {}, seriesPoints[symbol] || []);
+      if (row.dataset.tapeLane && !prices[symbol] && !seriesPoints[symbol]) return;
+      updateRow(row, prices[symbol] || {}, seriesPoints[symbol] || [], timeframePayloadForRow(row));
     });
     dispatchTapeState();
     setStreamStatus("Live", formatClock(payload.updated_at || payload.server_ts || new Date().toISOString()));
@@ -1468,6 +1750,8 @@ const marketSessionState = (now = new Date()) => {
 
   if (tapeCard && tapeRefreshBtn) {
     const endpoint = String(tapeCard.dataset.refreshEndpoint || "").trim();
+    const TAPE_SLOW_POLL_MS = 5 * 60 * 1000;
+    let tapePollTimer = 0;
     const buildEndpoint = () => {
       if (!endpoint) return "";
       const url = new URL(endpoint, window.location.origin);
@@ -1477,6 +1761,10 @@ const marketSessionState = (now = new Date()) => {
           url.searchParams.set(key, value);
         }
       });
+      const selectedSymbols = selectedTapeSymbols();
+      if (selectedSymbols.length) {
+        url.searchParams.set("symbols", selectedSymbols.join(","));
+      }
       return url.toString();
     };
     const setTapeRefreshState = (loading) => {
@@ -1485,8 +1773,22 @@ const marketSessionState = (now = new Date()) => {
       tapeRefreshBtn.setAttribute("aria-busy", loading ? "true" : "false");
     };
     let tapeRefreshInFlight = false;
-    const refreshTape = async ({ showLoading = true } = {}) => {
+    const clearTapePoll = () => {
+      if (tapePollTimer) {
+        window.clearTimeout(tapePollTimer);
+        tapePollTimer = 0;
+      }
+    };
+    const scheduleTapePoll = () => {
+      clearTapePoll();
+      if (!endpoint || document.visibilityState === "hidden") return;
+      tapePollTimer = window.setTimeout(() => {
+        void refreshTape({ showLoading: false, fromPoll: true });
+      }, TAPE_SLOW_POLL_MS);
+    };
+    const refreshTape = async ({ showLoading = true, fromPoll = false } = {}) => {
       if (!endpoint || tapeRefreshInFlight) return;
+      if (!fromPoll) clearTapePoll();
       tapeRefreshInFlight = true;
       setTapeRefreshState(true);
       if (showLoading && typeof window.showDashboardLoading === "function") {
@@ -1502,7 +1804,13 @@ const marketSessionState = (now = new Date()) => {
         if (!response.ok || !payload || payload.ok === false) {
           throw new Error("tape_refresh_failed");
         }
-        applyTapeSnapshot(payload.quotes || {}, payload.updated_label || "", payload.series_points || {});
+        applyTapeSnapshot(
+          payload.quotes || {},
+          payload.updated_label || "",
+          payload.series_points || {},
+          payload.last_hour || {},
+          payload.timeframes || {}
+        );
         if (tapeHasRenderableValues()) {
           setStreamStatus("Live", payload.updated_label || "just now");
         }
@@ -1514,10 +1822,55 @@ const marketSessionState = (now = new Date()) => {
         }
         tapeRefreshInFlight = false;
         setTapeRefreshState(false);
+        scheduleTapePoll();
       }
     };
     tapeRefreshBtn.addEventListener("click", () => {
       void refreshTape({ showLoading: true });
+    });
+    rows.forEach((row) => {
+      const toggle = row.querySelector('[data-role="tape-symbol-toggle"]');
+      const form = row.querySelector('[data-role="tape-symbol-form"]');
+      const input = row.querySelector('[data-role="tape-symbol-input"]');
+      if (!form || !input) return;
+      if (toggle) {
+        toggle.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const shouldOpen = row.querySelector('[data-role="tape-symbol-popover"]')?.hidden !== false;
+          closeTapeSearches(row);
+          setTapeSearchOpen(row, shouldOpen);
+        });
+      }
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const previous = String(row.dataset.watchSymbol || "").toUpperCase();
+        const next = setTapeRowSymbol(row, input.value);
+        writeStoredTapeSymbols();
+        setTapeSearchOpen(row, false);
+        if (next && next !== previous) {
+          void refreshTape({ showLoading: false });
+        }
+      });
+      input.addEventListener("blur", () => {
+        input.value = normalizeTapeSymbol(input.value, row.dataset.watchSymbol || "SPX");
+      });
+    });
+    document.addEventListener("click", (event) => {
+      if (event.target.closest(".dashboardTapeSymbolSearchPopover") || event.target.closest('[data-role="tape-symbol-toggle"]')) return;
+      closeTapeSearches();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeTapeSearches();
+      }
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        clearTapePoll();
+        return;
+      }
+      scheduleTapePoll();
     });
     window.setTimeout(() => {
       void refreshTape({ showLoading: false });

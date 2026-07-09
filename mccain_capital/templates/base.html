@@ -39,7 +39,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=gpu-stability-20260622a">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ static_v }}&rev=dashboard-tape-search-bars-20260627a">
   {% if active in ['market-pulse', 'market_pulse'] %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/market_pulse.css') }}?v={{ static_v }}&rev=tape-clarity-20260620a">
   {% endif %}
@@ -465,14 +465,13 @@
 
       <div class="nav">
         <div class="navGroup">
-          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="navLabelIcon">{{ app_icon('dashboard') }}</span><span>Dashboard</span></a>
+          <a class="btn {% if active=='executive' %}active{% endif %}" href="/executive"><span class="navLabelIcon">{{ app_icon('executive') }}</span><span>Executive</span></a>
+          <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="navLabelIcon">{{ app_icon('dashboard') }}</span><span>Trading Dashboard</span></a>
           <a class="btn navPulseBtn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="navLabelIcon">{{ app_icon('market-pulse') }}</span><span>Market Pulse</span></a>
           <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="navLabelIcon">{{ app_icon('candle') }}</span><span>Candle Opens</span></a>
           <a class="btn {% if active=='trades' %}active{% endif %}" href="/trades"><span class="navLabelIcon">{{ app_icon('trades') }}</span><span>Trades</span></a>
           <a class="btn {% if active=='journal' %}active{% endif %}" href="/journal"><span class="navLabelIcon">{{ app_icon('journal') }}</span><span>Journal</span></a>
-          <a class="btn {% if active=='life-alignment' %}active{% endif %}" href="/life-alignment"><span class="navLabelIcon">{{ app_icon('life') }}</span><span>Life Alignment</span></a>
           <a class="btn {% if active=='budget' %}active{% endif %}" href="/budget"><span class="navLabelIcon">{{ app_icon('budget') }}</span><span>Budget</span></a>
-          <a class="btn {% if active=='calendar' %}active{% endif %}" href="/calendar"><span class="navLabelIcon">{{ app_icon('calendar') }}</span><span>Calendar</span></a>
         </div>
 
         <div class="menuMore">
@@ -497,7 +496,8 @@
               </a>
             {% endif %}
             <div class="menuTitle">Core</div>
-            <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="menuItemIcon">{{ app_icon('dashboard') }}</span><span>Dashboard</span></a>
+            <a class="btn {% if active=='executive' %}active{% endif %}" href="/executive"><span class="menuItemIcon">{{ app_icon('executive') }}</span><span>Executive</span></a>
+            <a class="btn {% if active=='dashboard' %}active{% endif %}" href="/dashboard"><span class="menuItemIcon">{{ app_icon('dashboard') }}</span><span>Trading Dashboard</span></a>
             <a class="btn {% if active=='the-plan' %}active{% endif %}" href="/the-plan"><span class="menuItemIcon">{{ app_icon('plan') }}</span><span>The Plan</span></a>
             <a class="btn {% if active=='market-pulse' %}active{% endif %}" href="/market-pulse"><span class="menuItemIcon">{{ app_icon('market-pulse') }}</span><span>Market Pulse</span></a>
             <a class="btn {% if active=='candle-opens' %}active{% endif %}" href="/candle-opens"><span class="menuItemIcon">{{ app_icon('candle') }}</span><span>Candle Opens</span></a>
@@ -583,7 +583,7 @@
     </div>
 
     <header class="mobileAppHeader" aria-label="Mobile app status">
-      <a class="mobileAppMark" href="/dashboard" aria-label="Dashboard">
+      <a class="mobileAppMark" href="/executive" aria-label="Executive">
         <img src="{{ url_for('static', filename=logo_filename|default('logo.png')) }}?v={{ static_v }}" alt="" aria-hidden="true"/>
       </a>
       <div class="mobileAppHeaderMain">
@@ -773,7 +773,8 @@
         <section class="drawerSection drawerSectionNavigate">
           <div class="drawerSectionTitle">Core</div>
           <div class="drawerPrimaryGrid">
-            <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Dashboard</a>
+            <a class="btn {% if active=='executive' %}primary{% endif %}" href="/executive">Executive</a>
+            <a class="btn {% if active=='dashboard' %}primary{% endif %}" href="/dashboard">Trading Dashboard</a>
             <a class="btn {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse">Market Pulse</a>
             <a class="btn {% if request.path == '/ops/trading-window' %}primary{% endif %}" href="/ops/trading-window">Trading Window</a>
             <a class="btn {% if active=='candle-opens' %}primary{% endif %}" href="/candle-opens">Candle Opens</a>
@@ -808,8 +809,9 @@
         </section>
 
         <section class="drawerSection drawerSectionSystem">
-            <div class="drawerSectionTitle">Business</div>
+            <div class="drawerSectionTitle">McCain Capital / Business</div>
             <div class="drawerStack">
+            <a class="btn {% if active=='executive' %}primary{% endif %}" href="/executive">Executive Command</a>
             <a class="btn {% if active=='budget' %}primary{% endif %}" href="/budget">Budget Command</a>
             <a class="btn {% if active=='forward-pace' %}primary{% endif %}" href="/forward-pace">Forward Pace</a>
             <a class="btn {% if active=='payouts' %}primary{% endif %}" href="/payouts">Payouts</a>
@@ -939,6 +941,7 @@
       <section class="mobileMenuSection">
         <div class="mobileMenuSectionTitle">Review</div>
         <div class="mobileMenuList">
+          <a class="mobileMenuRow {% if active=='executive' %}is-active{% endif %}" href="/executive"><span class="mobileMenuIcon">{{ app_icon('executive') }}</span><span>Executive</span></a>
           <a class="mobileMenuRow {% if active=='analytics' %}is-active{% endif %}" href="/analytics"><span class="mobileMenuIcon">{{ app_icon('analytics') }}</span><span>Analytics</span></a>
           <a class="mobileMenuRow {% if active=='the-plan' %}is-active{% endif %}" href="/the-plan"><span class="mobileMenuIcon">{{ app_icon('plan') }}</span><span>The Plan</span></a>
           <a class="mobileMenuRow {% if active=='calendar' %}is-active{% endif %}" href="/calendar"><span class="mobileMenuIcon">{{ app_icon('calendar') }}</span><span>Calendar</span></a>
@@ -978,10 +981,10 @@
     </aside>
 
     <nav class="mobileDock mobileAppTabBar" aria-label="Mobile app navigation">
-      <a class="btn mobileDockItem {% if active=='dashboard' %}primary{% endif %}" href="/dashboard"><span class="mobileDockLabel">Dashboard</span></a>
+      <a class="btn mobileDockItem {% if active=='executive' %}primary{% endif %}" href="/executive"><span class="mobileDockLabel">Executive</span></a>
+      <a class="btn mobileDockItem {% if active=='dashboard' %}primary{% endif %}" href="/dashboard"><span class="mobileDockLabel">Trading</span></a>
       <a class="btn mobileDockItem {% if active=='market-pulse' %}primary{% endif %}" href="/market-pulse"><span class="mobileDockLabel">Pulse</span></a>
       <a class="btn mobileDockItem {% if active=='trades' %}primary{% endif %}" href="/trades"><span class="mobileDockLabel">Trades</span></a>
-      <a class="btn mobileDockItem {% if active=='journal' %}primary{% endif %}" href="/journal"><span class="mobileDockLabel">Journal</span></a>
       <button id="mobileDockMenuBtn" class="btn mobileDockItem mobileDockMenu" type="button" aria-expanded="false" onclick="openMobileMenu()"><span class="mobileDockLabel">Menu</span></button>
     </nav>
 
@@ -989,7 +992,8 @@
 <script>
   (function(){
     const PAGE_META = {
-      "/dashboard": { title: "Dashboard", detail: "Preparing command center, tape, and planning state." },
+      "/executive": { title: "Executive", detail: "Loading CEO command center." },
+      "/dashboard": { title: "Trading Dashboard", detail: "Preparing execution cockpit, tape, and planning state." },
       "/the-plan": { title: "The Plan", detail: "Loading execution rules, risk limits, and discipline board." },
       "/market-pulse": { title: "Market Pulse", detail: "Preparing gamma playbook context." },
       "/candle-opens": { title: "Candle Opens", detail: "Loading session timing and open-window references." },
@@ -1626,6 +1630,9 @@
 <script defer src="{{ url_for('static', filename='js/app_shell.js') }}?v={{ static_v }}&rev=gpu-stability-20260622a"></script>
 {% if active == 'self-control' %}
 <script defer src="{{ url_for('static', filename='js/self_control_console.js') }}?v={{ static_v }}"></script>
+{% endif %}
+{% if active == 'executive' %}
+<script defer src="{{ url_for('static', filename='js/executive_command_center.js') }}?v={{ static_v }}"></script>
 {% endif %}
 </body>
 </html>

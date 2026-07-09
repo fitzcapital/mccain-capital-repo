@@ -1,0 +1,359 @@
+{% from "partials/app_theme_macros.html" import app_icon, app_pill %}
+<div class="executiveCommandPage">
+  <section class="executiveHero card">
+    <div class="executiveHeroCopy">
+      {{ app_pill('executive', 'CEO Command Center') }}
+      <h2 class="pageTitle">CEO Command Center</h2>
+      <p class="summaryLead">McCain Capital operating layer for treasury protection, discipline, business growth, and 12-month execution.</p>
+    </div>
+    <div class="executiveHeroQuestion">
+      <span>Daily CEO question</span>
+      <strong>Is McCain Capital healthier than yesterday?</strong>
+    </div>
+  </section>
+
+  <section class="executiveKpiBand" aria-label="Executive KPI band">
+    {% for label, value in kpi_band %}
+      <article class="executiveKpiCard">
+        <span>{{ label }}</span>
+        <strong>{{ value }}</strong>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="card executivePanel executiveCurrentState is-collapsed" data-executive-current-state>
+    <div class="executiveSectionHead">
+      {{ app_pill('budget', 'BOA-Based Projection') }}
+      <h3>Projection Controls</h3>
+    </div>
+    <p class="executiveControlHint">Enter BOA balance. The system calculates the rest from the operating plan.</p>
+    <div class="executiveInputGrid executiveInputGridPrimary">
+      <label><span>BOA Current Balance</span><input type="number" step="0.01" data-exec-input="openingBOA"></label>
+      <label><span>Selected Month</span><select data-exec-input="currentMonth"></select></label>
+      <button class="btn" type="button" data-exec-recalculate>Recalculate Projection</button>
+      <span class="executiveAdvancedHiddenText" data-exec-advanced-state>Advanced assumptions hidden</span>
+    </div>
+    <button class="btn executiveAdvancedToggle" type="button" data-exec-toggle-advanced>Show Advanced Assumptions</button>
+    <div class="executiveAdvancedPanel" data-exec-advanced-panel hidden>
+      <div class="executiveInputGrid">
+        <label><span>Current account balance</span><input type="number" step="0.01" data-exec-input="openingCurrent"></label>
+        <label><span>Trading cash balance</span><input type="number" step="0.01" data-exec-input="tradingCash"></label>
+        <label><span>Pending deposits</span><input type="number" step="0.01" data-exec-input="pendingDeposits"></label>
+        <label><span>Pending bills</span><input type="number" step="0.01" data-exec-input="pendingBills"></label>
+        <label><span>Extra surplus sweep</span><input type="number" step="0.01" data-exec-input="surplusSweepToBOA"></label>
+        <label><span>Trading payout received</span><input type="number" step="0.01" data-exec-input="tradingPayout"></label>
+        <label><span>Eval purchases</span><input type="number" step="0.01" data-exec-input="evalPurchases"></label>
+        <label><span>Unexpected expenses</span><input type="number" step="0.01" data-exec-input="unexpectedExpenses"></label>
+      </div>
+      <div class="executiveAdjustmentBuilder">
+        <div class="executiveSectionHead">
+          {{ app_pill('planner', 'Adjustment Row') }}
+          <h3>Add one-off cash movement</h3>
+        </div>
+        <div class="executiveInputGrid">
+          <label><span>Description</span><input type="text" data-exec-adjustment="description" placeholder="Example: Bonus deposit"></label>
+          <label><span>Account</span><select data-exec-adjustment="account"><option>BOA</option><option>Current</option><option>Trading</option></select></label>
+          <label><span>Type</span><select data-exec-adjustment="type"><option>Deposit</option><option>Bill</option><option>Transfer</option><option>Payout</option><option>Eval</option></select></label>
+          <label><span>Amount</span><input type="number" step="0.01" data-exec-adjustment="amount"></label>
+          <label><span>Timing</span><input type="text" data-exec-adjustment="timing" placeholder="Paycheck 1"></label>
+          <button class="btn" type="button" data-exec-add-adjustment>Add Adjustment</button>
+        </div>
+        <div class="executiveAdjustmentList" data-exec-adjustment-list></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card executivePanel executiveProjectionSummary">
+    <div class="executiveSectionHead">
+      {{ app_pill('analytics', 'Projection Summary') }}
+      <h3 data-exec-selected-label>Selected month</h3>
+    </div>
+    <div class="executiveProjectionCards" data-exec-projection-summary></div>
+    <div class="executiveActionCard" data-exec-action-card></div>
+  </section>
+
+  <section class="card executivePanel executiveVisualGraphs">
+    <div class="executiveSectionHead">
+      {{ app_pill('analytics', 'Visual Command Graphs') }}
+      <h3>Projection, cash flow, bills, and health</h3>
+    </div>
+    <div class="executiveMiniTrendGrid" data-exec-mini-trends></div>
+    <div class="executiveChartGrid" data-exec-chart-grid></div>
+  </section>
+
+  <section class="card executivePanel executiveMonthSelectorWrap">
+    <div class="executiveSectionHead">
+      {{ app_pill('calendar', 'Month Selector') }}
+      <h3>Scroll operating runway</h3>
+    </div>
+    <div class="executiveMonthSelector" data-exec-month-selector></div>
+  </section>
+
+  <section class="card executivePanel executiveOperatingCalendar">
+    <div class="executiveSectionHead">
+      {{ app_pill('calendar', 'Monthly Operating Calendar') }}
+      <h3>Bills, deposits, transfers, and payouts</h3>
+    </div>
+    <div class="executiveCalendarBoard" data-exec-calendar-board></div>
+  </section>
+
+  <details class="card executivePanel executiveLedgerPanel">
+    <summary class="executiveSectionHead">
+      {{ app_pill('journal', 'Projection Ledger') }}
+      <h3>Planned vs actual cash movement</h3>
+    </summary>
+    <div class="executiveLedgerScroll">
+      <table class="executiveLedgerTable">
+        <thead>
+          <tr>
+            <th>Date / Timing</th>
+            <th>Account</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Planned Amount</th>
+            <th>Actual Amount</th>
+            <th>Status</th>
+            <th>Balance Impact</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody data-exec-ledger-body></tbody>
+      </table>
+    </div>
+  </details>
+
+  <section class="card executivePanel executiveProjectionTimeline">
+    <div class="executiveSectionHead">
+      {{ app_pill('plan', 'Month Projection Timeline') }}
+      <button class="btn" type="button" data-exec-recalculate>Recalculate 12-Month Projection</button>
+    </div>
+    <div class="executiveProjectionTimelineGrid" data-exec-projection-timeline></div>
+  </section>
+
+  <section class="section-grid-2">
+    <details class="card executivePanel executiveBudgetDetails">
+      <summary class="executiveSectionHead">
+        {{ app_pill('budget', 'Budget Details') }}
+        <h3>Recurring responsibilities</h3>
+      </summary>
+      <div class="executiveBudgetColumns">
+        <div>
+          <h4>Current Account</h4>
+          <div data-exec-budget-current></div>
+        </div>
+        <div>
+          <h4>BOA Account</h4>
+          <div data-exec-budget-boa></div>
+        </div>
+      </div>
+      <p class="executivePolicyLine">Consumer cards are locked and being paid down only.</p>
+    </details>
+
+    <article class="card executivePanel executiveTradingRules">
+      <div class="executiveSectionHead">
+        {{ app_pill('risk', 'Trading Rules') }}
+        <h3>Cash-impact guardrails</h3>
+      </div>
+      <div class="executiveChecklist executiveChecklistCompact">
+        {% for rule in operating_months[0].rules %}
+          <label><input type="checkbox"> <span>{{ rule }}</span></label>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <script id="executive-operating-months" type="application/json">{{ operating_months|tojson }}</script>
+
+  <section class="executiveHealthGrid" aria-label="Company health cards">
+    {% for card in health_cards %}
+      <article class="card executiveHealthCard is-{{ card.tone }}">
+        <span>{{ card.label }}</span>
+        <strong>{{ card.value }}</strong>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="section-grid-2">
+    <article class="card executivePanel executiveObjectives">
+      <div class="executiveSectionHead">
+        {{ app_pill('checklist', 'Q3 Objectives') }}
+        <h3>Quarter operating progress</h3>
+      </div>
+      <div class="executiveProgressStack">
+        {% for label, value in q3_progress %}
+          <div class="executiveProgressRow">
+            <span>{{ label }}</span>
+            <meter min="0" max="100" value="{{ value }}"></meter>
+            <strong>{{ value }}%</strong>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="executiveChecklist">
+        {% for item in objectives %}
+          <label><input type="checkbox"> <span>{{ item }}</span></label>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="card executivePanel executiveScorecard">
+      <div class="executiveSectionHead">
+        {{ app_pill('grade', 'CEO Weekly Scorecard') }}
+        <h3>{{ score_total }} / 80</h3>
+      </div>
+      <div class="executiveScoreRows">
+        {% for label, score in scorecard %}
+          <div class="executiveScoreRow">
+            <span>{{ label }}</span>
+            <meter min="0" max="10" value="{{ score }}"></meter>
+            <strong>{{ score }}/10</strong>
+          </div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <section class="card executivePanel executiveAnnualTargets">
+    <div class="executiveSectionHead">
+      {{ app_pill('goals', '2026 Annual Targets') }}
+      <h3>Year-end operating marks</h3>
+    </div>
+    <div class="executiveChecklist executiveChecklistCompact">
+      {% for item in annual_targets %}
+        <label><input type="checkbox"> <span>{{ item }}</span></label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card executivePanel executiveTreasuryGrowth">
+    <div class="executiveSectionHead">
+      {{ app_pill('payout', 'BOA Treasury Growth') }}
+      <h3>Protected floor path</h3>
+    </div>
+    <div class="executiveGrowthTimeline">
+      {% for label, value in treasury_growth %}
+        <div class="executiveGrowthStep">
+          <span>{{ label }}</span>
+          <strong>{{ value }}</strong>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="executiveDivisionGrid" aria-label="Division status grid">
+    {% for name, status, focus, next_action in divisions %}
+      <article class="card executiveDivisionCard is-{{ status|lower|replace(' ', '-') }}">
+        <div class="executiveDivisionTop">
+          <strong>{{ name }}</strong>
+          <span>{{ status }}</span>
+        </div>
+        <p><b>Focus:</b> {{ focus }}</p>
+        <div class="executiveNextAction"><span>Next action</span><strong>{{ next_action }}</strong></div>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="section-grid-2 executiveLowerGrid">
+    <article class="card executivePanel executiveNetWorth">
+      <div class="executiveSectionHead">
+        {{ app_pill('budget', 'Net Worth Tracker') }}
+        <h3>Assets minus liabilities</h3>
+      </div>
+      <div class="executiveNetWorthGrid">
+        <div>
+          <h4>Assets</h4>
+          {% for item in net_worth_assets %}
+            <div class="executiveBalanceRow"><span>{{ item }}</span><strong>Add balance</strong></div>
+          {% endfor %}
+        </div>
+        <div>
+          <h4>Liabilities</h4>
+          {% for item in net_worth_liabilities %}
+            <div class="executiveBalanceRow"><span>{{ item }}</span><strong>Add balance</strong></div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="executiveNetWorthTotal">
+        <span>Estimated Net Worth = Assets - Liabilities</span>
+        <strong>Add balance</strong>
+      </div>
+    </article>
+
+    <article class="card executivePanel executiveMetrics">
+      <div class="executiveSectionHead">
+        {{ app_pill('analytics', 'Company Metrics') }}
+        <h3>Operating measurements</h3>
+      </div>
+      <div class="executiveMetricGrid">
+        {% for label, value in company_metrics %}
+          <div class="executiveMetricCard">
+            <span>{{ label }}</span>
+            <strong>{{ value }}</strong>
+          </div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <section class="section-grid-2 executiveLowerGrid">
+    <article class="card executivePanel executiveNotes">
+      <div class="executiveSectionHead">
+        {{ app_pill('note', 'CEO Notes') }}
+        <h3>Weekly operating review</h3>
+      </div>
+      <p class="executiveInstruction">Complete every Sunday. No excuses. Five minutes.</p>
+      <div class="executiveNoteGrid">
+        {% for label in notes %}
+          <label>
+            <span>{{ label }}</span>
+            <textarea rows="3" placeholder="Write the answer during weekly review."></textarea>
+          </label>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="card executivePanel executiveAllocation">
+      <div class="executiveSectionHead">
+        {{ app_pill('payout', 'Capital Allocation') }}
+        <h3>Payout split engine</h3>
+      </div>
+      <div class="executiveAllocationRows">
+        {% for label, value in allocation %}
+          <div class="executiveAllocationRow">
+            <strong>{{ value }}</strong>
+            <span>{{ label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <section class="card executiveRoadmap">
+    <div class="executiveSectionHead">
+      {{ app_pill('plan', '12-Month Roadmap') }}
+      <h3>Operating phases</h3>
+    </div>
+    <div class="executiveRoadmapGrid">
+      {% for month, phase in roadmap %}
+        <div class="executiveRoadmapItem">
+          <span>{{ month }}</span>
+          <strong>{{ phase }}</strong>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card executiveTimeline">
+    <div class="executiveSectionHead">
+      {{ app_pill('plan', 'McCain Capital Timeline') }}
+      <h3>Long-range operating horizon</h3>
+    </div>
+    <div class="executiveTimelineGrid">
+      {% for year, goal in timeline %}
+        <div class="executiveTimelineItem">
+          <span>{{ year }}</span>
+          <strong>{{ goal }}</strong>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>

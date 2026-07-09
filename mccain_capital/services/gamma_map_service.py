@@ -157,7 +157,7 @@ def normalize_gamma_symbol(symbol: str) -> str:
 
 def normalize_gamma_ladder_symbol(symbol: str) -> str:
     normalized = str(symbol or "").strip().upper()
-    return normalized if _GAMMA_SYMBOL.fullmatch(normalized) else "SPX"
+    return normalized if _GAMMA_SYMBOL.fullmatch(normalized) else "SPY"
 
 
 def normalize_gamma_ladder_window(window: str) -> str:

@@ -1225,9 +1225,61 @@ def test_dashboard_primary_decision_actions_link_to_market_pulse_trade_gate_and_
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'href="/market-pulse?ticker=SPX"' in body
+    assert 'href="/market-pulse?ticker=SPY"' in body
     assert 'href="/ops/trading-window"' in body
     assert 'href="/calendar"' in body
+
+
+def test_home_redirects_to_executive_dashboard(client):
+    resp = client.get("/", follow_redirects=False)
+
+    assert resp.status_code in {301, 302, 303, 307, 308}
+    assert resp.headers["Location"].endswith("/executive")
+
+
+def test_executive_dashboard_renders_command_center(client):
+    resp = client.get("/executive", follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "CEO Command Center" in body
+    assert "Is McCain Capital healthier than yesterday?" in body
+    assert "BOA-Based Projection" in body
+    assert "Projection Controls" in body
+    assert "Enter BOA balance. The system calculates the rest from the operating plan." in body
+    assert "Advanced assumptions hidden" in body
+    assert "Show Advanced Assumptions" in body
+    assert "Add Adjustment" in body
+    assert "Projection Summary" in body
+    assert "Visual Command Graphs" in body
+    assert "Month Selector" in body
+    assert "Monthly Operating Calendar" in body
+    assert "Projection Ledger" in body
+    assert "Month Projection Timeline" in body
+    assert "Budget Details" in body
+    assert "Trading Rules" in body
+    assert "July 2026" in body
+    assert "July 2027" in body
+    assert "CEO Weekly Scorecard" in body
+    assert "Net Worth Tracker" in body
+    assert "BOA Treasury Growth" in body
+    assert "Company Metrics" in body
+    assert "2026 Annual Targets" in body
+    assert "Capital Allocation" in body
+    assert "12-Month Roadmap" in body
+    assert "McCain Capital Timeline" in body
+    assert "Projected BOA Close" in body
+    assert "BOA Current Balance" in body
+    assert "Chase fixed payment" in body
+    assert "Chase Paydown" not in body
+    assert "Current State Inputs" not in body
+    assert "Consumer cards are locked and being paid down only." in body
+    assert "executive_command_center.js" in body
+    assert "Connect Current balance" in body
+    assert "Waiting for first tracked month" in body
+    assert "Placeholder" not in body
+    assert 'href="/executive"' in body
+    assert "Trading Dashboard" in body
 
 
 def test_vanquish_blocklist_download_endpoint(client):
@@ -1901,7 +1953,7 @@ def test_market_pulse_core_tape_renders_leader_tickers(client, monkeypatch):
     assert b"autoRefreshToggle" not in resp.data
 
 
-def test_gamma_ladder_api_defaults_to_spx(client, monkeypatch):
+def test_gamma_ladder_api_defaults_to_spy(client, monkeypatch):
     from mccain_capital.services import gamma_map_service
 
     monkeypatch.setattr(
@@ -1936,7 +1988,7 @@ def test_gamma_ladder_api_defaults_to_spx(client, monkeypatch):
     assert resp.status_code == 200
     payload = resp.get_json()
     assert payload["ok"] is True
-    assert payload["symbol"] == "SPX"
+    assert payload["symbol"] == "SPY"
     assert payload["rows_total"] == 96
     assert payload["rows_visible"] == 17
     assert payload["window_preset"] == "standard"
@@ -1989,7 +2041,7 @@ def test_gamma_ladder_api_accepts_searched_symbols_and_normalizes_invalid(client
     assert nvda_resp.get_json()["window_preset"] == "wide"
     assert nvda_resp.get_json()["dte_preset"] == "7"
     assert bad_resp.status_code == 200
-    assert bad_resp.get_json()["symbol"] == "SPX"
+    assert bad_resp.get_json()["symbol"] == "SPY"
     assert bad_resp.get_json()["window_preset"] == "standard"
     assert bad_resp.get_json()["dte_preset"] == "0"
     assert ("NVDA", "wide", "7") in seen
@@ -2023,6 +2075,10 @@ def test_market_pulse_renders_gamma_ladder_switcher(client):
     assert 'data-gamma-symbol-pill="SPX"' in body
     assert 'data-gamma-symbol-pill="SPY"' in body
     assert 'data-gamma-symbol-pill="QQQ"' in body
+    assert 'data-default-symbol="SPY"' in body
+    assert 'data-symbol="SPY"' in body
+    assert 'data-gamma-symbol-pill="SPY"' in body
+    assert 'class="gamma-symbol-pill active"' in body
     assert 'data-gamma-symbol-search' in body
     assert 'data-gamma-symbol-input' in body
     assert 'data-gamma-window-pill="tight"' in body

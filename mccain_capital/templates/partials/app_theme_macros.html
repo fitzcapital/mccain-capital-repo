@@ -1,5 +1,7 @@
 {% macro app_icon(name) -%}
-  {% if name == 'dashboard' -%}
+  {% if name == 'executive' -%}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"></path><path d="M6 20V8l6-4 6 4v12"></path><path d="M9 20v-6h6v6"></path><path d="M9 10h.01"></path><path d="M12 10h.01"></path><path d="M15 10h.01"></path><path d="M8 6.7 12 3l4 3.7"></path></svg>
+  {% elif name == 'dashboard' -%}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 1 3 6.3"></path><path d="m4 18 4-1.2"></path><path d="M12 12 16.8 7.2"></path><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"></circle></svg>
   {% elif name == 'market-pulse' -%}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-4 3.1 8 2.5-5H21"></path><path d="M4 19h16"></path></svg>

@@ -39,7 +39,7 @@
 {% set gamma_snapshot_status_tone = 'positive' if gamma_snapshot_status == 'healthy' else 'warn' if gamma_snapshot_status in ['degraded', 'stale'] else 'negative' %}
 {% set structure_snapshot = market_structure_snapshot or {} %}
 {% set playbook = playbook_view or {} %}
-{% set selected_ticker = ticker or 'QQQ' %}
+{% set selected_ticker = ticker or 'SPY' %}
 {% set quote = playbook_quote or spx_quote or {} %}
 {% set priority_context = playbook_priority_context or spx_priority_context or {} %}
 {% set spot_price_label = ('%.2f'|format(quote.get('price')) if quote.get('price') is number else ('%.2f'|format(structure_snapshot.get('spot')) if structure_snapshot.get('spot') is number else (playbook.get('spot_label') or '—'))) %}
@@ -690,11 +690,11 @@
   id="marketPulseGammaLadderCard"
   data-gamma-ladder
   data-api-url="{{ gamma_ladder_api_url }}"
-  data-default-symbol="SPX"
+  data-default-symbol="SPY"
   data-default-window="standard"
   data-supported-symbols='{{ gamma_ladder_supported_symbols|tojson }}'
   data-supported-windows='{{ gamma_ladder_window_presets|tojson }}'
-  data-symbol="SPX"
+  data-symbol="SPY"
   data-default-dte="0"
   data-regime="mixed_gamma"
   aria-label="Dynamic gamma ladder"
@@ -709,10 +709,10 @@
         <div class="gamma-symbol-switcher" role="tablist" aria-label="Gamma ladder symbol switcher">
           {% for gamma_symbol in gamma_ladder_supported_symbols %}
             <button
-              class="gamma-symbol-pill{% if gamma_symbol == 'SPX' %} active{% endif %}"
+              class="gamma-symbol-pill{% if gamma_symbol == 'SPY' %} active{% endif %}"
               type="button"
               role="tab"
-              aria-selected="{{ 'true' if gamma_symbol == 'SPX' else 'false' }}"
+              aria-selected="{{ 'true' if gamma_symbol == 'SPY' else 'false' }}"
               data-gamma-symbol-pill="{{ gamma_symbol }}"
             >{{ gamma_symbol }}</button>
           {% endfor %}
@@ -735,7 +735,7 @@
               class="gamma-symbol-search__input"
               type="search"
               name="symbol"
-              value="SPX"
+              value="SPY"
               placeholder="NVDA"
               maxlength="12"
               autocomplete="off"
@@ -1005,6 +1005,32 @@
   <div class="toolbar">
     <div class="pillRow marketPulseTapeTopline">
       <span class="pill">Core Tape</span>
+      <div class="marketPulseTapeWindowControl" data-market-pulse-tape-window-control>
+        <button
+          class="marketPulseTapeWindowButton"
+          type="button"
+          data-market-pulse-tape-window-toggle
+          aria-label="Change Core Tape chart timeframe"
+          aria-haspopup="menu"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"></circle>
+            <path d="M12 7v5l3 2"></path>
+          </svg>
+          <span data-market-pulse-tape-window-label>1H</span>
+        </button>
+        <div class="marketPulseTapeWindowMenu" data-market-pulse-tape-window-menu role="menu" hidden>
+          {% for window_label in ['15M', '30M', '1H', '6H', '24H'] %}
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked="{{ 'true' if window_label == '1H' else 'false' }}"
+              data-market-pulse-tape-window-option="{{ window_label }}"
+            >{{ window_label }}</button>
+          {% endfor %}
+        </div>
+      </div>
       <button
         class="notifRefreshBtn marketPulseTapeRefreshBtn"
         type="button"
@@ -1026,7 +1052,7 @@
       <span class="marketPulseWatchStripItem"><strong id="marketPulseMissing">{{ stats.missing }}</strong> missing</span>
     </div>
     <div class="marketPulseTapeLegend">
-      Compressed recent intraday bars · white up · blue down · cyan = positive tape · blue = negative tape
+      Selected timeframe candles · white bull · blue bear · cyan = positive tape · blue = negative tape
     </div>
     <div class="marketPulseTapeRail marketPulseWatchGrid" data-no-mobile-compact="1">
       {% for q in core_quotes %}
@@ -1039,12 +1065,24 @@
         {% set delta_val = q_change_pct if q_change_pct is number else q_change if q_change is number else none %}
         {% set watch_tone = 'positive' if delta_val is not none and delta_val > 0 else 'negative' if delta_val is not none and delta_val < 0 else 'neutral' %}
         {% set spark_tone = 'pos' if delta_val is not none and delta_val > 0 else 'neg' if delta_val is not none and delta_val < 0 else 'flat' %}
-        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if delta_val is not none and delta_val > 0 %}glow-green{% elif delta_val is not none and delta_val < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}">
+        {% set q_timeframes = q.get('timeframes') if q is mapping else {} %}
+        {% set q_active_window = (q_timeframes or {}).get('1H') or q.get('last_hour') or {} %}
+        {% set q_active_tone = q_active_window.get('tone') or 'flat' %}
+        <div class="stat marketPulseTapeCard marketPulseWatchCard tone-{{ watch_tone }} {% if delta_val is not none and delta_val > 0 %}glow-green{% elif delta_val is not none and delta_val < 0 %}glow-red{% endif %}" data-symbol="{{ q.label or q.symbol }}" data-timeframes='{{ (q_timeframes or {})|tojson }}'>
           <div class="marketPulseWatchCardTop">
             <div class="k"><span class="marketPulseTapeTrendIcon marketPulseTapeTrendIcon--{{ 'up' if delta_val is not none and delta_val > 0 else 'down' if delta_val is not none and delta_val < 0 else 'mixed' }}">{{ mp_icon('up') if delta_val is not none and delta_val > 0 else mp_icon('down') if delta_val is not none and delta_val < 0 else mp_icon('activity') }}</span>{{ q.label }}</div>
             <span class="trendChip marketPulseWatchState tone-{{ watch_tone }}" data-role="state-chip" data-state-label="{{ watch_state|upper }}" title="{{ watch_title }}">{{ watch_state }}</span>
           </div>
-          <div class="marketMiniSparkWrap tone-{{ watch_tone }} spark-{{ spark_tone }}" data-role="sparkline">{{ q.sparkline_svg|safe }}</div>
+          <div class="marketPulseTapeWindowModule is-{{ q_active_tone }}" data-role="timeframe-module">
+            <div class="marketPulseTapeWindowHead">
+              <span class="marketPulseTapeWindowCardLabel" data-role="timeframe-label">{{ q_active_window.get('label') or '1H' }}</span>
+              <span class="marketPulseTapeWindowChange" data-role="timeframe-change">{{ q_active_window.get('change_display') or '—' }}</span>
+            </div>
+            <div class="marketPulseTapeWindowChartWrap tone-{{ watch_tone }} spark-{{ spark_tone }}" data-role="sparkline" data-role-chart="timeframe-chart">{{ (q_active_window.get('svg') or q.sparkline_svg)|safe }}</div>
+            <div class="marketPulseTapeWindowFoot">
+              <span class="marketPulseTapeWindowPct" data-role="timeframe-pct">{{ q_active_window.get('pct_display') or '—' }}</span>
+            </div>
+          </div>
           <div class="marketPulseWatchValueRow">
             <div class="v" data-role="price">
               {% if q.price is not none %}
@@ -2337,6 +2375,89 @@
     });
   };
   let coreTapeRefreshInFlight = false;
+  const CORE_TAPE_WINDOW_KEY = "mccain.marketPulse.coreTapeWindow";
+  const CORE_TAPE_WINDOWS = ["15M", "30M", "1H", "6H", "24H"];
+  const normalizeCoreTapeWindow = (value) => {
+    const label = String(value || "").trim().toUpperCase();
+    return CORE_TAPE_WINDOWS.includes(label) ? label : "1H";
+  };
+  const readCoreTapeWindow = () => {
+    try {
+      return normalizeCoreTapeWindow(window.localStorage?.getItem(CORE_TAPE_WINDOW_KEY));
+    } catch (_err) {
+      return "1H";
+    }
+  };
+  const writeCoreTapeWindow = (value) => {
+    try {
+      window.localStorage?.setItem(CORE_TAPE_WINDOW_KEY, normalizeCoreTapeWindow(value));
+    } catch (_err) {
+      // Storage can be unavailable in strict/private browsing contexts.
+    }
+  };
+  let activeCoreTapeWindow = readCoreTapeWindow();
+  const coreTapeWindowControl = document.querySelector("[data-market-pulse-tape-window-control]");
+  const coreTapeWindowToggle = document.querySelector("[data-market-pulse-tape-window-toggle]");
+  const coreTapeWindowMenu = document.querySelector("[data-market-pulse-tape-window-menu]");
+  const coreTapeWindowLabels = () => Array.from(document.querySelectorAll("[data-market-pulse-tape-window-label]"));
+  const coreTapeWindowOptions = () => Array.from(document.querySelectorAll("[data-market-pulse-tape-window-option]"));
+  const setCoreTapeWindowMenuOpen = (open) => {
+    if (!coreTapeWindowMenu || !coreTapeWindowToggle) return;
+    coreTapeWindowMenu.hidden = !open;
+    coreTapeWindowToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    coreTapeWindowControl?.classList.toggle("is-open", open);
+  };
+  const syncCoreTapeWindowControl = () => {
+    coreTapeWindowLabels().forEach((node) => setText(node, activeCoreTapeWindow));
+    coreTapeWindowOptions().forEach((button) => {
+      const active = normalizeCoreTapeWindow(button.dataset.marketPulseTapeWindowOption) === activeCoreTapeWindow;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-checked", active ? "true" : "false");
+    });
+  };
+  const parseCoreTapeTimeframes = (card) => {
+    if (!card) return {};
+    const raw = card.dataset.timeframes || "{}";
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  };
+  const coreTapePayloadForCard = (card) => {
+    const timeframes = parseCoreTapeTimeframes(card);
+    return (
+      timeframes[activeCoreTapeWindow]
+      || timeframes["1H"]
+      || Object.values(timeframes).find((item) => item && typeof item === "object")
+      || null
+    );
+  };
+  const renderCoreTapeTimeframe = (card) => {
+    const payload = coreTapePayloadForCard(card);
+    const module = card?.querySelector('[data-role="timeframe-module"]');
+    if (!module || !payload || typeof payload !== "object") return;
+    const tone = String(payload.tone || "flat").toLowerCase();
+    module.classList.remove("is-up", "is-down", "is-flat");
+    module.classList.add(`is-${tone === "up" || tone === "down" ? tone : "flat"}`);
+    setText(card.querySelector('[data-role="timeframe-label"]'), payload.label || activeCoreTapeWindow);
+    setText(card.querySelector('[data-role="timeframe-change"]'), payload.change_display || "—");
+    setText(card.querySelector('[data-role="timeframe-pct"]'), payload.pct_display || "—");
+    const chartNode = card.querySelector('[data-role-chart="timeframe-chart"]');
+    if (chartNode && payload.svg) {
+      chartNode.innerHTML = payload.svg;
+    }
+  };
+  const renderAllCoreTapeTimeframes = () => {
+    syncCoreTapeWindowControl();
+    document.querySelectorAll(".marketPulseTapeCard[data-symbol]").forEach(renderCoreTapeTimeframe);
+  };
+  const setActiveCoreTapeWindow = (value) => {
+    activeCoreTapeWindow = normalizeCoreTapeWindow(value);
+    writeCoreTapeWindow(activeCoreTapeWindow);
+    renderAllCoreTapeTimeframes();
+  };
   const watchStateFor = (symbol, pct) => {
     if (["SPX", "SPY", "QQQ", "IWM"].includes(symbol) && pct !== null && pct >= 0.35) return {
       label: "RISK-ON",
@@ -2450,6 +2571,10 @@
         sparkNode.classList.remove("spark-pos", "spark-neg", "spark-flat");
         sparkNode.classList.add(sparkTone);
       }
+      if (quote.timeframes && typeof quote.timeframes === "object") {
+        card.dataset.timeframes = JSON.stringify(quote.timeframes);
+        renderCoreTapeTimeframe(card);
+      }
       const chip = card.querySelector('[data-role="state-chip"]');
     if (chip) {
       chip.textContent = state.label;
@@ -2511,12 +2636,33 @@
     }
   };
   document.addEventListener("click", (event) => {
+    const windowToggle = event.target.closest("[data-market-pulse-tape-window-toggle]");
+    if (windowToggle) {
+      event.preventDefault();
+      setCoreTapeWindowMenuOpen(coreTapeWindowMenu ? coreTapeWindowMenu.hidden : false);
+      return;
+    }
+    const windowOption = event.target.closest("[data-market-pulse-tape-window-option]");
+    if (windowOption) {
+      event.preventDefault();
+      setActiveCoreTapeWindow(windowOption.dataset.marketPulseTapeWindowOption);
+      setCoreTapeWindowMenuOpen(false);
+      return;
+    }
+    if (coreTapeWindowControl && !coreTapeWindowControl.contains(event.target)) {
+      setCoreTapeWindowMenuOpen(false);
+    }
     const trigger = event.target.closest("[data-market-pulse-tape-refresh]");
     if (!trigger) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     window.refreshMarketPulseCoreTape({ showRefreshState: true });
   }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setCoreTapeWindowMenuOpen(false);
+  });
+  window.applyMarketPulseTapePayload = applyPayload;
+  renderAllCoreTapeTimeframes();
   window.setTimeout(() => {
     window.refreshMarketPulseCoreTape({ showRefreshState: false });
   }, coreTapeHasRenderableValues() ? 220 : 650);

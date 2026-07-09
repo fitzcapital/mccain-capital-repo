@@ -28,7 +28,7 @@
   const levelsUrl = String(host.dataset.levelsUrl || "/api/hero/levels");
   const quoteUrl = String(host.dataset.quoteUrl || "/api/hero/quote");
   const streamUrl = String(host.dataset.streamUrl || "/api/hero/stream-session");
-  const symbol = String(host.dataset.symbol || "QQQ").toUpperCase();
+  const symbol = String(host.dataset.symbol || "SPY").toUpperCase();
   const DEFAULT_INTERVAL = "5min";
   const INTERVAL_LABELS = {
     "1min": "1m",

@@ -9,7 +9,11 @@ def test_budget_page_renders_and_nav_links(client, tmp_path, monkeypatch):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Budget Command Center" in body
-    assert "Tell your money where to go" in body
+    assert "Month-by-month financial log" in body
+    assert "Chase Credit Card — Locked / Paydown Only" in body
+    assert "Paycheck 1: $188" in body
+    assert "Consumer credit is not purchasing power. Treasury is purchasing power." in body
+    assert "liabilities under management, not operating tools" in body
     assert "js/budget.js" in body
     assert 'href="/budget"' in body
 

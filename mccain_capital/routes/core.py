@@ -64,6 +64,7 @@ def register(app):
     )
     app.add_url_rule("/healthz", endpoint="healthz", view_func=h.healthz)
     app.add_url_rule("/favicon.ico", endpoint="favicon", view_func=h.favicon)
+    app.add_url_rule("/executive", endpoint="executive_dashboard", view_func=h.executive_dashboard)
     app.add_url_rule("/dashboard", endpoint="dashboard", view_func=h.dashboard)
     app.add_url_rule("/market-pulse", endpoint="market_pulse_page", view_func=h.market_pulse_page)
     app.add_url_rule(

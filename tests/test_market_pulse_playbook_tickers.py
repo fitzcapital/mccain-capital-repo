@@ -1,15 +1,15 @@
 from mccain_capital.services import core
 
 
-def test_get_supported_playbook_ticker_defaults_to_spx():
-    assert core.get_supported_playbook_ticker(None) == "SPX"
-    assert core.get_supported_playbook_ticker("") == "SPX"
+def test_get_supported_playbook_ticker_defaults_to_spy():
+    assert core.get_supported_playbook_ticker(None) == "SPY"
+    assert core.get_supported_playbook_ticker("") == "SPY"
     assert core.get_supported_playbook_ticker("spx") == "SPX"
     assert core.get_supported_playbook_ticker("qqq") == "QQQ"
     assert core.get_supported_playbook_ticker("SPY") == "SPY"
     assert core.get_supported_playbook_ticker("nvda") == "NVDA"
     assert core.get_supported_playbook_ticker("BRK.B") == "BRK.B"
-    assert core.get_supported_playbook_ticker("bad!") == "SPX"
+    assert core.get_supported_playbook_ticker("bad!") == "SPY"
 
 
 def test_market_pulse_renders_spx_ticker_switch(client):
@@ -25,14 +25,14 @@ def test_market_pulse_renders_spx_ticker_switch(client):
     assert "SPX PLAYBOOK" in body
 
 
-def test_market_pulse_defaults_to_spx_playbook(client):
+def test_market_pulse_defaults_to_spy_playbook(client):
     resp = client.get("/market-pulse", follow_redirects=True)
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "SPX PLAYBOOK" in body
-    assert '"ticker": "SPX"' in body
-    assert 'value="SPX"' in body
+    assert "SPY PLAYBOOK" in body
+    assert '"ticker": "SPY"' in body
+    assert 'value="SPY"' in body
 
 
 def test_market_pulse_accepts_custom_ticker_search(client):

@@ -1020,7 +1020,7 @@
     const prices = payload.prices || {};
     const seriesPoints = payload.series_points || {};
     const gamma = payload.gamma_map || {};
-    const activeTicker = String(((current || {}).ticker) || "QQQ").toUpperCase();
+    const activeTicker = String(((current || {}).ticker) || "SPY").toUpperCase();
     const playbookTick = prices[activeTicker] || null;
     const vixTick = prices.VIX || prices["^VIX"] || null;
 
@@ -2542,7 +2542,7 @@
   };
 
   const render = (base) => {
-    const activeTicker = String((base && base.ticker) || "QQQ").toUpperCase();
+    const activeTicker = String((base && base.ticker) || "SPY").toUpperCase();
     const input = adaptInput(base);
     const derived = computeDistanceMetrics(input);
     const executionPlan = buildExecutionPlan(input, derived);
@@ -2935,7 +2935,7 @@
     closeStream();
     if (!pageVisible) return;
     const streamUrl = new URL("/stream/market", window.location.origin);
-    streamUrl.searchParams.set("ticker", String((state.base && state.base.ticker) || "QQQ").toUpperCase());
+    streamUrl.searchParams.set("ticker", String((state.base && state.base.ticker) || "SPY").toUpperCase());
     stream = new EventSource(streamUrl.toString());
     stream.onopen = () => {
       dispatchStreamStatus("Live stream connected", "Listening for fresh ticks…");

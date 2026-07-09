@@ -64,6 +64,9 @@ from mccain_capital.services.viewmodels import (
 from mccain_capital.services.market_pulse_health import build_market_source_health
 from mccain_capital.services.market_pulse_tape import (
     apply_range_payload as _market_pulse_apply_range_payload,
+    dashboard_sparkline_svg as _dashboard_tape_sparkline_svg,
+    last_hour_payload as _dashboard_tape_last_hour_payload,
+    timeframe_payloads as _dashboard_tape_timeframe_payloads,
     range_payload as _market_pulse_range_payload,
     sparkline_svg as _market_pulse_sparkline_svg,
 )
@@ -107,8 +110,8 @@ MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
     {"handle": "unusual_whales", "label": "Unusual Whales", "lane": "Options Flow"},
 )
 SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("QQQ", "SPY", "SPX")
-DEFAULT_PLAYBOOK_TICKER = "SPX"
-DASHBOARD_PLAYBOOK_TICKERS: Tuple[str, ...] = ("SPY", "SPX")
+DEFAULT_PLAYBOOK_TICKER = "SPY"
+DASHBOARD_PLAYBOOK_TICKERS: Tuple[str, ...] = ("SPY", "QQQ", "SPX")
 PLAYBOOK_TICKER_STORAGE_KEY = "mc_playbook_ticker"
 PLAYBOOK_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,11}$")
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
@@ -931,6 +934,20 @@ def _market_pulse_compact_series_points(
         if points:
             compact[key] = points
     return compact
+
+
+def _market_pulse_timeframe_payloads(
+    rows_or_points: List[Dict[str, Any]],
+    *,
+    symbol: str = "",
+) -> Dict[str, Dict[str, Any]]:
+    rows = [dict(row) for row in rows_or_points if isinstance(row, dict)]
+    if len(rows) < 2:
+        return {}
+    try:
+        return _dashboard_tape_timeframe_payloads(rows, symbol=symbol)
+    except Exception:
+        return {}
 
 
 def _market_pulse_compact_gamma_payload(gamma_snapshot: Dict[str, Any]) -> Dict[str, Any]:
@@ -7498,7 +7515,10 @@ def get_dashboard_ticker_context(value: Any) -> Dict[str, Any]:
     ticker = get_supported_playbook_ticker(value)
     if ticker not in DASHBOARD_PLAYBOOK_TICKERS:
         ticker = DEFAULT_PLAYBOOK_TICKER
-    alternate = "SPY" if ticker == "SPX" else DEFAULT_PLAYBOOK_TICKER
+    alternate = next(
+        (item for item in DASHBOARD_PLAYBOOK_TICKERS if item != ticker),
+        DEFAULT_PLAYBOOK_TICKER,
+    )
     return {
         "ticker": ticker,
         "alternate_ticker": alternate,
@@ -8280,7 +8300,344 @@ def _market_news_snapshot(
 
 
 def home():
-    return _legacy().home()
+    return redirect(url_for("executive_dashboard"))
+
+
+def executive_dashboard():
+    current_bills = [
+        {"name": "Rent #1", "account": "Current", "amount": 1180, "timing": "Paycheck 1"},
+        {"name": "Rent #2", "account": "Current", "amount": 1148, "timing": "Paycheck 2"},
+        {"name": "Power", "account": "Current", "amount": 136, "timing": "Paycheck 1"},
+        {
+            "name": "Verizon catch-up / phone",
+            "account": "Current",
+            "amount": 267,
+            "timing": "Paycheck 1",
+        },
+        {"name": "Life Insurance", "account": "Current", "amount": 13, "timing": "Paycheck 1"},
+        {"name": "Credit One", "account": "Current", "amount": 30, "timing": "Paycheck 1"},
+        {"name": "Indigo", "account": "Current", "amount": 54, "timing": "Paycheck 1"},
+        {"name": "Capital One", "account": "Current", "amount": 62, "timing": "Paycheck 1"},
+        {"name": "Food / Dates", "account": "Current", "amount": 700, "timing": "Monthly"},
+        {"name": "Gas", "account": "Current", "amount": 100, "timing": "Monthly"},
+        {"name": "Haircuts", "account": "Current", "amount": 100, "timing": "Monthly"},
+        {"name": "Progressive", "account": "Current", "amount": 193, "timing": "Paycheck 2"},
+        {"name": "AT&T Internet", "account": "Current", "amount": 65, "timing": "Paycheck 2"},
+        {"name": "Verizon", "account": "Current", "amount": 267, "timing": "Paycheck 2"},
+        {"name": "IRS", "account": "Current", "amount": 402, "timing": "Paycheck 2"},
+    ]
+    boa_bills = [
+        {"name": "Discover", "account": "BOA", "amount": 137, "timing": "Paycheck 1"},
+        {
+            "name": "Chase fixed payment",
+            "account": "BOA",
+            "amount": 376,
+            "timing": "Split $188 / $188",
+        },
+        {"name": "AMEX", "account": "BOA", "amount": 172, "timing": "Paycheck 2"},
+        {"name": "Car Note", "account": "BOA", "amount": 737, "timing": "Paycheck 2"},
+    ]
+    subscriptions = [
+        {"name": "Apple Music", "account": "Current", "amount": 16.99, "timing": "First Half"},
+        {"name": "AppleCare", "account": "Current", "amount": 5.99, "timing": "First Half"},
+        {"name": "Gmail", "account": "Current", "amount": 1.99, "timing": "First Half"},
+        {"name": "iCloud", "account": "Current", "amount": 2.99, "timing": "First Half"},
+        {"name": "Peacock", "account": "Current", "amount": 16.99, "timing": "First Half"},
+        {"name": "UHF", "account": "Current", "amount": 1.99, "timing": "First Half"},
+        {"name": "Prime", "account": "Current", "amount": 14.99, "timing": "First Half"},
+        {"name": "Audible", "account": "Current", "amount": 8.99, "timing": "First Half"},
+        {"name": "ChatGPT", "account": "Current", "amount": 20, "timing": "Second Half"},
+        {"name": "Apollo", "account": "Current", "amount": 24.99, "timing": "Second Half"},
+        {"name": "TV", "account": "Current", "amount": 25, "timing": "Second Half"},
+    ]
+    month_specs = [
+        ("2026-07", "July 2026", "Transition Month", 4000, 3750, 4500, 4500, 4135),
+        ("2026-08", "August 2026", "System Test Month", 5500, 5000, 6500, 6500, 4900),
+        ("2026-09", "September 2026", "Capital Injection Month", 10000, 9500, 11000, 11000, 7500),
+        (
+            "2026-10",
+            "October 2026",
+            "Five-Figure Protection Month",
+            11500,
+            11000,
+            12500,
+            12500,
+            10500,
+        ),
+        ("2026-11", "November 2026", "Holiday Leak Defense", 13000, 12500, 14000, 14000, 12000),
+        ("2026-12", "December 2026", "Year-End Lock-In", 15000, 14500, 15000, 15000, 14000),
+        ("2027-01", "January 2027", "Consistency and Process", 15000, 14000, 16500, 18000, 15000),
+        ("2027-02", "February 2027", "Consistency and Process", 16000, 15000, 17500, 19000, 16500),
+        ("2027-03", "March 2027", "Consistency and Process", 17000, 16000, 18500, 20000, 17500),
+        ("2027-04", "April 2027", "Scale Only If Earned", 18000, 17000, 20000, 22000, 18500),
+        ("2027-05", "May 2027", "Scale Only If Earned", 19000, 18000, 21500, 23500, 20000),
+        ("2027-06", "June 2027", "Scale Only If Earned", 20000, 19000, 23000, 25000, 21500),
+        ("2027-07", "July 2027", "Multiple Account Growth", 22000, 21000, 25000, 28000, 23000),
+    ]
+    operating_months = []
+    for (
+        month_id,
+        label,
+        phase,
+        floor,
+        red_line,
+        target_low,
+        target_high,
+        opening_boa,
+    ) in month_specs:
+        operating_months.append(
+            {
+                "id": month_id,
+                "label": label,
+                "phase": phase,
+                "protectedFloor": floor,
+                "redLine": red_line,
+                "targetCloseLow": target_low,
+                "targetCloseHigh": target_high,
+                "openingBOA": opening_boa,
+                "openingCurrent": 0,
+                "deposits": {
+                    "currentPaycheck1": 1866,
+                    "boaPaycheck1": 1866,
+                    "currentPaycheck2": 1866,
+                    "boaPaycheck2": 1866,
+                    "wifeContribution": 300,
+                    "tradingPayout": 0,
+                },
+                "bills": current_bills + boa_bills,
+                "subscriptions": subscriptions,
+                "rules": [
+                    "SPY / QQQ only",
+                    "No SPX",
+                    "One personal-funded evaluation max per month",
+                    "Extra evaluations only from trading profits",
+                    "Protect treasury floor before expansion spending",
+                ],
+            }
+        )
+    model = {
+        "operating_months": operating_months,
+        "kpi_band": [
+            ("BOA Current", "$4,135"),
+            ("July Floor", "$4,000"),
+            ("August Target", "$6,500+"),
+            ("September Floor", "$10,000"),
+            ("December Minimum", "$15,000"),
+            ("Projected BOA Close", "Calculated"),
+            ("CEO Score", "60/80"),
+        ],
+        "health_cards": [
+            {"label": "BOA Treasury Balance", "value": "$4,135", "tone": "positive"},
+            {
+                "label": "Current Operating Balance",
+                "value": "Connect Current balance",
+                "tone": "neutral",
+            },
+            {
+                "label": "Monthly Trading Revenue",
+                "value": "Waiting for first tracked month",
+                "tone": "neutral",
+            },
+            {"label": "Net Worth", "value": "Build net worth tracker", "tone": "neutral"},
+            {"label": "Consumer Debt Remaining", "value": "Paydown Only", "tone": "watch"},
+            {"label": "Treasury Protected Floor", "value": "$4,000", "tone": "positive"},
+            {"label": "Expansion Capital", "value": "Available above floor", "tone": "neutral"},
+            {"label": "Rule Adherence", "value": "Weekly score tracking", "tone": "neutral"},
+        ],
+        "operating_priorities": [
+            "Protect BOA above $4,000",
+            "Finish July without more eval purchases",
+            "Split Chase payment $188 / $188",
+            "Keep all credit cards locked",
+            "Pass funded evaluation cleanly",
+            "Walk 5x per week",
+            "Complete weekly CEO review",
+        ],
+        "objectives": [
+            "Protect BOA treasury floor",
+            "Cross $6,500+ BOA by August",
+            "Cross $10,000 BOA after September bonus",
+            "Pass funded evaluation cleanly",
+            "Zero emotional eval purchases",
+            "No credit card spending",
+            "Walk 5x per week",
+            "Weekly marriage/date intentionality",
+            "Daily scripture/prayer",
+        ],
+        "q3_progress": [
+            ("Treasury Protection", 45),
+            ("Trading Discipline", 40),
+            ("Debt Paydown", 30),
+            ("Health", 55),
+            ("Marriage", 70),
+            ("Faith", 60),
+            ("Business Systems", 50),
+        ],
+        "annual_targets": [
+            "$15,000 protected treasury",
+            "$10,000 floor protected after September bonus",
+            "Pass funded evaluation cleanly",
+            "Zero credit card spending",
+            "Reduce consumer debt",
+            "Build McCain Capital systems",
+            "Complete 52 weekly CEO reviews",
+            "Walk 250+ times",
+            "Keep marriage/family priorities protected",
+            "Enter 2027 with stronger reserves",
+        ],
+        "divisions": [
+            (
+                "Treasury",
+                "Healthy",
+                "Protect $4,000 floor",
+                "Route surplus into BOA",
+            ),
+            (
+                "Trading Division",
+                "Watch",
+                "Clean SPY/QQQ execution only",
+                "Use Trading Dashboard before risk",
+            ),
+            (
+                "Financial Operations",
+                "Healthy",
+                "Separate Current, BOA, and Trading flows",
+                "Review allocations before each payday",
+            ),
+            (
+                "Debt Elimination",
+                "Watch",
+                "Locked cards, paydown only",
+                "Pay Chase $188 per paycheck.",
+            ),
+            (
+                "Business Development",
+                "Watch",
+                "Build systems before expanding obligations.",
+                "Document one repeatable operating improvement.",
+            ),
+            (
+                "Health",
+                "Healthy",
+                "Walk 5x per week and protect energy.",
+                "Schedule walks before trading review blocks.",
+            ),
+            (
+                "Marriage",
+                "Healthy",
+                "Weekly intentionality and date planning.",
+                "Pick one connection block before Friday.",
+            ),
+            (
+                "Faith",
+                "Healthy",
+                "Daily scripture, prayer, stewardship",
+                "Start the day with prayer before market prep.",
+            ),
+        ],
+        "debt_policy": {
+            "label": "Chase Credit Card — Locked / Paydown Only",
+            "payment": "$376/month",
+            "split": ("Paycheck 1: $188", "Paycheck 2: $188"),
+            "policy": "No spending. No swipes. No balance increases. Paydown only.",
+            "rules": [
+                "All consumer credit cards are locked.",
+                "Cards are paydown only.",
+                "They are not spending tools.",
+                "Chase is not available credit.",
+                "Chase is a liability being eliminated.",
+            ],
+        },
+        "net_worth_assets": [
+            "BOA Treasury",
+            "Current Operating Cash",
+            "Trading Capital",
+            "Investments",
+            "Other Cash",
+        ],
+        "net_worth_liabilities": [
+            "Chase",
+            "AMEX",
+            "Discover",
+            "Capital One / Credit One / Indigo",
+            "Other debt",
+        ],
+        "treasury_growth": [
+            ("July", "$4,135"),
+            ("August Target", "$6,500+"),
+            ("September Target", "$10,000+"),
+            ("December Target", "$15,000+"),
+        ],
+        "company_metrics": [
+            ("Business Age", "2026 Build Phase"),
+            ("Funded Accounts", "1 target account"),
+            ("Best Month", "Track after first full month"),
+            ("Average Daily Revenue", "Track after data accrues"),
+            ("Largest Treasury Balance", "$4,135 current checkpoint"),
+            ("Current Streak", "Track weekly"),
+            ("Rule Violations", "Track weekly"),
+            ("CEO Reviews Completed", "Track weekly"),
+        ],
+        "scorecard": [
+            ("Treasury", 8),
+            ("Trading", 7),
+            ("Discipline", 8),
+            ("Health", 7),
+            ("Marriage", 8),
+            ("Faith", 8),
+            ("Learning", 7),
+            ("Operations", 7),
+        ],
+        "notes": [
+            "Biggest win this week",
+            "Biggest mistake this week",
+            "One adjustment for next week",
+            "One thing to stop doing",
+            "One thing to double down on",
+        ],
+        "allocation": [
+            ("Treasury", "40%"),
+            ("Trading Growth", "25%"),
+            ("Investments / Long-term Capital", "20%"),
+            ("Owner Pay", "15%"),
+        ],
+        "roadmap": [
+            ("July 2026", "Transition Month"),
+            ("August 2026", "System Test Month"),
+            ("September 2026", "Capital Injection Month"),
+            ("October 2026", "Five-Figure Protection Month"),
+            ("November 2026", "Holiday Leak Defense"),
+            ("December 2026", "Year-End Lock-In"),
+            ("Q1 2027", "Consistency and Process"),
+            ("Q2 2027", "Scale Only If Earned"),
+            ("Q3 2027", "Multiple Account Growth"),
+            ("Q4 2027", "$20K-$50K/month operating target"),
+        ],
+        "timeline": [
+            ("2026", "Protect $15K treasury"),
+            ("2027", "Build $50K treasury"),
+            ("2028", "Scale trading/business capital"),
+            ("2029", "First major asset acquisition"),
+            ("2030", "Business infrastructure expansion"),
+            ("2032", "Family trust / long-term structure"),
+            ("2035", "Multi-million dollar net worth target"),
+        ],
+        "targets": {
+            "boa_treasury": "$4,135",
+            "july_floor": "$4,000",
+            "august_target": "$6,500+",
+            "september_floor": "$10,000",
+            "december_minimum": "$15,000",
+            "chase_payment": "$376/month",
+        },
+    }
+    model["score_total"] = sum(score for _, score in model["scorecard"])
+    content = render_template("executive.html", **model)
+    return render_page(
+        content,
+        active="executive",
+        title="McCain Capital · Executive Command Center",
+    )
 
 
 def setup_page():
@@ -10954,11 +11311,23 @@ def _dashboard_tape_viewmodel(
             chart_series = [float(prev_close), float(price)]
         if len(chart_series) < 2 and price is not None:
             chart_series = [float(price), float(price)]
+        last_hour_rows = full_intraday_rows
+        if not last_hour_rows and len(chart_series) >= 2:
+            last_hour_rows = [{"v": value, "close": value} for value in chart_series[-60:]]
+        timeframe_map = _dashboard_tape_timeframe_payloads(
+            last_hour_rows,
+            symbol=str(enriched.get("label") or enriched.get("symbol") or symbol),
+        )
+        enriched["timeframes"] = timeframe_map
+        enriched["last_hour"] = timeframe_map.get("1H") or _dashboard_tape_last_hour_payload(
+            last_hour_rows,
+            symbol=str(enriched.get("label") or enriched.get("symbol") or symbol),
+        )
         tone = "flat"
         if len(chart_series) >= 2:
             delta = float(chart_series[-1]) - float(chart_series[0])
             tone = "up" if delta > 0 else "down" if delta < 0 else "flat"
-        enriched["sparkline_svg"] = _market_pulse_sparkline_svg(
+        enriched["sparkline_svg"] = _dashboard_tape_sparkline_svg(
             chart_series[-40:],
             tone,
             str(enriched.get("label") or enriched.get("symbol") or ""),
@@ -11012,6 +11381,8 @@ def _dashboard_tape_viewmodel(
             "state_title": tape_state["title"],
             "tape_tone": tape_state["tone"],
             "sparkline_svg": str(enriched.get("sparkline_svg") or ""),
+            "timeframes": dict(enriched.get("timeframes") or {}),
+            "last_hour": dict(enriched.get("last_hour") or {}),
             "price_display": f"{float(enriched['price']):.2f}" if enriched.get("price") is not None else "loading...",
             "pct_change_display": f"{float(pct_change):+.2f}%" if pct_change is not None else "loading...",
             "change_display": f"{float(change_points):+.2f}" if isinstance(change_points, (int, float)) else "loading...",
@@ -11880,6 +12251,19 @@ def dashboard():
         if len(chart_series) < 2 and price is not None:
             chart_series = [float(price), float(price)]
 
+        last_hour_rows = full_intraday_rows
+        if not last_hour_rows and len(chart_series) >= 2:
+            last_hour_rows = [{"v": value, "close": value} for value in chart_series[-60:]]
+        timeframe_map = _dashboard_tape_timeframe_payloads(
+            last_hour_rows,
+            symbol=str(enriched.get("label") or enriched.get("symbol") or symbol),
+        )
+        enriched["timeframes"] = timeframe_map
+        enriched["last_hour"] = timeframe_map.get("1H") or _dashboard_tape_last_hour_payload(
+            last_hour_rows,
+            symbol=str(enriched.get("label") or enriched.get("symbol") or symbol),
+        )
+
         tone = "flat"
         if len(chart_series) >= 2:
             delta = float(chart_series[-1]) - float(chart_series[0])
@@ -11887,7 +12271,7 @@ def dashboard():
                 tone = "up"
             elif delta < 0:
                 tone = "down"
-        enriched["sparkline_svg"] = _market_pulse_sparkline_svg(
+        enriched["sparkline_svg"] = _dashboard_tape_sparkline_svg(
             chart_series[-40:],
             tone,
             str(enriched.get("label") or enriched.get("symbol") or ""),
@@ -11982,6 +12366,8 @@ def dashboard():
             "state_title": tape_state["title"],
             "tape_tone": tape_state["tone"],
             "sparkline_svg": str(enriched.get("sparkline_svg") or ""),
+            "timeframes": dict(enriched.get("timeframes") or {}),
+            "last_hour": dict(enriched.get("last_hour") or {}),
             "price_display": (
                 f"{float(enriched['price']):.2f}"
                 if enriched.get("price") is not None
@@ -12346,7 +12732,12 @@ def dashboard():
         money=app_runtime.money,
         money_compact=_money_compact,
     )
-    return render_page(content, active="dashboard", vanquish_lock=vanquish_lock)
+    return render_page(
+        content,
+        active="dashboard",
+        title="McCain Capital · Trading Dashboard",
+        vanquish_lock=vanquish_lock,
+    )
 
 
 def dashboard_calendar_fragment():
@@ -12751,6 +13142,24 @@ def market_pulse_page():
         if len(fallback_values) >= 4:
             series_points[label] = [{"v": value, "close": value} for value in fallback_values]
     series_points = _market_pulse_compact_series_points(series_points, limit=80)
+    for q in quotes:
+        if not isinstance(q, dict):
+            continue
+        label = str(q.get("label") or q.get("symbol") or "").strip()
+        symbol = str(q.get("symbol") or label).strip().upper()
+        rows = list(q.get("series") or [])
+        if len(rows) < 2:
+            rows = list(series_points.get(label) or [])
+        if len(rows) < 2:
+            rows = [
+                {"v": float(value), "close": float(value)}
+                for value in list(q.get("mini_series") or [])[-80:]
+                if isinstance(value, (int, float))
+            ]
+        timeframe_map = _market_pulse_timeframe_payloads(rows, symbol=symbol)
+        if timeframe_map:
+            q["timeframes"] = timeframe_map
+            q["last_hour"] = timeframe_map.get("1H") or {}
     context = _market_pulse_context(quotes)
     macro_events: List[Dict[str, Any]] = []
     playbook_snapshot = (
@@ -13211,6 +13620,7 @@ def market_pulse_tape_api():
                     q["mini_series"] = [
                         float(p["v"]) for p in points if isinstance(p.get("v"), (int, float))
                     ]
+                    timeframe_rows = rows
                 elif len(prior_rows) >= 2:
                     prior_points = _market_pulse_rows_to_points(prior_rows)
                     series_points[label] = prior_points
@@ -13220,6 +13630,7 @@ def market_pulse_tape_api():
                         for p in prior_points
                         if isinstance(p.get("v"), (int, float))
                     ]
+                    timeframe_rows = prior_rows
                 elif len(cached_points) >= 2:
                     series_points[label] = cached_points
                     q["prior_session_series"] = cached_points
@@ -13228,6 +13639,13 @@ def market_pulse_tape_api():
                         for p in cached_points
                         if isinstance(p.get("v"), (int, float))
                     ]
+                    timeframe_rows = cached_points
+                else:
+                    timeframe_rows = []
+                timeframe_map = _market_pulse_timeframe_payloads(timeframe_rows, symbol=symbol)
+                if timeframe_map:
+                    q["timeframes"] = timeframe_map
+                    q["last_hour"] = timeframe_map.get("1H") or {}
     quotes_map = {str(q.get("label") or ""): q for q in quotes if isinstance(q, dict)}
     stats = _market_pulse_stats(quotes)
     context = _market_pulse_context(quotes)

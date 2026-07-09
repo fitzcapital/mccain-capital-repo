@@ -36011,9 +36011,9 @@ textarea:focus-visible{
 
 .authShell{
   display:grid;
-  grid-template-columns:minmax(0, 1.15fr) minmax(280px, .85fr);
-  gap:14px;
-  align-items:start;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:16px;
+  align-items:stretch;
 }
 
 .authShellSingle{
@@ -36022,6 +36022,76 @@ textarea:focus-visible{
 
 .authSupportGrid{
   margin-bottom:12px;
+}
+
+.page-auth .pageHero{
+  margin-bottom:12px;
+}
+
+.page-auth .pageHero > .toolbar{
+  padding:clamp(14px, 1.8vw, 22px);
+}
+
+.page-auth .pageHeroHead{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+}
+
+.page-auth .pageTitle{
+  margin-top:2px;
+  font-size:clamp(34px, 4.4vw, 58px);
+  line-height:1;
+}
+
+.page-auth .pageSub{
+  max-width:58ch;
+}
+
+.page-auth .authHeroStatusRail{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:8px;
+  min-width:220px;
+}
+
+.page-auth .authHeroStatus,
+.page-auth .authHeroFallback{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  min-height:34px;
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid rgba(76, 230, 220, .22);
+  background:
+    linear-gradient(180deg, rgba(76, 230, 220, .10), rgba(76, 230, 220, .025)),
+    rgba(7, 17, 30, .64);
+  color:rgba(223, 255, 249, .88);
+  font-size:var(--type-meta);
+  line-height:1.15;
+  white-space:nowrap;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 18px rgba(76, 230, 220, .10);
+}
+
+.page-auth .authHeroStatus.is-muted{
+  border-color:rgba(145, 164, 196, .18);
+  background:rgba(13, 20, 34, .50);
+  color:rgba(184, 199, 224, .72);
+  box-shadow:none;
+}
+
+.page-auth .authHeroFallback{
+  min-height:28px;
+  padding:6px 10px;
+  border-color:rgba(111, 177, 255, .18);
+  background:rgba(12, 24, 43, .48);
+  color:rgba(196, 213, 238, .72);
 }
 
 .page-auth .supportCard,
@@ -36038,6 +36108,181 @@ textarea:focus-visible{
   box-shadow:
     inset 0 1px 0 rgba(194, 228, 255, .05),
     0 10px 24px rgba(6, 18, 38, .22);
+}
+
+.page-auth .authPanel > .toolbar{
+  display:flex;
+  flex-direction:column;
+  height:100%;
+  padding:clamp(18px, 2vw, 26px);
+}
+
+.page-auth .authLaneHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:10px;
+}
+
+.page-auth .authLaneTitle{
+  margin-top:10px;
+  color:rgba(239, 246, 255, .94);
+  font-size:clamp(20px, 2.1vw, 28px);
+  line-height:1.02;
+}
+
+.page-auth .authLaneHint{
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(111, 177, 255, .17);
+  background:rgba(11, 23, 42, .52);
+  color:rgba(185, 205, 236, .70);
+  font-size:var(--type-label);
+  line-height:1;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+.page-auth .authPanel form{
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  width:100%;
+  max-width:540px;
+}
+
+.page-auth .authPanelPassword .row{
+  display:block;
+}
+
+.page-auth .authPanelPassword .row > div{
+  width:100%;
+}
+
+.page-auth .authPanelPassword label{
+  display:block;
+  margin-bottom:8px;
+}
+
+.page-auth .authPanelPassword input{
+  width:100%;
+  min-height:48px;
+  font-size:16px;
+}
+
+.page-auth .authPanel form .rightActions{
+  margin-top:auto;
+}
+
+.page-auth .authPanelPasskey{
+  border-color:rgba(76, 230, 220, .24);
+  box-shadow:
+    inset 0 1px 0 rgba(194, 228, 255, .05),
+    0 12px 28px rgba(18, 210, 200, .10),
+    0 10px 24px rgba(6, 18, 38, .22);
+}
+
+.page-auth .authPanelPasskey > .toolbar{
+  justify-content:space-between;
+}
+
+.page-auth .authPanelPasskey .supportLead{
+  max-width:26ch;
+  color:rgba(241, 247, 255, .94);
+  font-size:clamp(19px, 2vw, 27px);
+  line-height:1.12;
+}
+
+.page-auth .authPanelPasskey .supportBody{
+  max-width:44ch;
+  color:rgba(184, 202, 229, .78);
+  font-size:var(--type-body);
+  line-height:1.42;
+}
+
+.page-auth .authPasskeyEmblem{
+  width:58px;
+  height:58px;
+  display:grid;
+  place-items:center;
+  margin:4px 0 8px;
+  border-radius:18px;
+  border:1px solid rgba(76, 230, 220, .24);
+  background:
+    radial-gradient(circle at 50% 35%, rgba(76, 230, 220, .24), transparent 60%),
+    rgba(8, 28, 40, .56);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 22px rgba(76, 230, 220, .12);
+}
+
+.page-auth .authPasskeyEmblem span{
+  color:rgba(92, 255, 238, .96);
+  font-size:26px;
+  line-height:1;
+  text-shadow:0 0 14px rgba(76, 230, 220, .32);
+}
+
+.page-auth .authPasskeyEmblem.is-muted{
+  border-color:rgba(145, 164, 196, .16);
+  background:rgba(13, 20, 34, .44);
+  box-shadow:none;
+}
+
+.page-auth .authPasskeyEmblem.is-muted span{
+  color:rgba(184, 199, 224, .72);
+  text-shadow:none;
+}
+
+.page-auth .authTrustState{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:8px;
+  padding:11px 12px;
+  border-radius:12px;
+  border:1px solid rgba(76, 230, 220, .18);
+  background:rgba(12, 35, 46, .34);
+  color:rgba(223, 255, 249, .84);
+  font-size:var(--type-meta);
+  line-height:1.25;
+}
+
+.page-auth .authTrustState.is-muted{
+  border-color:rgba(145, 164, 196, .16);
+  background:rgba(13, 20, 34, .38);
+  color:rgba(184, 199, 224, .70);
+}
+
+.page-auth .authTrustDot{
+  width:8px;
+  height:8px;
+  flex:0 0 auto;
+  border-radius:999px;
+  background:rgb(76, 230, 220);
+  box-shadow:0 0 14px rgba(76, 230, 220, .55);
+}
+
+.page-auth .authTrustState.is-muted .authTrustDot{
+  background:rgba(145, 164, 196, .62);
+  box-shadow:none;
+}
+
+.page-auth .authSubmitBtn{
+  min-width:150px;
+  min-height:48px;
+  justify-content:center;
+  font-size:14px;
+}
+
+.page-auth .authPasskeyBtn{
+  width:min(100%, 340px);
+}
+
+.page-auth .authPanelPasskey .rightActions{
+  margin-top:auto;
+  justify-content:flex-start;
 }
 
 .workflowPromptCard{
@@ -42483,6 +42728,22 @@ textarea:focus-visible{
 }
 
 @media (max-width: 900px){
+  .page-auth .pageHeroHead{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .page-auth .authHeroStatusRail{
+    align-items:flex-start;
+    min-width:0;
+    width:100%;
+  }
+
+  .page-auth .authHeroStatus,
+  .page-auth .authHeroFallback{
+    white-space:normal;
+  }
+
   .page-dashboard .dashboardSnapshotBar,
   .page-dashboard .dashboardPipelineRail{
     grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -42566,6 +42827,28 @@ textarea:focus-visible{
   }
   .entryNotesGrid{
     grid-template-columns:1fr;
+  }
+}
+
+@media (max-width: 720px){
+  .page-auth .authSubmitBtn{
+    width:100%;
+  }
+
+  .page-auth .rightActions{
+    width:100%;
+  }
+
+  .page-auth .authLaneHead{
+    flex-direction:column;
+  }
+
+  .page-auth .authPanelPassword form{
+    max-width:none;
+  }
+
+  .page-auth .authPasskeyBtn{
+    width:100%;
   }
 }
 
@@ -56673,6 +56956,186 @@ body[data-theme="cinematic-nebula"] .page-playbook .playbookReminderBody{
   }
 }
 
+/* Dashboard Market Tape final sizing pass: compact search and real-bar lane layout. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane{
+  min-height:300px !important;
+  padding:20px 24px 18px !important;
+  gap:10px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneTop{
+  position:relative;
+  grid-template-columns:minmax(160px, 1fr) auto !important;
+  gap:14px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .liveTapeWatchSymbol{
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:9px !important;
+  min-width:0 !important;
+  font-size:25px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchToggle{
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  border:1px solid rgba(84, 132, 255, .34);
+  border-radius:999px;
+  color:rgba(84, 246, 235, .90);
+  background:rgba(7, 16, 34, .64);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  cursor:pointer;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchToggle svg{
+  width:16px;
+  height:16px;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchToggle:hover,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchToggle[aria-expanded="true"]{
+  border-color:rgba(84, 246, 235, .50);
+  background:rgba(10, 31, 55, .82);
+  box-shadow:0 0 18px rgba(84, 246, 235, .12), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchPopover{
+  position:absolute;
+  left:36px;
+  top:42px;
+  z-index:15;
+  min-width:252px;
+  padding:8px;
+  border:1px solid rgba(84, 132, 255, .36);
+  border-radius:8px;
+  background:linear-gradient(180deg, rgba(8, 16, 31, .98), rgba(3, 8, 17, .99));
+  box-shadow:0 18px 34px rgba(0,0,0,.46), 0 0 26px rgba(84, 132, 255, .14);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchPopover[hidden]{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchPopover .dashboardTapeSymbolSearch{
+  display:grid !important;
+  grid-template-columns:auto minmax(86px, 1fr) auto;
+  gap:8px;
+  width:100%;
+  padding:0 !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchPopover .dashboardTapeSymbolSearch label{
+  align-self:center;
+  padding-left:0 !important;
+  font-size:10px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchPopover .dashboardTapeSymbolSearch input{
+  width:100% !important;
+  padding:8px 10px !important;
+  font-size:14px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchPopover .dashboardTapeSymbolSearch button{
+  padding:8px 10px !important;
+  font-size:12px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .marketPulseWatchState{
+  justify-self:end !important;
+  min-width:116px !important;
+  max-width:160px !important;
+  padding:9px 14px !important;
+  font-size:13px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourModule{
+  grid-template-columns:54px minmax(0, 1fr) minmax(78px, auto) !important;
+  grid-template-rows:auto minmax(142px, auto) auto !important;
+  grid-template-areas:
+    "label chart change"
+    "pct chart chart"
+    ". chart chart" !important;
+  gap:0 12px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourLabel{
+  font-size:15px !important;
+  line-height:1 !important;
+  opacity:.72 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChange{
+  font-size:20px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourPct{
+  font-size:19px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChartWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChart,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChartWrap svg{
+  height:158px !important;
+  min-height:158px !important;
+  max-height:158px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChart.is-close-only{
+  opacity:.82;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneBottom{
+  grid-template-columns:minmax(130px, auto) auto minmax(180px, 1fr) !important;
+  gap:14px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetPrice{
+  font-size:30px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetRange{
+  font-size:19px !important;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+@media (max-width:900px){
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneTop,
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneBottom{
+    grid-template-columns:1fr !important;
+  }
+
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearchPopover{
+    left:0;
+    right:0;
+    top:42px;
+    min-width:0;
+  }
+
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourModule{
+    grid-template-columns:48px minmax(0, 1fr) !important;
+    grid-template-rows:auto minmax(150px, auto) auto !important;
+    grid-template-areas:
+      "label change"
+      "chart chart"
+      "pct pct" !important;
+  }
+}
+
 /* Firefox desktop playbook tuning: the handwritten face renders large, so tighten harder. */
 @media (min-width:901px){
   body[data-theme="cinematic-nebula"].page-playbook{
@@ -67939,14 +68402,14 @@ body[data-theme="black"].page-market-pulse .marketPulseTapeShell .marketMiniSpar
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="WEAK"],
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-OFF"]{
-  border-color:rgba(255, 92, 124, .46) !important;
-  background:rgba(72, 24, 38, .32) !important;
+  border-color:rgba(84, 132, 255, .48) !important;
+  background:rgba(20, 45, 104, .32) !important;
 }
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="WEAK"]::before,
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-OFF"]::before{
-  background:rgba(255, 92, 124, .96);
-  box-shadow:0 0 10px rgba(255, 92, 124, .42);
+  background:rgba(84, 132, 255, .98);
+  box-shadow:0 0 10px rgba(84, 132, 255, .44);
 }
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetPrice{
@@ -68013,11 +68476,11 @@ body[data-theme="black"].page-market-pulse .marketPulseTapeShell .marketMiniSpar
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-critical .dashboardTapeFreshnessGlyph,
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-missing .dashboardTapeFreshnessGlyph{
-  color:rgba(255, 218, 226, .98);
-  background:rgba(255, 92, 124, .13);
-  border-color:rgba(255, 92, 124, .42);
-  box-shadow:0 0 9px rgba(255, 92, 124, .22), inset 0 1px 0 rgba(255,255,255,.08);
-  text-shadow:0 0 8px rgba(255, 92, 124, .38);
+  color:rgba(216, 229, 255, .98);
+  background:rgba(20, 45, 104, .28);
+  border-color:rgba(84, 132, 255, .42);
+  box-shadow:0 0 9px rgba(84, 132, 255, .24), inset 0 1px 0 rgba(255,255,255,.08);
+  text-shadow:0 0 8px rgba(84, 132, 255, .36);
 }
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-live::before,
@@ -68036,8 +68499,8 @@ body[data-theme="black"].page-market-pulse .marketPulseTapeShell .marketMiniSpar
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-missing::before,
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-critical::before,
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-missing::before{
-  background:rgba(255, 92, 124, .92);
-  box-shadow:0 0 8px rgba(255, 92, 124, .30);
+  background:rgba(84, 132, 255, .92);
+  box-shadow:0 0 8px rgba(84, 132, 255, .30);
 }
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkWrap,
@@ -68142,7 +68605,7 @@ body[data-theme="black"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatch
 }
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkZone--resistance{
-  fill:rgba(255, 92, 124, .62) !important;
+  fill:rgba(84, 132, 255, .42) !important;
 }
 
 .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkTrend{
@@ -68240,6 +68703,101 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
   letter-spacing:0 !important;
 }
 
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHeaderSubline{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowPicker{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  z-index:8;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowButton{
+  min-width:58px;
+  height:34px;
+  padding:0 10px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  color:rgba(206, 224, 252, .92);
+  border:1px solid rgba(84, 132, 255, .34);
+  border-radius:999px;
+  background:linear-gradient(180deg, rgba(19, 35, 62, .62), rgba(7, 15, 29, .56));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 16px rgba(84, 132, 255, .12);
+  font-size:12px;
+  line-height:1;
+  font-weight:900;
+  letter-spacing:.02em;
+  cursor:pointer;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowButton svg{
+  width:15px;
+  height:15px;
+  color:rgba(84, 246, 235, .92);
+  filter:drop-shadow(0 0 5px rgba(84, 246, 235, .20));
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowButton:hover,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowButton[aria-expanded="true"]{
+  border-color:rgba(84, 246, 235, .50);
+  color:rgba(238, 247, 255, .98);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 0 18px rgba(84, 246, 235, .16),
+    0 0 18px rgba(84, 132, 255, .12);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowMenu{
+  position:absolute;
+  top:calc(100% + 8px);
+  left:0;
+  min-width:96px;
+  padding:6px;
+  display:grid;
+  gap:4px;
+  border:1px solid rgba(84, 132, 255, .32);
+  border-radius:12px;
+  background:rgba(5, 12, 25, .96);
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, .42),
+    0 0 24px rgba(84, 132, 255, .14),
+    inset 0 1px 0 rgba(255,255,255,.05);
+  backdrop-filter:blur(10px);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowMenu[hidden]{
+  display:none;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowOption{
+  width:100%;
+  min-height:30px;
+  padding:6px 10px;
+  color:rgba(174, 198, 230, .88);
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  font-size:12px;
+  font-weight:900;
+  text-align:left;
+  cursor:pointer;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowOption:hover,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeWindowOption.is-active{
+  color:rgba(84, 246, 235, .98);
+  background:rgba(84, 132, 255, .16);
+  box-shadow:inset 0 0 0 1px rgba(84, 246, 235, .16);
+}
+
 /* Dashboard tape clarity pass: remove the fog wash while preserving the card style. */
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist::before,
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist::after,
@@ -68266,6 +68824,322 @@ body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboa
 body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkCurrentGlow{
   opacity:.36 !important;
   filter:blur(5px) !important;
+}
+
+/* Dashboard Market Tape: Forex Factory-inspired selected timeframe read. */
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule{
+  width:100%;
+  min-width:0;
+  max-width:none;
+  min-height:0;
+  margin:2px 0 5px;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  border:0;
+  border-radius:0;
+  background:none;
+  box-shadow:none;
+  overflow:visible;
+  position:relative;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule::after{
+  content:none;
+  display:none;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-up{
+  box-shadow:none;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down{
+  box-shadow:none;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourHead,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourFoot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  position:relative;
+  z-index:1;
+  min-width:0;
+  min-height:16px;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourFoot{
+  margin-top:1px;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLabel{
+  color:rgba(172, 193, 224, .84);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  white-space:nowrap;
+  opacity:.72;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChange,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPct{
+  font-size:13px;
+  line-height:1;
+  color:rgba(236, 244, 255, .96);
+  white-space:nowrap;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-up .dashboardTapeHourChange,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-up .dashboardTapeHourPct{
+  color:rgba(84, 246, 235, .96);
+  text-shadow:0 0 10px rgba(84, 246, 235, .22);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down .dashboardTapeHourChange,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down .dashboardTapeHourPct{
+  color:rgba(84, 132, 255, .98);
+  text-shadow:0 0 10px rgba(84, 132, 255, .24);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap{
+  position:relative;
+  z-index:1;
+  width:84%;
+  min-width:178px;
+  max-width:276px;
+  height:76px;
+  min-height:0;
+  margin:0 auto;
+  background:transparent;
+  background-color:transparent !important;
+  box-shadow:none;
+  overflow:visible;
+  line-height:0;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap::before,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap::after{
+  content:none !important;
+  display:none !important;
+  background:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart{
+  width:100%;
+  height:76px;
+  overflow:visible;
+  display:block;
+  background:transparent !important;
+  position:relative;
+  z-index:0;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbient{
+  display:none !important;
+  opacity:0 !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientBand{
+  opacity:0 !important;
+  display:none !important;
+  filter:none !important;
+  fill:transparent !important;
+  stroke:transparent !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart svg{
+  background:none !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientGlow{
+  fill:url(#dashboardTapeAmbientGradient);
+  opacity:calc(var(--spark-glow-opacity, .10) * .55) !important;
+  filter:blur(9px) drop-shadow(0 0 10px rgba(84, 132, 255, .12)) !important;
+  mix-blend-mode:screen;
+  transform-box:fill-box;
+  transform-origin:center;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientGlow--2,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientGlow--4{
+  opacity:calc(var(--spark-glow-opacity, .10) * .38) !important;
+  filter:blur(11px) drop-shadow(0 0 9px rgba(126, 92, 255, .08)) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientGlow--3,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientGlow--5{
+  opacity:calc(var(--spark-glow-opacity, .10) * .42) !important;
+  filter:blur(10px) drop-shadow(0 0 9px rgba(84, 246, 235, .08)) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkParticle{
+  opacity:calc(var(--spark-particle-opacity, .12) * .45) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBaseline{
+  stroke:rgba(154, 184, 230, .14);
+  stroke-width:.8;
+  stroke-dasharray:4 8;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick{
+  stroke:rgba(112, 151, 232, .94);
+  stroke-width:1.75;
+  stroke-linecap:round;
+  filter:
+    drop-shadow(0 0 3px rgba(84, 132, 255, .16))
+    drop-shadow(0 0 8px rgba(7, 18, 42, .18));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody{
+  fill:rgba(74, 124, 236, .94);
+  stroke:rgba(74, 124, 236, .94);
+  stroke-width:.7;
+  filter:
+    drop-shadow(0 0 5px rgba(84, 132, 255, .16))
+    drop-shadow(0 0 12px rgba(7, 18, 42, .20));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.up,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.up{
+  fill:rgba(238, 246, 255, .92);
+  stroke:rgba(238, 246, 255, .92);
+  filter:drop-shadow(0 0 5px rgba(206, 224, 252, .18));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.down,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.down{
+  fill:rgba(74, 124, 236, .90);
+  stroke:rgba(84, 132, 255, .90);
+  filter:drop-shadow(0 0 5px rgba(84, 132, 255, .20));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.flat,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.flat{
+  fill:rgba(179, 201, 232, .76);
+  stroke:rgba(179, 201, 232, .78);
+  filter:drop-shadow(0 0 4px rgba(154, 184, 230, .12));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.current,
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.current{
+  filter:
+    drop-shadow(0 0 5px rgba(84, 246, 235, .22))
+    drop-shadow(0 0 10px rgba(84, 132, 255, .12));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLine{
+  fill:none;
+  stroke:rgba(185, 205, 238, .92);
+  stroke-width:3;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  filter:drop-shadow(0 0 7px rgba(84, 132, 255, .16));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLine.up{
+  stroke:rgba(84, 246, 235, .92);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLine.down{
+  stroke:rgba(84, 132, 255, .94);
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint{
+  fill:rgba(181, 197, 217, .95);
+  stroke:rgba(4, 9, 18, .88);
+  stroke-width:1.1;
+  filter:drop-shadow(0 0 8px rgba(181, 197, 217, .30));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint.up{
+  fill:rgba(84, 246, 235, .96);
+  filter:drop-shadow(0 0 6px rgba(84, 246, 235, .32));
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint.down{
+  fill:rgba(84, 132, 255, .98);
+  filter:drop-shadow(0 0 6px rgba(84, 132, 255, .34));
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .marketPulseWatchState.tone-negative,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.tone-negative .marketPulseWatchState{
+  color:rgba(216, 229, 255, .96) !important;
+  border-color:rgba(84, 132, 255, .48) !important;
+  background:rgba(20, 45, 104, .32) !important;
+  box-shadow:0 0 18px rgba(84, 132, 255, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="WEAK"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-OFF"]{
+  border-color:rgba(84, 132, 255, .48) !important;
+  background:rgba(20, 45, 104, .32) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="WEAK"]::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-OFF"]::before{
+  background:rgba(84, 132, 255, .98) !important;
+  box-shadow:0 0 10px rgba(84, 132, 255, .44) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative{
+  border-color:rgba(84, 132, 255, .54) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.03),
+    0 18px 34px rgba(0, 0, 0, .42),
+    0 0 36px rgba(84, 132, 255, .16),
+    0 0 0 1px rgba(84, 132, 255, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative{
+  border-color:rgba(84, 132, 255, .54) !important;
+  background:linear-gradient(180deg, rgba(7, 13, 24, .985), rgba(3, 7, 14, .998)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.03),
+    0 18px 34px rgba(0, 0, 0, .42),
+    0 0 32px rgba(84, 132, 255, .14),
+    0 0 0 1px rgba(84, 132, 255, .07) !important;
+}
+
+.page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourEmpty{
+  height:54px;
+  display:grid;
+  place-items:center;
+  color:rgba(151, 174, 208, .78);
+  font-size:13px;
+}
+
+@media (max-width:760px){
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule{
+    width:100%;
+    max-width:none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule,
+  .page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule *{
+    transition:none !important;
+    animation:none !important;
+  }
 }
 
 /* Full-DOM starfield fix: one document-sized shell layer owns all stars. */
@@ -68452,4 +69326,3855 @@ html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .shellStarfield::befo
 html.perf-mode-low-gpu body[data-theme="cinematic-nebula"] .shellStarfield::after{
   mix-blend-mode:normal !important;
   filter:none !important;
+}
+
+/* Dashboard Market Tape final blend: remove legacy red undertones from the card charts. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart svg{
+  background:none !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientBand{
+  display:none !important;
+  opacity:0 !important;
+  fill:transparent !important;
+  stroke:transparent !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientGlow{
+  display:none !important;
+  opacity:0 !important;
+  fill:transparent !important;
+  stroke:transparent !important;
+  filter:none !important;
+  mix-blend-mode:normal !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientGlow--3,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart .marketMiniSparkAmbientGlow--5{
+  display:none !important;
+  opacity:0 !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down .dashboardTapeHourChange,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down .dashboardTapeHourPct,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLine.down{
+  color:rgba(84, 132, 255, .98) !important;
+  stroke:rgba(84, 132, 255, .94) !important;
+  text-shadow:0 0 10px rgba(84, 132, 255, .24) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.down{
+  color:rgba(84, 132, 255, .98) !important;
+  fill:rgba(74, 124, 236, .92) !important;
+  stroke:rgba(84, 132, 255, .92) !important;
+  filter:drop-shadow(0 0 6px rgba(84, 132, 255, .22)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkPoint.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkCurrentGlow.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkPriceMarker.down{
+  fill:rgba(84, 132, 255, .98) !important;
+  stroke:rgba(84, 132, 255, .42) !important;
+  filter:drop-shadow(0 0 7px rgba(84, 132, 255, .34)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="WEAK"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-OFF"],
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative .marketPulseWatchState{
+  color:rgba(216, 229, 255, .96) !important;
+  border-color:rgba(84, 132, 255, .50) !important;
+  background:rgba(20, 45, 104, .32) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 18px rgba(84, 132, 255, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="WEAK"]::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketPulseWatchState[data-state-label="RISK-OFF"]::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative .marketPulseWatchState::before{
+  background:rgba(84, 132, 255, .98) !important;
+  box-shadow:0 0 10px rgba(84, 132, 255, .44) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-critical .dashboardTapeFreshnessGlyph,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-missing .dashboardTapeFreshnessGlyph{
+  color:rgba(216, 229, 255, .98) !important;
+  background:rgba(20, 45, 104, .28) !important;
+  border-color:rgba(84, 132, 255, .42) !important;
+  box-shadow:0 0 9px rgba(84, 132, 255, .24), inset 0 1px 0 rgba(255,255,255,.08) !important;
+  text-shadow:0 0 8px rgba(84, 132, 255, .36) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-critical::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetFreshness.is-missing::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-critical::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetStatus.is-missing::before{
+  background:rgba(84, 132, 255, .92) !important;
+  box-shadow:0 0 8px rgba(84, 132, 255, .30) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.is-down{
+  border-color:rgba(84, 132, 255, .48) !important;
+  background:linear-gradient(180deg, rgba(6, 12, 24, .992), rgba(2, 7, 16, .998)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.036),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 34px rgba(84, 132, 255, .17),
+    0 0 0 1px rgba(84, 132, 255, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.is-down::before{
+  background:
+    radial-gradient(90% 70% at 50% 40%, rgba(84, 132, 255, .14), transparent 74%),
+    radial-gradient(80% 70% at 30% 20%, rgba(84, 246, 235, .05), transparent 70%) !important;
+  opacity:.42 !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.is-down::after{
+  background:none !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  opacity:0 !important;
+  filter:none !important;
+}
+
+/* Dashboard Market Tape authoritative chart blend: candle-local glow, no chart panel. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist{
+  --dashboard-tape-positive:rgba(84, 246, 235, .98);
+  --dashboard-tape-positive-soft:rgba(84, 246, 235, .26);
+  --dashboard-tape-negative:rgba(84, 132, 255, .98);
+  --dashboard-tape-negative-soft:rgba(84, 132, 255, .30);
+  --dashboard-tape-neutral:rgba(171, 194, 229, .88);
+  --dashboard-tape-card-bg:linear-gradient(180deg, rgba(6, 12, 24, .992), rgba(2, 7, 16, .998));
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule{
+  display:grid !important;
+  grid-template-columns:minmax(0, 1fr) auto;
+  grid-template-rows:auto minmax(76px, auto) auto;
+  grid-template-areas:
+    "label change"
+    "chart chart"
+    "pct pct";
+  gap:0 !important;
+  width:100% !important;
+  margin:2px 0 5px !important;
+  padding:0 !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+  isolation:isolate;
+  overflow:visible !important;
+  mix-blend-mode:normal !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourHead,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourFoot{
+  display:contents !important;
+  background:none !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLabel{
+  grid-area:label;
+  align-self:end;
+  color:rgba(172, 193, 224, .78) !important;
+  text-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChange{
+  grid-area:change;
+  align-self:end;
+  justify-self:end;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPct{
+  grid-area:pct;
+  justify-self:start;
+  align-self:start;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap svg,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard .dashboardTapeHourChart{
+  grid-area:chart;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:none !important;
+  height:76px !important;
+  margin:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  outline:0 !important;
+  background:transparent !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  mix-blend-mode:normal !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChartWrap::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourChart::after{
+  content:none !important;
+  display:none !important;
+  background:none !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+  opacity:0 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard :is(
+  .marketMiniSparkAmbient,
+  .marketMiniSparkAmbientBand,
+  .marketMiniSparkAmbientGlow
+){
+  display:none !important;
+  opacity:0 !important;
+  fill:transparent !important;
+  stroke:transparent !important;
+  filter:none !important;
+  mix-blend-mode:normal !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-up .dashboardTapeHourChange,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-up .dashboardTapeHourPct,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLine.up{
+  color:var(--dashboard-tape-positive) !important;
+  stroke:var(--dashboard-tape-positive) !important;
+  text-shadow:0 0 10px var(--dashboard-tape-positive-soft) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down .dashboardTapeHourChange,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down .dashboardTapeHourPct,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLine.down{
+  color:var(--dashboard-tape-negative) !important;
+  stroke:var(--dashboard-tape-negative) !important;
+  text-shadow:0 0 10px var(--dashboard-tape-negative-soft) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick{
+  stroke-width:1.85 !important;
+  stroke-linecap:round !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint.up{
+  fill:rgba(84, 246, 235, .95) !important;
+  stroke:rgba(84, 246, 235, .95) !important;
+  filter:
+    drop-shadow(0 0 5px rgba(84, 246, 235, .34))
+    drop-shadow(0 0 12px rgba(84, 246, 235, .16)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint.down{
+  fill:rgba(74, 124, 236, .94) !important;
+  stroke:rgba(84, 132, 255, .96) !important;
+  filter:
+    drop-shadow(0 0 5px rgba(84, 132, 255, .38))
+    drop-shadow(0 0 12px rgba(84, 132, 255, .18)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint.flat{
+  fill:rgba(190, 204, 224, .94) !important;
+  stroke:rgba(190, 204, 224, .88) !important;
+  filter:drop-shadow(0 0 5px rgba(171, 194, 229, .20)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint{
+  stroke-width:1.15 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.is-down{
+  border-color:rgba(84, 132, 255, .50) !important;
+  background:var(--dashboard-tape-card-bg) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.036),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 34px rgba(84, 132, 255, .17),
+    0 0 0 1px rgba(84, 132, 255, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative::after,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.is-down::before,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.is-down::after{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  background:none !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist :is(
+  .marketPulseWatchState[data-state-label="WEAK"],
+  .marketPulseWatchState[data-state-label="RISK-OFF"],
+  .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative .marketPulseWatchState
+){
+  color:rgba(216, 229, 255, .96) !important;
+  border-color:rgba(84, 132, 255, .50) !important;
+  background:rgba(20, 45, 104, .32) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 18px rgba(84, 132, 255, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist :is(
+  .marketPulseWatchState[data-state-label="WEAK"],
+  .marketPulseWatchState[data-state-label="RISK-OFF"],
+  .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative .marketPulseWatchState
+)::before{
+  background:rgba(84, 132, 255, .98) !important;
+  box-shadow:0 0 10px rgba(84, 132, 255, .44) !important;
+}
+
+/* Dashboard Market Tape candle clarity: crisp white candles, no blue glow. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist{
+  --dashboard-tape-candle-fill:rgba(238, 246, 255, .96);
+  --dashboard-tape-candle-stroke:rgba(238, 246, 255, .98);
+  --dashboard-tape-candle-current:rgba(255, 255, 255, .98);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.flat{
+  color:var(--dashboard-tape-candle-fill) !important;
+  fill:var(--dashboard-tape-candle-fill) !important;
+  stroke:var(--dashboard-tape-candle-stroke) !important;
+  filter:none !important;
+  opacity:1 !important;
+  shape-rendering:crispEdges;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick{
+  stroke-width:1.65 !important;
+  stroke-linecap:butt !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody{
+  rx:.2 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.current,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.current{
+  fill:var(--dashboard-tape-candle-current) !important;
+  stroke:var(--dashboard-tape-candle-current) !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down .dashboardTapeHourChange,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourModule.is-down .dashboardTapeHourPct,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourLine.down{
+  color:var(--dashboard-tape-negative) !important;
+  stroke:var(--dashboard-tape-negative) !important;
+  text-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourPoint.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkPoint.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkCurrentGlow.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .marketMiniSparkPriceMarker.down{
+  fill:var(--dashboard-tape-negative) !important;
+  stroke:rgba(216, 229, 255, .84) !important;
+  filter:none !important;
+  box-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeAssetCard.marketPulseTapeCard.is-down{
+  border-color:rgba(84, 132, 255, .50) !important;
+  background:var(--dashboard-tape-card-bg) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.036),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 0 1px rgba(84, 132, 255, .08) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist :is(
+  .marketPulseWatchState[data-state-label="WEAK"],
+  .marketPulseWatchState[data-state-label="RISK-OFF"],
+  .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative .marketPulseWatchState
+){
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05) !important;
+  text-shadow:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist :is(
+  .marketPulseWatchState[data-state-label="WEAK"],
+  .marketPulseWatchState[data-state-label="RISK-OFF"],
+  .dashboardTapeAssetCard.marketPulseTapeCard.tone-negative .marketPulseWatchState
+)::before{
+  box-shadow:none !important;
+}
+
+/* Dashboard Market Tape candle direction: bull white, bear blue, no blur. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist{
+  --dashboard-tape-bull-candle:rgba(238, 246, 255, .98);
+  --dashboard-tape-bear-candle:rgba(84, 132, 255, .96);
+  --dashboard-tape-flat-candle:rgba(190, 204, 224, .92);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.up{
+  color:var(--dashboard-tape-bull-candle) !important;
+  fill:var(--dashboard-tape-bull-candle) !important;
+  stroke:var(--dashboard-tape-bull-candle) !important;
+  filter:none !important;
+  opacity:1 !important;
+  shape-rendering:crispEdges !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.down{
+  color:var(--dashboard-tape-bear-candle) !important;
+  fill:var(--dashboard-tape-bear-candle) !important;
+  stroke:var(--dashboard-tape-bear-candle) !important;
+  filter:none !important;
+  opacity:1 !important;
+  shape-rendering:crispEdges !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourWick.flat,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeHourBody.flat{
+  color:var(--dashboard-tape-flat-candle) !important;
+  fill:var(--dashboard-tape-flat-candle) !important;
+  stroke:var(--dashboard-tape-flat-candle) !important;
+  filter:none !important;
+  opacity:1 !important;
+  shape-rendering:crispEdges !important;
+}
+
+/* Market Pulse Core Tape timeframe command pass. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell{
+  --core-tape-positive:rgba(84, 246, 235, .98);
+  --core-tape-positive-soft:rgba(84, 246, 235, .26);
+  --core-tape-negative:rgba(84, 132, 255, .98);
+  --core-tape-negative-soft:rgba(84, 132, 255, .34);
+  --core-tape-bull:rgba(238, 246, 255, .98);
+  --core-tape-bear:rgba(84, 132, 255, .96);
+  --core-tape-flat:rgba(190, 204, 224, .92);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeTopline{
+  align-items:center;
+  gap:8px;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowControl{
+  position:relative;
+  z-index:8;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowButton{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:30px;
+  padding:4px 12px;
+  border:1px solid rgba(84, 132, 255, .44);
+  border-radius:999px;
+  color:rgba(232, 242, 255, .96);
+  background:rgba(16, 30, 64, .54);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 18px rgba(84, 132, 255, .17);
+  font:inherit;
+  font-weight:900;
+  letter-spacing:0;
+  cursor:pointer;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowButton svg{
+  width:15px;
+  height:15px;
+  color:var(--core-tape-positive);
+  filter:drop-shadow(0 0 7px rgba(84, 246, 235, .34));
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowButton:hover,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowControl.is-open .marketPulseTapeWindowButton{
+  border-color:rgba(84, 246, 235, .52);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 18px rgba(84, 246, 235, .18),
+    0 0 30px rgba(84, 132, 255, .16);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowMenu{
+  position:absolute;
+  top:calc(100% + 7px);
+  left:0;
+  display:grid;
+  gap:4px;
+  min-width:104px;
+  padding:7px;
+  border:1px solid rgba(84, 132, 255, .34);
+  border-radius:12px;
+  background:rgba(4, 10, 22, .97);
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, .42),
+    0 0 28px rgba(84, 132, 255, .16);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowMenu[hidden]{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowMenu button{
+  padding:6px 9px;
+  border:1px solid rgba(132, 160, 208, .20);
+  border-radius:9px;
+  color:rgba(196, 211, 235, .92);
+  background:rgba(15, 25, 48, .72);
+  font:inherit;
+  font-size:13px;
+  font-weight:900;
+  text-align:left;
+  cursor:pointer;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowMenu button.is-active,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowMenu button:hover{
+  color:rgba(245, 250, 255, .98);
+  border-color:rgba(84, 246, 235, .42);
+  background:rgba(19, 58, 84, .70);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowModule{
+  display:grid;
+  grid-template-rows:auto minmax(78px, 1fr) auto;
+  gap:0;
+  min-height:116px;
+  margin:2px 0 4px;
+  background:none !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowHead,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowFoot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  min-width:0;
+  position:relative;
+  z-index:2;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowCardLabel{
+  color:rgba(147, 164, 191, .92);
+  font-size:14px;
+  font-weight:900;
+  line-height:1;
+  letter-spacing:0;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowChange,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowPct{
+  font-size:15px;
+  font-weight:900;
+  line-height:1;
+  letter-spacing:0;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowModule.is-up .marketPulseTapeWindowChange,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowModule.is-up .marketPulseTapeWindowPct{
+  color:var(--core-tape-positive);
+  text-shadow:0 0 11px var(--core-tape-positive-soft);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowModule.is-down .marketPulseTapeWindowChange,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowModule.is-down .marketPulseTapeWindowPct{
+  color:var(--core-tape-negative);
+  text-shadow:0 0 12px var(--core-tape-negative-soft);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowModule.is-flat .marketPulseTapeWindowChange,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowModule.is-flat .marketPulseTapeWindowPct{
+  color:rgba(188, 204, 232, .92);
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowChartWrap,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowChartWrap svg,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowChartWrap .dashboardTapeHourChart{
+  width:100%;
+  min-height:78px;
+  display:block;
+  overflow:visible;
+  background:none !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  box-shadow:none !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowChartWrap::before,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowChartWrap::after,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowChartWrap .marketMiniSparkAmbient,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowChartWrap .marketMiniSparkAmbientBand{
+  content:none !important;
+  display:none !important;
+  opacity:0 !important;
+  fill:transparent !important;
+  stroke:transparent !important;
+  filter:none !important;
+  background:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourBaseline{
+  stroke:rgba(100, 132, 180, .17);
+  stroke-width:.85;
+  stroke-dasharray:4 9;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourWick{
+  stroke-width:1.65 !important;
+  stroke-linecap:butt !important;
+  shape-rendering:crispEdges !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourBody{
+  rx:.2 !important;
+  shape-rendering:crispEdges !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourWick.up,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourBody.up{
+  color:var(--core-tape-bull) !important;
+  fill:var(--core-tape-bull) !important;
+  stroke:var(--core-tape-bull) !important;
+  filter:none !important;
+  opacity:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourWick.down,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourBody.down{
+  color:var(--core-tape-bear) !important;
+  fill:var(--core-tape-bear) !important;
+  stroke:var(--core-tape-bear) !important;
+  filter:drop-shadow(0 0 5px rgba(84, 132, 255, .34)) !important;
+  opacity:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourWick.flat,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourBody.flat{
+  color:var(--core-tape-flat) !important;
+  fill:var(--core-tape-flat) !important;
+  stroke:var(--core-tape-flat) !important;
+  filter:none !important;
+  opacity:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourLine.up{
+  stroke:var(--core-tape-positive) !important;
+  filter:drop-shadow(0 0 7px var(--core-tape-positive-soft)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourLine.down{
+  stroke:var(--core-tape-negative) !important;
+  filter:drop-shadow(0 0 8px var(--core-tape-negative-soft)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourPoint.up{
+  fill:var(--core-tape-positive) !important;
+  stroke:rgba(216, 255, 250, .88) !important;
+  filter:drop-shadow(0 0 8px var(--core-tape-positive-soft)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourPoint.down{
+  fill:var(--core-tape-negative) !important;
+  stroke:rgba(220, 230, 255, .88) !important;
+  filter:
+    drop-shadow(0 0 7px var(--core-tape-negative-soft))
+    drop-shadow(0 0 14px rgba(84, 132, 255, .18)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourPoint.flat{
+  fill:var(--core-tape-flat) !important;
+  stroke:rgba(226, 236, 250, .84) !important;
+  filter:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.glow-red{
+  border-color:rgba(84, 132, 255, .62) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 20px 38px rgba(0, 0, 0, .42),
+    0 0 30px rgba(84, 132, 255, .24),
+    0 0 70px rgba(84, 132, 255, .18),
+    0 0 0 1px rgba(84, 132, 255, .12) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative .marketPulseWatchState,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.glow-red .marketPulseWatchState{
+  border-color:rgba(84, 132, 255, .52) !important;
+  background:rgba(20, 45, 104, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 0 18px rgba(84, 132, 255, .22),
+    0 0 34px rgba(84, 132, 255, .18) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.tone-negative .marketPulseWatchState::before,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeCard.glow-red .marketPulseWatchState::before{
+  background:var(--core-tape-negative) !important;
+  box-shadow:0 0 11px rgba(84, 132, 255, .48) !important;
+}
+
+@media (prefers-reduced-motion: reduce){
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowButton,
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeWindowMenu,
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourWick.down,
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourBody.down,
+  body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .dashboardTapeHourPoint.down{
+    filter:none !important;
+    text-shadow:none !important;
+  }
+}
+
+/* Core Tape layout guard: prevent timeframe charts from colliding with price/range. */
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeTopline{
+  display:flex !important;
+  flex-direction:row !important;
+  flex-wrap:nowrap !important;
+  align-items:center !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeRefreshBtn{
+  flex:0 0 auto !important;
+  width:32px !important;
+  height:32px !important;
+  margin-left:0 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchCard{
+  display:grid !important;
+  grid-template-rows:auto 104px auto auto auto !important;
+  align-content:start !important;
+  gap:6px !important;
+  min-height:188px !important;
+  padding:10px 12px 12px !important;
+  overflow:hidden !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchCardTop{
+  min-height:28px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowModule{
+  grid-template-rows:17px 68px 17px !important;
+  gap:1px !important;
+  min-height:104px !important;
+  height:104px !important;
+  margin:0 !important;
+  overflow:hidden !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowHead,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowFoot{
+  height:17px !important;
+  min-height:17px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowCardLabel,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowChange,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowPct{
+  font-size:13px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowChartWrap{
+  height:68px !important;
+  min-height:68px !important;
+  max-height:68px !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowChartWrap svg,
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseTapeWindowChartWrap .dashboardTapeHourChart{
+  width:100% !important;
+  height:68px !important;
+  min-height:68px !important;
+  max-height:68px !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchValueRow{
+  min-height:25px !important;
+  align-items:baseline !important;
+  position:relative !important;
+  z-index:3 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchValueRow .v{
+  font-size:21px !important;
+  line-height:1.03 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchValueRow [data-role="change-line"]{
+  display:none !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchMetaRow{
+  min-height:18px !important;
+  position:relative !important;
+  z-index:3 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-market-pulse .marketPulseTapeShell .marketPulseWatchRange{
+  min-height:17px !important;
+  font-size:13px !important;
+  line-height:1.05 !important;
+  position:relative !important;
+  z-index:3 !important;
+}
+
+/* Dashboard Market Tape two-chart command surface. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeDualShell{
+  width:100%;
+  margin-top:18px;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeDualStack{
+  display:grid !important;
+  grid-template-columns:1fr !important;
+  gap:18px !important;
+  width:100%;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane{
+  display:grid !important;
+  grid-template-rows:auto minmax(168px, auto) auto;
+  gap:12px !important;
+  width:100% !important;
+  min-height:330px;
+  padding:24px 28px 22px !important;
+  border-radius:8px !important;
+  cursor:default !important;
+  text-align:left !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneTop,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneBottom{
+  display:grid;
+  grid-template-columns:minmax(150px, auto) minmax(210px, 1fr) auto;
+  align-items:center;
+  gap:14px;
+  min-width:0;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneBottom{
+  grid-template-columns:minmax(150px, auto) auto minmax(210px, 1fr);
+  align-items:end;
+  gap:18px;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .liveTapeWatchSymbol{
+  font-size:32px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearch{
+  justify-self:start;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  padding:4px;
+  border:1px solid rgba(76, 116, 196, .22);
+  border-radius:999px;
+  background:rgba(5, 11, 22, .58);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearch label{
+  padding-left:10px;
+  color:rgba(167, 189, 222, .78);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearch input{
+  width:92px;
+  min-width:0;
+  padding:8px 10px;
+  border:0;
+  border-radius:999px;
+  color:rgba(238, 246, 255, .96);
+  background:rgba(2, 7, 15, .88);
+  font:inherit;
+  font-size:15px;
+  font-weight:900;
+  text-transform:uppercase;
+  outline:0;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearch input:focus{
+  box-shadow:0 0 0 2px rgba(84, 246, 235, .34);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearch button{
+  padding:8px 12px;
+  border:1px solid rgba(84, 132, 255, .34);
+  border-radius:999px;
+  color:rgba(220, 232, 255, .92);
+  background:linear-gradient(180deg, rgba(26, 51, 103, .78), rgba(13, 28, 61, .82));
+  font:inherit;
+  font-size:13px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeSymbolSearch button:hover{
+  border-color:rgba(84, 246, 235, .46);
+  color:rgba(244, 250, 255, .98);
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .marketPulseWatchState{
+  justify-self:end;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourModule{
+  grid-template-columns:70px minmax(0, 1fr) minmax(90px, auto) !important;
+  grid-template-rows:auto minmax(128px, auto) auto !important;
+  grid-template-areas:
+    "label chart change"
+    "pct chart chart"
+    ". chart chart" !important;
+  align-items:center;
+  gap:0 16px !important;
+  margin:0 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourLabel{
+  align-self:start;
+  font-size:21px !important;
+  letter-spacing:.02em !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChange{
+  align-self:start;
+  font-size:25px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourPct{
+  align-self:center;
+  font-size:24px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChartWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChart,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChartWrap svg{
+  height:150px !important;
+  min-height:150px !important;
+  max-height:150px !important;
+  width:100% !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourBaseline{
+  stroke:rgba(126, 157, 209, .18) !important;
+  stroke-width:.8 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourWick{
+  stroke-linecap:butt !important;
+  stroke-width:1.75 !important;
+  shape-rendering:crispEdges !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourBody{
+  rx:.25 !important;
+  shape-rendering:crispEdges !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourWick.up,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourBody.up{
+  fill:rgba(238, 246, 255, .98) !important;
+  stroke:rgba(238, 246, 255, .98) !important;
+  filter:drop-shadow(0 0 5px rgba(225, 238, 255, .18)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourWick.down,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourBody.down{
+  fill:rgba(84, 132, 255, .96) !important;
+  stroke:rgba(84, 132, 255, .98) !important;
+  filter:
+    drop-shadow(0 0 6px rgba(84, 132, 255, .44))
+    drop-shadow(0 0 15px rgba(84, 132, 255, .20)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourPoint.down{
+  fill:rgba(84, 132, 255, .98) !important;
+  stroke:rgba(216, 229, 255, .90) !important;
+  filter:
+    drop-shadow(0 0 7px rgba(84, 132, 255, .52))
+    drop-shadow(0 0 16px rgba(84, 132, 255, .24)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourPoint.up{
+  fill:rgba(84, 246, 235, .98) !important;
+  stroke:rgba(216, 255, 251, .88) !important;
+  filter:drop-shadow(0 0 10px rgba(84, 246, 235, .32)) !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetPrice{
+  font-size:38px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetMeta{
+  justify-self:center;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetRange{
+  justify-self:end;
+  font-size:24px !important;
+  line-height:1.05 !important;
+}
+
+@media (max-width:900px){
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane{
+    min-height:380px;
+    padding:20px !important;
+  }
+
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneTop,
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneBottom{
+    grid-template-columns:1fr;
+    align-items:start;
+  }
+
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .marketPulseWatchState,
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetRange{
+    justify-self:start;
+  }
+
+  body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourModule{
+    grid-template-columns:70px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "label change"
+      "chart chart"
+      "pct pct" !important;
+  }
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetPrice{
+  font-size:24px !important;
+  line-height:1.08 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetRange{
+  justify-self:end;
+  font-size:24px !important;
+  line-height:1.08 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChartWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChart,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChartWrap svg{
+  height:150px !important;
+  min-height:150px !important;
+  max-height:150px !important;
+  width:120% !important;
+  overflow:visible !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .liveTapeWatchSymbol{
+  font-size:25px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourLabel{
+  align-self:start;
+  font-size:15px !important;
+  letter-spacing:.02em !important;
+}
+
+/* Compact dashboard tape: two quick-glance lanes, not feature cards. */
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeDualShell{
+  margin-top:14px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeDualStack{
+  gap:14px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane{
+  grid-template-rows:auto minmax(112px, auto) auto !important;
+  gap:8px !important;
+  min-height:268px !important;
+  padding:18px 22px 16px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneTop,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneBottom{
+  grid-template-columns:minmax(112px, auto) minmax(160px, 1fr) auto !important;
+  gap:10px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLaneBottom{
+  grid-template-columns:minmax(112px, auto) auto minmax(160px, 1fr) !important;
+  align-items:center !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .liveTapeWatchSymbol{
+  font-size:23px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourModule{
+  grid-template-columns:52px minmax(0, 1fr) minmax(76px, auto) !important;
+  grid-template-rows:auto minmax(112px, auto) auto !important;
+  gap:0 12px !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourLabel{
+  font-size:13px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChange{
+  font-size:22px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourPct{
+  font-size:21px !important;
+  line-height:1 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChartWrap,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChart,
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeHourChartWrap svg{
+  height:112px !important;
+  min-height:112px !important;
+  max-height:112px !important;
+  width:108% !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetPrice{
+  font-size:18px !important;
+  line-height:1.08 !important;
+}
+
+body[data-theme="cinematic-nebula"].page-dashboard .dashboardTapeMonitor.dashboardTapeWatchlist .dashboardTapeChartLane .dashboardTapeAssetRange{
+  font-size:15px !important;
+  line-height:1.04 !important;
+}
+
+/* Budget Command Center v2: local monthly cash-flow OS. */
+body.page-budget .budgetCashflowOs{
+  display:grid;
+  gap:14px;
+  max-width:1500px;
+}
+
+.budgetCashflowOs .card{
+  border-radius:8px;
+}
+
+.budgetOsHero{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(320px, 430px);
+  gap:18px;
+  align-items:center;
+}
+
+.budgetOsHero .pageTitle{
+  margin:8px 0 6px;
+}
+
+.budgetOsActions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:12px;
+}
+
+.budgetImportButton{
+  cursor:pointer;
+}
+
+.budgetOsHeroReadout{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:8px;
+  padding:12px;
+  border:1px solid rgba(84, 246, 235, .18);
+  border-radius:8px;
+  background:rgba(4, 12, 24, .62);
+}
+
+.budgetOsHeroReadout div,
+.budgetScenarioCard,
+.budgetOsAccountCard,
+.budgetPaycheckOsCard{
+  background:linear-gradient(180deg, rgba(8, 18, 34, .82), rgba(3, 8, 18, .88));
+  border:1px solid rgba(84, 132, 255, .22);
+  box-shadow:0 0 24px rgba(84, 246, 235, .055);
+}
+
+.budgetOsHeroReadout div{
+  padding:10px;
+  border-radius:8px;
+}
+
+.budgetOsHeroReadout span,
+.budgetOsPanel span,
+.budgetOsAccountHead span,
+.budgetScenarioCard span,
+.budgetOsMiniStats span{
+  color:rgba(168, 190, 220, .78);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.budgetOsHeroReadout strong{
+  display:block;
+  margin-top:4px;
+  color:rgba(238, 246, 255, .98);
+  font-size:21px;
+  line-height:1;
+}
+
+.budgetOsHeroReadout p{
+  grid-column:1 / -1;
+  margin:2px 0 0;
+  color:rgba(190, 210, 235, .78);
+}
+
+.budgetOsProgressGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+}
+
+.budgetOsProgress{
+  padding:11px 12px;
+  border:1px solid rgba(84, 132, 255, .22);
+  border-radius:8px;
+  background:rgba(5, 12, 24, .68);
+}
+
+.budgetOsProgress div,
+.budgetOsSectionHead,
+.budgetOsAccountHead,
+.budgetOsCardTop,
+.budgetOsMiniStats,
+.budgetOsLineList div{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.budgetOsProgress i{
+  display:block;
+  height:7px;
+  margin-top:8px;
+  overflow:hidden;
+  border-radius:999px;
+  background:rgba(62, 92, 145, .32);
+}
+
+.budgetOsProgress b{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg, rgba(84, 246, 235, .95), rgba(83, 211, 255, .82));
+}
+
+.budgetOsProgress.is-warn b{background:linear-gradient(90deg, #ffc857, #54f6eb)}
+.budgetOsProgress.is-bad b{background:linear-gradient(90deg, #5484ff, #ffc857)}
+
+.budgetOsGrid,
+.budgetOsColumns{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:14px;
+}
+
+.budgetOsColumns{
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+}
+
+.budgetOsSetupProjection{
+  grid-template-columns:minmax(0, 1.12fr) minmax(0, .88fr);
+}
+
+.budgetOsPanel,
+.budgetOsAccountCard{
+  padding:16px;
+}
+
+.budgetOsSectionHead{
+  margin-bottom:12px;
+}
+
+.budgetOsSectionHead h3,
+.budgetOsAccountHead h3,
+.budgetScenarioCard h4,
+.budgetPaycheckOsCard h4{
+  margin:4px 0 0;
+  color:rgba(238, 246, 255, .96);
+}
+
+.budgetOsFormGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+
+.budgetOsFormGrid label,
+.budgetOsCheck,
+.budgetChecklist label{
+  display:grid;
+  gap:6px;
+  color:rgba(170, 191, 220, .82);
+  font-weight:800;
+}
+
+.budgetOsFormGrid input,
+.budgetOsTable input,
+.budgetOsTable select,
+.budgetOsJsonPanel textarea{
+  width:100%;
+  min-width:0;
+  border:1px solid rgba(84, 132, 255, .24);
+  border-radius:8px;
+  padding:9px 10px;
+  color:rgba(238, 246, 255, .96);
+  background:rgba(2, 7, 15, .86);
+  font:inherit;
+}
+
+.budgetOsCheck,
+.budgetChecklist label,
+.budgetOsInlineCheck{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.budgetScenarioGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+
+.budgetScenarioCard{
+  padding:14px;
+  border-radius:8px;
+}
+
+.budgetScenarioCard.is-active{
+  border-color:rgba(84, 246, 235, .36);
+  box-shadow:0 0 26px rgba(84, 246, 235, .10);
+}
+
+.budgetScenarioCard dl,
+.budgetOsAccountCard dl{
+  display:grid;
+  gap:7px;
+  margin:10px 0 0;
+}
+
+.budgetScenarioCard dt,
+.budgetOsAccountCard dt{
+  color:rgba(168, 190, 220, .74);
+}
+
+.budgetScenarioCard dd,
+.budgetOsAccountCard dd{
+  margin:0;
+  color:rgba(238, 246, 255, .95);
+  font-size:18px;
+  font-weight:950;
+}
+
+.budgetOsBadge{
+  display:inline-flex;
+  align-items:center;
+  border:1px solid rgba(84, 246, 235, .28);
+  border-radius:999px;
+  padding:5px 9px;
+  color:rgba(191, 255, 248, .96);
+  background:rgba(84, 246, 235, .08);
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.budgetOsBadge.is-warn{border-color:rgba(255, 200, 87, .36);color:#ffc857;background:rgba(255, 200, 87, .08)}
+.budgetOsBadge.is-bad{border-color:rgba(84, 132, 255, .42);color:#7fa3ff;background:rgba(84, 132, 255, .10)}
+
+.budgetPaycheckOsGrid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:12px;
+}
+
+.budgetPaycheckOsCard{
+  display:grid;
+  gap:10px;
+  border-radius:8px;
+  padding:13px;
+}
+
+.budgetOsMiniStats{
+  align-items:stretch;
+}
+
+.budgetOsMiniStats span{
+  flex:1;
+  padding:8px;
+  border-radius:8px;
+  background:rgba(255, 255, 255, .035);
+}
+
+.budgetOsMiniStats strong{
+  display:block;
+  margin-top:4px;
+  color:rgba(238, 246, 255, .95);
+  font-size:16px;
+}
+
+.budgetOsLineList{
+  display:grid;
+  gap:7px;
+}
+
+.budgetOsLineList div{
+  padding:8px 10px;
+  border:1px solid rgba(84, 132, 255, .14);
+  border-radius:8px;
+  background:rgba(255, 255, 255, .026);
+}
+
+.budgetOsLineList small{
+  display:block;
+  margin-top:4px;
+  color:rgba(168, 190, 220, .68);
+}
+
+.budgetTableWrap{
+  overflow:auto;
+}
+
+.budgetOsTable{
+  width:100%;
+  min-width:980px;
+  border-collapse:separate;
+  border-spacing:0 7px;
+}
+
+.budgetOsTable th{
+  color:rgba(168, 190, 220, .74);
+  font-size:12px;
+  text-align:left;
+  text-transform:uppercase;
+}
+
+.budgetOsTable td{
+  padding:6px;
+  background:rgba(5, 12, 24, .62);
+  border-top:1px solid rgba(84, 132, 255, .14);
+  border-bottom:1px solid rgba(84, 132, 255, .14);
+}
+
+.budgetOsTable td:first-child{
+  border-left:1px solid rgba(84, 132, 255, .14);
+  border-radius:8px 0 0 8px;
+}
+
+.budgetOsTable td:last-child{
+  border-right:1px solid rgba(84, 132, 255, .14);
+  border-radius:0 8px 8px 0;
+}
+
+.budgetSubColumns{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.budgetRulesList,
+.budgetChecklist{
+  display:grid;
+  gap:8px;
+  margin:12px 0 0;
+  color:rgba(202, 218, 240, .84);
+}
+
+.budgetSweepResult{
+  margin-top:12px;
+  padding:16px;
+  border-radius:8px;
+  color:rgba(191, 255, 248, .98);
+  background:rgba(84, 246, 235, .10);
+  border:1px solid rgba(84, 246, 235, .25);
+  font-size:22px;
+  font-weight:950;
+}
+
+.budgetSweepResult.is-warn{
+  color:#ffc857;
+  background:rgba(255, 200, 87, .08);
+  border-color:rgba(255, 200, 87, .28);
+}
+
+.budgetOsJsonPanel textarea{
+  min-height:240px;
+  margin-top:12px;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:12px;
+}
+
+.budgetToast{
+  position:fixed;
+  right:22px;
+  bottom:22px;
+  z-index:50;
+  padding:12px 14px;
+  border:1px solid rgba(84, 246, 235, .34);
+  border-radius:8px;
+  color:rgba(238, 246, 255, .96);
+  background:rgba(4, 12, 24, .94);
+  box-shadow:0 0 24px rgba(84, 246, 235, .14);
+}
+
+@media (max-width:1100px){
+  .budgetOsHero,
+  .budgetOsGrid,
+  .budgetOsColumns,
+  .budgetPaycheckOsGrid,
+  .budgetOsSetupProjection{
+    grid-template-columns:1fr;
+  }
+
+  .budgetOsProgressGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .budgetOsFormGrid,
+  .budgetSubColumns{
+    grid-template-columns:1fr;
+  }
+}
+
+/* Budget month ledger cleanup layer. */
+body.page-budget .budgetLedgerApp{
+  display:grid;
+  gap:18px;
+  max-width:1480px;
+}
+
+.budgetLedgerApp .card{
+  border-radius:8px;
+}
+
+.budgetLedgerHero{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(420px, .9fr);
+  gap:22px;
+  align-items:end;
+}
+
+.budgetLedgerHero .pageTitle{
+  margin:8px 0 6px;
+}
+
+.budgetMonthControls{
+  display:grid;
+  grid-template-columns:minmax(190px, 1fr) repeat(4, auto);
+  gap:10px;
+  align-items:end;
+}
+
+.budgetMonthControls label,
+.budgetFormGrid label{
+  display:grid;
+  gap:6px;
+  color:rgba(168, 190, 220, .82);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.budgetMonthControls select,
+.budgetFormGrid input,
+.budgetFormGrid textarea,
+.budgetLedgerTable input,
+.budgetLedgerTable select,
+.budgetLedgerApp textarea{
+  width:100%;
+  min-width:0;
+  border:1px solid rgba(84, 132, 255, .24);
+  border-radius:8px;
+  padding:9px 10px;
+  color:rgba(238, 246, 255, .96);
+  background:rgba(2, 7, 15, .86);
+  font:inherit;
+}
+
+.budgetSummaryCards{
+  display:grid;
+  grid-template-columns:repeat(6, minmax(0, 1fr));
+  gap:12px;
+}
+
+.budgetSummaryCard{
+  padding:15px;
+  border:1px solid rgba(84, 132, 255, .22);
+  border-radius:8px;
+  background:linear-gradient(180deg, rgba(8, 18, 34, .82), rgba(3, 8, 18, .88));
+  box-shadow:0 0 24px rgba(84, 246, 235, .055);
+}
+
+.budgetSummaryCard span,
+.budgetMetricGrid span,
+.budgetColumnHead span,
+.budgetPaycheckTotals span,
+.budgetSectionHead > span,
+.budgetSectionSummary > span{
+  color:rgba(168, 190, 220, .76);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.budgetSummaryCard strong{
+  display:block;
+  margin-top:8px;
+  color:rgba(238, 246, 255, .98);
+  font-size:24px;
+  line-height:1.02;
+}
+
+.budgetSummaryCard.is-stable strong{color:rgba(84, 246, 235, .98)}
+.budgetSummaryCard.is-watch strong{color:#ffc857}
+.budgetSummaryCard.is-danger strong{color:#7fa3ff}
+
+.budgetOverviewColumns{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:16px;
+}
+
+.budgetOverviewColumn,
+.budgetSectionPanel,
+.budgetMonthSetupPanel{
+  padding:18px;
+}
+
+.budgetColumnHead,
+.budgetSectionHead,
+.budgetSectionSummary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:14px;
+}
+
+.budgetSectionSummary{
+  margin-bottom:0;
+  cursor:pointer;
+}
+
+.budgetColumnHead h3,
+.budgetSectionHead h3,
+.budgetSectionSummary h3{
+  margin:4px 0 0;
+  color:rgba(238, 246, 255, .96);
+  font-size:23px;
+  line-height:1.08;
+}
+
+.budgetMetricGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+
+.budgetMetricGrid div,
+.budgetPaycheckTotals div,
+.budgetScenarioGrid div{
+  padding:11px;
+  border:1px solid rgba(84, 132, 255, .16);
+  border-radius:8px;
+  background:rgba(5, 12, 24, .58);
+}
+
+.budgetMetricGrid strong,
+.budgetPaycheckTotals strong{
+  display:block;
+  margin-top:5px;
+  color:rgba(238, 246, 255, .95);
+  font-size:18px;
+  line-height:1.05;
+}
+
+.budgetStateBadge{
+  display:inline-flex;
+  align-items:center;
+  border:1px solid rgba(84, 246, 235, .30);
+  border-radius:999px;
+  padding:6px 10px;
+  color:rgba(191, 255, 248, .96);
+  background:rgba(84, 246, 235, .08);
+  font-size:12px;
+  font-weight:950;
+  text-transform:uppercase;
+}
+
+.budgetStateBadge.is-watch{border-color:rgba(255, 200, 87, .38);color:#ffc857;background:rgba(255, 200, 87, .08)}
+.budgetStateBadge.is-danger{border-color:rgba(84, 132, 255, .42);color:#7fa3ff;background:rgba(84, 132, 255, .10)}
+
+.budgetAlertList{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+
+.budgetAlert{
+  padding:12px;
+  border:1px solid rgba(84, 132, 255, .18);
+  border-radius:8px;
+  color:rgba(208, 224, 244, .92);
+  background:rgba(5, 12, 24, .62);
+}
+
+.budgetAlert.is-stable{border-color:rgba(84, 246, 235, .24)}
+.budgetAlert.is-watch{border-color:rgba(255, 200, 87, .30)}
+.budgetAlert.is-danger{border-color:rgba(84, 132, 255, .40)}
+
+.budgetFormGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+
+.budgetFull{
+  grid-column:1 / -1;
+}
+
+.budgetCheck{
+  display:flex !important;
+  align-items:center;
+  gap:8px;
+}
+
+.budgetTabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.budgetPaycheckTotals,
+.budgetVarianceGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+  margin-bottom:12px;
+}
+
+.budgetLedgerList{
+  display:grid;
+  gap:8px;
+}
+
+.budgetLedgerList div{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:4px 12px;
+  padding:10px 12px;
+  border:1px solid rgba(84, 132, 255, .14);
+  border-radius:8px;
+  background:rgba(5, 12, 24, .56);
+}
+
+.budgetLedgerList small{
+  color:rgba(168, 190, 220, .70);
+}
+
+.budgetLedgerList strong{
+  grid-row:1 / span 2;
+  grid-column:2;
+  align-self:center;
+  color:rgba(84, 246, 235, .95);
+}
+
+.budgetTableScroll{
+  overflow:auto;
+}
+
+.budgetLedgerTable{
+  width:100%;
+  min-width:1050px;
+  border-collapse:separate;
+  border-spacing:0 8px;
+}
+
+.budgetLedgerTable th{
+  padding:0 8px 4px;
+  color:rgba(168, 190, 220, .76);
+  font-size:12px;
+  text-align:left;
+  text-transform:uppercase;
+}
+
+.budgetLedgerTable td{
+  padding:7px;
+  background:rgba(5, 12, 24, .64);
+  border-top:1px solid rgba(84, 132, 255, .14);
+  border-bottom:1px solid rgba(84, 132, 255, .14);
+}
+
+.budgetLedgerTable td:first-child{
+  border-left:1px solid rgba(84, 132, 255, .14);
+  border-radius:8px 0 0 8px;
+}
+
+.budgetLedgerTable td:last-child{
+  border-right:1px solid rgba(84, 132, 255, .14);
+  border-radius:0 8px 8px 0;
+}
+
+.budgetRules{
+  display:grid;
+  gap:8px;
+  margin:12px 0 0;
+  color:rgba(205, 221, 241, .86);
+}
+
+.budgetSweepCard{
+  margin-top:12px;
+  padding:16px;
+  border:1px solid rgba(255, 200, 87, .32);
+  border-radius:8px;
+  color:#ffc857;
+  background:rgba(255, 200, 87, .08);
+  font-size:22px;
+  font-weight:950;
+}
+
+.budgetSweepCard.is-stable{
+  border-color:rgba(84, 246, 235, .30);
+  color:rgba(84, 246, 235, .98);
+  background:rgba(84, 246, 235, .08);
+}
+
+.budgetScenarioGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+  margin-top:12px;
+}
+
+.budgetDataActions{
+  display:flex;
+  gap:10px;
+  margin:12px 0;
+}
+
+.budgetLedgerApp textarea#budgetJsonBox{
+  min-height:260px;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:12px;
+}
+
+@media (max-width:1100px){
+  .budgetLedgerHero,
+  .budgetMonthControls,
+  .budgetSummaryCards,
+  .budgetOverviewColumns,
+  .budgetAlertList,
+  .budgetFormGrid,
+  .budgetPaycheckTotals,
+  .budgetVarianceGrid,
+  .budgetScenarioGrid{
+    grid-template-columns:1fr;
+  }
+}
+
+/* Executive Command Center */
+.executiveCommandPage{
+  display:grid;
+  gap:16px;
+}
+
+.executiveHero{
+  display:grid;
+  grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);
+  gap:18px;
+  align-items:stretch;
+  background:
+    linear-gradient(135deg, rgba(47,107,255,.14), rgba(7,16,34,.72) 48%, rgba(84,246,235,.06)),
+    var(--panel);
+}
+
+.executiveHeroCopy{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:8px;
+}
+
+.executiveHeroTargets,
+.executiveHealthGrid,
+.executiveCommandGrid,
+.executiveDivisionGrid,
+.executiveLowerGrid,
+.executiveRoadmapGrid,
+.budgetDebtPolicyGrid{
+  display:grid;
+  gap:12px;
+}
+
+.executiveHeroTargets{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+
+.executiveHeroTargets div,
+.executiveHealthCard,
+.executiveDivisionCard,
+.executiveRoadmapItem,
+.executiveAllocationRow,
+.budgetDebtPolicyCard{
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:14px;
+  background:rgba(6,14,30,.62);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.executiveHeroTargets div{
+  padding:13px;
+}
+
+.executiveHeroTargets span,
+.executiveHealthCard span,
+.executiveRoadmapItem span,
+.executiveAllocationRow span,
+.budgetDebtPolicyCard span{
+  display:block;
+  color:var(--muted);
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+
+.executiveHeroTargets strong,
+.executiveHealthCard strong{
+  display:block;
+  margin-top:6px;
+  color:var(--text);
+  font-size:22px;
+}
+
+.executiveHealthGrid{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+
+.executiveHealthCard{
+  padding:15px;
+  min-height:112px;
+}
+
+.executiveHealthCard.is-positive{
+  border-color:rgba(84,246,235,.34);
+  background:linear-gradient(180deg, rgba(84,246,235,.10), rgba(6,14,30,.66));
+}
+
+.executiveHealthCard.is-watch{
+  border-color:rgba(217,181,109,.34);
+  background:linear-gradient(180deg, rgba(217,181,109,.10), rgba(6,14,30,.66));
+}
+
+.executiveCommandGrid{
+  grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);
+  align-items:start;
+}
+
+.executivePanel{
+  display:grid;
+  gap:14px;
+}
+
+.executiveSectionHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.executiveSectionHead h3{
+  margin:0;
+  color:var(--text);
+}
+
+.executiveChecklist{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+
+.executiveChecklist label{
+  display:flex;
+  gap:9px;
+  align-items:flex-start;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.035);
+  color:var(--text);
+}
+
+.executiveChecklist input{
+  margin-top:2px;
+  accent-color:var(--accent);
+}
+
+.executiveScoreRows{
+  display:grid;
+  gap:10px;
+}
+
+.executiveScoreRow{
+  display:grid;
+  grid-template-columns:110px minmax(0,1fr) 54px;
+  gap:10px;
+  align-items:center;
+  color:var(--text);
+}
+
+.executiveScoreRow meter{
+  width:100%;
+  height:12px;
+}
+
+.executiveDivisionGrid{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+
+.executiveDivisionCard{
+  padding:15px;
+  display:grid;
+  gap:12px;
+}
+
+.executiveDivisionTop{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+}
+
+.executiveDivisionTop strong{
+  color:var(--text);
+}
+
+.executiveDivisionTop span,
+.budgetDebtPolicyStatus{
+  padding:5px 9px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.10);
+  color:var(--muted);
+  font-size:12px;
+}
+
+.executiveDivisionCard.is-healthy .executiveDivisionTop span{
+  color:rgba(84,246,235,.96);
+  border-color:rgba(84,246,235,.28);
+}
+
+.executiveDivisionCard.is-watch .executiveDivisionTop span{
+  color:rgba(217,181,109,.96);
+  border-color:rgba(217,181,109,.28);
+}
+
+.executiveDivisionCard p,
+.executiveNextAction span,
+.executivePolicyLine,
+.budgetDebtPolicyCard p{
+  color:var(--muted);
+}
+
+.executiveNextAction{
+  display:grid;
+  gap:4px;
+}
+
+.executiveNextAction strong{
+  color:var(--text);
+  font-size:14px;
+}
+
+.executiveNoteGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+
+.executiveNoteGrid label{
+  display:grid;
+  gap:6px;
+  color:var(--muted);
+}
+
+.executiveNoteGrid label:first-child{
+  grid-column:1 / -1;
+}
+
+.executiveNoteGrid textarea{
+  width:100%;
+  resize:vertical;
+}
+
+.executiveAllocationRows{
+  display:grid;
+  gap:10px;
+}
+
+.executiveAllocationRow{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:13px;
+  align-items:center;
+}
+
+.executiveAllocationRow strong{
+  color:rgba(84,246,235,.98);
+  font-size:22px;
+}
+
+.executivePolicyLine{
+  margin:4px 0 0;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid rgba(217,181,109,.26);
+  background:rgba(217,181,109,.08);
+}
+
+.executiveRoadmapGrid{
+  grid-template-columns:repeat(5,minmax(0,1fr));
+}
+
+.executiveRoadmapItem{
+  padding:13px;
+  min-height:92px;
+}
+
+.executiveRoadmapItem strong{
+  display:block;
+  margin-top:6px;
+  color:var(--text);
+}
+
+.budgetDebtPolicyPanel{
+  border-color:rgba(217,181,109,.22);
+}
+
+.budgetDebtPolicyGrid{
+  grid-template-columns:1.15fr 1fr .85fr;
+}
+
+.budgetDebtPolicyCard{
+  padding:14px;
+}
+
+.budgetDebtPolicyCard strong{
+  display:block;
+  margin-top:7px;
+  color:var(--text);
+  font-size:19px;
+}
+
+.budgetDebtPolicyPrimary{
+  border-color:rgba(217,181,109,.30);
+  background:linear-gradient(180deg, rgba(217,181,109,.10), rgba(6,14,30,.62));
+}
+
+.budgetDebtPolicyRule{
+  border-color:rgba(84,246,235,.28);
+  background:linear-gradient(180deg, rgba(84,246,235,.08), rgba(6,14,30,.62));
+}
+
+.executiveHero{
+  grid-template-columns:minmax(0,1fr) minmax(280px,.45fr);
+}
+
+.executiveHeroQuestion,
+.executiveKpiCard,
+.executiveDebtCard,
+.executiveMetricCard,
+.executiveBalanceRow,
+.executiveNetWorthTotal,
+.executiveGrowthStep,
+.executiveTimelineItem{
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:14px;
+  background:rgba(6,14,30,.62);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.executiveHeroQuestion{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:8px;
+  padding:18px;
+  border-color:rgba(84,246,235,.24);
+}
+
+.executiveHeroQuestion span,
+.executiveKpiCard span,
+.executiveDebtCard span,
+.executiveProgressRow span,
+.executiveBalanceRow span,
+.executiveNetWorthTotal span,
+.executiveMetricCard span,
+.executiveGrowthStep span,
+.executiveTimelineItem span{
+  display:block;
+  color:var(--muted);
+  font-size:12px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.executiveHeroQuestion strong{
+  color:var(--text);
+  font-size:22px;
+  line-height:1.2;
+}
+
+.executiveKpiBand{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:10px;
+}
+
+.executiveKpiCard{
+  min-height:92px;
+  padding:14px;
+  border-color:rgba(84,246,235,.16);
+}
+
+.executiveKpiCard strong{
+  display:block;
+  margin-top:8px;
+  color:var(--text);
+  font-size:21px;
+  line-height:1.1;
+}
+
+.executiveTopGrid{
+  display:grid;
+  grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);
+  gap:14px;
+  align-items:start;
+}
+
+.executivePriorityList{
+  display:grid;
+  gap:8px;
+  margin:0;
+  padding-left:22px;
+  color:var(--text);
+}
+
+.executivePriorityList li{
+  padding:10px 12px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.035);
+}
+
+.executiveDebtPanel{
+  border-color:rgba(217,181,109,.22);
+}
+
+.executiveDebtCard{
+  padding:14px;
+  border-color:rgba(217,181,109,.30);
+  background:linear-gradient(180deg, rgba(217,181,109,.10), rgba(6,14,30,.62));
+}
+
+.executiveDebtCard strong{
+  display:block;
+  margin-top:7px;
+  color:var(--text);
+  font-size:22px;
+}
+
+.executiveDebtCard p{
+  margin:7px 0 0;
+  color:var(--muted);
+}
+
+.executiveRuleList{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+
+.executiveRuleList li{
+  padding:10px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:rgba(255,255,255,.035);
+  color:var(--text);
+}
+
+.executiveProgressStack{
+  display:grid;
+  gap:10px;
+}
+
+.executiveProgressRow{
+  display:grid;
+  gap:6px;
+}
+
+.executiveProgressRow div{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+}
+
+.executiveProgressRow strong{
+  color:rgba(84,246,235,.98);
+}
+
+.executiveProgressRow meter{
+  width:100%;
+  height:12px;
+}
+
+.executiveChecklistCompact{
+  grid-template-columns:1fr;
+}
+
+.executiveGrowthTimeline{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  align-items:stretch;
+}
+
+.executiveGrowthStep{
+  position:relative;
+  min-height:118px;
+  padding:15px;
+  border-color:rgba(84,246,235,.22);
+}
+
+.executiveGrowthStep:before{
+  content:"";
+  position:absolute;
+  left:15px;
+  right:15px;
+  bottom:16px;
+  height:3px;
+  border-radius:999px;
+  background:linear-gradient(90deg, rgba(84,246,235,.35), rgba(217,181,109,.70));
+}
+
+.executiveGrowthStep strong{
+  display:block;
+  margin-top:8px;
+  color:var(--text);
+  font-size:22px;
+}
+
+.executiveDivisionCard p b{
+  color:var(--text);
+  font-weight:700;
+}
+
+.executiveNetWorthGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+
+.executiveNetWorthGrid h4{
+  margin:0 0 8px;
+  color:var(--text);
+}
+
+.executiveBalanceRow,
+.executiveNetWorthTotal{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+  padding:11px 12px;
+  margin-top:8px;
+}
+
+.executiveBalanceRow strong,
+.executiveNetWorthTotal strong{
+  color:rgba(217,181,109,.96);
+  white-space:nowrap;
+}
+
+.executiveNetWorthTotal{
+  margin-top:0;
+  border-color:rgba(84,246,235,.28);
+  background:linear-gradient(180deg, rgba(84,246,235,.08), rgba(6,14,30,.62));
+}
+
+.executiveMetricGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+
+.executiveMetricCard{
+  min-height:92px;
+  padding:13px;
+}
+
+.executiveMetricCard strong{
+  display:block;
+  margin-top:7px;
+  color:var(--text);
+  line-height:1.25;
+}
+
+.executiveInstruction{
+  margin:0;
+  padding:11px 12px;
+  border:1px solid rgba(84,246,235,.20);
+  border-radius:12px;
+  background:rgba(84,246,235,.07);
+  color:var(--text);
+}
+
+.executiveTimelineGrid{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:10px;
+}
+
+.executiveTimelineItem{
+  min-height:104px;
+  padding:13px;
+}
+
+.executiveTimelineItem strong{
+  display:block;
+  margin-top:8px;
+  color:var(--text);
+  line-height:1.25;
+}
+
+@media (max-width:1100px){
+  .executiveHero,
+  .executiveCommandGrid,
+  .executiveTopGrid,
+  .executiveLowerGrid,
+  .budgetDebtPolicyGrid{
+    grid-template-columns:1fr;
+  }
+
+  .executiveHealthGrid,
+  .executiveDivisionGrid,
+  .executiveRoadmapGrid,
+  .executiveKpiBand,
+  .executiveTimelineGrid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .executiveGrowthTimeline{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media (max-width:720px){
+  .executiveHeroTargets,
+  .executiveKpiBand,
+  .executiveHealthGrid,
+  .executiveChecklist,
+  .executiveRuleList,
+  .executiveDivisionGrid,
+  .executiveGrowthTimeline,
+  .executiveNetWorthGrid,
+  .executiveMetricGrid,
+  .executiveNoteGrid,
+  .executiveRoadmapGrid,
+  .executiveTimelineGrid{
+    grid-template-columns:1fr;
+  }
+
+  .executiveSectionHead,
+  .executiveAllocationRow,
+  .executiveBalanceRow,
+  .executiveNetWorthTotal{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .executiveScoreRow{
+    grid-template-columns:88px minmax(0,1fr) 48px;
+  }
+}
+
+/* Executive Command Center layout polish */
+.executiveCommandPage{
+  --space-xs:6px;
+  --space-sm:10px;
+  --space-md:16px;
+  --space-lg:24px;
+  --space-xl:32px;
+  width:100%;
+  max-width:1200px;
+  margin:0 auto;
+  padding:0 clamp(12px, 2vw, 20px) var(--space-xl);
+  display:grid;
+  gap:var(--space-lg);
+  font-size:15px;
+  line-height:1.45;
+}
+
+.executiveCommandPage .card{
+  height:100%;
+}
+
+.executiveHero{
+  min-height:220px;
+  display:grid;
+  grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr);
+  gap:var(--space-lg);
+  align-items:stretch;
+  padding:var(--space-lg);
+}
+
+.executiveHeroCopy,
+.executiveHeroQuestion{
+  min-height:172px;
+}
+
+.executiveHeroCopy{
+  justify-content:center;
+  gap:var(--space-sm);
+}
+
+.executiveHeroCopy .pageTitle{
+  margin:0;
+}
+
+.executiveHeroCopy .summaryLead{
+  max-width:62ch;
+  margin:0;
+  font-size:15px;
+}
+
+.executiveHeroQuestion{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:var(--space-sm);
+  padding:var(--space-lg);
+  border-radius:14px;
+}
+
+.executiveHeroQuestion strong{
+  max-width:16ch;
+  font-size:clamp(24px, 3vw, 32px);
+}
+
+.executiveKpiBand{
+  display:grid;
+  grid-template-columns:repeat(7, 1fr);
+  gap:var(--space-sm);
+}
+
+.executiveKpiCard{
+  min-width:0;
+  min-height:104px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:var(--space-sm);
+  padding:var(--space-md);
+  border:1px solid rgba(84,246,235,.16);
+  border-radius:12px;
+  background:rgba(6,14,30,.64);
+}
+
+.executiveKpiCard span,
+.executiveHealthCard span,
+.executiveDebtCard span,
+.executiveMetricCard span,
+.executiveGrowthStep span,
+.executiveTimelineItem span,
+.executiveRoadmapItem span{
+  font-size:12px;
+  letter-spacing:.06em;
+  line-height:1.25;
+}
+
+.executiveKpiCard strong{
+  margin:0;
+  font-size:clamp(20px, 2vw, 25px);
+  line-height:1.05;
+  white-space:nowrap;
+}
+
+.section-grid-2{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+  align-items:stretch;
+}
+
+.section-grid-2 > .card,
+.section-grid-2 > .executivePanel{
+  min-height:100%;
+}
+
+.executivePanel{
+  align-content:start;
+  gap:var(--space-md);
+  padding:var(--space-lg);
+}
+
+.executiveSectionHead{
+  min-height:38px;
+  margin-bottom:0;
+  align-items:center;
+}
+
+.executiveSectionHead h3{
+  margin:0;
+  font-size:17px;
+  line-height:1.2;
+  text-align:right;
+}
+
+.executivePriorityList{
+  gap:var(--space-sm);
+  padding-left:24px;
+}
+
+.executivePriorityList li,
+.executiveRuleList li,
+.executiveChecklist label{
+  min-height:44px;
+  padding:11px 12px;
+  border-color:rgba(255,255,255,.06);
+  border-radius:10px;
+  background:rgba(255,255,255,.025);
+}
+
+.executiveRuleList{
+  gap:var(--space-sm);
+}
+
+.executiveDebtCard{
+  min-height:122px;
+  padding:var(--space-md);
+}
+
+.executivePolicyLine{
+  margin:0;
+  padding:var(--space-md);
+  font-size:15px;
+}
+
+.executiveHealthGrid{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  gap:var(--space-md);
+}
+
+.executiveHealthCard{
+  min-height:118px;
+  padding:var(--space-md);
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:var(--space-sm);
+}
+
+.executiveHealthCard strong{
+  margin:0;
+  font-size:clamp(20px, 2.1vw, 26px);
+  line-height:1.12;
+}
+
+.executiveProgressStack,
+.executiveScoreRows{
+  gap:var(--space-sm);
+}
+
+.executiveProgressRow,
+.executiveScoreRow{
+  min-height:38px;
+  display:grid;
+  grid-template-columns:minmax(140px, 1fr) minmax(160px, 1.2fr) 64px;
+  gap:var(--space-md);
+  align-items:center;
+  color:var(--text);
+}
+
+.executiveProgressRow span,
+.executiveScoreRow span{
+  min-width:0;
+  color:var(--text);
+  font-size:14px;
+  letter-spacing:0;
+  text-transform:none;
+}
+
+.executiveProgressRow strong,
+.executiveScoreRow strong{
+  color:rgba(84,246,235,.98);
+  font-size:14px;
+  text-align:right;
+  white-space:nowrap;
+}
+
+.executiveProgressRow meter,
+.executiveScoreRow meter{
+  width:100%;
+  height:12px;
+}
+
+.executiveChecklist{
+  grid-template-columns:repeat(2, 1fr);
+  gap:var(--space-sm);
+}
+
+.executiveChecklistCompact{
+  grid-template-columns:repeat(2, 1fr);
+}
+
+.executiveAnnualTargets,
+.executiveTreasuryGrowth,
+.executiveRoadmap,
+.executiveTimeline{
+  padding:var(--space-lg);
+}
+
+.executiveGrowthTimeline{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  gap:var(--space-md);
+}
+
+.executiveGrowthStep{
+  min-height:122px;
+  padding:var(--space-md);
+}
+
+.executiveDivisionGrid{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  gap:var(--space-md);
+}
+
+.executiveDivisionCard{
+  min-height:190px;
+  padding:var(--space-md);
+  grid-template-rows:auto 1fr auto;
+}
+
+.executiveDivisionTop{
+  align-items:flex-start;
+}
+
+.executiveDivisionTop strong{
+  font-size:16px;
+  line-height:1.2;
+}
+
+.executiveDivisionTop span{
+  white-space:nowrap;
+}
+
+.executiveDivisionCard p{
+  margin:0;
+  color:var(--muted);
+  font-size:14px;
+}
+
+.executiveNextAction{
+  padding-top:var(--space-sm);
+  border-top:1px solid rgba(255,255,255,.07);
+}
+
+.executiveNextAction strong{
+  font-size:14px;
+  line-height:1.3;
+}
+
+.executiveNetWorthGrid{
+  grid-template-columns:1fr 1fr;
+  gap:var(--space-md);
+}
+
+.executiveNetWorthGrid h4{
+  margin:0 0 var(--space-sm);
+  font-size:16px;
+}
+
+.executiveBalanceRow,
+.executiveNetWorthTotal{
+  min-height:42px;
+  padding:10px 12px;
+  margin-top:var(--space-sm);
+}
+
+.executiveBalanceRow span,
+.executiveNetWorthTotal span{
+  font-size:13px;
+  letter-spacing:0;
+  text-transform:none;
+}
+
+.executiveMetricGrid{
+  display:grid;
+  grid-template-columns:repeat(2, 1fr);
+  gap:var(--space-sm);
+}
+
+.executiveMetricCard{
+  min-height:96px;
+  padding:var(--space-md);
+}
+
+.executiveMetricCard strong{
+  font-size:15px;
+}
+
+.executiveInstruction{
+  padding:var(--space-sm) var(--space-md);
+}
+
+.executiveNoteGrid{
+  grid-template-columns:repeat(2, 1fr);
+  gap:var(--space-md);
+}
+
+.executiveNoteGrid label{
+  gap:var(--space-sm);
+}
+
+.executiveNoteGrid label span{
+  font-size:14px;
+  color:var(--text);
+}
+
+.executiveNoteGrid textarea{
+  min-height:90px;
+  height:90px;
+}
+
+.executiveNoteGrid label:first-child textarea{
+  min-height:108px;
+  height:108px;
+}
+
+.executiveAllocationRows{
+  gap:var(--space-sm);
+}
+
+.executiveAllocationRow{
+  min-height:72px;
+  justify-content:flex-start;
+  gap:var(--space-md);
+  padding:var(--space-md);
+}
+
+.executiveAllocationRow strong{
+  min-width:74px;
+  font-size:28px;
+  line-height:1;
+}
+
+.executiveAllocationRow span{
+  font-size:15px;
+  letter-spacing:0;
+  text-transform:none;
+}
+
+.executiveRoadmapGrid{
+  display:grid;
+  grid-template-columns:repeat(5, 1fr);
+  gap:var(--space-md);
+}
+
+.executiveTimelineGrid{
+  display:grid;
+  grid-template-columns:repeat(7, 1fr);
+  gap:var(--space-md);
+}
+
+.executiveRoadmapItem,
+.executiveTimelineItem{
+  min-height:118px;
+  padding:var(--space-md);
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
+  gap:var(--space-sm);
+}
+
+.executiveRoadmapItem strong,
+.executiveTimelineItem strong{
+  margin:0;
+  font-size:15px;
+}
+
+@media (max-width:1180px){
+  .executiveKpiBand{
+    grid-template-columns:repeat(4, 1fr);
+  }
+
+  .executiveHealthGrid,
+  .executiveDivisionGrid{
+    grid-template-columns:repeat(2, 1fr);
+  }
+
+  .executiveRoadmapGrid{
+    grid-template-columns:repeat(3, 1fr);
+  }
+
+  .executiveTimelineGrid{
+    grid-template-columns:repeat(4, 1fr);
+  }
+}
+
+@media (max-width:860px){
+  .executiveHero,
+  .section-grid-2{
+    grid-template-columns:1fr;
+  }
+
+  .executiveHeroQuestion strong{
+    max-width:none;
+  }
+
+  .executiveKpiBand{
+    grid-template-columns:repeat(2, 1fr);
+  }
+
+  .executiveProgressRow,
+  .executiveScoreRow{
+    grid-template-columns:minmax(110px, 1fr) minmax(110px, 1fr) 58px;
+    gap:var(--space-sm);
+  }
+
+  .executiveGrowthTimeline,
+  .executiveNetWorthGrid,
+  .executiveMetricGrid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:640px){
+  .executiveCommandPage{
+    padding-inline:8px;
+    gap:var(--space-md);
+    font-size:14px;
+  }
+
+  .executiveHero,
+  .executivePanel,
+  .executiveAnnualTargets,
+  .executiveTreasuryGrowth,
+  .executiveRoadmap,
+  .executiveTimeline{
+    padding:var(--space-md);
+  }
+
+  .executiveKpiBand,
+  .executiveHealthGrid,
+  .executiveChecklist,
+  .executiveRuleList,
+  .executiveDivisionGrid,
+  .executiveRoadmapGrid,
+  .executiveTimelineGrid{
+    grid-template-columns:1fr;
+  }
+
+  .executiveSectionHead{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .executiveSectionHead h3{
+    text-align:left;
+  }
+
+  .executiveProgressRow,
+  .executiveScoreRow{
+    grid-template-columns:1fr 54px;
+  }
+
+  .executiveProgressRow meter,
+  .executiveScoreRow meter{
+    grid-column:1 / -1;
+    grid-row:2;
+  }
+
+  .executiveProgressRow strong,
+  .executiveScoreRow strong{
+    grid-column:2;
+    grid-row:1;
+  }
+
+  .executiveNoteGrid{
+    grid-template-columns:1fr;
+  }
+
+  .executiveAllocationRow,
+  .executiveBalanceRow,
+  .executiveNetWorthTotal{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+
+.executiveInputGrid,
+.executiveProjectionCards,
+.executiveCalendarBoard,
+.executiveBudgetColumns,
+.executiveProjectionTimelineGrid{
+  display:grid;
+  gap:var(--space-md);
+}
+
+.executiveInputGrid{
+  grid-template-columns:repeat(4, 1fr);
+}
+
+.executiveInputGridPrimary{
+  grid-template-columns:1.2fr 1fr auto 1fr;
+  align-items:end;
+}
+
+.executiveControlHint{
+  margin:0;
+  color:var(--muted);
+}
+
+.executiveAdvancedHiddenText{
+  min-height:40px;
+  display:inline-flex;
+  align-items:center;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.executiveAdvancedToggle{
+  justify-self:start;
+}
+
+.executiveAdvancedPanel{
+  display:grid;
+  gap:var(--space-md);
+}
+
+.executiveAdvancedPanel[hidden]{
+  display:none;
+}
+
+.executiveAdjustmentBuilder{
+  display:grid;
+  gap:var(--space-md);
+  padding:var(--space-md);
+  border:1px solid rgba(84,132,255,.16);
+  border-radius:12px;
+  background:rgba(5,12,24,.48);
+}
+
+.executiveAdjustmentList{
+  display:grid;
+  gap:var(--space-xs);
+}
+
+.executiveAdjustmentList p{
+  margin:0;
+  color:var(--muted);
+}
+
+.executiveAdjustmentRow{
+  min-height:42px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto auto;
+  gap:var(--space-sm);
+  align-items:center;
+  padding:9px 10px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:10px;
+  background:rgba(6,14,30,.60);
+}
+
+.executiveAdjustmentRow span{
+  color:var(--muted);
+}
+
+.executiveAdjustmentRow strong{
+  color:var(--text);
+}
+
+.executiveInputGrid label{
+  display:grid;
+  gap:var(--space-xs);
+  color:var(--muted);
+  font-size:13px;
+}
+
+.executiveInputGrid label span{
+  min-height:32px;
+}
+
+.executiveInputGrid input,
+.executiveInputGrid select,
+.executiveLedgerTable input,
+.executiveLedgerTable select,
+.executiveCalendarItem input[type="text"]{
+  width:100%;
+  min-height:40px;
+  border:1px solid rgba(84, 132, 255, .18);
+  border-radius:10px;
+  background:rgba(5, 12, 24, .74);
+  color:var(--text);
+  padding:8px 10px;
+  font:inherit;
+}
+
+.executiveProjectionCards{
+  grid-template-columns:repeat(4, 1fr);
+}
+
+.executiveProjectionCards article,
+.executiveActionCard,
+.executiveCalendarColumn,
+.executiveCalendarItem,
+.executiveBudgetRow,
+.executiveTimelineProjection{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:rgba(6,14,30,.60);
+}
+
+.executiveProjectionCards article{
+  min-height:100px;
+  padding:var(--space-md);
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:var(--space-sm);
+}
+
+.executiveProjectionCards span,
+.executiveActionCard span,
+.executiveTimelineProjection span,
+.executiveCalendarItem small{
+  color:var(--muted);
+  font-size:12px;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+
+.executiveProjectionCards strong{
+  color:var(--text);
+  font-size:22px;
+  line-height:1.1;
+}
+
+.executiveActionCard{
+  padding:var(--space-md);
+  border-color:rgba(84,246,235,.22);
+}
+
+.executiveActionCard.is-watch{
+  border-color:rgba(217,181,109,.32);
+  background:rgba(217,181,109,.08);
+}
+
+.executiveActionCard.is-danger{
+  border-color:rgba(255, 93, 93, .34);
+  background:rgba(255, 93, 93, .08);
+}
+
+.executiveActionCard strong{
+  display:block;
+  margin-top:var(--space-xs);
+  color:var(--text);
+  font-size:18px;
+}
+
+.executiveMonthSelectorWrap{
+  position:sticky;
+  top:8px;
+  z-index:5;
+}
+
+.executiveMonthSelector{
+  display:flex;
+  gap:var(--space-sm);
+  overflow-x:auto;
+  padding-bottom:var(--space-xs);
+  scroll-snap-type:x proximity;
+}
+
+.executiveMonthButton{
+  min-width:156px;
+  min-height:70px;
+  border:1px solid rgba(84,132,255,.18);
+  border-radius:12px;
+  background:rgba(5,12,24,.62);
+  color:var(--text);
+  padding:var(--space-sm) var(--space-md);
+  text-align:left;
+  scroll-snap-align:start;
+  cursor:pointer;
+}
+
+.executiveMonthButton.is-active{
+  border-color:rgba(84,246,235,.48);
+  background:linear-gradient(180deg, rgba(84,246,235,.14), rgba(5,12,24,.68));
+  box-shadow:0 0 18px rgba(84,246,235,.12);
+}
+
+.executiveMonthButton span,
+.executiveMonthButton strong{
+  display:block;
+}
+
+.executiveMonthButton strong{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.executiveCalendarBoard{
+  grid-template-columns:repeat(5, minmax(180px, 1fr));
+  align-items:start;
+}
+
+.executiveCalendarColumn{
+  min-height:260px;
+  padding:var(--space-sm);
+  display:grid;
+  align-content:start;
+  gap:var(--space-sm);
+}
+
+.executiveCalendarColumn h4{
+  margin:0;
+  color:var(--text);
+  font-size:15px;
+}
+
+.executiveCalendarColumn p{
+  margin:0;
+  color:var(--muted);
+}
+
+.executiveCalendarItem{
+  padding:var(--space-sm);
+  display:grid;
+  gap:var(--space-xs);
+}
+
+.executiveCalendarItem label{
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+  color:var(--text);
+}
+
+.executiveCalendarItem span{
+  color:rgba(84,246,235,.94);
+  font-size:13px;
+}
+
+.executiveLedgerScroll{
+  overflow:auto;
+}
+
+.executiveLedgerTable{
+  width:100%;
+  min-width:1180px;
+  border-collapse:separate;
+  border-spacing:0 8px;
+}
+
+.executiveLedgerTable th{
+  padding:0 8px 4px;
+  color:var(--muted);
+  font-size:12px;
+  text-align:left;
+  text-transform:uppercase;
+}
+
+.executiveLedgerTable td{
+  padding:8px;
+  color:var(--text);
+  background:rgba(5,12,24,.62);
+  border-top:1px solid rgba(84,132,255,.12);
+  border-bottom:1px solid rgba(84,132,255,.12);
+  vertical-align:middle;
+}
+
+.executiveLedgerTable td:first-child{
+  border-left:1px solid rgba(84,132,255,.12);
+  border-radius:10px 0 0 10px;
+}
+
+.executiveLedgerTable td:last-child{
+  border-right:1px solid rgba(84,132,255,.12);
+  border-radius:0 10px 10px 0;
+}
+
+.executiveProjectionTimelineGrid{
+  grid-template-columns:repeat(6, 1fr);
+}
+
+.executiveTimelineProjection{
+  min-height:148px;
+  padding:var(--space-md);
+  display:grid;
+  gap:5px;
+}
+
+.executiveTimelineProjection.is-healthy{
+  border-color:rgba(84,246,235,.28);
+}
+
+.executiveTimelineProjection.is-watch{
+  border-color:rgba(217,181,109,.32);
+}
+
+.executiveTimelineProjection.is-danger{
+  border-color:rgba(255,93,93,.34);
+}
+
+.executiveTimelineProjection strong{
+  color:var(--text);
+  font-size:20px;
+}
+
+.executiveTimelineProjection small,
+.executiveTimelineProjection em{
+  color:var(--muted);
+  font-size:12px;
+  font-style:normal;
+}
+
+.executiveBudgetColumns{
+  grid-template-columns:1fr 1fr;
+}
+
+.executiveBudgetColumns h4{
+  margin:0 0 var(--space-sm);
+  color:var(--text);
+}
+
+.executiveBudgetRow{
+  min-height:38px;
+  display:flex;
+  justify-content:space-between;
+  gap:var(--space-sm);
+  align-items:center;
+  margin-bottom:var(--space-xs);
+  padding:9px 10px;
+}
+
+.executiveBudgetRow span{
+  color:var(--muted);
+}
+
+.executiveBudgetRow strong{
+  color:var(--text);
+  white-space:nowrap;
+}
+
+@media (max-width:1180px){
+  .executiveInputGrid,
+  .executiveInputGridPrimary,
+  .executiveProjectionCards,
+  .executiveProjectionTimelineGrid{
+    grid-template-columns:repeat(2, 1fr);
+  }
+
+  .executiveCalendarBoard{
+    grid-template-columns:repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width:720px){
+  .executiveInputGrid,
+  .executiveInputGridPrimary,
+  .executiveProjectionCards,
+  .executiveCalendarBoard,
+  .executiveProjectionTimelineGrid,
+  .executiveBudgetColumns{
+    grid-template-columns:1fr;
+  }
+
+  .executiveAdjustmentRow{
+    grid-template-columns:1fr;
+  }
+
+  .executiveMonthSelectorWrap{
+    position:relative;
+    top:auto;
+  }
+}
+
+/* CEO Command Center graph system */
+.executiveCommandPage .pageTitle{
+  font-size:clamp(20px, 5vw, 40px);
+  line-height:1;
+}
+
+.executiveHeroQuestion strong{
+  font-size:clamp(10px, 2vw, 20px);
+  overflow-wrap:anywhere;
+}
+
+.executiveKpiCard strong{
+  font-size:clamp(14px, 1.2vw, 20px);
+  overflow-wrap:anywhere;
+  white-space:normal;
+}
+
+.executiveSectionHead h3,
+.executiveChartHead strong{
+  font-size:16px;
+}
+
+.executiveCommandPage{
+  font-size:15px;
+}
+
+.executiveCommandPage p,
+.executiveCommandPage li,
+.executiveCommandPage td,
+.executiveCalendarItem strong,
+.executiveBudgetRow span{
+  font-size:14px;
+}
+
+.executiveCommandPage span,
+.executiveCommandPage small,
+.executiveProjectionCards span,
+.executiveKpiCard span{
+  font-size:12px;
+}
+
+.executiveVisualGraphs{
+  gap:var(--space-md);
+}
+
+.executiveChartGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:var(--space-md);
+}
+
+.executiveChartCard{
+  min-height:280px;
+  max-height:340px;
+  padding:var(--space-md);
+  border:1px solid rgba(84,132,255,.16);
+  border-radius:14px;
+  background:rgba(6,14,30,.62);
+  display:grid;
+  grid-template-rows:auto minmax(0, 1fr);
+  gap:var(--space-sm);
+  overflow:hidden;
+}
+
+.executiveChartHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--space-sm);
+  min-width:0;
+}
+
+.executiveChartLegend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.executiveChartLegend span:before{
+  content:"";
+  display:inline-block;
+  width:8px;
+  height:8px;
+  margin-right:4px;
+  border-radius:999px;
+  background:currentColor;
+}
+
+.executiveChartLegend .is-floor{color:#54f6eb}
+.executiveChartLegend .is-target{color:#d9b56d}
+.executiveChartLegend .is-projected{color:#7fa3ff}
+
+.executiveLineChart{
+  width:100%;
+  height:100%;
+  min-height:210px;
+}
+
+.executiveLineChart text{
+  fill:rgba(190,205,230,.72);
+  font-size:12px;
+}
+
+.chartGridLine{
+  stroke:rgba(143,163,196,.16);
+  stroke-width:1;
+}
+
+.chartLine{
+  fill:none;
+  stroke-width:3;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.chartLineFloor{stroke:#54f6eb}
+.chartLineTarget{stroke:#d9b56d}
+.chartLineProjected{stroke:#7fa3ff}
+
+.executiveBarChart{
+  display:grid;
+  gap:9px;
+  align-content:center;
+}
+
+.executiveBarRow{
+  display:grid;
+  grid-template-columns:120px minmax(0,1fr) 82px;
+  gap:10px;
+  align-items:center;
+  color:var(--text);
+}
+
+.executiveBarRow span,
+.executiveBarRow strong{
+  font-size:12px;
+}
+
+.executiveBarRow strong{
+  text-align:right;
+  color:rgba(238,246,255,.94);
+}
+
+.executiveBarRow div{
+  height:12px;
+  border-radius:999px;
+  background:rgba(84,132,255,.12);
+  overflow:hidden;
+}
+
+.executiveBarRow i{
+  display:block;
+  height:100%;
+  min-width:4px;
+  border-radius:inherit;
+  background:linear-gradient(90deg, rgba(84,246,235,.90), rgba(127,163,255,.92));
+}
+
+.executiveDonutWrap{
+  display:grid;
+  grid-template-columns:150px minmax(0,1fr);
+  gap:var(--space-md);
+  align-items:center;
+}
+
+.executiveDonut{
+  width:144px;
+  aspect-ratio:1;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  position:relative;
+}
+
+.executiveDonut:after{
+  content:"";
+  position:absolute;
+  inset:28px;
+  border-radius:inherit;
+  background:rgba(6,14,30,.94);
+}
+
+.executiveDonut span{
+  position:relative;
+  z-index:1;
+  color:var(--text);
+  font-size:14px;
+  font-weight:800;
+}
+
+.executiveDonutLegend{
+  display:grid;
+  gap:6px;
+}
+
+.executiveDonutLegend div{
+  display:grid;
+  grid-template-columns:10px minmax(0,1fr) auto;
+  gap:8px;
+  align-items:center;
+}
+
+.executiveDonutLegend i{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+}
+
+.executiveDonutLegend span,
+.executiveDonutLegend strong{
+  font-size:12px;
+}
+
+.executiveDonutLegend span{
+  color:var(--muted);
+}
+
+.executiveDonutLegend strong{
+  color:var(--text);
+}
+
+.executiveUtilityChartGrid{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:var(--space-md);
+}
+
+.executiveUtilityChartGrid .executiveChartCard{
+  min-height:180px;
+  max-height:220px;
+}
+
+.executiveGaugeCard,
+.executiveProgressVisual{
+  display:grid;
+  align-content:center;
+  gap:var(--space-sm);
+}
+
+.executiveGaugeTrack,
+.executiveProgressVisual i,
+.executiveMiniTrend i{
+  display:block;
+  height:12px;
+  border-radius:999px;
+  background:rgba(84,132,255,.14);
+  overflow:hidden;
+}
+
+.executiveGaugeTrack i,
+.executiveProgressVisual b,
+.executiveMiniTrend b{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg, #54f6eb, #d9b56d);
+}
+
+.executiveGaugeCard strong,
+.executiveProgressVisual strong{
+  color:var(--text);
+  font-size:24px;
+}
+
+.executiveGaugeCard span,
+.executiveProgressVisual span{
+  color:var(--muted);
+}
+
+.executiveMiniTrendGrid{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(0, 1fr));
+  gap:var(--space-sm);
+}
+
+.executiveMiniTrend{
+  min-height:112px;
+  padding:var(--space-sm);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  background:rgba(6,14,30,.60);
+  display:grid;
+  gap:6px;
+  align-content:start;
+}
+
+.executiveMiniTrend span{
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+
+.executiveMiniTrend strong{
+  color:var(--text);
+  font-size:18px;
+}
+
+.executiveMiniTrend em{
+  color:rgba(84,246,235,.92);
+  font-size:12px;
+  font-style:normal;
+}
+
+.executiveLedgerPanel summary,
+.executiveBudgetDetails summary{
+  cursor:pointer;
+  list-style:none;
+}
+
+.executiveLedgerPanel summary::-webkit-details-marker,
+.executiveBudgetDetails summary::-webkit-details-marker{
+  display:none;
+}
+
+.executiveLedgerPanel summary:after,
+.executiveBudgetDetails summary:after{
+  content:"Open";
+  color:var(--muted);
+  font-size:12px;
+}
+
+.executiveLedgerPanel[open] summary:after,
+.executiveBudgetDetails[open] summary:after{
+  content:"Close";
+}
+
+@media (max-width:1180px){
+  .executiveMiniTrendGrid{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .executiveUtilityChartGrid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width:860px){
+  .executiveChartGrid{
+    grid-template-columns:1fr;
+  }
+
+  .executiveMiniTrendGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width:640px){
+  .executiveDonutWrap{
+    grid-template-columns:1fr;
+  }
+
+  .executiveMiniTrendGrid{
+    grid-template-columns:1fr;
+  }
+
+  .executiveBarRow{
+    grid-template-columns:1fr;
+    gap:5px;
+  }
+
+  .executiveBarRow strong{
+    text-align:left;
+  }
 }

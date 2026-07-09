@@ -70,6 +70,10 @@ def favicon():
     return svc.favicon()
 
 
+def executive_dashboard():
+    return svc.executive_dashboard()
+
+
 def dashboard():
     return svc.dashboard()
 
