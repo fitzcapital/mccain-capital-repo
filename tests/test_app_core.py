@@ -1259,6 +1259,9 @@ def test_executive_dashboard_renders_command_center(client):
     assert "Budget Details" in body
     assert "Trading Rules" in body
     assert "July 2026" in body
+    assert '"id": "2026-09"' in body
+    assert '"boaPaycheck2": 4700' in body
+    assert '"currentPaycheck2": 4700' in body
     assert "July 2027" in body
     assert "CEO Weekly Scorecard" in body
     assert "Net Worth Tracker" in body

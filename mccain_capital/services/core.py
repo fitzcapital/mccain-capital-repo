@@ -34,6 +34,7 @@ from flask import (
     Response,
     current_app,
     flash,
+    has_request_context,
     jsonify,
     make_response,
     redirect,
@@ -109,10 +110,11 @@ MARKET_PULSE_X_RSS_URLS: Tuple[str, ...] = (
 MARKET_PULSE_X_ACCOUNTS: Tuple[Dict[str, str], ...] = (
     {"handle": "unusual_whales", "label": "Unusual Whales", "lane": "Options Flow"},
 )
-SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("QQQ", "SPY", "SPX")
+SUPPORTED_PLAYBOOK_TICKERS: Tuple[str, ...] = ("SPX", "SPY", "QQQ")
 DEFAULT_PLAYBOOK_TICKER = "SPY"
-DASHBOARD_PLAYBOOK_TICKERS: Tuple[str, ...] = ("SPY", "QQQ", "SPX")
-PLAYBOOK_TICKER_STORAGE_KEY = "mc_playbook_ticker"
+DASHBOARD_PLAYBOOK_TICKERS: Tuple[str, ...] = ("SPX", "SPY", "QQQ")
+MARKET_PULSE_TICKER_STORAGE_KEY = "mc_market_pulse_ticker"
+DASHBOARD_TICKER_STORAGE_KEY = "mc_dashboard_ticker"
 PLAYBOOK_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,11}$")
 MILESTONE_PROFIT_SOURCES: Tuple[str, ...] = ("today", "week", "mtd", "ytd")
 GAMMA_SPOT_MISMATCH_POINTS_THRESHOLD = 5.0
@@ -7492,38 +7494,57 @@ def _market_news_compose_feed(
     return deduped[:MARKET_NEWS_FEED_LIMIT]
 
 
-def get_supported_playbook_ticker(value: Any) -> str:
+def get_supported_playbook_ticker(value: Any, default: str = DEFAULT_PLAYBOOK_TICKER) -> str:
     ticker = str(value or "").strip().upper()
-    return ticker if PLAYBOOK_TICKER_PATTERN.fullmatch(ticker) else DEFAULT_PLAYBOOK_TICKER
+    fallback = str(default or DEFAULT_PLAYBOOK_TICKER).strip().upper()
+    if fallback not in SUPPORTED_PLAYBOOK_TICKERS:
+        fallback = DEFAULT_PLAYBOOK_TICKER
+    return ticker if ticker in SUPPORTED_PLAYBOOK_TICKERS else fallback
+
+
+def _profile_default_ticker(key: str, fallback: str = DEFAULT_PLAYBOOK_TICKER) -> str:
+    if not has_request_context():
+        return fallback
+    if not (auth_enabled() and is_authenticated()):
+        return fallback
+    try:
+        from mccain_capital.services import profile as profile_svc
+
+        profile = profile_svc.get_profile(effective_username())
+    except Exception:
+        return fallback
+    return get_supported_playbook_ticker(profile.get(key), fallback)
 
 
 def get_playbook_ticker_context(value: Any) -> Dict[str, Any]:
-    ticker = get_supported_playbook_ticker(value)
+    default = _profile_default_ticker("market_pulse_default_ticker")
+    ticker = get_supported_playbook_ticker(value, default)
     alternate = next(
         (item for item in SUPPORTED_PLAYBOOK_TICKERS if item != ticker),
-        DEFAULT_PLAYBOOK_TICKER,
+        default,
     )
     return {
         "ticker": ticker,
         "alternate_ticker": alternate,
         "supported_tickers": SUPPORTED_PLAYBOOK_TICKERS,
-        "storage_key": PLAYBOOK_TICKER_STORAGE_KEY,
+        "storage_key": MARKET_PULSE_TICKER_STORAGE_KEY,
     }
 
 
 def get_dashboard_ticker_context(value: Any) -> Dict[str, Any]:
-    ticker = get_supported_playbook_ticker(value)
+    default = _profile_default_ticker("dashboard_default_ticker")
+    ticker = get_supported_playbook_ticker(value, default)
     if ticker not in DASHBOARD_PLAYBOOK_TICKERS:
-        ticker = DEFAULT_PLAYBOOK_TICKER
+        ticker = default if default in DASHBOARD_PLAYBOOK_TICKERS else DEFAULT_PLAYBOOK_TICKER
     alternate = next(
         (item for item in DASHBOARD_PLAYBOOK_TICKERS if item != ticker),
-        DEFAULT_PLAYBOOK_TICKER,
+        default,
     )
     return {
         "ticker": ticker,
         "alternate_ticker": alternate,
         "supported_tickers": DASHBOARD_PLAYBOOK_TICKERS,
-        "storage_key": PLAYBOOK_TICKER_STORAGE_KEY,
+        "storage_key": DASHBOARD_TICKER_STORAGE_KEY,
     }
 
 
@@ -8307,34 +8328,53 @@ def executive_dashboard():
     current_bills = [
         {"name": "Rent #1", "account": "Current", "amount": 1180, "timing": "Paycheck 1"},
         {"name": "Rent #2", "account": "Current", "amount": 1148, "timing": "Paycheck 2"},
-        {"name": "Power", "account": "Current", "amount": 136, "timing": "Paycheck 1"},
+        {"name": "Power", "account": "Current", "amount": 136, "timing": "Paycheck 1", "dueDay": 2},
         {
             "name": "Verizon catch-up / phone",
             "account": "Current",
             "amount": 267,
             "timing": "Paycheck 1",
         },
-        {"name": "Life Insurance", "account": "Current", "amount": 13, "timing": "Paycheck 1"},
-        {"name": "Credit One", "account": "Current", "amount": 30, "timing": "Paycheck 1"},
-        {"name": "Indigo", "account": "Current", "amount": 54, "timing": "Paycheck 1"},
-        {"name": "Capital One", "account": "Current", "amount": 62, "timing": "Paycheck 1"},
+        {
+            "name": "Life Insurance",
+            "account": "Current",
+            "amount": 13,
+            "timing": "Paycheck 1",
+            "dueDay": 2,
+        },
+        {"name": "Credit One", "account": "Current", "amount": 30, "timing": "Paycheck 1", "dueDay": 9},
+        {"name": "Indigo", "account": "Current", "amount": 54, "timing": "Paycheck 1", "dueDay": 15},
+        {"name": "Capital One", "account": "Current", "amount": 62, "timing": "Paycheck 1", "dueDay": 12},
         {"name": "Food / Dates", "account": "Current", "amount": 700, "timing": "Monthly"},
         {"name": "Gas", "account": "Current", "amount": 100, "timing": "Monthly"},
-        {"name": "Haircuts", "account": "Current", "amount": 100, "timing": "Monthly"},
-        {"name": "Progressive", "account": "Current", "amount": 193, "timing": "Paycheck 2"},
+        {
+            "name": "Haircut",
+            "account": "Current",
+            "amount": 50,
+            "timing": "Biweekly",
+            "repeatDays": [17, 31],
+        },
+        {
+            "name": "Progressive",
+            "account": "Current",
+            "amount": 193,
+            "timing": "Paycheck 2",
+            "dueDay": 16,
+        },
         {"name": "AT&T Internet", "account": "Current", "amount": 65, "timing": "Paycheck 2"},
         {"name": "Verizon", "account": "Current", "amount": 267, "timing": "Paycheck 2"},
-        {"name": "IRS", "account": "Current", "amount": 402, "timing": "Paycheck 2"},
+        {"name": "IRS", "account": "Current", "amount": 402, "timing": "Paycheck 2", "dueDay": 28},
     ]
     boa_bills = [
-        {"name": "Discover", "account": "BOA", "amount": 137, "timing": "Paycheck 1"},
+        {"name": "Discover", "account": "BOA", "amount": 137, "timing": "Paycheck 1", "dueDay": 20},
         {
             "name": "Chase fixed payment",
             "account": "BOA",
             "amount": 376,
             "timing": "Split $188 / $188",
+            "dueDay": 17,
         },
-        {"name": "AMEX", "account": "BOA", "amount": 172, "timing": "Paycheck 2"},
+        {"name": "AMEX", "account": "BOA", "amount": 172, "timing": "Paycheck 2", "dueDay": 17},
         {"name": "Car Note", "account": "BOA", "amount": 737, "timing": "Paycheck 2"},
     ]
     subscriptions = [
@@ -8379,12 +8419,14 @@ def executive_dashboard():
         month_id,
         label,
         phase,
-        floor,
-        red_line,
+        _floor,
+        _red_line,
         target_low,
         target_high,
         opening_boa,
     ) in month_specs:
+        floor = target_low - 500
+        red_line = floor - 250
         operating_months.append(
             {
                 "id": month_id,
@@ -8399,8 +8441,9 @@ def executive_dashboard():
                 "deposits": {
                     "currentPaycheck1": 1866,
                     "boaPaycheck1": 1866,
-                    "currentPaycheck2": 1866,
-                    "boaPaycheck2": 1866,
+                    # September's $9,400 second paycheck is split evenly at deposit.
+                    "currentPaycheck2": 4700 if month_id == "2026-09" else 1866,
+                    "boaPaycheck2": 4700 if month_id == "2026-09" else 1866,
                     "wifeContribution": 300,
                     "tradingPayout": 0,
                 },
@@ -8421,8 +8464,8 @@ def executive_dashboard():
             ("BOA Current", "$4,135"),
             ("July Floor", "$4,000"),
             ("August Target", "$6,500+"),
-            ("September Floor", "$10,000"),
-            ("December Minimum", "$15,000"),
+            ("September Floor", "$10,500"),
+            ("December Floor", "$14,500"),
             ("Projected BOA Close", "Calculated"),
             ("CEO Score", "60/80"),
         ],
@@ -8475,7 +8518,7 @@ def executive_dashboard():
         ],
         "annual_targets": [
             "$15,000 protected treasury",
-            "$10,000 floor protected after September bonus",
+            "$10,500 floor protected after September bonus",
             "Pass funded evaluation cleanly",
             "Zero credit card spending",
             "Reduce consumer debt",
@@ -8565,7 +8608,7 @@ def executive_dashboard():
         "treasury_growth": [
             ("July", "$4,135"),
             ("August Target", "$6,500+"),
-            ("September Target", "$10,000+"),
+            ("September Target", "$11,000+"),
             ("December Target", "$15,000+"),
         ],
         "company_metrics": [
@@ -8626,12 +8669,33 @@ def executive_dashboard():
             "boa_treasury": "$4,135",
             "july_floor": "$4,000",
             "august_target": "$6,500+",
-            "september_floor": "$10,000",
-            "december_minimum": "$15,000",
+            "september_floor": "$10,500",
+            "december_minimum": "$14,500 floor / $15,000 target",
             "chase_payment": "$376/month",
         },
     }
     model["score_total"] = sum(score for _, score in model["scorecard"])
+    model["executive_static"] = {
+        "kpi_band": model["kpi_band"],
+        "health_cards": model["health_cards"],
+        "operating_priorities": model["operating_priorities"],
+        "objectives": model["objectives"],
+        "q3_progress": model["q3_progress"],
+        "annual_targets": model["annual_targets"],
+        "divisions": model["divisions"],
+        "debt_policy": model["debt_policy"],
+        "net_worth_assets": model["net_worth_assets"],
+        "net_worth_liabilities": model["net_worth_liabilities"],
+        "treasury_growth": model["treasury_growth"],
+        "company_metrics": model["company_metrics"],
+        "scorecard": model["scorecard"],
+        "score_total": model["score_total"],
+        "notes": model["notes"],
+        "allocation": model["allocation"],
+        "roadmap": model["roadmap"],
+        "timeline": model["timeline"],
+        "targets": model["targets"],
+    }
     content = render_template("executive.html", **model)
     return render_page(
         content,
