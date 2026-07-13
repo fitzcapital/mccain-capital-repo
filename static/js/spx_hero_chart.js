@@ -1573,6 +1573,7 @@
     const headline = `${state} - ${currentRead}`.toUpperCase();
 
     updateHeaderSummary(levels);
+    setText("marketPulseHeaderSpot", fmt(levels.spot, 2));
     setText("marketPulseHeroSpot", fmt(levels.spot, 2));
     setText("marketPulseHeroSpotLabel", levels?.spot_source_short_label || levels?.spot_meta?.source_label || `${symbol} Spot`);
     setText("marketPulseHeroGamma", regimeDisplayLabel(String(levels.gamma_regime || "").toLowerCase(), levels.gamma_regime_label || "Regime Unavailable"));
@@ -1782,6 +1783,7 @@
       if (signature === lastQuotePatchSignature) return;
 
       lastQuotePatchSignature = signature;
+      setText("marketPulseHeaderSpot", fmt(price, 2));
       setText("marketPulseHeroSpot", fmt(price, 2));
       updateSpotOverlayPrice(price);
     } finally {

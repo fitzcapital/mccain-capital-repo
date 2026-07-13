@@ -175,7 +175,7 @@
           {% for item in level_strip %}
             <div class="marketPulseHeaderLevelItem is-{{ item.label|lower|replace(' ', '-') }}{% if item.label == 'Spot' %} is-live{% endif %}{% if item.label == 'LF' and item.value == 'No local flip in band' %} is-muted{% endif %}">
               <span><span class="marketPulseHeaderLevelIcon">{{ mp_icon(item.icon) }}</span><span>{{ item.label }}</span></span>
-              <strong>{{ item.value }}</strong>
+              <strong{% if item.label == 'Spot' %} id="marketPulseHeaderSpot"{% endif %}>{{ item.value }}</strong>
             </div>
           {% endfor %}
         </div>
@@ -690,11 +690,11 @@
   id="marketPulseGammaLadderCard"
   data-gamma-ladder
   data-api-url="{{ gamma_ladder_api_url }}"
-  data-default-symbol="SPY"
+  data-default-symbol="{{ ticker }}"
   data-default-window="standard"
   data-supported-symbols='{{ gamma_ladder_supported_symbols|tojson }}'
   data-supported-windows='{{ gamma_ladder_window_presets|tojson }}'
-  data-symbol="SPY"
+  data-symbol="{{ ticker }}"
   data-default-dte="0"
   data-regime="mixed_gamma"
   aria-label="Dynamic gamma ladder"
@@ -709,10 +709,10 @@
         <div class="gamma-symbol-switcher" role="tablist" aria-label="Gamma ladder symbol switcher">
           {% for gamma_symbol in gamma_ladder_supported_symbols %}
             <button
-              class="gamma-symbol-pill{% if gamma_symbol == 'SPY' %} active{% endif %}"
+              class="gamma-symbol-pill{% if gamma_symbol == ticker %} active{% endif %}"
               type="button"
               role="tab"
-              aria-selected="{{ 'true' if gamma_symbol == 'SPY' else 'false' }}"
+              aria-selected="{{ 'true' if gamma_symbol == ticker else 'false' }}"
               data-gamma-symbol-pill="{{ gamma_symbol }}"
             >{{ gamma_symbol }}</button>
           {% endfor %}
@@ -735,7 +735,7 @@
               class="gamma-symbol-search__input"
               type="search"
               name="symbol"
-              value="SPY"
+              value="{{ ticker }}"
               placeholder="NVDA"
               maxlength="12"
               autocomplete="off"
@@ -785,7 +785,7 @@
     </div>
     <div class="gamma-ladder-meta" data-gamma-header>
       <div class="gamma-ladder-meta__headline">
-        <strong data-gamma-symbol>SPX</strong>
+        <strong data-gamma-symbol>{{ ticker }}</strong>
         <span data-gamma-spot>Loading spot…</span>
       </div>
       <div class="gamma-ladder-meta__stats">
@@ -1510,7 +1510,7 @@
   window.marketFeedItems = {{ whales_items | tojson | safe }};
 (() => {
   const MODE_KEY = "marketPulseViewMode";
-  const TICKER_KEY = "{{ playbook_ticker_storage_key or 'mc_playbook_ticker' }}";
+  const TICKER_KEY = "{{ playbook_ticker_storage_key or 'mc_market_pulse_ticker' }}";
   const modeToggle = document.getElementById("viewModeToggle");
   const streamStatus = document.getElementById("marketPulseStreamStatus");
   const streamFreshness = document.getElementById("marketPulseStreamFreshness");

@@ -7,8 +7,8 @@ def test_get_supported_playbook_ticker_defaults_to_spy():
     assert core.get_supported_playbook_ticker("spx") == "SPX"
     assert core.get_supported_playbook_ticker("qqq") == "QQQ"
     assert core.get_supported_playbook_ticker("SPY") == "SPY"
-    assert core.get_supported_playbook_ticker("nvda") == "NVDA"
-    assert core.get_supported_playbook_ticker("BRK.B") == "BRK.B"
+    assert core.get_supported_playbook_ticker("nvda") == "SPY"
+    assert core.get_supported_playbook_ticker("BRK.B") == "SPY"
     assert core.get_supported_playbook_ticker("bad!") == "SPY"
 
 
@@ -23,6 +23,10 @@ def test_market_pulse_renders_spx_ticker_switch(client):
     assert "data-symbol-search-input" in body
     assert 'class="marketPulseTickerSwitch is-active"' in body
     assert "SPX PLAYBOOK" in body
+    assert 'id="marketPulseHeaderSpot"' in body
+    assert 'data-default-symbol="SPX"' in body
+    assert 'data-symbol="SPX"' in body
+    assert '<strong data-gamma-symbol>SPX</strong>' in body
 
 
 def test_market_pulse_defaults_to_spy_playbook(client):
@@ -33,17 +37,18 @@ def test_market_pulse_defaults_to_spy_playbook(client):
     assert "SPY PLAYBOOK" in body
     assert '"ticker": "SPY"' in body
     assert 'value="SPY"' in body
+    assert 'data-default-symbol="SPY"' in body
+    assert '<strong data-gamma-symbol>SPY</strong>' in body
 
 
-def test_market_pulse_accepts_custom_ticker_search(client):
+def test_market_pulse_rejects_unsupported_ticker_search(client):
     resp = client.get("/market-pulse?ticker=NVDA", follow_redirects=True)
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "NVDA PLAYBOOK" in body
-    assert 'value="NVDA"' in body
+    assert "SPY PLAYBOOK" in body
+    assert 'value="SPY"' in body
     assert 'data-playbook-ticker-switch="QQQ"' in body
-    assert 'class="marketPulseTickerSwitch is-active"' not in body
 
 
 def test_scaled_gamma_snapshot_scales_levels_and_localizes_warning():

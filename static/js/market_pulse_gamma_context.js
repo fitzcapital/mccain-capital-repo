@@ -852,14 +852,15 @@
       const muted = label === "LF" && value === LOCAL_FLIP_NONE_LABEL ? " is-muted" : "";
       const live = label === "Spot" ? " is-live" : "";
       const iconMarkup = icon ? `<span class="marketPulseHeaderLevelIcon">${levelIcon(icon)}</span>` : "";
-      return `<div class="marketPulseHeaderLevelItem is-${key}${live}${muted}"><span>${iconMarkup}<span>${label}</span></span><strong>${value}</strong></div>`;
+      const valueId = label === "Spot" ? ' id="marketPulseHeaderSpot"' : "";
+      return `<div class="marketPulseHeaderLevelItem is-${key}${live}${muted}"><span>${iconMarkup}<span>${label}</span></span><strong${valueId}>${value}</strong></div>`;
     }).join("");
   };
 
   const patchHeaderLiveSpot = (spot, asOf) => {
     const liveSpot = asNum(spot);
     if (liveSpot === null) return;
-    const headerSpotValue = document.querySelector("#marketPulseHeaderSubline .marketPulseHeaderLevelItem:first-child strong");
+    const headerSpotValue = document.getElementById("marketPulseHeaderSpot");
     if (headerSpotValue) {
       headerSpotValue.textContent = formatNumber(liveSpot, 2);
     }
