@@ -69,19 +69,24 @@ def ledger_equity_view(account: dict[str, Any] | None) -> dict[str, Any]:
             "ledger_equity": None,
         }
     opening = _valid_value(account.get("starting_balance"))
-    estimated = _valid_value(account.get("current_balance"))
-    if opening is None or estimated is None:
+    current = _valid_value(account.get("current_balance"))
+    if opening is None or current is None:
         return {
             "available": False,
             "opening_balance": opening,
             "realized_pnl": None,
-            "ledger_equity": estimated,
+            "ledger_equity": current,
         }
+    realized_pnl = round(current - opening, 2)
+    account_size = _valid_value(account.get("account_size"))
+    display_opening = (
+        account_size if account_size is not None and account_size > opening * 1.5 else opening
+    )
     return {
         "available": True,
-        "opening_balance": opening,
-        "realized_pnl": round(estimated - opening, 2),
-        "ledger_equity": estimated,
+        "opening_balance": display_opening,
+        "realized_pnl": realized_pnl,
+        "ledger_equity": round(display_opening + realized_pnl, 2),
     }
 
 

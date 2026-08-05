@@ -65,7 +65,7 @@ def test_dashboard_balance_summary_uses_scoped_account_balance_when_active(app):
     assert summary["trajectory_title"] == "Active Account Profit"
 
 
-def test_dashboard_balance_summary_prefers_broker_equity_when_active(app):
+def test_dashboard_balance_summary_prefers_ledger_equity_when_active(app):
     summary = core_service._dashboard_balance_summary(
         scope_active=True,
         scope_account_id=42,
@@ -76,10 +76,10 @@ def test_dashboard_balance_summary_prefers_broker_equity_when_active(app):
 
     assert summary["overall_balance"] == 52309.40
     assert round(summary["overall_profit"], 2) == 2309.40
-    assert summary["balance_source"] == "broker_equity"
+    assert summary["balance_source"] == "account_balance"
 
 
-def test_dashboard_balance_summary_uses_statement_balance_when_broker_equity_is_stale(app):
+def test_dashboard_balance_summary_uses_ledger_when_broker_equity_differs(app):
     summary = core_service._dashboard_balance_summary(
         scope_active=True,
         scope_account_id=42,
@@ -91,7 +91,7 @@ def test_dashboard_balance_summary_uses_statement_balance_when_broker_equity_is_
     assert summary["overall_balance"] == 52544.0
     assert round(summary["overall_profit"], 2) == 2544.0
     assert summary["balance_source"] == "account_balance"
-    assert "stale" in summary["balance_source_detail"].lower()
+    assert "recorded net realized trade" in summary["balance_source_detail"].lower()
 
 
 def test_dashboard_balance_summary_normalizes_funded_account_equity_from_small_ledger_base(app):
@@ -114,7 +114,7 @@ def test_dashboard_balance_summary_normalizes_funded_account_equity_from_small_l
     assert "normalized" in summary["balance_source_detail"].lower()
 
 
-def test_account_broker_metrics_normalizes_stale_equity_from_small_ledger_base(app):
+def test_account_broker_metrics_keeps_broker_diagnostic_and_normalizes_ledger_equity(app):
     metrics = core_service._account_broker_metrics_viewmodel(
         {
             "id": 42,
@@ -126,9 +126,12 @@ def test_account_broker_metrics_normalizes_stale_equity_from_small_ledger_base(a
         }
     )
 
-    assert metrics["broker_equity"] == 76459.50
-    assert metrics["broker_equity_source"] == "statement"
-    assert metrics["broker_equity_is_stale"] is True
+    assert metrics["broker_equity"] == 75000.0
+    assert metrics["broker_equity_source"] == "stored"
+    assert metrics["broker_equity_is_stale"] is False
+    assert metrics["ledger_equity"]["opening_balance"] == 75000.0
+    assert metrics["ledger_equity"]["realized_pnl"] == 1459.50
+    assert metrics["ledger_equity"]["ledger_equity"] == 76459.50
 
 
 def test_account_broker_metrics_reports_drawdown_off_peak_from_max_drawdown(app):
