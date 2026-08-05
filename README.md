@@ -161,6 +161,11 @@ cd /mccain-capital-repo
 
 Open: `http://localhost:5001`
 
+### Local Netdata Monitoring
+
+The optional monitoring dashboard runs natively on Apple Silicon, separate from the app.
+See [monitoring/netdata/README.md](monitoring/netdata/README.md) for startup details.
+
 ## ☕ Caffeinate LaunchAgent
 
 If you enabled the repo's macOS display-awake helper, it installs this LaunchAgent:
