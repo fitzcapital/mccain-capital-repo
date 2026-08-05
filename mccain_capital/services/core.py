@@ -10760,7 +10760,6 @@ def _dashboard_balance_summary(
         account_id=scope_account_id if scope_active else None,
     )
     if scope_has_bound_account:
-        broker_equity = _number(selected_account.get("broker_equity") if selected_account else None)
         scoped_balance = _number(
             selected_account.get("current_balance") if selected_account else None
         )
@@ -10773,26 +10772,13 @@ def _dashboard_balance_summary(
             and normalized_scoped_equity is not None
             and abs(float(scoped_balance) - float(normalized_scoped_equity)) > 0.01
         )
-        broker_equity_stale = (
-            broker_equity is not None
-            and normalized_scoped_equity is not None
-            and abs(float(broker_equity) - float(normalized_scoped_equity)) > 0.01
-        )
-        if broker_equity is not None and not broker_equity_stale:
-            overall_balance = float(broker_equity)
-            balance_source = "broker_equity"
-            balance_source_detail = "Vanquish broker dashboard equity."
-        elif normalized_scoped_equity is not None:
+        if normalized_scoped_equity is not None:
             overall_balance = float(normalized_scoped_equity)
             balance_source = "account_balance"
             balance_source_detail = (
                 "Latest statement/ledger balance normalized to funded account size."
                 if scoped_balance_was_normalized
-                else (
-                    "Latest statement/ledger balance; stored broker equity was stale."
-                    if broker_equity_stale
-                    else "Stored account ledger balance."
-                )
+                else "Opening balance plus recorded net realized trade P&L."
             )
         else:
             overall_balance = float(
@@ -10977,6 +10963,9 @@ def _broker_metrics_diagnostics_summary(diagnostics: Dict[str, Any]) -> Dict[str
 
 
 def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[str, Any]:
+    from mccain_capital.services import broker_equity as broker_equity_svc
+
+    ledger_equity = broker_equity_svc.ledger_equity_view(account)
     if not account:
         return {
             "has_metrics": False,
@@ -11006,24 +10995,15 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
                 "tone": "neutral",
             },
             "remaining_drawdown_tone": "neutral",
+            "ledger_equity": ledger_equity,
         }
     account_id = account.get("id")
-    metrics_source = _broker_metrics_source(account_id)
+    metrics_source = str(
+        account.get("broker_equity_source") or _broker_metrics_source(account_id) or ""
+    )
     broker_equity = account.get("broker_equity")
-    account_balance = account.get("current_balance")
-    normalized_account_equity = _dashboard_account_equity_from_balance(account, account_balance)
-    broker_equity_source = metrics_source or "broker"
+    broker_equity_source = metrics_source or ("stored" if broker_equity is not None else "missing")
     broker_equity_is_stale = False
-    if isinstance(broker_equity, (int, float)) and isinstance(account_balance, (int, float)):
-        comparison_equity = (
-            normalized_account_equity
-            if normalized_account_equity is not None
-            else float(account_balance)
-        )
-        broker_equity_is_stale = abs(float(broker_equity) - float(comparison_equity)) > 0.01
-        if broker_equity_is_stale:
-            broker_equity = float(comparison_equity)
-            broker_equity_source = "statement"
     remaining = account.get("broker_remaining_drawdown")
     has_remaining_drawdown = isinstance(remaining, (int, float))
     has_broker_risk_metrics = has_remaining_drawdown
@@ -11044,6 +11024,8 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
     source_labels = {
         "manual": "Manual value",
         "broker": "Broker value",
+        "broker_dashboard": "Broker dashboard",
+        "stored": "Stored value",
         "statement": "Statement balance active",
         "missing": "Missing",
     }
@@ -11068,6 +11050,7 @@ def _account_broker_metrics_viewmodel(account: Dict[str, Any] | None) -> Dict[st
         "broker_metrics_updated_label": _format_iso_et_label(updated_at),
         "broker_metrics_diagnostics": diagnostics,
         "broker_metrics_diagnostics_summary": _broker_metrics_diagnostics_summary(diagnostics),
+        "ledger_equity": ledger_equity,
         "remaining_drawdown_tone": _remaining_drawdown_tone(remaining),
     }
 
@@ -15095,7 +15078,8 @@ def dashboard_manual_broker_metrics_update():
 
 
 def dashboard_manual_equity_update():
-    from mccain_capital.repositories import trades as trades_repo
+    from mccain_capital.services import broker_equity as broker_equity_svc
+    from mccain_capital.services.trades import record_admin_audit
 
     wants_json = (
         "application/json" in str(request.headers.get("Accept") or "").lower()
@@ -15105,55 +15089,29 @@ def dashboard_manual_equity_update():
         account_id = int(request.form.get("account_id") or request.args.get("account_id") or 0)
     except (TypeError, ValueError):
         account_id = 0
-    account = trades_repo.get_account(account_id) if account_id else None
     redirect_url = (
         url_for("dashboard", scope="active", account_id=account_id)
         if account_id
         else url_for("dashboard")
     )
-    if not account:
-        message = "Select a valid account before updating broker equity."
-        flash(message, "warn")
-        if wants_json:
-            return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
-        return redirect(redirect_url)
-
     raw_equity = str(request.form.get("broker_equity") or request.form.get("equity") or "").strip()
-    cleaned = re.sub(r"[^0-9.\-]+", "", raw_equity)
     try:
-        broker_equity = float(cleaned)
-    except (TypeError, ValueError):
-        broker_equity = -1.0
-    if broker_equity < 0:
-        message = "Enter a valid broker equity amount."
+        saved = broker_equity_svc.manual_update(account_id, raw_equity, audit=record_admin_audit)
+    except ValueError as exc:
+        message = str(exc)
         flash(message, "warn")
         if wants_json:
             return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
         return redirect(redirect_url)
-
-    current_peak = account.get("broker_equity_peak")
-    try:
-        broker_equity_peak = max(float(current_peak), broker_equity)
-    except (TypeError, ValueError):
-        broker_equity_peak = broker_equity
-    trades_repo.update_account_broker_metrics(
-        account_id,
-        broker_equity=round(broker_equity, 2),
-        broker_equity_peak=round(broker_equity_peak, 2),
-        broker_remaining_drawdown=account.get("broker_remaining_drawdown"),
-        broker_max_loss=account.get("broker_max_loss"),
-    )
     _set_broker_metrics_source(account_id, "manual")
-    trades_repo.set_active_account(account_id)
-    message = f"Broker equity updated to {app_runtime.money(broker_equity)}."
+    message = f"Broker equity updated to {app_runtime.money(saved['value'])}."
     flash(message, "success")
     if wants_json:
         return jsonify(
             {
                 "ok": True,
                 "message": message,
-                "broker_equity": round(broker_equity, 2),
-                "broker_equity_peak": round(broker_equity_peak, 2),
+                "broker_equity": saved["value"],
                 "redirect_url": redirect_url,
             }
         )

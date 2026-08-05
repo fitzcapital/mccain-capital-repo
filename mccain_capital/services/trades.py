@@ -52,6 +52,7 @@ from mccain_capital.runtime import (
     today_iso,
 )
 from mccain_capital.services import trades_importing as importing
+from mccain_capital.services import broker_equity
 from mccain_capital.services import vanquish_live_sync
 from mccain_capital.services.trades_backup import (
     _auto_backup_config_path,
@@ -1912,14 +1913,6 @@ def _capture_account_metrics_for_sync(
         debug_dir=debug_dir,
         progress_cb=progress_cb,
     )
-    if metrics:
-        repo.update_account_broker_metrics(
-            account_id,
-            broker_equity=metrics.get("broker_equity"),
-            broker_equity_peak=metrics.get("broker_equity_peak"),
-            broker_remaining_drawdown=metrics.get("broker_remaining_drawdown"),
-            broker_max_loss=metrics.get("broker_max_loss"),
-        )
     return {
         "metrics": metrics,
         "warns": warns,
@@ -1928,18 +1921,34 @@ def _capture_account_metrics_for_sync(
     }
 
 
-def _sync_account_broker_equity_from_statement(
+def _resolve_account_broker_equity(
     *,
     account_id: int,
+    broker_account_id: str,
+    metrics_result: Dict[str, Any],
     statement_ending_balance: float | None,
-) -> bool:
-    if account_id <= 0 or statement_ending_balance is None:
-        return False
-    repo.update_account_broker_equity_from_statement(
-        account_id,
-        broker_equity=float(statement_ending_balance),
+    statement_trusted: bool,
+) -> Dict[str, Any]:
+    result = broker_equity.resolve_refresh(
+        account_id=account_id,
+        requested_broker_account_id=broker_account_id,
+        metrics=metrics_result.get("metrics"),
+        metrics_meta=metrics_result.get("meta"),
+        statement_balance=statement_ending_balance,
+        statement_trusted=statement_trusted,
     )
-    return True
+    result["account_id"] = account_id
+    if result.get("updated"):
+        record_admin_audit(
+            "broker_equity_automatic_update",
+            {
+                "account_id": account_id,
+                "source": result.get("source"),
+                "value": result.get("value"),
+                "updated_at": result.get("updated_at"),
+            },
+        )
+    return result
 
 
 def _handle_statement_html_import(
@@ -1969,9 +1978,10 @@ def _handle_statement_html_import(
                     upload_id=upload_id,
                     raw_line=source_label,
                 )
-                _sync_account_broker_equity_from_statement(
+                repo.update_account_broker_equity_from_statement(
                     account_id=int(account["id"]),
-                    statement_ending_balance=balance_val,
+                    broker_equity=balance_val,
+                    source="statement",
                 )
                 ledger_balance = latest_balance_overall(
                     account_id=int(account["id"]),
@@ -2065,10 +2075,12 @@ def _handle_statement_html_import(
             commit=True,
             import_batch_id=batch_id,
         )
-        _sync_account_broker_equity_from_statement(
-            account_id=int(account["id"]),
-            statement_ending_balance=balance_val,
-        )
+        if balance_val is not None:
+            repo.update_account_broker_equity_from_statement(
+                account_id=int(account["id"]),
+                broker_equity=balance_val,
+                source="statement",
+            )
         _record_import_batch(
             batch_id=batch_id,
             source=source_label,
@@ -2114,9 +2126,10 @@ def _handle_statement_html_import(
         upload_id=upload_id,
         raw_line=source_label,
     )
-    _sync_account_broker_equity_from_statement(
+    repo.update_account_broker_equity_from_statement(
         account_id=int(account["id"]),
-        statement_ending_balance=balance_val,
+        broker_equity=balance_val,
+        source="statement",
     )
     _record_import_batch(
         batch_id=batch_id,
@@ -2950,6 +2963,7 @@ def trades_upload_pdf():
         accounts=accounts,
         archived_accounts=archived_accounts,
         selected_account=selected_account,
+        ledger_equity=broker_equity.ledger_equity_view(selected_account),
         account_form_mode=account_form_mode,
         account_form_account=account_form_account,
         rollover_from_account_id=rollover_from_account_id,
@@ -3138,9 +3152,12 @@ def _run_live_sync_once(
                 artifacts_rel = artifacts_rel + [
                     _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
                 ]
-                _sync_account_broker_equity_from_statement(
+                equity_refresh = _resolve_account_broker_equity(
                     account_id=account_id,
+                    broker_account_id=account,
+                    metrics_result=metrics_result,
                     statement_ending_balance=balance_for_snapshot,
+                    statement_trusted=not date_range_fallback,
                 )
                 result.update(
                     {
@@ -3154,17 +3171,37 @@ def _run_live_sync_once(
                         "batch_id": balance_batch_id,
                         "account_metrics": metrics_result.get("metrics"),
                         "account_metrics_meta": metrics_result.get("meta"),
+                        "equity_refresh": equity_refresh,
                     }
                 )
                 return result
+            metrics_result = _capture_account_metrics_for_sync(
+                account_id=account_id,
+                broker_account_id=account,
+                headless=headless,
+                debug_dir=debug_dir,
+                progress_cb=progress_cb,
+            )
+            warns_all = warns_all + list(metrics_result.get("warns") or [])
+            equity_refresh = _resolve_account_broker_equity(
+                account_id=account_id,
+                broker_account_id=account,
+                metrics_result=metrics_result,
+                statement_ending_balance=None,
+                statement_trusted=False,
+            )
             result.update(
                 {
-                    "ok": False,
-                    "stage": "capture_statement_html",
-                    "message": "Parsed statement HTML but found no trade rows.",
+                    "ok": True,
+                    "stage": "import_complete",
+                    "message": "No new trade rows found; equity refresh still attempted.",
+                    "inserted": 0,
                     "warns": warns_all,
                     "artifacts_rel": artifacts_rel,
                     "statement_path": path,
+                    "account_metrics": metrics_result.get("metrics"),
+                    "account_metrics_meta": metrics_result.get("meta"),
+                    "equity_refresh": equity_refresh,
                 }
             )
             return result
@@ -3238,9 +3275,12 @@ def _run_live_sync_once(
         artifacts_rel = artifacts_rel + [
             _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
         ]
-        _sync_account_broker_equity_from_statement(
+        equity_refresh = _resolve_account_broker_equity(
             account_id=account_id,
+            broker_account_id=account,
+            metrics_result=metrics_result,
             statement_ending_balance=balance_val,
+            statement_trusted=not date_range_fallback,
         )
         msg = f"{source_label}: inserted {inserted} trade(s)."
         if errors:
@@ -3259,6 +3299,7 @@ def _run_live_sync_once(
                 "batch_id": batch_id,
                 "account_metrics": metrics_result.get("metrics"),
                 "account_metrics_meta": metrics_result.get("meta"),
+                "equity_refresh": equity_refresh,
             }
         )
         return result
@@ -3306,9 +3347,12 @@ def _run_live_sync_once(
     artifacts_rel = artifacts_rel + [
         _debug_relative(p) for p in list(metrics_result.get("artifacts_abs") or [])
     ]
-    _sync_account_broker_equity_from_statement(
+    equity_refresh = _resolve_account_broker_equity(
         account_id=int(selected_account["id"]),
+        broker_account_id=account,
+        metrics_result=metrics_result,
         statement_ending_balance=balance_val,
+        statement_trusted=True,
     )
     result.update(
         {
@@ -3321,6 +3365,7 @@ def _run_live_sync_once(
             "batch_id": batch_id,
             "account_metrics": metrics_result.get("metrics"),
             "account_metrics_meta": metrics_result.get("meta"),
+            "equity_refresh": equity_refresh,
         }
     )
     return result
@@ -3447,6 +3492,7 @@ def _execute_sync_job(
                 "inserted": int(run.get("inserted") or 0),
                 "account_metrics": run.get("account_metrics"),
                 "account_metrics_meta": run.get("account_metrics_meta"),
+                "equity_refresh": run.get("equity_refresh"),
                 "artifacts_rel": (run.get("artifacts_rel") or [])[:20],
                 "statement_file": (
                     _debug_relative(run.get("statement_path", ""))
@@ -3473,6 +3519,7 @@ def _execute_sync_job(
                     "sync_meta": run.get("sync_meta", {}),
                     "account_metrics": run.get("account_metrics"),
                     "account_metrics_meta": run.get("account_metrics_meta"),
+                    "equity_refresh": run.get("equity_refresh"),
                     "artifacts_rel": summary["artifacts_rel"],
                     "statement_file": summary["statement_file"],
                     "duration_sec": duration_sec,

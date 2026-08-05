@@ -435,7 +435,7 @@ def test_live_sync_workspace_surfaces_account_and_credentials_actions(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Edit Credentials" in body
-    assert "Live upload updates equity" in body
+    assert "recalculates Ledger Equity" in body
     assert "remaining drawdown is manual" in body
     assert "rollover-aware dedupe" in body
     assert "Vanquish Account Number" in body
@@ -473,12 +473,18 @@ def test_live_sync_workspace_surfaces_manual_drawdown_without_equity_override(cl
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Equity $50,083.40" in body
+    assert "Equity $50,083.40" not in body
     assert "DD left $2,216.90" in body
-    assert "Live upload updates equity" in body
+    assert "recalculates Ledger Equity" in body
     assert "remaining drawdown is manual" in body
     assert 'name="broker_remaining_drawdown"' in body
     assert "Save DD" in body
+    assert "Ledger Equity $50,000.00" in body
+    assert "Opening $50,000.00" in body
+    assert "Net realized P&amp;L $0.00" in body
+    assert "Broker reconciliation delta" not in body
+    assert "Save Equity" not in body
+    assert 'id="live-equity-form"' not in body
     assert "Manual equity override" not in body
     live_form_start = body.index('id="live-sync-form"')
     live_form_end = body.index("</form>", live_form_start)
@@ -523,6 +529,213 @@ def test_manual_drawdown_update_can_return_to_import_workspace(client):
     account = trades_repo.get_account(int(account_id))
     assert account["broker_equity"] == 50083.40
     assert account["broker_remaining_drawdown"] == 2100.25
+
+
+def test_live_sync_manual_equity_updates_source_peak_and_preserves_risk(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="75k",
+        broker_account_id="default:OEV0073921",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=3750.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        account_id,
+        broker_equity=76100.0,
+        broker_equity_peak=76200.0,
+        broker_remaining_drawdown=3750.0,
+        broker_max_loss=71250.0,
+    )
+
+    response = client.post(
+        "/trades/sync/live/equity",
+        data={"account_id": str(account_id), "broker_equity": "76350.25"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(
+        f"/trades/upload/statement?ws=live&account_id={account_id}"
+    )
+    account = trades_repo.get_account(account_id)
+    assert account["broker_equity"] == 76350.25
+    assert account["broker_equity_peak"] == 76350.25
+    assert account["broker_remaining_drawdown"] == 3750.0
+    assert account["broker_max_loss"] == 71250.0
+    assert account["broker_equity_source"] == "manual"
+    assert account["broker_metrics_updated_at"]
+
+
+def test_live_sync_manual_equity_rejects_non_finite_value(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="75k",
+        broker_account_id="default:OEV0073921",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=3750.0,
+    )
+    response = client.post(
+        "/trades/sync/live/equity",
+        data={"account_id": str(account_id), "broker_equity": "nan"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert trades_repo.get_account(account_id)["broker_equity"] is None
+
+
+def test_partial_broker_metric_update_preserves_unsupplied_values(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="75k",
+        broker_account_id="default:OEV0073921",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=3750.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        account_id,
+        broker_equity=76100.0,
+        broker_equity_peak=76200.0,
+        broker_remaining_drawdown=3700.0,
+        broker_max_loss=71250.0,
+    )
+    trades_repo.update_account_broker_metrics(account_id, broker_equity=76300.0)
+    account = trades_repo.get_account(account_id)
+    assert account["broker_equity"] == 76300.0
+    assert account["broker_equity_peak"] == 76200.0
+    assert account["broker_remaining_drawdown"] == 3700.0
+    assert account["broker_max_loss"] == 71250.0
+
+
+def test_equity_resolver_prioritizes_dashboard_and_preserves_partial_risk(client):
+    from mccain_capital.services import broker_equity
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="75k",
+        broker_account_id="default:OEV0073921",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=3750.0,
+    )
+    trades_repo.update_account_broker_metrics(
+        account_id,
+        broker_equity=76000.0,
+        broker_equity_peak=76100.0,
+        broker_remaining_drawdown=3700.0,
+        broker_max_loss=71250.0,
+    )
+    result = broker_equity.resolve_refresh(
+        account_id=account_id,
+        requested_broker_account_id="OEV0073921",
+        metrics={"broker_equity": 76400.0},
+        metrics_meta={"status": "success"},
+        statement_balance=76300.0,
+        statement_trusted=True,
+    )
+    account = trades_repo.get_account(account_id)
+    assert result["source"] == "broker_dashboard"
+    assert account["broker_equity"] == 76400.0
+    assert account["broker_equity_peak"] == 76400.0
+    assert account["broker_remaining_drawdown"] == 3700.0
+    assert account["broker_equity_source"] == "broker_dashboard"
+
+
+def test_equity_resolver_uses_trusted_statement_then_preserves_on_auth_failure(client):
+    from mccain_capital.services import broker_equity
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="75k",
+        broker_account_id="default:OEV0073921",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=3750.0,
+    )
+    statement = broker_equity.resolve_refresh(
+        account_id=account_id,
+        requested_broker_account_id="OEV0073921",
+        metrics=None,
+        metrics_meta={"status": "auth_required"},
+        statement_balance=76153.2,
+        statement_trusted=True,
+    )
+    preserved = broker_equity.resolve_refresh(
+        account_id=account_id,
+        requested_broker_account_id="OEV0073921",
+        metrics=None,
+        metrics_meta={"status": "auth_required", "final_url": "/signup"},
+        statement_balance=77000.0,
+        statement_trusted=False,
+    )
+    assert statement["source"] == "statement"
+    assert preserved["status"] == "preserved"
+    assert preserved["value"] == 76153.2
+    assert "authentication required" in preserved["reason"].lower()
+    assert trades_repo.get_account(account_id)["broker_equity"] == 76153.2
+
+
+def test_equity_resolver_rejects_account_mismatch(client):
+    from mccain_capital.services import broker_equity
+
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="75k",
+        broker_account_id="default:OEV0073921",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=3750.0,
+    )
+    result = broker_equity.resolve_refresh(
+        account_id=account_id,
+        requested_broker_account_id="OTHER123",
+        metrics={"broker_equity": 99999.0},
+        metrics_meta={"status": "success"},
+        statement_balance=99999.0,
+        statement_trusted=True,
+    )
+    assert result["status"] == "missing"
+    assert "mismatch" in result["reason"].lower()
+    assert trades_repo.get_account(account_id)["broker_equity"] is None
+
+
+def test_ledger_equity_uses_opening_balance_and_realized_pnl():
+    from mccain_capital.services import broker_equity
+
+    result = broker_equity.ledger_equity_view(
+        {
+            "starting_balance": 75000.0,
+            "current_balance": 76153.20,
+        }
+    )
+
+    assert result == {
+        "available": True,
+        "opening_balance": 75000.0,
+        "realized_pnl": 1153.2,
+        "ledger_equity": 76153.2,
+    }
+
+
+def test_dashboard_renders_ledger_equity_as_primary_value(client):
+    account_id = trades_repo.create_account(
+        prop_firm="Vanquish",
+        account_name="75k",
+        broker_account_id="default:OEV0073921",
+        account_size=75000.0,
+        starting_balance=75000.0,
+        max_drawdown=3750.0,
+    )
+    response = client.get(f"/dashboard?scope=active&account_id={account_id}", follow_redirects=True)
+    body = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Ledger Equity" in body
+    assert "Estimated Ledger Equity" not in body
+    assert "Opening $75,000.00 + net realized P&amp;L $0.00" in body
+    assert "Broker Equity missing" not in body
+    assert 'id="manual-equity-input"' not in body
 
 
 def test_live_sync_failure_surfaces_manual_html_recovery(client, monkeypatch, tmp_path):
@@ -1488,6 +1701,7 @@ def test_update_account_broker_metrics_persists_values(app):
     assert account["broker_remaining_drawdown"] == 2500.00
     assert account["broker_max_loss"] == 49809.40
     assert account["broker_metrics_updated_at"] == "2026-06-09T10:00:00-04:00"
+    assert account["broker_equity_source"] is None
 
 
 def test_statement_balance_updates_broker_equity_without_wiping_risk_metrics(app):
@@ -1519,7 +1733,8 @@ def test_statement_balance_updates_broker_equity_without_wiping_risk_metrics(app
     assert account["broker_equity_peak"] == 52544.00
     assert account["broker_remaining_drawdown"] == 2500.00
     assert account["broker_max_loss"] == 49809.40
-    assert account["broker_metrics_updated_at"] == "2026-06-09T10:00:00-04:00"
+    assert account["broker_metrics_updated_at"] == "2026-06-10T09:55:00-04:00"
+    assert account["broker_equity_source"] == "statement"
 
 
 def test_dashboard_update_account_refreshes_broker_metrics_only(client, monkeypatch):

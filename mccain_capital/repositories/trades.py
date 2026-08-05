@@ -25,6 +25,7 @@ SOURCE_PLACEHOLDER_SETUPS = {
 }
 
 DEFAULT_PROP_FIRM = "Vanquish"
+_UNSET = object()
 
 
 def _trade_clock_to_minutes(value: Any) -> Optional[int]:
@@ -582,36 +583,32 @@ def update_account(
 def update_account_broker_metrics(
     account_id: int,
     *,
-    broker_equity: float | None = None,
-    broker_equity_peak: float | None = None,
-    broker_remaining_drawdown: float | None = None,
-    broker_max_loss: float | None = None,
+    broker_equity: Any = _UNSET,
+    broker_equity_peak: Any = _UNSET,
+    broker_remaining_drawdown: Any = _UNSET,
+    broker_max_loss: Any = _UNSET,
+    broker_equity_source: Any = _UNSET,
     updated_at: str | None = None,
 ) -> None:
     if not account_id:
         return
     now = updated_at or now_iso()
+    supplied = {
+        "broker_equity": broker_equity,
+        "broker_equity_peak": broker_equity_peak,
+        "broker_remaining_drawdown": broker_remaining_drawdown,
+        "broker_max_loss": broker_max_loss,
+        "broker_equity_source": broker_equity_source,
+    }
+    updates = [(column, value) for column, value in supplied.items() if value is not _UNSET]
+    if not updates:
+        return
+    assignments = ", ".join(f"{column} = ?" for column, _ in updates)
     with db() as conn:
         conn.execute(
-            """
-            UPDATE accounts
-            SET broker_equity = ?,
-                broker_equity_peak = ?,
-                broker_remaining_drawdown = ?,
-                broker_max_loss = ?,
-                broker_metrics_updated_at = ?,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                broker_equity,
-                broker_equity_peak,
-                broker_remaining_drawdown,
-                broker_max_loss,
-                now,
-                now,
-                int(account_id),
-            ),
+            f"UPDATE accounts SET {assignments}, broker_metrics_updated_at = ?, "
+            "updated_at = ? WHERE id = ?",
+            tuple(value for _, value in updates) + (now, now, int(account_id)),
         )
         conn.commit()
 
@@ -620,6 +617,7 @@ def update_account_broker_equity_from_statement(
     account_id: int,
     *,
     broker_equity: float,
+    source: str = "statement",
     updated_at: str | None = None,
 ) -> None:
     if not account_id:
@@ -648,12 +646,16 @@ def update_account_broker_equity_from_statement(
             UPDATE accounts
             SET broker_equity = ?,
                 broker_equity_peak = ?,
+                broker_equity_source = ?,
+                broker_metrics_updated_at = ?,
                 updated_at = ?
             WHERE id = ?
             """,
             (
                 equity,
                 broker_equity_peak,
+                source,
+                now,
                 now,
                 int(account_id),
             ),

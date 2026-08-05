@@ -378,7 +378,8 @@ def test_dashboard_continuity_uses_prior_eval_for_ledger_not_broker(client):
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Broker Equity" in body
+    assert "Ledger Equity" in body
+    assert "Broker Equity" not in body
     assert "$50,125.00" in body
     assert "Ledger P&amp;L" in body
     assert "continuity" in body

@@ -1615,7 +1615,7 @@
       <div class="dashboardSurfaceBody">
         <div class="dashboardBrokerSourceGrid">
           <div class="dashboardBrokerSourceCard">
-            <span>Broker equity</span>
+            <span>Broker-reported equity</span>
             <strong>{% if selected_account_broker_metrics.broker_equity is not none %}{{ money(selected_account_broker_metrics.broker_equity) }}{% else %}—{% endif %}</strong>
             <small>{{ selected_account_broker_metrics.broker_equity_source_label or 'Missing' }}</small>
           </div>
@@ -1635,16 +1635,12 @@
           <input type="hidden" name="account_id" value="{{ selected_account.id }}">
           <div class="dashboardBrokerFormGrid stack16">
             <label>
-              <span>Manual broker equity</span>
-              <input name="broker_equity" type="number" inputmode="decimal" min="0" step="0.01" value="{% if selected_account_broker_metrics.broker_equity is not none %}{{ '%.2f'|format(selected_account_broker_metrics.broker_equity) }}{% endif %}" placeholder="50000.00" data-surface-initial-focus>
-            </label>
-            <label>
               <span>Manual remaining drawdown</span>
-              <input name="broker_remaining_drawdown" type="number" inputmode="decimal" min="0" step="0.01" value="{% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}{{ '%.2f'|format(selected_account_broker_metrics.broker_remaining_drawdown) }}{% endif %}" placeholder="2500.00">
+              <input name="broker_remaining_drawdown" type="number" inputmode="decimal" min="0" step="0.01" value="{% if selected_account_broker_metrics.broker_remaining_drawdown is not none %}{{ '%.2f'|format(selected_account_broker_metrics.broker_remaining_drawdown) }}{% endif %}" placeholder="2500.00" data-surface-initial-focus>
             </label>
           </div>
           <div class="dashboardSessionActions">
-            <button class="btn primary" type="submit">Save manual values</button>
+            <button class="btn primary" type="submit">Save remaining drawdown</button>
           </div>
         </form>
         <div class="hr"></div>
@@ -1891,26 +1887,15 @@
       <small>Continuity includes {{ continuity_label }}</small>
     {% endif %}
   </div>
-  <div class="dashboardBrokerMetric dashboardBrokerMetric-manual">
-    <span>Broker Equity</span>
-    <strong>
-      {% if selected_account_broker_metrics.broker_equity is not none %}
-        {{ money(selected_account_broker_metrics.broker_equity) }}
-      {% else %}
-        —
-      {% endif %}
-    </strong>
+  {% set ledger_equity = selected_account_broker_metrics.ledger_equity %}
+  <div class="dashboardBrokerMetric">
+    <span>Ledger Equity</span>
+    <strong>{% if ledger_equity.available %}{{ money(ledger_equity.ledger_equity) }}{% else %}—{% endif %}</strong>
     <small>
-      {% if balance_source == 'broker_equity' %}
-        Live upload balance
-      {% elif selected_account_broker_metrics.broker_equity_source == 'statement' %}
-        Statement balance active
-      {% elif selected_account_broker_metrics.broker_equity is not none %}
-        {{ selected_account_broker_metrics.broker_equity_source_label }}
-      {% elif selected_account %}
-        Ledger fallback active
+      {% if ledger_equity.available %}
+        Opening {{ money(ledger_equity.opening_balance) }} + net realized P&amp;L {{ money(ledger_equity.realized_pnl) }}
       {% else %}
-        No broker account selected
+        Select an account to calculate
       {% endif %}
     </small>
   </div>
@@ -1996,22 +1981,13 @@
     </a>
   </div>
   <div class="dashboardBrokerFreshness">
-    {% if selected_account_broker_metrics.broker_equity_is_stale %}
-      Statement balance is newer than stored broker equity
-    {% elif selected_account_broker_metrics.broker_metrics_updated_label %}
-      Broker updated {{ selected_account_broker_metrics.broker_metrics_updated_label }}
-    {% elif selected_account %}
-      Broker metrics not refreshed yet
+    {% if selected_account %}
+      Ledger Equity recalculates from imported completed trades
     {% else %}
       Ledger-only view
     {% endif %}
   </div>
 </div>
-{% if selected_account and not selected_account_broker_metrics.has_core_broker_metrics %}
-  <div class="dashboardBrokerStaleWarning">
-    Broker equity and remaining drawdown are missing. Open Edit Metrics and enter both values.
-  </div>
-{% endif %}
 <div class="dashboardAnalyticsCluster dashboardProjectGrid">
   <div class="card primaryCard summaryPanel dashboardAnalyticsPrimary{% if not performance_chart.actuals %} is-empty{% endif %}"><div class="toolbar">
     <div class="calendarHead">

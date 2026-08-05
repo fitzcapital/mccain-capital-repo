@@ -975,6 +975,13 @@ def _migration_0014_account_broker_metrics(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migration_0015_broker_equity_source(conn: sqlite3.Connection) -> None:
+    _migration_0014_account_broker_metrics(conn)
+    account_cols = {str(r["name"]) for r in conn.execute("PRAGMA table_info(accounts)").fetchall()}
+    if "broker_equity_source" not in account_cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN broker_equity_source TEXT")
+
+
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0001_baseline", _migration_0001_baseline),
     ("0002_journal_phase2", _migration_0002_journal_phase2),
@@ -990,6 +997,7 @@ MIGRATIONS: List[Tuple[str, MigrationFn]] = [
     ("0012_full_trading_host_coverage", _migration_0012_full_trading_host_coverage),
     ("0013_multi_account_ledgers", _migration_0013_multi_account_ledgers),
     ("0014_account_broker_metrics", _migration_0014_account_broker_metrics),
+    ("0015_broker_equity_source", _migration_0015_broker_equity_source),
 ]
 
 

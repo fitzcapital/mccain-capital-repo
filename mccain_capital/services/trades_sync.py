@@ -12,6 +12,7 @@ from flask import flash, jsonify, redirect, request, url_for
 
 from mccain_capital.services import trades as legacy
 from mccain_capital.services import trades_ops
+from mccain_capital.services import broker_equity
 from mccain_capital.services.job_presenters import job_response_payload
 
 _AUTO_SYNC_THREAD_STARTED = False
@@ -746,6 +747,26 @@ def trades_sync_live_last_run():
         return jsonify({"ok": True, "job": job_payload, "sync": dashboard_live_sync_state()})
     flash("Live sync started from the dashboard. Status will update inline.", "success")
     return redirect(url_for("dashboard"))
+
+
+def trades_sync_live_equity():
+    try:
+        account_id = int(request.form.get("account_id") or 0)
+    except (TypeError, ValueError):
+        account_id = 0
+    return_url = url_for("trades_upload_pdf", ws="live", account_id=account_id or "")
+    try:
+        saved = broker_equity.manual_update(
+            account_id,
+            request.form.get("broker_equity"),
+            audit=legacy.record_admin_audit,
+        )
+    except ValueError as exc:
+        flash(str(exc), "warn")
+        return redirect(return_url)
+    legacy.repo.set_active_account(account_id)
+    flash(f"Broker Equity saved at {legacy.money(saved['value'])}.", "success")
+    return redirect(return_url)
 
 
 def trades_sync_auto_config():
