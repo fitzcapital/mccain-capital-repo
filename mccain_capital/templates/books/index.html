@@ -1,0 +1,87 @@
+<div class="card pageHero">
+  <div class="toolbar">
+    <div class="pageHeroHead">
+      <div>
+        <div class="pill">📚 Books Desk</div>
+        <h2 class="pageTitle">Private Trading Library</h2>
+        <div class="pageSub">Mindset, discipline, structure, and execution reads built into your cockpit.</div>
+      </div>
+      <div class="actionRow">
+        <a class="btn" href="/dashboard">Calendar</a>
+        <a class="btn" href="/analytics">Analytics</a>
+        <a class="btn" href="/trades/playbook">Playbook</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="twoCol">
+  <div class="card"><div class="toolbar">
+    <div class="pill">🧠 Mindset Pull</div>
+    {% if featured %}
+      <div class="summaryLead" style="margin-top:10px">{{ featured.title }} · {{ featured.author }}</div>
+      <div class="supportBody" style="margin-top:8px">
+        Before the open, use this shelf to reset your state. The point is not more information. It is cleaner thinking under pressure.
+      </div>
+      {% if featured.quote %}
+        <div class="entryQuote" style="margin-top:10px">“{{ featured.quote }}”</div>
+      {% endif %}
+      <div class="tiny line16" style="margin-top:10px">{{ featured.why }}</div>
+      <div class="rightActions" style="margin-top:12px">
+        <a class="btn primary" href="/books/open/{{ featured.name }}">Open {{ featured.title }}</a>
+      </div>
+    {% else %}
+      <div class="meta">No PDFs found yet.</div>
+    {% endif %}
+  </div></div>
+
+  <div class="card"><div class="toolbar">
+    <div class="pill">🗂️ Library Notes</div>
+    <div class="tiny" style="margin-top:10px; line-height:1.6">
+      Drop PDFs into <b>{{ books_dir }}</b> and refresh.<br>
+      Path example: <span class="kbd">./books</span>
+    </div>
+    <div class="hr"></div>
+    <div class="stack8">
+      <span class="tradeValueBubble tradeValueBubbleGain">Mindset shelf</span>
+      <span class="tradeValueBubble tradeValueBubbleWarm">Execution references</span>
+      <span class="tradeValueBubble tradeValueBubbleInfo">Pattern + volume context</span>
+    </div>
+  </div></div>
+</div>
+
+<div class="card" style="margin-top:12px"><div class="toolbar">
+  <div class="pill">📄 Library ({{ books|length }})</div>
+  <div class="hr"></div>
+
+  {% if books|length == 0 %}
+    <div class="meta">No PDFs found in <b>{{ books_dir }}</b>.</div>
+  {% else %}
+    <div class="stratGrid2">
+      {% for b in books %}
+        <div class="card" style="border-radius:16px">
+          <div class="toolbar">
+            <div class="showcaseHead">
+              <div>
+                <div class="supportLead">{{ b.title }}</div>
+                <div class="tiny line16">{{ b.author }}</div>
+              </div>
+              <span class="{{ b.tone_class }}">{{ b.lane }}</span>
+            </div>
+            <div class="supportBody" style="margin-top:10px">{{ b.focus }}</div>
+            <div class="tiny line16" style="margin-top:8px">{{ b.why }}</div>
+            {% if b.quote %}
+              <div class="entryQuote" style="margin-top:10px">“{{ b.quote }}”</div>
+            {% endif %}
+            <div class="trendChips" style="margin-top:10px">
+              <span class="trendChip">{{ b.size_label }}</span>
+            </div>
+            <div class="rightActions" style="margin-top:12px">
+              <a class="btn primary" href="/books/open/{{ b.name }}">Open</a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div></div>

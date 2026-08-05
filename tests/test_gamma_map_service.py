@@ -153,8 +153,8 @@ def test_normalize_gamma_symbol_defaults_to_spx():
 def test_normalize_gamma_ladder_symbol_accepts_search_symbols():
     assert svc.normalize_gamma_ladder_symbol("NVDA") == "NVDA"
     assert svc.normalize_gamma_ladder_symbol("BRK.B") == "BRK.B"
-    assert svc.normalize_gamma_ladder_symbol("bad!") == "SPX"
-    assert svc.normalize_gamma_ladder_symbol("") == "SPX"
+    assert svc.normalize_gamma_ladder_symbol("bad!") == "SPY"
+    assert svc.normalize_gamma_ladder_symbol("") == "SPY"
 
 
 def test_gamma_ladder_cache_key_includes_symbol_expiration_and_window():

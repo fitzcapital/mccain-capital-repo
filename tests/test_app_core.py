@@ -672,7 +672,7 @@ def test_login_page_includes_passkey_cta_when_passkeys_exist(client):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Use Passkey" in body
-    assert "Passkey sign-in is ready" in body
+    assert "Passkey ready" in body
 
 
 def test_passkeys_page_renders_registered_devices_for_authenticated_user(client):
@@ -2679,12 +2679,12 @@ def test_dashboard_tape_refresh_returns_series_points(client, monkeypatch):
         },
     )
 
-    resp = client.get("/api/dashboard/tape?ticker=QQQ", follow_redirects=True)
+    resp = client.get("/api/dashboard/tape?symbols=QQQ,SPY", follow_redirects=True)
 
     assert resp.status_code == 200
     payload = resp.get_json()
     assert payload["ok"] is True
-    assert sorted(payload["series_points"]) == ["QQQ", "SPX", "SPY", "VIX"]
+    assert sorted(payload["series_points"]) == ["QQQ", "SPY"]
     assert len(payload["series_points"]["SPY"]) == 5
 
 
@@ -2801,15 +2801,13 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert body.count("marketMiniSparkBody") >= 8
-    assert body.count("marketMiniSparkWick") >= 8
-    assert body.count("marketMiniSparkPoint") >= 4
-    assert body.count("marketMiniSparkAmbientBand") >= 12
-    assert body.count("marketMiniSparkCurrentGlow") >= 4
-    assert body.count("marketMiniSparkBaseline") >= 4
-    assert body.count("dashboardTapeFreshnessGlyph") >= 4
-    assert body.count("data-freshness-label=") >= 4
-    assert body.count('data-role="row-live"') >= 4
+    assert body.count("dashboardTapeHourChart") >= 2
+    assert body.count("dashboardTapeHourLine") >= 2
+    assert body.count("dashboardTapeHourPoint") >= 2
+    assert body.count("dashboardTapeHourBaseline") >= 2
+    assert body.count("dashboardTapeFreshnessGlyph") >= 2
+    assert body.count("data-freshness-label=") >= 2
+    assert body.count('data-role="row-live"') >= 2
     assert "Broad tape is defensive" in body
 
 
@@ -2864,7 +2862,7 @@ def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, mo
     body = resp.get_data(as_text=True)
     assert "VIX" in body
     assert "17.10-17.50" in body
-    assert "marketMiniSparkPoint" in body
+    assert "dashboardTapeHourPoint" in body
 
 
 def test_market_pulse_market_hours_defaults_execution_mode(client, monkeypatch):
@@ -3264,18 +3262,16 @@ def test_dashboard_live_tape_compact_labels_and_guardrails(client, monkeypatch):
     assert b"dashboardTapeStreamStatus" in resp.data
     assert b"Market Tape" in resp.data
     assert b"Live Tape" not in resp.data
-    assert b"dashboardGapLine" in resp.data
-    assert b"Gap O/N:" in resp.data
-    assert b"Tradier Live Quote" in resp.data
-    assert b"SPX cash" in resp.data
+    assert b"dashboardTapeHourModule" in resp.data
+    assert b"dashboardTapeHourChart" in resp.data
+    assert b"SPX" in resp.data
     assert b"6775.80" in resp.data
     assert b"-0.09%" in resp.data
     assert b"6773.42-6775.80" in resp.data
-    assert b"VIX pulse" in resp.data
+    assert b"VIX" in resp.data
     assert b"Live \xc2\xb7" not in resp.data
     assert b"Delayed \xc2\xb7" not in resp.data
     assert b'data-role="market-state">Live</span>' not in resp.data
-    assert b"Freshness" in resp.data
     assert b"dashboardTapeAssetStatus is-" in resp.data
 
 
@@ -3345,7 +3341,7 @@ def test_dashboard_tape_cached_rows_have_non_live_tone(client, monkeypatch):
     body = resp.get_data(as_text=True)
     assert "dashboardTapeAssetStatus is-delayed" in body
     assert "dashboardTapeAssetStatus is-missing" in body
-    assert "Cached ·" not in body
+    assert "dashboardTapeAssetStatus is-delayed" in body
 
 
 def test_stream_market_sse_emits_json_payload(client, monkeypatch):

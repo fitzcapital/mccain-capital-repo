@@ -202,7 +202,7 @@ def test_dashboard_scope_rebases_stored_balance_for_drift_check(client):
 
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
-    assert b"Start $50,000.00" in resp.data
+    assert b"Funded $50,000.00" in resp.data
     assert b"$50,100.00" in resp.data
     assert b"Ledger drift detected" not in resp.data
 

@@ -460,7 +460,7 @@ def test_hero_bars_api_returns_normalized_bars(client, monkeypatch):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["symbol"] == "SPX"
+    assert payload["symbol"] == "SPY"
     assert payload["bars"][0]["close"] == 1.5
     assert payload["opening_session_mode"] is True
     assert payload["live_session_bar_count"] == 2
