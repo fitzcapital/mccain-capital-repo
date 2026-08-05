@@ -131,17 +131,42 @@ def _review_completion_items(
     plan_verdict_present: bool,
 ) -> list[dict[str, Any]]:
     return [
-        {"key": "setup", "label": "Setup identified", "done": setup_identified, "hint": "Choose a valid setup tag."},
-        {"key": "thesis", "label": "Thesis present", "done": thesis_present, "hint": "Explain why the setup existed."},
+        {
+            "key": "setup",
+            "label": "Setup identified",
+            "done": setup_identified,
+            "hint": "Choose a valid setup tag.",
+        },
+        {
+            "key": "thesis",
+            "label": "Thesis present",
+            "done": thesis_present,
+            "hint": "Explain why the setup existed.",
+        },
         {
             "key": "reflection",
             "label": "Review reflection present",
             "done": review_present,
             "hint": "Add review or improvement notes.",
         },
-        {"key": "risk", "label": "Risk captured", "done": risk_captured, "hint": "Log planned or reviewed risk."},
-        {"key": "stop", "label": "Stop captured", "done": stop_captured, "hint": "Log a reviewed or planned stop."},
-        {"key": "target", "label": "Target captured", "done": target_captured, "hint": "Log a reviewed or planned target."},
+        {
+            "key": "risk",
+            "label": "Risk captured",
+            "done": risk_captured,
+            "hint": "Log planned or reviewed risk.",
+        },
+        {
+            "key": "stop",
+            "label": "Stop captured",
+            "done": stop_captured,
+            "hint": "Log a reviewed or planned stop.",
+        },
+        {
+            "key": "target",
+            "label": "Target captured",
+            "done": target_captured,
+            "hint": "Log a reviewed or planned target.",
+        },
         {
             "key": "execution",
             "label": "Execution reviewed",

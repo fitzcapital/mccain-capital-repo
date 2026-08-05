@@ -1036,7 +1036,8 @@ def trades_page():
         ),
         "scope_start": scope_effective_start,
         "scope_starting_balance": float(resolved_scope["starting_balance"]),
-        "scope_active": account_scope_mode in {"current", "custom"} and bool(
+        "scope_active": account_scope_mode in {"current", "custom"}
+        and bool(
             (
                 str(resolved_scope.get("account_id") or "").strip()
                 if account_scope_mode == "current"
@@ -1383,7 +1384,9 @@ def trades_page():
         hero_blurb = "Pressure is rising. Shrink the decision tree, fix the misses, and only keep A-grade intent on."
     else:
         hero_title = "Focus"
-        hero_blurb = "The read is mixed. Stay on the brief, cut the noise, and wait for the cleanest setup."
+        hero_blurb = (
+            "The read is mixed. Stay on the brief, cut the noise, and wait for the cleanest setup."
+        )
 
     trades_status_badges = [
         StateBadgeViewModel(

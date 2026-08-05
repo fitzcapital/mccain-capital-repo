@@ -42,7 +42,9 @@ def main() -> int:
             screen={"width": 1440, "height": 1000},
         )
         page = context.pages[0] if context.pages else context.new_page()
-        page.goto("https://www.vanquishtrader.com/dashboard/accounts", wait_until="domcontentloaded")
+        page.goto(
+            "https://www.vanquishtrader.com/dashboard/accounts", wait_until="domcontentloaded"
+        )
         print("Sign into Vanquish with Google in the opened browser.")
         print(f"Waiting until account {account} appears, then saving {state_path}.")
         try:

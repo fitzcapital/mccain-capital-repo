@@ -250,11 +250,17 @@ def build_projection(raw: Dict[str, Any]) -> Dict[str, Any]:
         },
         "tax": {
             "annual_gross": round(annual_gross, 2),
-            "taxable_federal_income": round(max(0.0, annual_gross - _STANDARD_DEDUCTION_2026[filing_status]), 2),
+            "taxable_federal_income": round(
+                max(0.0, annual_gross - _STANDARD_DEDUCTION_2026[filing_status]), 2
+            ),
             "federal_annual": round(federal_annual, 2),
             "state_annual": round(state_annual, 2),
             "state_rate": round(state_rate * 100, 3),
-            "effective_tax_rate": round((federal_annual + state_annual) / annual_gross * 100, 2) if annual_gross else 0,
+            "effective_tax_rate": (
+                round((federal_annual + state_annual) / annual_gross * 100, 2)
+                if annual_gross
+                else 0
+            ),
         },
         "totals": {
             "gross": round(gross_total, 2),
@@ -355,7 +361,9 @@ def _simple_pdf(lines: Iterable[str]) -> bytes:
     out.write(b"0000000000 65535 f \n")
     for offset in offsets[1:]:
         out.write(f"{offset:010d} 00000 n \n".encode())
-    out.write(f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF".encode())
+    out.write(
+        f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF".encode()
+    )
     return out.getvalue()
 
 

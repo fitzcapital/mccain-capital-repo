@@ -40,7 +40,9 @@ def test_self_control_site_add_toggle_delete(client):
     )
 
     assert add_response.status_code == 200
-    site = next((item for item in repo.list_blocked_sites() if item["domain"] == "example.com"), None)
+    site = next(
+        (item for item in repo.list_blocked_sites() if item["domain"] == "example.com"), None
+    )
     assert site is not None
     assert int(site["enabled"]) == 1
 
@@ -200,7 +202,9 @@ def test_self_control_custom_domain_is_reflected_in_matching_preset_scope(client
 
 def test_self_control_page_exports_enforcement_state(client, tmp_path, monkeypatch):
     state_path = tmp_path / "self-control-state.json"
-    monkeypatch.setattr("mccain_capital.services.self_control.SELF_CONTROL_STATE_PATH", str(state_path))
+    monkeypatch.setattr(
+        "mccain_capital.services.self_control.SELF_CONTROL_STATE_PATH", str(state_path)
+    )
 
     client.post(
         "/self-control/presets/market-open-lock/start",

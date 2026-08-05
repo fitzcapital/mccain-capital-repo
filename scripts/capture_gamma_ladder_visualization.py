@@ -188,7 +188,9 @@ def main() -> int:
                 """
             )
             pin_page.locator("[data-playbook-pin-toggle]").click()
-            ticker_search_toggle = pin_page.locator("[data-playbook-symbol-search-control] [data-symbol-search-toggle]")
+            ticker_search_toggle = pin_page.locator(
+                "[data-playbook-symbol-search-control] [data-symbol-search-toggle]"
+            )
             ticker_search_toggle.click()
             report["playbookSearch"] = pin_page.evaluate(
                 """

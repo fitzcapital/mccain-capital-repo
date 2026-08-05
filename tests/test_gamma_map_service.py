@@ -158,10 +158,7 @@ def test_normalize_gamma_ladder_symbol_accepts_search_symbols():
 
 
 def test_gamma_ladder_cache_key_includes_symbol_expiration_and_window():
-    assert (
-        svc.gamma_ladder_cache_key("SPX", "2026-05-21")
-        == "gamma_ladder_SPX_2026-05-21_standard"
-    )
+    assert svc.gamma_ladder_cache_key("SPX", "2026-05-21") == "gamma_ladder_SPX_2026-05-21_standard"
     assert (
         svc.gamma_ladder_cache_key("spy", "2026-05-22", "wide")
         == "gamma_ladder_SPY_2026-05-22_wide"
@@ -283,7 +280,12 @@ def test_build_gamma_ladder_caches_per_symbol_expiration_and_dte(monkeypatch):
 def test_focused_gamma_ladder_rows_trims_oversized_ladders_and_preserves_key_rows():
     grouped = _aggregated_df(
         [
-            {"strike": strike, "net_gex": ((strike - 5000.0) / 5.0), "call_gex": abs((strike - 5000.0) / 5.0), "put_gex": -abs((strike - 5000.0) / 7.0)}
+            {
+                "strike": strike,
+                "net_gex": ((strike - 5000.0) / 5.0),
+                "call_gex": abs((strike - 5000.0) / 5.0),
+                "put_gex": -abs((strike - 5000.0) / 7.0),
+            }
             for strike in range(4700, 5310, 5)
         ]
     )

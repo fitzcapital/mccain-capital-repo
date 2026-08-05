@@ -120,7 +120,9 @@ def _clean_profile(row: dict[str, Any], username: str) -> dict[str, Any]:
 
 
 def get_profile(username: str | None = None) -> dict[str, Any]:
-    username = _normalize_username(username or auth.effective_username()) or auth.effective_username()
+    username = (
+        _normalize_username(username or auth.effective_username()) or auth.effective_username()
+    )
     store = _load_store()
     profile = _clean_profile(store["users"].get(username) or {}, username)
     if username not in store["users"]:
@@ -164,7 +166,9 @@ def _all_profiles() -> list[dict[str, Any]]:
 def _photo_data_url() -> str | None:
     compressed = str(request.form.get("photo_data_url") or "").strip()
     if compressed:
-        match = re.match(r"^data:(image/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$", compressed)
+        match = re.match(
+            r"^data:(image/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$", compressed
+        )
         if not match:
             raise ValueError("Profile photo could not be processed. Try another image.")
         try:
@@ -246,7 +250,9 @@ def update_profile_details():
             "title": title or profile["title"],
             "email": email,
             "avatar_initials": initials or _initials(display_name, username),
-            "avatar_color": avatar_color if avatar_color in AVATAR_COLORS else profile["avatar_color"],
+            "avatar_color": (
+                avatar_color if avatar_color in AVATAR_COLORS else profile["avatar_color"]
+            ),
             "market_pulse_default_ticker": market_pulse_default_ticker,
             "dashboard_default_ticker": dashboard_default_ticker,
             "updated_at": now_iso(),
@@ -305,7 +311,9 @@ def admin_update_user():
             "display_name": display_name or existing["display_name"],
             "title": title or existing["title"],
             "avatar_initials": initials or _initials(display_name, username),
-            "avatar_color": avatar_color if avatar_color in AVATAR_COLORS else existing["avatar_color"],
+            "avatar_color": (
+                avatar_color if avatar_color in AVATAR_COLORS else existing["avatar_color"]
+            ),
             "is_admin": requested_admin or username.lower() in DEFAULT_ADMIN_USERS,
             "updated_at": now_iso(),
         }

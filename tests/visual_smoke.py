@@ -25,7 +25,12 @@ FONT_MODE = os.environ.get("VISUAL_SMOKE_FONT_MODE") or ""
 SCENARIOS = [
     ("desktop-dashboard", "/dashboard", {"width": 1600, "height": 1000}, None),
     ("desktop-dashboard-menu", "/dashboard", {"width": 1600, "height": 1000}, ".moreBtn"),
-    ("desktop-candle-opens-macro", "/candle-opens", {"width": 1600, "height": 1100}, ".candleMacroSummary"),
+    (
+        "desktop-candle-opens-macro",
+        "/candle-opens",
+        {"width": 1600, "height": 1100},
+        ".candleMacroSummary",
+    ),
     ("desktop-market-pulse", "/market-pulse?refresh=1", {"width": 1600, "height": 1100}, None),
     ("desktop-trades", "/trades", {"width": 1600, "height": 1100}, None),
     (

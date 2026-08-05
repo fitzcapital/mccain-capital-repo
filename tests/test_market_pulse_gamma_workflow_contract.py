@@ -52,7 +52,7 @@ def test_market_pulse_exposes_decision_narrative_and_support_disclosures(client)
 def test_market_pulse_preserves_primary_controls_and_hooks(client):
     body = client.get("/market-pulse").get_data(as_text=True)
     required_hooks = [
-        'data-playbook-symbol-search-control',
+        "data-playbook-symbol-search-control",
         'id="marketPulseContextRefreshBtn"',
         'data-hero-chart-interval="1min"',
         'data-hero-chart-interval="5min"',
@@ -62,9 +62,9 @@ def test_market_pulse_preserves_primary_controls_and_hooks(client):
         'id="marketPulseHeroToggleMarkers"',
         'id="marketPulseHeroToggleLevels"',
         'id="marketPulseHeroToggleDayLevels"',
-        'data-gamma-symbol-search',
+        "data-gamma-symbol-search",
         'data-gamma-window-pill="standard"',
-        'data-gamma-refresh',
+        "data-gamma-refresh",
         'data-open-modal="marketPulseLevelsModal"',
         'href="/candle-opens"',
     ]
@@ -74,7 +74,7 @@ def test_market_pulse_preserves_primary_controls_and_hooks(client):
 
 def test_playbook_header_pin_is_accessible_persistent_and_default_off(client):
     body = client.get("/market-pulse").get_data(as_text=True)
-    assert 'data-playbook-pin-toggle' in body
+    assert "data-playbook-pin-toggle" in body
     assert 'aria-pressed="false"' in body
     assert "Pin header" in body
 
@@ -93,9 +93,9 @@ def test_playbook_header_search_popover_is_unclipped_and_header_is_compact(clien
     assert "data-symbol-search-popover" in body
 
     styles = (ROOT / "static/css/market_pulse.css").read_text(encoding="utf-8")
-    correction = styles[styles.index("Playbook header popover and density correction"):]
+    correction = styles[styles.index("Playbook header popover and density correction") :]
     assert "overflow:visible !important" in correction
-    assert 'grid-template-areas:' in correction
+    assert "grid-template-areas:" in correction
     assert '"kicker kicker"' in correction
     assert "top:calc(100% + 8px)" in correction
 
@@ -113,31 +113,31 @@ def test_gamma_ladder_exposes_location_sections_and_structural_marker_hooks():
 
 def test_gamma_ladder_uses_quiet_minor_roles_and_one_structural_badge(client):
     body = client.get("/market-pulse").get_data(as_text=True)
-    board = body[body.index('id="gammaLadderDepthBoard"'):]
+    board = body[body.index('id="gammaLadderDepthBoard"') :]
     assert "<span>Signal</span>" not in board
 
     controller = (ROOT / "static/js/gamma_ladder.js").read_text(encoding="utf-8")
     assert "data-gamma-role-text" in controller
     assert "data-gamma-structural-badge" in controller
     assert "gamma-ladder-row__micro" not in controller
-    assert "importance.label" in controller[controller.index("const detailPayload"):]
+    assert "importance.label" in controller[controller.index("const detailPayload") :]
 
 
 def test_gamma_ladder_uses_compact_command_bar_and_accessible_settings_popover(client):
     body = client.get("/market-pulse").get_data(as_text=True)
     required = [
-        'data-gamma-command-bar',
+        "data-gamma-command-bar",
         'id="gammaLadderSettingsToggle"',
-        'data-gamma-settings-label',
+        "data-gamma-settings-label",
         'aria-controls="gammaLadderSettingsPopover"',
         'aria-expanded="false"',
         'id="gammaLadderSettingsPopover"',
-        'data-gamma-settings-popover',
+        "data-gamma-settings-popover",
     ]
     for hook in required:
         assert hook in body
 
-    popover = body[body.index('id="gammaLadderSettingsPopover"'):]
+    popover = body[body.index('id="gammaLadderSettingsPopover"') :]
     assert popover.index('data-gamma-window-pill="standard"') < popover.index(
         'data-gamma-dte-pill="0"'
     )
@@ -179,9 +179,7 @@ def test_gamma_workflow_normalizes_valid_and_missing_levels():
         "valid": True,
     }
 
-    missing = _run_workflow_function(
-        "api.normalizeLevel({key:'local_flip',price:''}, 'SPY')"
-    )
+    missing = _run_workflow_function("api.normalizeLevel({key:'local_flip',price:''}, 'SPY')")
     assert missing["key"] == "local_flip"
     assert missing["price"] is None
     assert missing["valid"] is False
@@ -225,5 +223,5 @@ def test_chart_consumes_gamma_selection_without_resetting_on_timeframe_change():
     chart_script = (ROOT / "static/js/spx_hero_chart.js").read_text(encoding="utf-8")
     assert 'document.addEventListener("market-pulse:gamma-level-selected"' in chart_script
     assert "gammaSelectionLine = candleSeries.createPriceLine" in chart_script
-    interval_handler = chart_script[chart_script.index("const bindIntervalToggles"):]
+    interval_handler = chart_script[chart_script.index("const bindIntervalToggles") :]
     assert "clearGammaSelectionLine" not in interval_handler.split("loadDisplayPrefs", 1)[0]

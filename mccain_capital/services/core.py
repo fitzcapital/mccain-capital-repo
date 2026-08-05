@@ -986,7 +986,11 @@ def _market_pulse_resolve_page_gamma_snapshot(
         loaded_snapshot = load_current()
     except Exception:
         return gamma_snapshot
-    return dict(loaded_snapshot or gamma_snapshot) if isinstance(loaded_snapshot, dict) else gamma_snapshot
+    return (
+        dict(loaded_snapshot or gamma_snapshot)
+        if isinstance(loaded_snapshot, dict)
+        else gamma_snapshot
+    )
 
 
 def _format_iso_et_label(value: Any) -> str:
@@ -1139,9 +1143,7 @@ def _market_pulse_cached_playbook_matches_quotes(
 def _market_pulse_store_playbook_snapshot(now_et: datetime, payload: Dict[str, Any]) -> None:
     _market_pulse_playbook_cache["generated_at"] = now_et
     _market_pulse_playbook_cache["payload"] = copy.deepcopy(payload)
-    _save_market_pulse_playbook_disk_cache(
-        {"generated_at": now_et.isoformat(), "payload": payload}
-    )
+    _save_market_pulse_playbook_disk_cache({"generated_at": now_et.isoformat(), "payload": payload})
 
 
 def _market_pulse_level_payload(
@@ -1965,9 +1967,7 @@ def _market_pulse_resolve_gamma_payload(
         session_mode != "regular"
         and snapshot_status in {"healthy", "degraded", "stale"}
         and sum(
-            1
-            for value in raw_levels.values()
-            if _market_pulse_positive_float(value) is not None
+            1 for value in raw_levels.values() if _market_pulse_positive_float(value) is not None
         )
         >= 4
     ):
@@ -2817,7 +2817,9 @@ def _market_pulse_finnhub_candles(symbol: str, now_et: datetime) -> List[Dict[st
     return series
 
 
-def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool = True) -> Dict[str, Any]:
+def _market_pulse_snapshot(
+    force_refresh: bool = False, *, persist_replay: bool = True
+) -> Dict[str, Any]:
     from mccain_capital.services import market_data_service
 
     started = time.perf_counter()
@@ -2843,7 +2845,9 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
 
     if not force_refresh and session_mode != "regular":
         disk_payload = _load_market_pulse_disk_cache()
-        if isinstance(disk_payload, dict) and _market_pulse_payload_has_current_symbols(disk_payload):
+        if isinstance(disk_payload, dict) and _market_pulse_payload_has_current_symbols(
+            disk_payload
+        ):
             _market_pulse_cache["fetched_at"] = now_et
             _market_pulse_cache["payload"] = disk_payload
             fallback = _market_pulse_attach_replay_cache(
@@ -2869,7 +2873,9 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
     )
     if not quotes_by_symbol or usable_quote_count <= 0:
         disk_payload = _load_market_pulse_disk_cache()
-        if isinstance(cached_payload, dict) and _market_pulse_payload_has_current_symbols(cached_payload):
+        if isinstance(cached_payload, dict) and _market_pulse_payload_has_current_symbols(
+            cached_payload
+        ):
             fallback = _market_pulse_attach_replay_cache(
                 _market_pulse_force_symbol_set(cached_payload)
             )
@@ -2878,7 +2884,9 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
                 "Tradier returned no usable prices. Showing last cached snapshot."
             )
             return fallback
-        if isinstance(disk_payload, dict) and _market_pulse_payload_has_current_symbols(disk_payload):
+        if isinstance(disk_payload, dict) and _market_pulse_payload_has_current_symbols(
+            disk_payload
+        ):
             _market_pulse_cache["payload"] = disk_payload
             fallback = _market_pulse_attach_replay_cache(
                 _market_pulse_force_symbol_set(disk_payload)
@@ -2988,11 +2996,7 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
                 "change_pct": pct_num,
                 "volume": 0,
                 "avg_volume": 0,
-                "market_state": (
-                    "Live"
-                    if state == "live"
-                    else "Unavailable"
-                ),
+                "market_state": ("Live" if state == "live" else "Unavailable"),
                 "day_range": "—",
                 "day_open": None,
                 "day_high": None,
@@ -3090,7 +3094,9 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
                 q["day_open"] = first_open
     if counts["live"] == 0:
         disk_payload = _load_market_pulse_disk_cache()
-        if isinstance(cached_payload, dict) and _market_pulse_payload_has_current_symbols(cached_payload):
+        if isinstance(cached_payload, dict) and _market_pulse_payload_has_current_symbols(
+            cached_payload
+        ):
             fallback = _market_pulse_attach_replay_cache(
                 _market_pulse_force_symbol_set(cached_payload)
             )
@@ -3099,7 +3105,9 @@ def _market_pulse_snapshot(force_refresh: bool = False, *, persist_replay: bool 
                 "Tradier returned symbols but no usable live prices. Showing last cached snapshot."
             )
             return fallback
-        if isinstance(disk_payload, dict) and _market_pulse_payload_has_current_symbols(disk_payload):
+        if isinstance(disk_payload, dict) and _market_pulse_payload_has_current_symbols(
+            disk_payload
+        ):
             _market_pulse_cache["payload"] = disk_payload
             fallback = _market_pulse_attach_replay_cache(
                 _market_pulse_force_symbol_set(disk_payload)
@@ -5443,8 +5451,7 @@ def _market_pulse_display_context_viewmodel(
         "bias_state": "neutral",
         "bias_context": "SETUP PENDING",
         "bias_label": "NOT ACTIONABLE YET",
-        "bias": planning_bias.get("planning_bias_label")
-        or "Structure valid / trigger pending",
+        "bias": planning_bias.get("planning_bias_label") or "Structure valid / trigger pending",
         "current_read": "Setup Pending",
         "pullback_level": local_label,
         "next_destination": call_label if call_label != "Awaiting level" else put_label,
@@ -6712,13 +6719,13 @@ def get_or_build_market_pulse_snapshot(
     active_spot_meta = dict(spot_meta)
     active_level_meta = copy.deepcopy(dict(gamma_resolution.get("level_meta") or {}))
     active_local_flip_meta = copy.deepcopy(dict(gamma_resolution.get("local_flip_meta") or {}))
-    active_gamma_regime_meta = copy.deepcopy(
-        dict(gamma_resolution.get("gamma_regime_meta") or {})
-    )
+    active_gamma_regime_meta = copy.deepcopy(dict(gamma_resolution.get("gamma_regime_meta") or {}))
     active_levels_source = gamma_resolution.get("levels_source")
     active_gamma_data_status = gamma_resolution.get("gamma_data_status")
     active_structure_invariant_status = gamma_resolution.get("structure_invariant_status")
-    active_structure_invariant_issues = list(gamma_resolution.get("structure_invariant_issues") or [])
+    active_structure_invariant_issues = list(
+        gamma_resolution.get("structure_invariant_issues") or []
+    )
     active_canonical_structure = dict(gamma_resolution.get("canonical_structure") or {})
     active_gamma_failure_reason = str(gamma_resolution.get("gamma_failure_reason") or "")
     active_gamma_failure_label = str(gamma_resolution.get("gamma_failure_label") or "")
@@ -6747,8 +6754,12 @@ def get_or_build_market_pulse_snapshot(
                 continue
             payload["value"] = _market_pulse_scale_price(payload.get("value"), ratio)
             if payload.get("label"):
-                payload["label"] = _market_pulse_localize_label(payload.get("label"), selected_ticker)
-        active_local_flip_meta = _market_pulse_localize_payload(active_local_flip_meta, selected_ticker)
+                payload["label"] = _market_pulse_localize_label(
+                    payload.get("label"), selected_ticker
+                )
+        active_local_flip_meta = _market_pulse_localize_payload(
+            active_local_flip_meta, selected_ticker
+        )
         active_gamma_regime_meta = _market_pulse_localize_payload(
             active_gamma_regime_meta, selected_ticker
         )
@@ -6801,17 +6812,20 @@ def get_or_build_market_pulse_snapshot(
     market_structure_snapshot["local_flip_meta"] = active_local_flip_meta
     market_structure_snapshot["gamma_regime_meta"] = active_gamma_regime_meta
     market_structure_snapshot["chart_meta"] = chart_meta
-    market_structure_snapshot["levels_source"] = active_levels_source or market_structure_snapshot.get(
-        "levels_source"
+    market_structure_snapshot["levels_source"] = (
+        active_levels_source or market_structure_snapshot.get("levels_source")
     )
-    market_structure_snapshot["gamma_data_status"] = active_gamma_data_status or market_structure_snapshot.get(
-        "gamma_data_status"
+    market_structure_snapshot["gamma_data_status"] = (
+        active_gamma_data_status or market_structure_snapshot.get("gamma_data_status")
     )
     market_structure_snapshot["structure_invariant_status"] = (
-        active_structure_invariant_status or market_structure_snapshot.get("structure_invariant_status")
+        active_structure_invariant_status
+        or market_structure_snapshot.get("structure_invariant_status")
     )
     market_structure_snapshot["structure_invariant_issues"] = list(
-        active_structure_invariant_issues or market_structure_snapshot.get("structure_invariant_issues") or []
+        active_structure_invariant_issues
+        or market_structure_snapshot.get("structure_invariant_issues")
+        or []
     )
     market_structure_snapshot["main_flip"] = active_levels.get("main_flip")
     market_structure_snapshot["local_flip"] = active_levels.get("local_flip")
@@ -6860,7 +6874,9 @@ def get_or_build_market_pulse_snapshot(
         f"{market_structure_snapshot.get('session_mode_label') or session_mode.title()} · "
         f"{market_structure_snapshot.get('regime_confidence_label') or 'No confidence'}"
     )
-    market_structure_snapshot["spot_source_label"] = active_spot_meta.get("source_label") or "Unavailable"
+    market_structure_snapshot["spot_source_label"] = (
+        active_spot_meta.get("source_label") or "Unavailable"
+    )
     market_structure_snapshot["spot_source"] = active_spot_meta.get("source") or ""
     market_structure_snapshot["spot_is_fallback"] = bool(active_spot_meta.get("spot_is_fallback"))
     market_structure_snapshot["fallback_reason"] = active_spot_meta.get("fallback_reason") or ""
@@ -7021,7 +7037,9 @@ def get_or_build_market_pulse_snapshot(
     market_structure_snapshot["context_tone"] = playbook_view.get("context_tone")
 
     if selected_ticker != "SPX":
-        active_gamma_snapshot = _market_pulse_localize_payload(active_gamma_snapshot, selected_ticker)
+        active_gamma_snapshot = _market_pulse_localize_payload(
+            active_gamma_snapshot, selected_ticker
+        )
         execution_chart = _market_pulse_localize_payload(execution_chart, selected_ticker)
         execution_model = _market_pulse_localize_payload(execution_model, selected_ticker)
         market_structure_snapshot = _market_pulse_localize_payload(
@@ -7672,10 +7690,7 @@ def _market_pulse_localize_label(value: Any, ticker: str) -> Any:
 
 def _market_pulse_localize_payload(value: Any, ticker: str) -> Any:
     if isinstance(value, dict):
-        return {
-            key: _market_pulse_localize_payload(item, ticker)
-            for key, item in value.items()
-        }
+        return {key: _market_pulse_localize_payload(item, ticker) for key, item in value.items()}
     if isinstance(value, list):
         return [_market_pulse_localize_payload(item, ticker) for item in value]
     return _market_pulse_localize_label(value, ticker)
@@ -7772,11 +7787,16 @@ def _market_pulse_scaled_gamma_snapshot(
 
     scaled["spot"] = _market_pulse_round_price(target_quote.get("price"))
     scaled["spot_price_used"] = _market_pulse_round_price(target_quote.get("price"))
-    scaled["spot_source"] = str(target_quote.get("provider") or target_quote.get("reason") or "market_snapshot")
+    scaled["spot_source"] = str(
+        target_quote.get("provider") or target_quote.get("reason") or "market_snapshot"
+    )
     scaled["spot_source_label"] = f"Live {ticker} Quote"
     scaled["spot_source_name"] = ticker
     scaled["spot_source_timestamp"] = str(
-        target_quote.get("asof") or target_quote.get("as_of") or scaled.get("spot_source_timestamp") or ""
+        target_quote.get("asof")
+        or target_quote.get("as_of")
+        or scaled.get("spot_source_timestamp")
+        or ""
     )
     scaled["symbol"] = ticker
     scaled["proxy_scale_ratio"] = ratio
@@ -7804,7 +7824,9 @@ def _market_pulse_spot_meta_for_ticker(
 ) -> Dict[str, Any]:
     price = _market_pulse_round_price(quote.get("price"))
     as_of = str(quote.get("asof") or quote.get("as_of") or "")
-    state = "LIVE_SESSION" if price is not None and session_mode == "regular" else "AFTER_HOURS_VALID"
+    state = (
+        "LIVE_SESSION" if price is not None and session_mode == "regular" else "AFTER_HOURS_VALID"
+    )
     if price is None:
         state = "UNAVAILABLE"
     provider = str(quote.get("provider") or quote.get("reason") or "market_snapshot")
@@ -8320,7 +8342,9 @@ def _market_news_snapshot(
     return result
 
 
-def _notification_items_from_news_snapshot(snapshot: Dict[str, Any], *, limit: int = 5) -> List[Dict[str, Any]]:
+def _notification_items_from_news_snapshot(
+    snapshot: Dict[str, Any], *, limit: int = 5
+) -> List[Dict[str, Any]]:
     """Normalize the shared Market Pulse feed for the header notification drawer."""
     items: List[Dict[str, Any]] = []
     for row in list(snapshot.get("pulse_feed_items") or [])[: max(1, int(limit or 5))]:
@@ -8365,9 +8389,27 @@ def executive_dashboard():
             "timing": "Paycheck 1",
             "dueDay": 2,
         },
-        {"name": "Credit One", "account": "Current", "amount": 30, "timing": "Paycheck 1", "dueDay": 9},
-        {"name": "Indigo", "account": "Current", "amount": 54, "timing": "Paycheck 1", "dueDay": 15},
-        {"name": "Capital One", "account": "Current", "amount": 62, "timing": "Paycheck 1", "dueDay": 12},
+        {
+            "name": "Credit One",
+            "account": "Current",
+            "amount": 30,
+            "timing": "Paycheck 1",
+            "dueDay": 9,
+        },
+        {
+            "name": "Indigo",
+            "account": "Current",
+            "amount": 54,
+            "timing": "Paycheck 1",
+            "dueDay": 15,
+        },
+        {
+            "name": "Capital One",
+            "account": "Current",
+            "amount": 62,
+            "timing": "Paycheck 1",
+            "dueDay": 12,
+        },
         {"name": "Food", "account": "Current", "amount": 450, "timing": "Monthly"},
         {"name": "Gas", "account": "Current", "amount": 100, "timing": "Monthly"},
         {
@@ -8846,7 +8888,9 @@ def _count_market_sessions_between(start_day: date, end_day: date) -> int:
     return sessions
 
 
-def _dashboard_pace_scope_context(year: int, month: int, selected: str, anchor: date) -> Dict[str, Any]:
+def _dashboard_pace_scope_context(
+    year: int, month: int, selected: str, anchor: date
+) -> Dict[str, Any]:
     first_day = date(year, month, 1)
     last_day = date(year, month, monthrange(year, month)[1])
     active_day = anchor if year == anchor.year and month == anchor.month else first_day
@@ -8854,7 +8898,9 @@ def _dashboard_pace_scope_context(year: int, month: int, selected: str, anchor: 
         active_day = first_day
     if active_day > last_day:
         active_day = last_day
-    active_day = active_day if _is_market_session(active_day) else _advance_market_sessions(active_day, 0)
+    active_day = (
+        active_day if _is_market_session(active_day) else _advance_market_sessions(active_day, 0)
+    )
     if active_day > last_day:
         active_day = first_day
 
@@ -8918,7 +8964,9 @@ def _dashboard_reflection_setting_key(day: str) -> str:
 
 
 def _load_dashboard_reflection_settings(day: str) -> Dict[str, str]:
-    raw = str(app_runtime.get_setting_value(_dashboard_reflection_setting_key(day), "") or "").strip()
+    raw = str(
+        app_runtime.get_setting_value(_dashboard_reflection_setting_key(day), "") or ""
+    ).strip()
     if not raw:
         return {}
     try:
@@ -9000,13 +9048,23 @@ def _save_dashboard_behavior_settings(day: str, payload: Dict[str, Any]) -> Dict
         except (TypeError, ValueError):
             urgency_count = max(0, urgency_count)
 
-    discipline_state = str(payload.get("discipline_state") or current.get("discipline_state") or "").strip().lower()
+    discipline_state = (
+        str(payload.get("discipline_state") or current.get("discipline_state") or "")
+        .strip()
+        .lower()
+    )
     if discipline_state not in {"locked-in", "neutral", "urgent", "frustrated"}:
-        discipline_state = str(current.get("discipline_state") or "locked-in").strip().lower() or "locked-in"
+        discipline_state = (
+            str(current.get("discipline_state") or "locked-in").strip().lower() or "locked-in"
+        )
 
-    discipline_mode = str(payload.get("discipline_mode") or current.get("discipline_mode") or "").strip().lower()
+    discipline_mode = (
+        str(payload.get("discipline_mode") or current.get("discipline_mode") or "").strip().lower()
+    )
     if discipline_mode not in {"a-plus-only", "manage-winner", "done-for-day"}:
-        discipline_mode = str(current.get("discipline_mode") or "a-plus-only").strip().lower() or "a-plus-only"
+        discipline_mode = (
+            str(current.get("discipline_mode") or "a-plus-only").strip().lower() or "a-plus-only"
+        )
 
     def _int(value: Any, default: int = 0) -> int:
         try:
@@ -9018,18 +9076,33 @@ def _save_dashboard_behavior_settings(day: str, payload: Dict[str, Any]) -> Dict
         "day": day,
         "discipline_state": discipline_state,
         "discipline_mode": discipline_mode,
-        "gate_count": max(0, min(3, _int(payload.get("gate_count"), _int(current.get("gate_count"), 0)))),
-        "routine_done": max(0, _int(payload.get("routine_done"), _int(current.get("routine_done"), 0))),
-        "routine_total": max(0, _int(payload.get("routine_total"), _int(current.get("routine_total"), 16))),
-        "alignment_pct": max(0, min(100, _int(payload.get("alignment_pct"), _int(current.get("alignment_pct"), 0)))),
+        "gate_count": max(
+            0, min(3, _int(payload.get("gate_count"), _int(current.get("gate_count"), 0)))
+        ),
+        "routine_done": max(
+            0, _int(payload.get("routine_done"), _int(current.get("routine_done"), 0))
+        ),
+        "routine_total": max(
+            0, _int(payload.get("routine_total"), _int(current.get("routine_total"), 16))
+        ),
+        "alignment_pct": max(
+            0, min(100, _int(payload.get("alignment_pct"), _int(current.get("alignment_pct"), 0)))
+        ),
         "intention": str(payload.get("intention") or current.get("intention") or "").strip()[:140],
-        "reflection_answer": str(payload.get("reflection_answer") or current.get("reflection_answer") or "").strip().lower()[:8],
+        "reflection_answer": str(
+            payload.get("reflection_answer") or current.get("reflection_answer") or ""
+        )
+        .strip()
+        .lower()[:8],
         "urgency_count": urgency_count,
-        "updated_at": str(payload.get("updated_at") or app_runtime.now_iso()).strip() or app_runtime.now_iso(),
+        "updated_at": str(payload.get("updated_at") or app_runtime.now_iso()).strip()
+        or app_runtime.now_iso(),
     }
     if clean["reflection_answer"] not in {"yes", "no"}:
         clean["reflection_answer"] = ""
-    app_runtime.set_setting_value(_dashboard_behavior_setting_key(day), json.dumps(clean, separators=(",", ":")))
+    app_runtime.set_setting_value(
+        _dashboard_behavior_setting_key(day), json.dumps(clean, separators=(",", ":"))
+    )
     return clean
 
 
@@ -9050,7 +9123,11 @@ def _dashboard_behavior_status(saved: Dict[str, Any]) -> Dict[str, str]:
 
     if discipline_mode == "done-for-day":
         return {"label": "Closed", "tone": "neutral"}
-    if reflection_answer == "no" or discipline_state in {"urgent", "frustrated"} or alignment_pct < 40:
+    if (
+        reflection_answer == "no"
+        or discipline_state in {"urgent", "frustrated"}
+        or alignment_pct < 40
+    ):
         return {"label": "Drift", "tone": "negative"}
     if urgency_count > 0 or discipline_mode == "manage-winner" or alignment_pct < 80:
         return {"label": "Guarded", "tone": "warning"}
@@ -9072,7 +9149,9 @@ def _dashboard_behavior_trend_viewmodel(day: str, window: int = 5) -> Dict[str, 
         current_key = current_day.isoformat()
         saved = _load_dashboard_behavior_settings(current_key)
         reflection = _dashboard_reflection_viewmodel(current_key)
-        reflection_answer = str(reflection.get("answer") or saved.get("reflection_answer") or "").strip().lower()
+        reflection_answer = (
+            str(reflection.get("answer") or saved.get("reflection_answer") or "").strip().lower()
+        )
         status = _dashboard_behavior_status({**saved, "reflection_answer": reflection_answer})
         alignment_pct = 0
         try:
@@ -9905,8 +9984,10 @@ def _dashboard_gamma_strip_viewmodel(
         regime_reason = str(structure.get("gamma_regime_reason_label") or "").strip()
         regime_subtitle = str(structure.get("gamma_regime_subtitle") or "").strip()
         regime_state = str(structure.get("gamma_regime") or "").strip().lower()
-        regime_helper = regime_reason if regime_state in {"unconfirmed", "unavailable"} else (
-            regime_subtitle or regime_reason
+        regime_helper = (
+            regime_reason
+            if regime_state in {"unconfirmed", "unavailable"}
+            else (regime_subtitle or regime_reason)
         )
         regime_tone = (
             "positive"
@@ -10595,12 +10676,16 @@ def _dashboard_calendar_payload(
                         as_of=day_iso,
                         start_date=scope_start if scope_active else "",
                         starting_balance=scope_starting_balance if scope_active else 0.0,
-                        account_id=scope_account_id if scope_active and not scope_account_ids else None,
+                        account_id=(
+                            scope_account_id if scope_active and not scope_account_ids else None
+                        ),
                         account_ids=scope_account_ids if scope_active else None,
                     )
                 )
                 day["display_balance"] = (
-                    derived_balance - float(scope_starting_balance) if scope_active else derived_balance
+                    derived_balance - float(scope_starting_balance)
+                    if scope_active
+                    else derived_balance
                 )
             except Exception:
                 day["display_balance"] = None
@@ -10676,7 +10761,9 @@ def _dashboard_balance_summary(
     )
     if scope_has_bound_account:
         broker_equity = _number(selected_account.get("broker_equity") if selected_account else None)
-        scoped_balance = _number(selected_account.get("current_balance") if selected_account else None)
+        scoped_balance = _number(
+            selected_account.get("current_balance") if selected_account else None
+        )
         normalized_scoped_equity = _dashboard_account_equity_from_balance(
             selected_account,
             scoped_balance,
@@ -10701,10 +10788,11 @@ def _dashboard_balance_summary(
             balance_source_detail = (
                 "Latest statement/ledger balance normalized to funded account size."
                 if scoped_balance_was_normalized
-                else
-                "Latest statement/ledger balance; stored broker equity was stale."
-                if broker_equity_stale
-                else "Stored account ledger balance."
+                else (
+                    "Latest statement/ledger balance; stored broker equity was stale."
+                    if broker_equity_stale
+                    else "Stored account ledger balance."
+                )
             )
         else:
             overall_balance = float(
@@ -11314,7 +11402,8 @@ def dashboard_behavior_update():
             "intention": request.form.get("intention") or "",
             "reflection_answer": request.form.get("reflection_answer") or "",
             "urgency_count": request.form.get("urgency_count") or "",
-            "increment_urgency": str(request.form.get("increment_urgency") or "").strip() in {"1", "true", "yes"},
+            "increment_urgency": str(request.form.get("increment_urgency") or "").strip()
+            in {"1", "true", "yes"},
             "urgency_increment_count": request.form.get("urgency_increment_count") or "",
             "updated_at": request.form.get("updated_at") or app_runtime.now_iso(),
         },
@@ -11537,10 +11626,29 @@ def _dashboard_tape_viewmodel(
             intraday_series = _dashboard_quote_series_values(enriched)
         full_intraday_rows = _dashboard_intraday_rows(symbol)
         if full_intraday_rows:
-            first_open = next((float(r.get("open")) for r in full_intraday_rows if isinstance(r.get("open"), (int, float))), None)
-            highs = [float(r.get("high")) for r in full_intraday_rows if isinstance(r.get("high"), (int, float))]
-            lows = [float(r.get("low")) for r in full_intraday_rows if isinstance(r.get("low"), (int, float))]
-            closes = [float(r.get("close")) for r in full_intraday_rows if isinstance(r.get("close"), (int, float))]
+            first_open = next(
+                (
+                    float(r.get("open"))
+                    for r in full_intraday_rows
+                    if isinstance(r.get("open"), (int, float))
+                ),
+                None,
+            )
+            highs = [
+                float(r.get("high"))
+                for r in full_intraday_rows
+                if isinstance(r.get("high"), (int, float))
+            ]
+            lows = [
+                float(r.get("low"))
+                for r in full_intraday_rows
+                if isinstance(r.get("low"), (int, float))
+            ]
+            closes = [
+                float(r.get("close"))
+                for r in full_intraday_rows
+                if isinstance(r.get("close"), (int, float))
+            ]
             if first_open is not None:
                 enriched["day_open"] = first_open
             values = lows if highs and lows else closes
@@ -11548,13 +11656,21 @@ def _dashboard_tape_viewmodel(
                 day_low = min(values)
                 day_high = max(highs) if highs and lows else max(values)
                 enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
-                enriched["day_range_compact"] = f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+                enriched["day_range_compact"] = (
+                    f"{day_high:.2f}"
+                    if abs(day_high - day_low) < 0.01
+                    else f"{day_low:.2f}-{day_high:.2f}"
+                )
             vwap_num = 0.0
             vwap_den = 0.0
             for r in full_intraday_rows:
                 close_v = r.get("close") if isinstance(r, dict) else None
                 vol_v = r.get("volume") if isinstance(r, dict) else None
-                if isinstance(close_v, (int, float)) and isinstance(vol_v, (int, float)) and float(vol_v) > 0:
+                if (
+                    isinstance(close_v, (int, float))
+                    and isinstance(vol_v, (int, float))
+                    and float(vol_v) > 0
+                ):
                     vwap_num += float(close_v) * float(vol_v)
                     vwap_den += float(vol_v)
             if vwap_den > 0:
@@ -11563,7 +11679,11 @@ def _dashboard_tape_viewmodel(
             day_low = min(intraday_series)
             day_high = max(intraday_series)
             enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
-            enriched["day_range_compact"] = f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+            enriched["day_range_compact"] = (
+                f"{day_high:.2f}"
+                if abs(day_high - day_low) < 0.01
+                else f"{day_low:.2f}-{day_high:.2f}"
+            )
         else:
             enriched["day_range"] = "—"
             enriched["day_range_compact"] = "—"
@@ -11571,7 +11691,11 @@ def _dashboard_tape_viewmodel(
                 enriched["day_open"] = None
         replay_points, replay_day = _market_pulse_cached_replay_series(symbol)
         if len(replay_points) >= 2:
-            replay_values = [float(point.get("v")) for point in replay_points[-120:] if isinstance(point, dict) and isinstance(point.get("v"), (int, float))]
+            replay_values = [
+                float(point.get("v"))
+                for point in replay_points[-120:]
+                if isinstance(point, dict) and isinstance(point.get("v"), (int, float))
+            ]
             if not list(enriched.get("prior_session_series") or []):
                 enriched["prior_session_series"] = replay_points
             if replay_day and not str(enriched.get("prior_session_day") or "").strip():
@@ -11580,7 +11704,11 @@ def _dashboard_tape_viewmodel(
                 day_low = min(replay_values)
                 day_high = max(replay_values)
                 enriched["day_range"] = f"{day_low:.2f} to {day_high:.2f}"
-                enriched["day_range_compact"] = f"{day_high:.2f}" if abs(day_high - day_low) < 0.01 else f"{day_low:.2f}-{day_high:.2f}"
+                enriched["day_range_compact"] = (
+                    f"{day_high:.2f}"
+                    if abs(day_high - day_low) < 0.01
+                    else f"{day_low:.2f}-{day_high:.2f}"
+                )
                 if not intraday_series:
                     intraday_series = replay_values[-40:]
             if not isinstance(enriched.get("vwap"), (int, float)):
@@ -11589,12 +11717,34 @@ def _dashboard_tape_viewmodel(
                     enriched["vwap"] = replay_vwap
         reason = str(enriched.get("reason") or "").lower()
         provider = str(enriched.get("provider") or "").lower()
-        state = "Unavailable" if enriched.get("price") is None else "Cached" if "cached" in reason else "Live" if provider == "tradier" and reason.startswith("tradier_") else "Delayed" if "fallback" in reason or "close" in reason or provider not in ("", "tradier") else "Live"
+        state = (
+            "Unavailable"
+            if enriched.get("price") is None
+            else (
+                "Cached"
+                if "cached" in reason
+                else (
+                    "Live"
+                    if provider == "tradier" and reason.startswith("tradier_")
+                    else (
+                        "Delayed"
+                        if "fallback" in reason
+                        or "close" in reason
+                        or provider not in ("", "tradier")
+                        else "Live"
+                    )
+                )
+            )
+        )
         enriched["market_state"] = state
         enriched["data_status_label"] = state
         price = _float_or_none(enriched.get("price"))
         pct = _float_or_none(enriched.get("pct_change"))
-        prev_close = _float_or_none(enriched.get("prior_close")) or _float_or_none(enriched.get("prev_close")) or _float_or_none(enriched.get("previous_close"))
+        prev_close = (
+            _float_or_none(enriched.get("prior_close"))
+            or _float_or_none(enriched.get("prev_close"))
+            or _float_or_none(enriched.get("previous_close"))
+        )
         if prev_close is None and price is not None and pct is not None and abs(100.0 + pct) > 1e-9:
             prev_close = price / (1.0 + (pct / 100.0))
         if pct is None and price is not None and prev_close is not None and prev_close > 0:
@@ -11629,16 +11779,32 @@ def _dashboard_tape_viewmodel(
         )
         change_points = price - prev_close if price is not None and prev_close is not None else None
         day_open = _float_or_none(enriched.get("day_open"))
-        gap_points = day_open - prev_close if day_open is not None and prev_close is not None and prev_close > 0 else None
-        gap_pct = (gap_points / prev_close) * 100.0 if gap_points is not None and prev_close else None
+        gap_points = (
+            day_open - prev_close
+            if day_open is not None and prev_close is not None and prev_close > 0
+            else None
+        )
+        gap_pct = (
+            (gap_points / prev_close) * 100.0 if gap_points is not None and prev_close else None
+        )
         enriched["change_points"] = change_points
         enriched["overnight_gap_points"] = gap_points
         enriched["overnight_gap_pct"] = gap_pct
-        enriched["overnight_gap_label"] = f"{gap_points:+.2f} pts · {gap_pct:+.2f}%" if gap_points is not None and gap_pct is not None else "—"
-        enriched["overnight_gap_compact"] = f"{gap_points:+.2f} ({gap_pct:+.2f}%)" if gap_points is not None and gap_pct is not None else "—"
+        enriched["overnight_gap_label"] = (
+            f"{gap_points:+.2f} pts · {gap_pct:+.2f}%"
+            if gap_points is not None and gap_pct is not None
+            else "—"
+        )
+        enriched["overnight_gap_compact"] = (
+            f"{gap_points:+.2f} ({gap_pct:+.2f}%)"
+            if gap_points is not None and gap_pct is not None
+            else "—"
+        )
         if not str(enriched.get("day_range_compact") or "").strip():
             day_range_full = str(enriched.get("day_range") or "—")
-            enriched["day_range_compact"] = day_range_full.replace(" to ", "-") if day_range_full != "—" else "—"
+            enriched["day_range_compact"] = (
+                day_range_full.replace(" to ", "-") if day_range_full != "—" else "—"
+            )
         source_badge = _quote_source_badge(enriched)
         freshness = _dashboard_freshness_contract(
             state,
@@ -11660,13 +11826,35 @@ def _dashboard_tape_viewmodel(
 
     def _dashboard_tape_row(symbol: str, quote: Dict[str, Any], descriptor: str) -> Dict[str, Any]:
         enriched = dict(quote or {})
-        change_points = enriched.get("change_points") if enriched.get("change_points") is not None else enriched.get("change")
-        row_tone = "up" if isinstance(change_points, (int, float)) and float(change_points) > 0 else "down" if isinstance(change_points, (int, float)) and float(change_points) < 0 else "flat"
-        pct_change = enriched.get("pct_change") if enriched.get("pct_change") is not None else enriched.get("change_pct")
+        change_points = (
+            enriched.get("change_points")
+            if enriched.get("change_points") is not None
+            else enriched.get("change")
+        )
+        row_tone = (
+            "up"
+            if isinstance(change_points, (int, float)) and float(change_points) > 0
+            else (
+                "down"
+                if isinstance(change_points, (int, float)) and float(change_points) < 0
+                else "flat"
+            )
+        )
+        pct_change = (
+            enriched.get("pct_change")
+            if enriched.get("pct_change") is not None
+            else enriched.get("change_pct")
+        )
         if pct_change is None and enriched.get("price") is not None:
-            prev_close = enriched.get("prior_close") if enriched.get("prior_close") is not None else enriched.get("prev_close") or enriched.get("previous_close")
+            prev_close = (
+                enriched.get("prior_close")
+                if enriched.get("prior_close") is not None
+                else enriched.get("prev_close") or enriched.get("previous_close")
+            )
             if isinstance(prev_close, (int, float)) and float(prev_close) > 0:
-                pct_change = ((float(enriched["price"]) - float(prev_close)) / float(prev_close)) * 100.0
+                pct_change = (
+                    (float(enriched["price"]) - float(prev_close)) / float(prev_close)
+                ) * 100.0
         tape_state = _market_pulse_tape_state(symbol, pct_change)
         return {
             "symbol": symbol,
@@ -11678,12 +11866,30 @@ def _dashboard_tape_viewmodel(
             "sparkline_svg": str(enriched.get("sparkline_svg") or ""),
             "timeframes": dict(enriched.get("timeframes") or {}),
             "last_hour": dict(enriched.get("last_hour") or {}),
-            "price_display": f"{float(enriched['price']):.2f}" if enriched.get("price") is not None else "loading...",
-            "pct_change_display": f"{float(pct_change):+.2f}%" if pct_change is not None else "loading...",
-            "change_display": f"{float(change_points):+.2f}" if isinstance(change_points, (int, float)) else "loading...",
+            "price_display": (
+                f"{float(enriched['price']):.2f}"
+                if enriched.get("price") is not None
+                else "loading..."
+            ),
+            "pct_change_display": (
+                f"{float(pct_change):+.2f}%" if pct_change is not None else "loading..."
+            ),
+            "change_display": (
+                f"{float(change_points):+.2f}"
+                if isinstance(change_points, (int, float))
+                else "loading..."
+            ),
             "change_arrow": "▲" if row_tone == "up" else "▼" if row_tone == "down" else "",
-            "open_display": f"{float(enriched['day_open']):.2f}" if enriched.get("day_open") is not None else "—",
-            "prev_display": f"{float(enriched['prior_close']):.2f}" if enriched.get("prior_close") is not None else "—",
+            "open_display": (
+                f"{float(enriched['day_open']):.2f}"
+                if enriched.get("day_open") is not None
+                else "—"
+            ),
+            "prev_display": (
+                f"{float(enriched['prior_close']):.2f}"
+                if enriched.get("prior_close") is not None
+                else "—"
+            ),
             "live_display": str(enriched.get("freshness_label_compact") or "—"),
             "market_state_display": str(enriched.get("freshness_status_display") or ""),
             "freshness_display": str(enriched.get("freshness_label") or "—"),
@@ -11705,7 +11911,9 @@ def _dashboard_tape_viewmodel(
     extra_tape_quotes: Dict[str, Dict[str, Any]] = {}
     if testing_mode:
         try:
-            extra_tape_quotes = market_data_service.get_watchlist_tradier([symbol for symbol in dashboard_tape_symbols if symbol not in dashboard_tape_quotes])
+            extra_tape_quotes = market_data_service.get_watchlist_tradier(
+                [symbol for symbol in dashboard_tape_symbols if symbol not in dashboard_tape_quotes]
+            )
         except Exception:
             extra_tape_quotes = {}
     for symbol in dashboard_tape_symbols:
@@ -11777,21 +11985,20 @@ def _dashboard_performance_range_context(
     if not is_custom:
         if str(pace_scope.get("key") or "") == "m":
             range_start = date(year, month, 1)
-            range_end = (
-                date(year + (1 if month == 12 else 0), 1 if month == 12 else month + 1, 1)
-                - timedelta(days=1)
-            )
+            range_end = date(
+                year + (1 if month == 12 else 0), 1 if month == 12 else month + 1, 1
+            ) - timedelta(days=1)
         else:
-            range_start = _parse_dashboard_date(pace_scope.get("start_iso")) or date(
-                year, month, 1
-            )
+            range_start = _parse_dashboard_date(pace_scope.get("start_iso")) or date(year, month, 1)
             range_end = _parse_dashboard_date(pace_scope.get("end_iso")) or range_start
 
     assert range_start is not None
     assert range_end is not None
     end_exclusive = range_end + timedelta(days=1)
     if is_custom:
-        title = f"{_dashboard_short_date_label(range_start)} - {_dashboard_short_date_label(range_end)}"
+        title = (
+            f"{_dashboard_short_date_label(range_start)} - {_dashboard_short_date_label(range_end)}"
+        )
         if range_start.year != range_end.year:
             title = (
                 f"{_dashboard_short_date_label(range_start)}, {range_start.year} - "
@@ -11803,7 +12010,9 @@ def _dashboard_performance_range_context(
         scope_label = "Selected Range"
     else:
         title = str(pace_scope.get("label") or "")
-        metric_label = "Month Total" if str(pace_scope.get("key") or "") == "m" else f"{title} Total"
+        metric_label = (
+            "Month Total" if str(pace_scope.get("key") or "") == "m" else f"{title} Total"
+        )
         caption = f"{title} scope · {pace_scope.get('summary') or ''}".strip()
         consistency_label = f"{date(year, month, 1).strftime('%B')} Consistency"
         scope_label = f"{title} scope"
@@ -12651,7 +12860,9 @@ def dashboard():
                 else enriched.get("prev_close") or enriched.get("previous_close")
             )
             if isinstance(prev_close, (int, float)) and float(prev_close) > 0:
-                pct_change = ((float(enriched["price"]) - float(prev_close)) / float(prev_close)) * 100.0
+                pct_change = (
+                    (float(enriched["price"]) - float(prev_close)) / float(prev_close)
+                ) * 100.0
         tape_state = _market_pulse_tape_state(symbol, pct_change)
         return {
             "symbol": symbol,
@@ -12669,9 +12880,7 @@ def dashboard():
                 else "loading..."
             ),
             "pct_change_display": (
-                f"{float(pct_change):+.2f}%"
-                if pct_change is not None
-                else "loading..."
+                f"{float(pct_change):+.2f}%" if pct_change is not None else "loading..."
             ),
             "change_display": (
                 f"{float(change_points):+.2f}"
@@ -13141,9 +13350,7 @@ def stream_market():
                     },
                 ],
             }
-            cached_playbook = _market_pulse_cached_playbook_snapshot(
-                now_et, ticker=selected_ticker
-            )
+            cached_playbook = _market_pulse_cached_playbook_snapshot(now_et, ticker=selected_ticker)
             if (
                 not isinstance(cached_playbook, dict)
                 or get_supported_playbook_ticker(cached_playbook.get("ticker")) != selected_ticker
@@ -13758,15 +13965,18 @@ def gamma_ladder_api():
     try:
         payload = gamma_map_service.build_gamma_ladder(symbol, window=window, dte=dte)
     except Exception as exc:
-        return jsonify(
-            {
-                "ok": False,
-                "symbol": symbol,
-                "window_preset": window,
-                "dte_preset": dte,
-                "message": str(exc) or "Gamma ladder unavailable.",
-            }
-        ), 503
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "symbol": symbol,
+                    "window_preset": window,
+                    "dte_preset": dte,
+                    "message": str(exc) or "Gamma ladder unavailable.",
+                }
+            ),
+            503,
+        )
     return jsonify(payload)
 
 
@@ -13850,19 +14060,13 @@ def market_pulse_tape_api():
                     "price": price_num,
                     "change": change,
                     "change_pct": pct_num,
-                    "market_state": (
-                        "Live"
-                        if state == "live"
-                        else "Unavailable"
-                    ),
+                    "market_state": ("Live" if state == "live" else "Unavailable"),
                     "day_range": "—",
                     "as_of": as_of or fetched_at,
                     "asof": as_of or fetched_at,
                     "asof_epoch": asof_epoch,
                     "data_state": state,
-                    "data_status_label": (
-                        "Live" if state == "live" else "Missing"
-                    ),
+                    "data_status_label": ("Live" if state == "live" else "Missing"),
                     "data_reason": reason,
                     "mini_series": [],
                     "series": [],
@@ -13940,18 +14144,14 @@ def market_pulse_tape_api():
                     series_points[label] = prior_points
                     q["prior_session_series"] = prior_points
                     q["mini_series"] = [
-                        float(p["v"])
-                        for p in prior_points
-                        if isinstance(p.get("v"), (int, float))
+                        float(p["v"]) for p in prior_points if isinstance(p.get("v"), (int, float))
                     ]
                     timeframe_rows = prior_rows
                 elif len(cached_points) >= 2:
                     series_points[label] = cached_points
                     q["prior_session_series"] = cached_points
                     q["mini_series"] = [
-                        float(p["v"])
-                        for p in cached_points
-                        if isinstance(p.get("v"), (int, float))
+                        float(p["v"]) for p in cached_points if isinstance(p.get("v"), (int, float))
                     ]
                     timeframe_rows = cached_points
                 else:
@@ -13978,11 +14178,7 @@ def market_pulse_tape_api():
         ):
             laggard_label = str(q.get("label") or q.get("symbol") or "—")
             laggard_move = float(q_pct)
-    drag_label = (
-        f"{laggard_label} {laggard_move:+.2f}%"
-        if laggard_move is not None
-        else "—"
-    )
+    drag_label = f"{laggard_label} {laggard_move:+.2f}%" if laggard_move is not None else "—"
     return jsonify(
         {
             "ok": True,
@@ -14019,15 +14215,22 @@ def market_pulse_news_feed_api():
         requested_limit = 0
     limit = max(
         1,
-        min(100, requested_limit or (15 if page_type == "market-pulse" else 5 if page_type == "dashboard" else 15)),
+        min(
+            100,
+            requested_limit
+            or (15 if page_type == "market-pulse" else 5 if page_type == "dashboard" else 15),
+        ),
     )
     now_et = app_runtime.now_et()
     ticker_context = get_playbook_ticker_context(request.args.get("ticker"))
     selected_ticker = str(ticker_context["ticker"])
-    playbook_snapshot = _market_pulse_cached_playbook_snapshot(
-        now_et,
-        ticker=selected_ticker,
-    ) or {}
+    playbook_snapshot = (
+        _market_pulse_cached_playbook_snapshot(
+            now_et,
+            ticker=selected_ticker,
+        )
+        or {}
+    )
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     news_snapshot = _market_news_snapshot(
         now_et=now_et,
@@ -14073,10 +14276,9 @@ def market_pulse_feed_page():
     if auth_enabled() and not is_authenticated():
         return redirect(url_for("login_page"))
     now_et = app_runtime.now_et()
-    playbook_snapshot = (
-        _market_pulse_cached_playbook_snapshot(now_et, ticker=DEFAULT_PLAYBOOK_TICKER)
-        or get_or_build_market_pulse_snapshot(force_refresh=False, now_et=now_et)
-    )
+    playbook_snapshot = _market_pulse_cached_playbook_snapshot(
+        now_et, ticker=DEFAULT_PLAYBOOK_TICKER
+    ) or get_or_build_market_pulse_snapshot(force_refresh=False, now_et=now_et)
     market_structure_snapshot = dict(playbook_snapshot.get("market_structure_snapshot") or {})
     news_snapshot = _market_news_snapshot(
         now_et=now_et,
@@ -14520,7 +14722,9 @@ def dashboard_recompute_balances():
         "application/json" in str(request.headers.get("Accept") or "").lower()
         or request.headers.get("X-Requested-With") == "XMLHttpRequest"
     )
-    requested_scope = str(request.form.get("scope") or request.args.get("scope") or "all").strip().lower()
+    requested_scope = (
+        str(request.form.get("scope") or request.args.get("scope") or "all").strip().lower()
+    )
     starting = float(app_runtime.get_setting_float("starting_balance", 50000.0))
     trades_repo.recompute_balances(starting_balance=starting)
     audit_payload = {
@@ -14539,7 +14743,9 @@ def dashboard_recompute_balances():
         )
     except Exception:
         pass
-    redirect_url = url_for("dashboard", scope=requested_scope if requested_scope == "active" else "all")
+    redirect_url = url_for(
+        "dashboard", scope=requested_scope if requested_scope == "active" else "all"
+    )
     if wants_json:
         return jsonify({"ok": True, "redirect_url": redirect_url})
     return redirect(redirect_url)
@@ -14689,7 +14895,9 @@ def dashboard_seed_vanquish_session():
         category = "warn"
         ok = False
     else:
-        detail = "; ".join(str(w) for w in warnings if w) or "Vanquish dashboard session was not saved."
+        detail = (
+            "; ".join(str(w) for w in warnings if w) or "Vanquish dashboard session was not saved."
+        )
         message = f"Could not seed Vanquish dashboard session: {detail}"
         category = "warn"
         ok = False
@@ -14910,11 +15118,7 @@ def dashboard_manual_equity_update():
             return jsonify({"ok": False, "message": message, "redirect_url": redirect_url}), 400
         return redirect(redirect_url)
 
-    raw_equity = str(
-        request.form.get("broker_equity")
-        or request.form.get("equity")
-        or ""
-    ).strip()
+    raw_equity = str(request.form.get("broker_equity") or request.form.get("equity") or "").strip()
     cleaned = re.sub(r"[^0-9.\-]+", "", raw_equity)
     try:
         broker_equity = float(cleaned)
@@ -15590,7 +15794,9 @@ def _build_candle_open_calendar(year: int, month: int) -> Dict[str, Any]:
         "timing_tags": list(today_cell.get("timing_tags") or []),
         "timing_tags_label": str(today_cell.get("timing_tags_label") or "Quiet Day"),
         "in_display_month": (anchor.year, anchor.month) == (year, month),
-        "session_label": _market_pulse_session_phase(now_et).replace("afterhours", "after hours").title(),
+        "session_label": _market_pulse_session_phase(now_et)
+        .replace("afterhours", "after hours")
+        .title(),
     }
     top_notice = _candle_page_top_notice(now_et, news_overlay["events"])
     today_top_notice = {
@@ -15653,7 +15859,9 @@ def _candle_day_importance(
     reset_count = len(day_labels) + len(week_labels) + len(month_labels)
     score = len(day_labels) + (2 * len(week_labels)) + (3 if month_labels else 0)
     high_macros = sum(1 for event in news_events if str(event.get("impact_class") or "") == "high")
-    medium_macros = sum(1 for event in news_events if str(event.get("impact_class") or "") == "medium")
+    medium_macros = sum(
+        1 for event in news_events if str(event.get("impact_class") or "") == "medium"
+    )
     score += (4 * high_macros) + (2 * medium_macros)
     if reset_count and news_events:
         score += 3
@@ -15758,19 +15966,12 @@ def _build_candle_cluster_summaries(
     weeks: List[List[Dict[str, Any]]],
 ) -> List[Dict[str, str]]:
     month_days = [
-        day
-        for week in weeks
-        for day in week
-        if day.get("in_month") and day.get("is_trading")
+        day for week in weeks for day in week if day.get("in_month") and day.get("is_trading")
     ]
     if not month_days:
         return []
 
-    active_days = [
-        day
-        for day in month_days
-        if date.fromisoformat(str(day.get("iso"))) >= anchor
-    ]
+    active_days = [day for day in month_days if date.fromisoformat(str(day.get("iso"))) >= anchor]
     horizon_days = active_days or month_days
 
     def cluster_score(day: Dict[str, Any]) -> tuple[int, int, int]:
@@ -15891,7 +16092,9 @@ def _build_candle_focus_cards(
         return (news_score, label_count, event_count)
 
     upcoming_reset = next((day for day in horizon_days if day.get("labels")), None)
-    peak_reset = max((day for day in month_days if day.get("labels")), key=_day_signal_score, default=None)
+    peak_reset = max(
+        (day for day in month_days if day.get("labels")), key=_day_signal_score, default=None
+    )
     next_macro = None
     for top_day in list(news_top_days or []):
         try:
@@ -15909,11 +16112,7 @@ def _build_candle_focus_cards(
         cards.append(
             {
                 "kind": "reset",
-                "tone": (
-                    "dense"
-                    if len(upcoming_reset.get("labels") or []) >= 4
-                    else "standard"
-                ),
+                "tone": ("dense" if len(upcoming_reset.get("labels") or []) >= 4 else "standard"),
                 "eyebrow": "Next Reset Cluster",
                 "title": datetime.strptime(upcoming_reset["iso"], "%Y-%m-%d").strftime("%a, %b %d"),
                 "headline": (
@@ -15948,7 +16147,11 @@ def _build_candle_focus_cards(
                                 if int(next_macro.get("medium_count") or 0)
                                 else ""
                             ),
-                            (f"{next_macro.get('focus_label')} priority" if next_macro.get("focus_label") else ""),
+                            (
+                                f"{next_macro.get('focus_label')} priority"
+                                if next_macro.get("focus_label")
+                                else ""
+                            ),
                         ]
                         if part
                     ]

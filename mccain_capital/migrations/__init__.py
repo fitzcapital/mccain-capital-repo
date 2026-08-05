@@ -801,7 +801,9 @@ def _migration_0013_multi_account_ledgers(conn: sqlite3.Connection) -> None:
         );
         """
     )
-    account_cols = {str(r["name"]): r for r in conn.execute("PRAGMA table_info(accounts)").fetchall()}
+    account_cols = {
+        str(r["name"]): r for r in conn.execute("PRAGMA table_info(accounts)").fetchall()
+    }
     if "archived" not in account_cols:
         conn.execute("ALTER TABLE accounts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
     if "current_balance" not in account_cols:
@@ -815,7 +817,10 @@ def _migration_0013_multi_account_ledgers(conn: sqlite3.Connection) -> None:
     conn.execute(
         "UPDATE accounts SET created_at = COALESCE(NULLIF(created_at, ''), ?), "
         "updated_at = COALESCE(NULLIF(updated_at, ''), ?)",
-        (datetime.now().isoformat(timespec='seconds'), datetime.now().isoformat(timespec='seconds')),
+        (
+            datetime.now().isoformat(timespec="seconds"),
+            datetime.now().isoformat(timespec="seconds"),
+        ),
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_accounts_archived_created "
@@ -833,21 +838,16 @@ def _migration_0013_multi_account_ledgers(conn: sqlite3.Connection) -> None:
     if "filename" not in upload_cols:
         conn.execute("ALTER TABLE uploads ADD COLUMN filename TEXT NOT NULL DEFAULT ''")
     if "uploaded_at" not in upload_cols:
-        conn.execute(
-            "ALTER TABLE uploads ADD COLUMN uploaded_at TEXT NOT NULL DEFAULT ''"
-        )
+        conn.execute("ALTER TABLE uploads ADD COLUMN uploaded_at TEXT NOT NULL DEFAULT ''")
     conn.execute(
         "UPDATE uploads SET uploaded_at = COALESCE(NULLIF(uploaded_at, ''), ?)",
-        (datetime.now().isoformat(timespec='seconds'),),
+        (datetime.now().isoformat(timespec="seconds"),),
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_uploads_account_uploaded "
         "ON uploads(account_id, uploaded_at DESC)"
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_uploads_batch "
-        "ON uploads(import_batch_id)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_uploads_batch " "ON uploads(import_batch_id)")
 
     trade_cols = [r["name"] for r in conn.execute("PRAGMA table_info(trades)").fetchall()]
     if "account_id" not in trade_cols:
@@ -970,7 +970,9 @@ def _migration_0014_account_broker_metrics(conn: sqlite3.Connection) -> None:
         if col_name not in account_cols:
             conn.execute(f"ALTER TABLE accounts ADD COLUMN {col_name} REAL")
     if "broker_metrics_updated_at" not in account_cols:
-        conn.execute("ALTER TABLE accounts ADD COLUMN broker_metrics_updated_at TEXT NOT NULL DEFAULT ''")
+        conn.execute(
+            "ALTER TABLE accounts ADD COLUMN broker_metrics_updated_at TEXT NOT NULL DEFAULT ''"
+        )
 
 
 MIGRATIONS: List[Tuple[str, MigrationFn]] = [

@@ -302,9 +302,7 @@ def test_gamma_reason_label_explains_partial_and_fallback_states():
 
 def test_gamma_failure_label_ignores_successful_tradier_fetch_text():
     assert (
-        core._market_pulse_gamma_failure_label(
-            "Tradier live options chain fetched successfully."
-        )
+        core._market_pulse_gamma_failure_label("Tradier live options chain fetched successfully.")
         == ""
     )
 
@@ -399,7 +397,10 @@ def test_canonical_playbook_view_uses_explicit_unavailable_copy():
     assert playbook["decision_label"] == "No trade"
     assert playbook["bias_summary_label"] == "Wait for cleaner structure"
     assert playbook["hero_reason_label"] == "Gamma snapshot unavailable. Wait for validated levels."
-    assert playbook["hero_summary"] == "Gamma snapshot unavailable, wait for validated levels before acting."
+    assert (
+        playbook["hero_summary"]
+        == "Gamma snapshot unavailable, wait for validated levels before acting."
+    )
 
 
 def test_execution_chart_reuses_last_valid_session_bars_after_close():

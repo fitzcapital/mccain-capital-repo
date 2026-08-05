@@ -608,7 +608,9 @@ def parse_account_metrics_from_graphql_payload(
         "metrics": best_metrics,
         "markers": {
             "found_account": bool(matched) or (not account_token and bool(candidates)),
-            "account_match": "graphql" if matched else "single_candidate" if search_space else "none",
+            "account_match": (
+                "graphql" if matched else "single_candidate" if search_space else "none"
+            ),
             "candidate_count": len(candidates),
             "matched_candidate_count": len(matched),
             "parsed_keys": sorted(best_metrics.keys()),
@@ -850,7 +852,9 @@ def fetch_account_metrics_via_dashboard(
                         request_payload = request_payload()
                 except Exception:
                     request_payload = None
-                request_items = request_payload if isinstance(request_payload, list) else [request_payload]
+                request_items = (
+                    request_payload if isinstance(request_payload, list) else [request_payload]
+                )
                 for item in request_items:
                     if isinstance(item, dict) and item.get("operationName"):
                         operation = str(item.get("operationName") or "")
@@ -862,7 +866,9 @@ def fetch_account_metrics_via_dashboard(
             try:
                 page.wait_for_load_state("networkidle", timeout=timeout_ms)
             except PlaywrightTimeoutError:
-                warnings.append("Dashboard accounts page did not reach network idle; parsing visible text.")
+                warnings.append(
+                    "Dashboard accounts page did not reach network idle; parsing visible text."
+                )
             try:
                 page.wait_for_timeout(2000)
             except Exception:
@@ -1035,7 +1041,9 @@ def seed_dashboard_session(
             try:
                 page.wait_for_load_state("networkidle", timeout=timeout_ms)
             except PlaywrightTimeoutError:
-                warnings.append("Dashboard seed page did not reach network idle; checking visible state.")
+                warnings.append(
+                    "Dashboard seed page did not reach network idle; checking visible state."
+                )
 
             deadline = time.time() + (max(timeout_ms, 1000) / 1000.0)
             visible_text = ""
@@ -1170,14 +1178,11 @@ def _validate_statement_html(
         and ("<input" in lowered or "loginform" in lowered or "sign in" in lowered)
     )
     is_statement_url = "/account/statement/" in url_lower
-    looks_like_app_shell = (
-        not is_statement_url
-        and (
-            "window.config.mode" in lowered
-            or "dxtrade5.nocache" in lowered
-            or "window['x-dx-vendor']" in lowered
-            or "var dictionary=" in lowered
-        )
+    looks_like_app_shell = not is_statement_url and (
+        "window.config.mode" in lowered
+        or "dxtrade5.nocache" in lowered
+        or "window['x-dx-vendor']" in lowered
+        or "var dictionary=" in lowered
     )
     has_statement_marker = any(
         marker in lowered
@@ -2108,9 +2113,7 @@ def fetch_statement_html_via_login(
         )
     lowered = html_text.lower()
     if "password" in lowered and "login" in lowered:
-        raise _stage_error(
-            "auth_required", "Received login page instead of statement HTML."
-        )
+        raise _stage_error("auth_required", "Received login page instead of statement HTML.")
     warnings.append(f"Selector profile: {SELECTOR_PROFILE_VERSION}")
     meta["stage"] = current_stage
     return html_text, warnings, artifacts, meta

@@ -176,7 +176,9 @@ def _insert_trade(
         conn.execute(
             """
             INSERT INTO trades ({columns}) VALUES ({qmarks})
-            """.format(columns=",".join(columns), qmarks=qmarks),
+            """.format(
+                columns=",".join(columns), qmarks=qmarks
+            ),
             values,
         )
         row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
@@ -604,9 +606,7 @@ def test_statement_upload_accepts_pasted_html(client, monkeypatch):
     assert captured["filename"].endswith(".html")
 
 
-def test_live_sync_rejects_stale_broker_id_for_selected_account(
-    client, monkeypatch, tmp_path
-):
+def test_live_sync_rejects_stale_broker_id_for_selected_account(client, monkeypatch, tmp_path):
     from mccain_capital.services import trades as trades_svc
 
     account_id = trades_repo.create_account(
@@ -842,7 +842,9 @@ def test_live_sync_can_save_and_reuse_credentials(client, monkeypatch, tmp_path)
     monkeypatch.setattr(trades_svc, "AUTO_SYNC_PASSWORD_FALLBACK", True)
     monkeypatch.setattr(trades_svc, "_set_auto_sync_password", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(trades_svc, "_keyring_client", lambda: None)
-    monkeypatch.setattr(trades_svc, "trade_lockout_state", lambda *_args, **_kwargs: {"locked": False})
+    monkeypatch.setattr(
+        trades_svc, "trade_lockout_state", lambda *_args, **_kwargs: {"locked": False}
+    )
     monkeypatch.setenv("SECRET_KEY", "unit-test-live-sync-secret")
     monkeypatch.setattr(trades_svc, "_load_broker_sync_config", lambda: dict(cfg_store))
 
@@ -850,13 +852,19 @@ def test_live_sync_can_save_and_reuse_credentials(client, monkeypatch, tmp_path)
         cfg_store.clear()
         cfg_store.update(dict(new_cfg))
         if cfg_store.get("password_enc"):
-            saved_password["value"] = trades_svc._decrypt_fallback_password(cfg_store["password_enc"])
+            saved_password["value"] = trades_svc._decrypt_fallback_password(
+                cfg_store["password_enc"]
+            )
 
     monkeypatch.setattr(trades_svc, "_save_broker_sync_config", _save_cfg)
     monkeypatch.setattr(
         trades_svc,
         "_get_auto_sync_password",
-        lambda cfg: saved_password["value"] if str(cfg.get("username") or "") == cfg_store.get("username") else "",
+        lambda cfg: (
+            saved_password["value"]
+            if str(cfg.get("username") or "") == cfg_store.get("username")
+            else ""
+        ),
     )
 
     captured = {}
@@ -923,7 +931,9 @@ def test_live_sync_can_clear_saved_credentials(client, monkeypatch, tmp_path):
     monkeypatch.setattr(trades_svc, "AUTO_SYNC_PASSWORD_FALLBACK", True)
     monkeypatch.setattr(trades_svc, "_set_auto_sync_password", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(trades_svc, "_keyring_client", lambda: None)
-    monkeypatch.setattr(trades_svc, "trade_lockout_state", lambda *_args, **_kwargs: {"locked": False})
+    monkeypatch.setattr(
+        trades_svc, "trade_lockout_state", lambda *_args, **_kwargs: {"locked": False}
+    )
     monkeypatch.setenv("SECRET_KEY", "unit-test-live-sync-secret")
     cfg_store["password_enc"] = trades_svc._encrypt_fallback_password("saved-pass")
     monkeypatch.setattr(trades_svc, "_load_broker_sync_config", lambda: dict(cfg_store))
@@ -936,7 +946,9 @@ def test_live_sync_can_clear_saved_credentials(client, monkeypatch, tmp_path):
     monkeypatch.setattr(
         trades_svc,
         "_get_auto_sync_password",
-        lambda cfg: saved_password["value"] if str(cfg.get("username") or "") == "saved-user" else "",
+        lambda cfg: (
+            saved_password["value"] if str(cfg.get("username") or "") == "saved-user" else ""
+        ),
     )
     monkeypatch.setattr(
         trades_svc,
@@ -972,7 +984,9 @@ def test_live_sync_force_reset_clears_running_lane(client, monkeypatch):
         "summary": {},
     }
 
-    monkeypatch.setattr(trades_svc, "_get_bg_job", lambda job_id: dict(job) if job_id == job["id"] else {})
+    monkeypatch.setattr(
+        trades_svc, "_get_bg_job", lambda job_id: dict(job) if job_id == job["id"] else {}
+    )
 
     def _force_reset(job_id):
         assert job_id == job["id"]
@@ -1014,7 +1028,9 @@ def test_live_sync_force_reset_clears_failed_startup_lane(monkeypatch):
         "reset_browser_boot_lane",
         lambda: reset_calls.append(True),
     )
-    monkeypatch.setattr(trades_svc, "_save_last_sync_status", lambda payload: saved_statuses.append(payload))
+    monkeypatch.setattr(
+        trades_svc, "_save_last_sync_status", lambda payload: saved_statuses.append(payload)
+    )
 
     def _update_bg_job(job_id, **updates):
         assert job_id == job["id"]
@@ -1984,6 +2000,7 @@ def test_statement_context_request_returns_validated_capture_metadata():
 
 def test_live_sync_reports_browser_boot_stage(monkeypatch):
     from mccain_capital.services import trades as trades_svc
+
     account_id = trades_repo.create_account(
         prop_firm="Vanquish",
         account_name="Protect",
@@ -2101,7 +2118,7 @@ def test_live_sync_startup_stage_renders_dispatching_without_duplicate_live_surf
     assert "Dispatching" in html
     assert 'id="sync-control-deck" hidden' in html
     assert 'id="sync-job-details"' in html
-    assert 'Open Run Diagnostics' in html
+    assert "Open Run Diagnostics" in html
     assert 'id="sync-job-runway"' not in html
 
 
@@ -3261,9 +3278,7 @@ def test_live_sync_startup_busy_message_resets_browser_boot_lane(tmp_path, monke
     assert reset_calls == [True]
 
 
-def test_live_sync_async_start_ignores_dispatcher_boot_failures(
-    client, monkeypatch, tmp_path
-):
+def test_live_sync_async_start_ignores_dispatcher_boot_failures(client, monkeypatch, tmp_path):
     from mccain_capital.services import trades as trades_svc
 
     account_id = trades_repo.create_account(

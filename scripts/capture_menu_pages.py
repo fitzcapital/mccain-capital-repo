@@ -19,9 +19,7 @@ OUT_ROOT = Path(os.environ.get("VISUAL_OUT_DIR", "artifacts/menu-page-modernizat
 PHASE = os.environ.get("MENU_CAPTURE_PHASE", "baseline").strip() or "baseline"
 BASELINE_CSS_REF = os.environ.get("MENU_BASELINE_CSS_REF", "").strip()
 ROUTE_FILTER = {
-    value.strip()
-    for value in os.environ.get("MENU_CAPTURE_ROUTES", "").split(",")
-    if value.strip()
+    value.strip() for value in os.environ.get("MENU_CAPTURE_ROUTES", "").split(",") if value.strip()
 }
 
 VIEWPORTS = {

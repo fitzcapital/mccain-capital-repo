@@ -426,7 +426,9 @@ def get_account(account_id: int) -> Optional[Dict[str, Any]]:
         return None
     account = dict(row)
     account["prop_firm"] = str(account.get("prop_firm") or "").strip() or DEFAULT_PROP_FIRM
-    account["display_broker_account_id"] = display_broker_account_id(account.get("broker_account_id"))
+    account["display_broker_account_id"] = display_broker_account_id(
+        account.get("broker_account_id")
+    )
     account["account_size"] = _account_display_size(account)
     account["current_balance"] = latest_balance_overall(
         account_id=int(account["id"]),
@@ -458,7 +460,9 @@ def find_account_by_broker_account_id(
         return None
     account = dict(row)
     account["prop_firm"] = str(account.get("prop_firm") or "").strip() or DEFAULT_PROP_FIRM
-    account["display_broker_account_id"] = display_broker_account_id(account.get("broker_account_id"))
+    account["display_broker_account_id"] = display_broker_account_id(
+        account.get("broker_account_id")
+    )
     account["account_size"] = _account_display_size(account)
     account["current_balance"] = latest_balance_overall(
         account_id=int(account["id"]),

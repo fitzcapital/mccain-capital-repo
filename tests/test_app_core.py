@@ -194,18 +194,17 @@ def test_dashboard_account_snapshot_and_actions_link_to_scoped_live_upload(clien
     assert "dashboardSnapshotCard-accountDropdown" in body
     assert "dashboardSnapshotDropdownChevron" in body
     assert 'name="account_ids"' in body
-    assert 'data-dashboard-account-check' in body
-    assert 'data-dashboard-account-select-all' in body
-    assert 'data-dashboard-account-clear' in body
-    assert 'data-dashboard-account-selected-count' in body
+    assert "data-dashboard-account-check" in body
+    assert "data-dashboard-account-select-all" in body
+    assert "data-dashboard-account-clear" in body
+    assert "data-dashboard-account-selected-count" in body
     assert 'value="bulk_archive_accounts"' in body
     assert "Archive selected" in body
     assert f"/trades/upload/statement?ws=live&account_id={account_id}" in body
     assert (
         f'<a class="btn dashboardSyncDetailsLink" '
         f'href="/trades/upload/statement?ws=live&account_id={account_id}">'
-        "Full sync details</a>"
-        in body
+        "Full sync details</a>" in body
     )
     assert "/trades/upload/statement?ws=live&account_id=all&account_editor=new" in body
     assert "Archive selected" in body
@@ -524,7 +523,10 @@ def test_books_page_renders_empty_library_and_featured_shelf(client):
     assert "Trading in the Zone" in featured_body
     assert "Mindset Pull" in featured_body
     assert "Think in terms of probabilities." in featured_body
-    assert '/books/open/Trading in the Zone -  Mark Douglas.pdf">Open Trading in the Zone<' in featured_body
+    assert (
+        '/books/open/Trading in the Zone -  Mark Douglas.pdf">Open Trading in the Zone<'
+        in featured_body
+    )
 
 
 def test_playbook_page_renders_trading_doctrine_surface(client):
@@ -773,7 +775,7 @@ def test_base_shell_generalizes_transition_loader_for_internal_pages(client):
     resp = client.get("/dashboard", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'window.navigateWithShellLoading' in body
+    assert "window.navigateWithShellLoading" in body
     assert '"/analytics": { title: "Analytics"' in body
     assert '"/strat": { title: "The Strat"' in body
 
@@ -1381,7 +1383,7 @@ def test_executive_capital_flow_projection_contract():
         'floorPhase = "secured"',
         'floorPhase = "recovery"',
         "dailyPath.slice(index).every",
-        "const activeHardFloor = floorPhase === \"build\" ? temporaryFloor : permanentFloorGoal",
+        'const activeHardFloor = floorPhase === "build" ? temporaryFloor : permanentFloorGoal',
         "state.permanentFloorSecured = true",
         "const fundingCycleForDate = (date)",
         "new Date(2026, 6, 31)",
@@ -1407,11 +1409,12 @@ def test_executive_capital_flow_receiving_surface(client):
 
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'data-exec-capital-flow' in body
+    assert "data-exec-capital-flow" in body
     assert 'aria-label="Daily capital flow"' in body
-    assert "Active floor ${formatMoney(projection.activeHardFloor)}" in Path(
-        "static/js/executive_command_center.js"
-    ).read_text()
+    assert (
+        "Active floor ${formatMoney(projection.activeHardFloor)}"
+        in Path("static/js/executive_command_center.js").read_text()
+    )
 
 
 def test_executive_desktop_cleanup_contract(client):
@@ -1425,7 +1428,7 @@ def test_executive_desktop_cleanup_contract(client):
     assert "Year View" not in body
     assert "Net Worth Tracker" not in body
     assert "Capital Allocation" not in body
-    assert 'selectedMonth: currentOperatingMonth.id' in script
+    assert "selectedMonth: currentOperatingMonth.id" in script
     assert '["Current BOA", formatMoney(monthInputs(month).openingBOA)' in script
     assert "Absorbable Cushion" in script
     assert "Planning baseline, not bank sync" in script
@@ -1465,8 +1468,11 @@ def test_executive_desktop_cleanup_contract(client):
     assert "September post-bill surplus sweep" not in script
     assert "CEO Score" not in script
     assert "Cash Runway" not in script
-    assert 'entry.cycleSettled ? \'<small class="executiveTimingEstimate">Automatic</small>\'' in script
-    assert 'data-exec-quick-expense-description' in script
+    assert (
+        "entry.cycleSettled ? '<small class=\"executiveTimingEstimate\">Automatic</small>'"
+        in script
+    )
+    assert "data-exec-quick-expense-description" in script
     assert "executiveReviewComparison" in script
 
 
@@ -2267,14 +2273,14 @@ def test_market_pulse_renders_gamma_ladder_switcher(client):
     assert 'data-symbol="SPY"' in body
     assert 'data-gamma-symbol-pill="SPY"' in body
     assert 'class="gamma-symbol-pill active"' in body
-    assert 'data-gamma-symbol-search' in body
-    assert 'data-gamma-symbol-input' in body
+    assert "data-gamma-symbol-search" in body
+    assert "data-gamma-symbol-input" in body
     assert 'data-gamma-window-pill="tight"' in body
     assert 'data-gamma-window-pill="standard"' in body
     assert 'data-gamma-window-pill="wide"' in body
-    assert 'data-gamma-summary' in body
-    assert 'data-gamma-loading' in body
-    assert 'data-gamma-board' in body
+    assert "data-gamma-summary" in body
+    assert "data-gamma-loading" in body
+    assert "data-gamma-board" in body
     assert 'class="gamma-ladder-boardShell"' in body
 
 
@@ -2781,7 +2787,9 @@ def test_dashboard_first_render_uses_detailed_tape_sparklines(client, monkeypatc
         },
     )
     monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
-    monkeypatch.setattr(market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: []
+    )
     monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
     monkeypatch.setattr(
         market_data_service,
@@ -2840,9 +2848,13 @@ def test_dashboard_vix_uses_quote_mini_series_for_range_and_sparkline(client, mo
         },
     )
     monkeypatch.setattr(core_service, "_market_pulse_snapshot", lambda **_: {"quotes": []})
-    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None))
+    monkeypatch.setattr(
+        core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None)
+    )
     monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])
-    monkeypatch.setattr(market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        market_data_service, "get_prior_session_intraday", lambda *_args, **_kwargs: []
+    )
     monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
     monkeypatch.setattr(market_data_service, "get_watchlist", lambda *_args, **_kwargs: {})
 
@@ -3320,7 +3332,9 @@ def test_dashboard_tape_cached_rows_have_non_live_tone(client, monkeypatch):
         },
     )
     monkeypatch.setattr(core_service, "_market_pulse_snapshot", lambda **_: {"quotes": []})
-    monkeypatch.setattr(core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None))
+    monkeypatch.setattr(
+        core_service, "_market_pulse_cached_replay_series", lambda _symbol: ([], None)
+    )
     monkeypatch.setattr(market_data_service, "get_watchlist_tradier", lambda _symbols: {})
     monkeypatch.setattr(market_data_service, "get_watchlist", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(market_data_service, "get_intraday", lambda _symbol: [])

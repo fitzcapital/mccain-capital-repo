@@ -26,7 +26,7 @@ def test_dashboard_surfaces_use_accessible_shared_contract(client):
 
     for surface_id in ("dashboardResetModal", "dashboardCommandPalette"):
         assert body.count(f'id="{surface_id}"') == 1
-    assert body.count('data-dashboard-surface') >= 2
+    assert body.count("data-dashboard-surface") >= 2
     assert 'data-dashboard-surface-open="dashboardResetModal"' in body
     assert 'data-dashboard-surface-open="dashboardCommandPalette"' in body
     assert 'aria-labelledby="dashboardResetModalTitle"' in body
@@ -117,9 +117,7 @@ def test_surface_controller_covers_focus_lifecycle_and_lazy_rebinding():
 
 def test_operation_feedback_preserves_confirmed_content_on_refresh_failure():
     interactions = (ROOT / "static/js/dashboard_interactions.js").read_text(encoding="utf-8")
-    command_center = (ROOT / "static/js/dashboard_command_center.js").read_text(
-        encoding="utf-8"
-    )
+    command_center = (ROOT / "static/js/dashboard_command_center.js").read_text(encoding="utf-8")
 
     assert 'const state = ["success", "stale", "error"]' in interactions
     assert "Manual values were preserved" in interactions

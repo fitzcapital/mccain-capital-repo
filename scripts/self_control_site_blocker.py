@@ -24,8 +24,12 @@ from zoneinfo import ZoneInfo
 TZ = ZoneInfo("America/New_York")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
-DEFAULT_STATE_PATH = os.path.join(REPO_ROOT, "persistent-data", ".self_control_enforcement_state.json")
-DEFAULT_STATUS_PATH = os.path.join(REPO_ROOT, "persistent-data", ".self_control_enforcement_status.json")
+DEFAULT_STATE_PATH = os.path.join(
+    REPO_ROOT, "persistent-data", ".self_control_enforcement_state.json"
+)
+DEFAULT_STATUS_PATH = os.path.join(
+    REPO_ROOT, "persistent-data", ".self_control_enforcement_status.json"
+)
 DEFAULT_HOSTS_PATH = "/etc/hosts"
 MARKER_BEGIN = "# BEGIN MCCAIN SELF CONTROL BLOCK"
 MARKER_END = "# END MCCAIN SELF CONTROL BLOCK"
@@ -87,7 +91,9 @@ def _parse_state(path: str) -> EnforcementState:
         unlock_requirement=str(payload.get("unlock_requirement") or "").strip(),
         blocked_domains=sorted(set(_expand_domains(domains))),
         blocked_categories=[
-            str(item or "").strip() for item in list(payload.get("blocked_categories") or []) if str(item or "").strip()
+            str(item or "").strip()
+            for item in list(payload.get("blocked_categories") or [])
+            if str(item or "").strip()
         ],
     )
 
@@ -192,7 +198,9 @@ def flush_dns_cache() -> None:
     ]
     for command in commands:
         try:
-            subprocess.run(command, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                command, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
         except Exception:
             pass
 

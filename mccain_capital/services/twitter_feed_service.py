@@ -249,7 +249,9 @@ def _mark_source_success(
     cached_items = list(state.get("last_good_payload") or [])
     cached_raw_items = list(state.get("last_raw_payload") or [])
     merged_items = _merge_cached_items(items, cached_items, limit=MAX_CACHED_SOURCE_ITEMS)
-    merged_raw_items = _merge_cached_items(raw_items, cached_raw_items, limit=MAX_CACHED_SOURCE_ITEMS)
+    merged_raw_items = _merge_cached_items(
+        raw_items, cached_raw_items, limit=MAX_CACHED_SOURCE_ITEMS
+    )
     state["last_good_payload"] = merged_items
     state["last_good_count"] = len(merged_items)
     state["last_raw_payload"] = merged_raw_items
@@ -888,7 +890,9 @@ def _sort_raw_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def _cache_item_key(item: Dict[str, Any]) -> Tuple[str, str, str]:
     url = str(item.get("url") or item.get("tweetUrl") or item.get("twitterUrl") or "").strip()
     post_id = str(item.get("id") or item.get("tweetId") or "").strip()
-    text = str(item.get("text") or item.get("headline") or item.get("summary") or "").strip().lower()
+    text = (
+        str(item.get("text") or item.get("headline") or item.get("summary") or "").strip().lower()
+    )
     return (url, post_id, text)
 
 

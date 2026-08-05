@@ -144,12 +144,8 @@ _SYNC_JOB_QUEUE: "queue.Queue[Optional[Dict[str, Any]]]" = queue.Queue()
 _SYNC_DISPATCH_THREAD_STARTED = False
 _SYNC_DISPATCH_THREAD_LOCK = threading.Lock()
 SYNC_JOB_STALE_SECONDS = int(os.environ.get("SYNC_JOB_STALE_SECONDS", "300") or 300)
-SYNC_JOB_QUEUED_STALE_SECONDS = int(
-    os.environ.get("SYNC_JOB_QUEUED_STALE_SECONDS", "120") or 120
-)
-SYNC_JOB_UI_STAGE_STALE_SECONDS = int(
-    os.environ.get("SYNC_JOB_UI_STAGE_STALE_SECONDS", "75") or 75
-)
+SYNC_JOB_QUEUED_STALE_SECONDS = int(os.environ.get("SYNC_JOB_QUEUED_STALE_SECONDS", "120") or 120)
+SYNC_JOB_UI_STAGE_STALE_SECONDS = int(os.environ.get("SYNC_JOB_UI_STAGE_STALE_SECONDS", "75") or 75)
 
 
 class SyncJobCancelled(RuntimeError):
@@ -1426,6 +1422,7 @@ def _sync_reliability_summary(history: List[Dict[str, Any]], days: int = 30) -> 
             row["_ts"] = ts
             recent.append(row)
     recent.sort(key=lambda x: x["_ts"])
+
     def category(entry: Dict[str, Any]) -> str:
         status = str(entry.get("status") or "").strip().lower()
         requested = entry.get("requested") if isinstance(entry.get("requested"), dict) else {}
@@ -2606,7 +2603,7 @@ def trades_paste_broker():
 
     content = render_template(
         "trades/broker_paste_form.html",
-        selected_account_id=str(_selected_account().get("id") if _selected_account() else "")
+        selected_account_id=str(_selected_account().get("id") if _selected_account() else ""),
     )
     return render_page(content, active="trades")
 
@@ -2692,10 +2689,18 @@ def trades_upload_pdf():
             repo.archive_account(int(target_account["id"]))
             remaining_accounts = repo.list_accounts()
             fallback_account = next(
-                (row for row in remaining_accounts if int(row.get("id") or 0) != int(target_account["id"])),
+                (
+                    row
+                    for row in remaining_accounts
+                    if int(row.get("id") or 0) != int(target_account["id"])
+                ),
                 None,
             )
-            repo.set_active_account(int(fallback_account["id"])) if fallback_account else repo.set_active_account(None)
+            (
+                repo.set_active_account(int(fallback_account["id"]))
+                if fallback_account
+                else repo.set_active_account(None)
+            )
             flash(f"Archived {target_account['account_name']}.", "success")
             return redirect(url_for("trades_upload_pdf", ws=workspace))
         if form_intent == "bulk_archive_accounts":
@@ -2723,9 +2728,7 @@ def trades_upload_pdf():
             if active_account_id in archived_ids:
                 remaining_accounts = repo.list_accounts()
                 fallback_account = next(iter(remaining_accounts), None)
-                repo.set_active_account(
-                    int(fallback_account["id"]) if fallback_account else None
-                )
+                repo.set_active_account(int(fallback_account["id"]) if fallback_account else None)
             flash(
                 f"Archived {archived_count} account{'s' if archived_count != 1 else ''}.",
                 "success",
@@ -2893,15 +2896,23 @@ def trades_upload_pdf():
     selected_account = _selected_account(request.args.get("account_id"))
     rollover_from_account_id = _coerce_account_id(request.args.get("rollover_from"))
     account_form_mode = (
-        "new" if workspace == "live" and account_editor_mode == "new" else "edit" if selected_account else "new"
+        "new"
+        if workspace == "live" and account_editor_mode == "new"
+        else "edit" if selected_account else "new"
     )
     account_form_account = None if account_form_mode == "new" else selected_account
     accounts = repo.list_accounts()
-    archived_accounts = [row for row in repo.list_accounts(include_archived=True) if int(row.get("archived") or 0) == 1]
+    archived_accounts = [
+        row
+        for row in repo.list_accounts(include_archived=True)
+        if int(row.get("archived") or 0) == 1
+    ]
     broker_cfg = _load_broker_sync_config()
     broker_cfg["account_display"] = repo.display_broker_account_id(broker_cfg.get("account", ""))
     auto_sync_cfg = _load_auto_sync_config()
-    auto_sync_cfg["account_display"] = repo.display_broker_account_id(auto_sync_cfg.get("account", ""))
+    auto_sync_cfg["account_display"] = repo.display_broker_account_id(
+        auto_sync_cfg.get("account", "")
+    )
     default_day = today_iso()
     sync_status = _load_last_sync_status()
     sync_history = _load_sync_history()
@@ -2942,10 +2953,7 @@ def trades_upload_pdf():
         account_form_mode=account_form_mode,
         account_form_account=account_form_account,
         rollover_from_account_id=rollover_from_account_id,
-        live_account_form_open=(
-            workspace == "live"
-            and account_editor_mode in {"edit", "new"}
-        ),
+        live_account_form_open=(workspace == "live" and account_editor_mode in {"edit", "new"}),
         live_credentials_form_open=(workspace == "live" and credentials_panel_mode == "edit"),
         money=money,
     )
@@ -3796,9 +3804,12 @@ def trades_sync_live():
     if active_job:
         message = "A live sync job is already active. Force Reset Lane before starting another run."
         if wants_async:
-            return jsonify(
-                {"ok": False, "message": message, "job": _job_response_payload(active_job)}
-            ), 409
+            return (
+                jsonify(
+                    {"ok": False, "message": message, "job": _job_response_payload(active_job)}
+                ),
+                409,
+            )
         flash(message, "warn")
         return redirect(url_for("trades_upload_pdf", ws="live", job=active_job["id"]))
 
@@ -3822,9 +3833,12 @@ def trades_sync_live():
     selected_account = _require_import_account(request.form.get("selected_account_id"))
     if not selected_account:
         if wants_async:
-            return jsonify(
-                {"ok": False, "message": "Please select an account before uploading trades."}
-            ), 400
+            return (
+                jsonify(
+                    {"ok": False, "message": "Please select an account before uploading trades."}
+                ),
+                400,
+            )
         return redirect(url_for("trades_upload_pdf", ws="live"))
     selected_broker_account = repo.normalize_broker_account_id(
         selected_account.get("display_broker_account_id")

@@ -320,9 +320,7 @@ def _form_bool(form: Mapping[str, Any], key: str, default: bool = False) -> bool
         values = []
     if not values:
         return default
-    return any(
-        str(value or "").strip().lower() in {"1", "true", "on", "yes"} for value in values
-    )
+    return any(str(value or "").strip().lower() in {"1", "true", "on", "yes"} for value in values)
 
 
 def save_trading_window_settings(form: Mapping[str, Any]) -> dict[str, Any]:

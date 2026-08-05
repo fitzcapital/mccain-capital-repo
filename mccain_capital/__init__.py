@@ -147,7 +147,7 @@ def create_app():
                     resp.headers["X-SQLite-Duration-Ms"] = f"{sql_ms:.2f}"
                     resp.headers["X-SQLite-Query-Count"] = str(sql_queries)
                     resp.headers["Server-Timing"] = (
-                        f"app;dur={total_ms:.2f}, sqlite;dur={sql_ms:.2f};desc=\"{sql_queries} queries\""
+                        f'app;dur={total_ms:.2f}, sqlite;dur={sql_ms:.2f};desc="{sql_queries} queries"'
                     )
                     slow_ms = float(app.config.get("REQUEST_SLOW_MS", 400) or 400)
                     if app.config.get("REQUEST_PROFILING_LOG_ALL") or total_ms >= slow_ms:

@@ -110,9 +110,7 @@ def _spark_ambient_layers(
             )
         else:
             band_width = 74.0 + (unit * 48.0)
-            x = 8.0 + (
-                _spark_seeded_unit(seed, idx + 7) * max(1.0, width - band_width - 16.0)
-            )
+            x = 8.0 + (_spark_seeded_unit(seed, idx + 7) * max(1.0, width - band_width - 16.0))
             y = center_y - 11.0 + (idx * 5.2) + ((_spark_seeded_unit(seed, idx + 13) - 0.5) * 3.6)
             parts.append(
                 f'<rect class="marketMiniSparkAmbientBand marketMiniSparkAmbientBand--{idx + 1}" '
@@ -271,7 +269,11 @@ def timeframe_payload(
     last = close_values[-1] if close_values else None
     change = last - first if first is not None and last is not None else None
     pct_change = (change / first) * 100.0 if change is not None and first not in (None, 0) else None
-    tone = "up" if change is not None and change > 0 else "down" if change is not None and change < 0 else "flat"
+    tone = (
+        "up"
+        if change is not None and change > 0
+        else "down" if change is not None and change < 0 else "flat"
+    )
     candles = _compact_ohlc_rows(ohlc_rows, 22) if len(ohlc_rows) >= 2 else []
     line_points = _compact_close_points(close_values, 24) if len(close_values) >= 2 else []
     payload = {
@@ -289,7 +291,9 @@ def timeframe_payload(
     return payload
 
 
-def timeframe_payloads(rows_or_points: List[Dict[str, Any]], *, symbol: str = "") -> Dict[str, Dict[str, Any]]:
+def timeframe_payloads(
+    rows_or_points: List[Dict[str, Any]], *, symbol: str = ""
+) -> Dict[str, Dict[str, Any]]:
     return {
         label: timeframe_payload(rows_or_points, symbol=symbol, label=label, minutes=minutes)
         for label, minutes in TIMEFRAME_WINDOWS.items()
@@ -307,7 +311,9 @@ def last_hour_payload(rows_or_points: List[Dict[str, Any]], *, symbol: str = "")
 
 def last_hour_svg(payload: Dict[str, Any], *, symbol: str = "") -> str:
     candles = [dict(row) for row in payload.get("candles") or [] if isinstance(row, dict)]
-    line_values = [float(v) for v in payload.get("line_points") or [] if isinstance(v, (int, float))]
+    line_values = [
+        float(v) for v in payload.get("line_points") or [] if isinstance(v, (int, float))
+    ]
     tone = str(payload.get("tone") or "flat")
     width = 360.0
     height = 128.0
@@ -441,8 +447,7 @@ def dashboard_sparkline_svg(series: List[float], tone: str, symbol: str = "") ->
         point_x, point_y = points[idx]
         mid_x = (prev_x + point_x) / 2.0
         line_path += (
-            f" C {mid_x:.2f} {prev_y:.2f} {mid_x:.2f} {point_y:.2f}"
-            f" {point_x:.2f} {point_y:.2f}"
+            f" C {mid_x:.2f} {prev_y:.2f} {mid_x:.2f} {point_y:.2f}" f" {point_x:.2f} {point_y:.2f}"
         )
     area_path = (
         f"{line_path} L {points[-1][0]:.2f} {height - 6.0:.2f}"
@@ -571,7 +576,11 @@ def sparkline_svg(series: List[float], tone: str, symbol: str = "") -> str:
         + "</linearGradient></defs>"
         + _spark_ambient_layers(symbol, width, height)
         + f'<line class="marketMiniSparkGuide marketMiniSparkBaseline" x1="3" y1="{baseline_y:.2f}" x2="135" y2="{baseline_y:.2f}" />'
-        + (f'<path class="marketMiniSparkTrend {last_close_class}" d="{trend_path}" />' if trend_path else "")
+        + (
+            f'<path class="marketMiniSparkTrend {last_close_class}" d="{trend_path}" />'
+            if trend_path
+            else ""
+        )
         + f'<circle class="marketMiniSparkCurrentGlow {last_close_class}" cx="{center_x:.2f}" cy="{last_close_y:.2f}" r="10.5" />'
         + "".join(candle_markup)
         + f'<line class="marketMiniSparkPriceMarker {last_close_class}" x1="{max(3.0, center_x - 5.0):.2f}" y1="{last_close_y:.2f}" x2="135" y2="{last_close_y:.2f}" />'

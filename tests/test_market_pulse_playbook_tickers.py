@@ -26,7 +26,7 @@ def test_market_pulse_renders_spx_ticker_switch(client):
     assert 'id="marketPulseHeaderSpot"' in body
     assert 'data-default-symbol="SPX"' in body
     assert 'data-symbol="SPX"' in body
-    assert '<strong data-gamma-symbol>SPX</strong>' in body
+    assert "<strong data-gamma-symbol>SPX</strong>" in body
 
 
 def test_market_pulse_defaults_to_spy_playbook(client):
@@ -38,7 +38,7 @@ def test_market_pulse_defaults_to_spy_playbook(client):
     assert '"ticker": "SPY"' in body
     assert 'value="SPY"' in body
     assert 'data-default-symbol="SPY"' in body
-    assert '<strong data-gamma-symbol>SPY</strong>' in body
+    assert "<strong data-gamma-symbol>SPY</strong>" in body
 
 
 def test_market_pulse_rejects_unsupported_ticker_search(client):

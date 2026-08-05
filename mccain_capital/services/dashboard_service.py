@@ -309,7 +309,9 @@ def dashboard_tape_refresh_api():
 
     snapshot = market_worker.get_market_snapshot()
     prices = dict(snapshot.get("prices") or {})
-    needs_fill = [sym for sym in symbols if not isinstance((prices.get(sym) or {}).get("price"), (int, float))]
+    needs_fill = [
+        sym for sym in symbols if not isinstance((prices.get(sym) or {}).get("price"), (int, float))
+    ]
 
     if needs_fill:
         try:
@@ -330,9 +332,7 @@ def dashboard_tape_refresh_api():
         quote.setdefault("label", sym)
         try:
             intraday_rows = [
-                dict(row)
-                for row in market_data_service.get_intraday(sym)
-                if isinstance(row, dict)
+                dict(row) for row in market_data_service.get_intraday(sym) if isinstance(row, dict)
             ]
         except Exception:
             intraday_rows = []

@@ -33,12 +33,12 @@ def test_notification_dropdown_is_portaled_above_page_stacking_contexts():
     template = (ROOT / "mccain_capital/templates/base.html").read_text(encoding="utf-8")
     styles = (ROOT / "static/css/app.css").read_text(encoding="utf-8")
 
-    assert 'document.body.appendChild(dropdown)' in template
+    assert "document.body.appendChild(dropdown)" in template
     assert 'dropdown.classList.add("is-portaled", "is-open")' in template
-    assert 'dropdownHost.appendChild(dropdown)' in template
+    assert "dropdownHost.appendChild(dropdown)" in template
     assert 'window.addEventListener("resize", positionMenu)' in template
     assert ".notifDropdown.is-portaled{" in styles
-    assert "z-index:10000" in styles[styles.index(".notifDropdown.is-portaled{"):]
+    assert "z-index:10000" in styles[styles.index(".notifDropdown.is-portaled{") :]
     assert ".notifDropdown:popover-open{" in styles
 
 
@@ -61,7 +61,7 @@ def test_notification_last_read_formatter_is_hoisted_before_initialization():
 
 def test_notification_bell_hydrates_missing_tweet_cards_before_opening():
     template = (ROOT / "mccain_capital/templates/base.html").read_text(encoding="utf-8")
-    refresh_handler = template.index('if (refreshBtn) {')
+    refresh_handler = template.index("if (refreshBtn) {")
     background_polling_note = template.index(
         "// Tweet-backed notifications are manual-only.", refresh_handler
     )
@@ -101,7 +101,7 @@ def test_market_pulse_initial_feed_populates_notification_cards():
     template = (ROOT / "mccain_capital/templates/core/market_pulse.html").read_text(
         encoding="utf-8"
     )
-    initialization = template[template.index("const initialItems = currentFeedItems;"):]
+    initialization = template[template.index("const initialItems = currentFeedItems;") :]
 
     assert "renderFeedLayout(initialItems);" in initialization
     assert "syncNotifications(initialItems);" in initialization

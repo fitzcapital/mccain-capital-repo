@@ -994,7 +994,9 @@ def insert_trades_from_broker_paste_with_report(
             entry_fee = (
                 float(lot["fee_remaining"]) * (take / lot_qty_before) if lot_qty_before > 0 else 0.0
             )
-            close_fee = close_fee_remaining * (take / remaining_before) if remaining_before > 0 else 0.0
+            close_fee = (
+                close_fee_remaining * (take / remaining_before) if remaining_before > 0 else 0.0
+            )
             lot["fee_remaining"] = max(0.0, float(lot["fee_remaining"]) - entry_fee)
             close_fee_remaining = max(0.0, close_fee_remaining - close_fee)
             if close_side == "BUY":

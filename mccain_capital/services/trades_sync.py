@@ -286,10 +286,18 @@ def _canonical_live_sync_state(
         "running": ("SYNC RUNNING", "Live broker import in progress", "running"),
         "completed": ("IMPORT COMPLETE", "Trades imported successfully", "success"),
         "no_new_trades": ("NO NEW TRADES", "Import completed; no new fills found", "success"),
-        "diagnostic_only": ("DIAGNOSTIC COMPLETE", "Test finished; nothing was imported", "warning"),
+        "diagnostic_only": (
+            "DIAGNOSTIC COMPLETE",
+            "Test finished; nothing was imported",
+            "warning",
+        ),
         "cancelled": ("SYNC CANCELLED", "Today's import is still pending", "warning"),
         "failed": ("SYNC FAILED", "Today's import is still pending", "warning"),
-        "needs_recovery": ("RECOVERY NEEDED", "Review the failure evidence before retrying", "warning"),
+        "needs_recovery": (
+            "RECOVERY NEEDED",
+            "Review the failure evidence before retrying",
+            "warning",
+        ),
     }
     state_label, current_label, tone = labels[outcome]
     if outcome == "ready" and not preflight.get("can_run"):
@@ -322,24 +330,36 @@ def _canonical_live_sync_state(
         "today_status": (
             "running"
             if outcome == "running"
-            else "completed"
-            if import_completed_today
-            else "failed"
-            if attempted_today and outcome in {"failed", "needs_recovery"}
-            else "cancelled"
-            if attempted_today and outcome == "cancelled"
-            else "diagnostic"
-            if attempted_today and outcome == "diagnostic_only"
-            else "pending"
+            else (
+                "completed"
+                if import_completed_today
+                else (
+                    "failed"
+                    if attempted_today and outcome in {"failed", "needs_recovery"}
+                    else (
+                        "cancelled"
+                        if attempted_today and outcome == "cancelled"
+                        else (
+                            "diagnostic"
+                            if attempted_today and outcome == "diagnostic_only"
+                            else "pending"
+                        )
+                    )
+                )
+            )
         ),
         "recommended_next_action": (
             "Wait for the active sync to finish."
             if outcome == "running"
-            else "No manual sync is needed today."
-            if import_completed_today
-            else "Review recovery guidance before retrying."
-            if outcome == "needs_recovery"
-            else "Run today's normal import when ready."
+            else (
+                "No manual sync is needed today."
+                if import_completed_today
+                else (
+                    "Review recovery guidance before retrying."
+                    if outcome == "needs_recovery"
+                    else "Run today's normal import when ready."
+                )
+            )
         ),
         "automation_enabled": bool(auto_cfg.get("enabled")),
         "automation_next_run_at": _next_auto_run(auto_cfg, now_et=now),
@@ -673,7 +693,9 @@ def trades_sync_live_last_run():
         base_url=base_url,
         account=account,
         wl=str(requested_last.get("wl") or cfg.get("wl") or "vanquishtrader"),
-        time_zone=str(requested_last.get("time_zone") or cfg.get("time_zone") or "America/New_York"),
+        time_zone=str(
+            requested_last.get("time_zone") or cfg.get("time_zone") or "America/New_York"
+        ),
         date_locale=str(requested_last.get("date_locale") or cfg.get("date_locale") or "en-US"),
         report_locale=str(requested_last.get("report_locale") or cfg.get("report_locale") or "en"),
         headless=bool(cfg.get("headless", True)),
@@ -685,8 +707,12 @@ def trades_sync_live_last_run():
     requested["remember_credentials"] = bool(requested_last.get("remember_credentials"))
     requested["stored_password_reused"] = True
     requested["credential_save_requested"] = bool(requested_last.get("credential_save_requested"))
-    requested["credential_save_status"] = str(requested_last.get("credential_save_status") or "").strip()
-    requested["credential_save_detail"] = str(requested_last.get("credential_save_detail") or "").strip()
+    requested["credential_save_status"] = str(
+        requested_last.get("credential_save_status") or ""
+    ).strip()
+    requested["credential_save_detail"] = str(
+        requested_last.get("credential_save_detail") or ""
+    ).strip()
 
     job = legacy._start_sync_job(
         selected_account_id=int(selected_account["id"]),

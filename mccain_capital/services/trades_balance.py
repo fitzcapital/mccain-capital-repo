@@ -19,7 +19,9 @@ def scope_state_for_day(active_day: str) -> Dict[str, Any]:
         account_id = None
     scope_start = str(account_scope.get("start_date") or "").strip()
     scope_starting_balance = float(account_scope.get("starting_balance") or 50000.0)
-    scope_active = scope_enabled and (bool(account_id) or (bool(scope_start) and active_day >= scope_start))
+    scope_active = scope_enabled and (
+        bool(account_id) or (bool(scope_start) and active_day >= scope_start)
+    )
     return {
         "account_scope": account_scope,
         "account_id": account_id,
@@ -97,9 +99,7 @@ def running_balance_for_day(active_day: str, scope_state: Dict[str, Any]) -> flo
 
 def summary_totals_for_day(active_day: str, scope_state: Dict[str, Any]) -> Dict[str, float | None]:
     starting_balance = (
-        float(scope_state["scope_starting_balance"])
-        if scope_state["scope_active"]
-        else 0.0
+        float(scope_state["scope_starting_balance"]) if scope_state["scope_active"] else 0.0
     )
     with db() as conn:
         y_start = f"{active_day[:4]}-01-01"

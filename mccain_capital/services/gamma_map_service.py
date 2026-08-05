@@ -101,9 +101,7 @@ GAMMA_LADDER_CACHE_TTL_SECONDS = int(
     os.environ.get("GAMMA_LADDER_CACHE_TTL_SECONDS", str(ACTIVE_POLL_SECONDS))
     or ACTIVE_POLL_SECONDS
 )
-GAMMA_LADDER_WINDOW_SPOT_PCT = float(
-    os.environ.get("GAMMA_LADDER_WINDOW_SPOT_PCT", "0.03") or 0.03
-)
+GAMMA_LADDER_WINDOW_SPOT_PCT = float(os.environ.get("GAMMA_LADDER_WINDOW_SPOT_PCT", "0.03") or 0.03)
 GAMMA_LADDER_MAX_ROWS = int(os.environ.get("GAMMA_LADDER_MAX_ROWS", "19") or 19)
 GAMMA_LADDER_MIN_ROWS = int(os.environ.get("GAMMA_LADDER_MIN_ROWS", "11") or 11)
 GAMMA_LADDER_WINDOW_PRESETS: Dict[str, Dict[str, float | int]] = {
@@ -1143,7 +1141,9 @@ def _select_gamma_ladder_expirations(
     normalized = normalize_gamma_ladder_symbol(symbol)
     dte_preset = normalize_gamma_ladder_dte(dte)
     today = app_runtime.now_et().date()
-    expirations = list(expirations) if expirations is not None else _get_expirations_for_symbol(normalized)
+    expirations = (
+        list(expirations) if expirations is not None else _get_expirations_for_symbol(normalized)
+    )
     if not expirations:
         return [today.isoformat()], dte_preset
 
@@ -1852,14 +1852,10 @@ def _focused_gamma_ladder_rows(
     above_spot = [row for row in records if float(row["strike"]) > float(spot)]
     below_spot = [row for row in records if float(row["strike"]) < float(spot)]
     nearest_call_above = (
-        max(above_spot, key=lambda row: abs(float(row["net_gex"])))
-        if above_spot
-        else None
+        max(above_spot, key=lambda row: abs(float(row["net_gex"]))) if above_spot else None
     )
     nearest_put_below = (
-        max(below_spot, key=lambda row: abs(float(row["net_gex"])))
-        if below_spot
-        else None
+        max(below_spot, key=lambda row: abs(float(row["net_gex"]))) if below_spot else None
     )
     window_config = gamma_ladder_window_config(window_preset)
     max_rows = int(window_config.get("max_rows") or GAMMA_LADDER_MAX_ROWS)
@@ -1884,19 +1880,20 @@ def _focused_gamma_ladder_rows(
         selected_map[float(row["strike"])] = dict(row)
 
     if len(selected_map) < min_rows:
-        by_distance = sorted(records, key=lambda row: (abs(float(row["strike"]) - float(spot)), -float(row["strike"])))
+        by_distance = sorted(
+            records,
+            key=lambda row: (abs(float(row["strike"]) - float(spot)), -float(row["strike"])),
+        )
         for row in by_distance:
             selected_map.setdefault(float(row["strike"]), dict(row))
             if len(selected_map) >= min_rows:
                 break
 
-    selected_rows = sorted(selected_map.values(), key=lambda row: float(row["strike"]), reverse=True)
+    selected_rows = sorted(
+        selected_map.values(), key=lambda row: float(row["strike"]), reverse=True
+    )
     if len(selected_rows) > max_rows:
-        keep = {
-            float(row["strike"])
-            for row in preserved
-            if row is not None
-        }
+        keep = {float(row["strike"]) for row in preserved if row is not None}
         prioritized = sorted(
             selected_rows,
             key=lambda row: (
@@ -2312,14 +2309,10 @@ def compute_secondary_gamma_levels(
     above_spot = positive[positive["strike"] > float(spot)]
     below_spot = negative[negative["strike"] < float(spot)]
     above_call_wall = (
-        positive[positive["strike"] > float(call_wall)]
-        if call_wall is not None
-        else above_spot
+        positive[positive["strike"] > float(call_wall)] if call_wall is not None else above_spot
     )
     below_put_wall = (
-        negative[negative["strike"] < float(put_wall)]
-        if put_wall is not None
-        else below_spot
+        negative[negative["strike"] < float(put_wall)] if put_wall is not None else below_spot
     )
     return {
         "top_3_positive_gamma_strikes": top_positive,

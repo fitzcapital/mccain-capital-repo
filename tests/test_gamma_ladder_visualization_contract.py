@@ -18,7 +18,7 @@ def test_gamma_ladder_uses_institutional_depth_hierarchy(client):
     positions = [body.index(anchor) for anchor in anchors]
     assert positions == sorted(positions)
     assert body.count('id="gammaLadderSelectedInspector"') == 1
-    assert '<summary' in body[body.index('id="gammaLadderGuide"'):]
+    assert "<summary" in body[body.index('id="gammaLadderGuide"') :]
 
 
 def test_gamma_ladder_preserves_controls_hooks_and_script_order(client):

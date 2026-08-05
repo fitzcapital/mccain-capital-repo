@@ -244,18 +244,16 @@ def test_dashboard_sync_today_rebuilds_safe_request(client, monkeypatch):
 def test_dashboard_client_does_not_reclassify_idle_timestamp_as_completion():
     source = Path("static/js/dashboard_command_center.js").read_text(encoding="utf-8")
 
-    initialization = source[source.index("if (activeJobId)") : source.index(
-        "(function () {\n  const mindsetItem"
-    )]
+    initialization = source[
+        source.index("if (activeJobId)") : source.index("(function () {\n  const mindsetItem")
+    ]
     assert "applyIdleState();" not in initialization
     assert "applyCanonicalState(payload.sync)" in source
 
 
 def test_live_sync_templates_surface_safe_desktop_language():
     dashboard = Path("mccain_capital/templates/dashboard.html").read_text(encoding="utf-8")
-    lane = Path("mccain_capital/templates/trades/upload_statement.html").read_text(
-        encoding="utf-8"
-    )
+    lane = Path("mccain_capital/templates/trades/upload_statement.html").read_text(encoding="utf-8")
 
     assert "Sync Today preflight" in dashboard
     assert ">Sync Today<" in dashboard
@@ -265,9 +263,7 @@ def test_live_sync_templates_surface_safe_desktop_language():
 
 
 def test_live_sync_template_has_three_region_desktop_hierarchy():
-    lane = Path("mccain_capital/templates/trades/upload_statement.html").read_text(
-        encoding="utf-8"
-    )
+    lane = Path("mccain_capital/templates/trades/upload_statement.html").read_text(encoding="utf-8")
 
     assert lane.count('data-live-sync-region="') == 3
     assert 'data-live-sync-region="status"' in lane
@@ -281,7 +277,7 @@ def test_live_sync_template_has_three_region_desktop_hierarchy():
     assert "Failure Guide" in advanced_markup
     assert "Sync Reliability (30D)" in advanced_markup
     assert "After-Market Auto Sync" in advanced_markup
-    assert "<details class=\"card liveSyncAdvancedRegion\"" in lane
+    assert '<details class="card liveSyncAdvancedRegion"' in lane
 
 
 def test_dashboard_sync_is_a_compact_readiness_control():

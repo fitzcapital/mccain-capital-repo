@@ -13,7 +13,7 @@ def test_candle_opens_renders_calendar_first_workflow_contract(client):
     body = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert 'data-candle-workflow' in body
+    assert "data-candle-workflow" in body
     for region in (
         "command",
         "today",
@@ -38,17 +38,17 @@ def test_candle_opens_preserves_calendar_and_day_profile_hooks(client):
     body = response.get_data(as_text=True)
 
     for hook in (
-        'data-candle-day',
-        'data-candle-detail-date',
-        'data-candle-detail-status',
-        'data-candle-detail-importance',
-        'data-candle-detail-resets',
-        'data-candle-detail-macro-count',
-        'data-candle-detail-tags',
-        'data-candle-detail-day',
-        'data-candle-detail-week',
-        'data-candle-detail-month',
-        'data-candle-detail-macro',
+        "data-candle-day",
+        "data-candle-detail-date",
+        "data-candle-detail-status",
+        "data-candle-detail-importance",
+        "data-candle-detail-resets",
+        "data-candle-detail-macro-count",
+        "data-candle-detail-tags",
+        "data-candle-detail-day",
+        "data-candle-detail-week",
+        "data-candle-detail-month",
+        "data-candle-detail-macro",
         'class="mobileCandleWeek"',
         'data-mobile-default="closed"',
     ):

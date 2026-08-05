@@ -74,11 +74,7 @@ def test_dashboard_exposes_decision_context_and_disclosed_reference_deck(client)
 
     assert 'id="dashboardDecisionContext"' in body
     assert 'aria-label="Immediate decision context"' in body
-    assert body.index('id="dashboardCommandDeck"') < body.index(
-        'id="dashboardDecisionContext"'
-    )
-    assert body.index('id="dashboardDecisionContext"') < body.index(
-        'id="dashboardTodayLayer"'
-    )
+    assert body.index('id="dashboardCommandDeck"') < body.index('id="dashboardDecisionContext"')
+    assert body.index('id="dashboardDecisionContext"') < body.index('id="dashboardTodayLayer"')
     assert '<details class="dashboardReferenceFold" id="dashboardReviewLayer">' in body
     assert "Performance, broker context, consistency, and forward pace" in body

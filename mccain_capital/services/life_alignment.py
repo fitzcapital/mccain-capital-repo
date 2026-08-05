@@ -163,7 +163,9 @@ def _coerce_entry(
 
     mood = str(payload.get("mood", base.get("mood")) or "neutral").strip().lower()
     base["mood"] = mood if mood in _MOODS else "neutral"
-    followed_rules = str(payload.get("followed_rules", base.get("followed_rules")) or "not_yet").strip().lower()
+    followed_rules = (
+        str(payload.get("followed_rules", base.get("followed_rules")) or "not_yet").strip().lower()
+    )
     base["followed_rules"] = followed_rules if followed_rules in _FOLLOWED_RULES else "not_yet"
     base["locked"] = _coerce_bool(payload.get("locked", base.get("locked", False)))
     base["locked_at"] = str(payload.get("locked_at", base.get("locked_at")) or "").strip()
@@ -322,12 +324,17 @@ def _sort_entries(entries: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted((_normalize_entry(entry) for entry in entries), key=lambda entry: entry["date"])
 
 
-def _last_n_calendar_entries(entries: Iterable[Dict[str, Any]], *, days: int) -> List[Dict[str, Any]]:
+def _last_n_calendar_entries(
+    entries: Iterable[Dict[str, Any]], *, days: int
+) -> List[Dict[str, Any]]:
     by_date = {entry["date"]: entry for entry in _sort_entries(entries)}
     today = datetime.strptime(today_iso(), "%Y-%m-%d").date()
     start = today - timedelta(days=days - 1)
     return [
-        by_date.get((start + timedelta(days=offset)).isoformat(), _default_entry((start + timedelta(days=offset)).isoformat()))
+        by_date.get(
+            (start + timedelta(days=offset)).isoformat(),
+            _default_entry((start + timedelta(days=offset)).isoformat()),
+        )
         for offset in range(days)
     ]
 
@@ -339,7 +346,9 @@ def _build_analytics(entries: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     existing_last_30 = [entry for entry in last_30 if str(entry.get("created_at") or "").strip()]
     today = datetime.strptime(today_iso(), "%Y-%m-%d").date()
     month_prefix = today.strftime("%Y-%m")
-    month_entries = [entry for entry in normalized if str(entry.get("date", "")).startswith(month_prefix)]
+    month_entries = [
+        entry for entry in normalized if str(entry.get("date", "")).startswith(month_prefix)
+    ]
 
     def workout_predicate(entry):
         return entry["workout_completed"]
@@ -369,8 +378,12 @@ def _build_analytics(entries: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         "journal": _hit_rate(last_7, journal_predicate),
         "devotion": _hit_rate(last_7, devotion_predicate),
     }
-    weekly_completion = round(sum(entry["discipline_score"] for entry in last_7) / max(len(last_7), 1))
-    monthly_completion = round(sum(entry["discipline_score"] for entry in last_30) / max(len(last_30), 1))
+    weekly_completion = round(
+        sum(entry["discipline_score"] for entry in last_7) / max(len(last_7), 1)
+    )
+    monthly_completion = round(
+        sum(entry["discipline_score"] for entry in last_30) / max(len(last_30), 1)
+    )
     insights = _build_insights(last_7, weekly_hit_rates, weekly_completion)
 
     return {
@@ -386,8 +399,12 @@ def _build_analytics(entries: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         "monthly_completion_percentage": monthly_completion,
         "average_water_intake": round(_average(existing_last_30, "water_oz"), 1),
         "average_sleep": round(_average(existing_last_30, "sleep_hours"), 1),
-        "total_workouts_this_month": sum(1 for entry in month_entries if entry["workout_completed"]),
-        "total_walking_minutes_this_month": sum(int(entry["walk_minutes"] or 0) for entry in month_entries),
+        "total_workouts_this_month": sum(
+            1 for entry in month_entries if entry["workout_completed"]
+        ),
+        "total_walking_minutes_this_month": sum(
+            int(entry["walk_minutes"] or 0) for entry in month_entries
+        ),
         "average_discipline_score": round(_average(existing_last_30, "discipline_score")),
         "weekly_habit_hit_rates": weekly_hit_rates,
         "accountability_insights": insights,
@@ -448,9 +465,13 @@ def _build_insights(
     else:
         best_key = max(weekly_hit_rates, key=lambda key: (weekly_hit_rates[key], labels[key]))
         weakest_candidates = [
-            key for key, value in weekly_hit_rates.items() if value == min(weekly_hit_rates.values())
+            key
+            for key, value in weekly_hit_rates.items()
+            if value == min(weekly_hit_rates.values())
         ]
-        weakest_key = next((key for key in weakest_candidates if key != best_key), weakest_candidates[0])
+        weakest_key = next(
+            (key for key in weakest_candidates if key != best_key), weakest_candidates[0]
+        )
         insights = [
             f"Best habit this week: {labels[best_key]}",
             f"Weakest habit this week: {labels[weakest_key]}",
@@ -477,9 +498,17 @@ def _today_life_journal_preview(day: str) -> Dict[str, str]:
     try:
         entries = [dict(row) for row in journal_repo.fetch_entries_by_type("life_note", d=day)]
     except Exception:
-        return {"logged": False, "text": "No journal reflection logged yet.", "href": "/journal/life"}
+        return {
+            "logged": False,
+            "text": "No journal reflection logged yet.",
+            "href": "/journal/life",
+        }
     if not entries:
-        return {"logged": False, "text": "No journal reflection logged yet.", "href": "/journal/life"}
+        return {
+            "logged": False,
+            "text": "No journal reflection logged yet.",
+            "href": "/journal/life",
+        }
 
     entry = entries[0]
     title = str(entry.get("setup") or "Today reflection").strip()

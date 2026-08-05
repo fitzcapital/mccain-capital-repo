@@ -4,7 +4,9 @@ from mccain_capital.handlers import life_alignment as h
 
 
 def register(app):
-    app.add_url_rule("/life-alignment", endpoint="life_alignment_page", view_func=h.life_alignment_page)
+    app.add_url_rule(
+        "/life-alignment", endpoint="life_alignment_page", view_func=h.life_alignment_page
+    )
     app.add_url_rule(
         "/api/life-alignment/today",
         endpoint="life_alignment_today",
